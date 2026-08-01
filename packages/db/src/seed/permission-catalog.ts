@@ -35,14 +35,27 @@ export async function seedPermissionCatalog(db: ReturnType<typeof makeServiceDb>
 
   // platform_admin: every permission (RFC-1 §3, "a reserved role, never a
   // bypass"). admin (the tenant's own back-office admin, e.g. Rhea in the
-  // PRD) manages their own tenant's users and quotes. owner is read-mostly
-  // oversight (PRD §2). timekeeper has none of these yet -- it gets EDTR
-  // capture permissions with F3.
+  // PRD) manages their own tenant's users, quotes, and the EDTR
+  // reconciliation approve/deduct gate (PRD-F3 US-01); KYC extraction
+  // submission is admin's (they upload the corporate doc at onboarding) but
+  // the human portal *verification* is platform_admin's (PRD-F6 US-06).
+  // owner is read-mostly oversight (PRD §2). timekeeper only ever creates
+  // EDTRs on their assigned sites (PRD-F3 US-02); it never approves/deducts.
   const grants: Record<string, readonly (typeof PERMISSION_CODES)[number][]> = {
     platform_admin: PERMISSION_CODES,
-    admin: ['tenant:manage', 'user:manage', 'quote:create', 'quote:read'],
+    admin: [
+      'tenant:manage',
+      'user:manage',
+      'quote:create',
+      'quote:read',
+      'quote:approve',
+      'edtr:create',
+      'edtr:approve',
+      'kyc:extract',
+      'pricing:manage',
+    ],
     owner: ['quote:read'],
-    timekeeper: [],
+    timekeeper: ['edtr:create'],
   };
 
   for (const [roleName, codes] of Object.entries(grants)) {

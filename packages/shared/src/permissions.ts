@@ -6,6 +6,13 @@ export const PERMISSION_CODES = [
   'user:manage',
   'quote:create',
   'quote:read',
+  'quote:approve',
+  'edtr:create',
+  'edtr:approve',
+  'kyc:extract',
+  'kyc:verify',
+  'diesel:manage',
+  'pricing:manage',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];

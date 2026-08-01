@@ -1,4 +1,4 @@
-import { jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 
@@ -90,6 +90,14 @@ export const kycDocuments = pgTable(
     ocrPayload: jsonb('ocr_payload'),
     confidence: numeric('confidence', { precision: 5, scale: 4 }),
     status: text('status').notNull().default('pending'), // pending, needs_review, verified, rejected
+    // RFC-2 §2: worker claim/lock/retry bookkeeping, same shape as edtr.
+    attempts: integer('attempts').notNull().default(0),
+    lockedAt: timestamp('locked_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    // RFC-2 §3: format check + fuzzy-match + human portal confirmation.
+    formatValid: jsonb('format_valid'), // { sec_number: bool, tin: bool }
+    portalMatchScore: numeric('portal_match_score', { precision: 5, scale: 4 }),
+    registryStatus: text('registry_status'), // active | suspended | revoked, human-confirmed
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   () => [tenantIsolationPolicy()],
