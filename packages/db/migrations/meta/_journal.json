@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1785576698001,
+      "tag": "0000_create_app_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785576698081,
+      "tag": "0001_real_tattoo",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785576698161,
+      "tag": "0002_force_rls_and_grants",
+      "breakpoints": true
+    }
+  ]
+}

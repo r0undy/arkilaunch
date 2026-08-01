@@ -1,7 +1,7 @@
 # ArkiLaunch
 
 [![License](https://img.shields.io/badge/License-Proprietary%20(pending)-lightgrey.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Docs%20Complete-green)](docs/index.md)
+[![Status](https://img.shields.io/badge/Status-F7%20tenancy%20slice%20live-green)](docs/index.md)
 [![Stack](https://img.shields.io/badge/Stack-React%20%2B%20NestJS%20%2B%20Postgres-black)](docs/build-arkilaunch.md)
 [![Docs: FMD](https://img.shields.io/badge/Docs-FMD-333)](docs/index.md)
 
@@ -11,10 +11,12 @@ Built with the Foundational Matrix Documents (FMD) workflow: IDEA to build to pi
 
 ## Quick start
 
-Implementation has not started; this repo currently holds the FMD documentation suite. Read the docs first:
+PRD, SDD, DSD, QAD, and RFC-1/2/3 are Locked; the monorepo scaffold and the PRD-F7 multi-tenant/identity slice are implemented and verified against a real Supabase project (35-table schema, RLS forced on all 28 tenant-owned tables, RS256 JWT with refresh rotation). F3/F1/F5/F6/F4/F8/F2 are not yet built. Read the docs first:
 
 1. Start at [docs/index.md](docs/index.md) for the manifest and current Health Check status.
 2. Read in the order [BUILD §1](docs/build-arkilaunch.md) sets out (index -> SCRUTINY -> BRD -> PRD -> SDD -> RFCs -> DSD -> QAD -> CLR -> AIA -> OPS -> BUILD).
+
+To run the code: copy `.env.example` to `.env` (Supabase pooler connection strings and an RS256 keypair; see the comments in that file for the Supavisor-without-IPv4-addon connection shape), then `pnpm install`, `pnpm db:migrate`, `pnpm db:seed`, `pnpm build`, `pnpm test`.
 
 This repo does not vendor the FMD engine's own tooling (`fmd/scripts/*.py`); doc validation and materialization here are done by hand, per [docs/index.md](docs/index.md) §4.
 

@@ -1,0 +1,30 @@
+{
+  "name": "arkilaunch",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@11.11.0",
+  "scripts": {
+    "build": "pnpm -r --filter=./packages/* --filter=./apps/* build",
+    "dev": "pnpm --parallel -r --filter=./apps/* dev",
+    "test": "pnpm -r test",
+    "e2e": "pnpm --filter @arkilaunch/web e2e",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r typecheck",
+    "db:migrate": "pnpm --filter @arkilaunch/db migrate",
+    "db:seed": "pnpm --filter @arkilaunch/db seed:anchor",
+    "db:seed:test": "pnpm --filter @arkilaunch/db seed:test-two-tenant"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
+    "eslint": "10.8.0",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.9.6",
+    "typescript": "5.7.3",
+    "typescript-eslint": "8.65.0"
+  }
+}

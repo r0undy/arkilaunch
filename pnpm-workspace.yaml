@@ -1,0 +1,7 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "jobs"
+allowBuilds:
+  '@swc/core': true
+  esbuild: true

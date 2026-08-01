@@ -23,10 +23,10 @@
 | WRAP · Next Steps | [wrap-arkilaunch.md](wrap-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
 | BRD · Business Requirements | [brd-arkilaunch.md](brd-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
 | UES · Unit Economics Sheet | [ues-arkilaunch.md](ues-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
-| PRD · Product Requirements | [prd-arkilaunch.md](prd-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
-| DSD · Design System | [dsd-arkilaunch.md](dsd-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
-| SDD · System Design | [sdd-arkilaunch.md](sdd-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
-| QAD · QA & Test Plan | [qad-arkilaunch.md](qad-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
+| PRD · Product Requirements | [prd-arkilaunch.md](prd-arkilaunch.md) | 0.1 | Locked | 2026-07-25 | 2026-08-01 |
+| DSD · Design System | [dsd-arkilaunch.md](dsd-arkilaunch.md) | 0.1 | Locked | 2026-07-25 | 2026-08-01 |
+| SDD · System Design | [sdd-arkilaunch.md](sdd-arkilaunch.md) | 0.1 | Locked | 2026-07-25 | 2026-08-01 |
+| QAD · QA & Test Plan | [qad-arkilaunch.md](qad-arkilaunch.md) | 0.1 | Locked | 2026-07-25 | 2026-08-01 |
 | SAD · Subagents | [sad-arkilaunch.md](sad-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
 | BUILD · Build Guide | [build-arkilaunch.md](build-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
 | CLR · Compliance & Legal | [clr-arkilaunch.md](clr-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
@@ -41,9 +41,9 @@
 
 | RFC ID | File | Feature | Status | Last Updated |
 |--------|------|---------|--------|--------------|
-| arkilaunch-rfc-001 | [rfc-arkilaunch-tenancy-rls-auth.md](rfc-arkilaunch-tenancy-rls-auth.md) | Multi-tenant isolation + identity/auth (PRD-F7) | Draft | 2026-07-25 |
-| arkilaunch-rfc-002 | [rfc-arkilaunch-ocr-edtr-reconciliation.md](rfc-arkilaunch-ocr-edtr-reconciliation.md) | OCR EDTR + double-entry reconciliation (PRD-F3, PRD-F6) | Draft | 2026-07-25 |
-| arkilaunch-rfc-003 | [rfc-arkilaunch-quotation-pricing-engine.md](rfc-arkilaunch-quotation-pricing-engine.md) | Diesel-indexed dynamic quotation (PRD-F1) | Draft | 2026-07-25 |
+| arkilaunch-rfc-001 | [rfc-arkilaunch-tenancy-rls-auth.md](rfc-arkilaunch-tenancy-rls-auth.md) | Multi-tenant isolation + identity/auth (PRD-F7) | Locked | 2026-08-01 |
+| arkilaunch-rfc-002 | [rfc-arkilaunch-ocr-edtr-reconciliation.md](rfc-arkilaunch-ocr-edtr-reconciliation.md) | OCR EDTR + double-entry reconciliation (PRD-F3, PRD-F6) | Locked | 2026-08-01 |
+| arkilaunch-rfc-003 | [rfc-arkilaunch-quotation-pricing-engine.md](rfc-arkilaunch-quotation-pricing-engine.md) | Diesel-indexed dynamic quotation (PRD-F1) | Locked | 2026-08-01 |
 
 ### 1.1 Traceability Matrix
 
@@ -82,7 +82,7 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 
 ## 4. Health Check
 
-- [ ] Every Locked doc's **Last Reconciled** date is newer than the last code change to its area. (No code yet; all docs Draft.)
+- [x] Every Locked doc's **Last Reconciled** date is newer than the last code change to its area. (PRD, SDD, DSD, QAD, and RFC-1/2/3 locked 2026-08-01, ahead of the Phase 2-6 scaffold + PRD-F7 slice implementation starting the same day.)
 - [x] No doc has been in `Draft` longer than expected without movement.
 - [x] No open Change Records.
 - [x] Feature IDs (`PRD-F#`) referenced by SDD / RFC / QAD exist in the PRD (PRD-F1..F8 frozen).

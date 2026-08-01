@@ -1,0 +1,18 @@
+{
+  "name": "@arkilaunch/jobs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"no jobs yet -- entrypoints land with F3/F5\" && exit 0"
+  },
+  "dependencies": {
+    "@arkilaunch/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "5.7.3"
+  }
+}

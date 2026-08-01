@@ -1,0 +1,42 @@
+{
+  "name": "@arkilaunch/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@arkilaunch/db": "workspace:*",
+    "@arkilaunch/shared": "workspace:*",
+    "@nestjs/common": "11.1.28",
+    "@nestjs/config": "4.0.4",
+    "@nestjs/core": "11.1.28",
+    "@nestjs/jwt": "11.0.2",
+    "@nestjs/passport": "11.0.5",
+    "@nestjs/platform-express": "11.1.28",
+    "@node-rs/argon2": "2.0.2",
+    "drizzle-orm": "0.44.7",
+    "nestjs-zod": "5.5.0",
+    "passport": "0.7.0",
+    "passport-jwt": "4.0.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.1",
+    "zod": "4.0.17"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "11.0.7",
+    "@swc/cli": "0.8.1",
+    "@swc/core": "1.15.47",
+    "@types/express": "5.0.1",
+    "dotenv": "17.4.2",
+    "@types/node": "24.13.3",
+    "@types/passport-jwt": "4.0.1",
+    "postgres": "3.4.9",
+    "typescript": "5.7.3",
+    "vitest": "3.2.7"
+  }
+}
