@@ -1,16 +1,35 @@
 import { createRoute, redirect } from '@tanstack/react-router';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { rootRoute } from './__root.js';
 import { getAccessToken } from '../lib/auth-client.js';
 import { apiGet, apiPost } from '../lib/api-client.js';
+import { readFileAsDataUrl } from '../lib/file-utils.js';
+import { getCustomers, type CustomerRef } from '../lib/reference-client.js';
 
-// POC scaffold only (unstyled): exercises POST /kyc/extract, GET /kyc/:id,
-// and POST /kyc/:id/confirm (RFC-2). Confirm requires platform_admin
-// (kyc:verify); expect a 403 when signed in as the tenant admin seed user.
+// POC scaffold only (unstyled): exercises POST /kyc/extract (scans a real
+// photo/PDF via <input capture>, encoded as a data: URL since no Supabase
+// Storage upload exists yet), GET /kyc/:id, and POST /kyc/:id/confirm
+// (RFC-2). Confirm requires platform_admin (kyc:verify); expect a 403 when
+// signed in as the tenant admin seed user. Customer comes from GET
+// /reference/customers rather than a hand-typed UUID.
 function KycPage() {
+  const [customers, setCustomers] = useState<CustomerRef[]>([]);
+  const [refError, setRefError] = useState<unknown>(null);
   const [customerId, setCustomerId] = useState('');
   const [documentType, setDocumentType] = useState('sec_certificate');
-  const [fileUri, setFileUri] = useState('storage://fixtures/sample.jpg');
+
+  useEffect(() => {
+    getCustomers()
+      .then((c) => {
+        setCustomers(c);
+        if (c[0]) setCustomerId(c[0].id);
+      })
+      .catch(setRefError);
+  }, []);
+
+  const [scanPreview, setScanPreview] = useState<string | null>(null);
+  const [scanDataUrl, setScanDataUrl] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   const [registryStatus, setRegistryStatus] = useState<'active' | 'suspended' | 'revoked'>('active');
   const [portalMatchScore, setPortalMatchScore] = useState('0.95');
@@ -19,11 +38,31 @@ function KycPage() {
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<unknown>(null);
 
+  async function onScanFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setScanning(true);
+    setError(null);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setScanDataUrl(dataUrl);
+      setScanPreview(file.type.startsWith('image/') ? dataUrl : null);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setScanning(false);
+    }
+  }
+
   async function extract(event: FormEvent) {
     event.preventDefault();
     setError(null);
     try {
-      const res = await apiPost<{ kycDocumentId: string }>('/kyc/extract', { customerId, documentType, fileUri });
+      const res = await apiPost<{ kycDocumentId: string }>('/kyc/extract', {
+        customerId,
+        documentType,
+        fileUri: scanDataUrl ?? '',
+      });
       setResult(res);
       setKycDocumentId(res.kycDocumentId);
     } catch (err) {
@@ -60,21 +99,38 @@ function KycPage() {
   return (
     <div>
       <h1>KYC (RFC-2)</h1>
+      {refError != null && <p>Could not load customers -- is the API running? See error below.</p>}
       <form onSubmit={extract}>
         <h2>Extract</h2>
         <div>
-          <label htmlFor="customerId">Customer ID</label>
-          <input id="customerId" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required />
+          <label htmlFor="customerId">Customer</label>
+          <select id="customerId" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
+            {customers.length === 0 && <option value="">(no customers seeded for this tenant)</option>}
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.companyName}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label htmlFor="documentType">Document type</label>
           <input id="documentType" value={documentType} onChange={(e) => setDocumentType(e.target.value)} required />
         </div>
         <div>
-          <label htmlFor="fileUri">File URI</label>
-          <input id="fileUri" value={fileUri} onChange={(e) => setFileUri(e.target.value)} required />
+          <label htmlFor="scanFile">Scan / upload the corporate document</label>
+          <input id="scanFile" type="file" accept="image/*,application/pdf" capture="environment" onChange={onScanFile} />
+          {scanning && <p>Reading file…</p>}
+          {scanPreview && (
+            <div>
+              <p>Preview:</p>
+              <img src={scanPreview} alt="Scanned document preview" width={240} />
+            </div>
+          )}
         </div>
-        <button type="submit">Extract</button>
+        <button type="submit" disabled={!scanDataUrl || !customerId}>
+          Extract
+        </button>
       </form>
 
       <button type="button" onClick={poll} disabled={!kycDocumentId}>

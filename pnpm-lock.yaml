@@ -35,6 +35,9 @@ importers:
       '@arkilaunch/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@arkilaunch/jobs':
+        specifier: workspace:*
+        version: link:../../jobs
       '@arkilaunch/shared':
         specifier: workspace:*
         version: link:../../packages/shared

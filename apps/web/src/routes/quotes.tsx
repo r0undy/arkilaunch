@@ -1,13 +1,29 @@
 import { createRoute, redirect } from '@tanstack/react-router';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { rootRoute } from './__root.js';
 import { getAccessToken } from '../lib/auth-client.js';
 import { apiPost } from '../lib/api-client.js';
+import {
+  getCustomers,
+  getEquipmentTypes,
+  getProjectSites,
+  getRateCards,
+  type CustomerRef,
+  type EquipmentTypeRef,
+  type ProjectSiteRef,
+  type RateCardRef,
+} from '../lib/reference-client.js';
 
 // POC scaffold only (unstyled): exercises POST /quotes/preview, POST
-// /quotes, and POST /quotes/:id/approve (RFC-3). No form validation beyond
-// the browser's `required`; the API's Zod schema is the real boundary.
+// /quotes, and POST /quotes/:id/approve (RFC-3). Dropdowns are populated
+// from GET /reference/* so you don't have to hand-type UUIDs.
 function QuotesPage() {
+  const [customers, setCustomers] = useState<CustomerRef[]>([]);
+  const [equipmentTypes, setEquipmentTypes] = useState<EquipmentTypeRef[]>([]);
+  const [rateCards, setRateCards] = useState<RateCardRef[]>([]);
+  const [projectSites, setProjectSites] = useState<ProjectSiteRef[]>([]);
+  const [refError, setRefError] = useState<unknown>(null);
+
   const [customerId, setCustomerId] = useState('');
   const [projectSiteId, setProjectSiteId] = useState('');
   const [equipmentTypeId, setEquipmentTypeId] = useState('');
@@ -20,6 +36,21 @@ function QuotesPage() {
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<unknown>(null);
   const [quoteId, setQuoteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([getCustomers(), getEquipmentTypes(), getRateCards(), getProjectSites()])
+      .then(([c, et, rc, ps]) => {
+        setCustomers(c);
+        setEquipmentTypes(et);
+        setRateCards(rc);
+        setProjectSites(ps);
+        if (c[0]) setCustomerId(c[0].id);
+        if (et[0]) setEquipmentTypeId(et[0].id);
+        if (rc[0]) setRateCardId(rc[0].id);
+        if (ps[0]) setProjectSiteId(ps[0].id);
+      })
+      .catch(setRefError);
+  }, []);
 
   function buildBody() {
     return {
@@ -76,22 +107,60 @@ function QuotesPage() {
   return (
     <div>
       <h1>Quotes (RFC-3)</h1>
+      {refError != null && (
+        <p>
+          Could not load reference data (customers/equipment/rate cards/sites) -- is the API running? See error
+          below.
+        </p>
+      )}
       <form>
         <div>
-          <label htmlFor="customerId">Customer ID</label>
-          <input id="customerId" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required />
+          <label htmlFor="customerId">Customer</label>
+          <select id="customerId" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
+            {customers.length === 0 && <option value="">(no customers seeded for this tenant)</option>}
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.companyName}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
-          <label htmlFor="projectSiteId">Project Site ID</label>
-          <input id="projectSiteId" value={projectSiteId} onChange={(e) => setProjectSiteId(e.target.value)} required />
+          <label htmlFor="projectSiteId">Project site</label>
+          <select id="projectSiteId" value={projectSiteId} onChange={(e) => setProjectSiteId(e.target.value)} required>
+            {projectSites.length === 0 && <option value="">(no sites seeded for this tenant)</option>}
+            {projectSites.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.id.slice(0, 8)} ({s.latitude}, {s.longitude})
+              </option>
+            ))}
+          </select>
         </div>
         <div>
-          <label htmlFor="equipmentTypeId">Equipment Type ID</label>
-          <input id="equipmentTypeId" value={equipmentTypeId} onChange={(e) => setEquipmentTypeId(e.target.value)} required />
+          <label htmlFor="equipmentTypeId">Equipment type</label>
+          <select
+            id="equipmentTypeId"
+            value={equipmentTypeId}
+            onChange={(e) => setEquipmentTypeId(e.target.value)}
+            required
+          >
+            {equipmentTypes.map((et) => (
+              <option key={et.id} value={et.id}>
+                {et.name}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
-          <label htmlFor="rateCardId">Rate Card ID</label>
-          <input id="rateCardId" value={rateCardId} onChange={(e) => setRateCardId(e.target.value)} required />
+          <label htmlFor="rateCardId">Rate card</label>
+          <select id="rateCardId" value={rateCardId} onChange={(e) => setRateCardId(e.target.value)} required>
+            {rateCards.length === 0 && <option value="">(no rate cards seeded for this tenant)</option>}
+            {rateCards.map((rc) => (
+              <option key={rc.id} value={rc.id}>
+                {rc.rateType} @ {rc.currency} {rc.rateValue}/hr
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label htmlFor="quantity">Quantity</label>
@@ -109,10 +178,10 @@ function QuotesPage() {
           <label htmlFor="demobilizationKm">Demobilization km</label>
           <input id="demobilizationKm" type="number" value={demobilizationKm} onChange={(e) => setDemobilizationKm(e.target.value)} />
         </div>
-        <button type="submit" onClick={preview}>
+        <button type="submit" onClick={preview} disabled={!customerId || !projectSiteId || !equipmentTypeId || !rateCardId}>
           Preview
         </button>
-        <button type="submit" onClick={create}>
+        <button type="submit" onClick={create} disabled={!customerId || !projectSiteId || !equipmentTypeId || !rateCardId}>
           Create draft
         </button>
         <button type="button" onClick={approve} disabled={!quoteId}>

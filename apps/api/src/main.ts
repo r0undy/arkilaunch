@@ -14,6 +14,8 @@ require('reflect-metadata');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { NestFactory } = require('@nestjs/core');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
+const { ZodValidationPipe } = require('nestjs-zod');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { AppModule } = require('./app.module.js');
 
 // A transient pooler-side hiccup on one request's DB connection must not
@@ -35,6 +37,18 @@ async function bootstrap() {
     origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
     credentials: true,
   });
+  // Raised from Express's 100kb default so a scanned photo (sent as a
+  // base64 data: URL in the POC frontend, since no Supabase Storage upload
+  // exists yet) doesn't get rejected with 413 before it ever reaches a
+  // controller.
+  app.useBodyParser('json', { limit: '15mb' });
+  // Every controller uses createZodDto (AGENTS.md "Always: validate
+  // external input at the boundary with Zod"), but that annotation does
+  // nothing on its own -- without this global pipe, invalid/malformed
+  // request bodies were never actually rejected at the boundary and could
+  // reach a raw DB query instead, surfacing as an uncaught 500 rather than
+  // a clean 400.
+  app.useGlobalPipes(new ZodValidationPipe());
   const port = process.env.API_PORT ?? 3000;
   await app.listen(port);
   console.log(`ArkiLaunch API listening on :${port}`);

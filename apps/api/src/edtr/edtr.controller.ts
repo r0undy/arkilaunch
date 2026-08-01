@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
+import { FixtureDocumentIntelligenceAdapter, type RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { EdtrService } from './edtr.service.js';
 import { EdtrApproveDto, EdtrCaptureDto } from './dto.js';
@@ -10,6 +10,30 @@ type CtxRequest = Request & { ctx: RequestContext };
 @Controller('edtr')
 export class EdtrController {
   constructor(private readonly edtr: EdtrService) {}
+
+  // Dev-only POC trigger: the real edtr-ocr-worker is an ACA Job (a
+  // separate scheduled process, RFC-2 §2), not an HTTP-callable service.
+  // This lets the demo frontend show a paper_ocr scan moving from
+  // "queued" to "reconciled"/"review" without standing up a real cron
+  // scheduler. Remove before this ships past a POC.
+  @Post('dev/run-worker')
+  @RequirePermission('edtr:approve')
+  async runWorker() {
+    const { runEdtrOcrWorker } = await import('@arkilaunch/jobs');
+    // No live Azure DI adapter exists yet (decided for this pass); a fixed
+    // fixture with plausible values keeps the POC demo meaningful instead
+    // of every scan hard-failing against the always-empty stub adapter.
+    // The image content itself is not actually read in this pass.
+    await runEdtrOcrWorker(
+      new FixtureDocumentIntelligenceAdapter({
+        fields: {
+          hours_active: { value: '8.0', confidence: 0.95 },
+          hours_idle: { value: '1.0', confidence: 0.94 },
+        },
+      }),
+    );
+    return { ok: true };
+  }
 
   @Post()
   @RequirePermission('edtr:create')
