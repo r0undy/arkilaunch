@@ -71,14 +71,14 @@
 | FMD doc | Action | Owner | Target date |
 |---------|--------|-------|-------------|
 | PRD | Lock v1 after review; the frozen PRD-F# are the build contract | Product | Before implementation |
-| DSD | Generate concept visuals; re-materialize BRAND.md / DESIGN.md | Design | Before UI build |
-| SDD | Lock; fold the RFC-1 `refresh_tokens` table into the §3 catalog on next revision | Architect | Before implementation |
-| BUILD | Materialize root AGENTS.md + pointers; keep the stack-currency register live | Eng | At implementation start |
+| DSD | Generate concept visuals (still not-yet-generated); BRAND.md / DESIGN.md re-materialized 2026-08-01 per the §9 contract | Design | Concept visuals: before UI build |
+| SDD | Lock; the RFC-1 `refresh_tokens` and RFC-3 `diesel_price_readings`/`pricing_parameters` tables were folded into the §3 catalog 2026-08-01 (35 tables total) | Architect | Before implementation |
+| BUILD | Root `AGENTS.md` materialized 2026-08-01 with `docs/`-prefixed links; Cursor/Gemini pointers remain genuinely optional and not yet generated; keep the stack-currency register live | Eng | Cursor/Gemini pointers: when those tools' users join |
 | CLR | Clear the counsel-review flags (RA 10173 cross-border, KYC) before launch | Compliance | Before public launch |
 | AIA | Clear the Azure DI residency + KYC escalations (AIA §4) before launch | Compliance | Before public launch |
 | OPS | Wire the SLOs + alerts once the system is deployed | Eng | Before production |
 
-**README:** materialize a root `README.md` from the README template (pending).
+**README:** `README.md` exists at the project root, materialized from the README template.
 
 ---
 
@@ -103,14 +103,14 @@
 
 | # | Action | Owner | Due | Lands in |
 |---|--------|-------|-----|----------|
-| 1 | Lock PRD/SDD; materialize AGENTS.md, BRAND.md, DESIGN.md, README.md, MODEL_CARD.md, and the 5 `.claude/agents/` | Eng | Implementation start | root files + docs |
+| 1 | Lock PRD/SDD (root artifacts already materialized: AGENTS.md, BRAND.md, DESIGN.md, README.md, MODEL_CARD.md, and the 5 `.claude/agents/`) | Eng | Implementation start | root files + docs |
 | 2 | Build the core slice (PRD-F3 OCR billing + PRD-F1 quote + PRD-F7 tenancy) for Almara | Eng | Pilot | code |
 | 3 | Clear CLR + AIA counsel/residency flags | Compliance | Before public launch | CLR / AIA |
 | 4 | Measure recovered billable hours at Almara (BRD-M8 baseline) | Product | Pilot | GTM / UES |
 
 ---
 
-## Engine feedback (field report)
+## 7. Engine feedback (field report)
 
 **Friction summary:**
 

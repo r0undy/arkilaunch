@@ -18,14 +18,14 @@
 
 **Claim:** Small Philippine heavy-equipment rental firms lose real revenue to paper-based billing, slow manual quoting, and flood-vulnerable records, and a lone administrator cannot scale that back office.
 
-**Evidence we have:**
+**Evidence we have** (stable IDs `VAL-E1`..`VAL-E4`, never renumbered):
 
-| Source | What it shows |
-|--------|---------------|
-| Direct study of Almara Construction (Quezon City) | One administrator hand-calculates every quote (20 to 30 min) and re-keys paper EDTRs; records live in physical cabinets exposed to flooding |
-| Arizton PH construction equipment rental market report | The market was USD 175.9M (2023) growing to USD 236.5M by 2029 at 5.06% CAGR, driven by infrastructure and flood-mitigation projects, so more MSMEs face this back-office load |
-| Existing PH rental sites (Hastings, Monark) | "Quick quote" is a web form emailed back hours later, not an instant quote; confirms the quoting gap |
-| Prior academic systems (Denuwan 2024; Patil 2023; Owen and Fitrisia 2025) | Rental platforms exist but assume born-digital data; they do not bridge the handwritten-paper reality, which is the adoption blocker here |
+| ID | Source | What it shows |
+|----|--------|---------------|
+| `VAL-E1` | Direct study of Almara Construction (Quezon City) | One administrator hand-calculates every quote (20 to 30 min) and re-keys paper EDTRs; records live in physical cabinets exposed to flooding |
+| `VAL-E2` | Arizton PH construction equipment rental market report | The market was USD 175.9M (2023) growing to USD 236.5M by 2029 at 5.06% CAGR, driven by infrastructure and flood-mitigation projects, so more MSMEs face this back-office load |
+| `VAL-E3` | Existing PH rental sites (Hastings, Monark) | "Quick quote" is a web form emailed back hours later, not an instant quote; confirms the quoting gap |
+| `VAL-E4` | Prior academic systems (Denuwan 2024; Patil 2023; Owen and Fitrisia 2025) | Rental platforms exist but assume born-digital data; they do not bridge the handwritten-paper reality, which is the adoption blocker here |
 
 **Evidence we don't have (and accept for this sprint):** a quantified peso figure for Almara's current leakage (measured during the pilot, BRD-M8), and validated willingness-to-pay across firms beyond the anchor (measured in beta).
 
@@ -63,12 +63,14 @@
 
 ## 4. Kill Criteria
 
-| Kill signal | Status (Go / Pivot / Stop) |
-|-------------|----------------------------|
-| Azure DI cannot extract handwritten EDTR fields above a usable confidence even with HITL | Go (Azure DI handwriting + custom extraction verified; HITL backstops accuracy) |
-| No rental firm outside the team can repeat the one-liner or would not care | Go (scrutiny §4.1 audience stress passed; the flood/leakage pain is concrete and repeatable) |
-| No lawful diesel-price source and admins reject manual entry | Go (DOE public data + manual-entry fallback; legal-review note to CLR) |
-| The anchor tenant will not run it in production | Go (Almara is the committed pilot tenant) |
+Stable IDs `VAL-K1`..`VAL-K4`, never renumbered:
+
+| ID | Kill signal | Status (Go / Pivot / Stop) |
+|----|-------------|----------------------------|
+| `VAL-K1` | Azure DI cannot extract handwritten EDTR fields above a usable confidence even with HITL | Go (Azure DI handwriting + custom extraction verified; HITL backstops accuracy) |
+| `VAL-K2` | No rental firm outside the team can repeat the one-liner or would not care | Go (scrutiny §4.1 audience stress passed; the flood/leakage pain is concrete and repeatable) |
+| `VAL-K3` | No lawful diesel-price source and admins reject manual entry | Go (DOE public data + manual-entry fallback; legal-review note to CLR) |
+| `VAL-K4` | The anchor tenant will not run it in production | Go (Almara is the committed pilot tenant) |
 
 **Decision:** Go. The pain is evidenced and specific, the wedge is defensible, and the highest technical risk (OCR accuracy) is contained by the confidence gate + reconciliation + human review rather than bet on.
 
@@ -84,8 +86,8 @@ IDEA §5 concept frames are not yet generated (image tooling unavailable this se
 
 ## Self-Check
 
-- [x] At least one piece of real evidence cited (Almara study, Arizton market data, competitor forms)
-- [x] Kill criteria are concrete
+- [x] At least one piece of real evidence cited (Almara study, Arizton market data, competitor forms); evidence rows carry stable `VAL-E1`..`VAL-E4` IDs so downstream docs can cite them (previously this doc defined no IDs at all)
+- [x] Kill criteria are concrete; carry stable `VAL-K1`..`VAL-K4` IDs
 - [x] Kill set includes the audience-repeat / indifference fail
 - [x] Feasibility table fits the (capstone) timebox
 - [x] AGENTS hard bans applied (no em-dashes)

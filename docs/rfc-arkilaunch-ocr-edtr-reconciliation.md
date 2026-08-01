@@ -1,13 +1,16 @@
 # Request for Comments (RFC) / Tech Spec
 
 **Title:** OCR EDTR Pipeline, Double-Entry Reconciliation, and OCR-assisted KYC Extraction
+**Project:** ArkiLaunch (Web-Based Construction Equipment Rental Management System)
 **Date:** 2026-07-25
+**Version:** 0.1
 **Author:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** `Draft`
 **Last reconciled:** N/A (not yet reconciled with code)
 **PRD Reference:** [prd-arkilaunch.md](prd-arkilaunch.md) PRD-F3, PRD-F6, §7 AI Feature Specifications
 **SDD Reference:** [sdd-arkilaunch.md](sdd-arkilaunch.md) §4 (endpoints + §4.1 sequences), §8 (AI architecture), §8.1 (AI threat surface)
 **RFC ID:** `arkilaunch-rfc-002`
+**Event / context:** FMD engine v1.28.1; Scale Full.
 
 ---
 
@@ -294,7 +297,7 @@ Notes that keep the diagram honest:
 - **Confidently wrong extraction:** high confidence on a wrong value is exactly why the second log exists. Confidence alone never auto-accepts; confidence **and** the two-log delta together do. A confident misread on one log still fails the tolerance check against the other and routes to review (AI-06).
 - **Unreadable input:** hard-fail to manual entry. The worker never emits a guessed value to fill a blank.
 
-**Cost / budget for this feature:** Azure DI is priced **per page**, not per token, so there is nothing to token-budget. Budget scales with EDTR volume (roughly one page per equipment-day logged) and KYC volume (one to a few pages per onboarding, low frequency). The per-page COGS line lives in the UES ([UES-F#](ues-arkilaunch.md)). The confidence gate and tolerance are tuned so the review queue stays smaller than the manual re-keying it replaces; that is the economic guardrail on BRD-V1, and it is measured, not assumed.
+**Cost / budget for this feature:** Azure DI is priced **per page**, not per token, so there is nothing to token-budget. Budget scales with EDTR volume (roughly one page per equipment-day logged) and KYC volume (one to a few pages per onboarding, low frequency). The per-page COGS line lives in the UES ([UES-E2](ues-arkilaunch.md)). The confidence gate and tolerance are tuned so the review queue stays smaller than the manual re-keying it replaces; that is the economic guardrail on BRD-V1, and it is measured, not assumed.
 
 **Accuracy measurement method (how we defend >= 90.06%, BRD-M2):**
 
@@ -342,12 +345,6 @@ Notes that keep the diagram honest:
 - DI extraction budget: seconds to about 60 s per document; the worker retries with backoff on a DI 429/5xx, capped at `attempts < 5`, then routes to review with `last_error` set rather than looping forever (poison-message guard).
 - Reconciliation pairing is an indexed lookup on `edtr (tenant_id, equipment_id, report_date)` (SDD §3); no scan.
 
-**Risks (called out so they are owned, not discovered):**
-
-- **Azure DI region / data residency.** SE Asia region for PH document images is a carried gap ([SCRUTINY G-5](scrutiny-arkilaunch.md), PRD §8). If the required DI models are unavailable in an acceptable SE Asia region, this becomes a launch blocker. **Escalated to the AIA (§5) and CLR.** Contingency: the self-hosted Tesseract/PaddleOCR path in §4 is the residency fallback, at a documented accuracy cost.
-- **Handwriting variance.** Anchor-tenant field sheets vary by writer, pen, and photo quality. Mitigation: the custom neural model is trained on the anchor's own labeled sheets, the gold set spans that variance (§5), and the digital-first path (SDD §1) reduces reliance on the hardest inputs where a timekeeper will enter directly.
-- **Cost per page.** DI is per-page priced; a review-queue that grows faster than manual re-keying it replaces would invert the economics (BRD-V1). Mitigation: gate and tolerance are tuned against measured queue size, and the digital-first path avoids a DI page entirely where used. Per-page COGS tracked in the UES.
-
 ---
 
 ## 7. Execution Plan
@@ -373,6 +370,15 @@ Notes that keep the diagram honest:
 
 ---
 
+## 8. Risks & Rollout Notes
+
+- **Azure DI region / data residency.** SE Asia region for PH document images is a carried gap ([SCRUTINY G-5](scrutiny-arkilaunch.md), PRD §8). If the required DI models are unavailable in an acceptable SE Asia region, this becomes a launch blocker. **Escalated to the AIA (§5) and CLR.** Contingency: the self-hosted Tesseract/PaddleOCR path in §4 is the residency fallback, at a documented accuracy cost.
+- **Handwriting variance.** Anchor-tenant field sheets vary by writer, pen, and photo quality. Mitigation: the custom neural model is trained on the anchor's own labeled sheets, the gold set spans that variance (§5), and the digital-first path (SDD §1) reduces reliance on the hardest inputs where a timekeeper will enter directly.
+- **Cost per page.** DI is per-page priced; a review-queue that grows faster than manual re-keying it replaces would invert the economics (BRD-V1). Mitigation: gate and tolerance are tuned against measured queue size, and the digital-first path avoids a DI page entirely where used. Per-page COGS tracked in the UES.
+- **`service_role` scoping discipline (RFC-1 §5 cross-reference).** The async worker runs under `service_role` for its cron writes (§5); it must set the tenant context explicitly for every tenant whose documents it processes, exactly as RFC-1's platform-admin path does. A worker that ever skips explicit tenant scoping "because it can bypass RLS" is the tenant-isolation hazard RFC-1 §5 already names; `RFC2-02`'s claim/lock loop is the ticket that must enforce it.
+
+---
+
 ## Self-Check
 
 - [x] Section 3 has exact schema DDL (additive migration, enums, CHECKs, index) plus the `ocr_payload` JSON contract; not vague descriptions
@@ -380,8 +386,9 @@ Notes that keep the diagram honest:
 - [x] Section 3 includes the required Mermaid `stateDiagram` for the EDTR reconciliation states, with exhaustive terminals and no em-dashes in labels
 - [x] Section 4 has real rejected alternatives (Tesseract/PaddleOCR, prebuilt idDocument, prebuilt-layout, sync extraction, single-log, fixed tolerance, auto-post), not strawmen
 - [x] Section 5 filled: Azure DI model choice, no-token/per-page cost, accuracy measurement method for >= 90.06%, forward links to QAD + AIA + SAD (`edtr-ocr-worker`, `ai-ocr-abuse-runner`)
-- [x] Section 6 maps every SDD §8.1 row AI-01..AI-06 to a control and a QAD eval; risks (region/residency, handwriting variance, cost per page) owned
+- [x] Section 6 maps every SDD §8.1 row AI-01..AI-06 to a control and a QAD eval
 - [x] Section 7 ticket list is specific and actionable; feature-flag and rollout order stated; maps to PRD §9 M3
+- [x] Section 8 names owned risks (region/residency, handwriting variance, cost per page, `service_role` scoping discipline) with mitigations, matching RFC-1/RFC-3 structure
 - [x] Nothing duplicates the PRD feature list or the SDD global architecture/tenancy (deferred to RFC-1); thesis-vs-Azure-DI reconciliation stated honestly
-- [x] Traced to PRD-F3, PRD-F6, SDD §4/§8/§8.1; header block complete
+- [x] Traced to PRD-F3, PRD-F6, SDD §4/§8/§8.1; header block complete (Project, Version, Event/context all present)
 - [x] AGENTS hard bans applied (no em-dashes anywhere, including Mermaid labels); sharp-teammate tone

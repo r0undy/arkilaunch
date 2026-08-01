@@ -78,13 +78,13 @@
 
 | Risk ID | Risk | RMF function | GenAI category | Severity | Likelihood | Mitigation / control (SDD ref) | Eval (QAD ref) | Owner | Status |
 |---------|------|--------------|----------------|----------|------------|--------------------------------|----------------|-------|--------|
-| AIA-R1 | Extraction error drives a wrong deposit deduction | Measure / Manage | Information Integrity | High | Medium | Confidence gate (0.90) + double-entry reconciliation within tolerance + human approval before deduction; no autonomous money movement (SDD §8.1 AI-05/AI-02, RFC-2) | QAD AI-05, AI-02, reconciliation rows | Eng lead | Mitigated |
+| AIA-R1 | Extraction error drives a wrong deposit deduction | Measure / Manage | Information Integrity | High | Medium | Confidence gate (0.90) + double-entry reconciliation within tolerance + human approval before deduction; no autonomous money movement (SDD §8.1 AI-06/AI-04, RFC-2) | QAD AI-06, AI-04, reconciliation rows | Eng lead | Mitigated |
 | AIA-R2 | Disclosure of sensitive PII from ID/KYC images (cross-user or external) | Manage | Data Privacy | High | Low | Tenant RLS isolation; encrypted storage; signed short-lived URLs; data minimization + retention limits; no PII in logs/events (SDD §8.1 AI-03, CLR) | QAD AI-03 | Eng lead | Mitigated |
-| AIA-R3 | Adversarial or forged document upload | Map / Manage | Information Security | Medium | Medium | File-type/size validation; malware scan; treat uploads as untrusted; forged corporate docs caught by human portal verification (SDD §8.1 AI-01, RFC-2) | QAD AI-01 | Eng lead | Mitigated |
-| AIA-R4 | Malicious text embedded in a document reaches a downstream consumer | Map | Information Security | Low | Low | Extracted text is used as structured data only; no LLM or shell consumes it; reconciliation uses numeric fields; no auto-execution (SDD §8.1 AI-06, Context Hygiene) | QAD AI-06 | Eng lead | Mitigated |
+| AIA-R3 | Adversarial or forged document upload | Map / Manage | Information Security | Medium | Medium | File-type/size validation; malware scan; treat uploads as untrusted; forged corporate docs caught by human portal verification (SDD §8.1 AI-05, RFC-2) | QAD AI-05 | Eng lead | Mitigated |
+| AIA-R4 | Malicious text embedded in a document reaches a downstream consumer | Map | Information Security | Low | Low | Extracted text is used as structured data only; no LLM or shell consumes it; reconciliation uses numeric fields; no auto-execution (SDD §8.1 AI-01/AI-02, Context Hygiene) | QAD AI-01, AI-02 | Eng lead | Mitigated |
 | AIA-R5 | Handwriting-recognition accuracy varies across writers / conditions (bias in error distribution) | Measure | Harmful Bias / Information Integrity | Medium | Medium | Gold-set accuracy monitoring across sources; low-confidence routes to human review; accuracy tracked over time, not assumed (SDD §8.2, RFC-2) | QAD OCR accuracy harness (T39) | QA lead | Open (monitored) |
 | AIA-R6 | KYC false-accept onboards a fraudulent corporate applicant (affects access) | Manage | Data Privacy / Information Integrity | High | Low | Human-in-the-loop SEC/BIR portal verification (mandatory); fuzzy-match + format flags; provisional booking lock until confirmed; no auto-onboard (SDD §8.1 AI-04, RFC-2) | QAD KYC rows | Compliance owner | Mitigated |
-| AIA-R7 | Cross-border transfer of PH personal data to Azure DI | Govern / Manage | Data Privacy | Medium | High | Verify Azure DI SE-Asia region + data residency; Microsoft DPA; RA 10173 cross-border transfer basis (CLR §; §4 escalation) | CLR compliance evidence | Compliance owner | Open (escalated) |
+| AIA-R7 | Cross-border transfer of PH personal data to Azure DI | Govern / Manage | Data Privacy | Medium | High | Verify Azure DI SE-Asia region + data residency; Microsoft DPA; RA 10173 cross-border transfer basis ([CLR §1](clr-arkilaunch.md); AIA §4 escalation below) | CLR compliance evidence | Compliance owner | Open (escalated) |
 
 > **Govern (cross-cutting):** the ArkiLaunch team owns this register, reviews it each release and after any incident, and routes changes through a Change Record. No row ships "Open" at launch without an escalation flag in §4 (AIA-R5 is monitored with an accuracy SLO; AIA-R7 is escalated to counsel).
 
@@ -105,7 +105,7 @@
 | **Testing** | Adversarial evals per control | Partial (specified, not yet executed; no code) | QAD AI-01..AI-06 + OCR accuracy harness |
 | **Reflection** | Residual-risk statement, go/no-go, escalations | Yes | §3 statement + §4 |
 
-**Residual-risk statement:** After mitigation, the load-bearing residual risks are (1) extraction accuracy variance (AIA-R5), accepted for launch only because the confidence gate + double-entry reconciliation + human approval prevent a low-confidence read from ever deducting a deposit, and accuracy is monitored against an SLO; and (2) cross-border data residency (AIA-R7), which is NOT accepted for launch until counsel confirms the Azure DI region and RA 10173 transfer basis. Go/no-go: the OCR billing path (PRD-F3) is go once its evals pass; the KYC path (PRD-F6) and any launch are gated on the AIA-R7 counsel review and the CLR launch gate.
+**Residual-risk statement:** After mitigation, the load-bearing residual risks are (1) extraction accuracy variance (AIA-R5), accepted for launch only because the confidence gate + double-entry reconciliation + human approval prevent a low-confidence read from ever deducting a deposit, and accuracy is monitored against [OPS `SLO-13`](ops-arkilaunch.md) (golden-set accuracy >= 90.06%, alerting on drift); and (2) cross-border data residency (AIA-R7), which is NOT accepted for launch until counsel confirms the Azure DI region and RA 10173 transfer basis. Go/no-go: the OCR billing path (PRD-F3) is go once its evals pass; the KYC path (PRD-F6) and any launch are gated on the AIA-R7 counsel review and the CLR launch gate.
 
 **Self-check:**
 - [x] Every stage points to a real artifact (Testing is honestly marked "specified, not executed" since no code exists yet)
@@ -121,7 +121,7 @@
 | AI architecture and threat surface | SDD §8 / §8.1 | AI-01..AI-06 controls, confidence gate, HITL |
 | Red-team and abuse evals | QAD (AI + abuse rows) | AI-01..AI-06 + OCR accuracy harness (T39) + KYC rows |
 | Data, sub-processors, legal obligations | CLR | Azure as sub-processor; ID/KYC data inventory; cross-border transfer |
-| Prompt-injection / RAG / tool-output posture | [Context Hygiene Protocol](../fmd/AGENTS.md) | uploads + extracted text treated as untrusted data, never instructions |
+| Prompt-injection / RAG / tool-output posture | Context Hygiene Protocol (the FMD engine's own guidance; not vendored in this repo) as applied in [sdd-arkilaunch.md](sdd-arkilaunch.md) §8.1 | uploads + extracted text treated as untrusted data, never instructions |
 
 ### Escalation flags (any "Yes" forces the top banner and a counsel/assessor review)
 
@@ -163,6 +163,25 @@
 
 ---
 
+## 6. Materialization
+
+`MODEL_CARD.md` (project root) is materialized from **§1 only** (Model / System Card), not the full dossier. It exists so a reader gets the model-card facts without the compliance/legal apparatus in §2 to §5.
+
+| MODEL_CARD.md section | Source | Notes |
+|---|---|---|
+| System / header | §0 (AI component field) + §1 header fields | Adds Version/Status/Last-reconciled from this document's own header, not just §1. |
+| Intended use, users, HITL points | §1.1, verbatim | No summarization; every bullet carries over. |
+| Model(s) and data table | §1.2, all four columns | Including the "Source of data it sees" column (the RA 10173 sensitivity hook); never dropped. |
+| Limitations, failure modes, fallback | §1.3, verbatim | All three named failure modes and the Azure-DI-outage fallback carry over; this is the section most likely to be trimmed, and it must not be. |
+| Pointer to the rest | one line | "For the full risk register (§2), SMACTR self-audit (§3), and regulatory awareness (§5), see this AIA." |
+
+**Fidelity rule:** MODEL_CARD.md is a subset, never a rewrite. A concrete model identifier (e.g. `prebuilt-layout`), an escalation's open/mitigated status, or a named failure mode must appear in MODEL_CARD.md exactly as it appears in §1 here, not softened or generalized. Re-materialize MODEL_CARD.md whenever §1 changes; do not hand-edit it as a source of truth.
+
+**Self-check:**
+- [x] MODEL_CARD.md's actual content was checked against §1 fact-for-fact when this section was authored; no dropped model identifier, failure mode, or escalation status found
+
+---
+
 ## Self-Check
 
 - [x] The AI component traces to PRD §7 / SDD §8; this AIA exists because that component exists
@@ -171,5 +190,7 @@
 - [x] §3 SMACTR stages point to real artifacts; Testing honestly marked specified-not-executed (no code yet)
 - [x] §4 cross-links resolve; escalation flags (sensitive ID data, cross-border) have named actions; banner set
 - [x] §5 regimes reconcile with the CLR (PH market); specifics verified and dated
+- [x] §2 risk-to-eval pairings reconciled against the QAD's own AI-01..AI-06 definitions (AIA-R1->AI-06/AI-04, AIA-R3->AI-05, AIA-R4->AI-01/AI-02)
+- [x] §6 gives MODEL_CARD.md a materialization contract and a fidelity rule; this doc is no longer the only artifact with no stated source for a generated file
 - [x] Disclaimer discipline holds: this documents and escalates; it does not certify or audit
 - [x] AGENTS hard bans applied (no em-dashes)

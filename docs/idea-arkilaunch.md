@@ -44,18 +44,18 @@
 
 | # | Capability | Demo-critical? |
 |---|------------|----------------|
-| 1 | OCR usage-based billing: scan handwritten EDTRs, extract active/idle hours + breakdown status, double-entry reconciliation before deposit deduction (F3) | YES |
-| 2 | Dynamic quotation engine: diesel-indexed hourly rate + mobilization/demobilization km, printable quote (F1) | YES |
-| 3 | Multi-tenant access, identity, RBAC + row-level tenant isolation; rental-company onboarding (F7) | YES |
-| 4 | Fleet inventory, maintenance timers, utilization + financial reporting (F4) | YES |
-| 5 | Weather-aware module: Open-Meteo poll per site, risk advisories, auto liability incident logs (F5) | YES |
-| 6 | OCR-assisted KYC: extract SEC number + TIN, human-in-the-loop portal verification (F6) | YES |
-| 7 | Client booking portal: browse catalog, cart/book, track transactions (F8) | Partial |
-| 8 | PayMongo deposit checkout (hosted; no card data stored) (F2) | Partial |
+| 1 | OCR usage-based billing: scan handwritten EDTRs, extract active/idle hours + breakdown status, double-entry reconciliation before deposit deduction (PRD-F3) | YES |
+| 2 | Dynamic quotation engine: diesel-indexed hourly rate + mobilization/demobilization km, printable quote (PRD-F1) | YES |
+| 3 | Multi-tenant access, identity, RBAC + row-level tenant isolation; rental-company onboarding (PRD-F7) | YES |
+| 4 | Fleet inventory, maintenance timers, utilization + financial reporting (PRD-F4) | YES |
+| 5 | Weather-aware module: Open-Meteo poll per site, risk advisories, auto liability incident logs (PRD-F5) | YES |
+| 6 | OCR-assisted KYC: extract SEC number + TIN, human-in-the-loop portal verification (PRD-F6) | YES |
+| 7 | Client booking portal: browse catalog, cart/book, track transactions (PRD-F8) | Partial |
+| 8 | PayMongo deposit checkout (hosted; no card data stored) (PRD-F2) | Partial |
 
 **Explicitly out of scope (v0):** machine-learning demand forecasting; physical IoT / GPS telemetry; native storage or processing of card / bank-account data (PayMongo hosted checkout only); fully automated government-portal verification (BIR ORUS CAPTCHA blocks it, so KYC stays human-in-the-loop); geographies outside Luzon for weather/logistics features.
 
-**If we only ship one thing:** OCR usage-based billing with double-entry reconciliation (F3). It is the direct fix for the core wound (revenue leakage from paper EDTRs) and the capability no competitor offers.
+**If we only ship one thing:** OCR usage-based billing with double-entry reconciliation (PRD-F3). It is the direct fix for the core wound (revenue leakage from paper EDTRs) and the capability no competitor offers.
 
 ---
 
@@ -110,7 +110,7 @@
 - [x] Problem and insight are filled (not TBD / placeholder)
 - [x] Primary user is named and specific (anchor-tenant admin role, persona Rhea)
 - [x] Pain moment is a concrete scene (flooded EDTRs; client waiting on hand-calculated quote)
-- [x] Cut line is explicit; "If we only ship one thing" is named (F3)
+- [x] Cut line is explicit; "If we only ship one thing" is named (PRD-F3)
 - [x] Judging criteria mapped to how we hit them (ISO/IEC 25010 + hard targets)
 - [ ] Concept visuals linked (deferred: image tooling unavailable this session; direction captured)
 - [x] Lock bar satisfied (all six load-bearing fields real)

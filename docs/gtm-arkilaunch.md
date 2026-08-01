@@ -84,18 +84,18 @@
 
 **Owned channels:**
 
-| Channel | Audience Size | Planned Action |
-|---------|--------------|----------------|
-| Anchor-tenant case study (Almara) | 1 reference customer | Publish recovered-hours + quote-time results as the primary proof asset |
-| Facebook business page + direct message outreach | build from zero | Short demo video (scan EDTR -> reconciled bill); DM outreach to rental firms already advertising there |
+| ID | Channel | Audience Size | Planned Action |
+|----|---------|--------------|----------------|
+| `GTM-C1` | Anchor-tenant case study (Almara) | 1 reference customer | Publish recovered-hours + quote-time results as the primary proof asset |
+| `GTM-C2` | Facebook business page + direct message outreach | build from zero | Short demo video (scan EDTR -> reconciled bill); DM outreach to rental firms already advertising there |
 
 **Community / earned channels:**
 
-| Channel | Tactic | Timing |
-|---------|--------|--------|
-| Contractor / equipment-rental associations | Present the Almara case study at a chapter meeting or group | Beta phase |
-| Referral chain (rental firm -> contractor -> rental firm) | Referral incentive for a tenant who introduces another rental firm (UES-V3 acquisition efficiency) | Post-launch |
-| Equipment dealers | Partner page / co-marketing (dealers see many rental buyers) | Post-launch |
+| ID | Channel | Tactic | Timing |
+|----|---------|--------|--------|
+| `GTM-C3` | Contractor / equipment-rental associations | Present the Almara case study at a chapter meeting or group | Beta phase |
+| `GTM-C4` | Referral chain (rental firm -> contractor -> rental firm) | Referral incentive for a tenant who introduces another rental firm (UES-V3 acquisition efficiency) | Post-launch |
+| `GTM-C5` | Equipment dealers | Partner page / co-marketing (dealers see many rental buyers) | Post-launch |
 
 **Content assets needed before launch:**
 
@@ -108,12 +108,14 @@
 
 ## 6. Launch Phases
 
-| Phase | Criteria to Enter | Target Date | Goal |
+*Target dates below are illustrative planning assumptions gated on entry criteria, not committed calendar dates (same convention as the UES's illustrative figures): each phase begins when its criteria are met, whichever wall-clock date that turns out to be. The offsets are relative to M5 go-live (PRD §9).*
+
+| Phase | Criteria to Enter | Target Date (illustrative, relative to M5 go-live) | Goal |
 |-------|------------------|-------------|------|
-| **Alpha** (anchor only) | Core F3+F1+F7 slice complete; QAD Must-Have sign-off | TBD | Almara live on OCR billing + quotation; measure recovered hours (BRD-M8) |
-| **Beta** (invite, 3 to 5 firms) | Alpha stable; no P0; OCR accuracy SLO met | TBD | 1 to 3 additional tenants (BRD-M7); validate retention + real CAC (UES-E5) |
-| **Public Launch** | Beta retention target hit; pricing live; **CLR cleared (no open counsel flags, `clr-arkilaunch.md`)**; **AIA escalations cleared (`aia-arkilaunch.md` §4: Azure DI residency + KYC counsel review)** | TBD | Steady tenant adds within CAC-payback discipline (UES-D1/D5) |
-| **Post-launch** | Public launch stable | TBD | First cohort of firms defaulting to daily deductions; expansion within tenants |
+| **Alpha** (anchor only) | Core F3+F1+F7 slice complete; QAD Must-Have sign-off | M5 go-live (T+0) | Almara live on OCR billing + quotation; measure recovered hours (BRD-M8) |
+| **Beta** (invite, 3 to 5 firms) | Alpha stable; no P0; OCR accuracy SLO met | ~T+2 months | 1 to 3 additional tenants (BRD-M7); validate retention + real CAC (UES-E5) |
+| **Public Launch** | **Beta retention target hit: >= 95% of onboarded tenants still active at 30 days** (illustrative, consistent with the 2.5%/mo churn assumption in UES-E6); pricing live; **CLR cleared (no open counsel flags, `clr-arkilaunch.md`)**; **AIA escalations cleared (`aia-arkilaunch.md` §4: Azure DI residency + KYC counsel review)** | ~T+4 months | Steady tenant adds within CAC-payback discipline (UES-D1/D5) |
+| **Post-launch** | Public launch stable | ~T+6 months | First cohort of firms defaulting to daily deductions; expansion within tenants |
 
 ---
 
@@ -177,7 +179,8 @@
 - [x] §2 ICP is specific (PH rental MSME owner/admin; Almara archetype); real firms fit it
 - [x] §3 pricing has a clear gate (tiers by units/seats/OCR volume) and traces to UES-E1/E3; no tier below variable cost
 - [x] §5 content assets are named and pre-launch
-- [x] §6 phases have binary criteria; public launch gated on CLR + AIA clearing
+- [x] §6 phases have binary criteria (including a numeric Beta retention target, >= 95% at 30 days) and illustrative dates relative to M5 go-live, not bare TBDs; public launch gated on CLR + AIA clearing
+- [x] §5 channels carry stable `GTM-C#` IDs (C1..C5); this was the one register-style doc in the suite with no ID scheme, now fixed
 - [x] §7 metrics trace to BRD-M# and PRD §5.6 events; measurable
 - [x] §8 filled (stance, prompts, citation assets, entity row, third-party plan, metrics); BUILD §5.2 linked
 - [x] Drafted before launch, not a retrospective

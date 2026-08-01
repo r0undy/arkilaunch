@@ -2,7 +2,7 @@
 
 **Project slug:** `arkilaunch`
 **Maintained by:** ArkiLaunch Team (Almara Construction capstone)
-**Last updated:** 2026-07-25
+**Last updated:** 2026-08-01
 **Built on FMD:** v1.28.1
 
 ---
@@ -35,7 +35,7 @@
 | OPS · Ops & Observability | [ops-arkilaunch.md](ops-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
 | LOG · Build Session Log | [log-arkilaunch.md](log-arkilaunch.md) | 0.1 | Draft (append-only) | 2026-07-25 | N/A |
 
-**Materialized at project root (not in `docs/`):** `README.md`, `BRAND.md`, `DESIGN.md`, `AGENTS.md`, `MODEL_CARD.md` (from AIA §1). Pending materialization.
+**Materialized at project root (not in `docs/`):** `README.md`, `BRAND.md`, `DESIGN.md`, `AGENTS.md`, `MODEL_CARD.md` (from AIA §1). All five exist and are current as of the 2026-08-01 remediation pass.
 
 ### RFCs (one per major feature)
 
@@ -86,22 +86,24 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 - [x] No doc has been in `Draft` longer than expected without movement.
 - [x] No open Change Records.
 - [x] Feature IDs (`PRD-F#`) referenced by SDD / RFC / QAD exist in the PRD (PRD-F1..F8 frozen).
-- [x] §1.1 Traceability Matrix matches Must-Have coverage (every Must-Have has SDD + QAD; RFCs cover F1/F3/F6/F7).
-- [~] Metric IDs (`BRD-M#`) flow to GTM with a feeding event in PRD §5.6. (PRD §5.6 events wired to BRD-M1..M8; GTM pending Wave G.)
-- [~] UES `UES-E#` feed GTM pricing; `UES-D#` filled; `BRD-V#` concentrate capital. (UES drafted; `UES-D1..D8` filled; GTM pending.)
-- [ ] SAD roster matches materialized agent files. (SAD pending Wave F; materialization pending.)
-- [ ] BUILD pinned versions + golden-path samples re-verified recently. (Currency pass done 2026-07-25; BUILD pending Wave G.)
+- [x] §1.1 Traceability Matrix matches Must-Have coverage (every Must-Have has SDD + QAD; RFCs cover F1/F3/F6/F7; PRD-F4's SDD entries filled in the 2026-08-01 pass, see below).
+- [x] Metric IDs (`BRD-M#`) flow to GTM with a feeding event in PRD §5.6. (PRD §5.6 events wired to BRD-M1..M8; GTM exists, `gtm-arkilaunch.md`.)
+- [x] UES `UES-E#` feed GTM pricing; `UES-D#` filled; `BRD-V#` concentrate capital. (UES drafted; `UES-D1..D8` filled; GTM exists and cites UES-E1/E3/E5, UES-D1/D5/D8.)
+- [x] SAD roster matches materialized agent files. (SAD exists, `sad-arkilaunch.md`; all 5 files present in `.claude/agents/` with names, models, and tools matching the SAD cards.)
+- [x] BUILD pinned versions + golden-path samples re-verified recently. (Currency pass 2026-07-25; every installable package/SDK pins an exact version as of the 2026-08-01 pass, `build-arkilaunch.md` §3; 6 managed-platform rows honestly marked n/a rather than "current".)
 - [x] No open Postmortems.
-- [x] **Production Readiness Gate** (AGENTS.md): at the documentation level all inputs exist (SDD §5 security + RLS, CLR register, AIA dossier with escalations tracked, QAD Must-Have + AI-abuse specified, OPS SLOs/alerts, PRD §9 rollback, BUILD stack pinned, DSD §8). A shippable-system pass still needs the code, the QAD executed, and the CLR/AIA counsel clearances (see [wrap-arkilaunch.md](wrap-arkilaunch.md) §5).
-- [x] **Validator green (generated suite):** `python fmd/scripts/check.py docs --scale full` passes with **0 failures** across all 20 FMD docs and the materialized root artifacts (AGENTS/BRAND/DESIGN/MODEL_CARD/README); 2 warnings cleared. The remaining `check.py` failures are voice violations **inside the root `IDEA.md` thesis** (the user-provided academic source, scanned by G15), a source artifact rather than an FMD deliverable. Convert root `IDEA.md` to a thin pointer (preserving the thesis) for a fully green run.
+- [x] **Production Readiness Gate**: at the documentation level all inputs exist (SDD §5 security + RLS, CLR register, AIA dossier with escalations tracked, QAD Must-Have + AI-abuse specified, OPS SLOs/alerts/runbooks including the deposit-deduction runbook and NPC 72h clock, PRD §9 rollback, BUILD stack pinned, DSD §8). The gate itself is defined in this section plus [pitch-arkilaunch.md](pitch-arkilaunch.md) §5 and [wrap-arkilaunch.md](wrap-arkilaunch.md) §5, not in the external FMD engine's generic `AGENTS.md` (this repo does not vendor the FMD engine). A shippable-system pass still needs the code, the QAD executed, and the CLR/AIA counsel clearances.
+- [~] **Validator (external tool, not reproducible from this repo):** the FMD engine's `check.py` is not vendored here (no `fmd/` directory), so its "0 failures" result from 2026-07-25 cannot be re-run or re-verified from this repository. Treat that historical claim as unverifiable rather than current. A 2026-08-01 manual remediation pass fixed the defects a semantic reconcile would have caught: stale "pending" claims across this file, wrap, ops, dsd, and clr; broken relative links in AGENTS.md/BRAND.md; an under-specified RLS policy in RFC-3; a table-count mismatch across SDD/RFC-1/RFC-3/SAD; missing QAD test rows for the quotation engine; a UES arithmetic double-count; and more (see the LOG entry for this pass). Root `IDEA.md`'s voice violations (em/en-dashes in the source thesis) are a known, accepted exception; not a target for this pass.
 
 ---
 
 ## 5. Notes
 
-- Scrutiny verdict: **PROCEED WITH FIXES** (2026-07-25). Carried fixes tracked in [scrutiny-arkilaunch.md](scrutiny-arkilaunch.md) §1 and mirrored as gaps G-1..G-10 §3; each lands in its named downstream doc (Open-Meteo commercial -> SDD/OPS/UES done; diesel source -> RFC-3 done; multi-tenancy -> RFC-1/SDD done; ISO 25010 version -> QAD done; Azure DI residency -> CLR done, AIA pending; 5-point Likert -> QAD done).
+- Scrutiny verdict: **PROCEED WITH FIXES** (2026-07-25). Carried fixes tracked in [scrutiny-arkilaunch.md](scrutiny-arkilaunch.md) §1 and mirrored as gaps G-1..G-10 §3; each lands in its named downstream doc (Open-Meteo commercial -> SDD/OPS/UES done; diesel source -> RFC-3 done; multi-tenancy -> RFC-1/SDD done; ISO 25010 version -> QAD done; Azure DI residency -> CLR done, AIA done with AIA-R7 tracked as the one open, escalated risk; 5-point Likert -> QAD done). G-10 (PayMongo webhook idempotency/refunds/disputes) resolved directly in SDD §4 as of 2026-08-01, no dedicated RFC needed.
 - Product framing decision (build start): multi-tenant SaaS (ArkiLaunch), Almara = anchor tenant.
 - Confirmed stack decisions: OCR = Azure AI Document Intelligence; payments = PayMongo; stack re-evaluated against current best practices (currency-verified 2026-07-25). Documented divergences from the thesis (persistent Azure Container Apps backend + jobs vs Vercel serverless; Drizzle vs Prisma for first-class RLS; NestJS/Passport identity vs Supabase GoTrue; Vite 8; add Playwright; Open-Meteo commercial plan) are recorded in BUILD §3.
 - Engine note: the root `IDEA.md` thesis is the long-form source of record; `docs/idea-arkilaunch.md` is its FMD-shaped distillation.
 - Build note: mid-build the org hit a monthly spend limit; the later docs (RFC-3, QAD, CLR, OPS, SAD, BUILD, AIA, GTM, PITCH, WRAP, VALIDATION, VOICE) were authored inline by the orchestrator rather than via parallel subagents.
 - Validation (2026-07-25): `check.py docs --scale full` = 0 failures over the generated suite + materialized artifacts. Materialization banner in AGENTS/BRAND/DESIGN was converted from an HTML comment to a blockquote so the voice check would not read the comment's closing `-->` as a spaced dash (FMD `materialize.py` quirk; a candidate engine fix noted in the WRAP field report). Root `IDEA.md` thesis still fails voice (54 em/en-dash and `--` hits); left intact as the user's source document.
+- **Remediation pass (2026-08-01):** a full re-audit found the 2026-07-25 validation was a lint/voice pass, not a semantic reconcile, so several waves of later work never propagated back into earlier docs. Fixed: an under-specified RLS policy on `pricing_parameters` (RFC-3) that the `migration-rls-guardian` agent would have silently passed; a table-count mismatch (32 vs 33 vs 35) across SDD/RFC-1/RFC-3/SAD, now reconciled at 35 tables (28 tenant-owned, 7 global); PRD-F4 was a stub in the SDD (no endpoint/contract), now filled; the RFC-3 quotation engine had no QAD test rows despite BUILD/RFC-3 both citing them, now `QAD-T43`..`T48`; OPS runbooks were non-contiguous (4.3-4.7 + 4.6-iso) with two misrouted P0 alert references and no deposit-deduction-failure runbook, now renumbered 4.1-4.7 with the missing runbook added and the NPC 72-hour breach-notification clock specified; a UES arithmetic double-count (Open-Meteo booked in both variable COGS and fixed overhead) understated the illustrative breakeven by ~PHP 220/mo; BRAND.md/DESIGN.md were re-split per the DSD §9 contract (159 duplicated lines removed, missing voice link added, unsubstituted `# Brand:`/`# Design:` titles fixed); MODEL_CARD.md was regenerated against AIA §1 after 9 facts were found dropped in the original hand-authored version; AGENTS.md/BRAND.md had broken relative links from the root (14 total) now `docs/`-prefixed; and this Health Check itself was updated to stop claiming several completed docs (GTM, SAD, BUILD, root artifacts) were still pending. Full findings and fixes are logged in [log-arkilaunch.md](log-arkilaunch.md).
+- **Doc-count convention:** §1's Document Suite table lists 19 doc types; together with this index (20) and the 3 RFCs, the filesystem holds 23 `docs/*.md` files. Earlier notes and the LOG that say "20 docs" mean the suite-plus-index count and are counting RFCs separately, not omitting them.

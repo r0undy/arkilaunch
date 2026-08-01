@@ -33,6 +33,7 @@
 | 12 | 2026-07-25 | PITCH + WRAP + VALIDATION + VOICE (Wave H) | PITCH/WRAP/VAL/VOICE templates | docs/pitch-, wrap-, val-, voice-arkilaunch.md | n/a | not run |
 | 13 | 2026-07-25 | Materialize root artifacts | materialize.py + README/AIA/SAD | AGENTS.md, BRAND.md, DESIGN.md, MODEL_CARD.md, README.md, CLAUDE.md, .claude/agents/*.md | n/a | n/a |
 | 14 | 2026-07-25 | Validate suite | n/a | fixed voice-arkilaunch example phrases + materialization banners | n/a | **0 failures** over generated suite + materialized artifacts (root IDEA.md thesis excepted); 2 warnings cleared |
+| 15 | 2026-08-01 | Semantic reconcile / remediation pass (three-agent audit + hand-verification, then fix) | n/a | rfc-arkilaunch-quotation-pricing-engine.md, rfc-arkilaunch-tenancy-rls-auth.md, rfc-arkilaunch-ocr-edtr-reconciliation.md, sdd-arkilaunch.md, sad-arkilaunch.md, qad-arkilaunch.md, ops-arkilaunch.md, clr-arkilaunch.md, aia-arkilaunch.md, ues-arkilaunch.md, scrutiny-arkilaunch.md, prd-arkilaunch.md, dsd-arkilaunch.md, wrap-arkilaunch.md, pitch-arkilaunch.md, index.md, build-arkilaunch.md, IDEA.md; root AGENTS.md, BRAND.md, DESIGN.md, MODEL_CARD.md, LICENSE; .claude/agents/migration-rls-guardian.md, .claude/agents/edtr-ocr-worker.md | n/a | not run (fmd/ not vendored in this repo; see index.md §4) |
 
 ---
 
@@ -44,6 +45,7 @@
 | 2 | idea | The thesis carried unresolved tensions (SaaS vs single-client with no tenant table; Azure DI vs zonal-OCR; unnamed payment gateway + diesel source). Resolved by four user decisions, not the template. | Accepted; captured as scrutiny gaps + divergence notes. |
 | 3 | orchestration | Parallel doc subagents edited the shared `index.md` / `log` concurrently, causing minor drift; the orchestrator took ownership of both. A mid-build org spend limit then terminated several subagents (after they wrote their files), so the rest were authored inline. | Minor: document "orchestrator owns index + log; content agents never edit them." |
 | 4 | validator / materialize | `check.py` voice flagged the `materialize.py` banner because the HTML comment close `-->` reads as a spaced `--`. It also voice-scans the root `IDEA.md` thesis (G15), which is the user's source doc. | Candidate fix: materialize.py banner should avoid `-->`, or check.py should skip HTML comments + non-generated root IDEA.md. |
+| 5 | validator / process | Entry #14's "0 failures" was a lint/voice pass, not a semantic reconcile: it caught formatting and banned-phrase violations but not stale "pending"/"Wave N" claims left behind when later waves shipped, an under-specified RLS policy a downstream RFC introduced, a table-count drift across four files, or an arithmetic double-count in the UES. A 2026-08-01 audit (three parallel review agents plus hand-verification of every finding against the actual files) found ~45 such defects across the suite; see index.md's Health Check and Notes for the fix summary. | Candidate engine fix: `check.py` (or a companion pass) should include cross-doc semantic checks, not only per-file lint/voice: numeric consistency (table counts, arithmetic totals) and staleness detection (a doc marked "pending Wave N" when that wave's target file already exists on disk). |
 
 ---
 
@@ -53,7 +55,7 @@
 **Project:** ArkiLaunch (arkilaunch)
 **Scale:** Full
 **Platform / model:** Claude Code / Claude Opus 4.8
-**Outcome:** Full FMD suite generated (20 docs + materialized root artifacts); validator green over the generated suite. Implementation not started.
+**Outcome:** Full FMD suite generated (19 suite docs + this index, 20; plus 3 RFCs = 23 `docs/*.md` files total) + materialized root artifacts; validator green over the generated suite as of this session's lint/voice pass (see entry #15 and friction #5 for the 2026-08-01 semantic-reconcile follow-up). Implementation not started.
 
 **Routing / gate / fill summary:**
 

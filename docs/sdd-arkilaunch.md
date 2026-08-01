@@ -30,8 +30,8 @@
 - **Shared-schema pooled multi-tenancy**, not schema-per-tenant or database-per-tenant. Cheapest to operate and correct at MSME scale; the debt is that a tenant demanding hard physical isolation forces a later migration path. Isolation rests on RLS correctness, so RLS is treated as security-critical and covered by RFC-1 and QAD abuse tests.
 - **Single Postgres primary on Supabase, no read replicas in V1.** Acceptable for an anchor pilot under 10 daily active users; revisit before multi-tenant fan-out (BRD-M7).
 - **No Redis in V1.** Refresh-token families, rate-limit counters, and short-lived caches live in Postgres and TanStack Query on the client. Add Redis if refresh-token revocation volume or rate-limit throughput demands it.
-- **Diesel-price source is unresolved** (gap G-3). Decided in RFC-3. The quote engine is built against an interface, and the current price is snapshotted into every versioned quotation so pricing is reproducible regardless of source.
-- **Analytics sink is TBD** (PostHog on an EU/PH-residency region vs a first-party `events` table on Supabase). Deferred to OPS; event names are frozen in PRD §5.6 either way.
+- **Diesel-price source resolved in RFC-3** (gap G-3 closed): a hybrid DOE scrape + platform/tenant manual override, cached as a last-known-price row. The quote engine is built against an interface, and the current price is snapshotted into every versioned quotation so pricing is reproducible regardless of source.
+- **Analytics sink resolved in OPS §1**: a first-party `events` table on Supabase Postgres, not an external vendor, for the pilot (keeps PH-residency telemetry in-boundary; revisit PostHog only if analytics depth outgrows SQL). Event names are frozen in PRD §5.6 either way.
 
 ---
 
@@ -57,7 +57,7 @@ graph TD
         DI["Azure AI Document Intelligence<br/>(EDTR custom, KYC layout+query)"]
         PM["PayMongo<br/>hosted checkout + webhooks"]
         OM["Open-Meteo<br/>(commercial plan)"]
-        DZL["Diesel price source<br/>(TBD, RFC-3)"]
+        DZL["Diesel price source<br/>(DOE scrape + override, RFC-3)"]
     end
 
     FE -->|HTTPS/TLS 1.3| CF
@@ -93,13 +93,13 @@ graph TD
 **Secondary / cache:** None in V1. TanStack Query caches on the client; refresh-token families and rate-limit counters live in Postgres. *Reason: no cache tier earns its keep at anchor-pilot scale; Redis is a documented later add.*
 **Vector store:** N/A. The AI component is document extraction (Azure DI), not retrieval; no embeddings.
 
-The schema is the thesis's **29 core entities** extended for multi-tenancy with three additions, **Tenant (RentalCompany)**, **SubscriptionPlan**, and **Subscription**, for **32 tables total**. Design is normalized to 3NF: no repeating groups, every non-key attribute depends on the whole key, no transitive dependencies (for example addresses are factored into `Address` and joined through `CustomerAddress`, not inlined on `Customer`).
+The schema is the thesis's **29 core entities** extended for multi-tenancy with three additions, **Tenant (RentalCompany)**, **SubscriptionPlan**, and **Subscription**, for **32 tables**, plus three tables added by the forward RFCs: `refresh_tokens` ([RFC-1](rfc-arkilaunch-tenancy-rls-auth.md), tenant-owned token-family lineage), `diesel_price_readings` and `pricing_parameters` ([RFC-3](rfc-arkilaunch-quotation-pricing-engine.md), the diesel-index cache and per-tenant pricing inputs), for **35 tables total**. Design is normalized to 3NF: no repeating groups, every non-key attribute depends on the whole key, no transitive dependencies (for example addresses are factored into `Address` and joined through `CustomerAddress`, not inlined on `Customer`).
 
-**Tenant scoping.** Six tables sit outside tenant scope: `Tenant` (the tenant anchor itself; its `id` *is* the isolation key), the global RBAC catalog `Role` / `Permission` / `RolePermission`, the platform-wide `SubscriptionPlan` catalog, and the shared `EquipmentType` reference. The remaining **26 tenant-owned tables** each carry `tenant_id UUID NOT NULL` (the "~25" called out in the build context, plus the new `Subscription` join). Almara is seeded as the anchor tenant. Platform-admin is a reserved role in the global RBAC catalog.
+**Tenant scoping (closes scrutiny G-1: the thesis's 29-entity schema had no tenant model).** Seven tables sit outside tenant scope: `Tenant` (the tenant anchor itself; its `id` *is* the isolation key), the global RBAC catalog `Role` / `Permission` / `RolePermission`, the platform-wide `SubscriptionPlan` catalog, the shared `EquipmentType` reference, and `diesel_price_readings` (RFC-3; shared, public, non-PII fuel-price cache, same category as `EquipmentType`). The remaining **28 tenant-owned tables** each carry `tenant_id UUID NOT NULL` (the 26 here, plus `refresh_tokens` from RFC-1 and `pricing_parameters` from RFC-3). Almara is seeded as the anchor tenant. Platform-admin is a reserved role in the global RBAC catalog.
 
 ### Backend Schema
 
-Full column definitions follow for the multi-tenant additions and the load-bearing billing cluster. A master catalog covering all 32 tables closes the section. Every tenant-owned table carries `tenant_id UUID NOT NULL` (FK to `tenants.id`, `ON DELETE RESTRICT`) plus `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`; those two are omitted from the per-column tables below only to keep them readable, never from the migration.
+Full column definitions follow for the multi-tenant additions and the load-bearing billing cluster. A master catalog covering all 35 tables (32 here plus the 3 RFC-sourced additions) closes the section. Every tenant-owned table carries `tenant_id UUID NOT NULL` (FK to `tenants.id`, `ON DELETE RESTRICT`) plus `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`; those two are omitted from the per-column tables below only to keep them readable, never from the migration.
 
 **Table: `tenants`** (new; the RentalCompany anchor, not tenant-scoped)
 
@@ -203,7 +203,7 @@ Full column definitions follow for the multi-tenant additions and the load-beari
 | `report_date` | DATE | No | | idx (equipment_id, report_date) | operational log date |
 | `raw_file_uri` | TEXT | Yes | | | Storage pointer; null for direct digital entry |
 | `ocr_payload` | JSONB | Yes | | | raw Azure DI extraction + per-field confidence |
-| `status` | TEXT | No | 'queued' | | queued, extracted, review, reconciled, hard_failed |
+| `status` | TEXT | No | 'queued' | | queued, extracting, extracted, review, reconciled, hard_failed (6 states; matches RFC-2 `edtr_status_chk`) |
 
 **Table: `edtr_line_items`** (tenant-owned)
 
@@ -281,7 +281,7 @@ Full column definitions follow for the multi-tenant additions and the load-beari
 
 `audit_logs` is append-only: no UPDATE or DELETE grant to the application role, enforced by a REVOKE plus a policy that permits INSERT and SELECT only. That immutability is what lets an invoice cite the exact reconciliation and both source logs behind a deduction.
 
-**Master catalog (all 32 tables).** Detailed above are the additions and billing cluster; the rest follow the same conventions (UUID PK, `tenant_id` where tenant-owned, FKs as noted).
+**Master catalog (all 35 tables).** Detailed above are the additions and billing cluster; the rest follow the same conventions (UUID PK, `tenant_id` where tenant-owned, FKs as noted). Rows 33 to 35 are defined in the forward RFCs, not above; they are cataloged here so this stays the single count of record.
 
 | # | Table | Tenant-scoped? | PK | Key FKs | Notes |
 |---|-------|----------------|----|---------|-------|
@@ -317,6 +317,9 @@ Full column definitions follow for the multi-tenant additions and the load-beari
 | 30 | `weather_alerts` | Yes | id | tenant_id, project_site_id | +severity, observed, is_stale, status |
 | 31 | `notifications` | Yes | id | tenant_id, user_id | +notification_type, payload, status |
 | 32 | `audit_logs` | Yes | id | tenant_id, actor_id | append-only, immutable |
+| 33 | `refresh_tokens` | Yes | id | tenant_id, user_id, parent_id | RFC-1; token-family lineage, hashed tokens |
+| 34 | `diesel_price_readings` | No (global) | id | | RFC-3; DOE-scrape + manual-entry price cache |
+| 35 | `pricing_parameters` | Yes | id | tenant_id | RFC-3; time-variant per-tenant pricing inputs |
 
 **Key relationships:**
 - Tenant has many Users, Customers, Equipment, RateCards, ProjectSites, Subscriptions (1:N), and is the isolation root for every tenant-owned row.
@@ -444,7 +447,7 @@ erDiagram
 **Tenant isolation (shared schema + RLS by tenant_id).** All tenants share one schema and one set of tables. Isolation is enforced two ways at once:
 
 1. **Application filter.** Every Drizzle query for a tenant-owned table is scoped by `tenant_id` from the authenticated JWT. This is the first line and keeps query plans honest.
-2. **Postgres RLS.** Each tenant-owned table has an ENABLE ROW LEVEL SECURITY policy of the form `USING (tenant_id = current_setting('app.current_tenant_id')::uuid)`. The application connects on a dedicated **non-BYPASSRLS** Postgres role, so the database itself refuses to return another tenant's rows even if the app filter is ever missed. This is the coarse backstop.
+2. **Postgres RLS.** Each tenant-owned table has RLS **enabled and forced**, with a `tenant_isolation` policy scoped `FOR ALL TO app_authenticated` carrying both `USING` and `WITH CHECK` clauses of the form `tenant_id = current_setting('app.current_tenant_id', true)::uuid` (the `true` argument is `missing_ok`, which makes an unset GUC return zero rows rather than erroring or exposing all rows). The application connects on a dedicated **non-BYPASSRLS** Postgres role, so the database itself refuses to return another tenant's rows even if the app filter is ever missed. This is the coarse backstop. The exact DDL, and why every one of these five elements (`FORCE`, `TO app_authenticated`, `USING`, `WITH CHECK`, `missing_ok`) is load-bearing, lives in [RFC-1](rfc-arkilaunch-tenancy-rls-auth.md) §3; every tenant-owned table added by any RFC or migration must match that pattern exactly, not a partial form.
 
 **The GUC pattern.** The API opens a request-scoped ORM transaction and, before any query, runs `set_config('app.current_tenant_id', <jwt.tenant_id>, true)` (and `app.current_user_id`, `app.current_role`) with `local = true` so the setting is transaction-scoped and cannot leak across pooled connections. RLS reads those GUCs. We connect directly to Postgres (Supabase here is managed Postgres plus Storage, not the session-auth authority), so policies key off our injected GUCs, not Supabase Auth `auth.uid()`. `service_role` (which bypasses RLS) is reserved for migrations and trusted cron jobs only; the request path never uses it. The deep design, policy DDL, connection-pool safety, and the reuse-detection interaction live in **[RFC-1](rfc-arkilaunch-tenancy-rls-auth.md)**.
 
@@ -478,6 +481,11 @@ erDiagram
 | `POST` | `/api/v1/bookings/:id/checkout` | Create PayMongo hosted-checkout session | PRD-F2 |
 | `POST` | `/api/v1/webhooks/paymongo` | Payment status webhook (signed, idempotent) | PRD-F2 |
 | `POST` | `/internal/jobs/weather-poll` | Cron: poll Open-Meteo per active site | PRD-F5 |
+| `GET` | `/api/v1/equipment` | List fleet inventory with availability status | PRD-F4 |
+| `GET` | `/api/v1/equipment/:id/maintenance` | Maintenance schedule + log history for one unit | PRD-F4 |
+| `POST` | `/api/v1/equipment/:id/maintenance-logs` | Record a completed maintenance action | PRD-F4 |
+| `GET` | `/api/v1/reports/utilization` | Fleet utilization + runtime-hours report | PRD-F4 |
+| `POST` | `/internal/jobs/maintenance-threshold-notify` | Cron: check `runtime_hours` against `maintenance_schedules` and notify | PRD-F4 |
 
 ### Must-Have endpoint contracts
 
@@ -625,7 +633,60 @@ Request (PayMongo event envelope):
 
 Response 200: { "received": true }   // 2xx only after durable write
 ```
-Signature verified with the endpoint secret before any processing; `provider_ref` UNIQUE makes replays idempotent; booking/payment status comes from the webhook, not the browser redirect (US-08). Non-2xx tells PayMongo to retry. Webhook/idempotency/refund detail is a carried gap (G-10), resolved in RFC-2 or an SDD addendum.
+Signature verified with the endpoint secret before any processing; `provider_ref` UNIQUE makes replays idempotent; booking/payment status comes from the webhook, not the browser redirect (US-08). Non-2xx tells PayMongo to retry. Webhook/idempotency/refund detail is a carried gap (G-10), resolved directly below (no dedicated RFC; see scrutiny §3 G-10).
+
+### `GET /api/v1/equipment` · `GET /api/v1/equipment/:id/maintenance` · PRD-F4
+
+```
+GET /api/v1/equipment?status=available|deployed|maintenance
+
+Response 200:
+{
+  "items": [ { "id": uuid, "equipment_type_id": uuid, "model": string,
+               "serial_no": string, "availability_status": string,
+               "runtime_hours": number } ],
+  "total": int
+}
+
+GET /api/v1/equipment/:id/maintenance
+
+Response 200:
+{
+  "schedule": { "hours_interval": number, "next_due": number },
+  "runtime_hours": number,
+  "logs": [ { "id": uuid, "performed_at": timestamptz, "notes": string } ]
+}
+```
+
+### `POST /api/v1/equipment/:id/maintenance-logs` · PRD-F4
+
+```
+Request: { "performed_at": timestamptz, "notes": string }
+
+Response 201:
+{ "id": uuid, "equipment_id": uuid, "performed_at": timestamptz }
+```
+Recording a maintenance log resets the unit's threshold countdown against `maintenance_schedules.hours_interval`; gated by the `fleet:manage` permission (RBAC guard, RFC-1).
+
+### `GET /api/v1/reports/utilization` · PRD-F4
+
+```
+Response 200:
+{
+  "period": { "from": "YYYY-MM-DD", "to": "YYYY-MM-DD" },
+  "fleet": [ { "equipment_id": uuid, "runtime_hours": number,
+               "utilization_pct": number, "maintenance_due": bool } ]
+}
+```
+Aggregates `equipment.runtime_hours` and `edtr`/`edtr_line_items` over the period; read-only, tenant-scoped like every other route.
+
+**PM-threshold notification (cron, PRD-F4).** `POST /internal/jobs/maintenance-threshold-notify` runs on the ACA Jobs schedule (SDD §2/§6, `service_role`), compares each tenant's `equipment.runtime_hours` against its `maintenance_schedules.hours_interval`, and writes a `notifications` row when a unit crosses its threshold. No money movement and no autonomous state change: it notifies, a human schedules the maintenance.
+
+**PayMongo webhook idempotency, refunds, and disputes (G-10, resolved here; no dedicated RFC needed).** The `POST /api/v1/webhooks/paymongo` contract above already gives idempotency (`provider_ref` UNIQUE, signature verified before body processing, status derived from the webhook and never the browser redirect). This closes the remaining detail scrutiny G-10 asked for:
+- **Idempotency:** a replayed webhook with an already-seen `provider_ref` is a no-op 200 (write is `INSERT ... ON CONFLICT (provider_ref) DO NOTHING`), never a duplicate payment or double deduction.
+- **Refunds:** a refund is a distinct PayMongo event (`refund.updated`) carrying its own `id`; it is stored as a new `payments` row (`method` unchanged, `status='refunded'`) linked to the original via `invoice_id`, never by mutating the original row (audit-log immutability, SDD §3).
+- **Disputes:** a chargeback/dispute webhook flips the invoice to a `disputed` state (extends the `invoices.status` enum) and routes to the admin queue for manual resolution; ArkiLaunch does not auto-refund or auto-void on a dispute notification.
+- **Testing:** covered by `QAD-T15` (stale/webhook fallback) plus the new isolation/authz coverage in `QAD-T43`..`T48`; abuse coverage (replay, forged signature) is in QAD §3.4 F2 row.
 
 ### 4.1 Runtime sequences
 
@@ -671,7 +732,7 @@ sequenceDiagram
     participant FE as React SPA
     participant API as NestJS API
     participant DB as Postgres (RLS)
-    participant DZL as Diesel source (TBD)
+    participant DZL as Diesel source (RFC-3)
     participant PM as PayMongo
 
     Rhea->>FE: build quote (equipment, site, km)
@@ -706,7 +767,7 @@ sequenceDiagram
 | Azure AI Document Intelligence | EDTR extraction (F3), KYC SEC/TIN extraction (F6) | Async queue + retry with backoff; unreadable input hard-fails to manual entry, never fabricates; per-page priced. SE Asia region / residency is a carried gap (AIA §5 + CLR). Emits `external_dependency_degraded`. |
 | PayMongo | Hosted checkout + deposit webhooks (F2) | 429 backoff; webhook signature-verified + idempotent on `provider_ref`; status derived from webhook not redirect. Refund/dispute detail carried (G-10). |
 | Open-Meteo (commercial plan) | Per-site weather poll (F5) | Commercial plan required (free tier is non-commercial; FC-7). Serve cached last-known Luzon reading on outage, mark `is_stale`, retry and alert, never drop the cycle silently. |
-| Diesel price source (TBD, RFC-3) | Live diesel index for quotes (F1) | Source unresolved (G-3). Snapshot price into each versioned quotation; on stale/unavailable use last-known with a staleness warning; decision (DOE scrape vs admin input vs feed) in [RFC-3](rfc-arkilaunch-quotation-pricing-engine.md). |
+| Diesel price source (RFC-3) | Live diesel index for quotes (F1) | Source resolved (G-3 closed): hybrid DOE scrape + platform/tenant manual override. Snapshot price into each versioned quotation; on stale/unavailable use last-known with a staleness warning; full design in [RFC-3](rfc-arkilaunch-quotation-pricing-engine.md). |
 | Supabase Storage | EDTR + KYC image blobs (F3/F6) | Short-TTL signed URLs; access mediated by API; RLS on metadata rows; images never served on a public URL. |
 
 ---
@@ -747,7 +808,7 @@ sequenceDiagram
 **Edge / weather / diesel operational notes:**
 - Cloudflare WAF fronts every public route; the booking portal (`/t/:tenantSlug`) additionally gets bot mitigation.
 - **Open-Meteo commercial plan** (the free tier is non-commercial, up to 10k/day, CC BY 4.0; ArkiLaunch is commercial, FC-7). Quota and cost alerting live in OPS. Fallback: the last-known Luzon reading persisted per site, served with `is_stale: true`.
-- **Diesel-price source is TBD** (G-3), decided in [RFC-3](rfc-arkilaunch-quotation-pricing-engine.md). Whatever the source, the current price is snapshotted into each quotation for reproducibility.
+- **Diesel-price source is resolved** (G-3 closed) in [RFC-3](rfc-arkilaunch-quotation-pricing-engine.md): hybrid DOE scrape + manual override. The current price is snapshotted into each quotation for reproducibility regardless of source.
 - ACA Jobs guard overlapping cron runs via a replica/parallelism limit or a Postgres advisory lock.
 
 **Backup & disaster recovery:**
@@ -760,17 +821,19 @@ sequenceDiagram
 
 ## 7. Non-Functional Requirements
 
-| Requirement | Target | Notes |
-|-------------|--------|-------|
-| API response (p95) | < 400 ms for tenant CRUD reads/writes | Excludes async OCR and external calls; measured at the API, inside the RLS transaction. |
-| Quote generation (end to end) | < 60 s (US-03), typically < 5 s | Diesel price cached/snapshotted; PRD-F1. Feeds BRD-M4. |
-| OCR extraction (async) | seconds to ~60 s per document | Azure DI on the worker; UI shows queued/processing and never blocks; PRD-F3. |
-| Weather poll cadence | every 30 min per active site | ACA Job; risk crossing auto-logs a liability incident; PRD-F5. |
-| Uptime (core modules) | 99.5% | BRD-M6; excludes third-party outages that have a working fallback. Traced to OPS. |
-| Max concurrent users (V1) | 50 | Anchor pilot runs under 10 daily active; single Postgres primary is sufficient. |
-| Client on 3 to 5 Mbps | first meaningful paint < 3 s on a 3G-class link | Code-splitting, image compression before upload; UX constraint PRD §5.5. |
-| Large upload handling | resumable, compressed, retry that preserves entered data | Offline queue for the timekeeper; MUST NOT lose entered data (US-02). |
-| Data retention | KYC/ID images minimized + retention-limited (RA 10173); audit logs immutable and long-lived; app logs 30 to 90 days | Final retention set by CLR. |
+| ID | Requirement | Target | Notes |
+|----|-------------|--------|-------|
+| `NFR-1` | API response (p95) | < 400 ms for tenant CRUD reads/writes | Excludes async OCR and external calls; measured at the API, inside the RLS transaction. |
+| `NFR-2` | Quote generation (end to end) | < 60 s (US-03), typically < 5 s | Diesel price cached/snapshotted; PRD-F1. Feeds BRD-M4. |
+| `NFR-3` | OCR extraction (async) | seconds to ~60 s per document | Azure DI on the worker; UI shows queued/processing and never blocks; PRD-F3. |
+| `NFR-4` | Weather poll cadence | every 30 min per active site | ACA Job; risk crossing auto-logs a liability incident; PRD-F5. |
+| `NFR-5` | Uptime (core modules) | 99.5% | BRD-M6; excludes third-party outages that have a working fallback. Traced to OPS `SLO-1`. |
+| `NFR-6` | Max concurrent users (V1) | 50 | Anchor pilot runs under 10 daily active; single Postgres primary is sufficient. |
+| `NFR-7` | Client on 3 to 5 Mbps | first meaningful paint < 3 s on a 3G-class link | Code-splitting, image compression before upload; UX constraint PRD §5.5. |
+| `NFR-8` | Large upload handling | resumable, compressed, retry that preserves entered data | Offline queue for the timekeeper; MUST NOT lose entered data (US-02). |
+| `NFR-9` | Data retention | KYC/ID images minimized + retention-limited (RA 10173); audit logs immutable and long-lived; app logs 30 to 90 days | Final retention set by CLR §1. |
+| `NFR-10` | Fleet report generation (PRD-F4) | `GET /reports/utilization` p95 < 1 s over a single tenant's fleet | Aggregation query over indexed `equipment`/`edtr` rows; no async job required at anchor-pilot fleet size. |
+| `NFR-11` | Localization | All timestamps and scheduled jobs (weather poll, diesel refresh, PM notifications) run against `Asia/Manila`; currency formatting is PHP throughout; no additional locale for V1 | PH-only market for V1 (PRD §5.7 `PRD-NFR7`). Store all timestamps as `TIMESTAMPTZ` (UTC at rest, per SDD §3); render in `Asia/Manila` at the API/client boundary, never assume server local time. |
 
 **ISO/IEC 25010 mapping.** UAT is scored against ISO/IEC 25010 (BRD-M5, UAT mean >= 3.41, 5-point Likert per G-7). A version note carries forward: the thesis uses the **2011** 8-characteristic model; **25010:2023** has 9 characteristics (adds Safety) and renames Usability to Interaction Capability and Portability to Flexibility. **The QAD chooses** which to instrument and records the choice; this SDD maps NFRs to both readings.
 
@@ -786,7 +849,7 @@ sequenceDiagram
 | Compatibility | REST/JSON; standard PayMongo, Open-Meteo, Azure DI contracts |
 | Safety (2023, new) | no autonomous money movement; reconciliation gate + HITL; unreadable hard-fails to manual |
 
-NFR-to-OPS traceability (alerting thresholds, SLO burn) is established when the OPS doc is written.
+NFR-to-OPS traceability: `NFR-1`/`NFR-2` -> OPS `SLO-2`/`SLO-3` (latency burn alerting); `NFR-3` -> OPS `SLO-4`/`SLO-5` (OCR success rate + queue latency); `NFR-4` -> OPS `SLO-8`; `NFR-5` -> OPS `SLO-1`; `NFR-9` -> CLR §1 retention schedule. See [ops-arkilaunch.md](ops-arkilaunch.md) §1.
 
 ---
 
@@ -829,7 +892,7 @@ Confidence threshold and reconciliation tolerance are tuned so the review queue 
 
 ### 8.1 AI Safety & Threat Surface
 
-Azure DI is an OCR/IDP service rather than a generative LLM, so the OWASP-LLM categories are mapped to their document-processing analogs. Each control has a forward eval in the QAD (`AI-*`, QAD §7, to be authored).
+Azure DI is an OCR/IDP service rather than a generative LLM, so the OWASP-LLM categories are mapped to their document-processing analogs. Each control has a forward eval in the QAD (`AI-*` -> `QAD-T33`..`T38`, QAD §7).
 
 | Risk (OWASP LLM analog) | Applies? | Control in this system | Eval (QAD ref) |
 |------------------|----------|------------------------|----------------|
@@ -863,7 +926,7 @@ Azure DI is an OCR/IDP service rather than a generative LLM, so the OWASP-LLM ca
 ## Self-Check
 
 - [x] Section 2 has an actual diagram (Mermaid architecture graph), not just a description
-- [x] Section 3 defines every table with typed columns, keys, and constraints (13 full column tables + a 32-row master catalog; new/billing-cluster tables fully specified)
+- [x] Section 3 defines every table with typed columns, keys, and constraints (15 full column tables + a 35-row master catalog; new/billing-cluster tables fully specified)
 - [x] Section 3 has a migration strategy that keeps rollback safe (Drizzle, forward-only, expand/contract)
 - [x] >= 2 persisted entities: §3 has an `erDiagram` (14-entity core cluster)
 - [x] Every external integration in Section 4 has a rate-limit / fallback strategy (Azure DI, PayMongo, Open-Meteo, diesel, Storage)
@@ -873,7 +936,8 @@ Azure DI is an OCR/IDP service rather than a generative LLM, so the OWASP-LLM ca
 - [x] Section 8 filled (Azure DI); AIA required before launch (gate alongside CLR)
 - [x] Section 8.1: every applicable risk has a control and a forward QAD eval; provider retention/residency recorded
 - [x] Section 8.2 rows filled with concrete answers
-- [x] Known V1 shortcuts documented as explicit tech debt in Section 1 (pooled tenancy, no replicas, no Redis, diesel TBD, analytics TBD)
+- [x] Known V1 shortcuts documented as explicit tech debt in Section 1 (pooled tenancy, no replicas, no Redis, per-equipment-type fuel override deferred to RFC-3)
+- [x] Table-count and RLS-policy conventions reconciled across SDD/RFC-1/RFC-3/SAD/migration-rls-guardian (35 tables, 28 tenant-owned, 7 global; canonical 5-element RLS pattern)
 - [x] This document answers *how* to build, not *what* (that is the PRD)
 - [x] Cross-linked to idea/prd/scrutiny; forward-linked to RFC-1/2/3; traced to PRD-F1..F8
 - [x] AGENTS hard bans applied (no em-dashes anywhere, including Mermaid labels)

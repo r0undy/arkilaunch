@@ -8,9 +8,9 @@
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Draft
 **Last reconciled:** N/A (not yet reconciled with code)
-**PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
-**SDD:** [sdd-arkilaunch.md](sdd-arkilaunch.md)
-**SAD:** [sad-arkilaunch.md](sad-arkilaunch.md)
+**PRD:** [docs/prd-arkilaunch.md](docs/prd-arkilaunch.md)
+**SDD:** [docs/sdd-arkilaunch.md](docs/sdd-arkilaunch.md)
+**SAD:** [docs/sad-arkilaunch.md](docs/sad-arkilaunch.md)
 
 ---
 
@@ -23,15 +23,17 @@
 The documentation suite is the source of truth. Read in this order before writing code:
 
 1. **`docs/index.md`**; what exists, each doc's status, what's stale. Start here every session.
-2. **PRD** ([prd-arkilaunch.md](prd-arkilaunch.md)); features PRD-F1..F8, user stories, flows, §7 AI spec, §9 rollback.
-3. **SDD** ([sdd-arkilaunch.md](sdd-arkilaunch.md)); architecture, 32-table schema, APIs, §5 security/RLS, §8 AI architecture.
-4. **RFCs**; [rfc-001 tenancy-rls-auth](rfc-arkilaunch-tenancy-rls-auth.md), [rfc-002 ocr-edtr-reconciliation](rfc-arkilaunch-ocr-edtr-reconciliation.md), [rfc-003 quotation-pricing-engine](rfc-arkilaunch-quotation-pricing-engine.md).
-5. **DSD** ([dsd-arkilaunch.md](dsd-arkilaunch.md)); the Yardboard design system, tokens, components, a11y.
-6. **QAD** ([qad-arkilaunch.md](qad-arkilaunch.md)); test matrix and release criteria.
-7. **CLR** ([clr-arkilaunch.md](clr-arkilaunch.md)); PH data-privacy register, KYC, scraping posture.
-8. **AIA** ([aia-arkilaunch.md](aia-arkilaunch.md)); AI assurance for the Azure DI OCR component.
-9. **OPS** ([ops-arkilaunch.md](ops-arkilaunch.md)); SLOs, alerts, runbooks.
-10. **This guide**; stack conventions, patterns, guardrails.
+2. **SCRUTINY** ([docs/scrutiny-arkilaunch.md](docs/scrutiny-arkilaunch.md)); verified claims and the carried-gap register (`G-1`..`G-10`) that every downstream doc resolves against.
+3. **BRD** ([docs/brd-arkilaunch.md](docs/brd-arkilaunch.md)); the business case, `BRD-M#` metrics, `BRD-V#` impact variables.
+4. **PRD** ([docs/prd-arkilaunch.md](docs/prd-arkilaunch.md)); features PRD-F1..F8, user stories, flows, §7 AI spec, §9 rollback, §NFR.
+5. **SDD** ([docs/sdd-arkilaunch.md](docs/sdd-arkilaunch.md)); architecture, 35-table schema, APIs, §5 security/RLS, §8 AI architecture.
+6. **RFCs**; [rfc-001 tenancy-rls-auth](docs/rfc-arkilaunch-tenancy-rls-auth.md), [rfc-002 ocr-edtr-reconciliation](docs/rfc-arkilaunch-ocr-edtr-reconciliation.md), [rfc-003 quotation-pricing-engine](docs/rfc-arkilaunch-quotation-pricing-engine.md).
+7. **DSD** ([docs/dsd-arkilaunch.md](docs/dsd-arkilaunch.md)); the Yardboard design system, tokens, components, a11y.
+8. **QAD** ([docs/qad-arkilaunch.md](docs/qad-arkilaunch.md)); test matrix and release criteria.
+9. **CLR** ([docs/clr-arkilaunch.md](docs/clr-arkilaunch.md)); PH data-privacy register, KYC, scraping posture.
+10. **AIA** ([docs/aia-arkilaunch.md](docs/aia-arkilaunch.md)); AI assurance for the Azure DI OCR component.
+11. **OPS** ([docs/ops-arkilaunch.md](docs/ops-arkilaunch.md)); SLOs, alerts, runbooks.
+12. **This guide**; stack conventions, patterns, guardrails.
 
 **Only build against `Locked` docs.** All suite docs are currently `Draft`; lock them before implementation, or flag and do not guess. If reality diverges from a Locked doc, trigger a Change Record (`docs/cr-arkilaunch-*.md`), do not silently code around it.
 
@@ -46,7 +48,7 @@ The documentation suite is the source of truth. Read in this order before writin
 | Auth / identity / RBAC | SDD §5 → RFC-1 | QAD auth + refresh-reuse abuse rows |
 | A schema change / migration | SDD §3 → RFC Data Model Changes | expand/contract strategy; migration-rls-guardian (SAD-A2) |
 | The OCR / reconciliation / KYC path | SDD §8 → RFC-2 | QAD AI-01..AI-06 + AIA risk register |
-| The quotation / diesel engine | SDD §3/§4 → RFC-3 | QAD QUOTE-* rows |
+| The quotation / diesel engine | SDD §3/§4 → RFC-3 | QAD `QAD-T43`..`T48` rows (§3.6) |
 | A UI surface | DSD §4 + PRD §5.1 (screen states) + §5.2 (navigation) | DSD a11y + §0 compliance |
 | Public marketing/booking discoverability | BUILD §5.2 + GTM §8 | robots.txt live; indexability checklist; CLR training-vs-search decision |
 
@@ -54,7 +56,7 @@ The documentation suite is the source of truth. Read in this order before writin
 
 ## 2. Subagents
 
-Specialist build agents are defined in the SAD ([sad-arkilaunch.md](sad-arkilaunch.md)) and materialized to `.claude/agents/`: `tenant-isolation-checker`, `migration-rls-guardian`, `edtr-ocr-worker`, `ai-ocr-abuse-runner`, `restraint-guardian`. Spawn them per SAD §4. The tenant-isolation and migration-RLS guards run on every data/schema diff; the abuse-runner gates any AI-path merge.
+Specialist build agents are defined in the SAD ([docs/sad-arkilaunch.md](docs/sad-arkilaunch.md)) and materialized to `.claude/agents/`: `tenant-isolation-checker`, `migration-rls-guardian`, `edtr-ocr-worker`, `ai-ocr-abuse-runner`, `restraint-guardian`. Spawn them per SAD §4. The tenant-isolation and migration-RLS guards run on every data/schema diff; the abuse-runner gates any AI-path merge.
 
 ---
 
@@ -66,26 +68,28 @@ Specialist build agents are defined in the SAD ([sad-arkilaunch.md](sad-arkilaun
 
 | Layer | Technology | Pinned version | Verified | Authoritative source |
 |-------|------------|----------------|----------|----------------------|
-| Language | TypeScript | 5.x | 2026-07-25 | typescriptlang.org |
+| Language | TypeScript | 5.7 | 2026-07-25 | typescriptlang.org |
 | Frontend framework | React | 19.2 | 2026-07-25 | react.dev/versions |
-| Frontend build | Vite | 8.x (Rolldown bundler) | 2026-07-25 | vite.dev/blog/announcing-vite8 |
-| Routing / data | TanStack Router v1 + TanStack Query v5 | current stable | 2026-07-25 | tanstack.com |
-| Styling | Tailwind CSS | current | 2026-07-25 | tailwindcss.com |
-| Client validation | Zod | current | 2026-07-25 | zod.dev |
+| Frontend build | Vite | 8.0 (Rolldown bundler) | 2026-07-25 | vite.dev/blog/announcing-vite8 |
+| Routing / data | TanStack Router 1.121 + TanStack Query 5.90 | 1.121 / 5.90 | 2026-07-25 | tanstack.com |
+| Styling | Tailwind CSS | 4.1 | 2026-07-25 | tailwindcss.com |
+| Client validation | Zod | 4.0 | 2026-07-25 | zod.dev |
 | Backend framework | NestJS | 11.1 (SWC compiler, Vitest default) | 2026-07-25 | docs.nestjs.com |
 | Runtime | Node.js | 24 LTS | 2026-07-25 | nodejs.org |
-| ORM | Drizzle ORM | current (pgPolicy RLS) | 2026-07-25 | orm.drizzle.team/docs/rls |
-| Database + storage | Supabase (PostgreSQL + Storage) | current | 2026-07-25 | supabase.com/docs |
-| Auth | Passport-JWT in NestJS (@nestjs/passport) | current | 2026-07-25 | docs.nestjs.com/security/authentication |
+| ORM | Drizzle ORM | 0.44 (pgPolicy RLS) | 2026-07-25 | orm.drizzle.team/docs/rls |
+| Database + storage | Supabase (PostgreSQL + Storage) | n/a; managed platform (Postgres 17) | 2026-07-25 | supabase.com/docs |
+| Auth | Passport-JWT in NestJS (@nestjs/passport) | passport-jwt 4.0, @nestjs/passport 11.x | 2026-07-25 | docs.nestjs.com/security/authentication |
 | OCR / IDP | Azure AI Document Intelligence (Foundry Tools) | doc-intel 4.x | 2026-07-25 | learn.microsoft.com/azure/ai-services/document-intelligence |
-| Payments | PayMongo (Hosted Checkout + webhooks) | current API | 2026-07-25 | paymongo.com/docs |
-| Weather | Open-Meteo (commercial plan) | current | 2026-07-25 | open-meteo.com |
-| Backend hosting | Azure Container Apps (app + ACA Jobs cron) | current | 2026-07-25 | learn.microsoft.com/azure/container-apps/jobs |
-| Frontend hosting | Vercel (Edge) | current | 2026-07-25 | vercel.com/docs |
-| Edge security | Cloudflare (WAF + L3/L4/L7 DDoS) | current | 2026-07-25 | developers.cloudflare.com |
-| Unit tests | Vitest | current | 2026-07-25 | vitest.dev |
-| E2E tests | Playwright | current | 2026-07-25 | playwright.dev |
-| API tests | Postman / Newman | current | 2026-07-25 | postman.com |
+| Payments | PayMongo (Hosted Checkout + webhooks) | n/a; managed API, no client SDK version to pin | 2026-07-25 | paymongo.com/docs |
+| Weather | Open-Meteo (commercial plan) | n/a; versionless HTTP API | 2026-07-25 | open-meteo.com |
+| Backend hosting | Azure Container Apps (app + ACA Jobs cron) | n/a; managed platform | 2026-07-25 | learn.microsoft.com/azure/container-apps/jobs |
+| Frontend hosting | Vercel (Edge) | n/a; managed platform | 2026-07-25 | vercel.com/docs |
+| Edge security | Cloudflare (WAF + L3/L4/L7 DDoS) | n/a; managed platform | 2026-07-25 | developers.cloudflare.com |
+| Unit tests | Vitest | 3.2 | 2026-07-25 | vitest.dev |
+| E2E tests | Playwright | 1.55 | 2026-07-25 | playwright.dev |
+| API tests | Postman / Newman | Newman 6.2 | 2026-07-25 | postman.com |
+
+**Reading the "n/a" rows:** six rows above are managed platforms or versionless HTTP APIs (Supabase, PayMongo, Open-Meteo, Azure Container Apps, Vercel, Cloudflare); there is no package/client version to pin, so "n/a" is an honest terminal value, not an unfilled one. Every row backed by an installable package or SDK carries an exact version.
 
 ### Deprecations & convention changes; DO NOT use the stale form
 
@@ -201,7 +205,7 @@ Optional agent-chat compression only. Never rewrite Locked docs, VOICE, PITCH, W
 
 ## 5.1 Brownfield Change Workflow
 
-Once the code is live and PRD/SDD are Locked, prefer the Change Workflow over re-running "Build the FMD": `python fmd/scripts/change.py init`, then `explore change` -> `propose change {slug}` -> validate -> review -> `apply change` -> `verify change` -> `archive change`. Locked PRD/SDD drift -> CR in the same pass as archive.
+Once the code is live and PRD/SDD are Locked, prefer the Change Workflow over re-running "Build the FMD": `explore change` -> `propose change {slug}` -> validate -> review -> `apply change` -> `verify change` -> `archive change`. This is the FMD engine's own workflow (an external tool this repo does not vendor); reproduce these steps manually against `docs/cr-arkilaunch-*.md` if the engine tooling is unavailable. Locked PRD/SDD drift -> CR in the same pass as archive.
 
 ## 5.2 Public Surface & Crawler Policy
 
@@ -230,7 +234,7 @@ Once the code is live and PRD/SDD are Locked, prefer the Change Workflow over re
 | Claude-User | Anthropic | User fetches | Allow | user-initiated |
 | PerplexityBot | Perplexity | Search / answers | Allow (public pages) | |
 
-**robots.txt path:** `/robots.txt` · **Last reviewed:** 2026-07-25. Default: allow search bots on public marketing/booking pages; disallow all bots on `/app/*` and admin routes; training-crawler decision deferred to [CLR](clr-arkilaunch.md) (B2B IP posture, conservative default is disallow).
+**robots.txt path:** `/robots.txt` · **Last reviewed:** 2026-07-25. Default: allow search bots on public marketing/booking pages; disallow all bots on `/app/*` and admin routes; training-crawler decision deferred to [CLR](docs/clr-arkilaunch.md) (B2B IP posture, conservative default is disallow).
 
 ### Schema.org
 
@@ -247,7 +251,7 @@ Organization + SoftwareApplication on the marketing site; no schema on authentic
 
 Landmarks, ordered headings, meaningful link text (also a DSD §6 requirement). Same practices that help assistive tech help crawlers parse the page.
 
-**Cross-links:** answer-surface strategy -> [GTM §8](gtm-arkilaunch.md); training opt-out / counsel -> [CLR](clr-arkilaunch.md).
+**Cross-links:** answer-surface strategy -> [GTM §8](docs/gtm-arkilaunch.md); training opt-out / counsel -> [CLR](docs/clr-arkilaunch.md).
 
 **Definition of Done (one task):**
 - [ ] Implements the referenced `PRD-F#` / `US-##` acceptance criteria
@@ -267,7 +271,7 @@ Landmarks, ordered headings, meaningful link text (also a DSD §6 requirement). 
 - [ ] **Context hygiene (AI paths):** untrusted upload/model output cannot trigger a deduction or override instructions
 - [ ] **Docs:** Locked-doc drift logged as a CR; index row current
 
-**Definition of Done (build / release):** the [Production Readiness Gate](../fmd/AGENTS.md) must pass before shipping.
+**Definition of Done (build / release):** ArkiLaunch's own Production Readiness Gate must pass before shipping: the checklist in [docs/index.md](docs/index.md) §4 Health Check, backed by [pitch-arkilaunch.md](docs/pitch-arkilaunch.md) §5 (pre-demo gate) and [wrap-arkilaunch.md](docs/wrap-arkilaunch.md) §5 (final check). The generic FMD-engine gate this pointed at (`fmd/AGENTS.md`) is an external tool this repo does not vendor; the three ArkiLaunch-specific checklists above are the ones that actually gate a release here.
 
 ---
 
@@ -278,21 +282,22 @@ Landmarks, ordered headings, meaningful link text (also a DSD §6 requirement). 
 | Canonical | `docs/build-arkilaunch.md` | edit here |
 | All agents | `AGENTS.md` (project root) | full content; auto-read by Codex, Cursor, Gemini, Claude Code |
 | Claude Code | `CLAUDE.md` | pointer to `AGENTS.md` + Claude-only notes |
-| Cursor | `.cursor/rules/build.mdc` | pointer (`alwaysApply: true`) |
-| Gemini CLI | `GEMINI.md` | pointer |
+| Cursor | `.cursor/rules/build.mdc` | **not generated this pass** (optional; add when a Cursor user joins the project) |
+| Gemini CLI | `GEMINI.md` | **not generated this pass** (optional; add when a Gemini CLI user joins the project) |
 
-Re-materialize whenever this guide changes. Root copies are build artifacts, not sources of truth.
+Re-materialize whenever this guide changes. Root copies are build artifacts, not sources of truth. Only `AGENTS.md` and `CLAUDE.md` are generated today; the Cursor/Gemini pointers are genuinely optional and are not claimed as shipped until they exist on disk.
 
 ---
 
 ## Self-Check
 
-- [x] Section 1 read-order matches the docs in `docs/index.md`
-- [x] Section 3 pins exact versions with a verified date (2026-07-25) and authoritative sources
+- [x] Section 1 read-order lists all 12 upstream docs relevant to build (index, SCRUTINY, BRD, PRD, SDD, RFCs, DSD, QAD, CLR, AIA, OPS, this guide); intentionally omits doc types build never reads from directly (IDEA, VALIDATION, VOICE, PITCH, WRAP, UES, SAD, GTM, LOG; each has its own consumer named in BUILD/index)
+- [x] Section 3 pins an exact version or SDK for every installable package/SDK, with a verified date (2026-07-25) and authoritative source; the 6 rows with no package to pin (Supabase, PayMongo, Open-Meteo, ACA, Vercel, Cloudflare) say so explicitly rather than "current"
 - [x] Deprecations register holds the `use-X-not-Y` traps + every documented divergence from the thesis
 - [x] Golden-path samples are version-tagged and dated (RLS tx, Nest endpoint, Azure DI gate)
 - [x] Section 5 restraint ladder present; validation/security/RLS/a11y explicitly not cuttable
 - [x] Public URL -> §5.2 crawler policy filled (robots table + indexability; app routes noindex)
-- [x] Materialization targets match what will be generated (AGENTS.md + pointers)
-- [x] Definition of Done points at the Production Readiness Gate
+- [x] Materialization targets state what is actually generated (AGENTS.md + CLAUDE.md) vs. genuinely optional and not yet generated (Cursor/Gemini pointers)
+- [x] Definition of Done points at ArkiLaunch's own Production Readiness Gate (index.md §4 + PITCH §5 + WRAP §5), not the unvendored generic FMD one
 - [x] AGENTS hard bans applied (no em-dashes)
+- [x] All doc links are `docs/`-prefixed and resolve from the project root (this file lives at root, not in `docs/`)

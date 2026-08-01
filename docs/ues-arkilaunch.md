@@ -12,7 +12,7 @@
 
 ---
 
-> **Note:** This UES holds the numbers the [BRD](brd-arkilaunch.md) deferred. It is the sheet the BRD's §3 Business Model, §4 BMC Cost/Revenue, §5 impact variables (`BRD-V1..V3`), and §6 Capital Philosophy Gate all point to. Pricing set here (`UES-E1`) and contribution (`UES-E3`) feed the GTM later; do not re-decide them there.
+> **Note:** This UES holds the numbers the [BRD](brd-arkilaunch.md) deferred. It is the sheet the BRD's §3 Business Model, §4 BMC Cost/Revenue, §5 impact variables (`BRD-V1..V3`), and §6 Capital Philosophy Gate all point to. Pricing set here (`UES-E1`) and contribution (`UES-E3`) feed the GTM later; do not re-decide them there. This document is also the resolution of [scrutiny G-8](scrutiny-arkilaunch.md) (unit economics for a SaaS: pricing tiers, CAC, LTV, subscription model).
 >
 > **Every money figure in this document is an ILLUSTRATIVE planning assumption.** ArkiLaunch has no live financials: it is a capstone build with an anchor tenant not yet in paid production. Figures are grounded in PH-market norms and the public pricing shape of the named vendors (Azure AI Document Intelligence, Open-Meteo, Supabase, PayMongo), not in booked revenue or measured cost. Anything that needs pilot data to be real (recovered leakage, actual CAC, actual churn, actual OCR page volume) is marked **TBD** with the measure named. No invented figure is presented as an established fact.
 >
@@ -69,7 +69,7 @@ Stable IDs (`UES-D1`..`UES-D8`), never renumbered. Maps the eight capital princi
 
 | Bet | Max loss (illustrative) | Upside thesis | Asymmetry (upside : downside) | Kill if |
 |-----|-------------------------|---------------|-------------------------------|---------|
-| Onboard tenants #2..#4 via reference-led sales | ~PHP 25,000 CAC/tenant + onboarding labor | Proves the multi-tenant motion is repeatable (BRD-V3); each tenant is ~PHP 294,000 illustrative LTV | ~12:1 (recurring LTV vs one-time CAC), illustrative | Every new tenant needs bespoke OCR templates or hand-built pricing (BRD-V3 falsifier); onboarding never standardizes |
+| Onboard tenants #2..#4 via reference-led sales | ~PHP 25,000 CAC/tenant + onboarding labor | Proves the multi-tenant motion is repeatable (BRD-V3); each tenant is ~PHP 302,800 illustrative LTV | ~12:1 (recurring LTV vs one-time CAC), illustrative | Every new tenant needs bespoke OCR templates or hand-built pricing (BRD-V3 falsifier); onboarding never standardizes |
 | Open-Meteo commercial plan + weather-liability module | ~PHP 2,030/mo flat plan (cancellable) | Weather-linked liability evidence (PRD-F5) differentiates on dispute defense | Modest upside, hard-capped downside | Tenants do not value the liability logs and weather adoption stays flat (a low-rank `BRD-V` by design) |
 
 ---
@@ -102,21 +102,21 @@ Each row has a stable **ID** (`UES-E1`, `UES-E2`, ...), never renumbered. GTM pr
 
 | ID | Metric | Value (illustrative) | Status | Notes |
 |----|--------|----------------------|--------|-------|
-| UES-E1 | Revenue per unit | PHP 9,000/mo (Growth tier; blended ARPU ~PHP 8,000 across a mixed cohort) | Green | Assumption; tier boundaries and price are pilot-contract TBD |
-| UES-E2 | Variable cost per unit | ~PHP 1,650/mo cash COGS at steady state | Green | Azure DI OCR ~PHP 1,200; Supabase storage/compute marginal ~PHP 150; email/SMS OTP ~PHP 80; Open-Meteo step allocation ~PHP 220 (today it sits in fixed overhead, see §2). PayMongo fees pass-through (PHP 0 net). Loaded with early high-touch support (~PHP 1,000/mo) it is ~PHP 2,650. |
-| UES-E3 | Contribution margin per unit | ~PHP 7,350/mo (cash-COGS basis) | Green | UES-E1 minus UES-E2. ~PHP 6,350 on the support-loaded basis. |
-| UES-E4 | Gross margin % | ~82% (cash COGS); ~71% support-loaded | Green | Healthy SaaS gross margin; the driver is OCR page volume (Azure DI), which is a per-tenant TBD |
+| UES-E1 | Revenue per unit | PHP 9,000/mo (Growth tier) | Green | Assumption; tier boundaries and price are pilot-contract TBD. A blended ARPU across a mixed Starter/Growth/Fleet cohort would differ; every downstream figure in this sheet uses the single Growth-tier value, never a blend. |
+| UES-E2 | Variable cost per unit | ~PHP 1,430/mo cash COGS at steady state | Green | Azure DI OCR ~PHP 1,200; Supabase storage/compute marginal ~PHP 150; email/SMS OTP ~PHP 80. Open-Meteo is **not** counted here: it is a flat platform plan (UES-F4), booked once in fixed overhead, not a per-tenant step cost, so it is excluded from this line to avoid double-counting the same cost twice. PayMongo fees pass-through (PHP 0 net). Loaded with early high-touch support (~PHP 1,000/mo) it is ~PHP 2,430. |
+| UES-E3 | Contribution margin per unit | ~PHP 7,570/mo (cash-COGS basis) | Green | UES-E1 minus UES-E2. ~PHP 6,570 on the support-loaded basis. |
+| UES-E4 | Gross margin % | ~84% (cash COGS); ~73% support-loaded | Green | Healthy SaaS gross margin; the driver is OCR page volume (Azure DI), which is a per-tenant TBD |
 | UES-E5 | Fully-loaded CAC | ~PHP 25,000/tenant (illustrative) | Yellow | **TBD**: measured over tenants #2..#4 onboarding. Early motion is reference-led (low cash, high founder labor); this figure likely understates true founder time. Anchor CAC is near-zero marginal (design partner). |
-| UES-E6 | LTV (contribution-based) | ~PHP 294,000/tenant (illustrative) | Yellow | monthly contribution PHP 7,350 / churn 2.5%/mo (illustrative). **TBD**: churn is unproven; LTV moves directly with it |
+| UES-E6 | LTV (contribution-based) | ~PHP 302,800/tenant (illustrative) | Yellow | monthly contribution PHP 7,570 / churn 2.5%/mo (illustrative). **TBD**: churn is unproven; LTV moves directly with it |
 | UES-E7 | LTV:CAC ratio | ~12:1 (illustrative) | Yellow | Far above the 2.5:1 to 4:1 target. Read as a signal, not a trophy: either CAC understates founder labor, or the venture is under-investing in acquisition. Real ratio is TBD on E5 and E6 actuals |
-| UES-E8 | CAC payback (months) | ~3.4 months (illustrative) | Green | CAC PHP 25,000 / contribution PHP 7,350. Inside the bootstrapped <6-month gate even at the illustrative CAC |
+| UES-E8 | CAC payback (months) | ~3.3 months (illustrative) | Green | CAC PHP 25,000 / contribution PHP 7,570. Inside the bootstrapped <6-month gate even at the illustrative CAC |
 
 **Cohort view (preferred over blended averages):**
 
 | Cohort / Channel | CAC | LTV (contrib.) | LTV:CAC | Payback (mo) | Action |
 |------------------|-----|----------------|---------|--------------|--------|
 | Anchor (Almara, design partner, reference-led) | ~PHP 0 marginal (onboarding labor only) | high (retention is BRD-V2) | n/a (near-zero CAC) | ~0 | Prove BRD-V1 trusted billing in production, then use as reference |
-| Reference-led (tenants #2..#4) | ~PHP 25,000 (TBD) | ~PHP 294,000 (TBD) | ~12:1 (TBD) | ~3.4 (TBD) | Prove repeatability (BRD-V3), then scale if standardized |
+| Reference-led (tenants #2..#4) | ~PHP 25,000 (TBD) | ~PHP 302,800 (TBD) | ~12:1 (TBD) | ~3.3 (TBD) | Prove repeatability (BRD-V3), then scale if standardized |
 | Paid / cold outbound | not yet run | unknown | unknown | unknown | Hold until BRD-V1 is green; then gate at LTV:CAC >= 3 and payback <= 6 |
 
 **Red flags (stop scaling until fixed; UES-D1):**
@@ -158,14 +158,14 @@ Each row has a stable **ID** (`UES-E1`, `UES-E2`, ...), never renumbered. GTM pr
 | Cash on hand | ~PHP 150,000 | ~PHP 150,000 |
 | Monthly revenue (current) | ~PHP 9,000 (1 Growth tenant) | grows with tenant count |
 | Monthly fixed overhead | ~PHP 7,300 | ~PHP 67,300 (adds ~PHP 60,000 combined team stipend) |
-| Monthly variable spend | ~PHP 1,650 | ~PHP 1,650 per tenant |
-| Net monthly burn (pre-margin growth) | ~+PHP 50 (roughly breakeven) | negative until ~10 paying tenants |
-| **Operating cashflow (OCF)** | ~+PHP 50/mo: ops fund themselves at 1 tenant | negative until breakeven tenant count reached |
+| Monthly variable spend | ~PHP 1,430 | ~PHP 1,430 per tenant |
+| Net monthly burn (pre-margin growth) | ~+PHP 270 (comfortably breakeven) | negative until ~9 paying tenants |
+| **Operating cashflow (OCF)** | ~+PHP 270/mo: ops fund themselves at 1 tenant | negative until breakeven tenant count reached |
 | **Runway (months)** | effectively unbounded at the sweat-equity base (default-alive) | ~PHP 150,000 / net burn until tenants ramp |
 
 *OCF for early ventures: cash from tenants after variable API/infra costs, minus fixed overhead. Tracked alongside burn so the story is cash from operations, not capital alone (UES-D6). Actual OCF is a TBD until the anchor is billed in production.*
 
-**Default-alive check:** At the sweat-equity cost base (UES-F1 = 0), fixed cash overhead is only ~PHP 7,300/mo, so **1 to 2 paying tenants make the pilot default-alive.** The real test is the salaried scenario: with a ~PHP 60,000/mo combined stipend, breakeven moves to ~**10 paying tenants** (fixed PHP 67,300 / contribution PHP 7,350 = ~9.2). That tenant count, not the pilot, is the honest trigger for a raise or grant discussion (see §6).
+**Default-alive check:** At the sweat-equity cost base (UES-F1 = 0), fixed cash overhead is only ~PHP 7,300/mo, so **1 to 2 paying tenants make the pilot default-alive.** The real test is the salaried scenario: with a ~PHP 60,000/mo combined stipend, breakeven moves to ~**9 paying tenants** (fixed PHP 67,300 / contribution PHP 7,570 = ~8.9). That tenant count, not the pilot, is the honest trigger for a raise or grant discussion (see §6).
 
 *Runway = cash on hand / net monthly burn. Fixed overhead stays flat as tenants are added, which is how margins fund growth instead of new capital. The one line that breaks that is team salary, which is why it is called out separately.*
 
@@ -179,7 +179,7 @@ Each row has a stable **ID** (`UES-E1`, `UES-E2`, ...), never renumbered. GTM pr
 
 | Gate | Rule |
 |------|------|
-| New hire | Contribution margin must cover the fully-loaded cost within 12 months. At ~PHP 7,350 contribution/tenant, one hire at ~PHP 40,000/mo needs ~6 net-new paying tenants attributable to that hire inside a year |
+| New hire | Contribution margin must cover the fully-loaded cost within 12 months. At ~PHP 7,570 contribution/tenant, one hire at ~PHP 40,000/mo needs ~6 net-new paying tenants attributable to that hire inside a year |
 | Paid acquisition | Only channels with LTV:CAC >= 3 and payback <= 6 months, and only after BRD-V1 is green |
 | Tool / vendor | Must replace manual time or cut variable cost; fixed-overhead impact noted in UES-F#. Anything that raises COGS per tenant (for example a higher Azure DI tier) must be offset in price or volume |
 | Experiment (UES-D4) | Max cost <= expected annual contribution if success / 5, so ~PHP 17,600 for a one-tenant-win test; else do not run (or document the override) |
@@ -246,7 +246,7 @@ Each row has a stable **ID** (`UES-E1`, `UES-E2`, ...), never renumbered. GTM pr
 |----|-----|----------------------|------------------|---------|
 | UES-K1 | Revenue growth rate | MoM or YoY % | Positive MoM once tenants #2..#4 land | Pre-revenue (TBD) |
 | UES-K2 | Net revenue retention (NRR) | (starting MRR + expansion - churn) / starting MRR | > 100% (seat/module expansion within tenants; BRD-V2) | TBD (needs anchor expansion data) |
-| UES-K3 | Gross margin % | (revenue - COGS) / revenue | >= 75% | ~82% illustrative (UES-E4) |
+| UES-K3 | Gross margin % | (revenue - COGS) / revenue | >= 75% | ~84% illustrative (UES-E4) |
 | UES-K4 | LTV:CAC | UES-E7 | >= 3:1 | ~12:1 illustrative (TBD) |
 | UES-K5 | CAC payback (months) | UES-E8 | <= 6 | ~3.4 illustrative (TBD) |
 | UES-K6 | Burn multiple | net burn / net new ARR | < 2x | TBD (needs booked ARR) |
@@ -260,12 +260,12 @@ Maps the venture-building lifecycle (Ideate -> Build -> Deploy -> Scale) to FMD 
 
 | Stage | FMD phase | Gate (UES numbers / criteria) | Status |
 |-------|-----------|-------------------------------|--------|
-| **Ideate** | Phase 0 (IDEA, SCRUTINY, BRD, UES §0-§5) | Unit defined (one paying tenant); doctrine D1/D5/D6 drafted; niche and moat hypothesis stated (UES-M2); VALIDATION kill criteria pending (Wave H per index) | Nearly complete (VALIDATION deferred) |
-| **Build** | Phases 1-4 (PRD -> BUILD) | Contribution margin positive on paper (UES-E3 ~PHP 7,350, done); fixed-overhead ledger drafted (§2, done); OCF path stated (§2, done) | In progress |
+| **Ideate** | Phase 0 (IDEA, SCRUTINY, BRD, UES §0-§5) | Unit defined (one paying tenant); doctrine D1/D5/D6 drafted; niche and moat hypothesis stated (UES-M2); VALIDATION kill criteria resolved (all four signals read "Go", [val-arkilaunch.md](val-arkilaunch.md) §4) | Complete |
+| **Build** | Phases 1-4 (PRD -> BUILD) | Contribution margin positive on paper (UES-E3 ~PHP 7,570, done); fixed-overhead ledger drafted (§2, done); OCF path stated (§2, done) | In progress |
 | **Deploy** | OPS + Production Readiness Gate | UES-E7 green/yellow; runway >= 6 months (sweat-equity base clears this); default-alive path documented; anchor billed in production (BRD-M1) | Not started |
 | **Scale** | GTM + WRAP | LTV:CAC >= 2.5:1; payback <= 6 months; growth spend <= cumulative contribution margin; BRD-V3 repeatability proven | Not started |
 
-**Current stage:** Ideate, transitioning to Build. Phase 0 docs (IDEA, SCRUTINY, BRD, this UES) are in place; the PRD is next (Wave C per [index](index.md)).
+**Current stage:** Ideate complete, in Build. Phase 0 docs (IDEA, SCRUTINY, BRD, this UES, VALIDATION) are in place; the PRD and full technical suite (SDD, RFCs, DSD, QAD, SAD, BUILD, CLR, AIA, OPS) exist and are in this same Draft state, pending implementation.
 
 **Next stage gate:** Before Deploy, the anchor must run core modules in production (BRD-M1) with the reconciliation gate trusted (BRD-M2/M3), and the first real UES-E5 (CAC) and churn readings must replace the illustrative figures here so UES-E7 and UES-E8 move from Yellow to a measured Green/Red.
 

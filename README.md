@@ -1,6 +1,6 @@
 # ArkiLaunch
 
-[![License](https://img.shields.io/badge/License-TBD-lightgrey.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Proprietary%20(pending)-lightgrey.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Docs%20Complete-green)](docs/index.md)
 [![Stack](https://img.shields.io/badge/Stack-React%20%2B%20NestJS%20%2B%20Postgres-black)](docs/build-arkilaunch.md)
 [![Docs: FMD](https://img.shields.io/badge/Docs-FMD-333)](docs/index.md)
@@ -11,11 +11,12 @@ Built with the Foundational Matrix Documents (FMD) workflow: IDEA to build to pi
 
 ## Quick start
 
-```bash
-# Implementation has not started; this repo currently holds the FMD documentation suite.
-# Read the docs first:
-python fmd/scripts/check.py docs --scale full
-```
+Implementation has not started; this repo currently holds the FMD documentation suite. Read the docs first:
+
+1. Start at [docs/index.md](docs/index.md) for the manifest and current Health Check status.
+2. Read in the order [BUILD §1](docs/build-arkilaunch.md) sets out (index -> SCRUTINY -> BRD -> PRD -> SDD -> RFCs -> DSD -> QAD -> CLR -> AIA -> OPS -> BUILD).
+
+This repo does not vendor the FMD engine's own tooling (`fmd/scripts/*.py`); doc validation and materialization here are done by hand, per [docs/index.md](docs/index.md) §4.
 
 **Planned stack (pinned, verified 2026-07-25):** React 19.2 + Vite 8, NestJS 11.1 on Node 24 LTS, Drizzle ORM + Supabase Postgres, Azure AI Document Intelligence (OCR), PayMongo (payments), Open-Meteo (weather), Azure Container Apps + Vercel + Cloudflare. See [BUILD](docs/build-arkilaunch.md) §3.
 
@@ -47,7 +48,7 @@ ArkiLaunch Team, Almara Construction capstone.
 
 ## License
 
-TBD; see [LICENSE](LICENSE).
+All rights reserved pending resolution of capstone IP ownership (CLR escalation flag E10); see [LICENSE](LICENSE) and [docs/clr-arkilaunch.md](docs/clr-arkilaunch.md).
 
 ---
 

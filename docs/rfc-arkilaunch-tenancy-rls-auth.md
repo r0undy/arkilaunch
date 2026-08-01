@@ -30,7 +30,7 @@ This RFC settles both. It defines the tenancy model (shared schema, pooled, isol
 
 **Reference in PRD/SDD:**
 
-This RFC implements PRD-F7 (Multi-Tenant Access, Identity & RBAC) and the acceptance criteria in US-07. It is the deep design for the tenant isolation described in SDD §3 ("Tenant isolation (shared schema + RLS)", "The GUC pattern") and the authorization model in SDD §5. Traced SDD components: the NestJS API and RBAC guard (SDD §2 API layer), the Supabase-managed Postgres data tier (SDD §2 data layer), and the 26 tenant-owned tables in the SDD §3 master catalog.
+This RFC implements PRD-F7 (Multi-Tenant Access, Identity & RBAC) and the acceptance criteria in US-07. It is the deep design for the tenant isolation described in SDD §3 ("Tenant isolation (shared schema + RLS)", "The GUC pattern") and the authorization model in SDD §5. Traced SDD components: the NestJS API and RBAC guard (SDD §2 API layer), the Supabase-managed Postgres data tier (SDD §2 data layer), and the 28 tenant-owned tables in the SDD §3 master catalog (26 there, plus `refresh_tokens` added here and `pricing_parameters` added by RFC-3).
 
 **Success criteria** (each maps to a US-07 acceptance criterion):
 
@@ -91,7 +91,7 @@ sequenceDiagram
 **Architecture changes:**
 
 - Add a dedicated Postgres request role (`app_authenticated`): `LOGIN`, `NOBYPASSRLS`, not the owner of any table. The API connects as this role for every request-path query.
-- Enable and **force** row-level security on all 27 tenant-owned tables (the 26 in SDD §3 plus `refresh_tokens` introduced here), each with a tenant-isolation policy.
+- Enable and **force** row-level security on all 28 tenant-owned tables (the 26 in SDD §3, plus `refresh_tokens` introduced here and `pricing_parameters` from RFC-3), each with a tenant-isolation policy.
 - Add a request-scoped tenant transaction wrapper (`withTenant`) in the NestJS data layer that sets `app.current_tenant_id`, `app.current_user_id`, and `app.current_role` with `local = true` before any query runs.
 - Add `refresh_tokens` (token family lineage, hashed tokens) to back rotation and reuse detection.
 - Add a `TenantContextGuard` (populates request context from JWT claims) and a `PermissionsGuard` (RBAC over the global catalog), applied globally to `/api/v1/**` except the public and auth routes.
@@ -103,9 +103,9 @@ sequenceDiagram
 
 ### Data Model Changes
 
-Most of the schema already exists in SDD §3 (32 tables, 26 tenant-owned). This RFC adds one table, adds two Postgres roles, and attaches an RLS policy to every tenant-owned table. It does not restate the SDD column tables.
+Most of the schema already exists in SDD §3 (35 tables, 28 tenant-owned, folded in together with RFC-3's additions). This RFC adds one table, adds two Postgres roles, and attaches an RLS policy to every tenant-owned table. It does not restate the SDD column tables.
 
-**New table: `refresh_tokens`** (tenant-owned; formalizes SDD §5 "token families are stored in Postgres"). This is the 27th tenant-owned, RLS-protected table; fold it into the SDD §3 master catalog on the SDD's next revision.
+**New table: `refresh_tokens`** (tenant-owned; formalizes SDD §5 "token families are stored in Postgres"). Cataloged as table 33 of 35 in the SDD §3 master catalog.
 
 ```
 CREATE TABLE refresh_tokens (
@@ -143,7 +143,7 @@ GRANT app_authenticated TO <connection role used by the API>;
 -- service_role already exists on Supabase (BYPASSRLS); it never serves a user request.
 ```
 
-**RLS: enabled and forced on every tenant-owned table.** `FORCE ROW LEVEL SECURITY` is load-bearing: without it, the table owner is exempt from its own policies, which is exactly the hole that lets a migration-owned connection read everything. The canonical policy, applied to all 27 tenant-owned tables (generated in the migration, one per table):
+**RLS: enabled and forced on every tenant-owned table.** `FORCE ROW LEVEL SECURITY` is load-bearing: without it, the table owner is exempt from its own policies, which is exactly the hole that lets a migration-owned connection read everything. The canonical policy, applied to all 28 tenant-owned tables (generated in the migration, one per table). **This exact five-element form (`FORCE`, `TO app_authenticated`, `USING`, `WITH CHECK`, `missing_ok`) is mandatory for every tenant-owned table added by any future RFC or migration, with no partial-form exception:**
 
 ```
 -- pattern applied to equipment, users, edtr, invoices, ... (all tenant-owned)
@@ -397,7 +397,7 @@ Not applicable. This feature has no AI/LLM component; identity and tenant isolat
 |--------|-------------|------|
 | `RFC1-01` | Migration EXPAND: create `tenants`, `subscription_plans`, `subscriptions`, `refresh_tokens`; add nullable `tenant_id` to tenant-owned tables; create `app_authenticated` role | M |
 | `RFC1-02` | Backfill: seed Almara anchor tenant + `platform_admin` role + permission catalog; `UPDATE ... SET tenant_id` | S |
-| `RFC1-03` | Migration CONTRACT: `tenant_id NOT NULL` + FKs; composite `(tenant_id, natural_key)` uniques; ENABLE + FORCE RLS + `tenant_isolation` policy on all 27 tables; leading `tenant_id` indexes | L |
+| `RFC1-03` | Migration CONTRACT: `tenant_id NOT NULL` + FKs; composite `(tenant_id, natural_key)` uniques; ENABLE + FORCE RLS + `tenant_isolation` policy on all 28 tables; leading `tenant_id` indexes | L |
 | `RFC1-04` | `withTenant` transaction wrapper + Drizzle `pgPolicy` in-schema; data layer refuses raw `db` access to tenant tables | M |
 | `RFC1-05` | Passport-JWT strategy: RS256 keypair, algorithm allowlist, `sub`/`tenant_id`/`role` claims; `POST /auth/login` (+ TOTP) with argon2id verify | M |
 | `RFC1-06` | Refresh rotation + reuse detection: `POST /auth/refresh`, family revoke, `refresh_reuse_detected` audit row | M |
@@ -418,7 +418,7 @@ Not applicable. This feature has no AI/LLM component; identity and tenant isolat
 - **Algorithm-confusion abuse.** Present a token signed `HS256` with the public key as secret, and a token with `alg: none`. Both rejected by the allowlist.
 - **Pooler GUC leakage.** Open two transactions on the same physical connection through the Supavisor pooler; assert the second cannot read the first's `app.current_tenant_id`. Proves `local = true` scoping.
 
-Forward-link: these cases become QAD abuse-path rows for PRD-F7 (auth, cross-tenant, role-escalation), and two SAD agents own the standing guards: **`tenant-isolation-checker`** (asserts RLS enabled + forced + policy on every tenant-owned table, and scans for tenant-table queries that skip `withTenant`) and **`migration-rls-guardian`** (blocks any migration that adds a tenant-owned table without a `tenant_id`, a policy, and a leading-`tenant_id` index in the same migration). Both materialize when the SAD is authored.
+Forward-link: these cases become QAD abuse-path rows for PRD-F7 (auth, cross-tenant, role-escalation), and two SAD agents own the standing guards: **`tenant-isolation-checker`** (asserts RLS enabled + forced + policy on every tenant-owned table, and scans for tenant-table queries that skip `withTenant`) and **`migration-rls-guardian`** (blocks any migration that adds a tenant-owned table without a `tenant_id`, the full five-element policy, and a leading-`tenant_id` index in the same migration). Both are materialized to `.claude/agents/tenant-isolation-checker.md` and `.claude/agents/migration-rls-guardian.md` per [sad-arkilaunch.md](sad-arkilaunch.md) SAD-A1/SAD-A2.
 
 ---
 

@@ -61,7 +61,7 @@
 
 ## 0.5 Concept Visuals (from IDEA)
 
-*Carried forward from [idea-arkilaunch.md](idea-arkilaunch.md) §5. Lo-fi frames are **not yet generated**: image-generation tooling is unavailable this session. The visual direction below is the approved brief for those frames when tooling lands. No image asset is claimed to exist.*
+*Carried forward from [idea-arkilaunch.md](idea-arkilaunch.md) §5. Lo-fi frames are **not yet generated**: image-generation tooling is unavailable this session (the open gap tracked as [scrutiny G-9](scrutiny-arkilaunch.md)). The visual direction below is the approved brief for those frames when tooling lands. No image asset is claimed to exist.*
 
 **IDEA link:** [idea-arkilaunch.md](idea-arkilaunch.md) §5
 
@@ -127,6 +127,7 @@ Palette is high-contrast by construction, verified for WCAG 2.2 AA at the pairin
 | `--color-text` | `#10151B` | Body copy, primary numerals (steel black). 16.8:1 on `--color-bg`. |
 | `--color-text-muted` | `#45566A` | Secondary text, labels, table meta. 6.7:1 on `--color-bg`. |
 | `--color-text-inverse` | `#F5F2EB` | Text on dark and on `--color-accent`/`--color-error` fills. |
+| `--input-focus-ring` | `var(--color-accent)` (`#1E5F8C`) | The single focus-ring color for every focusable element (inputs, buttons, links, tab stops); rendered `2px solid`, `2px` offset. Never removed, never color-only (also relies on the visible offset, not hue alone). |
 | `--color-success` | `#1F7A3D` | Confirmations, "logs match", healthy fleet. White text 5.4:1. |
 | `--color-warning` | `#C9A100` | Caution, low-confidence, stale data. **Dark text only.** |
 | `--color-error` | `#C42B1C` | Errors, destructive actions, blocking states. White text 5.6:1. |
@@ -171,7 +172,7 @@ Signal hues (success/warning/error/weather/recon) hold their hue in dark theme; 
 
 ### 2.2 Logo System
 
-*Source for BRAND.md §3. Rules, not just files. Assets are not yet produced this session; the direction below is the brief.*
+*Source for BRAND.md §2. Rules, not just files. Assets are not yet produced this session; the direction below is the brief.*
 
 **Direction:** an "A" set as a **gauge needle / dispatch chevron** inside a bezelled square lamp, in signal amber on steel black. It should read as an instrument indicator, not a startup swoosh. Wordmark "ArkiLaunch" set in the condensed display face (see §2.3), all-caps, tight tracking, dispatch-board cadence.
 
@@ -211,7 +212,7 @@ Chosen for small-size legibility on a low-end Android and for provenance: **IBM 
 
 ### 2.4 Imagery & Illustration
 
-*Source for BRAND.md §6.*
+*Source for BRAND.md §3.*
 
 **Style:** documentary, not stock. Real equipment in real Luzon yards and sites, shot in available light; the grit stays. Where photography is unavailable, use flat two-color diagrams (steel + amber) in the instrument-panel idiom, not soft rounded 3D blobs. The single most important "image" in the product is not decorative at all: it is the **user's own handwritten EDTR**, shown at full fidelity beside the extracted data.
 
@@ -265,26 +266,26 @@ No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the mo
 
 ### Buttons
 
-| Variant | Background | Text | Border | Hover | Disabled |
-|---------|-----------|------|--------|-------|----------|
-| Primary | `--color-primary` (amber) | `#10151B` (dark, required) | none | `--color-primary-hover` | 40% opacity, `not-allowed` |
-| Secondary | transparent | `--color-accent` | 1px `--color-accent` | `--color-surface-sunk` bg | 40% opacity |
-| Ghost | transparent | `--color-text` | none | `--color-surface-sunk` bg | 40% opacity |
-| Destructive | `--color-error` | white | none | darkened error `#A3241A` | 40% opacity |
-| Approve (recon) | `--color-success` | white | none | darkened `#186031` | 40% opacity; disabled until logs match + fields resolved (S8) |
+| Variant | Background | Text | Border | Hover | Focus | Disabled |
+|---------|-----------|------|--------|-------|-------|----------|
+| Primary | `--color-primary` (amber) | `#10151B` (dark, required) | none | `--color-primary-hover` | `--input-focus-ring`, 2px, 2px offset | 40% opacity, `not-allowed` |
+| Secondary | transparent | `--color-accent` | 1px `--color-accent` | `--color-surface-sunk` bg | `--input-focus-ring`, 2px, 2px offset | 40% opacity |
+| Ghost | transparent | `--color-text` | none | `--color-surface-sunk` bg | `--input-focus-ring`, 2px, 2px offset | 40% opacity |
+| Destructive | `--color-error` | white | none | darkened error `#A3241A` | `--input-focus-ring`, 2px, 2px offset | 40% opacity |
+| Approve (recon) | `--color-success` | white | none | darkened `#186031` | `--input-focus-ring`, 2px, 2px offset | 40% opacity; disabled until logs match + fields resolved (S8) |
 
 **Border radius:** `--radius-sm` (4px).
 **Padding:** `12px 20px` desktop; `14px 20px` on the timekeeper console (larger for gloved/field taps).
 **Font:** IBM Plex Sans 600, 15px.
 **Min size:** 44x44px everywhere; 48x48px on the timekeeper console (S21) and any outdoor/field action (§6).
-**Focus:** `--input-focus-ring` (see below); never removed.
+**Focus:** `--input-focus-ring` (§2.1); never removed.
 **Loading:** label swaps to a static "Working..." with a small non-looping spinner; the button stays its own size (no layout shift). Amber primary must never go white-on-amber even while loading.
 
 ### Inputs & Forms
 
 - Border: `1px solid --color-border`; `--color-border-strong` on hover.
 - Border radius: `--radius-sm` (4px).
-- Focus ring: `2px solid --color-accent`, `2px` offset. Always visible, keyboard and pointer alike.
+- Focus ring: `2px solid --input-focus-ring` (§2.1), `2px` offset. Always visible, keyboard and pointer alike.
 - Error state: `--color-error` border plus error text below in `--color-error`, plus an icon (never color-only; §6). Message is specific ("Diesel price is 3 days old", not "Invalid").
 - Padding: `12px 14px`; label above the field (never placeholder-as-label).
 - Numeric inputs (hours, km, rates): IBM Plex Mono, right-aligned, `inputmode="decimal"`, tabular.
@@ -314,20 +315,21 @@ No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the mo
 
 ### 4.1 Composition Patterns
 
-*Source for DESIGN.md §3. Multi-component flows aligned to PRD §5.1/§5.2. Each names its screens and its four states (empty/loading/error/success).*
+*Source for DESIGN.md §4.1 (same number; DESIGN keeps DSD's own §2-§8 top-level numbering). Multi-component flows aligned to PRD §5.1/§5.2. Each names its screens and its four states (empty/loading/error/success); the Empty state and Loading state rows are the cross-cutting patterns those four-state columns reference, so they define the template rather than repeating it.*
 
 | Pattern | Components | When to use (screens) | Do / Don't |
 |---------|------------|-----------------------|------------|
 | **Data-dense fleet table** | Sticky header + Status Pill + Gauge Readout cells + row actions + `overflow-x` scroll container + density toggle | S10 Fleet Inventory, S11 Equipment Detail, S15/S20 Reports, S16 Bookings | **Do:** freeze the header on scroll; right-align mono numerics with tabular figures; keep row height >= 44px; put actions as visible buttons, not hover-reveal; scroll wide tables inside their own container. Empty: "No equipment yet" + primary "Add equipment". Loading: static row placeholders (no shimmer). Error: inline banner + retry, keep last-good rows if cached. Success: rows with Status Pills. **Don't:** hairline dividers, hover-only actions, sub-13px text, horizontal page scroll. |
+| **Project sites & deployment** | Site list/map pins + lat/long fields + deploy/return equipment picker + conflict banner | S12 Project Sites & Deployment (PRD-F4) | **Do:** show a clear conflict message when deploying an already-assigned unit; keep site lat/long editable inline for the weather poll (S13/S14). Empty: "No sites yet" + primary "Add a site". Loading: static placeholder rows. Error: deploy conflict shows the unit's current site/assignment, not a generic error. Success: unit shows `deployed` Status Pill at the new site. **Don't:** allow a silent double-deploy; hide which site a unit is already at. |
 | **EDTR scan + reconciliation review (Evidence Split View)** | Original image panel (zoom/pan **with button controls**, not drag-only) + extracted-fields form + Confidence Chips + two-log delta bar (Log A vs Log B vs tolerance) + Hazard Divider on discrepancy + Approve/Reject | S7 EDTR Capture, S8 Reconciliation Review Queue | **Do:** show the handwritten image at full fidelity beside the fields, always; highlight below-gate fields loudly; show `delta_hours` vs tolerance in mono; disable Approve until all fields resolved and logs match; on hard-fail route to manual entry with the image still shown. Empty: "Queue clear". Loading (OCR async): "Queued / Processing" state, UI never blocks. Error: unreadable -> manual entry, never a fabricated value. Success: `--recon-approved` teal + evidence citation. **Don't:** hide the source image, auto-accept a below-gate field, let a discrepancy deduct. |
 | **Quotation builder** | Rate-card selector + km input + live diesel Gauge Readout (with date + staleness label) + computed line items + sub-60s target + printable preview | S5 Quotation Builder, S6 Quote Preview & Print | **Do:** compute live as inputs change; label the diesel price with its date; on stale price show an amber staleness warning and still price (never silently against unknown); produce a clean print stylesheet for S6. Empty: prefilled defaults + "Pick equipment". Loading: price fetch skeleton on the diesel tile only. Error (stale): warning banner, last-known price used. Success: printable quote, `quote_generated` fired with latency. **Don't:** block the whole form on the price fetch; hide the price date. |
 | **Weather advisory banner** | Weather Banner (PAGASA scale) + site name + condition + timestamp + stale marker + link to incident log | S4 Dashboard strip, S13 Weather Advisories, S14 Liability Incident Log | **Do:** color from the weather scale with a label and icon (never color-only); mark cached readings `--weather-stale`; link a red advisory to its auto-logged incident. Empty: "All sites clear". Loading: skeleton strip. Error (API down): serve cached, mark stale, do not drop the row. Success: live advisory. **Don't:** use red for a stale/unknown state; imply a live reading when it is cached. |
 | **Booking flow** | Catalog card grid + cart + availability guard + PayMongo redirect + Transaction Tracker | S22 Catalog Browse, S23 Cart & Checkout, S24 Transaction Tracker | **Do:** compress catalog images for 3 to 5 Mbps; re-check availability at checkout; redirect to PayMongo hosted checkout (store only the returned reference/status); reconcile status via webhook, not the browser redirect alone. Empty: "This yard has no listed equipment yet". Loading: card placeholders. Error: unavailable -> offer alternatives, never overbook; payment fail -> booking stays pending with retry. Success: tracker shows order/payment/rental status. **Don't:** collect card data in-app, trust the redirect for final status. |
 | **KYC review panel** | Original doc image + extracted SEC/TIN fields + Confidence Chips + portal-confirmation checklist (SEC + BIR) + Hazard Divider until verified + activate/reject | S3 Tenant Registration & OCR KYC, S17 KYC Verification Queue | **Do:** show extracted SEC/TIN beside the source doc; require the admin to confirm against SEC and BIR portals; keep tenant unverified until human confirmation; make plain the CAPTCHA-blocked step is manual by design. Empty: "No pending tenants". Loading: extraction queued. Error (low confidence / no portal match): stay unverified, no production access. Success: tenant activated, `tenant_onboarded` fired. **Don't:** auto-verify, grant access on extraction alone, show raw SEC/TIN in logs/analytics. |
-| **Nav shell (role-aware)** | Top app bar (tenant mark + active-tenant badge + notifications + account) + left sidebar (admin/owner) / bottom nav (timekeeper) / top nav (customer) | All authed screens per PRD §5.2 | **Do:** lead with the tenant's mark; badge the active tenant; surface review-queue count, PM alerts, and weather advisories in notifications; strip the sidebar on the timekeeper console and during onboarding. **Don't:** show cross-tenant data, put ArkiLaunch's mark above the tenant's inside their workspace. |
-| **Form + validation** | Labeled inputs + inline errors + specific messages + submit with loading | S2 Login, S18 Rate Cards, S19 Users & Roles | **Do:** label above field, specific error text with icon, preserve entered data on failure. **Don't:** placeholder-as-label, color-only errors, generic "Invalid input". |
-| **Empty state** | Icon (two-color diagram) + one plain sentence + one primary action | Every list/queue screen | **Do:** name the real thing ("No EDTRs in the queue"), offer the next action. **Don't:** generic gray blob illustration, cute copy that wastes the moment. |
-| **Loading state** | Layout-preserving placeholders + static "Loading..." | All async screens | **Do:** reserve layout to avoid shift; static or single opacity-pulse. **Don't:** looping shimmer (battery/bandwidth); never block the UI while OCR runs (async). |
+| **Nav shell (role-aware)** | Top app bar (tenant mark + active-tenant badge + notifications + account) + left sidebar (admin/owner) / bottom nav (timekeeper) / top nav (customer) | All authed screens per PRD §5.2 | **Do:** lead with the tenant's mark; badge the active tenant; surface review-queue count, PM alerts, and weather advisories in notifications; strip the sidebar on the timekeeper console and during onboarding. Empty: no badge count shown when a queue is clear (not a zero). Loading: nav shell renders immediately from cached session state; badge counts populate async without blocking the shell. Error: a failed badge-count fetch shows no badge rather than a stale or wrong number. Success: badges and notifications reflect live counts. **Don't:** show cross-tenant data, put ArkiLaunch's mark above the tenant's inside their workspace. |
+| **Form + validation** | Labeled inputs + inline errors + specific messages + submit with loading | S2 Login, S18 Rate Cards, S19 Users & Roles | **Do:** label above field, specific error text with icon, preserve entered data on failure. Empty: fields show their defaults, not placeholder-as-label. Loading: submit button shows the "Working..." state (§4 Buttons); fields stay editable-locked, not hidden. Error: inline per-field message, entered data preserved. Success: confirmation state, form clears or navigates per screen. **Don't:** placeholder-as-label, color-only errors, generic "Invalid input". |
+| **Empty state** | Icon (two-color diagram) + one plain sentence + one primary action | Every list/queue screen | **Do:** name the real thing ("No EDTRs in the queue"), offer the next action; this pattern IS the empty state for every other pattern's Empty column, so it defines the visual template rather than needing its own separate empty/loading/error/success set. **Don't:** generic gray blob illustration, cute copy that wastes the moment. |
+| **Loading state** | Layout-preserving placeholders + static "Loading..." | All async screens | **Do:** reserve layout to avoid shift; static or single opacity-pulse; this pattern IS the loading state referenced by every other pattern's Loading column. **Don't:** looping shimmer (battery/bandwidth); never block the UI while OCR runs (async). |
 
 ---
 
@@ -359,7 +361,7 @@ Target: **WCAG 2.2 Level AA**, built for gloved hands, outdoor light, low-end An
 - **Never color-only:** every status (weather scale, reconciliation scale, fleet status) carries a text label and an icon or shape. A red/orange PAGASA banner is still legible to a color-blind user and in harsh sun.
 - **Touch targets (WCAG 2.2 SC 2.5.8):** 44x44px minimum app-wide; **48x48px** on the timekeeper console (S21) and any field/outdoor action, for gloved and one-handed use.
 - **Dragging alternatives (SC 2.5.7):** the Evidence Split View image zoom/pan offers button controls (zoom +/-, fit, reset), not drag-only.
-- **Focus visible + not obscured (SC 2.4.7, 2.4.11):** 2px accent focus ring, always present; sticky headers and the floating action bar must not cover the focused element.
+- **Focus visible + not obscured (SC 2.4.7, 2.4.11):** `--input-focus-ring`, 2px, always present (§2.1); sticky headers and the floating action bar must not cover the focused element.
 - **Keyboard:** every interactive element reachable and operable; reconciliation Approve/Reject, table row actions, and modal controls fully keyboard-driven; logical tab order.
 - **Screen reader:** semantic HTML first; ARIA only to fill gaps. Confidence and delta values are announced ("active hours 8.0, confidence 0.87, below threshold, needs review"). The handwritten image has a meaningful alt ("original EDTR, site Bagumbayan, 2026-07-20").
 - **Offline-tolerant states:** queued uploads, cached weather (stale-marked), draft quotes, and in-progress EDTR entry survive a dropped connection and resume; a failed upload never loses entered data (PRD US-02).
@@ -388,7 +390,7 @@ VISUAL_DENSITY:     8   (control-room, data-dense; density earned by legibility 
 
 *Design-time note: this DSD precedes the build (PRD M2 Design precedes M3 Development). No `src/` exists yet, so the audit and detector below are set as **launch gates and targets**, not as results claimed to have run. They are executed against `src/` in M3/M4 before anchor go-live.*
 
-### Phase: Start; Init
+### 8.1 Phase: Start; Init
 
 ```bash
 npx impeccable install
@@ -399,7 +401,7 @@ npx impeccable install
 
 - [ ] `/impeccable init` run; PRODUCT.md committed; DSD §0 updated; BRAND.md / DESIGN.md materialized. **Status: pending** (DSD §0 authored here is the input to it).
 
-### Phase: Polish; Audit Score
+### 8.2 Phase: Polish; Audit Score
 
 Run before handoff/launch:
 ```
@@ -416,7 +418,7 @@ Run before handoff/launch:
 
 **FMD launch gate:** no open P0 or P1, every dimension >= 3. **Status: not yet run** (no build). Blockers, if any, are recorded here at M4.
 
-### Phase: Polish; Detected Anti-Patterns
+### 8.3 Phase: Polish; Detected Anti-Patterns
 
 `npx impeccable detect src/` (runs at M3/M4). Anticipated category-slop watch-list, pre-empted by design:
 
@@ -431,7 +433,7 @@ Run before handoff/launch:
 
 ### 8.4 Application Examples
 
-*Source for BRAND.md §8.*
+*Source for BRAND.md §4.*
 
 | Surface | Do | Don't |
 |---------|----|-------|
@@ -443,7 +445,7 @@ Run before handoff/launch:
 
 **Mockup paths:** `docs/assets/concept/` (to be generated; §0.5).
 
-### Phase: Maintain; Document
+### 8.5 Phase: Maintain; Document
 
 ```
 /impeccable document
@@ -452,7 +454,9 @@ Regenerates DESIGN.md from shipped tokens/components after each significant ship
 
 **Last documented:** N/A until first run.
 
-### Section 0 Compliance Check
+### 8.6 Section 0 Compliance Check
+
+*Source for BRAND.md §5.*
 
 - [x] **Relatable**; every color, typeface, and layout choice traces to the gauge-cluster + dispatch-board + PAGASA + Filipino-MSME provenance (§0 Aesthetic Provenance), not to a generic default. Amber/steel signal, PAGASA weather scale, mono gauge readouts, 360px cheap-Android baseline.
 - [x] **Human**; deliberate idiosyncrasy documented: **the gauge rule** (every operational number in tabular mono, aligned like an instrument face) plus the **Hazard Divider** used only where money or safety is at stake. An AI default would have reached for one uniform sans and decorative dividers.
@@ -464,16 +468,16 @@ Regenerates DESIGN.md from shipped tokens/components after each significant ship
 
 | Target | File | Template | Contents (from DSD) |
 |--------|------|----------|---------------------|
-| Canonical | `docs/dsd-arkilaunch.md` | [DSD_Template.md](../fmd/templates/DSD_Template.md) | Edit here (this document). |
-| Brand (verbal) | `BRAND.md` (project root) | [BRAND_Template.md](../fmd/templates/BRAND_Template.md) | §0 to §1, §2.2 logo, §2.4 imagery, §8.4 examples, voice link, §9 governance. |
-| Design (visual) | `DESIGN.md` (project root) | [DESIGN_Template.md](../fmd/templates/DESIGN_Template.md) | §2 to §5 tokens/components/motion, §4.1 patterns, §6 to §7, §8 audit summary. |
+| Canonical | `docs/dsd-arkilaunch.md` | DSD_Template.md (external FMD engine template; not vendored in this repo) | Edit here (this document). |
+| Brand (verbal) | `BRAND.md` (project root) | BRAND_Template.md (external FMD engine template) | §0 to §1, §2.2 logo, §2.4 imagery, §8.4 examples, §8.6 Section 0 Compliance Check, voice link, §9 governance. |
+| Design (visual) | `DESIGN.md` (project root) | DESIGN_Template.md (external FMD engine template) | §2 to §5 tokens/components/motion (excludes §2.2 logo, §2.4 imagery, which are BRAND's), §4.1 patterns, §6 to §7, §8.1 to §8.3 and §8.5 audit summary (excludes §8.4 and §8.6, which are BRAND's; renumbered contiguously in DESIGN as its own §8.1 to §8.4), Asset Governance as DESIGN's own final §9. |
 | Impeccable context | `PRODUCT.md` (project root) | (optional) | Audience + anti-references from `/impeccable init`; merge into §0. |
 
 `BRAND.md` and `DESIGN.md` are **materialized from this DSD**, never hand-edited as source of truth (same pattern as BUILD -> `AGENTS.md`, SAD -> `.claude/agents/*`). Edit the DSD, then re-materialize both. This document does **not** touch `docs/index.md` (the orchestrator owns the manifest).
 
 ### Asset Governance
 
-*Source for BRAND.md §9 and DESIGN.md §7.*
+*Source for BRAND.md §7 and DESIGN.md §9 (each materializes its own copy; DESIGN's own §7 is Taste-Skill Settings, unrelated).*
 
 **Brand asset version:** `1.0.0` (major = rebrand, minor = new variant, patch = file fix). This is version `0.1` of the DSD; asset production begins at DSD lock.
 **Naming:** kebab-case; `logo-primary.svg`, `logo-mark.svg`, `logo-stacked.svg`, `concept-s4-dashboard.png`.
@@ -488,15 +492,15 @@ Regenerates DESIGN.md from shipped tokens/components after each significant ship
 - [x] §0 Mode is selected (Product Mode, with the S1/S22 Brand-Mode exception documented)
 - [x] Section 2 has exact HEX values (not "a muted blue"); weather-risk and reconciliation semantic scales defined
 - [x] Section 3 spacing scale is consistent (all multiples of the 4px base unit)
-- [x] Section 4 defines component states including Disabled and Focus; domain components and §4.1 patterns tie to PRD S1 to S25
+- [x] Section 4 defines component states including Disabled and Focus (Buttons table has an explicit Focus column); domain components and §4.1 patterns tie to PRD S1 to S25, including S12 (Project sites & deployment pattern)
 - [x] Section 7 taste-skill dials set (4 / 2 / 8) and variant chosen (output-skill)
 - [x] WCAG 2.2 AA contrast verified for primary text/background and every signal pairing (§2.1, §6)
 - [ ] Impeccable audit run; set as launch gate/target because no `src/` exists yet (design precedes build; executed at M3/M4)
 - [x] §0 Compliance Check (in §8) completed; all three rules verified against the final design
 - [ ] This document exists in code as CSS variables / Tailwind config; pending build (M2 to M3 deliverable)
-- [ ] BRAND.md and DESIGN.md materialized at project root; pending (materialize on DSD lock; not hand-edited as source)
+- [x] BRAND.md and DESIGN.md materialized at project root per the §9 contract (contiguous own-numbering, no duplicated §2 token blocks, BRAND carries the voice link); not hand-edited as source
 - [x] §2.2 logo system and §2.4 imagery filled (direction/brief; assets to produce at lock)
-- [x] §4.1 includes composition patterns for every real surface (fleet table, EDTR reconciliation, quotation, weather banner, booking, KYC)
+- [x] §4.1 includes composition patterns for every real surface (fleet table, project sites/S12, EDTR reconciliation, quotation, weather banner, booking, KYC, nav shell, form, empty/loading templates)
 - [x] §8.4 application examples filled for primary surfaces
 - [x] §0.5 concept visuals linked from IDEA §5; lo-fi frames recorded as not-yet-generated (no images claimed to exist)
 - [x] AGENTS hard bans applied (no em-dashes; no "modern/clean/seamless/elevate" filler); VOICE polish before lock

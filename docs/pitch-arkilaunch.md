@@ -116,6 +116,6 @@
 - [x] Named user / pain appears in Hook and Problem (the flooded office, the lone admin)
 - [x] Every judging criterion has a mapped beat (ISO 25010 + capstone rubric)
 - [x] Production Readiness Gate (§5) status stated honestly (docs complete; code pending)
-- [x] Demo script is rehearse-able in the slot; fallback recording exists
+- [x] Demo script is rehearse-able in the slot; fallback recording **scripted here (§3), not yet produced** (tracked as the same unchecked asset in [gtm-arkilaunch.md](gtm-arkilaunch.md) §5)
 - [x] AGENTS hard bans applied (no em-dashes); VOICE polish clean
 - [x] Next suggested doc: WRAP (after defense)

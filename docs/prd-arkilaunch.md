@@ -147,7 +147,7 @@ Acceptance Criteria:
 
 ## 5. App Flow & UX Intent
 
-**Design reference:** see [dsd-arkilaunch.md](dsd-arkilaunch.md) (pending; Wave D). Visual direction from IDEA §5: field-rugged, high-contrast, data-dense "control room for the yard," legible on a cheap Android over a 3 to 5 Mbps connection.
+**Design reference:** see [dsd-arkilaunch.md](dsd-arkilaunch.md), the Yardboard design system. Visual direction from IDEA §5: field-rugged, high-contrast, data-dense "control room for the yard," legible on a cheap Android over a 3 to 5 Mbps connection.
 
 ### 5.1 Screen Inventory
 
@@ -308,7 +308,24 @@ Every `BRD-M#` metric has at least one feeding event, wired at feature build tim
 **Supporting events (not tied to a BRD-M#):** `login_succeeded`, `two_factor_challenged`, `edtr_uploaded` (bytes, compressed), `weather_incident_logged`, `payment_deposit_completed` (reference only, no card data), `cross_tenant_access_denied`.
 
 **Naming convention:** snake_case `object_action`, past tense, no PII in property values (identifiers only; never card/account numbers, SEC/TIN raw strings, or ID images).
-**Analytics tool:** PostHog (self-host or a PH/EU-residency region to respect RA 10173), or a first-party `events` table on the Supabase Postgres. Final choice deferred to the SDD/OPS. TBD.
+**Analytics tool:** a first-party `events` table on Supabase Postgres, resolved in [OPS §2](ops-arkilaunch.md) (not PostHog; keeps PH-residency telemetry inside the existing RA 10173 boundary and adds no new sub-processor).
+
+### 5.7 Non-Functional Requirements (NFR)
+
+*Product-level NFRs a feature must meet to ship. The system-level target, measurement method, and alerting threshold for each are owned by the SDD and OPS; this section states the product-facing bar and traces it. Kept as a subsection here (not a renumbered top-level section) so `PRD §9` (rollback), `PRD §7` (AI spec), and `PRD §8` (dependencies) keep the section numbers already cited by 30+ cross-references across the suite.*
+
+| ID | Requirement | Product-facing target | Traces to |
+|----|-------------|------------------------|-----------|
+| `PRD-NFR1` | Accessibility | WCAG 2.2 Level AA on every authed screen: 4.5:1 text contrast, 44x44px touch targets (48x48px on the timekeeper console), never color-only status, full keyboard operability | [DSD §6](dsd-arkilaunch.md); feeds BRD-M5 (ISO/IEC 25010 Usability characteristic subsumes accessibility) |
+| `PRD-NFR2` | Performance: tenant reads/writes | API p95 < 400 ms for tenant CRUD | SDD §7 `NFR-1` |
+| `PRD-NFR3` | Performance: quote generation | End to end < 60 s, typically < 5 s (US-03) | SDD §7 `NFR-2`; feeds BRD-M4 |
+| `PRD-NFR4` | Performance: OCR extraction | Seconds to ~60 s per document, asynchronous, UI never blocks | SDD §7 `NFR-3` |
+| `PRD-NFR5` | Availability | 99.5% uptime on core modules, excluding third-party outages with a working fallback | SDD §7 `NFR-5`; OPS `SLO-1`; feeds BRD-M6 |
+| `PRD-NFR6` | Data retention | KYC/ID images minimized and retention-limited under RA 10173; audit logs immutable and long-lived; app logs 30 to 90 days | SDD §7 `NFR-9`; [CLR §1](clr-arkilaunch.md) retention schedule |
+| `PRD-NFR7` | Localization | PH market only for V1: PHP currency formatting, `Asia/Manila` timezone for all timestamps and scheduled jobs (weather poll, diesel refresh, PM notifications); English + Filipino terms as used in DSD §0 voice, no additional locale support | SDD §7 `NFR-11` |
+| `PRD-NFR8` | Device / bandwidth | Works on a cheap Android over 3 to 5 Mbps: first meaningful paint < 3 s on a 3G-class link, client-side image compression, resumable chunked upload | SDD §7 `NFR-7`, `NFR-8`; PRD §5.5 |
+
+**NFR-6 is intentionally the boundary between this PRD and the CLR:** the product-facing bar ("minimized and retention-limited") is stated here; the exact day-count schedule and disposal procedure are the CLR's to set with counsel, not the PRD's to invent.
 
 ---
 
@@ -403,7 +420,8 @@ Phases run Planning → Requirements → Design → Development → Testing & QA
 - [x] Section 5.1: every interactive screen defines empty / loading / error / success states
 - [x] Section 5.2: every top-level destination maps to a §5.1 screen and is reachable; routes and auth-gated areas defined
 - [x] Section 5.3: flow has no unintended dead ends; entry, exit, and edge cases annotated
-- [x] Section 5.6: every BRD-M# metric (M1..M8) has at least one feeding event defined
+- [x] Section 5.6: every BRD-M# metric (M1..M8) has at least one feeding event defined; the analytics sink is resolved (first-party `events` table, OPS §2), not TBD
+- [x] Section 5.7 states product-facing NFRs (accessibility, performance, availability, retention, localization, device/bandwidth) with stable `PRD-NFR#` IDs, each traced to its SDD §7 `NFR-#` or OPS `SLO-#`
 - [x] Section 6 explicitly names things discussed but cut
 - [x] Section 7 is filled (Azure DI OCR/IDP); AIA is required before launch (launch gate alongside CLR)
 - [x] Section 9 covers all phases through Post-launch

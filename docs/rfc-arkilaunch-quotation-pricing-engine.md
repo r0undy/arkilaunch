@@ -14,7 +14,7 @@
 
 ---
 
-> **Note:** This is RFC-3, the deep design behind PRD-F1. It resolves gap **G-3** (diesel-price source, unnamed in the thesis) and specifies the pricing math, the snapshot-for-reproducibility model, and the quote API. The *what* lives in the [PRD](prd-arkilaunch.md); the *how* at system level in the [SDD](sdd-arkilaunch.md). Sibling RFCs: [RFC-1](rfc-arkilaunch-tenancy-rls-auth.md) (tenancy/RLS/auth, PRD-F7), [RFC-2](rfc-arkilaunch-ocr-edtr-reconciliation.md) (OCR/reconciliation, PRD-F3). Forward-linked to the QAD (test rows below, `QUOTE-*`) and the [CLR](clr-arkilaunch.md) (legal-review note on scraping).
+> **Note:** This is RFC-3, the deep design behind PRD-F1. It resolves gap **G-3** (diesel-price source, unnamed in the thesis) and specifies the pricing math, the snapshot-for-reproducibility model, and the quote API. The *what* lives in the [PRD](prd-arkilaunch.md); the *how* at system level in the [SDD](sdd-arkilaunch.md). Sibling RFCs: [RFC-1](rfc-arkilaunch-tenancy-rls-auth.md) (tenancy/RLS/auth, PRD-F7), [RFC-2](rfc-arkilaunch-ocr-edtr-reconciliation.md) (OCR/reconciliation, PRD-F3). Forward-linked to the QAD (test rows `QAD-T43`..`T48`, §7 below) and the [CLR](clr-arkilaunch.md) (legal-review note on scraping).
 
 ---
 
@@ -72,7 +72,7 @@ The quote path never calls DOE. It reads the resolved price from the database. T
 
 ### Data Model Changes
 
-Conventions follow SDD §3: UUID PK, tenant-owned tables carry `tenant_id UUID NOT NULL` (FK `tenants.id`, `ON DELETE RESTRICT`) and `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`, and RLS is enabled on every tenant-owned table with the `USING (tenant_id = current_setting('app.current_tenant_id')::uuid)` policy from RFC-1.
+Conventions follow SDD §3: UUID PK, tenant-owned tables carry `tenant_id UUID NOT NULL` (FK `tenants.id`, `ON DELETE RESTRICT`) and `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`, and RLS is enabled and **forced** on every tenant-owned table with the full `tenant_isolation` policy (`FOR ALL`, `TO app_authenticated`, `USING` + `WITH CHECK`, `missing_ok = true`) defined in [RFC-1](rfc-arkilaunch-tenancy-rls-auth.md) §3, never the bare `USING`-only form.
 
 **New table `diesel_price_readings`** (global reference, NOT tenant-scoped; like `equipment_types` and `subscription_plans` it is shared, public, non-PII data)
 
@@ -116,9 +116,16 @@ CREATE TABLE pricing_parameters (
 );
 CREATE INDEX idx_pricing_params_lookup ON pricing_parameters (tenant_id, region, effective_from DESC);
 ALTER TABLE pricing_parameters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pricing_parameters FORCE  ROW LEVEL SECURITY;   -- owner is not exempt (RFC-1 §3)
+
 CREATE POLICY pricing_params_tenant ON pricing_parameters
-  USING (tenant_id = current_setting('app.current_tenant_id')::uuid);
+  FOR ALL
+  TO app_authenticated
+  USING      (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
 ```
+
+This is the exact five-element pattern from [RFC-1](rfc-arkilaunch-tenancy-rls-auth.md) §3 (`FORCE`, `TO app_authenticated`, `USING`, `WITH CHECK`, `missing_ok = true`). A bare `ENABLE ROW LEVEL SECURITY` plus a `USING`-only policy gives no write isolation and is not fail-closed on an unset GUC; `pricing_parameters` is a tenant-owned pricing table and gets no exception.
 
 Fuel-consumption factors default here and may be overridden per equipment type; for V1 the `pricing_parameters` defaults are used and the per-type override is deferred (documented tech debt, add two nullable columns to `rate_cards` later without a data migration).
 
@@ -141,18 +148,44 @@ ALTER TABLE quotations
 
 `diesel_price_snapshot` (existing) holds the exact PHP/liter used. `price_stale` (existing) is `true` when the resolved price is older than the staleness window. A revision sets `parent_quotation_id` to the prior quote and increments `revision`; the prior quote flips to `superseded`.
 
-**Alter `quotation_items`** (SDD §3 already has `quantity`, `mobilization_km`, `demobilization_km`, FKs to `quotation`, `equipment_type`, `rate_card`)
+**Alter `quotation_items`** (SDD §3 already has `quantity`, `mobilization_km`, `demobilization_km`, FKs to `quotation`, `equipment_type`, `rate_card`). `quotation_items` is an existing tenant-owned table, so this is **expand/contract, not a bare `NOT NULL` add** (the same discipline RFC-1 §3 uses for its `tenant_id` rollout):
 
 ```sql
+-- EXPAND (backward-compatible): add all eight columns nullable, no NOT NULL yet
 ALTER TABLE quotation_items
-  ADD COLUMN estimated_hours    NUMERIC(8,2) NOT NULL,     -- billable operating hours priced for this line
-  ADD COLUMN pricing_inputs     JSONB NOT NULL,            -- FULL frozen input set (see below); reproducibility source of truth
-  ADD COLUMN hourly_rate_php    NUMERIC(12,2) NOT NULL,    -- computed effective hourly rate (all-in, pre-buffer)
-  ADD COLUMN operating_cost_php NUMERIC(14,2) NOT NULL,    -- hourly_rate * estimated_hours * quantity
-  ADD COLUMN mobilization_cost_php   NUMERIC(14,2) NOT NULL,
-  ADD COLUMN demobilization_cost_php NUMERIC(14,2) NOT NULL,
-  ADD COLUMN buffer_php         NUMERIC(14,2) NOT NULL,
-  ADD COLUMN subtotal_php       NUMERIC(14,2) NOT NULL,    -- operating + mob + demob + buffer
+  ADD COLUMN estimated_hours    NUMERIC(8,2),              -- billable operating hours priced for this line
+  ADD COLUMN pricing_inputs     JSONB,                     -- FULL frozen input set (see below); reproducibility source of truth
+  ADD COLUMN hourly_rate_php    NUMERIC(12,2),             -- computed effective hourly rate (all-in, pre-buffer)
+  ADD COLUMN operating_cost_php NUMERIC(14,2),              -- hourly_rate * estimated_hours * quantity
+  ADD COLUMN mobilization_cost_php   NUMERIC(14,2),
+  ADD COLUMN demobilization_cost_php NUMERIC(14,2),
+  ADD COLUMN buffer_php         NUMERIC(14,2),
+  ADD COLUMN subtotal_php       NUMERIC(14,2);              -- operating + mob + demob + buffer
+
+-- BACKFILL: any quotation_items row that predates this migration was created before
+-- the pricing-detail columns existed, so there is no reliable historical diesel price
+-- or rate-card version to reconstruct pricing_inputs from. Mark pre-existing rows
+-- explicitly rather than guessing a value:
+UPDATE quotation_items
+SET estimated_hours = 0,
+    pricing_inputs = '{"backfilled": true, "reason": "predates RFC-3 pricing engine"}'::jsonb,
+    hourly_rate_php = 0, operating_cost_php = 0, mobilization_cost_php = 0,
+    demobilization_cost_php = 0, buffer_php = 0, subtotal_php = 0
+WHERE estimated_hours IS NULL;
+-- At anchor-pilot launch this UPDATE affects zero rows (no quotation existed before
+-- this RFC shipped); it exists so the migration is safe to run against a database
+-- that already has quotation_items data, per the expand/contract rule.
+
+-- CONTRACT (after backfill verified): now safe to require the columns going forward
+ALTER TABLE quotation_items
+  ALTER COLUMN estimated_hours    SET NOT NULL,
+  ALTER COLUMN pricing_inputs     SET NOT NULL,
+  ALTER COLUMN hourly_rate_php    SET NOT NULL,
+  ALTER COLUMN operating_cost_php SET NOT NULL,
+  ALTER COLUMN mobilization_cost_php   SET NOT NULL,
+  ALTER COLUMN demobilization_cost_php SET NOT NULL,
+  ALTER COLUMN buffer_php         SET NOT NULL,
+  ALTER COLUMN subtotal_php       SET NOT NULL,
   ADD CONSTRAINT hours_positive CHECK (estimated_hours >= 0),
   ADD CONSTRAINT km_positive CHECK (mobilization_km >= 0 AND demobilization_km >= 0);
 ```
@@ -199,7 +232,7 @@ discount             = discount_type == 'percent' ? quote_subtotal * (discount_v
 quote_total          = round2( max(0, quote_subtotal - discount) )
 ```
 
-**Rounding rule:** monetary outputs round to 2 decimals (PHP centavos), **half-up**, applied at the item subtotal and at the quote total. Intermediate values stay full-precision (the `NUMERIC` columns above); only the two named outputs round. This keeps the sum of rounded line items equal to the rounded total within a defined tolerance (see QAD `QUOTE-04`).
+**Rounding rule:** monetary outputs round to 2 decimals (PHP centavos), **half-up**, applied at the item subtotal and at the quote total. Intermediate values stay full-precision (the `NUMERIC` columns above); only the two named outputs round. This keeps the sum of rounded line items equal to the rounded total within a defined tolerance (see QAD `QAD-T46`, §7 below).
 
 **Diesel-price resolution order** (deterministic; the chosen value and its provenance are snapshotted):
 
@@ -359,28 +392,37 @@ A cron `diesel-refresh` job (daily, 06:00 PHT; DOE updates weekly so daily is ge
 | `QUOTE-04` | Diesel-refresh ACA Job: DOE fetch (host allowlist, robots-aware), defensive parse, sane-band check, write reading, degrade + `external_dependency_degraded`; overlap guard. Behind `ENABLE_DIESEL_SCRAPE`. | M |
 | `QUOTE-05` | Platform manual-entry route + tenant diesel-override on `pricing_parameters`; audit-log writes. | S |
 | `QUOTE-06` | Frontend: Quotation Builder (S5) live preview, stale-price warning band, discount UI, printable quote (S6). | M |
-| `QUOTE-07` | QAD test rows `QUOTE-*`: latency, snapshot reproducibility, source-outage fallback, rounding/tolerance (see below). | S |
+| `QUOTE-07` | QAD test rows `QAD-T43`..`QAD-T48`: latency, snapshot reproducibility, source-outage fallback, rounding/tolerance, revision integrity, authz/isolation (see below). | S |
 
 **Rollout order:** `QUOTE-01` migration, then `QUOTE-02` engine, then `QUOTE-03` endpoints, then `QUOTE-04` scraper job (flag off until CLR clears), then `QUOTE-05`/`QUOTE-06`, then `QUOTE-07` QA, then enable `ENABLE_QUOTE_ENGINE`, then enable `ENABLE_DIESEL_SCRAPE` after the legal-review note. Maps to PRD §9 M2 (design/RFC) and M3 (F3+F1+F7 slice first); keep milestone mapping consistent with `prd-arkilaunch.md` §9.
 
 ### Testing (forward-linked to the QAD)
 
-The QAD (to be authored) carries these as `QUOTE-*` rows; each has a happy, a sad, and where relevant an abuse path.
+The QAD carries these as `QAD-T43`..`QAD-T48` (`docs/qad-arkilaunch.md` §3.6); each has a happy, a sad, and where relevant an abuse path. `QUOTE-*` above are ticket IDs, not test IDs; the two series are intentionally distinct.
 
-| Test | What it proves | PRD/BRD trace |
-|------|----------------|---------------|
-| **Quote latency** | `POST /quotes` and `/preview` return in < 60 s (target < 5 s) with a warm last-known price; asserted on `quote_generated.latency_ms`. | US-03, BRD-M4 |
-| **Price-snapshot reproducibility** | Persist a quote; move the diesel reading and edit the rate card; re-fetch and re-run the formula from `pricing_inputs`; every line total and the quote total match the original to the centavo. | Objective (auditable quote), SDD §3 |
-| **Source-outage fallback** | Scrape fails or returns an out-of-band value; the quote prices on the last-known reading, sets `price_stale=true`, prints the date + warning, emits `external_dependency_degraded`; no silent unknown-value pricing. With no reading at all, `422 no_diesel_price`. | US-03 failure criterion |
-| **Rounding / tolerance** | Line subtotals and the quote total round half-up to 2 decimals; the sum of rounded line items reconciles to the rounded total within +/- PHP 0.01; negative/NaN/absurd inputs are rejected pre-compute. | Pricing correctness |
-| **Revision integrity** | `/revise` creates revision n+1 with a fresh snapshot, links `parent_quotation_id`, marks the parent `superseded`; the parent's numbers are unchanged. | Versioned quotation |
-| **AuthZ / isolation** | A non-`quote:create` role is denied; a Tenant A quote cannot read Tenant B rate cards or params (RLS). | US-07, RFC-1 |
+| ID | Test | What it proves | PRD/BRD trace |
+|----|------|----------------|---------------|
+| `QAD-T43` | **Quote latency** | `POST /quotes` and `/preview` return in < 60 s (target < 5 s) with a warm last-known price; asserted on `quote_generated.latency_ms`. | US-03, BRD-M4 |
+| `QAD-T44` | **Price-snapshot reproducibility** | Persist a quote; move the diesel reading and edit the rate card; re-fetch and re-run the formula from `pricing_inputs`; every line total and the quote total match the original to the centavo. | Objective (auditable quote), SDD §3 |
+| `QAD-T45` | **Source-outage fallback** | Scrape fails or returns an out-of-band value; the quote prices on the last-known reading, sets `price_stale=true`, prints the date + warning, emits `external_dependency_degraded`; no silent unknown-value pricing. With no reading at all, `422 no_diesel_price`. | US-03 failure criterion |
+| `QAD-T46` | **Rounding / tolerance** | Line subtotals and the quote total round half-up to 2 decimals; the sum of rounded line items reconciles to the rounded total within +/- PHP 0.01; negative/NaN/absurd inputs are rejected pre-compute. | Pricing correctness |
+| `QAD-T47` | **Revision integrity** | `/revise` creates revision n+1 with a fresh snapshot, links `parent_quotation_id`, marks the parent `superseded`; the parent's numbers are unchanged. | Versioned quotation |
+| `QAD-T48` | **AuthZ / isolation** | A non-`quote:create` role is denied; a Tenant A quote cannot read Tenant B rate cards or params (RLS). | US-07, RFC-1 |
+
+---
+
+## 8. Risks & Rollout Notes
+
+- **DOE scrape legal exposure.** The diesel-refresh job fetches a public DOE page on a schedule. Until the CLR legal-review note (§6) clears, `ENABLE_DIESEL_SCRAPE` stays off and the feature runs on manual entry and tenant override only; no rollout step depends on the scrape being enabled.
+- **DOE page-structure fragility.** The parser targets a specific public page layout with no API contract. A DOE redesign silently breaks parsing. Mitigation: the `price_sane` CHECK (20 to 150 PHP/L) rejects a mis-parse rather than writing a bad price, and a parse failure degrades to the last-known reading plus `external_dependency_degraded` rather than blocking quotes.
+- **`formula_version` migration risk.** A future pricing-formula change must not silently reprice old quotations. Mitigation: `pricing_inputs` freezes `formula_version` per quotation item, so an old quote always replays under the formula version it was created with.
+- **Global/tenant table reconciliation.** `diesel_price_readings` (global) and `pricing_parameters` (tenant-owned) are folded into the SDD §3 master catalog and the `migration-rls-guardian` global-table list in this same pass (SDD §3, `.claude/agents/migration-rls-guardian.md`); a future schema change must keep both current or the guardian agent will mis-classify one of these tables.
 
 ---
 
 ## Self-Check
 
-- [x] Section 3 has exact schema DDL (new `diesel_price_readings`, `pricing_parameters`; `quotations`/`quotation_items` ALTERs), not vague descriptions
+- [x] Section 3 has exact schema DDL (new `diesel_price_readings`, `pricing_parameters`; `quotations`/`quotation_items` ALTERs), not vague descriptions; the `quotation_items` ALTER follows expand/contract (nullable add, backfill, then `SET NOT NULL`), not a bare destructive `NOT NULL` add, since it is an existing tenant-owned table
 - [x] Section 3 API changes have exact request/response shapes (preview, create, revise, approve, get) with status codes
 - [x] Section 4 has real rejected alternatives (manual-only, paid feed, scrape-without-fallback, live-call, totals-without-snapshot), not strawmen
 - [x] Section 5 addressed: no AI/LLM component in this feature; stated with rationale and pointer to RFC-2
@@ -389,6 +431,8 @@ The QAD (to be authored) carries these as `QUOTE-*` rows; each has a happy, a sa
 - [x] Reproducibility: diesel price and rate-card version snapshotted into Quotation/QuotationItem; `formula_version` for forward safety
 - [x] Legal posture cited (RA 10175 conditions + robots.txt) with a legal-review note escalated to the CLR
 - [x] Mermaid price-assembly flow present with no em-dashes in labels
-- [x] Testing covers latency (BRD-M4), snapshot reproducibility, source-outage fallback, rounding/tolerance; forward-linked to the QAD
+- [x] Testing covers latency (BRD-M4), snapshot reproducibility, source-outage fallback, rounding/tolerance; landed in the QAD as `QAD-T43`..`T48` (§7)
+- [x] Section 8 names owned risks (DOE legal exposure, page-structure fragility, `formula_version` migration, table-catalog reconciliation) with mitigations, matching RFC-1/RFC-2 structure
+- [x] RLS policy on `pricing_parameters` matches the RFC-1 canonical five-element pattern (FORCE, TO app_authenticated, USING + WITH CHECK, missing_ok)
 - [x] Traces to PRD-F1 (US-03) and SDD §3/§4; does not duplicate SDD global architecture or PRD feature scope
 - [x] AGENTS hard bans applied (no em-dashes anywhere, including Mermaid labels); sharp-teammate tone

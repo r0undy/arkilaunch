@@ -37,7 +37,7 @@
 
 *Checkable details extracted from the IDEA/thesis and grouped by category. Trust rule honored.*
 
-**Coverage:** Claims extracted: 13; checked: 13; verified: 8; unverified: 3; contradicted (as stated): 2 (both Minor/Significant, reframed in fixes).
+**Coverage:** Claims extracted: 13; checked: 13; verified: 8 (FC-1, FC-2, FC-4, FC-6, FC-8, FC-10, FC-11, FC-12); unverified: 2 (FC-3, FC-9); contradicted (as stated): 2 (FC-5, FC-7; both Minor/Significant, reframed in fixes); FC-13 is a design-target row, not an external claim, and is counted in none of the three buckets above.
 
 | # | Category | Claim (from IDEA) | Finding | Source (required if Verified) | Severity if wrong |
 |---|----------|-------------------|---------|-------------------------------|-------------------|
@@ -77,16 +77,17 @@
 
 | # | Missing input | Needed by (doc) | Blocker or TBD |
 |---|---------------|-----------------|----------------|
-| G-1 | Multi-tenant data model (Tenant, SubscriptionPlan, Subscription, tenant_id, RLS) absent from the thesis 29-entity schema | SDD §3, RFC-1 | TBD (resolved by design) |
+| G-1 | Multi-tenant data model (Tenant, SubscriptionPlan, Subscription, tenant_id, RLS) absent from the thesis 29-entity schema | [SDD §3](sdd-arkilaunch.md), [RFC-1](rfc-arkilaunch-tenancy-rls-auth.md) | Resolved by design: 35-table schema (28 tenant-owned, 7 global), RLS enabled + forced on every tenant-owned table (RFC-1 §3) |
 | G-2 | Identity ownership: thesis names both Supabase Auth and Passport-JWT | SDD §5, RFC-1 | TBD (resolved: NestJS/Passport owns identity) |
 | G-3 | Diesel-price data source and refresh strategy | RFC-3, SDD §4 | TBD |
 | G-4 | Open-Meteo commercial plan + quota/cost + fallback behavior | SDD §4/§6, OPS, UES | TBD |
 | G-5 | Azure DI model choice per source (custom EDTR vs layout+query for SEC/TIN), confidence threshold, HITL gate, data residency | RFC-2, SDD §8, AIA | TBD (resolved by design) |
 | G-6 | Persistent backend host for the cron scheduler + async OCR workers (Vercel serverless cannot run them) | SDD §6, BUILD §3 | TBD (resolved: persistent host, e.g. Azure Container Apps) |
 | G-7 | Likert scale (thesis inconsistent: 4-point once vs 5-point elsewhere) | QAD | TBD (resolved: 5-point) |
-| G-8 | Unit economics for a SaaS: pricing tiers, CAC, LTV, subscription model | UES, GTM | TBD |
-| G-9 | Concept visuals (UI reference frames) not yet generated | DSD §0.5 | TBD |
-| G-10 | PayMongo webhook + idempotency + refund/dispute handling detail | SDD §4, RFC-2 (or SDD), QAD abuse | TBD |
+| G-8 | Unit economics for a SaaS: pricing tiers, CAC, LTV, subscription model | [UES](ues-arkilaunch.md), GTM | Resolved: full UES §0-§7 (UES-E1..E8, UES-F1..F5, UES-M1..M6, UES-K1..K7); GTM §3 prices the tiers against it |
+| G-9 | Concept visuals (UI reference frames) not yet generated | DSD §0.5 | TBD (still open; also carried in IDEA §5 and VAL §5) |
+| G-10 | PayMongo webhook + idempotency + refund/dispute handling detail | [SDD §4](sdd-arkilaunch.md) | Resolved directly in SDD §4 (no dedicated RFC needed): idempotency via `provider_ref` UNIQUE + `ON CONFLICT DO NOTHING`, refunds as a distinct `payments` row linked by `invoice_id`, disputes flip `invoices.status`; covered by QAD-T15 + QAD-T43..T48 |
+| G-11 | ISO/IEC 25010 version: thesis cites the 8-characteristic 2011 model; the current standard (25010:2023) has 9 characteristics and two renames | QAD §8.2, SDD §7 | Resolved: QAD adopts the 2011 8-characteristic model for the UAT instrument (capstone-panel comparability) and records the 2023 delta (Safety added; Usability -> Interaction Capability; Portability -> Flexibility) as an explicit evidence note, not silently ignored |
 
 ---
 
@@ -117,8 +118,8 @@
 
 | Check | Finding |
 |-------|---------|
-| Time box realistic for the scope? | This is a capstone-scale build productized as SaaS; the full 8-feature scope is large. Feasible if sequenced: F3 (OCR billing) + F1 (quotation) + F7 (tenancy/auth) first; F5/F6/F4/F8/F2 follow. Flagged in PRD priorities. |
-| "If we ship only one thing" actually shippable? | Yes. F3 OCR usage-based billing with reconciliation is a coherent vertical slice (upload, extract, reconcile, deduct) buildable on the chosen stack. |
+| Time box realistic for the scope? | This is a capstone-scale build productized as SaaS; the full 8-feature scope is large. Feasible if sequenced: PRD-F3 (OCR billing) + PRD-F1 (quotation) + PRD-F7 (tenancy/auth) first; PRD-F5/PRD-F6/PRD-F4/PRD-F8/PRD-F2 follow. Flagged in PRD priorities. |
+| "If we ship only one thing" actually shippable? | Yes. PRD-F3 OCR usage-based billing with reconciliation is a coherent vertical slice (upload, extract, reconcile, deduct) buildable on the chosen stack. |
 | Production-grade reachable (security, data, rollback) in the window? | Yes, but non-trivial: multi-tenant RLS, JWT rotation, Azure DI HITL, PayMongo webhooks, and PH data-privacy compliance are all required for "done". Covered by SDD/CLR/AIA/OPS. |
 | Scope honest, or is the cut line hiding work? | Mostly honest. Hidden work surfaced: multi-tenancy (not in thesis schema), Open-Meteo commercial licensing, persistent backend host for cron/workers, PayMongo webhook robustness. All now carried as gaps. |
 
