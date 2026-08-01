@@ -87,6 +87,23 @@ async function main() {
     )[0];
   if (!equipmentRow) throw new Error('failed to seed equipment for Almara');
 
+  // PRD-F4: maintenance-schedule writes are out of scope for this pass
+  // (fleet.service.ts only advances an existing row's next_due); seed one
+  // per unit here so the PM cron and the maintenance-detail endpoint have
+  // real data to work against.
+  const existingSchedule = await db
+    .select()
+    .from(schema.maintenanceSchedules)
+    .where(eq(schema.maintenanceSchedules.equipmentId, equipmentRow.id));
+  if (existingSchedule.length === 0) {
+    await db.insert(schema.maintenanceSchedules).values({
+      tenantId: tenant.id,
+      equipmentId: equipmentRow.id,
+      hoursInterval: '250.00',
+      nextDue: '250.00',
+    });
+  }
+
   const existingRateCard = await db.select().from(schema.rateCards).where(eq(schema.rateCards.tenantId, tenant.id));
   if (existingRateCard.length === 0) {
     await db.insert(schema.rateCards).values({

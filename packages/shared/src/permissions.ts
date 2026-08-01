@@ -13,6 +13,8 @@ export const PERMISSION_CODES = [
   'kyc:verify',
   'diesel:manage',
   'pricing:manage',
+  'fleet:manage',
+  'report:read',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];

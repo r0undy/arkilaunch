@@ -67,6 +67,26 @@ async function main() {
         serialNo: `${slug}-serial-001`,
       })
       .onConflictDoNothing();
+    const [equipmentRow] = await db
+      .select()
+      .from(schema.equipment)
+      .where(and(eq(schema.equipment.tenantId, tenant.id), eq(schema.equipment.serialNo, `${slug}-serial-001`)));
+
+    // PRD-F4: one seeded schedule per unit, same rationale as anchor.ts.
+    if (equipmentRow) {
+      const existingSchedule = await db
+        .select()
+        .from(schema.maintenanceSchedules)
+        .where(eq(schema.maintenanceSchedules.equipmentId, equipmentRow.id));
+      if (existingSchedule.length === 0) {
+        await db.insert(schema.maintenanceSchedules).values({
+          tenantId: tenant.id,
+          equipmentId: equipmentRow.id,
+          hoursInterval: '250.00',
+          nextDue: '250.00',
+        });
+      }
+    }
 
     const existingRateCard = await db
       .select()
@@ -168,6 +188,38 @@ async function main() {
         .insert(schema.timekeeperSiteAssignments)
         .values({ tenantId: tenant.id, userId: timekeeper.id, projectSiteId: site.id })
         .onConflictDoNothing();
+    }
+
+    // PRD-F4/F5 fixtures for the cross-tenant isolation checks in
+    // packages/db/test/tenant-isolation.spec.ts (maintenance_logs, weather_alerts).
+    if (equipmentRow) {
+      const existingLog = await db
+        .select()
+        .from(schema.maintenanceLogs)
+        .where(eq(schema.maintenanceLogs.equipmentId, equipmentRow.id));
+      if (existingLog.length === 0) {
+        await db.insert(schema.maintenanceLogs).values({
+          tenantId: tenant.id,
+          equipmentId: equipmentRow.id,
+          performedAt: new Date('2020-06-01T00:00:00Z'),
+          notes: 'Seed fixture log',
+        });
+      }
+    }
+    const existingAlert = await db
+      .select()
+      .from(schema.weatherAlerts)
+      .where(eq(schema.weatherAlerts.projectSiteId, site.id));
+    if (existingAlert.length === 0) {
+      await db.insert(schema.weatherAlerts).values({
+        tenantId: tenant.id,
+        projectSiteId: site.id,
+        severity: 'none',
+        observed: { tempC: 30, windKph: 5, precipMm: 0, code: 1 },
+        isStale: false,
+        effectiveAt: new Date(),
+        status: 'cleared',
+      });
     }
 
     // A rental (RFC-2 §3: edtr.rental_id FK) so EDTR fixtures have somewhere

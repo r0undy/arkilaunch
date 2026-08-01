@@ -9,6 +9,8 @@ import { PricingModule } from './pricing/pricing.module.js';
 import { EdtrModule } from './edtr/edtr.module.js';
 import { KycModule } from './kyc/kyc.module.js';
 import { ReferenceModule } from './reference/reference.module.js';
+import { FleetModule } from './fleet/fleet.module.js';
+import { SitesModule } from './sites/sites.module.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { TenantContextGuard } from './common/guards/tenant-context.guard.js';
 import { PermissionsGuard } from './common/guards/permissions.guard.js';
@@ -26,6 +28,8 @@ import { PermissionsGuard } from './common/guards/permissions.guard.js';
     EdtrModule,
     KycModule,
     ReferenceModule,
+    FleetModule,
+    SitesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

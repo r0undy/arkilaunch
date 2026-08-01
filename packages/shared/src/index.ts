@@ -7,3 +7,6 @@ export * from './document-intelligence-port.js';
 export * from './edtr.js';
 export * from './kyc.js';
 export * from './ocr-accuracy.js';
+export * from './fleet.js';
+export * from './weather.js';
+export * from './weather-port.js';

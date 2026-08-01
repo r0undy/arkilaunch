@@ -2,7 +2,7 @@
 
 **Project slug:** `arkilaunch`
 **Maintained by:** ArkiLaunch Team (Almara Construction capstone)
-**Last updated:** 2026-08-01
+**Last updated:** 2026-08-02
 **Built on FMD:** v1.28.1
 
 ---
@@ -68,7 +68,7 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 
 | CR ID | Date | Summary | Trigger doc | Docs touched | File |
 |-------|------|---------|-------------|--------------|------|
-| (none yet) | - | - | - | - | - |
+| cr-f4-f5-fleet-weather | 2026-08-02 | PRD-F4/F5 backend implementation: direct cron entrypoints (not `/internal/jobs/*`), equipment write endpoints added, `weather_alerts` doubles as the reading cache, deduction double-count finding (deferred) | build-arkilaunch.md §5.1 | sdd-arkilaunch.md §4 | [cr-arkilaunch-f4-f5-fleet-weather.md](cr-arkilaunch-f4-f5-fleet-weather.md) |
 
 ---
 

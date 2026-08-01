@@ -39,8 +39,11 @@ export async function seedPermissionCatalog(db: ReturnType<typeof makeServiceDb>
   // reconciliation approve/deduct gate (PRD-F3 US-01); KYC extraction
   // submission is admin's (they upload the corporate doc at onboarding) but
   // the human portal *verification* is platform_admin's (PRD-F6 US-06).
-  // owner is read-mostly oversight (PRD §2). timekeeper only ever creates
-  // EDTRs on their assigned sites (PRD-F3 US-02); it never approves/deducts.
+  // admin also manages the fleet (PRD-F4 US-04: record maintenance,
+  // update equipment) and reads reports. owner is read-mostly oversight
+  // (PRD §2, PRD-F4 US-10: reports only, no data-entry permission --
+  // QAD-T19). timekeeper only ever creates EDTRs on their assigned sites
+  // (PRD-F3 US-02); it never approves/deducts.
   const grants: Record<string, readonly (typeof PERMISSION_CODES)[number][]> = {
     platform_admin: PERMISSION_CODES,
     admin: [
@@ -53,8 +56,10 @@ export async function seedPermissionCatalog(db: ReturnType<typeof makeServiceDb>
       'edtr:approve',
       'kyc:extract',
       'pricing:manage',
+      'fleet:manage',
+      'report:read',
     ],
-    owner: ['quote:read'],
+    owner: ['quote:read', 'report:read'],
     timekeeper: ['edtr:create'],
   };
 

@@ -141,6 +141,54 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     expect(approved.invoiceLine.sourceLogs).toContain(digital.id);
   });
 
+  // PRD-F4: reconcileEdtr() deliberately writes two reconciliation rows per
+  // matched pair, one keyed on each EDTR id (packages/db/src/reconciliation.ts).
+  // In production that second row comes from the edtr-ocr-worker calling
+  // reconcileEdtr on the paper side too (jobs/src/edtr-ocr-worker.ts);
+  // simulated here directly since driving the real worker is covered in
+  // jobs/src/edtr-ocr-worker.spec.ts. Approving BOTH sides of one day's
+  // pair must accrue equipment.runtime_hours exactly once, not twice.
+  it('PRD-F4: approving both sides of a matched pair accrues runtime_hours exactly once', async () => {
+    const { reconcileEdtr, equipment: equipmentTable, eq: eqFn } = await import('@arkilaunch/db').then(async (db) => ({
+      ...db,
+      eq: (await import('drizzle-orm')).eq,
+    }));
+    const reportDate = '2021-03-06';
+    const paperId = await insertExtractedPaperCounterpart(reportDate, 6, 0);
+
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 6, hoursIdle: 0 },
+    });
+    const digitalPolled = await edtr.get(adminCtx, digital.id);
+    expect(digitalPolled.reconciliation?.status).toBe('matched');
+
+    // The second reconciliation row, keyed on the paper side.
+    await withTenantTx(adminCtx, (tx) => reconcileEdtr(tx, adminCtx.tenantId, paperId));
+    const paperPolled = await edtr.get(adminCtx, paperId);
+    expect(paperPolled.reconciliation?.status).toBe('matched');
+
+    const runtimeOf = async () => {
+      const [row] = await withTenantTx(adminCtx, (tx) =>
+        tx.select().from(equipmentTable).where(eqFn(equipmentTable.id, equipmentId)).limit(1),
+      );
+      return Number(row!.runtimeHours);
+    };
+
+    const runtimeBefore = await runtimeOf();
+    await edtr.approve(adminCtx, digital.id, { reconciliationId: digitalPolled.reconciliation!.id });
+    const runtimeAfterFirst = await runtimeOf();
+    expect(runtimeAfterFirst).toBeCloseTo(runtimeBefore + 6, 5);
+
+    // Approving the counterpart must NOT accrue a second time.
+    await edtr.approve(adminCtx, paperId, { reconciliationId: paperPolled.reconciliation!.id });
+    const runtimeAfterSecond = await runtimeOf();
+    expect(runtimeAfterSecond).toBeCloseTo(runtimeAfterFirst, 5);
+  });
+
   it('QAD-T11/T26: divergent logs block the deduction (409) until a human supplies adjustments', async () => {
     const reportDate = '2021-03-02';
     await insertExtractedPaperCounterpart(reportDate, 2, 0); // wildly different from the digital log below

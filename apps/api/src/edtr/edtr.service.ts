@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import {
   auditLogs,
   edtr,
@@ -247,6 +247,36 @@ export class EdtrService {
           adjustments: body.adjustments ? { ...body.adjustments } : reconciliation.adjustments,
         })
         .where(eq(edtrReconciliations.id, reconciliation.id));
+
+      // PRD-F4 QAD-T4: accrue the unit's cumulative runtime from this
+      // approved EDTR. Guarded against the double-approve case:
+      // reconcileEdtr() deliberately writes two reconciliation rows per
+      // matched pair, one keyed on each EDTR id (packages/db/src/reconciliation.ts
+      // "this is redundant but not unsafe" note) -- so the same day's work
+      // can be approved from EITHER side. If the counterpart side is
+      // already approved, this call is the second of the pair; skip the
+      // accrual so runtime_hours (and the F4 utilization report / PM cron
+      // that read it) never double-counts one day's work.
+      let counterpartAlreadyApproved = false;
+      if (reconciliation.counterpartEdtrId) {
+        const [counterpartRecon] = await tx
+          .select()
+          .from(edtrReconciliations)
+          .where(eq(edtrReconciliations.edtrId, reconciliation.counterpartEdtrId))
+          .limit(1);
+        counterpartAlreadyApproved = counterpartRecon?.status === 'approved';
+      }
+      if (!counterpartAlreadyApproved) {
+        await tx
+          .update(equipment)
+          .set({ runtimeHours: sql`${equipment.runtimeHours} + ${billableHoursActive}` })
+          .where(eq(equipment.id, record.equipmentId));
+        await this.events.emit(ctx, 'equipment_runtime_accrued', {
+          equipment_id: record.equipmentId,
+          hours_accrued: billableHoursActive,
+          edtr_id: record.id,
+        });
+      }
 
       await tx.insert(auditLogs).values({
         tenantId: ctx.tenantId,
