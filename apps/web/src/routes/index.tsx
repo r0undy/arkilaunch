@@ -1,4 +1,4 @@
-import { createRoute, redirect } from '@tanstack/react-router';
+import { createRoute, redirect, Link } from '@tanstack/react-router';
 import { rootRoute } from './__root.js';
 import { getAccessToken, clearTokens } from '../lib/auth-client.js';
 
@@ -19,7 +19,18 @@ function AppShell() {
         </button>
       </header>
       <main className="p-6">
-        <p className="text-slate-600">Signed in. Feature screens land with the F3/F1 slice.</p>
+        <p className="text-slate-600">Signed in. POC scaffolds for the new backend slices (unstyled):</p>
+        <ul>
+          <li>
+            <Link to="/app/quotes">Quotes (RFC-3)</Link>
+          </li>
+          <li>
+            <Link to="/app/edtr">EDTR (RFC-2)</Link>
+          </li>
+          <li>
+            <Link to="/app/kyc">KYC (RFC-2)</Link>
+          </li>
+        </ul>
       </main>
     </div>
   );
