@@ -35,14 +35,47 @@ export async function seedPermissionCatalog(db: ReturnType<typeof makeServiceDb>
 
   // platform_admin: every permission (RFC-1 §3, "a reserved role, never a
   // bypass"). admin (the tenant's own back-office admin, e.g. Rhea in the
-  // PRD) manages their own tenant's users and quotes. owner is read-mostly
-  // oversight (PRD §2). timekeeper has none of these yet -- it gets EDTR
-  // capture permissions with F3.
+  // PRD) manages their own tenant's users, quotes, and the EDTR
+  // reconciliation approve/deduct gate (PRD-F3 US-01); KYC extraction
+  // submission is admin's (they upload the corporate doc at onboarding) but
+  // the human portal *verification* is platform_admin's (PRD-F6 US-06).
+  // admin also manages the fleet (PRD-F4 US-04: record maintenance,
+  // update equipment) and reads reports, and can book/checkout on a
+  // customer's behalf (PRD-F8/F2). owner is read-mostly oversight
+  // (PRD §2, PRD-F4 US-10: reports only, no data-entry permission --
+  // QAD-T19), plus booking:read for the same read-mostly posture.
+  // timekeeper only ever creates EDTRs on their assigned sites
+  // (PRD-F3 US-02); it never approves/deducts. customer (PRD-F8/F2,
+  // cr-arkilaunch-f2-f8-bookings-payments.md) can create/read their own
+  // bookings and check out a deposit, and read their own quotes; it holds
+  // no staff permission. billing:read and site:manage
+  // (cr-arkilaunch-f9-read-surface.md) follow the same admin/owner
+  // read-mostly split as report:read/fleet:manage: admin and
+  // platform_admin can deploy/return equipment and manage sites; owner
+  // reads invoices and the deposit ledger but never writes (QAD-T19).
   const grants: Record<string, readonly (typeof PERMISSION_CODES)[number][]> = {
     platform_admin: PERMISSION_CODES,
-    admin: ['tenant:manage', 'user:manage', 'quote:create', 'quote:read'],
-    owner: ['quote:read'],
-    timekeeper: [],
+    admin: [
+      'tenant:manage',
+      'user:manage',
+      'quote:create',
+      'quote:read',
+      'quote:approve',
+      'edtr:create',
+      'edtr:approve',
+      'kyc:extract',
+      'pricing:manage',
+      'fleet:manage',
+      'report:read',
+      'booking:create',
+      'booking:read',
+      'payment:checkout',
+      'billing:read',
+      'site:manage',
+    ],
+    owner: ['quote:read', 'report:read', 'booking:read', 'billing:read'],
+    timekeeper: ['edtr:create'],
+    customer: ['booking:create', 'booking:read', 'payment:checkout', 'quote:read'],
   };
 
   for (const [roleName, codes] of Object.entries(grants)) {

@@ -8,4 +8,9 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: { port: 5173 },
+  test: {
+    // Scope vitest to src/ only; e2e/ holds Playwright specs (run via `pnpm e2e`),
+    // which vitest's default glob would otherwise pick up and crash on.
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+  },
 });

@@ -4,8 +4,8 @@
 **Date:** 2026-07-25
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
-**Status:** Draft
-**Last reconciled:** N/A (not yet reconciled with code)
+**Status:** Locked
+**Last reconciled:** 2026-08-02 (see docs/index.md §1); frontend prerender amendment recorded via Change Record `docs/cr-arkilaunch-frontend-storefront-shell.md`
 **PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
 **Event / context:** FMD engine v1.28.1; Scale Full.
 
@@ -40,7 +40,7 @@
 ```mermaid
 graph TD
     subgraph ClientTier["Client tier (Vercel edge)"]
-        FE["React 19.2 + Vite 8 SPA<br/>TanStack Router v1 / Query v5<br/>Tailwind, Zod, native fetch"]
+        FE["React 19.2 + Vite 8 SPA<br/>TanStack Router v1 / Query v5<br/>Tailwind, Zod, native fetch<br/>Playwright build-time prerender on public routes only"]
     end
     subgraph EdgeTier["Edge and security"]
         CF["Cloudflare<br/>WAF + L3/L4/L7 DDoS"]
@@ -478,6 +478,9 @@ erDiagram
 | `POST` | `/api/v1/kyc/extract` | Extract SEC number + TIN from corporate doc | PRD-F6 |
 | `GET` | `/api/v1/sites/:id/weather` | Current advisory + conditions for a site | PRD-F5 |
 | `POST` | `/api/v1/bookings` | Create a tenant-scoped booking | PRD-F8 |
+| `GET` | `/api/v1/bookings` | List bookings (own, if `customer`; tenant-wide for staff) | PRD-F8 |
+| `GET` | `/api/v1/bookings/:id` | Transaction tracker (order/payment/rental status) | PRD-F8 |
+| `PATCH` | `/api/v1/bookings/:id/cancel` | Cancel a booking, freeing its equipment_assignments | PRD-F8 |
 | `POST` | `/api/v1/bookings/:id/checkout` | Create PayMongo hosted-checkout session | PRD-F2 |
 | `POST` | `/api/v1/webhooks/paymongo` | Payment status webhook (signed, idempotent) | PRD-F2 |
 | `POST` | `/internal/jobs/weather-poll` | Cron: poll Open-Meteo per active site | PRD-F5 |
@@ -486,6 +489,17 @@ erDiagram
 | `POST` | `/api/v1/equipment/:id/maintenance-logs` | Record a completed maintenance action | PRD-F4 |
 | `GET` | `/api/v1/reports/utilization` | Fleet utilization + runtime-hours report | PRD-F4 |
 | `POST` | `/internal/jobs/maintenance-threshold-notify` | Cron: check `runtime_hours` against `maintenance_schedules` and notify | PRD-F4 |
+| `GET` | `/api/v1/edtr` | Review queue: filterable, paginated, timekeepers see only assigned sites (`cr-arkilaunch-f9-read-surface.md`) | PRD-F3 |
+| `POST` | `/api/v1/edtr/:id/reject` | Reject a reconciliation without deducting (`cr-arkilaunch-f9-read-surface.md`) | PRD-F3 |
+| `GET` | `/api/v1/invoices`, `GET /api/v1/invoices/:id` | Invoice list/detail with the EDTR deduction evidence trail (`cr-arkilaunch-f9-read-surface.md`) | PRD-F2/F3 |
+| `GET` | `/api/v1/rentals/:id/deposit` | Deposit ledger: configured cap, deductions, remaining balance (`cr-arkilaunch-f9-read-surface.md`) | PRD-F2/F3 |
+| `GET`/`POST`/`PATCH` | `/api/v1/sites`, `/api/v1/sites/:id` | Site list/create/update (`cr-arkilaunch-f9-read-surface.md`) | PRD-F4 |
+| `POST` | `/api/v1/sites/:id/deployments` | Deploy equipment to a site (reuses the booking overlap/lock check) | PRD-F4 |
+| `PATCH` | `/api/v1/sites/:id/deployments/:assignmentId/return` | Return deployed equipment | PRD-F4 |
+| `GET` | `/api/v1/weather/advisories` | Active advisories across every tenant site | PRD-F5 |
+| `GET` | `/api/v1/incidents` | Liability incident log, read from `events` (no new table) | PRD-F5 |
+| `GET` | `/api/v1/notifications`, `PATCH /api/v1/notifications/:id/read` | The caller's own notifications feed (`cr-arkilaunch-f9-read-surface.md`) | cross-cutting |
+| `GET` | `/api/v1/reports/financial` | Invoiced/paid/deducted totals by period (QAD-T8's financial half) | PRD-F4 |
 
 ### Must-Have endpoint contracts
 
@@ -625,15 +639,15 @@ Availability is checked against `equipment_assignments`; an unavailable unit ret
 ### `POST /api/v1/webhooks/paymongo` · PRD-F2
 
 ```
-Headers: Paymongo-Signature: t=<ts>,te=<hmac>   // verified before body parse
+Headers: Paymongo-Signature: t=<ts>,te=<test_sig>,li=<live_sig>   // verified before body parse
 Request (PayMongo event envelope):
-{ "data": { "attributes": { "type": "payment.paid"|"payment.failed",
+{ "data": { "attributes": { "type": "payment.paid"|"payment.failed"|"refund.succeeded"|"dispute.created"|"dispute.resolved",
              "data": { "id": string, "attributes": { "amount": int,
-                       "status": string } } } } }
+                       "status": string, "metadata": {"invoice_id": string} } } } } }
 
 Response 200: { "received": true }   // 2xx only after durable write
 ```
-Signature verified with the endpoint secret before any processing; `provider_ref` UNIQUE makes replays idempotent; booking/payment status comes from the webhook, not the browser redirect (US-08). Non-2xx tells PayMongo to retry. Webhook/idempotency/refund detail is a carried gap (G-10), resolved directly below (no dedicated RFC; see scrutiny §3 G-10).
+Signature verified with the endpoint secret before any processing (`<t>.<raw_body>` HMAC-SHA256, compared against `li`/`te`); `provider_ref` UNIQUE makes replays idempotent; booking/payment status comes from the webhook, not the browser redirect (US-08). Non-2xx tells PayMongo to retry. Webhook/idempotency/refund detail is a carried gap (G-10), resolved directly below (no dedicated RFC; see scrutiny §3 G-10). **Event names corrected 2026-08-02** (`cr-arkilaunch-f2-f8-bookings-payments.md`) against live-verified PayMongo docs: `refund.succeeded` and split `dispute.created`/`dispute.resolved` events, not the `refund.updated`/single-"dispute" placeholder this contract originally sketched.
 
 ### `GET /api/v1/equipment` · `GET /api/v1/equipment/:id/maintenance` · PRD-F4
 
@@ -684,7 +698,7 @@ Aggregates `equipment.runtime_hours` and `edtr`/`edtr_line_items` over the perio
 
 **PayMongo webhook idempotency, refunds, and disputes (G-10, resolved here; no dedicated RFC needed).** The `POST /api/v1/webhooks/paymongo` contract above already gives idempotency (`provider_ref` UNIQUE, signature verified before body processing, status derived from the webhook and never the browser redirect). This closes the remaining detail scrutiny G-10 asked for:
 - **Idempotency:** a replayed webhook with an already-seen `provider_ref` is a no-op 200 (write is `INSERT ... ON CONFLICT (provider_ref) DO NOTHING`), never a duplicate payment or double deduction.
-- **Refunds:** a refund is a distinct PayMongo event (`refund.updated`) carrying its own `id`; it is stored as a new `payments` row (`method` unchanged, `status='refunded'`) linked to the original via `invoice_id`, never by mutating the original row (audit-log immutability, SDD §3).
+- **Refunds:** a refund is a distinct PayMongo event (`refund.succeeded`, corrected 2026-08-02 per `cr-arkilaunch-f2-f8-bookings-payments.md` §5 against live-verified docs; this line's earlier `refund.updated` was the last stale reference, fixed by `cr-arkilaunch-f9-read-surface.md`) carrying its own `id`; it is stored as a new `payments` row (`method` unchanged, `status='refunded'`) linked to the original via `invoice_id`, never by mutating the original row (audit-log immutability, SDD §3).
 - **Disputes:** a chargeback/dispute webhook flips the invoice to a `disputed` state (extends the `invoices.status` enum) and routes to the admin queue for manual resolution; ArkiLaunch does not auto-refund or auto-void on a dispute notification.
 - **Testing:** covered by `QAD-T15` (stale/webhook fallback) plus the new isolation/authz coverage in `QAD-T43`..`T48`; abuse coverage (replay, forged signature) is in QAD §3.4 F2 row.
 
@@ -797,6 +811,8 @@ sequenceDiagram
 ## 6. Infrastructure, CI/CD & Deployment
 
 **Hosting:** Vercel (React frontend), Azure Container Apps (persistent NestJS API + ACA Jobs cron/workers), Supabase (PostgreSQL + Storage), Cloudflare (WAF + DDoS + TLS 1.3). This corrects the naive "backend on Vercel serverless" reading: serverless cannot run the scheduler or the async OCR/reconciliation workers (scrutiny G-6), so the backend is a persistent host and Vercel keeps the frontend only.
+
+**Public-route prerendering (CR: frontend-storefront-shell).** The frontend is a client-rendered SPA, but `build-arkilaunch.md` §5.2 requires public marketing/booking pages to be crawlable HTML, not an empty client shell. Rather than adopting SSR (which would replace the pinned Vite/TanStack Router stack), the deploy pipeline runs a Playwright-driven prerender step (`apps/web/scripts/prerender.mjs`) after `vite build`: it serves the built `dist/`, visits each public route (`/`, `/equipment`, `/equipment/:id` for the current catalog fixtures, `/contact`, `/help`, `/terms`, `/privacy`), and writes the rendered `outerHTML` back to `dist/<route>/index.html` with `noindex` swapped for `index, follow`, a canonical link, Open Graph tags, and (on `/` only) `Organization` + `SoftwareApplication` JSON-LD. Every other route (`/app/*`, `/account/*`, `/field/*`, `/platform`) is never prerendered and keeps serving the default `dist/index.html` shell, which carries `noindex, nofollow` -- Vercel's static-file lookup serves the specific prerendered file where one exists (via `vercel.json`'s catch-all rewrite to `/index.html`, which static files take priority over) and falls back to the noindexed SPA shell everywhere else. This is deliberately a build script, not a new SSR framework: zero new dependencies (Playwright is already a devDependency for e2e), and no change to the pinned stack in §1.
 
 **Environments:**
 - `dev`: Local Docker Compose (Postgres + API) mirroring the prod schema; feature branches off `dev`. Azure DI, PayMongo, Open-Meteo run against sandbox/test keys.

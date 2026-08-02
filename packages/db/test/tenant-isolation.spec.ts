@@ -64,4 +64,27 @@ describe('cross-tenant isolation (two-tenant fixture)', () => {
       `,
     ).rejects.toThrow();
   });
+
+  // PRD-F4: maintenance_logs is a new access path this pass introduced
+  // (apps/api/src/fleet). Same tenant_isolation policy as every other
+  // table, proven concretely rather than assumed by resemblance.
+  it('tenant A context: reads only tenant A maintenance_logs, never tenant B rows', async () => {
+    await setTenantGuc(pooled, tenantAId);
+    const rows = await pooled<{ tenant_id: string }[]>`select tenant_id from maintenance_logs`;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.tenant_id).toBe(tenantAId);
+    }
+  });
+
+  // PRD-F5: weather_alerts is a new access path this pass introduced
+  // (apps/api/src/sites, jobs/src/weather-poll.ts).
+  it('tenant A context: reads only tenant A weather_alerts, never tenant B rows', async () => {
+    await setTenantGuc(pooled, tenantAId);
+    const rows = await pooled<{ tenant_id: string }[]>`select tenant_id from weather_alerts`;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.tenant_id).toBe(tenantAId);
+    }
+  });
 });

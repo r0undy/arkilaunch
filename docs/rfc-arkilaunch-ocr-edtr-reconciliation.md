@@ -5,8 +5,8 @@
 **Date:** 2026-07-25
 **Version:** 0.1
 **Author:** ArkiLaunch Team (Almara Construction capstone)
-**Status:** `Draft`
-**Last reconciled:** N/A (not yet reconciled with code)
+**Status:** `Locked`
+**Last reconciled:** 2026-08-01 (see docs/index.md §1)
 **PRD Reference:** [prd-arkilaunch.md](prd-arkilaunch.md) PRD-F3, PRD-F6, §7 AI Feature Specifications
 **SDD Reference:** [sdd-arkilaunch.md](sdd-arkilaunch.md) §4 (endpoints + §4.1 sequences), §8 (AI architecture), §8.1 (AI threat surface)
 **RFC ID:** `arkilaunch-rfc-002`
@@ -201,11 +201,16 @@ Response 200 (gate held; deducted in one transaction):
 Response 409 (gate NOT held; deducts nothing):
 { "error": "reconciliation_discrepancy", "delta_hours": number, "tolerance": number }
 
+Response 409 (already approved; deducts nothing):
+{ "error": "already_approved", "reconciliation_id": uuid, "approved_reconciliation_id": uuid|null }
+
 Response 422 (reconciliation not in an approvable state):
 { "error": "not_approvable", "status": "pending"|"rejected" }
 ```
 
 The handler asserts `status IN ('matched') OR human_resolved` before it opens the deduction transaction. A `pending`, `discrepancy`, or `rejected` reconciliation cannot be approved; there is no override that skips the assertion. This is the code-level expression of "no autonomous money movement."
+
+**Addendum (2026-08-02, `cr-arkilaunch-edtr-double-approve.md`): approval is per matched pair, not per reconciliation row.** `reconcileEdtr()` deliberately writes two reconciliation rows per matched pair, one keyed on each EDTR id (§3 above), so the same day's work can be approved from either side. The original implementation approved only the handed row, so an admin who called `POST /approve` on **both** rows of one matched pair produced two `deposit_deduction` invoices for one day's work -- the gate itself held (each call did require a real `matched` reconciliation) but the deposit was still debited twice. Fixed: `approve()` now (a) rejects with `409 already_approved` if the reconciliation row **or its counterpart** is already `approved`, checked both on the initial read and again under `SELECT ... FOR UPDATE` inside the transaction (closing the concurrent-approve race, not just the sequential one), and (b) on success, transitions **both** reconciliation rows of the pair to `approved` in the same transaction, so the counterpart can never be independently approved afterward. `equipment.runtime_hours` accrual is unconditional once this point is reached, since reaching it already proves neither side of the pair was previously approved.
 
 **`GET /api/v1/kyc/{id}` (refined; adds the human-confirmation contract):**
 

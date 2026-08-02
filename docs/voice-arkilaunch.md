@@ -42,6 +42,7 @@ Every ArkiLaunch doc obeys these without exception:
 | DSD, BRAND, DESIGN | Evocative but specific; every adjective traces to DSD §0 provenance |
 | OPS, CLR, QAD, AIA | Precise, no flourish; imperative in step lists; disclaimer discipline in CLR/AIA |
 | GTM | Plain marketing-ops voice: channel, audience, action; illustrative figures marked as such, same discipline as UES |
+| Landing page copy (S1, CR: frontend-storefront-shell) | Inherits PITCH's spoken rhythm and short lines for hero/narrative copy, plus UES's discipline for any number: every peso figure and every proof-point number states whether it is measured or a mechanism claim, never a customer result that was not observed. No testimonials, no unverified certifications. |
 | LOG, index | Ledger voice: one row per fact, no narrative; the log is append-only, the index is a manifest, neither argues a case |
 
 ## 3. AI-tell pass (before locking any doc)

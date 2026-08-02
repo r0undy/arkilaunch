@@ -3,16 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"no jobs yet -- entrypoints land with F3/F5\" && exit 0"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@arkilaunch/db": "workspace:*"
+    "@arkilaunch/db": "workspace:*",
+    "@arkilaunch/shared": "workspace:*",
+    "dotenv": "17.4.2",
+    "drizzle-orm": "0.44.7",
+    "postgres": "3.4.9"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
-    "typescript": "5.7.3"
+    "tsx": "4.23.1",
+    "typescript": "5.7.3",
+    "vitest": "3.2.7"
   }
 }

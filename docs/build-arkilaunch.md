@@ -33,7 +33,7 @@ The documentation suite is the source of truth. Read in this order before writin
 11. **OPS** ([ops-arkilaunch.md](ops-arkilaunch.md)); SLOs, alerts, runbooks.
 12. **This guide**; stack conventions, patterns, guardrails.
 
-**Only build against `Locked` docs.** All suite docs are currently `Draft`; lock them before implementation, or flag and do not guess. If reality diverges from a Locked doc, trigger a Change Record (`docs/cr-arkilaunch-*.md`), do not silently code around it.
+**Only build against `Locked` docs.** PRD, SDD, DSD, QAD, and RFC-001/002/003 are `Locked` per `docs/index.md` §1; the remaining suite docs stay `Draft`. Lock a doc before building against it, or flag and do not guess. If reality diverges from a Locked doc, trigger a Change Record (`docs/cr-arkilaunch-*.md`), do not silently code around it.
 
 **Re-ground triggers (anti context-rot):** reload `docs/index.md` + Locked PRD/SDD (and any active change proposal) at session start, after any CR is Applied, before brownfield `apply change`, and after a long tool/search detour.
 
@@ -213,10 +213,10 @@ Once the code is live and PRD/SDD are Locked, prefer the Change Workflow over re
 
 ### Indexability checklist
 
-- [ ] Public marketing/booking pages are crawlable HTML (server-rendered or pre-rendered, not empty client shells)
-- [ ] `sitemap.xml` published for public pages only
-- [ ] Canonical URLs set on public pages
-- [ ] Authenticated app routes carry `noindex` and are excluded from the sitemap
+- [x] Public marketing/booking pages are crawlable HTML (server-rendered or pre-rendered, not empty client shells) -- pre-rendered via `apps/web/scripts/prerender.mjs` (CR: frontend-storefront-shell; see `sdd-arkilaunch.md` §6)
+- [x] `sitemap.xml` published for public pages only -- `apps/web/public/sitemap.xml`
+- [x] Canonical URLs set on public pages -- injected by the prerender step
+- [x] Authenticated app routes carry `noindex` and are excluded from the sitemap -- `/app/*`, `/account/*`, `/field/*`, `/platform` are never prerendered and keep the default `noindex` shell
 
 ### robots.txt policy
 

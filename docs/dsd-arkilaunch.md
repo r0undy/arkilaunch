@@ -5,8 +5,8 @@
 **Date:** 2026-07-25
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
-**Status:** Draft
-**Last reconciled:** N/A (not yet reconciled with code)
+**Status:** Locked
+**Last reconciled:** 2026-08-02; marketing-tier amendment recorded via Change Record `docs/cr-arkilaunch-dsd-marketing-tier.md`, reconciled against the new `apps/web/src/index.css` token layer and console primitives
 **PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
 **IDEA:** [idea-arkilaunch.md](idea-arkilaunch.md)
 **Mode:** Product Mode (task-first); the public catalog and landing borrow a thin Brand-Mode layer, noted where it applies.
@@ -39,6 +39,15 @@
 
 **Selected mode:** `Product Mode`. Exception: S1 Public Landing and S22 Catalog Browse carry a light Brand-Mode surface (larger type, one image-led hero) so a prospective tenant or contractor gets an impression before the task. Every authed surface (S2 to S21, S25) is strictly Product Mode.
 
+**Named tiers (CR: dsd-marketing-tier):** the Brand-Mode exception above is formalized as a second token **tier**, not just a loose exception, because it now carries its own radius scale, elevation language, and motion budget (§2 to §5). Every screen belongs to exactly one tier:
+
+| Tier | Screens | Governs |
+|---|---|---|
+| **Console** (default) | S2 to S21, S25; all authed, task-first surfaces | The instrument-panel system as specified throughout this DSD: tight radii, border-first depth, <=250ms motion, IBM Plex only. |
+| **Marketing** | S1 Public Landing, S22 Catalog Browse | The SprintForge-derived surface merged in by this amendment: large radii, layered/glass depth, Instrument Serif accent, rise-in/drift motion, all behind the §6 progressive-enhancement gate. |
+
+A component never silently crosses tiers. The tier is set once, on a route wrapper (`data-tier="marketing"` on the root of S1/S22, unset elsewhere), and every token below that reads "marketing" or carries an `-mk` suffix applies only inside that scope.
+
 ### Aesthetic Provenance
 
 | Question | Answer |
@@ -56,6 +65,8 @@
 | **Default SaaS purple** (indigo-to-violet gradients, purple primary buttons, gradient text) | It is the category's beige. It signals "another web app" to a crew that trusts machine panels and government weather colors, and it carries zero meaning in a yard. Amber, steel, and the PAGASA scale all carry meaning; purple carries none. |
 | **Enterprise SaaS coldness** (Workday/Salesforce grey chrome, dense corporate shells, faceless stock imagery) | Rhea is one person carrying a back office, not a procurement department. Cold grey enterprise chrome reads as "built for someone else's IT budget" and breaks Rule 3 (make them part of the branding). |
 | **Dense fintech / terminal tables that assume a retina desktop** (Bloomberg-terminal density, tiny 11px rows, hairline dividers, hover-only actions) | The primary device is a cheap Android over 3 to 5 Mbps in outdoor light. Hairlines vanish, hover does not exist on touch, and 11px rows fail both legibility and WCAG 2.2 target size. Density here must survive a thumb and the sun. |
+
+**Scope note (CR: dsd-marketing-tier):** "Default SaaS purple" and "Enterprise SaaS coldness" stay absolute anti-references, everywhere, no exception. Glassmorphism and floating-card depth theater, previously banned outright, are now banned in **Console tier only** (§0 Named tiers); the Marketing tier (S1, S22) is permitted the SprintForge-derived glass nav and layered shadows under the explicit perf gate in §6, because Rhea never works from that surface on her cheap Android in the field, a first-time visitor evaluating the product does.
 
 ---
 
@@ -88,10 +99,10 @@
 **Aesthetic references:** Caterpillar / Komatsu operator instrument clusters; Philippine port and jeepney dispatch boards; PAGASA weather-warning color language; fuel-price signage. The nearest software cousins are logistics and fleet-ops control boards, not consumer SaaS dashboards.
 
 **What this system explicitly avoids:**
-- Purple/indigo gradients and gradient text (the category slop default; carries no yard meaning).
-- Glassmorphism, heavy blur, and floating-card depth theater (fails on cheap Android GPUs and reads as decoration, not signal).
-- Hover-only affordances, hairline dividers, and sub-12px data rows (die on touch and in the sun).
-- Auto-playing or looping animation, and skeleton shimmer as the default loading gesture (burns battery and bandwidth for no information).
+- Purple/indigo gradients and gradient text (the category slop default; carries no yard meaning). Applies everywhere, both tiers.
+- Glassmorphism, heavy blur, and floating-card depth theater in the **Console tier** (fails on cheap Android GPUs and reads as decoration, not signal). Permitted in the **Marketing tier** only, behind the §6 progressive-enhancement gate; see §0 Named tiers.
+- Hover-only affordances, hairline dividers, and sub-12px data rows (die on touch and in the sun). Applies everywhere, both tiers.
+- Auto-playing or looping animation, and skeleton shimmer as the default loading gesture (burns battery and bandwidth for no information). Applies everywhere, both tiers; the Marketing tier's rise-in/drift motion (§5) is state-driven and gated by `prefers-reduced-motion`, not a shimmer loop.
 
 ---
 
@@ -106,6 +117,8 @@ Three tiers, enforced in the Tailwind config and in materialized `DESIGN.md`:
 - **Component**; scoped, mapped from semantic. e.g. `--button-primary-bg: var(--color-primary)`, `--pill-danger-bg: var(--recon-discrepancy)`.
 
 Tables below name **semantic** tokens; primitive refs are documented in the DESIGN.md materialization. Light theme is default (built for outdoor daytime); a "night yard" dark override is in §2.1.
+
+**Tier axis (CR: dsd-marketing-tier):** the semantic layer now also carries a **tier**, orthogonal to light/dark theme. Console semantic tokens (as specified throughout this document) apply by default. Marketing-tier tokens are named with an `-mk` suffix (e.g. `--radius-mk-lg`, `--color-bg-mk`) and only resolve inside `[data-tier="marketing"]` (§0 Named tiers). Both tiers draw from the same primitive layer; no new primitive family is introduced except where §2.1 notes one explicitly. Component tokens are unchanged by this axis: a component is built for one tier and does not need tier-aware component tokens.
 
 ### 2.1 Colors
 
@@ -170,6 +183,19 @@ Palette is high-contrast by construction, verified for WCAG 2.2 AA at the pairin
 
 Signal hues (success/warning/error/weather/recon) hold their hue in dark theme; borders and text lift to keep AA. Theme is toggled by `data-theme` on the root; default is light.
 
+**Marketing surface tokens (CR: dsd-marketing-tier)**; scoped to `[data-tier="marketing"]` (§0, §2.0). This is the merged SprintForge shell, re-tinted warm so it reads as one brand with the console rather than a cool, separate skin. `--color-primary` (amber `#F2A100`) stays the single brand accent in this tier too; SprintForge's signature orange `#E34A32` is dropped entirely; it sat between `--weather-orange` (`#D9600A`) and `--color-error` (`#C42B1C`) and would have diluted both semantic scales.
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--color-bg-mk-frame` | `#ECE7DB` | Outer page frame ("shell in shell" outer layer). Reuses the existing `--color-surface-sunk` primitive; no new hue introduced. |
+| `--color-bg-mk` | `#F5F2EB` | Inner rounded container. Same value as console `--color-bg`, so the temperature does not jump when a visitor moves from marketing into the app. |
+| `--color-surface-mk` | `#FFFFFF` | Floating cards on marketing surfaces. Same value as console `--color-surface`. |
+| `--color-ink-mk` | `#171719` | Near-black display headline color; darker than steel `#10151B`, used only for large marketing display type, never for body text or console surfaces. |
+| `--color-primary-ink` | `#7A5200` | **New primitive.** Amber-family text color for small amber text on a light surface (e.g. a status-chip label), where amber `#F2A100` itself would fail AA on white. Verified 6.9:1 on `#FFFFFF`, 6.2:1 on `#F5F2EB` (both >= 4.5:1). Marketing tier only; console never sets amber text on light, it always pairs amber fills with dark text per §2.1 core table. |
+| `--border-glass` | `rgba(255,255,255,0.7)` | Floating nav edge, marketing tier only. Decorative border, not a text/UI contrast pairing. |
+
+Marketing muted body text reuses the existing verified `--color-text-muted` (`#45566A`, 6.7:1 on `#F5F2EB`) rather than importing a new gray; there is no marketing-specific muted token.
+
 ### 2.2 Logo System
 
 *Source for BRAND.md §2. Rules, not just files. Assets are not yet produced this session; the direction below is the brief.*
@@ -207,8 +233,19 @@ Chosen for small-size legibility on a low-end Android and for provenance: **IBM 
 **The gauge rule (Rule 2, the craft mark):** every operational number, hours (active/idle), km, peso amounts (`₱`), diesel price, confidence values, deposit balance, delta-vs-tolerance, renders in IBM Plex Mono with `font-variant-numeric: tabular-nums` so columns align like an instrument face. Prose never uses mono; data never uses the prose face. This is the deliberate idiosyncrasy an AI default would not choose (§8 compliance).
 
 **Minimum body size:** 16px on all screens (never below; guards outdoor legibility and prevents mobile-Safari zoom). Data captions never below 13px.
-**Font loading:** self-hosted `/fonts/*.woff2`, Latin subset, `font-display: swap`, `<link rel="preload">` on the two most-used cuts (Plex Sans 400, Plex Mono 500). Total font payload budget: <= 90KB over the wire.
+**Font loading:** self-hosted `/fonts/*.woff2`, Latin subset, `font-display: swap`, `<link rel="preload">` on the two most-used cuts (Plex Sans 400, Plex Mono 500). Total font payload budget: <= 90KB over the wire (Console tier; see marketing budget below).
 **License / fallback:** IBM Plex is SIL Open Font License 1.1 (free to self-host and embed). Fallback stack: `"IBM Plex Sans", Roboto, system-ui, -apple-system, "Segoe UI", sans-serif`; mono falls back to `"IBM Plex Mono", "Roboto Mono", ui-monospace, monospace`. Roboto is already resident on Android, so the fallback render is legible with zero download.
+
+**Marketing typography (CR: dsd-marketing-tier)**; IBM Plex stays the type system on marketing surfaces too, not Inter; the single addition is an accent face for editorial emphasis, matching BRAND.md's rejection of "Inter everywhere" as the category slop default.
+
+| Role | Font | Weight | Size / Notes |
+|---|---|---|---|
+| `accent-serif` | Instrument Serif | 400, italic | `letter-spacing: -0.01em`. Used sparingly, for a headline's emotional accent word or phrase only, never for a full heading or for body copy. |
+| Marketing display | IBM Plex Sans Condensed | 600 base | `text-5xl` mobile, `sm:text-7xl`, `lg:text-8xl`; `letter-spacing: -0.035em`. |
+
+**Variable-weight interaction:** SprintForge's pointer-proximity weight effect is adopted on marketing display type, applied to **IBM Plex Sans, not Inter**. Verified against the actual self-hosted files (§9 Materialization): IBM Plex Sans ships a true variable font with a `wght` axis spanning **100 to 700**; IBM Plex Sans Condensed does not (static instances only, one file per weight). The effect therefore renders on Plex Sans Variable, and the ceiling is **700, not 900**; SprintForge's literal 600-to-900 range does not exist in this type family and is not faked with `font-synthesis`. Base weight 600, rising toward 700 within a 200px pointer radius, `font-variation-settings` transition `150ms linear`. Pointer-only; never bound to touch (§6).
+
+**Marketing font budget:** <= 110KB over the wire (raises the console's 90KB ceiling by the Instrument Serif italic cut only; every other face is shared with console and already counted there). Instrument Serif is **not** preloaded, since nothing on a console route uses `.font-serif-accent`, so it is fetched only when a marketing route actually renders it.
 
 ### 2.4 Imagery & Illustration
 
@@ -232,6 +269,15 @@ Depth is restrained and mostly done with borders, not shadow theater. Low blur r
 
 No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the modal scrim is a flat `rgba(16,21,27,0.55)` with no blur.
 
+**Marketing elevation (CR: dsd-marketing-tier)**; the SprintForge "shell in shell" depth language, scoped to `[data-tier="marketing"]` (S1, S22 only) and gated by §6's progressive-enhancement rules. This block does not apply to Console.
+
+| Token | CSS Value | Usage |
+|---|---|---|
+| `--shadow-mk-inset` | `0 1px 0 rgba(255,255,255,0.9) inset` | Inner highlight on the rounded shell container; simulates a physical top edge. |
+| `--shadow-mk-card` | `0 14px 30px -18px rgba(35,36,39,0.25)` | Floating feature/package cards. |
+| `--shadow-mk-nav` | `0 10px 30px -14px rgba(35,36,39,0.25)` | Floating nav, shown only once `scrollY > 24`. |
+| `--blur-mk-nav` | `24px` (`backdrop-filter: blur(24px)`) | Glass nav only. The one permitted `backdrop-filter` in the system; every other surface, both tiers, stays flat. |
+
 ---
 
 ## 3. Layout & Spatial System
@@ -250,13 +296,21 @@ No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the mo
 
 **Grid:** 12-column fluid, max-width `1440px` for app content (control-room surfaces earn the width), 24px gutters on desktop. Data tables and the Evidence Split View may go full-bleed to the content edge. Mobile-first single column for the timekeeper console (S21) and customer portal (S22 to S24). Content never scrolls horizontally at the page level; wide tables scroll inside their own `overflow-x: auto` container (§4.1).
 
-**Corner radius scale:** `--radius-sm: 4px` (chips, inputs, buttons), `--radius-md: 6px` (cards, panels), `--radius-lg: 8px` (modals). Deliberately tight; this is an instrument panel, not a pill-shaped consumer app. No fully-rounded ("rounded-everything") surfaces.
+**Corner radius scale (Console tier):** `--radius-sm: 4px` (chips, inputs, buttons), `--radius-md: 6px` (cards, panels), `--radius-lg: 8px` (modals). Deliberately tight; this is an instrument panel, not a pill-shaped consumer app. No fully-rounded ("rounded-everything") surfaces on Console.
 
 **Breakpoints** (tuned to the real fleet of devices, cheap Android first):
 - Mobile: `360px` (common budget-Android width; the design baseline, not an afterthought)
 - Tablet: `768px`
 - Desktop: `1024px`
 - Wide: `1440px` (control-room dashboards, wide fleet tables)
+
+**Marketing spatial system (CR: dsd-marketing-tier)**; scoped to `[data-tier="marketing"]`. This is the sharpest visual break from Console by design: a first-time visitor is not reading an instrument panel, so the radius and rhythm can afford to be generous. Console's 4/6/8px scale is unchanged and still governs every authed screen.
+
+**Marketing radius scale:** `--radius-mk-sm: 8px`, `--radius-mk-md: 16px`, `--radius-mk-lg: 24px`, `--radius-mk-xl: 28px`, `--radius-mk-container: 40px` (the outer shell), `--radius-pill: 999px` (interactive pills only, e.g. proof-section numerals, nav CTA).
+
+**Marketing section rhythm:** `--space-mk-section-v: 128px` vertical gap between major sections (hero, services, proof, capabilities, work, packages, studio, footer CTA), reusing the same `--space-*` primitives elsewhere on the page.
+
+**Shell-in-shell structure:** the page root is `max-width: 1440px` (matches the existing Console app-content max-width, so this is consistent, not a new number) with `--color-bg-mk-frame` as the outer frame; the main content area sits in a `--radius-mk-container` (28px mobile, 40px desktop via `sm:`) rounded container on `--color-bg-mk`, carrying `--shadow-mk-inset` (§2.5) as its top-edge highlight; cards inside it sit on `--color-surface-mk`.
 
 ---
 
@@ -313,6 +367,20 @@ No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the mo
 
 **Hazard Divider**; a diagonal amber/black stripe rule used only to fence a blocking/danger region (reconciliation discrepancy, stop-work weather, unverified KYC). Never decorative; its presence means "do not proceed until resolved".
 
+### Marketing components (CR: dsd-marketing-tier)
+
+*Specified now; **not built this pass** (deferred, per the accompanying Change Record's scope note). These exist so the landing page (S1) has a documented component contract to build against when it is scheduled, rather than being designed ad hoc off the SprintForge reference at build time.*
+
+**FloatingNav**; centered, sticky, translucent nav (`--blur-mk-nav`, `--border-glass`, `--shadow-mk-nav` only once `scrollY > 24`). Tenant/ArkiLaunch lockup rule (§2.2) still applies if a tenant surface ever reuses this component.
+
+**FeatureTile**; white `--color-surface-mk` card, `--radius-mk-lg`, 48px square icon (Lucide, 1.5 stroke, matching Console's icon discipline), a short caption, and a status-style label. Hover: `-translate-y-1`, 300ms `cubic-bezier(0.34, 1.56, 0.64, 1)` (marketing hover-lift, §5).
+
+**ProofPill**; oversized `--radius-pill` pill, numeral in `--color-ink-mk`, unit label in `--color-primary-ink` (never raw amber-on-white; §2.1). Three pills overlap with `-space-x-6` at desktop width, each at a distinct slight rotation (`-1deg` / `0` / `1deg`).
+
+**PackageCard**; vertical pricing card. Featured variant scales `1.04`, sits `z-10`, uses `--color-ink-mk` background with inverse text and `--shadow-mk-card` at higher opacity; outer variants sit on `--color-surface-mk` with a `±1deg` rotation.
+
+**RiseIn**; the reveal wrapper for `data-rise`/`data-reveal` elements: `opacity-0 translate-y-4` to `opacity-100 translate-y-0`, IntersectionObserver-driven, 700ms ease-out (§5). Collapses to instant under `prefers-reduced-motion` (§6), same as every other motion primitive in this document.
+
 ### 4.1 Composition Patterns
 
 *Source for DESIGN.md §4.1 (same number; DESIGN keeps DSD's own §2-§8 top-level numbering). Multi-component flows aligned to PRD §5.1/§5.2. Each names its screens and its four states (empty/loading/error/success); the Empty state and Loading state rows are the cross-cutting patterns those four-state columns reference, so they define the template rather than repeating it.*
@@ -349,7 +417,18 @@ Restrained by policy: the primary device is low-power, often on battery, in the 
 | Loading placeholder | single 900ms opacity pulse, then hold | ease-in-out | No infinite shimmer loop. |
 | Weather advisory arrival | 160ms | ease-out | Slide the banner strip; no attention-grabbing flash. |
 
-**Avoid:** animations over 250ms in-app; any infinite loop without user intent; parallax; motion that decorates rather than reports a state change; skeleton shimmer as the default. All non-essential motion is wrapped in `@media (prefers-reduced-motion: reduce)` and reduced to an instant state swap.
+**Avoid (Console tier):** animations over 250ms in-app; any infinite loop without user intent; parallax; motion that decorates rather than reports a state change; skeleton shimmer as the default. All non-essential motion is wrapped in `@media (prefers-reduced-motion: reduce)` and reduced to an instant state swap.
+
+**Marketing motion (CR: dsd-marketing-tier)**; scoped to `[data-tier="marketing"]`, gated by the §6 progressive-enhancement rules. The Console rule above still governs every authed screen without exception; a first-time visitor's landing page is allowed a motion budget Rhea's daily console is not.
+
+| Interaction | Duration | Easing | Notes |
+|---|---|---|---|
+| Rise-in (scroll reveal) | 700ms | ease-out | `translate-y-4 opacity-0` -> `translate-y-0 opacity-100`, IntersectionObserver-driven. |
+| Drift (floating decorative tiles) | 6s | linear, infinite | `sin(t + i*2) * 6px` translateY amplitude; decorative tiles only, never a data-bearing element. |
+| Hover-lift | 300ms | `cubic-bezier(0.34, 1.56, 0.64, 1)` | FeatureTile / PackageCard hover only. |
+| Atmosphere parallax | continuous, pointer-driven | linear | Background bloom follows pointer, max 24px dampened offset. Pointer-only; never bound to touch or scroll-linked on mobile. |
+
+Every row above still collapses to an instant state swap under `prefers-reduced-motion: reduce` (§6); "infinite" motion (drift, parallax) simply does not run, it does not need a reduced variant.
 
 ---
 
@@ -369,11 +448,20 @@ Target: **WCAG 2.2 Level AA**, built for gloved hands, outdoor light, low-end An
 - **Reduced motion:** all non-essential animation collapses to an instant state change under `prefers-reduced-motion: reduce`.
 - **Consistent help (SC 3.2.6):** the account menu and support/contact affordance sit in the same app-bar position on every authed screen.
 
+**Marketing progressive-enhancement gate (CR: dsd-marketing-tier)**; the condition that makes the §2.5/§5 marketing depth and motion additions compatible with the 3 to 5 Mbps / low-end-Android performance floor this document sets everywhere else:
+
+- **WebGL mesh** (the marketing hero's faceted mesh, wherever it is eventually implemented) loads only above the `lg` (1024px) breakpoint, only when `prefers-reduced-motion` is not set, and only after a `navigator.connection`/`deviceMemory` capability check passes; a static gradient renders otherwise. The canvas is `pointer-events: none` so it never intercepts input.
+- **Pointer-only effects:** mouse-proximity variable-weight type (§2.3) and atmosphere parallax (§5) are pointer-driven and simply do not bind on touch; they degrade to the static 600-weight / non-parallaxed state, not an error.
+- **Touch targets:** marketing buttons and interactive pills keep the same 44x44px minimum as Console (SC 2.5.8); SprintForge's own spec independently requires this, so there is no conflict to resolve.
+- **Reduced motion:** every marketing-only motion row in §5 (rise-in, drift, hover-lift, parallax) collapses under `prefers-reduced-motion: reduce`, same rule as Console.
+- **Contrast:** the new `--color-primary-ink` and marketing neutral pairings are verified in §2.1; do not introduce a marketing color pairing without a stated ratio.
+
 ---
 
 ## 7. Taste-Skill Settings
 
 ```
+Console (default, unchanged):
 DESIGN_VARIANCE:    4   (restrained and coherent, but with a committed industrial identity; not neutral)
 MOTION_INTENSITY:   2   (subtle only; low-power field devices)
 VISUAL_DENSITY:     8   (control-room, data-dense; density earned by legibility and target size)
@@ -381,8 +469,19 @@ VISUAL_DENSITY:     8   (control-room, data-dense; density earned by legibility 
 
 **Dial guide:** `DESIGN_VARIANCE` 1 = Swiss grid austerity, 10 = maximalist. `MOTION_INTENSITY` 1 = static, 10 = everything moves. `VISUAL_DENSITY` 1 = whitespace, 10 = dashboard-dense.
 
-**Chosen variant:** `output-skill`
+**Chosen variant (Console):** `output-skill`
 **Reason:** ArkiLaunch is information-first and utilitarian: dispatch boards, fleet tables, reconciliation queues, printable quotes. `output-skill` matches the data-output character better than `soft-skill` (too gentle for a control room) or `minimalist-skill` (would strip the amber/PAGASA signal color that carries meaning). It is not `brutalist-skill`: the Filipino-MSME warmth and the honesty of the user's own handwriting keep it from going raw or cold. Density stays high (8) but every dense surface is disciplined by AA contrast and 44/48px targets (§6).
+
+**Marketing dials (CR: dsd-marketing-tier)**; S1/S22 only. A first-impression surface earns a different, more expressive setting than the daily console; this is a deliberate second dial set, not a drift from the Console numbers above.
+
+```
+Marketing (S1, S22 only):
+DESIGN_VARIANCE:    7   (SprintForge-derived: layered depth, large radii, editorial serif accent)
+MOTION_INTENSITY:   6   (rise-in, drift, parallax; gated by §6, still capped well short of "everything moves")
+VISUAL_DENSITY:     3   (image-led, generous negative space; the opposite of the console's data density)
+```
+
+**Chosen variant (Marketing):** blended `output-skill` restraint with a `soft-skill` surface treatment; not a full `soft-skill` adoption, because the amber/PAGASA signal vocabulary and IBM Plex typography still carry through from Console (§2.1, §2.3), keeping the two tiers legible as one brand.
 
 ---
 
@@ -424,12 +523,13 @@ Run before handoff/launch:
 
 | Pattern | Status | Location | Fix Applied |
 |---|---|---|---|
-| Purple-to-indigo gradient / gradient text | Prevented by design | palette §2.1 | Amber + steel + PAGASA scale; no purple primitive exists. |
-| Inter as the only font | Prevented by design | typography §2.3 | IBM Plex Sans/Condensed/Mono with rationale. |
-| Glassmorphism / heavy blur | Prevented by design | elevation §2.5 | Border-first depth; flat scrim, no `backdrop-filter`. |
-| Skeleton shimmer loops | Prevented by design | motion §5 | Layout-preserving placeholders, single pulse. |
+| Purple-to-indigo gradient / gradient text | Prevented by design | palette §2.1 | Amber + steel + PAGASA scale; no purple primitive exists. Applies to both tiers. |
+| Inter as the only font | Prevented by design | typography §2.3 | IBM Plex Sans/Condensed/Mono with rationale; Instrument Serif is a marketing-only italic accent, not a body/UI face. Applies to both tiers. |
+| Glassmorphism / heavy blur | Prevented by design in Console; scoped-permitted in Marketing (CR: dsd-marketing-tier) | elevation §2.5 | Console: border-first depth, flat scrim, no `backdrop-filter`. Marketing: one glass nav only, behind the §6 progressive-enhancement gate; no other surface uses blur. |
+| Skeleton shimmer loops | Prevented by design | motion §5 | Layout-preserving placeholders, single pulse. Applies to both tiers; marketing's rise-in/drift is state-driven, not a shimmer loop. |
 | Generic gray empty-state blob | Prevented by design | §4.1 Empty state | Named empty copy + two-color diagram + primary action. |
 | Color-only status | Prevented by design | §6 | Every status = color + label + icon. |
+| Marketing motion/asset budget exceeding the 3-5 Mbps floor (new risk, CR: dsd-marketing-tier) | Mitigated by design | §6 progressive-enhancement gate | WebGL mesh gated by breakpoint + reduced-motion + connection check with a static fallback; font budget capped at <= 110KB; no `three` dependency shipped until the landing page that consumes it is actually built. |
 
 ### 8.4 Application Examples
 
@@ -442,6 +542,7 @@ Run before handoff/launch:
 | Weather advisory (S13) | PAGASA-scale banner with label + icon + timestamp; stale marker when cached; link red to its auto-logged incident. | Red for an unknown/stale reading; color-only banner. |
 | Printable quote (S6) | Clean print stylesheet, diesel price + date on the document, tenant lockup at the header. | Screen-only chrome bleeding into print; undated price. |
 | Customer portal / catalog (S22) | Tenant's brand leads; compressed responsive images; honest availability; light Brand-Mode hero only here. | ArkiLaunch overriding the tenant identity; heavy hero that stalls at 3 to 5 Mbps. |
+| Public landing (S1, CR: dsd-marketing-tier) | Marketing-tier shell (§0, §2 to §5); amber/steel/IBM Plex identity carried through with an Instrument Serif accent and SprintForge-derived depth, gated by §6 progressive enhancement; hero message per GTM §66. | Inter, SprintForge's `#E34A32` orange, ungated WebGL/parallax that ignores `prefers-reduced-motion` or the connection check, any surface that reads as a different brand than the app the visitor logs into next. |
 
 **Mockup paths:** `docs/assets/concept/` (to be generated; §0.5).
 
@@ -504,3 +605,11 @@ Regenerates DESIGN.md from shipped tokens/components after each significant ship
 - [x] §8.4 application examples filled for primary surfaces
 - [x] §0.5 concept visuals linked from IDEA §5; lo-fi frames recorded as not-yet-generated (no images claimed to exist)
 - [x] AGENTS hard bans applied (no em-dashes; no "modern/clean/seamless/elevate" filler); VOICE polish before lock
+
+**Marketing-tier amendment (CR: dsd-marketing-tier, 2026-08-02):**
+- [x] Marketing tier named and scoped in §0 (Named tiers); every addition below is tagged `CR: dsd-marketing-tier` and gated by `[data-tier="marketing"]`, never silently overwriting a Console token
+- [x] New primitive `--color-primary-ink` (`#7A5200`) contrast-verified: 6.9:1 on `#FFFFFF`, 6.2:1 on `#F5F2EB`, both >= 4.5:1 AA (§2.1)
+- [x] SprintForge's `#E34A32` accent dropped entirely; amber `#F2A100` remains the single brand accent in both tiers (§2.1)
+- [x] Console radius (4/6/8px), elevation (no `backdrop-filter`), and motion (<=250ms, no parallax) rules are unchanged and still apply to every authed screen (§2.5, §3, §5)
+- [x] Marketing depth/motion additions carry an explicit progressive-enhancement gate (§6): breakpoint + reduced-motion + connection check before any WebGL, pointer-only for parallax/variable-weight type, no dependency (`three`) added until a consumer exists
+- [ ] Marketing components (§4: FloatingNav, FeatureTile, ProofPill, PackageCard, RiseIn) are specified but **not built**; S1 Public Landing itself remains unbuilt. Deferred per the accompanying Change Record's scope note, not a silent gap.

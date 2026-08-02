@@ -1,12 +1,14 @@
-import { jsonb, numeric, pgTable, text, timestamp, uuid, date } from 'drizzle-orm/pg-core';
+import { check, integer, jsonb, numeric, pgTable, text, timestamp, uuid, date } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 import { rentals } from './rentals.js';
 import { equipment } from './fleet.js';
 
-// One of two independent logs per equipment-day (RFC-2). status matches
-// RFC-2's edtr_status_chk (6 states); full worker bookkeeping columns
-// (attempts, locked_at, last_error) land with RFC2-01, not this slice.
+// One of two independent logs per equipment-day (RFC-2). attempts/lockedAt/
+// lastError back the edtr-ocr-worker claim/lock/retry loop (RFC2-01);
+// edtr_status_chk pins the 6-state lifecycle so a typo can't introduce an
+// unreachable/undefined status.
 export const edtr = pgTable(
   'edtr',
   {
@@ -26,9 +28,18 @@ export const edtr = pgTable(
     ocrPayload: jsonb('ocr_payload'),
     status: text('status').notNull().default('queued'),
     // queued, extracting, extracted, review, reconciled, hard_failed
+    attempts: integer('attempts').notNull().default(0),
+    lockedAt: timestamp('locked_at', { withTimezone: true }),
+    lastError: text('last_error'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (t) => [
+    tenantIsolationPolicy(),
+    check(
+      'edtr_status_chk',
+      sql`${t.status} IN ('queued','extracting','extracted','review','reconciled','hard_failed')`,
+    ),
+  ],
 );
 
 export const edtrLineItems = pgTable(
@@ -45,7 +56,10 @@ export const edtrLineItems = pgTable(
     hoursIdle: numeric('hours_idle', { precision: 6, scale: 2 }).notNull(), // >= 0
     notes: text('notes'),
   },
-  () => [tenantIsolationPolicy()],
+  (t) => [
+    tenantIsolationPolicy(),
+    check('edtr_hours_nonneg_chk', sql`${t.hoursActive} >= 0 AND ${t.hoursIdle} >= 0`),
+  ],
 );
 
 // The deposit-deduction gate (RFC-2). There is no code path from this table
@@ -72,7 +86,13 @@ export const edtrReconciliations = pgTable(
     // pending, matched, discrepancy, approved, rejected
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (t) => [
+    tenantIsolationPolicy(),
+    check(
+      'edtr_recon_status_chk',
+      sql`${t.status} IN ('pending','matched','discrepancy','approved','rejected')`,
+    ),
+  ],
 );
 
 export const invoices = pgTable(

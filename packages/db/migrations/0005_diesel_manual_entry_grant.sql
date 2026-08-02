@@ -1,0 +1,11 @@
+-- Hand-authored supplemental migration. RFC-3 §2/§3: "Writes come from the
+-- service_role cron (scrape) or a platform-admin route." 0002 granted
+-- app_authenticated SELECT-only on diesel_price_readings, anticipating only
+-- the service_role cron path; QUOTE-05 (this migration) adds the
+-- platform-admin manual-entry route, which runs on the normal request path
+-- as app_authenticated (AGENTS.md "Never: use service_role on a request
+-- path"), not as service_role. diesel_price_readings carries no RLS (it is
+-- global, non-PII reference data, same category as equipment_types), so the
+-- write is gated entirely at the app layer by the diesel:manage permission
+-- (platform_admin only) and is audit-logged by the calling route.
+GRANT INSERT ON diesel_price_readings TO app_authenticated;

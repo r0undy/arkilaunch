@@ -1,4 +1,4 @@
-> Materialized from docs/dsd-arkilaunch.md by scripts/materialize.py on 2026-07-25. Do not hand-edit; edit the canonical doc and re-run.
+> Materialized from docs/dsd-arkilaunch.md by scripts/materialize.py on 2026-07-25 (marketing-tier amendment hand-materialized 2026-08-02, CR: dsd-marketing-tier; see docs/cr-arkilaunch-dsd-marketing-tier.md). Do not hand-edit; edit the canonical doc and re-run.
 
 # Brand: ArkiLaunch
 
@@ -28,6 +28,15 @@
 
 **Selected mode:** `Product Mode`. Exception: S1 Public Landing and S22 Catalog Browse carry a light Brand-Mode surface (larger type, one image-led hero) so a prospective tenant or contractor gets an impression before the task. Every authed surface (S2 to S21, S25) is strictly Product Mode.
 
+**Named tiers (CR: dsd-marketing-tier):** the Brand-Mode exception above is formalized as a second token **tier**, not just a loose exception, because it now carries its own radius scale, elevation language, and motion budget (see [DESIGN.md](DESIGN.md) §2 to §5). Every screen belongs to exactly one tier:
+
+| Tier | Screens | Governs |
+|---|---|---|
+| **Console** (default) | S2 to S21, S25; all authed, task-first surfaces | The instrument-panel system: tight radii, border-first depth, <=250ms motion, IBM Plex only. |
+| **Marketing** | S1 Public Landing, S22 Catalog Browse | The SprintForge-derived surface merged in by this amendment: large radii, layered/glass depth, Instrument Serif accent, rise-in/drift motion, all behind a progressive-enhancement gate ([DESIGN.md](DESIGN.md) §6). |
+
+A component never silently crosses tiers. The tier is set once, on a route wrapper (`data-tier="marketing"` on the root of S1/S22, unset elsewhere).
+
 ### Aesthetic Provenance
 
 | Question | Answer |
@@ -45,6 +54,8 @@
 | **Default SaaS purple** (indigo-to-violet gradients, purple primary buttons, gradient text) | It is the category's beige. It signals "another web app" to a crew that trusts machine panels and government weather colors, and it carries zero meaning in a yard. Amber, steel, and the PAGASA scale all carry meaning; purple carries none. |
 | **Enterprise SaaS coldness** (Workday/Salesforce grey chrome, dense corporate shells, faceless stock imagery) | Rhea is one person carrying a back office, not a procurement department. Cold grey enterprise chrome reads as "built for someone else's IT budget" and breaks Rule 3 (make them part of the branding). |
 | **Dense fintech / terminal tables that assume a retina desktop** (Bloomberg-terminal density, tiny 11px rows, hairline dividers, hover-only actions) | The primary device is a cheap Android over 3 to 5 Mbps in outdoor light. Hairlines vanish, hover does not exist on touch, and 11px rows fail both legibility and WCAG 2.2 target size. Density here must survive a thumb and the sun. |
+
+**Scope note (CR: dsd-marketing-tier):** "Default SaaS purple" and "Enterprise SaaS coldness" stay absolute anti-references, everywhere, no exception. Glassmorphism and floating-card depth theater, previously banned outright, are now banned in **Console tier only**; the Marketing tier (S1, S22) is permitted the SprintForge-derived glass nav and layered shadows under an explicit perf gate ([DESIGN.md](DESIGN.md) §6), because Rhea never works from that surface on her cheap Android in the field, a first-time visitor evaluating the product does.
 
 ---
 
@@ -77,10 +88,10 @@
 **Aesthetic references:** Caterpillar / Komatsu operator instrument clusters; Philippine port and jeepney dispatch boards; PAGASA weather-warning color language; fuel-price signage. The nearest software cousins are logistics and fleet-ops control boards, not consumer SaaS dashboards.
 
 **What this system explicitly avoids:**
-- Purple/indigo gradients and gradient text (the category slop default; carries no yard meaning).
-- Glassmorphism, heavy blur, and floating-card depth theater (fails on cheap Android GPUs and reads as decoration, not signal).
-- Hover-only affordances, hairline dividers, and sub-12px data rows (die on touch and in the sun).
-- Auto-playing or looping animation, and skeleton shimmer as the default loading gesture (burns battery and bandwidth for no information).
+- Purple/indigo gradients and gradient text (the category slop default; carries no yard meaning). Applies everywhere, both tiers.
+- Glassmorphism, heavy blur, and floating-card depth theater in the **Console tier** (fails on cheap Android GPUs and reads as decoration, not signal). Permitted in the **Marketing tier** only, behind the progressive-enhancement gate ([DESIGN.md](DESIGN.md) §6); see §0 Named tiers.
+- Hover-only affordances, hairline dividers, and sub-12px data rows (die on touch and in the sun). Applies everywhere, both tiers.
+- Auto-playing or looping animation, and skeleton shimmer as the default loading gesture (burns battery and bandwidth for no information). Applies everywhere, both tiers; the Marketing tier's rise-in/drift motion is state-driven and gated by `prefers-reduced-motion`, not a shimmer loop.
 
 ---
 
@@ -94,7 +105,7 @@
 | Secondary | `docs/assets/brand/logo-stacked.svg` (to produce) | Tight/narrow space: mark over wordmark. Mobile app bar, timekeeper console. |
 | Icon / mark | `docs/assets/brand/logo-mark.svg` (to produce) | Favicon, PWA icon, notification badge. The bezelled amber "A" lamp alone. |
 
-**Tenant lockup rule (Rule 3):** in the authed app bar and on a tenant's public catalog, the **tenant's** name/mark leads; "Powered by ArkiLaunch" is the secondary line. ArkiLaunch never overrides the tenant identity inside a tenant's own workspace.
+**Tenant lockup rule (Rule 3):** in the authed app bar and on a tenant's public catalog, the **tenant's** name/mark leads; "Powered by ArkiLaunch" is the secondary line. ArkiLaunch never overrides the tenant identity inside a tenant's own workspace. This rule also governs the Marketing-tier FloatingNav (DESIGN.md §4) if a tenant surface ever reuses it.
 
 **Clear space:** 1x the mark's bezel height on all sides.
 **Minimum size:** mark 24px (favicon 16px permitted); full lockup wordmark cap-height >= 14px.
@@ -123,6 +134,7 @@
 | Weather advisory (S13) | PAGASA-scale banner with label + icon + timestamp; stale marker when cached; link red to its auto-logged incident. | Red for an unknown/stale reading; color-only banner. |
 | Printable quote (S6) | Clean print stylesheet, diesel price + date on the document, tenant lockup at the header. | Screen-only chrome bleeding into print; undated price. |
 | Customer portal / catalog (S22) | Tenant's brand leads; compressed responsive images; honest availability; light Brand-Mode hero only here. | ArkiLaunch overriding the tenant identity; heavy hero that stalls at 3 to 5 Mbps. |
+| Public landing (S1, CR: dsd-marketing-tier) | Marketing-tier shell (§0, DESIGN.md §2 to §5); amber/steel/IBM Plex identity carried through with an Instrument Serif accent and SprintForge-derived depth, gated by progressive enhancement; hero message per GTM §66. | Inter, SprintForge's `#E34A32` orange, ungated WebGL/parallax that ignores `prefers-reduced-motion` or the connection check, any surface that reads as a different brand than the app the visitor logs into next. |
 
 **Mockup paths:** `docs/assets/concept/` (to be generated; §0.5).
 
@@ -162,3 +174,7 @@ Verbal tone, banned phrases, and the per-document-type register live in [docs/vo
 - [x] No duplication of DSD §2.0/2.1/2.3/2.5 (token/color/typography/elevation) or §8.1-8.3/8.5 (audit machinery); those are DESIGN.md's, not repeated here
 - [x] Own section numbering is contiguous (0, 0.5, 1, 2, 3, 4, 5, 6, 7); no gaps
 - [x] AGENTS hard bans applied (no em-dashes)
+
+**Marketing-tier amendment (CR: dsd-marketing-tier, 2026-08-02):**
+- [x] Named tiers (§0), the Anti-References scope note (§0), and the Application Examples S1 row (§4) carried from the DSD; each tagged `CR: dsd-marketing-tier`
+- [x] No verbal-identity content duplicated from DESIGN.md's marketing token/component sections; this file stays to the verbal/brand-stance layer per the §9 split contract

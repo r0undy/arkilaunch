@@ -1,0 +1,48 @@
+User-agent: Googlebot
+Allow: /
+Disallow: /app/
+Disallow: /account/
+Disallow: /field/
+Disallow: /platform/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /app/
+Disallow: /account/
+Disallow: /field/
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+Disallow: /app/
+Disallow: /account/
+Disallow: /field/
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /app/
+Disallow: /account/
+Disallow: /field/
+
+User-agent: *
+Allow: /
+Disallow: /app/
+Disallow: /account/
+Disallow: /field/
+Disallow: /platform/
+
+Sitemap: https://almara.example/sitemap.xml
