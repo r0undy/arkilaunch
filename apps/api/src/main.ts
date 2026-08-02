@@ -27,7 +27,13 @@ process.on('unhandledRejection', (reason) => {
 });
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: true exposes req.rawBody (a Buffer) alongside the normally
+  // parsed req.body -- needed so the PayMongo webhook can verify the
+  // Paymongo-Signature HMAC against the exact bytes PayMongo signed,
+  // before any JSON parsing (QAD-T28). Every other route's Zod DTOs still
+  // read the normally parsed req.body; only the webhook handler reads
+  // req.rawBody.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.setGlobalPrefix('api/v1', { exclude: ['health'] });
   // apps/web (Vite dev server, a different origin) calls this API directly;
   // without this the browser blocks every request with a CORS error before

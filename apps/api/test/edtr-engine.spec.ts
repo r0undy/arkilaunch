@@ -38,7 +38,7 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     // Idempotency: this spec re-uses fixed report dates, so a prior run's
     // leftover rows for the same equipment-day would otherwise make
     // reconcileEdtr's counterpart lookup pick a stale, unconfigured row.
-    const testDates = ['2021-03-01', '2021-03-02', '2021-03-03', '2021-03-04', '2021-03-05'];
+    const testDates = ['2021-03-01', '2021-03-02', '2021-03-03', '2021-03-04', '2021-03-05', '2021-03-06'];
     const staleIds = await sql`
       select id from edtr where equipment_id = ${equipmentId} and report_date = any(${testDates})
     `;
@@ -141,14 +141,17 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     expect(approved.invoiceLine.sourceLogs).toContain(digital.id);
   });
 
-  // PRD-F4: reconcileEdtr() deliberately writes two reconciliation rows per
-  // matched pair, one keyed on each EDTR id (packages/db/src/reconciliation.ts).
-  // In production that second row comes from the edtr-ocr-worker calling
-  // reconcileEdtr on the paper side too (jobs/src/edtr-ocr-worker.ts);
-  // simulated here directly since driving the real worker is covered in
-  // jobs/src/edtr-ocr-worker.spec.ts. Approving BOTH sides of one day's
-  // pair must accrue equipment.runtime_hours exactly once, not twice.
-  it('PRD-F4: approving both sides of a matched pair accrues runtime_hours exactly once', async () => {
+  // PRD-F4 / QAD-T26 (extended): reconcileEdtr() deliberately writes two
+  // reconciliation rows per matched pair, one keyed on each EDTR id
+  // (packages/db/src/reconciliation.ts). In production that second row
+  // comes from the edtr-ocr-worker calling reconcileEdtr on the paper side
+  // too (jobs/src/edtr-ocr-worker.ts); simulated here directly since
+  // driving the real worker is covered in jobs/src/edtr-ocr-worker.spec.ts.
+  // Approving the SECOND side of an already-approved pair must be REJECTED
+  // (409 already_approved) -- not silently accepted with a skipped accrual
+  // -- so exactly one deposit_deduction invoice and one runtime accrual
+  // ever result from one day's work (cr-arkilaunch-edtr-double-approve.md).
+  it('PRD-F4 / QAD-T26: approving the second side of an already-approved pair is rejected', async () => {
     const { reconcileEdtr, equipment: equipmentTable, eq: eqFn } = await import('@arkilaunch/db').then(async (db) => ({
       ...db,
       eq: (await import('drizzle-orm')).eq,
@@ -178,15 +181,35 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
       return Number(row!.runtimeHours);
     };
 
+    const invoiceCountFor = async () => {
+      const { invoices: invoicesTable } = await import('@arkilaunch/db');
+      const { and } = await import('drizzle-orm');
+      const rows = await withTenantTx(adminCtx, (tx) =>
+        tx
+          .select()
+          .from(invoicesTable)
+          .where(and(eqFn(invoicesTable.rentalId, rentalId), eqFn(invoicesTable.invoiceType, 'deposit_deduction'))),
+      );
+      return rows.length;
+    };
+
     const runtimeBefore = await runtimeOf();
+    const invoicesBefore = await invoiceCountFor();
     await edtr.approve(adminCtx, digital.id, { reconciliationId: digitalPolled.reconciliation!.id });
     const runtimeAfterFirst = await runtimeOf();
+    const invoicesAfterFirst = await invoiceCountFor();
     expect(runtimeAfterFirst).toBeCloseTo(runtimeBefore + 6, 5);
+    expect(invoicesAfterFirst).toBe(invoicesBefore + 1);
 
-    // Approving the counterpart must NOT accrue a second time.
-    await edtr.approve(adminCtx, paperId, { reconciliationId: paperPolled.reconciliation!.id });
+    // Approving the counterpart of an already-approved pair must be
+    // rejected: no second invoice, no second accrual.
+    await expect(
+      edtr.approve(adminCtx, paperId, { reconciliationId: paperPolled.reconciliation!.id }),
+    ).rejects.toThrow(ConflictException);
     const runtimeAfterSecond = await runtimeOf();
+    const invoicesAfterSecond = await invoiceCountFor();
     expect(runtimeAfterSecond).toBeCloseTo(runtimeAfterFirst, 5);
+    expect(invoicesAfterSecond).toBe(invoicesAfterFirst);
   });
 
   it('QAD-T11/T26: divergent logs block the deduction (409) until a human supplies adjustments', async () => {

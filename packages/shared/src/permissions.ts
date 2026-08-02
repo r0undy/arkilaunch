@@ -15,9 +15,17 @@ export const PERMISSION_CODES = [
   'pricing:manage',
   'fleet:manage',
   'report:read',
+  // PRD-F8/F2 (cr-arkilaunch-f2-f8-bookings-payments.md).
+  'booking:create',
+  'booking:read',
+  'payment:checkout',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];
 
-export const ROLE_CODES = ['platform_admin', 'owner', 'admin', 'timekeeper'] as const;
+// `customer` added for PRD-F8 (cr-arkilaunch-f2-f8-bookings-payments.md):
+// an authenticated end-customer role, not the public/guest catalog the PRD
+// sketch implies -- RFC-1's "tenant_id only from a verified JWT" rules out
+// a client-supplied tenant on an unauthenticated booking write.
+export const ROLE_CODES = ['platform_admin', 'owner', 'admin', 'timekeeper', 'customer'] as const;
 export type RoleCode = (typeof ROLE_CODES)[number];

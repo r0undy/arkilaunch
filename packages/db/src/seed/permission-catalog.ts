@@ -40,10 +40,15 @@ export async function seedPermissionCatalog(db: ReturnType<typeof makeServiceDb>
   // submission is admin's (they upload the corporate doc at onboarding) but
   // the human portal *verification* is platform_admin's (PRD-F6 US-06).
   // admin also manages the fleet (PRD-F4 US-04: record maintenance,
-  // update equipment) and reads reports. owner is read-mostly oversight
+  // update equipment) and reads reports, and can book/checkout on a
+  // customer's behalf (PRD-F8/F2). owner is read-mostly oversight
   // (PRD §2, PRD-F4 US-10: reports only, no data-entry permission --
-  // QAD-T19). timekeeper only ever creates EDTRs on their assigned sites
-  // (PRD-F3 US-02); it never approves/deducts.
+  // QAD-T19), plus booking:read for the same read-mostly posture.
+  // timekeeper only ever creates EDTRs on their assigned sites
+  // (PRD-F3 US-02); it never approves/deducts. customer (PRD-F8/F2,
+  // cr-arkilaunch-f2-f8-bookings-payments.md) can create/read their own
+  // bookings and check out a deposit, and read their own quotes; it holds
+  // no staff permission.
   const grants: Record<string, readonly (typeof PERMISSION_CODES)[number][]> = {
     platform_admin: PERMISSION_CODES,
     admin: [
@@ -58,9 +63,13 @@ export async function seedPermissionCatalog(db: ReturnType<typeof makeServiceDb>
       'pricing:manage',
       'fleet:manage',
       'report:read',
+      'booking:create',
+      'booking:read',
+      'payment:checkout',
     ],
-    owner: ['quote:read', 'report:read'],
+    owner: ['quote:read', 'report:read', 'booking:read'],
     timekeeper: ['edtr:create'],
+    customer: ['booking:create', 'booking:read', 'payment:checkout', 'quote:read'],
   };
 
   for (const [roleName, codes] of Object.entries(grants)) {

@@ -13,8 +13,10 @@ async function main() {
   const { roleIds } = await seedPermissionCatalog(db);
   const adminRoleId = roleIds.get('admin');
   const timekeeperRoleId = roleIds.get('timekeeper');
+  const customerRoleId = roleIds.get('customer');
   if (!adminRoleId) throw new Error('admin role missing from seeded catalog');
   if (!timekeeperRoleId) throw new Error('timekeeper role missing from seeded catalog');
+  if (!customerRoleId) throw new Error('customer role missing from seeded catalog');
 
   const [equipmentType] = await db
     .insert(schema.equipmentTypes)
@@ -131,6 +133,45 @@ async function main() {
         companyName: `${slug} Customer Co.`,
       });
     }
+
+    // PRD-F8: an authenticated `customer`-role user, linked to the
+    // tenant's customers row via customers.user_id (bookings.service.ts
+    // derives the caller's own customer from this link, never from a
+    // client-supplied customerId).
+    await db
+      .insert(schema.users)
+      .values({
+        tenantId: tenant.id,
+        roleId: customerRoleId,
+        email: `customer@${slug}.test`,
+        passwordHash,
+        status: 'active',
+      })
+      .onConflictDoNothing();
+    const [customerUser] = await db
+      .select()
+      .from(schema.users)
+      .where(and(eq(schema.users.tenantId, tenant.id), eq(schema.users.roleId, customerRoleId)));
+    const [customerRowForLink] = await db.select().from(schema.customers).where(eq(schema.customers.tenantId, tenant.id));
+    if (customerUser && customerRowForLink && customerRowForLink.userId !== customerUser.id) {
+      await db
+        .update(schema.customers)
+        .set({ userId: customerUser.id })
+        .where(eq(schema.customers.id, customerRowForLink.id));
+    }
+
+    // PRD-F8: a dedicated bookable unit, kept separate from the
+    // reconciliation/fleet fixture unit above so booking tests never race
+    // another spec file's availabilityStatus/runtime_hours mutations.
+    await db
+      .insert(schema.equipment)
+      .values({
+        tenantId: tenant.id,
+        equipmentTypeId: resolvedEquipmentType.id,
+        model: `${slug} Booking Loader`,
+        serialNo: `${slug}-serial-booking-001`,
+      })
+      .onConflictDoNothing();
 
     // Timekeeper user + an assigned site (RFC-2 §8 US-02 AC2: a timekeeper
     // may only submit/view an EDTR for a site they are assigned to).

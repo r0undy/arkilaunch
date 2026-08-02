@@ -478,6 +478,9 @@ erDiagram
 | `POST` | `/api/v1/kyc/extract` | Extract SEC number + TIN from corporate doc | PRD-F6 |
 | `GET` | `/api/v1/sites/:id/weather` | Current advisory + conditions for a site | PRD-F5 |
 | `POST` | `/api/v1/bookings` | Create a tenant-scoped booking | PRD-F8 |
+| `GET` | `/api/v1/bookings` | List bookings (own, if `customer`; tenant-wide for staff) | PRD-F8 |
+| `GET` | `/api/v1/bookings/:id` | Transaction tracker (order/payment/rental status) | PRD-F8 |
+| `PATCH` | `/api/v1/bookings/:id/cancel` | Cancel a booking, freeing its equipment_assignments | PRD-F8 |
 | `POST` | `/api/v1/bookings/:id/checkout` | Create PayMongo hosted-checkout session | PRD-F2 |
 | `POST` | `/api/v1/webhooks/paymongo` | Payment status webhook (signed, idempotent) | PRD-F2 |
 | `POST` | `/internal/jobs/weather-poll` | Cron: poll Open-Meteo per active site | PRD-F5 |
@@ -625,15 +628,15 @@ Availability is checked against `equipment_assignments`; an unavailable unit ret
 ### `POST /api/v1/webhooks/paymongo` · PRD-F2
 
 ```
-Headers: Paymongo-Signature: t=<ts>,te=<hmac>   // verified before body parse
+Headers: Paymongo-Signature: t=<ts>,te=<test_sig>,li=<live_sig>   // verified before body parse
 Request (PayMongo event envelope):
-{ "data": { "attributes": { "type": "payment.paid"|"payment.failed",
+{ "data": { "attributes": { "type": "payment.paid"|"payment.failed"|"refund.succeeded"|"dispute.created"|"dispute.resolved",
              "data": { "id": string, "attributes": { "amount": int,
-                       "status": string } } } } }
+                       "status": string, "metadata": {"invoice_id": string} } } } } }
 
 Response 200: { "received": true }   // 2xx only after durable write
 ```
-Signature verified with the endpoint secret before any processing; `provider_ref` UNIQUE makes replays idempotent; booking/payment status comes from the webhook, not the browser redirect (US-08). Non-2xx tells PayMongo to retry. Webhook/idempotency/refund detail is a carried gap (G-10), resolved directly below (no dedicated RFC; see scrutiny §3 G-10).
+Signature verified with the endpoint secret before any processing (`<t>.<raw_body>` HMAC-SHA256, compared against `li`/`te`); `provider_ref` UNIQUE makes replays idempotent; booking/payment status comes from the webhook, not the browser redirect (US-08). Non-2xx tells PayMongo to retry. Webhook/idempotency/refund detail is a carried gap (G-10), resolved directly below (no dedicated RFC; see scrutiny §3 G-10). **Event names corrected 2026-08-02** (`cr-arkilaunch-f2-f8-bookings-payments.md`) against live-verified PayMongo docs: `refund.succeeded` and split `dispute.created`/`dispute.resolved` events, not the `refund.updated`/single-"dispute" placeholder this contract originally sketched.
 
 ### `GET /api/v1/equipment` · `GET /api/v1/equipment/:id/maintenance` · PRD-F4
 

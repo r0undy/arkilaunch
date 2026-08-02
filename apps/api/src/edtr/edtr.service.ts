@@ -169,6 +169,17 @@ export class EdtrService {
         throw new NotFoundException({ error: 'reconciliation_not_found' });
       }
 
+      // A pair is approved ONCE, not once per side. reconcileEdtr()
+      // (packages/db/src/reconciliation.ts) writes two reconciliation rows
+      // per matched pair, one keyed on each EDTR id, so the same day's work
+      // can be approved from either side -- but approve() now flips BOTH
+      // rows to 'approved' together (below), so a second call against
+      // either side always finds status 'approved' here and is rejected
+      // before any money moves (cr-arkilaunch-edtr-double-approve.md).
+      if (reconciliation.status === 'approved') {
+        throw new ConflictException({ error: 'already_approved', reconciliationId: reconciliation.id });
+      }
+
       if (reconciliation.status !== 'matched' && reconciliation.status !== 'discrepancy') {
         throw new UnprocessableEntityException({ error: 'not_approvable', status: reconciliation.status });
       }
@@ -181,6 +192,34 @@ export class EdtrService {
           deltaHours: reconciliation.deltaHours !== null ? Number(reconciliation.deltaHours) : null,
           tolerance: Number(reconciliation.tolerance),
         });
+      }
+
+      // Lock this reconciliation row and its counterpart before any money
+      // moves. A plain read-then-check above would still race a
+      // concurrent double-approve on the SAME side (QAD-T26: "direct API,
+      // replayed, or race"); `for('update')` closes that by serializing
+      // concurrent calls on this row and the counterpart's row.
+      const [lockedRecon] = await tx
+        .select()
+        .from(edtrReconciliations)
+        .where(eq(edtrReconciliations.id, reconciliation.id))
+        .for('update');
+      if (lockedRecon?.status === 'approved') {
+        throw new ConflictException({ error: 'already_approved', reconciliationId: reconciliation.id });
+      }
+      if (reconciliation.counterpartEdtrId) {
+        const [counterpartRecon] = await tx
+          .select()
+          .from(edtrReconciliations)
+          .where(eq(edtrReconciliations.edtrId, reconciliation.counterpartEdtrId))
+          .for('update');
+        if (counterpartRecon?.status === 'approved') {
+          throw new ConflictException({
+            error: 'already_approved',
+            reconciliationId: reconciliation.id,
+            approvedReconciliationId: counterpartRecon.id,
+          });
+        }
       }
 
       const lineItems = await tx.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, edtrId));
@@ -239,6 +278,10 @@ export class EdtrService {
         amount: String(deductedAmount),
       });
 
+      // A pair is approved ONCE, not once per side: both reconciliation
+      // rows for this matched pair transition together, so the counterpart
+      // is never independently approvable afterward (the lock/check above
+      // already proved neither row was 'approved' before this point).
       await tx
         .update(edtrReconciliations)
         .set({
@@ -247,36 +290,26 @@ export class EdtrService {
           adjustments: body.adjustments ? { ...body.adjustments } : reconciliation.adjustments,
         })
         .where(eq(edtrReconciliations.id, reconciliation.id));
+      if (reconciliation.counterpartEdtrId) {
+        await tx
+          .update(edtrReconciliations)
+          .set({ status: 'approved', verifiedBy: ctx.userId })
+          .where(eq(edtrReconciliations.edtrId, reconciliation.counterpartEdtrId));
+      }
 
       // PRD-F4 QAD-T4: accrue the unit's cumulative runtime from this
-      // approved EDTR. Guarded against the double-approve case:
-      // reconcileEdtr() deliberately writes two reconciliation rows per
-      // matched pair, one keyed on each EDTR id (packages/db/src/reconciliation.ts
-      // "this is redundant but not unsafe" note) -- so the same day's work
-      // can be approved from EITHER side. If the counterpart side is
-      // already approved, this call is the second of the pair; skip the
-      // accrual so runtime_hours (and the F4 utilization report / PM cron
-      // that read it) never double-counts one day's work.
-      let counterpartAlreadyApproved = false;
-      if (reconciliation.counterpartEdtrId) {
-        const [counterpartRecon] = await tx
-          .select()
-          .from(edtrReconciliations)
-          .where(eq(edtrReconciliations.edtrId, reconciliation.counterpartEdtrId))
-          .limit(1);
-        counterpartAlreadyApproved = counterpartRecon?.status === 'approved';
-      }
-      if (!counterpartAlreadyApproved) {
-        await tx
-          .update(equipment)
-          .set({ runtimeHours: sql`${equipment.runtimeHours} + ${billableHoursActive}` })
-          .where(eq(equipment.id, record.equipmentId));
-        await this.events.emit(ctx, 'equipment_runtime_accrued', {
-          equipment_id: record.equipmentId,
-          hours_accrued: billableHoursActive,
-          edtr_id: record.id,
-        });
-      }
+      // approved EDTR. Unconditional now: reaching this point already
+      // proves neither side of the pair was previously approved, so this
+      // can only run once per matched pair.
+      await tx
+        .update(equipment)
+        .set({ runtimeHours: sql`${equipment.runtimeHours} + ${billableHoursActive}` })
+        .where(eq(equipment.id, record.equipmentId));
+      await this.events.emit(ctx, 'equipment_runtime_accrued', {
+        equipment_id: record.equipmentId,
+        hours_accrued: billableHoursActive,
+        edtr_id: record.id,
+      });
 
       await tx.insert(auditLogs).values({
         tenantId: ctx.tenantId,

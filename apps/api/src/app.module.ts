@@ -11,6 +11,8 @@ import { KycModule } from './kyc/kyc.module.js';
 import { ReferenceModule } from './reference/reference.module.js';
 import { FleetModule } from './fleet/fleet.module.js';
 import { SitesModule } from './sites/sites.module.js';
+import { BookingsModule } from './bookings/bookings.module.js';
+import { PaymentsModule } from './payments/payments.module.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { TenantContextGuard } from './common/guards/tenant-context.guard.js';
 import { PermissionsGuard } from './common/guards/permissions.guard.js';
@@ -30,6 +32,8 @@ import { PermissionsGuard } from './common/guards/permissions.guard.js';
     ReferenceModule,
     FleetModule,
     SitesModule,
+    BookingsModule,
+    PaymentsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
