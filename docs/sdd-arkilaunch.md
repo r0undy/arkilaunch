@@ -5,7 +5,7 @@
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Locked
-**Last reconciled:** 2026-08-01 (see docs/index.md §1)
+**Last reconciled:** 2026-08-02 (see docs/index.md §1); frontend prerender amendment recorded via Change Record `docs/cr-arkilaunch-frontend-storefront-shell.md`
 **PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
 **Event / context:** FMD engine v1.28.1; Scale Full.
 
@@ -40,7 +40,7 @@
 ```mermaid
 graph TD
     subgraph ClientTier["Client tier (Vercel edge)"]
-        FE["React 19.2 + Vite 8 SPA<br/>TanStack Router v1 / Query v5<br/>Tailwind, Zod, native fetch"]
+        FE["React 19.2 + Vite 8 SPA<br/>TanStack Router v1 / Query v5<br/>Tailwind, Zod, native fetch<br/>Playwright build-time prerender on public routes only"]
     end
     subgraph EdgeTier["Edge and security"]
         CF["Cloudflare<br/>WAF + L3/L4/L7 DDoS"]
@@ -811,6 +811,8 @@ sequenceDiagram
 ## 6. Infrastructure, CI/CD & Deployment
 
 **Hosting:** Vercel (React frontend), Azure Container Apps (persistent NestJS API + ACA Jobs cron/workers), Supabase (PostgreSQL + Storage), Cloudflare (WAF + DDoS + TLS 1.3). This corrects the naive "backend on Vercel serverless" reading: serverless cannot run the scheduler or the async OCR/reconciliation workers (scrutiny G-6), so the backend is a persistent host and Vercel keeps the frontend only.
+
+**Public-route prerendering (CR: frontend-storefront-shell).** The frontend is a client-rendered SPA, but `build-arkilaunch.md` §5.2 requires public marketing/booking pages to be crawlable HTML, not an empty client shell. Rather than adopting SSR (which would replace the pinned Vite/TanStack Router stack), the deploy pipeline runs a Playwright-driven prerender step (`apps/web/scripts/prerender.mjs`) after `vite build`: it serves the built `dist/`, visits each public route (`/`, `/equipment`, `/equipment/:id` for the current catalog fixtures, `/contact`, `/help`, `/terms`, `/privacy`), and writes the rendered `outerHTML` back to `dist/<route>/index.html` with `noindex` swapped for `index, follow`, a canonical link, Open Graph tags, and (on `/` only) `Organization` + `SoftwareApplication` JSON-LD. Every other route (`/app/*`, `/account/*`, `/field/*`, `/platform`) is never prerendered and keeps serving the default `dist/index.html` shell, which carries `noindex, nofollow` -- Vercel's static-file lookup serves the specific prerendered file where one exists (via `vercel.json`'s catch-all rewrite to `/index.html`, which static files take priority over) and falls back to the noindexed SPA shell everywhere else. This is deliberately a build script, not a new SSR framework: zero new dependencies (Playwright is already a devDependency for e2e), and no change to the pinned stack in §1.
 
 **Environments:**
 - `dev`: Local Docker Compose (Postgres + API) mirroring the prod schema; feature branches off `dev`. Azure DI, PayMongo, Open-Meteo run against sandbox/test keys.

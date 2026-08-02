@@ -1,7 +1,6 @@
-import { createRoute, redirect } from '@tanstack/react-router';
+import { createRoute } from '@tanstack/react-router';
 import { useEffect, useState, type FormEvent } from 'react';
-import { rootRoute } from './__root.js';
-import { getAccessToken } from '../lib/auth-client.js';
+import { appLayoutRoute } from './_app.js';
 import { apiPost } from '../lib/api-client.js';
 import {
   getCustomers,
@@ -230,10 +229,7 @@ function QuotesPage() {
 }
 
 export const quotesRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appLayoutRoute,
   path: '/app/quotes',
-  beforeLoad: () => {
-    if (!getAccessToken()) throw redirect({ to: '/login' });
-  },
   component: QuotesPage,
 });

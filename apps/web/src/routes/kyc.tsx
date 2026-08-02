@@ -1,7 +1,7 @@
-import { createRoute, redirect } from '@tanstack/react-router';
+import { createRoute } from '@tanstack/react-router';
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import { rootRoute } from './__root.js';
-import { getAccessToken } from '../lib/auth-client.js';
+import { appLayoutRoute } from './_app.js';
+import { requireRole } from '../lib/guards.js';
 import { apiGet, apiPost } from '../lib/api-client.js';
 import { readFileAsDataUrl } from '../lib/file-utils.js';
 import { getCustomers, type CustomerRef } from '../lib/reference-client.js';
@@ -219,11 +219,13 @@ function KycPage() {
   );
 }
 
+// Route path is /app/registration (the Figma "Registration" screens); the
+// file/component name stays kyc for continuity with RFC-2 and its tests.
+// Admin-only: owner and timekeeper are denied /app/kyc-equivalent per the
+// PRD §5.2 auth boundary.
 export const kycRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/app/kyc',
-  beforeLoad: () => {
-    if (!getAccessToken()) throw redirect({ to: '/login' });
-  },
+  getParentRoute: () => appLayoutRoute,
+  path: '/app/registration',
+  beforeLoad: () => requireRole('admin', 'platform_admin'),
   component: KycPage,
 });

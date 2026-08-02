@@ -1,7 +1,6 @@
-import { createRoute, redirect } from '@tanstack/react-router';
+import { createRoute } from '@tanstack/react-router';
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import { rootRoute } from './__root.js';
-import { getAccessToken } from '../lib/auth-client.js';
+import { appLayoutRoute } from './_app.js';
 import { apiGet, apiPost } from '../lib/api-client.js';
 import { readFileAsDataUrl } from '../lib/file-utils.js';
 import { getEquipment, getRentals, type EquipmentRef, type RentalRef } from '../lib/reference-client.js';
@@ -322,11 +321,10 @@ function EdtrPage() {
   );
 }
 
+// Route path is /app/ocr (the Figma "OCR Tool" screen); the file/component
+// name stays edtr for continuity with RFC-2 and the existing test/docs trail.
 export const edtrRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/app/edtr',
-  beforeLoad: () => {
-    if (!getAccessToken()) throw redirect({ to: '/login' });
-  },
+  getParentRoute: () => appLayoutRoute,
+  path: '/app/ocr',
   component: EdtrPage,
 });

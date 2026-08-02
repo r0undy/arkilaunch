@@ -213,10 +213,10 @@ Once the code is live and PRD/SDD are Locked, prefer the Change Workflow over re
 
 ### Indexability checklist
 
-- [ ] Public marketing/booking pages are crawlable HTML (server-rendered or pre-rendered, not empty client shells)
-- [ ] `sitemap.xml` published for public pages only
-- [ ] Canonical URLs set on public pages
-- [ ] Authenticated app routes carry `noindex` and are excluded from the sitemap
+- [x] Public marketing/booking pages are crawlable HTML (server-rendered or pre-rendered, not empty client shells) -- pre-rendered via `apps/web/scripts/prerender.mjs` (CR: frontend-storefront-shell; see `sdd-arkilaunch.md` §6)
+- [x] `sitemap.xml` published for public pages only -- `apps/web/public/sitemap.xml`
+- [x] Canonical URLs set on public pages -- injected by the prerender step
+- [x] Authenticated app routes carry `noindex` and are excluded from the sitemap -- `/app/*`, `/account/*`, `/field/*`, `/platform` are never prerendered and keep the default `noindex` shell
 
 ### robots.txt policy
 
