@@ -1,34 +1,40 @@
 import { createRoute, redirect, Link } from '@tanstack/react-router';
 import { rootRoute } from './__root.js';
 import { getAccessToken, clearTokens } from '../lib/auth-client.js';
+import { Button } from '../components/button.js';
 
 function AppShell() {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-        <span className="text-lg font-semibold text-slate-900">ArkiLaunch</span>
-        <button
-          type="button"
+    <div className="min-h-screen bg-bg">
+      <header className="flex items-center justify-between border-b border-border bg-surface px-6 py-4">
+        <span className="font-display text-lg font-semibold text-text">ArkiLaunch</span>
+        <Button
+          variant="ghost"
           onClick={() => {
             clearTokens();
             window.location.assign('/login');
           }}
-          className="min-h-11 rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
         >
           Sign out
-        </button>
+        </Button>
       </header>
       <main className="p-6">
-        <p className="text-slate-600">Signed in. POC scaffolds for the new backend slices (unstyled):</p>
-        <ul>
+        <p className="text-text-muted">Signed in. POC scaffolds for the new backend slices:</p>
+        <ul className="mt-3 flex flex-col gap-2">
           <li>
-            <Link to="/app/quotes">Quotes (RFC-3)</Link>
+            <Link to="/app/quotes" className="text-accent underline-offset-2 hover:underline">
+              Quotes (RFC-3)
+            </Link>
           </li>
           <li>
-            <Link to="/app/edtr">EDTR (RFC-2)</Link>
+            <Link to="/app/edtr" className="text-accent underline-offset-2 hover:underline">
+              EDTR (RFC-2)
+            </Link>
           </li>
           <li>
-            <Link to="/app/kyc">KYC (RFC-2)</Link>
+            <Link to="/app/kyc" className="text-accent underline-offset-2 hover:underline">
+              KYC (RFC-2)
+            </Link>
           </li>
         </ul>
       </main>

@@ -4,8 +4,8 @@
 **Date:** 2026-07-25
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
-**Status:** Draft
-**Last reconciled:** N/A (not yet reconciled with code)
+**Status:** Locked
+**Last reconciled:** 2026-08-01 (see docs/index.md §1)
 **BRD:** [brd-arkilaunch.md](brd-arkilaunch.md)
 
 ---

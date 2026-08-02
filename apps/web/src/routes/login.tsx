@@ -2,6 +2,9 @@ import { createRoute, useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
 import { rootRoute } from './__root.js';
 import { login } from '../lib/auth-client.js';
+import { Button } from '../components/button.js';
+import { Input } from '../components/input.js';
+import { Surface } from '../components/surface.js';
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -25,58 +28,45 @@ function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <form
-        onSubmit={onSubmit}
-        aria-labelledby="login-heading"
-        className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-8 shadow-sm"
-      >
-        <h1 id="login-heading" className="mb-6 text-xl font-semibold text-slate-900">
-          Sign in to ArkiLaunch
-        </h1>
+    <main className="flex min-h-screen items-center justify-center bg-bg px-4">
+      <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
+        <form onSubmit={onSubmit} aria-labelledby="login-heading">
+          <h1 id="login-heading" className="mb-6 font-display text-xl font-semibold text-text">
+            Sign in to ArkiLaunch
+          </h1>
 
-        <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
-          Email
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="username"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="mb-4 block min-h-11 w-full rounded-md border border-slate-300 px-3 py-2 text-base focus:border-blue-600 focus:outline focus:outline-2 focus:outline-blue-600"
-        />
+          <div className="mb-4">
+            <Input
+              label="Email"
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
 
-        <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">
-          Password
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="mb-6 block min-h-11 w-full rounded-md border border-slate-300 px-3 py-2 text-base focus:border-blue-600 focus:outline focus:outline-2 focus:outline-blue-600"
-        />
+          <div className="mb-6">
+            <Input
+              label="Password"
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              {...(error ? { error } : {})}
+            />
+          </div>
 
-        {error && (
-          <p role="alert" className="mb-4 text-sm text-red-700">
-            {error}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={submitting}
-          className="min-h-11 w-full rounded-md bg-blue-700 px-4 py-2 text-base font-medium text-white disabled:opacity-60"
-        >
-          {submitting ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+          <Button type="submit" loading={submitting} disabled={submitting} className="w-full">
+            Sign in
+          </Button>
+        </form>
+      </Surface>
     </main>
   );
 }

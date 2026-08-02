@@ -4,8 +4,8 @@
 **Date:** 2026-07-25
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
-**Status:** Draft
-**Last reconciled:** N/A (not yet reconciled with code)
+**Status:** Locked
+**Last reconciled:** 2026-08-01 (see docs/index.md §1)
 **PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
 **SDD:** [sdd-arkilaunch.md](sdd-arkilaunch.md)
 **RFC(s):** [rfc-arkilaunch-tenancy-rls-auth.md](rfc-arkilaunch-tenancy-rls-auth.md) (RFC-1, PRD-F7), [rfc-arkilaunch-ocr-edtr-reconciliation.md](rfc-arkilaunch-ocr-edtr-reconciliation.md) (RFC-2, PRD-F3), [rfc-arkilaunch-quotation-pricing-engine.md](rfc-arkilaunch-quotation-pricing-engine.md) (RFC-3, PRD-F1)

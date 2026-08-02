@@ -35,7 +35,7 @@ The documentation suite is the source of truth. Read in this order before writin
 11. **OPS** ([docs/ops-arkilaunch.md](docs/ops-arkilaunch.md)); SLOs, alerts, runbooks.
 12. **This guide**; stack conventions, patterns, guardrails.
 
-**Only build against `Locked` docs.** All suite docs are currently `Draft`; lock them before implementation, or flag and do not guess. If reality diverges from a Locked doc, trigger a Change Record (`docs/cr-arkilaunch-*.md`), do not silently code around it.
+**Only build against `Locked` docs.** PRD, SDD, DSD, QAD, and RFC-001/002/003 are `Locked` per `docs/index.md` §1; the remaining suite docs stay `Draft`. Lock a doc before building against it, or flag and do not guess. If reality diverges from a Locked doc, trigger a Change Record (`docs/cr-arkilaunch-*.md`), do not silently code around it.
 
 **Re-ground triggers (anti context-rot):** reload `docs/index.md` + Locked PRD/SDD (and any active change proposal) at session start, after any CR is Applied, before brownfield `apply change`, and after a long tool/search detour.
 

@@ -5,8 +5,8 @@
 **Date:** 2026-07-25
 **Version:** 0.1
 **Author:** ArkiLaunch Team (Almara Construction capstone)
-**Status:** `Draft`
-**Last reconciled:** N/A (not yet reconciled with code)
+**Status:** `Locked`
+**Last reconciled:** 2026-08-01 (see docs/index.md §1)
 **PRD Reference:** [prd-arkilaunch.md](prd-arkilaunch.md) PRD-F3, PRD-F6, §7 AI Feature Specifications
 **SDD Reference:** [sdd-arkilaunch.md](sdd-arkilaunch.md) §4 (endpoints + §4.1 sequences), §8 (AI architecture), §8.1 (AI threat surface)
 **RFC ID:** `arkilaunch-rfc-002`

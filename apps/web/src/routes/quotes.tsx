@@ -13,6 +13,10 @@ import {
   type ProjectSiteRef,
   type RateCardRef,
 } from '../lib/reference-client.js';
+import { Button } from '../components/button.js';
+import { Input } from '../components/input.js';
+import { Select } from '../components/select.js';
+import { Surface } from '../components/surface.js';
 
 // POC scaffold only (unstyled): exercises POST /quotes/preview, POST
 // /quotes, and POST /quotes/:id/approve (RFC-3). Dropdowns are populated
@@ -104,42 +108,46 @@ function QuotesPage() {
     }
   }
 
+  const canSubmit = !customerId || !projectSiteId || !equipmentTypeId || !rateCardId;
+
   return (
-    <div>
-      <h1>Quotes (RFC-3)</h1>
+    <div className="min-h-screen bg-bg p-6">
+      <h1 className="mb-6 font-display text-[28px] font-semibold leading-[1.15] text-text sm:text-[34px]">
+        Quotes (RFC-3)
+      </h1>
       {refError != null && (
-        <p>
+        <p className="mb-4 text-error">
           Could not load reference data (customers/equipment/rate cards/sites) -- is the API running? See error
           below.
         </p>
       )}
-      <form>
-        <div>
-          <label htmlFor="customerId">Customer</label>
-          <select id="customerId" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
+      <Surface radius="md" elevation="sm" className="mb-6 flex max-w-2xl flex-col gap-4 p-6">
+        <form className="flex flex-col gap-4">
+          <Select id="customerId" label="Customer" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
             {customers.length === 0 && <option value="">(no customers seeded for this tenant)</option>}
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.companyName}
               </option>
             ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="projectSiteId">Project site</label>
-          <select id="projectSiteId" value={projectSiteId} onChange={(e) => setProjectSiteId(e.target.value)} required>
+          </Select>
+          <Select
+            id="projectSiteId"
+            label="Project site"
+            value={projectSiteId}
+            onChange={(e) => setProjectSiteId(e.target.value)}
+            required
+          >
             {projectSites.length === 0 && <option value="">(no sites seeded for this tenant)</option>}
             {projectSites.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.id.slice(0, 8)} ({s.latitude}, {s.longitude})
               </option>
             ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="equipmentTypeId">Equipment type</label>
-          <select
+          </Select>
+          <Select
             id="equipmentTypeId"
+            label="Equipment type"
             value={equipmentTypeId}
             onChange={(e) => setEquipmentTypeId(e.target.value)}
             required
@@ -149,57 +157,73 @@ function QuotesPage() {
                 {et.name}
               </option>
             ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="rateCardId">Rate card</label>
-          <select id="rateCardId" value={rateCardId} onChange={(e) => setRateCardId(e.target.value)} required>
+          </Select>
+          <Select id="rateCardId" label="Rate card" value={rateCardId} onChange={(e) => setRateCardId(e.target.value)} required>
             {rateCards.length === 0 && <option value="">(no rate cards seeded for this tenant)</option>}
             {rateCards.map((rc) => (
               <option key={rc.id} value={rc.id}>
                 {rc.rateType} @ {rc.currency} {rc.rateValue}/hr
               </option>
             ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="quantity">Quantity</label>
-          <input id="quantity" type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-        </div>
-        <div>
-          <label htmlFor="estimatedHours">Estimated hours</label>
-          <input id="estimatedHours" type="number" value={estimatedHours} onChange={(e) => setEstimatedHours(e.target.value)} />
-        </div>
-        <div>
-          <label htmlFor="mobilizationKm">Mobilization km</label>
-          <input id="mobilizationKm" type="number" value={mobilizationKm} onChange={(e) => setMobilizationKm(e.target.value)} />
-        </div>
-        <div>
-          <label htmlFor="demobilizationKm">Demobilization km</label>
-          <input id="demobilizationKm" type="number" value={demobilizationKm} onChange={(e) => setDemobilizationKm(e.target.value)} />
-        </div>
-        <button type="submit" onClick={preview} disabled={!customerId || !projectSiteId || !equipmentTypeId || !rateCardId}>
-          Preview
-        </button>
-        <button type="submit" onClick={create} disabled={!customerId || !projectSiteId || !equipmentTypeId || !rateCardId}>
-          Create draft
-        </button>
-        <button type="button" onClick={approve} disabled={!quoteId}>
-          Approve
-        </button>
-      </form>
+          </Select>
+          <Input
+            numeric
+            id="quantity"
+            label="Quantity"
+            type="number"
+            min="1"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+          />
+          <Input
+            numeric
+            id="estimatedHours"
+            label="Estimated hours"
+            type="number"
+            value={estimatedHours}
+            onChange={(e) => setEstimatedHours(e.target.value)}
+          />
+          <Input
+            numeric
+            id="mobilizationKm"
+            label="Mobilization km"
+            type="number"
+            value={mobilizationKm}
+            onChange={(e) => setMobilizationKm(e.target.value)}
+          />
+          <Input
+            numeric
+            id="demobilizationKm"
+            label="Demobilization km"
+            type="number"
+            value={demobilizationKm}
+            onChange={(e) => setDemobilizationKm(e.target.value)}
+          />
+          <div className="flex flex-wrap gap-3">
+            <Button type="submit" variant="secondary" onClick={preview} disabled={canSubmit}>
+              Preview
+            </Button>
+            <Button type="submit" onClick={create} disabled={canSubmit}>
+              Create draft
+            </Button>
+            <Button type="button" variant="approve" onClick={approve} disabled={!quoteId}>
+              Approve
+            </Button>
+          </div>
+        </form>
+      </Surface>
 
       {error != null && (
-        <div>
-          <h2>Error</h2>
-          <pre>{JSON.stringify(error, null, 2)}</pre>
-        </div>
+        <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl border-error p-4">
+          <h2 className="mb-2 font-display text-[18px] font-semibold text-error">Error</h2>
+          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(error, null, 2)}</pre>
+        </Surface>
       )}
       {result != null && (
-        <div>
-          <h2>Result</h2>
-          <pre>{JSON.stringify(result, null, 2)}</pre>
-        </div>
+        <Surface radius="md" elevation="sm" className="max-w-2xl p-4">
+          <h2 className="mb-2 font-display text-[18px] font-semibold text-text">Result</h2>
+          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(result, null, 2)}</pre>
+        </Surface>
       )}
     </div>
   );

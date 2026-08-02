@@ -5,6 +5,10 @@ import { getAccessToken } from '../lib/auth-client.js';
 import { apiGet, apiPost } from '../lib/api-client.js';
 import { readFileAsDataUrl } from '../lib/file-utils.js';
 import { getCustomers, type CustomerRef } from '../lib/reference-client.js';
+import { Button } from '../components/button.js';
+import { Input } from '../components/input.js';
+import { Select } from '../components/select.js';
+import { Surface } from '../components/surface.js';
 
 // POC scaffold only (unstyled): exercises POST /kyc/extract (scans a real
 // photo/PDF via <input capture>, encoded as a data: URL since no Supabase
@@ -97,64 +101,93 @@ function KycPage() {
   }
 
   return (
-    <div>
-      <h1>KYC (RFC-2)</h1>
-      {refError != null && <p>Could not load customers -- is the API running? See error below.</p>}
-      <form onSubmit={extract}>
-        <h2>Extract</h2>
-        <div>
-          <label htmlFor="customerId">Customer</label>
-          <select id="customerId" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
+    <div className="min-h-screen bg-bg p-6">
+      <h1 className="mb-6 font-display text-[28px] font-semibold leading-[1.15] text-text sm:text-[34px]">
+        KYC (RFC-2)
+      </h1>
+      {refError != null && <p className="mb-4 text-error">Could not load customers -- is the API running? See error below.</p>}
+      <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-6">
+        <form onSubmit={extract} className="flex flex-col gap-4">
+          <h2 className="font-display text-[22px] font-semibold leading-[1.2] text-text sm:text-[26px]">Extract</h2>
+          <Select
+            id="customerId"
+            label="Customer"
+            value={customerId}
+            onChange={(e) => setCustomerId(e.target.value)}
+            required
+          >
             {customers.length === 0 && <option value="">(no customers seeded for this tenant)</option>}
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.companyName}
               </option>
             ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="documentType">Document type</label>
-          <input id="documentType" value={documentType} onChange={(e) => setDocumentType(e.target.value)} required />
-        </div>
-        <div>
-          <label htmlFor="scanFile">Scan / upload the corporate document</label>
-          <input id="scanFile" type="file" accept="image/*,application/pdf" capture="environment" onChange={onScanFile} />
-          {scanning && <p>Reading file…</p>}
-          {scanPreview && (
-            <div>
-              <p>Preview:</p>
-              <img src={scanPreview} alt="Scanned document preview" width={240} />
-            </div>
-          )}
-        </div>
-        <button type="submit" disabled={!scanDataUrl || !customerId}>
-          Extract
-        </button>
-      </form>
+          </Select>
+          <Input
+            id="documentType"
+            label="Document type"
+            value={documentType}
+            onChange={(e) => setDocumentType(e.target.value)}
+            required
+          />
+          <div className="flex flex-col gap-2">
+            <label htmlFor="scanFile" className="text-sm font-medium text-text">
+              Scan / upload the corporate document
+            </label>
+            <input
+              id="scanFile"
+              type="file"
+              accept="image/*,application/pdf"
+              capture="environment"
+              onChange={onScanFile}
+              className="text-sm text-text-muted file:mr-3 file:min-h-11 file:rounded-sm file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-text"
+            />
+            {scanning && <p className="text-sm text-text-muted">Reading file…</p>}
+            {scanPreview && (
+              <div className="flex flex-col gap-1">
+                <p className="text-sm text-text-muted">Preview:</p>
+                <img
+                  src={scanPreview}
+                  alt="Scanned document preview"
+                  width={240}
+                  className="rounded-md border border-border"
+                />
+              </div>
+            )}
+          </div>
+          <div>
+            <Button type="submit" disabled={!scanDataUrl || !customerId}>
+              Extract
+            </Button>
+          </div>
+        </form>
+      </Surface>
 
-      <button type="button" onClick={poll} disabled={!kycDocumentId}>
-        Poll status
-      </button>
+      <div className="mb-6 max-w-2xl">
+        <Button type="button" variant="secondary" onClick={poll} disabled={!kycDocumentId}>
+          Poll status
+        </Button>
+      </div>
 
-      <form onSubmit={confirm}>
-        <h2>Human portal confirmation (platform_admin only)</h2>
-        <div>
-          <label htmlFor="registryStatus">Registry status</label>
-          <select
+      <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-6">
+        <form onSubmit={confirm} className="flex flex-col gap-4">
+          <h2 className="font-display text-[22px] font-semibold leading-[1.2] text-text sm:text-[26px]">
+            Human portal confirmation (platform_admin only)
+          </h2>
+          <Select
             id="registryStatus"
+            label="Registry status"
             value={registryStatus}
             onChange={(e) => setRegistryStatus(e.target.value as typeof registryStatus)}
           >
             <option value="active">active</option>
             <option value="suspended">suspended</option>
             <option value="revoked">revoked</option>
-          </select>
-        </div>
-        <div>
-          <label htmlFor="portalMatchScore">Portal match score (0-1)</label>
-          <input
+          </Select>
+          <Input
+            numeric
             id="portalMatchScore"
+            label="Portal match score (0-1)"
             type="number"
             step="0.01"
             min="0"
@@ -162,23 +195,25 @@ function KycPage() {
             value={portalMatchScore}
             onChange={(e) => setPortalMatchScore(e.target.value)}
           />
-        </div>
-        <button type="submit" disabled={!kycDocumentId}>
-          Confirm
-        </button>
-      </form>
+          <div>
+            <Button type="submit" variant="approve" disabled={!kycDocumentId}>
+              Confirm
+            </Button>
+          </div>
+        </form>
+      </Surface>
 
       {error != null && (
-        <div>
-          <h2>Error</h2>
-          <pre>{JSON.stringify(error, null, 2)}</pre>
-        </div>
+        <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl border-error p-4">
+          <h2 className="mb-2 font-display text-[18px] font-semibold text-error">Error</h2>
+          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(error, null, 2)}</pre>
+        </Surface>
       )}
       {result != null && (
-        <div>
-          <h2>Result</h2>
-          <pre>{JSON.stringify(result, null, 2)}</pre>
-        </div>
+        <Surface radius="md" elevation="sm" className="max-w-2xl p-4">
+          <h2 className="mb-2 font-display text-[18px] font-semibold text-text">Result</h2>
+          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(result, null, 2)}</pre>
+        </Surface>
       )}
     </div>
   );
