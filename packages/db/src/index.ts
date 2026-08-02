@@ -5,4 +5,5 @@ export * from './rls.js';
 export * from './auth-lookup.js';
 export * from './payments-lookup.js';
 export * from './reconciliation.js';
+export * from './deposit-ledger.js';
 export * from './seed/ocr-fixtures/golden-set.js';

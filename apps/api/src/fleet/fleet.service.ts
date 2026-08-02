@@ -1,13 +1,15 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, gte, lte } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm';
 import {
   auditLogs,
   db,
   edtr,
   edtrLineItems,
   equipment,
+  invoices,
   maintenanceLogs,
   maintenanceSchedules,
+  payments,
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
@@ -54,6 +56,13 @@ export interface UtilizationReportResponse {
     utilizationPct: number;
     maintenanceDue: boolean;
   }>;
+}
+
+export interface FinancialReportResponse {
+  period: { from: string; to: string };
+  invoiced: { byType: Record<string, number>; total: number };
+  paid: number;
+  depositDeducted: number;
 }
 
 function toEquipmentResponse(row: typeof equipment.$inferSelect): EquipmentResponse {
@@ -285,6 +294,45 @@ export class FleetService {
       });
 
       return { period: { from, to }, fleet };
+    });
+  }
+
+  // GET /api/v1/reports/financial?from=&to= (QAD-T8: "utilization AND
+  // financial summaries"; only the utilization half existed before this
+  // pass). Aggregates invoices/payments over the period -- read-only, same
+  // report:read gate and default 30-day window as utilizationReport.
+  async financialReport(ctx: RequestContext, query: UtilizationQuery): Promise<FinancialReportResponse> {
+    const to = query.to ?? new Date().toISOString().slice(0, 10);
+    const from = query.from ?? defaultFromDate(to, DEFAULT_REPORT_WINDOW_DAYS);
+
+    return withTenantTx(ctx, async (tx) => {
+      const invoiceRows = await tx
+        .select()
+        .from(invoices)
+        .where(and(gte(invoices.createdAt, new Date(`${from}T00:00:00Z`)), lte(invoices.createdAt, new Date(`${to}T23:59:59.999Z`))));
+
+      const invoiceIds = invoiceRows.map((row) => row.id);
+      const paymentRows = invoiceIds.length
+        ? await tx.select().from(payments).where(inArray(payments.invoiceId, invoiceIds))
+        : [];
+
+      const byType: Record<string, number> = {};
+      let invoicedTotal = 0;
+      for (const invoice of invoiceRows) {
+        const amount = Number(invoice.amount);
+        byType[invoice.invoiceType] = round2HalfUp((byType[invoice.invoiceType] ?? 0) + amount);
+        invoicedTotal = round2HalfUp(invoicedTotal + amount);
+      }
+      const paidTotal = round2HalfUp(
+        paymentRows.filter((payment) => payment.status === 'paid').reduce((sum, payment) => sum + Number(payment.amount), 0),
+      );
+
+      return {
+        period: { from, to },
+        invoiced: { byType, total: invoicedTotal },
+        paid: paidTotal,
+        depositDeducted: byType['deposit_deduction'] ?? 0,
+      };
     });
   }
 

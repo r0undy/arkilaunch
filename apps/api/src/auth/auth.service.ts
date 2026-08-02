@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { verify } from '@node-rs/argon2';
 import { findUserByEmailForAuth, users, withTenantTx } from '@arkilaunch/db';
@@ -22,6 +22,23 @@ const TWO_FA_CHALLENGE_PURPOSE = '2fa_challenge';
 // roles are unaffected by this slice.
 const TWO_FA_ENFORCED_ROLE = 'timekeeper';
 
+// QAD-T22 (credential stuffing / brute force on /auth/login). In-process
+// only (no Redis in V1, BUILD §3; resets on restart) -- keyed by the
+// lowercased email rather than tenant_id, since login runs before any
+// tenant context exists (the same "same error for bad email, bad
+// password" no-enumeration posture this file already has). users.email is
+// only unique per-tenant, so two different tenants' users sharing an
+// email string would share a lockout window; accepted as a rare,
+// non-security-weakening edge case rather than a reason to add a
+// per-tenant lockout table.
+const LOGIN_LOCKOUT_THRESHOLD = 5;
+const LOGIN_LOCKOUT_WINDOW_MS = 15 * 60_000;
+
+interface LoginAttemptState {
+  failCount: number;
+  windowStart: number;
+}
+
 interface TwoFaChallengePayload {
   sub: string;
   tenantId: string;
@@ -31,6 +48,8 @@ interface TwoFaChallengePayload {
 
 @Injectable()
 export class AuthService {
+  private readonly loginAttempts = new Map<string, LoginAttemptState>();
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly refreshTokens: RefreshTokenService,
@@ -38,16 +57,23 @@ export class AuthService {
   ) {}
 
   async login({ email, password }: LoginRequest): Promise<AuthTokens | TwoFaChallenge> {
-    const user = await findUserByEmailForAuth(email.toLowerCase());
+    const normalizedEmail = email.toLowerCase();
+    this.assertNotLockedOut(normalizedEmail);
+
+    const user = await findUserByEmailForAuth(normalizedEmail);
     // Same error for bad email, bad password (RFC-1 §3): no user-enumeration signal.
     if (!user || user.status !== 'active') {
+      this.recordLoginFailure(normalizedEmail);
       throw new UnauthorizedException('invalid_credentials');
     }
 
     const passwordOk = await verify(user.passwordHash, password);
     if (!passwordOk) {
+      this.recordLoginFailure(normalizedEmail);
       throw new UnauthorizedException('invalid_credentials');
     }
+
+    this.loginAttempts.delete(normalizedEmail);
 
     if (user.roleName === TWO_FA_ENFORCED_ROLE) {
       const enrolled = await this.hasTotpEnrolled(user.tenantId, user.id, user.roleName);
@@ -111,6 +137,36 @@ export class AuthService {
     const accessToken = this.signAccessToken(tenantId, userId, role);
     const { token: refreshToken } = await this.refreshTokens.issue(tenantId, userId, role);
     return { accessToken, refreshToken, expiresIn: ACCESS_TOKEN_TTL_SECONDS };
+  }
+
+  // Rejects an attempt outright once the threshold is hit within the
+  // window, before password verification even runs (QAD-T22: "attempts
+  // logged" -- rejecting pre-verify avoids spending an argon2 hash on an
+  // attempt already known to be locked out).
+  private assertNotLockedOut(email: string): void {
+    const state = this.loginAttempts.get(email);
+    if (!state) return;
+    const elapsedMs = Date.now() - state.windowStart;
+    if (elapsedMs > LOGIN_LOCKOUT_WINDOW_MS) {
+      this.loginAttempts.delete(email);
+      return;
+    }
+    if (state.failCount >= LOGIN_LOCKOUT_THRESHOLD) {
+      throw new HttpException(
+        { error: 'login_locked', retryAfterSeconds: Math.ceil((LOGIN_LOCKOUT_WINDOW_MS - elapsedMs) / 1000) },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  private recordLoginFailure(email: string): void {
+    const now = Date.now();
+    const state = this.loginAttempts.get(email);
+    if (!state || now - state.windowStart > LOGIN_LOCKOUT_WINDOW_MS) {
+      this.loginAttempts.set(email, { failCount: 1, windowStart: now });
+    } else {
+      state.failCount += 1;
+    }
   }
 
   private async hasTotpEnrolled(tenantId: string, userId: string, role: string): Promise<boolean> {

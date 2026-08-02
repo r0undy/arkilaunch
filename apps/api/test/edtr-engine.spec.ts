@@ -278,4 +278,100 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     });
     expect(result.source).toBe('digital_entry');
   });
+
+  // cr-arkilaunch-f9-read-surface.md: S8 review queue.
+  it('GET /edtr (list) filters by rentalId and sorts review-status rows first', async () => {
+    const { items, total } = await edtr.list(adminCtx, { rentalId, limit: 100, offset: 0 });
+    expect(total).toBeGreaterThan(0);
+    expect(items.every((item) => item.rentalId === rentalId)).toBe(true);
+
+    const reviewIndexes = items.flatMap((item, i) => (item.status === 'review' ? [i] : []));
+    const nonReviewIndexes = items.flatMap((item, i) => (item.status !== 'review' ? [i] : []));
+    if (reviewIndexes.length > 0 && nonReviewIndexes.length > 0) {
+      expect(Math.max(...reviewIndexes)).toBeLessThan(Math.min(...nonReviewIndexes));
+    }
+  });
+
+  // QAD-T29 extended to reads: a timekeeper's queue excludes EDTRs on sites
+  // they are not assigned to, even ones that already exist.
+  it('QAD-T29 (read): a timekeeper only sees EDTRs tied to sites they are assigned to', async () => {
+    await withTenantTx(adminCtx, (tx) =>
+      tx.insert(edtrTable).values({
+        tenantId: adminCtx.tenantId,
+        rentalId: unassignedRentalId,
+        equipmentId,
+        source: 'digital_entry',
+        reportDate: '2021-03-07',
+        status: 'review',
+      }),
+    );
+
+    const { items } = await edtr.list(timekeeperCtx, { limit: 200, offset: 0 });
+    expect(items.every((item) => item.rentalId !== unassignedRentalId)).toBe(true);
+    expect(items.some((item) => item.rentalId === rentalId)).toBe(true);
+
+    const adminView = await edtr.list(adminCtx, { rentalId: unassignedRentalId, limit: 10, offset: 0 });
+    expect(adminView.total).toBeGreaterThan(0);
+  });
+
+  // PRD §5.3 "Review -> Rejected -> Capture" (cr-arkilaunch-f9-read-surface.md).
+  it('POST /edtr/:id/reject rejects a pending reconciliation, deducts nothing, and blocks any later approve', async () => {
+    const { invoices: invoicesTable, eq: eqFn } = await import('@arkilaunch/db').then(async (db) => ({
+      ...db,
+      eq: (await import('drizzle-orm')).eq,
+    }));
+    const reportDate = '2021-03-08';
+    const first = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 3, hoursIdle: 0 },
+    });
+    const polled = await edtr.get(adminCtx, first.id);
+    expect(polled.reconciliation?.status).toBe('pending');
+
+    const countInvoices = () =>
+      withTenantTx(adminCtx, (tx) => tx.select().from(invoicesTable).where(eqFn(invoicesTable.rentalId, rentalId))).then(
+        (rows) => rows.length,
+      );
+    const before = await countInvoices();
+
+    const rejected = await edtr.reject(adminCtx, first.id, { reason: 'duplicate entry' });
+    expect(rejected.status).toBe('rejected');
+    expect(await countInvoices()).toBe(before);
+
+    await expect(
+      edtr.approve(adminCtx, first.id, { reconciliationId: polled.reconciliation!.id }),
+    ).rejects.toThrow(UnprocessableEntityException);
+  });
+
+  it('POST /edtr/:id/reject cannot reject an already-approved reconciliation', async () => {
+    const reportDate = '2021-03-09';
+    await insertExtractedPaperCounterpart(reportDate, 5, 0);
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 5, hoursIdle: 0 },
+    });
+    const polled = await edtr.get(adminCtx, digital.id);
+    await edtr.approve(adminCtx, digital.id, { reconciliationId: polled.reconciliation!.id });
+
+    await expect(edtr.reject(adminCtx, digital.id, {})).rejects.toThrow(ConflictException);
+  });
+
+  it('POST /edtr/:id/reject cannot be called twice on the same reconciliation', async () => {
+    const reportDate = '2021-03-10';
+    const first = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 3, hoursIdle: 0 },
+    });
+    await edtr.reject(adminCtx, first.id, {});
+    await expect(edtr.reject(adminCtx, first.id, {})).rejects.toThrow(ConflictException);
+  });
 });

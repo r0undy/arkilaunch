@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, gt, inArray, isNull, lt, or } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import {
   auditLogs,
   customers,
@@ -13,12 +13,11 @@ import {
   rentals,
   withTenantTx,
 } from '@arkilaunch/db';
-import type { BookingCreateRequest, BookingItemRequest, RequestContext } from '@arkilaunch/shared';
+import type { BookingCreateRequest, RequestContext } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
+import { findAvailableAlternatives, overlappingAssignments } from '../common/equipment-availability.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-const MAX_ALTERNATIVES = 5;
 
 // A booking IS a `rentals` row plus one `equipment_assignments` row per
 // item -- no new table (SDD §3's 35-table catalog already models an order
@@ -33,41 +32,6 @@ export class BookingsService {
   private async ownCustomer(tx: Tx, ctx: RequestContext) {
     const [row] = await tx.select().from(customers).where(eq(customers.userId, ctx.userId)).limit(1);
     return row ?? null;
-  }
-
-  private async findAlternatives(
-    tx: Tx,
-    equipmentTypeId: string,
-    item: BookingItemRequest,
-    excludeIds: string[],
-  ): Promise<string[]> {
-    const candidates = await tx
-      .select()
-      .from(equipment)
-      .where(and(eq(equipment.equipmentTypeId, equipmentTypeId), eq(equipment.availabilityStatus, 'available')));
-
-    const alternatives: string[] = [];
-    for (const candidate of candidates) {
-      if (excludeIds.includes(candidate.id)) continue;
-      const overlapping = await this.overlappingAssignments(tx, candidate.id, item);
-      if (overlapping.length === 0) alternatives.push(candidate.id);
-      if (alternatives.length >= MAX_ALTERNATIVES) break;
-    }
-    return alternatives;
-  }
-
-  private async overlappingAssignments(tx: Tx, equipmentId: string, item: BookingItemRequest) {
-    return tx
-      .select()
-      .from(equipmentAssignments)
-      .where(
-        and(
-          eq(equipmentAssignments.equipmentId, equipmentId),
-          inArray(equipmentAssignments.status, ['scheduled', 'active']),
-          lt(equipmentAssignments.start, new Date(item.end)),
-          or(isNull(equipmentAssignments.end), gt(equipmentAssignments.end, new Date(item.start))),
-        ),
-      );
   }
 
   // POST /api/v1/bookings (SDD §4, PRD-F8 US-09). Never overbooks: the
@@ -111,13 +75,13 @@ export class BookingsService {
         if (!equipmentRow) throw new NotFoundException({ error: 'equipment_not_found', equipmentId: item.equipmentId });
 
         if (equipmentRow.availabilityStatus !== 'available') {
-          const alternatives = await this.findAlternatives(tx, equipmentRow.equipmentTypeId, item, equipmentIds);
+          const alternatives = await findAvailableAlternatives(tx, equipmentRow.equipmentTypeId, item, equipmentIds);
           throw new ConflictException({ error: 'equipment_unavailable', equipmentId: item.equipmentId, alternatives });
         }
 
-        const overlapping = await this.overlappingAssignments(tx, item.equipmentId, item);
+        const overlapping = await overlappingAssignments(tx, item.equipmentId, item);
         if (overlapping.length > 0) {
-          const alternatives = await this.findAlternatives(tx, equipmentRow.equipmentTypeId, item, equipmentIds);
+          const alternatives = await findAvailableAlternatives(tx, equipmentRow.equipmentTypeId, item, equipmentIds);
           throw new ConflictException({ error: 'equipment_unavailable', equipmentId: item.equipmentId, alternatives });
         }
       }

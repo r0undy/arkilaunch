@@ -109,3 +109,28 @@ export const EdtrApproveRequestSchema = z.object({
   adjustments: AdjustmentsSchema.nullable().optional(),
 });
 export type EdtrApproveRequest = z.infer<typeof EdtrApproveRequestSchema>;
+
+// GET /api/v1/edtr?... (S8 review queue, cr-arkilaunch-f9-read-surface.md).
+export const EdtrListQuerySchema = z.object({
+  status: z.enum(['queued', 'extracting', 'extracted', 'review', 'reconciled', 'hard_failed']).optional(),
+  rentalId: z.string().uuid().optional(),
+  equipmentId: z.string().uuid().optional(),
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  to: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export type EdtrListQuery = z.infer<typeof EdtrListQuerySchema>;
+
+// POST /api/v1/edtr/:id/reject (S8, PRD §5.3 "Review -> Rejected ->
+// Capture"). Deducts nothing; a separate action from approve().
+export const EdtrRejectRequestSchema = z.object({
+  reason: z.string().max(2000).optional(),
+});
+export type EdtrRejectRequest = z.infer<typeof EdtrRejectRequestSchema>;

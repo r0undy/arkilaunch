@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import {
   auditLogs,
   edtr,
@@ -17,6 +17,7 @@ import {
   rateCards,
   rentals,
   reconcileEdtr,
+  resolveDepositLedger,
   timekeeperSiteAssignments,
   withTenantTx,
 } from '@arkilaunch/db';
@@ -24,6 +25,8 @@ import {
   CONFIDENCE_GATE,
   type EdtrApproveRequest,
   type EdtrCaptureRequest,
+  type EdtrListQuery,
+  type EdtrRejectRequest,
   type OcrPayload,
   type ReconciliationReason,
   type RequestContext,
@@ -102,6 +105,82 @@ export class EdtrService {
       await this.events.emit(ctx, 'edtr_uploaded', { edtr_id: created.id, source: body.source });
 
       return { id: created.id, status: finalStatus, source: created.source, pollUrl: `/api/v1/edtr/${created.id}` };
+    });
+  }
+
+  // GET /api/v1/edtr?... (S8 review queue, cr-arkilaunch-f9-read-surface.md).
+  // A timekeeper sees only EDTRs tied to a site they are assigned to (the
+  // same US-02 AC2 boundary capture() already enforces, extended to reads
+  // -- QAD-T29); staff see the whole tenant. `review` rows sort first
+  // (single-source-pending and tolerance-exceeded discrepancies both land
+  // there, packages/db/src/reconciliation.ts:87,112) so the queue surfaces
+  // actionable items before already-settled ones.
+  async list(ctx: RequestContext, query: EdtrListQuery) {
+    return withTenantTx(ctx, async (tx) => {
+      const conditions: SQL[] = [];
+      if (query.status) conditions.push(eq(edtr.status, query.status));
+      if (query.rentalId) conditions.push(eq(edtr.rentalId, query.rentalId));
+      if (query.equipmentId) conditions.push(eq(edtr.equipmentId, query.equipmentId));
+      if (query.from) conditions.push(gte(edtr.reportDate, query.from));
+      if (query.to) conditions.push(lte(edtr.reportDate, query.to));
+
+      if (ctx.role === 'timekeeper') {
+        const assignments = await tx
+          .select({ projectSiteId: timekeeperSiteAssignments.projectSiteId })
+          .from(timekeeperSiteAssignments)
+          .where(eq(timekeeperSiteAssignments.userId, ctx.userId));
+        const siteIds = assignments.map((row) => row.projectSiteId);
+        if (siteIds.length === 0) return { items: [], total: 0 };
+
+        const assignedRentals = await tx
+          .select({ id: rentals.id })
+          .from(rentals)
+          .where(inArray(rentals.projectSiteId, siteIds));
+        const rentalIds = assignedRentals.map((row) => row.id);
+        if (rentalIds.length === 0) return { items: [], total: 0 };
+        conditions.push(inArray(edtr.rentalId, rentalIds));
+      }
+
+      const priority = sql`CASE WHEN ${edtr.status} = 'review' THEN 0 ELSE 1 END`;
+      const rows = await tx
+        .select()
+        .from(edtr)
+        .where(and(...conditions))
+        .orderBy(priority, desc(edtr.createdAt))
+        .limit(query.limit)
+        .offset(query.offset);
+      const total = (await tx.select().from(edtr).where(and(...conditions))).length;
+
+      const reconRows = rows.length
+        ? await tx
+            .select()
+            .from(edtrReconciliations)
+            .where(inArray(edtrReconciliations.edtrId, rows.map((row) => row.id)))
+        : [];
+      const reconByEdtrId = new Map(reconRows.map((row) => [row.edtrId, row]));
+
+      return {
+        items: rows.map((row) => {
+          const recon = reconByEdtrId.get(row.id);
+          return {
+            id: row.id,
+            rentalId: row.rentalId,
+            equipmentId: row.equipmentId,
+            source: row.source,
+            reportDate: row.reportDate,
+            status: row.status,
+            reconciliation: recon
+              ? {
+                  id: recon.id,
+                  status: recon.status,
+                  deltaHours: recon.deltaHours !== null ? Number(recon.deltaHours) : null,
+                  tolerance: Number(recon.tolerance),
+                }
+              : null,
+          };
+        }),
+        total,
+      };
     });
   }
 
@@ -243,18 +322,35 @@ export class EdtrService {
       const hourlyRate = rateCard ? Number(rateCard.rateValue) : 0;
       const deductedAmount = round2HalfUp(billableHoursActive * hourlyRate);
 
-      // Running deduction total for this rental (rental_contracts/deposit
-      // funding is PRD-F2, not yet built; this is a documented
-      // simplification -- the security property under test is the GATE,
-      // not the exact deposit-ledger arithmetic).
-      const priorDeductions = await tx
-        .select()
-        .from(invoices)
-        .where(and(eq(invoices.rentalId, record.rentalId), eq(invoices.invoiceType, 'deposit_deduction')));
-      const balanceBefore = round2HalfUp(
-        priorDeductions.reduce((sum, invoice) => sum + Number(invoice.amount), 0),
-      );
-      const balanceAfter = round2HalfUp(balanceBefore + deductedAmount);
+      // Deposit ledger: resolves the rental's configured deposit_required
+      // (rentals -> quotations -> rental_contracts) and every prior
+      // deposit_deduction invoice, shared with billing.service.ts's ledger
+      // read via resolveDepositLedger() so the two never disagree
+      // (cr-arkilaunch-f9-read-surface.md fix: balance now measures against
+      // the actual deposit cap instead of only ever growing).
+      const ledger = await resolveDepositLedger(tx, record.rentalId);
+      let balanceBefore: number;
+      let balanceAfter: number;
+      if (ledger.depositRequired !== null) {
+        balanceBefore = round2HalfUp(ledger.depositRequired - ledger.totalDeducted);
+        balanceAfter = round2HalfUp(balanceBefore - deductedAmount);
+        if (balanceAfter < 0) {
+          throw new ConflictException({
+            error: 'deposit_exhausted',
+            balanceBefore,
+            attemptedDeduction: deductedAmount,
+          });
+        }
+      } else {
+        // No quotation/rental_contracts chain for this rental (e.g. a
+        // booking created directly via bookings.service.ts) -- there is no
+        // configured cap to gate against, so this reports the running
+        // total deducted instead of a balance and never blocks the
+        // approve. Documented simplification, same category as
+        // payments.service.ts's DEFAULT_DEPOSIT_PHP fallback.
+        balanceBefore = round2HalfUp(ledger.totalDeducted);
+        balanceAfter = round2HalfUp(balanceBefore + deductedAmount);
+      }
 
       const [invoice] = await tx
         .insert(invoices)
@@ -344,6 +440,57 @@ export class EdtrService {
         },
         deposit: { balanceBefore, deducted: deductedAmount, balanceAfter },
       };
+    });
+  }
+
+  // POST /api/v1/edtr/:id/reject (S8, PRD §5.3 "Review -> Rejected ->
+  // Capture"). Deducts nothing -- a rejected reconciliation never reaches
+  // approve()'s gate. Scoped to only this edtr's own reconciliation row
+  // (edtr_reconciliations.edtr_id is unique per row); unlike approve(),
+  // this deliberately does not force the counterpart's row to reject in
+  // lockstep -- rejecting doesn't move money, so there is no double-spend
+  // invariant to protect the way approve()'s pair-lock protects one.
+  async reject(ctx: RequestContext, edtrId: string, body: EdtrRejectRequest) {
+    return withTenantTx(ctx, async (tx) => {
+      const [record] = await tx.select().from(edtr).where(eq(edtr.id, edtrId)).limit(1);
+      if (!record) throw new NotFoundException({ error: 'edtr_not_found' });
+
+      const [reconciliation] = await tx
+        .select()
+        .from(edtrReconciliations)
+        .where(eq(edtrReconciliations.edtrId, edtrId))
+        .limit(1);
+      if (!reconciliation) throw new NotFoundException({ error: 'reconciliation_not_found' });
+      if (reconciliation.status === 'approved') {
+        throw new ConflictException({ error: 'already_approved', reconciliationId: reconciliation.id });
+      }
+      if (reconciliation.status === 'rejected') {
+        throw new ConflictException({ error: 'already_rejected', reconciliationId: reconciliation.id });
+      }
+
+      const priorAdjustments = (reconciliation.adjustments as Record<string, unknown> | null) ?? {};
+      await tx
+        .update(edtrReconciliations)
+        .set({
+          status: 'rejected',
+          verifiedBy: ctx.userId,
+          adjustments: { ...priorAdjustments, rejectionReason: body.reason ?? null },
+        })
+        .where(eq(edtrReconciliations.id, reconciliation.id));
+
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'edtr_reconciliations',
+        entityId: reconciliation.id,
+      });
+      await this.events.emit(ctx, 'edtr_reconciliation_rejected', {
+        edtr_id: edtrId,
+        reconciliation_id: reconciliation.id,
+      });
+
+      return { id: reconciliation.id, status: 'rejected' };
     });
   }
 }

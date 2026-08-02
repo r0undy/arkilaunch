@@ -54,4 +54,10 @@ export class FleetController {
   utilizationReport(@Query() query: UtilizationQueryDto, @Req() req: CtxRequest) {
     return this.fleet.utilizationReport(req.ctx, query);
   }
+
+  @Get('reports/financial')
+  @RequirePermission('report:read')
+  financialReport(@Query() query: UtilizationQueryDto, @Req() req: CtxRequest) {
+    return this.fleet.financialReport(req.ctx, query);
+  }
 }

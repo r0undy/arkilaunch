@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
@@ -11,8 +12,10 @@ type CtxRequest = Request & { ctx: RequestContext };
 export class KycController {
   constructor(private readonly kyc: KycService) {}
 
+  // QAD-T31: each extract queues an async Azure DI page spend.
   @Post('extract')
   @RequirePermission('kyc:extract')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   extract(@Body() body: KycExtractDto, @Req() req: CtxRequest) {
     return this.kyc.extract(req.ctx, body);
   }

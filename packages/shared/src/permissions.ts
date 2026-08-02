@@ -19,6 +19,11 @@ export const PERMISSION_CODES = [
   'booking:create',
   'booking:read',
   'payment:checkout',
+  // PRD-F2/F3 read surface (cr-arkilaunch-f9-read-surface.md): invoices,
+  // the deposit ledger, and the EDTR evidence trail.
+  'billing:read',
+  // PRD-F4/F5 site + deployment writes (cr-arkilaunch-f9-read-surface.md).
+  'site:manage',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];

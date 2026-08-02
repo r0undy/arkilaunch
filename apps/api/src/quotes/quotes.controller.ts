@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
@@ -11,14 +12,17 @@ type CtxRequest = Request & { ctx: RequestContext };
 export class QuotesController {
   constructor(private readonly quotes: QuotesService) {}
 
+  // QAD-T31 (resource abuse / cost bomb): rapid repeated quote generation.
   @Post('preview')
   @RequirePermission('quote:create')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   preview(@Body() body: QuoteRequestDto, @Req() req: CtxRequest) {
     return this.quotes.preview(req.ctx, body);
   }
 
   @Post()
   @RequirePermission('quote:create')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   create(@Body() body: QuoteRequestDto, @Req() req: CtxRequest) {
     return this.quotes.create(req.ctx, body);
   }

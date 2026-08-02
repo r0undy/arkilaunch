@@ -48,7 +48,11 @@ export async function seedPermissionCatalog(db: ReturnType<typeof makeServiceDb>
   // (PRD-F3 US-02); it never approves/deducts. customer (PRD-F8/F2,
   // cr-arkilaunch-f2-f8-bookings-payments.md) can create/read their own
   // bookings and check out a deposit, and read their own quotes; it holds
-  // no staff permission.
+  // no staff permission. billing:read and site:manage
+  // (cr-arkilaunch-f9-read-surface.md) follow the same admin/owner
+  // read-mostly split as report:read/fleet:manage: admin and
+  // platform_admin can deploy/return equipment and manage sites; owner
+  // reads invoices and the deposit ledger but never writes (QAD-T19).
   const grants: Record<string, readonly (typeof PERMISSION_CODES)[number][]> = {
     platform_admin: PERMISSION_CODES,
     admin: [
@@ -66,8 +70,10 @@ export async function seedPermissionCatalog(db: ReturnType<typeof makeServiceDb>
       'booking:create',
       'booking:read',
       'payment:checkout',
+      'billing:read',
+      'site:manage',
     ],
-    owner: ['quote:read', 'report:read', 'booking:read'],
+    owner: ['quote:read', 'report:read', 'booking:read', 'billing:read'],
     timekeeper: ['edtr:create'],
     customer: ['booking:create', 'booking:read', 'payment:checkout', 'quote:read'],
   };

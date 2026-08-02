@@ -489,6 +489,17 @@ erDiagram
 | `POST` | `/api/v1/equipment/:id/maintenance-logs` | Record a completed maintenance action | PRD-F4 |
 | `GET` | `/api/v1/reports/utilization` | Fleet utilization + runtime-hours report | PRD-F4 |
 | `POST` | `/internal/jobs/maintenance-threshold-notify` | Cron: check `runtime_hours` against `maintenance_schedules` and notify | PRD-F4 |
+| `GET` | `/api/v1/edtr` | Review queue: filterable, paginated, timekeepers see only assigned sites (`cr-arkilaunch-f9-read-surface.md`) | PRD-F3 |
+| `POST` | `/api/v1/edtr/:id/reject` | Reject a reconciliation without deducting (`cr-arkilaunch-f9-read-surface.md`) | PRD-F3 |
+| `GET` | `/api/v1/invoices`, `GET /api/v1/invoices/:id` | Invoice list/detail with the EDTR deduction evidence trail (`cr-arkilaunch-f9-read-surface.md`) | PRD-F2/F3 |
+| `GET` | `/api/v1/rentals/:id/deposit` | Deposit ledger: configured cap, deductions, remaining balance (`cr-arkilaunch-f9-read-surface.md`) | PRD-F2/F3 |
+| `GET`/`POST`/`PATCH` | `/api/v1/sites`, `/api/v1/sites/:id` | Site list/create/update (`cr-arkilaunch-f9-read-surface.md`) | PRD-F4 |
+| `POST` | `/api/v1/sites/:id/deployments` | Deploy equipment to a site (reuses the booking overlap/lock check) | PRD-F4 |
+| `PATCH` | `/api/v1/sites/:id/deployments/:assignmentId/return` | Return deployed equipment | PRD-F4 |
+| `GET` | `/api/v1/weather/advisories` | Active advisories across every tenant site | PRD-F5 |
+| `GET` | `/api/v1/incidents` | Liability incident log, read from `events` (no new table) | PRD-F5 |
+| `GET` | `/api/v1/notifications`, `PATCH /api/v1/notifications/:id/read` | The caller's own notifications feed (`cr-arkilaunch-f9-read-surface.md`) | cross-cutting |
+| `GET` | `/api/v1/reports/financial` | Invoiced/paid/deducted totals by period (QAD-T8's financial half) | PRD-F4 |
 
 ### Must-Have endpoint contracts
 
@@ -687,7 +698,7 @@ Aggregates `equipment.runtime_hours` and `edtr`/`edtr_line_items` over the perio
 
 **PayMongo webhook idempotency, refunds, and disputes (G-10, resolved here; no dedicated RFC needed).** The `POST /api/v1/webhooks/paymongo` contract above already gives idempotency (`provider_ref` UNIQUE, signature verified before body processing, status derived from the webhook and never the browser redirect). This closes the remaining detail scrutiny G-10 asked for:
 - **Idempotency:** a replayed webhook with an already-seen `provider_ref` is a no-op 200 (write is `INSERT ... ON CONFLICT (provider_ref) DO NOTHING`), never a duplicate payment or double deduction.
-- **Refunds:** a refund is a distinct PayMongo event (`refund.updated`) carrying its own `id`; it is stored as a new `payments` row (`method` unchanged, `status='refunded'`) linked to the original via `invoice_id`, never by mutating the original row (audit-log immutability, SDD §3).
+- **Refunds:** a refund is a distinct PayMongo event (`refund.succeeded`, corrected 2026-08-02 per `cr-arkilaunch-f2-f8-bookings-payments.md` §5 against live-verified docs; this line's earlier `refund.updated` was the last stale reference, fixed by `cr-arkilaunch-f9-read-surface.md`) carrying its own `id`; it is stored as a new `payments` row (`method` unchanged, `status='refunded'`) linked to the original via `invoice_id`, never by mutating the original row (audit-log immutability, SDD §3).
 - **Disputes:** a chargeback/dispute webhook flips the invoice to a `disputed` state (extends the `invoices.status` enum) and routes to the admin queue for manual resolution; ArkiLaunch does not auto-refund or auto-void on a dispute notification.
 - **Testing:** covered by `QAD-T15` (stale/webhook fallback) plus the new isolation/authz coverage in `QAD-T43`..`T48`; abuse coverage (replay, forged signature) is in QAD §3.4 F2 row.
 
