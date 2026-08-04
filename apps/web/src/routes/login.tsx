@@ -7,8 +7,21 @@ import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Surface } from '../components/surface.js';
 
+// Only accept an internal path (starts with '/', not '//'); a leaf value
+// like `//evil.com` is protocol-relative and would send a successful login
+// off-site. This is the input-validation half of the redirect-preservation
+// feature the guards raise via ?redirect=.
+function isSafeInternalRedirect(value: unknown): value is string {
+  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//');
+}
+
+function validateLoginSearch(search: Record<string, unknown>): { redirect?: string } {
+  return isSafeInternalRedirect(search.redirect) ? { redirect: search.redirect } : {};
+}
+
 function LoginPage() {
   const navigate = useNavigate();
+  const { redirect: redirectTo } = loginRoute.useSearch();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -20,8 +33,16 @@ function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await login({ email, password });
-      await navigate({ to: homeRouteForRole(getCurrentRole()) });
+      const response = await login({ email, password });
+      if ('requires2fa' in response) {
+        // TwoFaChallenge: there is no 2FA verification UI in this app yet
+        // (apps/api/src/auth/two-fa.controller.ts exists server-side, but
+        // nothing here calls POST /auth/2fa/verify). Say so honestly rather
+        // than silently treating the challenge as a successful sign-in.
+        setError('Two-factor authentication is required for this account and is not yet supported here.');
+        return;
+      }
+      await navigate({ to: redirectTo ?? homeRouteForRole(getCurrentRole()) });
     } catch {
       setError('Incorrect email or password.');
     } finally {
@@ -98,5 +119,6 @@ function LoginPage() {
 export const loginRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
   path: '/login',
+  validateSearch: validateLoginSearch,
   component: LoginPage,
 });

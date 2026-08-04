@@ -1,14 +1,14 @@
 import { createRoute } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
-import { apiGet } from '../lib/api-client.js';
+import { sitesQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { Surface } from '../components/surface.js';
 
 function DeploymentPage() {
   return (
-    <DataPanel<unknown[]>
+    <DataPanel
       title="Deployment"
-      fetcher={() => apiGet<unknown[]>('/sites')}
+      options={sitesQueries.list()}
       emptyTitle="No project sites yet"
       emptyDescription="Add a project site to deploy equipment to it."
       isEmpty={(data) => data.length === 0}

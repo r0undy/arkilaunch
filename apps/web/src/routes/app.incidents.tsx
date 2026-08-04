@@ -1,14 +1,14 @@
 import { createRoute } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
-import { apiGet } from '../lib/api-client.js';
+import { incidentsQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { Surface } from '../components/surface.js';
 
 function IncidentsPage() {
   return (
-    <DataPanel<unknown[]>
+    <DataPanel
       title="Incident logs"
-      fetcher={() => apiGet<unknown[]>('/incidents')}
+      options={incidentsQueries.list()}
       emptyTitle="No incidents logged"
       emptyDescription="Weather and liability incidents will appear here as they are auto-logged or recorded."
       isEmpty={(data) => data.length === 0}

@@ -1,14 +1,14 @@
 import { createRoute } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
-import { apiGet } from '../lib/api-client.js';
+import { invoicesQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { Surface } from '../components/surface.js';
 
 function PaymentsPage() {
   return (
-    <DataPanel<unknown[]>
+    <DataPanel
       title="Payments"
-      fetcher={() => apiGet<unknown[]>('/invoices')}
+      options={invoicesQueries.list()}
       emptyTitle="No invoices yet"
       emptyDescription="Invoices appear once a reconciliation is approved and a deduction is posted."
       isEmpty={(data) => data.length === 0}

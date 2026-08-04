@@ -15,6 +15,6 @@ function AccountLayout() {
 export const accountLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'account-layout',
-  beforeLoad: requireAuth,
+  beforeLoad: requireAuth(),
   component: AccountLayout,
 });

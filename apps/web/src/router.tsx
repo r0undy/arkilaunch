@@ -40,7 +40,7 @@ import { fieldLayoutRoute } from './routes/_field.js';
 import { fieldIndexRoute } from './routes/field.index.js';
 import { fieldDeploymentRoute } from './routes/field.deployment.js';
 
-const routeTree = rootRoute.addChildren([
+export const routeTree = rootRoute.addChildren([
   publicLayoutRoute.addChildren([indexRoute, equipmentRoute, equipmentDetailRoute, contactRoute, helpRoute, termsRoute, privacyRoute]),
   authLayoutRoute.addChildren([loginRoute, registerRoute, registerCompanyRoute, registerPendingRoute]),
   accountLayoutRoute.addChildren([

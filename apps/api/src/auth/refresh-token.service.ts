@@ -70,8 +70,17 @@ export class RefreshTokenService {
     // Re-read the user's current role rather than trusting anything about
     // the old session: a role change or deactivation between refreshes
     // takes effect immediately.
-    const role = await this.resolveCurrentRole(existing.tenantId, existing.userId);
-    const ctx = { tenantId: existing.tenantId, userId: existing.userId, role };
+    const current = await this.resolveCurrentUser(existing.tenantId, existing.userId);
+    const ctx = { tenantId: existing.tenantId, userId: existing.userId, role: current.role };
+
+    if (current.status !== 'active') {
+      // Without this check a deactivated user could keep rotating a refresh
+      // token for up to REFRESH_TOKEN_TTL_MS (30 days); deactivation would
+      // be cosmetic. Revoke the family too, so this refresh token cannot be
+      // replayed once the user is later reactivated.
+      await this.revokeFamily(ctx, existing.familyId);
+      throw new UnauthorizedException('user_inactive');
+    }
 
     if (existing.status !== 'active') {
       await this.revokeFamily(ctx, existing.familyId);
@@ -109,19 +118,22 @@ export class RefreshTokenService {
     return { tenantId: ctx.tenantId, userId: ctx.userId, role: ctx.role, issued };
   }
 
-  private async resolveCurrentRole(tenantId: string, userId: string): Promise<string> {
+  private async resolveCurrentUser(
+    tenantId: string,
+    userId: string,
+  ): Promise<{ role: string; status: string }> {
     const rows = await withTenantTx(
       { tenantId, userId, role: BOOTSTRAP_ROLE },
       (tx) =>
         tx
-          .select({ name: roles.name })
+          .select({ name: roles.name, status: users.status })
           .from(users)
           .innerJoin(roles, eq(roles.id, users.roleId))
           .where(eq(users.id, userId)),
     );
     const row = rows[0];
     if (!row) throw new UnauthorizedException('invalid_refresh_token');
-    return row.name;
+    return { role: row.name, status: row.status };
   }
 
   private async revokeFamily(
@@ -133,6 +145,22 @@ export class RefreshTokenService {
         .update(refreshTokens)
         .set({ status: 'revoked' })
         .where(eq(refreshTokens.familyId, familyId)),
+    );
+  }
+
+  // Reusable by any admin action that must take effect immediately rather
+  // than waiting out the access-token TTL: a role change or deactivation
+  // (S19) revokes every outstanding refresh-token family for the target
+  // user, in the caller's own tenant-scoped transaction.
+  async revokeAllForUser(
+    ctx: { tenantId: string; userId: string; role: string },
+    targetUserId: string,
+  ): Promise<void> {
+    await withTenantTx(ctx, (tx) =>
+      tx
+        .update(refreshTokens)
+        .set({ status: 'revoked' })
+        .where(eq(refreshTokens.userId, targetUserId)),
     );
   }
 }

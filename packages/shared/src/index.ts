@@ -16,3 +16,4 @@ export * from './payments.js';
 export * from './billing.js';
 export * from './sites.js';
 export * from './notifications.js';
+export * from './users.js';

@@ -1,14 +1,14 @@
 import { createRoute } from '@tanstack/react-router';
 import { fieldLayoutRoute } from './_field.js';
-import { apiGet } from '../lib/api-client.js';
+import { sitesQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { Surface } from '../components/surface.js';
 
 function OperatorDeploymentPage() {
   return (
-    <DataPanel<unknown[]>
+    <DataPanel
       title="Deployment"
-      fetcher={() => apiGet<unknown[]>('/sites')}
+      options={sitesQueries.list()}
       emptyTitle="No sites assigned"
       emptyDescription="You have no project sites assigned yet."
       isEmpty={(data) => data.length === 0}

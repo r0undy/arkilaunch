@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import postgres from 'postgres';
-import { events, pricingParameters, withTenantTx } from '@arkilaunch/db';
+import { events, pricingParameters, rateCards, withTenantTx } from '@arkilaunch/db';
 import { eq, and, desc } from 'drizzle-orm';
 import type { RequestContext } from '@arkilaunch/shared';
 import { QuotesService } from '../src/quotes/quotes.service.js';
@@ -107,6 +107,67 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     const reFetched = await quotes.get(ctxA, created.id);
     expect(reFetched.total).toBe(created.total);
     expect(reFetched.lineItems[0]!.hourlyRate).toBe(created.lineItems[0]!.hourlyRate);
+  });
+
+  // QAD-T44/T48: a superseded rate card must not affect an already-issued
+  // quote, and must not be usable to price a NEW quote (Phase 1A fix to
+  // PricingEngineService.priceItem). Uses its own dedicated rate card, not
+  // the shared rateCardIdA fixture other tests in this file depend on.
+  it('QAD-T44/T48: superseding a rate card leaves the issued quote untouched and rejects a new quote citing it', async () => {
+    const dedicatedCardId = await withTenantTx(ctxA, async (tx) => {
+      const [inserted] = await tx
+        .insert(rateCards)
+        .values({
+          tenantId: ctxA.tenantId,
+          equipmentTypeId: equipmentTypeIdA,
+          rateType: 'hourly',
+          rateValue: '500.00',
+          currency: 'PHP',
+          effectiveFrom: new Date('2020-01-01T00:00:00Z'),
+        })
+        .returning({ id: rateCards.id });
+      return inserted!.id;
+    });
+
+    const created = await quotes.create(ctxA, {
+      customerId: customerIdA,
+      projectSiteId: '00000000-0000-0000-0000-000000000000',
+      discount: { type: 'none', value: 0 },
+      items: itemsFor(dedicatedCardId, equipmentTypeIdA),
+    });
+
+    // Supersede: close the old row, insert a successor with a materially
+    // different value (append-only pattern; PATCH /rate-cards does this via
+    // a service in Phase 1C -- this test drives the same DB shape directly
+    // so it does not depend on that endpoint existing yet).
+    const now = new Date();
+    await withTenantTx(ctxA, async (tx) => {
+      await tx.update(rateCards).set({ effectiveTo: now }).where(eq(rateCards.id, dedicatedCardId));
+      await tx.insert(rateCards).values({
+        tenantId: ctxA.tenantId,
+        equipmentTypeId: equipmentTypeIdA,
+        rateType: 'hourly',
+        rateValue: '999999.00',
+        currency: 'PHP',
+        effectiveFrom: now,
+      });
+    });
+
+    // The issued quote reprices to the exact same numbers.
+    const reFetched = await quotes.get(ctxA, created.id);
+    expect(reFetched.total).toBe(created.total);
+    expect(reFetched.lineItems[0]!.hourlyRate).toBe(created.lineItems[0]!.hourlyRate);
+
+    // A NEW quote citing the now-superseded id is rejected, not silently
+    // priced at the old value.
+    await expect(
+      quotes.create(ctxA, {
+        customerId: customerIdA,
+        projectSiteId: '00000000-0000-0000-0000-000000000000',
+        discount: { type: 'none', value: 0 },
+        items: itemsFor(dedicatedCardId, equipmentTypeIdA),
+      }),
+    ).rejects.toThrow(UnprocessableEntityException);
   });
 
   // QAD-T45: source-outage fallback -- stale reading and no-reading-at-all.

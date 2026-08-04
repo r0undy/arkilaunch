@@ -19,6 +19,6 @@ function ManageUsersPage() {
 export const appUsersRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/users',
-  beforeLoad: () => requireRole('admin', 'platform_admin'),
+  beforeLoad: requireRole('admin', 'platform_admin'),
   component: ManageUsersPage,
 });

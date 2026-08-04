@@ -52,6 +52,6 @@ function FieldLayout() {
 export const fieldLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'field-layout',
-  beforeLoad: () => requireRole('timekeeper', 'platform_admin'),
+  beforeLoad: requireRole('timekeeper', 'platform_admin'),
   component: FieldLayout,
 });

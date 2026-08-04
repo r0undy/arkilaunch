@@ -19,6 +19,6 @@ function AppLayout() {
 export const appLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'app-layout',
-  beforeLoad: () => requireRole('admin', 'owner', 'platform_admin'),
+  beforeLoad: requireRole('admin', 'owner', 'platform_admin'),
   component: AppLayout,
 });

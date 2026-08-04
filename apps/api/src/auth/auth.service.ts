@@ -1,6 +1,7 @@
 import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { verify } from '@node-rs/argon2';
+import { createHash } from 'node:crypto';
+import { hash, verify } from '@node-rs/argon2';
 import { findUserByEmailForAuth, users, withTenantTx } from '@arkilaunch/db';
 import { eq } from 'drizzle-orm';
 import type {
@@ -10,6 +11,7 @@ import type {
   RefreshRequest,
   RequestContext,
   TwoFaChallenge,
+  UserActivateRequest,
   Verify2faRequest,
 } from '@arkilaunch/shared';
 import { RefreshTokenService } from './refresh-token.service.js';
@@ -18,6 +20,12 @@ import { TotpService } from './totp.service.js';
 const ACCESS_TOKEN_TTL_SECONDS = 600; // ~10 min, RFC-1 §3
 const TWO_FA_CHALLENGE_TTL_SECONDS = 300; // 5 min
 const TWO_FA_CHALLENGE_PURPOSE = '2fa_challenge';
+const ACTIVATION_TOKEN_TTL_SECONDS = 72 * 60 * 60; // 72h, S19
+const ACTIVATION_TOKEN_PURPOSE = 'user_activation';
+// System GUC placeholder for the pre-login lookup this shares with
+// RefreshTokenService.BOOTSTRAP_ROLE -- RLS filters on tenant_id only, role
+// is informational.
+const BOOTSTRAP_ROLE = 'system';
 // Only the timekeeper role is gated behind 2FA (PRD US-02, US-07); other
 // roles are unaffected by this slice.
 const TWO_FA_ENFORCED_ROLE = 'timekeeper';
@@ -120,6 +128,70 @@ export class AuthService {
       tx.update(users).set({ totpSecret: secret }).where(eq(users.id, ctx.userId)),
     );
     return { enrolled: true };
+  }
+
+  // POST /auth/activate (@Public, S19): completes an invite. There is no
+  // email provider anywhere in the pinned stack (BUILD §3), so
+  // UsersService.invite() returns a stateless activation token in its
+  // response for the admin to relay out-of-band, rather than persisting an
+  // invitation row. Single-use falls out of binding the token to the
+  // invited user's own (unusable, random) password hash: activation
+  // changes that hash, so the token's `pwv` no longer matches and it dies.
+  async activate({ activationToken, password }: UserActivateRequest): Promise<void> {
+    // No JWT on this route (it is @Public -- the caller is not
+    // authenticated yet). The activation token itself carries the only
+    // tenant/user context available; withTenantTx still runs with a real
+    // GUC so RLS is enforced, it is just sourced from the token's own
+    // signed claims rather than a verified access token.
+    const payload = this.verifyActivationToken(activationToken);
+
+    await withTenantTx({ tenantId: payload.tenantId, userId: payload.sub, role: BOOTSTRAP_ROLE }, async (tx) => {
+      const [user] = await tx.select().from(users).where(eq(users.id, payload.sub)).limit(1);
+      if (!user || user.status !== 'invited') {
+        throw new UnauthorizedException('invalid_activation_token');
+      }
+      if (this.hashForActivation(user.passwordHash) !== payload.pwv) {
+        // Either already activated (hash changed) or re-invited (hash
+        // rerolled) since this token was issued -- dead either way.
+        throw new UnauthorizedException('invalid_activation_token');
+      }
+
+      const passwordHash = await hash(password);
+      await tx.update(users).set({ passwordHash, status: 'active' }).where(eq(users.id, payload.sub));
+    });
+  }
+
+  // Binds the token to the CURRENT password hash so activation (which
+  // changes it) and re-invite (which rerolls it) both invalidate every
+  // outstanding token for that user with no extra state to track.
+  signActivationToken(tenantId: string, userId: string, passwordHash: string): string {
+    return this.jwtService.sign(
+      { sub: userId, tenantId, pwv: this.hashForActivation(passwordHash), purpose: ACTIVATION_TOKEN_PURPOSE },
+      { expiresIn: ACTIVATION_TOKEN_TTL_SECONDS, algorithm: 'RS256' },
+    );
+  }
+
+  private hashForActivation(passwordHash: string): string {
+    return createHash('sha256').update(passwordHash).digest('hex').slice(0, 32);
+  }
+
+  private verifyActivationToken(token: string): { sub: string; tenantId: string; pwv: string } {
+    let payload: unknown;
+    try {
+      payload = this.jwtService.verify(token, { algorithms: ['RS256'] });
+    } catch {
+      throw new UnauthorizedException('invalid_activation_token');
+    }
+    const candidate = payload as Partial<{ sub: string; tenantId: string; pwv: string; purpose: string }>;
+    if (
+      typeof candidate.sub !== 'string' ||
+      typeof candidate.tenantId !== 'string' ||
+      typeof candidate.pwv !== 'string' ||
+      candidate.purpose !== ACTIVATION_TOKEN_PURPOSE
+    ) {
+      throw new UnauthorizedException('invalid_activation_token');
+    }
+    return candidate as { sub: string; tenantId: string; pwv: string };
   }
 
   async refresh({ refreshToken }: RefreshRequest): Promise<AuthTokens> {

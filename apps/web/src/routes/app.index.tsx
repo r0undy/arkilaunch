@@ -1,18 +1,15 @@
 import { createRoute, Link } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
-import { apiGet } from '../lib/api-client.js';
+import { reportQueries } from '../lib/queries.js';
 import { GaugeReadout } from '../components/gauge-readout.js';
 import { APP_NAV } from '../lib/nav-config.js';
 
 function AdminDashboardPage() {
-  const [utilization, setUtilization] = useState<unknown>(null);
-
-  useEffect(() => {
-    apiGet('/reports/utilization')
-      .then(setUtilization)
-      .catch(() => setUtilization(null));
-  }, []);
+  // Same query key as app.insights.tsx -- navigating between the two shares
+  // the cache instead of re-fetching.
+  const { data: snapshot } = useQuery(reportQueries.snapshot());
+  const utilization = snapshot?.utilization;
 
   const utilizationPct =
     utilization && typeof utilization === 'object' && 'utilizationPercent' in utilization

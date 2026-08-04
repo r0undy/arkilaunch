@@ -12,5 +12,10 @@ export default defineConfig({
     // Scope vitest to src/ only; e2e/ holds Playwright specs (run via `pnpm e2e`),
     // which vitest's default glob would otherwise pick up and crash on.
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // Existing component tests use renderToStaticMarkup and never touch
+    // `document`, so they pass unchanged under jsdom; new tests (guards,
+    // auth-client, route-level) need a real DOM to render into.
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
   },
 });

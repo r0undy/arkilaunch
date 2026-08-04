@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { PlatformThrottlerGuard } from './common/throttler/platform-throttler.guard.js';
 import { AuthModule } from './auth/auth.module.js';
 import { HealthModule } from './health/health.module.js';
 import { TenantsModule } from './tenants/tenants.module.js';
+import { UsersModule } from './users/users.module.js';
 import { QuotesModule } from './quotes/quotes.module.js';
 import { PricingModule } from './pricing/pricing.module.js';
 import { EdtrModule } from './edtr/edtr.module.js';
@@ -36,6 +38,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard.js';
     AuthModule,
     HealthModule,
     TenantsModule,
+    UsersModule,
     QuotesModule,
     PricingModule,
     EdtrModule,
@@ -49,7 +52,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard.js';
     NotificationsModule,
   ],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: PlatformThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: TenantContextGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },

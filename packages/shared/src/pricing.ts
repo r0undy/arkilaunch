@@ -26,3 +26,46 @@ export const PricingParametersInputSchema = z.object({
     .optional(),
 });
 export type PricingParametersInput = z.infer<typeof PricingParametersInputSchema>;
+
+// S18 Rate Cards & Tenant Settings (PRD-F1/F7). rate_cards.rate_type is a
+// free-text column today ('hourly, daily' per its own comment); this enum
+// is the boundary validation for it.
+export const RateTypeSchema = z.enum(['hourly', 'daily']);
+export type RateType = z.infer<typeof RateTypeSchema>;
+
+export const RateCardCreateRequestSchema = z
+  .object({
+    equipmentTypeId: z.string().uuid(),
+    rateType: RateTypeSchema,
+    rateValue: z.number().finite().positive().max(99_999_999.99),
+    // Every money path (PayMongo, the pricing engine, round2HalfUp) is
+    // PHP-only in V1; accepting another currency string would silently
+    // produce a quote the engine prices in pesos regardless.
+    currency: z.literal('PHP').default('PHP'),
+    effectiveFrom: z.string().datetime({ offset: true }).optional(),
+    effectiveTo: z.string().datetime({ offset: true }).optional(),
+  })
+  .refine((data) => !data.effectiveTo || !data.effectiveFrom || data.effectiveTo > data.effectiveFrom, {
+    message: 'effectiveTo must be after effectiveFrom',
+    path: ['effectiveTo'],
+  });
+export type RateCardCreateRequest = z.infer<typeof RateCardCreateRequestSchema>;
+
+// PATCH /rate-cards/:id: append-only supersede, never an in-place edit
+// (QAD-T44). Body carries only the new value; the service closes the
+// existing row's window and inserts a successor.
+export const RateCardSupersedeRequestSchema = z.object({
+  rateValue: z.number().finite().positive().max(99_999_999.99),
+  effectiveFrom: z.string().datetime({ offset: true }).optional(),
+});
+export type RateCardSupersedeRequest = z.infer<typeof RateCardSupersedeRequestSchema>;
+
+export const RateCardListQuerySchema = z.object({
+  equipmentTypeId: z.string().uuid().optional(),
+  rateType: RateTypeSchema.optional(),
+  includeSuperseded: z.coerce.boolean().default(false),
+});
+export type RateCardListQuery = z.infer<typeof RateCardListQuerySchema>;
+
+export const PricingParametersQuerySchema = z.object({ region: z.string().min(1).default('NCR') });
+export type PricingParametersQuery = z.infer<typeof PricingParametersQuerySchema>;

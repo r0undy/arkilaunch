@@ -226,6 +226,6 @@ function KycPage() {
 export const kycRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/registration',
-  beforeLoad: () => requireRole('admin', 'platform_admin'),
+  beforeLoad: requireRole('admin', 'platform_admin'),
   component: KycPage,
 });
