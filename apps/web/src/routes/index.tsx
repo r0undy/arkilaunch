@@ -4,27 +4,46 @@ import { useMemo, useState } from 'react';
 import { publicLayoutRoute } from './_public.js';
 import { Button } from '../components/button.js';
 import { EquipmentCard } from '../components/equipment-card.js';
-import { SearchFilterBar, type SortOption } from '../components/search-filter-bar.js';
+import { SearchFilterBar, type AvailabilityFilter } from '../components/search-filter-bar.js';
 import { ProofPill } from '../components/proof-pill.js';
+import { FeatureTile } from '../components/feature-tile.js';
 import { RiseIn } from '../components/rise-in.js';
+import { EvidenceHero } from '../components/evidence-hero.js';
+import { AlertIcon, CheckIcon, ClockIcon } from '../components/icons.js';
 import { catalogQueries } from '../lib/queries.js';
+
+const CAPABILITIES = [
+  {
+    icon: <CheckIcon className="h-6 w-6" />,
+    title: 'Two-log reconciliation',
+    description: 'Every field log is checked against a second independent reading before it can post a deduction.',
+  },
+  {
+    icon: <ClockIcon className="h-6 w-6" />,
+    title: "Today's diesel price",
+    description: "Quotes price against the day's diesel reading, labelled with its date, not a stale estimate.",
+  },
+  {
+    icon: <AlertIcon className="h-6 w-6" />,
+    title: 'Weather-aware dispatch',
+    description: 'Sites carry a live PAGASA-scale advisory, so a crew never gets deployed into a stop-work call.',
+  },
+];
 
 function LandingPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<SortOption>('new');
+  const [availability, setAvailability] = useState<AvailabilityFilter>('all');
   const { data } = useQuery(catalogQueries.equipment());
 
   const equipment = useMemo(() => {
     const items = data?.items ?? [];
-    const filtered = items.filter((eq) =>
-      `${eq.model} ${eq.equipmentTypeName}`.toLowerCase().includes(query.toLowerCase()),
-    );
-    // No price/rating on the real catalog contract yet; sort is wired for
-    // when that lands (§6 CR scope note).
-    if (sort === 'new') return filtered;
-    return [...filtered];
-  }, [data, query, sort]);
+    return items.filter((eq) => {
+      const matchesQuery = `${eq.model} ${eq.equipmentTypeName}`.toLowerCase().includes(query.toLowerCase());
+      const matchesAvailability = availability === 'all' || eq.availabilityStatus === availability;
+      return matchesQuery && matchesAvailability;
+    });
+  }, [data, query, availability]);
 
   return (
     <div className="flex flex-col gap-16 px-6 py-10 sm:px-10">
@@ -46,11 +65,22 @@ function LandingPage() {
             </Button>
           </div>
         </div>
-        <div className="aspect-video rounded-mk-lg bg-bg-mk-frame shadow-mk-inset" aria-hidden="true" />
+        <EvidenceHero />
+      </section>
+
+      <section className="grid gap-6 sm:grid-cols-3">
+        {CAPABILITIES.map((c) => (
+          <FeatureTile key={c.title} icon={c.icon} title={c.title} description={c.description} />
+        ))}
       </section>
 
       <section className="flex flex-col gap-6">
-        <SearchFilterBar query={query} onQueryChange={setQuery} sort={sort} onSortChange={setSort} />
+        <SearchFilterBar
+          query={query}
+          onQueryChange={setQuery}
+          availability={availability}
+          onAvailabilityChange={setAvailability}
+        />
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {equipment.map((eq) => (
             <EquipmentCard
@@ -58,6 +88,7 @@ function LandingPage() {
               imageAlt={`${eq.equipmentTypeName} ${eq.model}`}
               model={eq.model}
               make={eq.equipmentTypeName}
+              availabilityStatus={eq.availabilityStatus}
               onRent={() => navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })}
             />
           ))}

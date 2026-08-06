@@ -13,7 +13,10 @@ export type StatusTone =
   | 'weather-yellow'
   | 'weather-orange'
   | 'weather-red'
-  | 'weather-stale';
+  | 'weather-stale'
+  | 'fleet-available'
+  | 'fleet-deployed'
+  | 'fleet-maintenance';
 
 export interface StatusPillProps {
   tone: StatusTone;
@@ -34,6 +37,9 @@ const TONE_CLASSES: Record<StatusTone, string> = {
   'weather-orange': 'bg-weather-orange text-text',
   'weather-red': 'bg-weather-red text-white',
   'weather-stale': 'bg-weather-stale text-white',
+  'fleet-available': 'bg-success text-white',
+  'fleet-deployed': 'bg-accent text-white',
+  'fleet-maintenance': 'bg-warning text-text',
 };
 
 export function StatusPill({ tone, label, icon, value, className = '' }: StatusPillProps) {

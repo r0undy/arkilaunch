@@ -67,6 +67,8 @@ export const UserSelfResponseSchema = z.object({
   role: z.string(),
   status: UserStatusSchema,
   createdAt: z.coerce.date(),
+  tenantName: z.string(),
+  tenantSlug: z.string(),
 });
 export type UserSelfResponse = z.infer<typeof UserSelfResponseSchema>;
 

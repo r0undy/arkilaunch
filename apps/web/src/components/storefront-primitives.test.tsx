@@ -42,12 +42,12 @@ describe('EquipmentCard', () => {
 });
 
 describe('SearchFilterBar', () => {
-  it('marks the active sort option', () => {
+  it('marks the active availability filter', () => {
     const html = renderToStaticMarkup(
-      <SearchFilterBar query="" onQueryChange={vi.fn()} sort="price-asc" onSortChange={vi.fn()} />,
+      <SearchFilterBar query="" onQueryChange={vi.fn()} availability="available" onAvailabilityChange={vi.fn()} />,
     );
-    expect(html).toContain('Price ascending');
-    expect(html).toMatch(/aria-pressed="true"[^>]*>Price ascending|Price ascending[^<]*<\/button>/);
+    expect(html).toContain('Available');
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Available|Available[^<]*<\/button>/);
   });
 });
 

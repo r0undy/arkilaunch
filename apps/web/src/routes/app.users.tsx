@@ -6,6 +6,7 @@ import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 import { DataPanel } from '../components/data-panel.js';
+import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
@@ -169,7 +170,7 @@ function ManageUsersPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="font-display text-2xl font-semibold text-text">Manage users</h1>
+      <PageHeader eyebrow="Administration" title="People" description="Manage teammates, roles, and access." />
       <InviteForm />
       <DataPanel
         title="Users"

@@ -7,6 +7,7 @@ import {
   permissions,
   rolePermissions,
   roles,
+  tenants,
   timekeeperSiteAssignments,
   users,
   withTenantTx,
@@ -73,12 +74,19 @@ export class UsersService {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await this.selectUserWithRole(tx, ctx.userId);
       if (!row) throw new NotFoundException({ error: 'user_not_found' });
+      const [tenant] = await tx
+        .select({ legalName: tenants.legalName, slug: tenants.slug })
+        .from(tenants)
+        .where(eq(tenants.id, ctx.tenantId))
+        .limit(1);
       return {
         id: row.id,
         email: row.email,
         role: row.roleName,
         status: row.status as UserSelfResponse['status'],
         createdAt: row.createdAt,
+        tenantName: tenant?.legalName ?? '',
+        tenantSlug: tenant?.slug ?? '',
       };
     });
   }

@@ -1,15 +1,11 @@
 import { createRoute } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import type { UserSelfResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
-import { apiGet } from '../lib/api-client.js';
+import { usersQueries } from '../lib/queries.js';
 import { Surface } from '../components/surface.js';
 
 function AccountSettingsPage() {
-  const query = useQuery({
-    queryKey: ['users', 'me'] as const,
-    queryFn: () => apiGet<UserSelfResponse>('/users/me'),
-  });
+  const query = useQuery(usersQueries.me());
 
   return (
     <div className="flex flex-col gap-4">

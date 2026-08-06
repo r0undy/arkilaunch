@@ -1,23 +1,38 @@
 import { Button } from './button.js';
+import { EquipmentSchematic } from './equipment-schematic.js';
+import { StatusPill } from './status-pill.js';
+import { CheckIcon, TruckIcon, WrenchIcon } from './icons.js';
 
 export interface EquipmentCardProps {
   imageAlt: string;
-  imageSrc?: string;
+  imageUrl?: string;
   model: string;
   make: string;
+  availabilityStatus?: 'available' | 'deployed' | 'maintenance';
   onRent?: () => void;
 }
 
-// The Figma "Product Info Card": image, model, make, Rent action. The unit
-// of the storefront catalog grid.
-export function EquipmentCard({ imageAlt, imageSrc, model, make, onRent }: EquipmentCardProps) {
+const AVAILABILITY_PILL = {
+  available: { tone: 'fleet-available' as const, label: 'Available', icon: <CheckIcon /> },
+  deployed: { tone: 'fleet-deployed' as const, label: 'Deployed', icon: <TruckIcon /> },
+  maintenance: { tone: 'fleet-maintenance' as const, label: 'In maintenance', icon: <WrenchIcon /> },
+};
+
+// The Figma "Product Info Card": schematic, model, make, Rent action. The
+// unit of the storefront catalog grid.
+export function EquipmentCard({ imageAlt, imageUrl, model, make, availabilityStatus, onRent }: EquipmentCardProps) {
+  const pill = availabilityStatus ? AVAILABILITY_PILL[availabilityStatus] : null;
   return (
     <div className="flex flex-col gap-4 rounded-mk-lg bg-surface-mk p-4 shadow-mk-card">
-      <div className="flex h-48 items-center justify-center overflow-hidden rounded-mk-sm bg-bg-mk-frame">
-        {imageSrc ? (
-          <img src={imageSrc} alt={imageAlt} className="h-full w-full object-cover" />
-        ) : (
-          <span className="text-xs text-text-muted">{imageAlt}</span>
+      <div
+        aria-label={imageAlt}
+        className="relative flex h-48 items-center justify-center overflow-hidden rounded-mk-sm bg-bg-mk-frame p-6"
+      >
+        <EquipmentSchematic typeName={make} {...(imageUrl ? { imageUrl } : {})} className="max-h-full" />
+        {pill && (
+          <div className="absolute right-3 top-3">
+            <StatusPill tone={pill.tone} label={pill.label} icon={pill.icon} />
+          </div>
         )}
       </div>
       <div className="flex items-center justify-between">

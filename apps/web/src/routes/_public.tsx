@@ -30,13 +30,13 @@ const FOOTER_COLUMNS = [
 
 function PublicLayout() {
   return (
-    <div data-tier="marketing" className="min-h-screen bg-bg-mk-frame">
-      <div className="mx-auto max-w-shell">
+    <div data-tier="marketing" className="min-h-screen bg-bg-mk-frame py-4 sm:py-6">
+      <div className="mx-auto max-w-shell overflow-hidden rounded-mk-container bg-bg-mk shadow-mk-inset">
         <FloatingNav />
         <main>
           <Outlet />
         </main>
-        <footer className="flex flex-col gap-8 rounded-t-mk-container bg-bg-mk-frame px-6 py-12 sm:flex-row sm:justify-between">
+        <footer className="flex flex-col gap-8 bg-surface-mk px-6 py-12 sm:flex-row sm:justify-between">
           <div>
             <p className="font-display text-lg font-semibold text-ink-mk">Almara</p>
             <p className="mt-2 text-sm text-text-muted">Almara &copy; 2026. All rights reserved.</p>

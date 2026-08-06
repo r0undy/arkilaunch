@@ -3,8 +3,17 @@ import { useQuery } from '@tanstack/react-query';
 import { publicLayoutRoute } from './_public.js';
 import { Button } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
+import { EquipmentSchematic } from '../components/equipment-schematic.js';
+import { StatusPill } from '../components/status-pill.js';
+import { CheckIcon, TruckIcon, WrenchIcon } from '../components/icons.js';
 import { catalogQueries } from '../lib/queries.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
+
+const AVAILABILITY_PILL = {
+  available: { tone: 'fleet-available' as const, label: 'Available', icon: <CheckIcon /> },
+  deployed: { tone: 'fleet-deployed' as const, label: 'Deployed', icon: <TruckIcon /> },
+  maintenance: { tone: 'fleet-maintenance' as const, label: 'In maintenance', icon: <WrenchIcon /> },
+};
 
 function EquipmentDetailPage() {
   const { equipmentId } = equipmentDetailRoute.useParams();
@@ -27,12 +36,19 @@ function EquipmentDetailPage() {
     );
   }
 
+  const pill = AVAILABILITY_PILL[equipment.availabilityStatus];
+
   return (
     <div className="flex flex-col gap-6 px-6 py-10 sm:px-10">
-      <div className="aspect-video rounded-mk-lg bg-bg-mk-frame" aria-hidden="true" />
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-ink-mk">{equipment.model}</h1>
-        <p className="text-sm text-text-muted">{equipment.equipmentTypeName}</p>
+      <div className="flex aspect-video items-center justify-center rounded-mk-lg bg-bg-mk-frame p-10">
+        <EquipmentSchematic typeName={equipment.equipmentTypeName} className="max-h-full" />
+      </div>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-2xl font-semibold text-ink-mk">{equipment.model}</h1>
+          <p className="text-sm text-text-muted">{equipment.equipmentTypeName}</p>
+        </div>
+        <StatusPill tone={pill.tone} label={pill.label} icon={pill.icon} />
       </div>
       <Button
         variant="primary"
