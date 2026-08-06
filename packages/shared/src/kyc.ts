@@ -10,6 +10,17 @@ export const KycExtractRequestSchema = z.object({
 });
 export type KycExtractRequest = z.infer<typeof KycExtractRequestSchema>;
 
+// POST /api/v1/kyc/extract wire contract (backend-unblock plan workstream
+// 4): the client-facing fields, WITHOUT fileUri -- the document now arrives
+// as a multipart `file` field, validated and uploaded to Supabase Storage
+// by the controller (RFC-2 §6), which derives fileUri itself as the
+// storage object key. A client can never supply fileUri directly.
+export const KycExtractFieldsSchema = z.object({
+  customerId: z.string().uuid(),
+  documentType: z.string().min(1),
+});
+export type KycExtractFields = z.infer<typeof KycExtractFieldsSchema>;
+
 // The human portal-confirmation step (RFC-2 §2 step 6). ORUS CAPTCHA blocks
 // automation by design (scrutiny FC-11) -- this is always a human filling
 // in what they saw on the SEC/BIR portals, never a scraped/automated value.

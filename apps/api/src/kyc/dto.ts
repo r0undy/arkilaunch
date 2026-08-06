@@ -1,5 +1,5 @@
 import { createZodDto } from 'nestjs-zod';
-import { KycConfirmRequestSchema, KycExtractRequestSchema } from '@arkilaunch/shared';
+import { KycConfirmRequestSchema, KycExtractFieldsSchema } from '@arkilaunch/shared';
 
-export class KycExtractDto extends createZodDto(KycExtractRequestSchema) {}
+export class KycExtractDto extends createZodDto(KycExtractFieldsSchema) {}
 export class KycConfirmDto extends createZodDto(KycConfirmRequestSchema) {}

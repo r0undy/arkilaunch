@@ -2,6 +2,7 @@ import { createRoute, useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
 import { authLayoutRoute } from './_auth.js';
 import { submitRegistration } from '../lib/registration-client.js';
+import { ApiError } from '../lib/api-client.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Surface } from '../components/surface.js';
@@ -13,12 +14,24 @@ function RegisterCompanyDetailsPage() {
   const [secNumber, setSecNumber] = useState('');
   const [tin, setTin] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setSubmitting(true);
-    await submitRegistration({ companyName, businessAddress, secNumber, tin });
-    navigate({ to: '/register/pending' });
+    setError(null);
+    try {
+      await submitRegistration({ companyName, businessAddress, secNumber, tin });
+      navigate({ to: '/register/pending' });
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.status === 409
+          ? 'An application for this email is already pending review.'
+          : 'Something went wrong submitting your application. Please try again.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -41,6 +54,7 @@ function RegisterCompanyDetailsPage() {
         />
         <Input label="SEC registration number" required value={secNumber} onChange={(e) => setSecNumber(e.target.value)} />
         <Input label="TIN" required value={tin} onChange={(e) => setTin(e.target.value)} />
+        {error && <p className="text-sm text-error" role="alert">{error}</p>}
         <Button type="submit" loading={submitting} disabled={submitting} className="w-full">
           Submit for review
         </Button>

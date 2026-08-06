@@ -78,6 +78,36 @@ export const users = pgTable(
   () => [tenantIsolationPolicy()],
 );
 
+// POST /tenants/register (backend-unblock plan workstream 1). Holds the
+// company-facing details a self-registered tenant submits; the tenant +
+// owner user rows themselves are created directly by the
+// tenants_register() SECURITY DEFINER function (see
+// migrations/0008_tenant_registration.sql), not by app code through
+// withTenantTx -- there is no JWT, so no tenant context, at registration
+// time.
+export const tenantApplications = pgTable(
+  'tenant_applications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    companyName: text('company_name').notNull(),
+    businessAddress: text('business_address').notNull(),
+    secNumber: text('sec_number').notNull(),
+    tin: text('tin').notNull(),
+    contactFirstName: text('contact_first_name').notNull(),
+    contactLastName: text('contact_last_name').notNull(),
+    contactMobile: text('contact_mobile').notNull(),
+    contactJobTitle: text('contact_job_title').notNull(),
+    status: text('status').notNull().default('pending'), // pending, approved, rejected
+    reviewedBy: uuid('reviewed_by').references(() => users.id),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [tenantIsolationPolicy()],
+);
+
 // RFC-1 §3: token-family lineage backing rotation + reuse detection.
 export const refreshTokens = pgTable(
   'refresh_tokens',

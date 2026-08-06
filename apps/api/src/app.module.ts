@@ -18,6 +18,7 @@ import { BookingsModule } from './bookings/bookings.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { BillingModule } from './billing/billing.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { CatalogModule } from './catalog/catalog.module.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { TenantContextGuard } from './common/guards/tenant-context.guard.js';
 import { PermissionsGuard } from './common/guards/permissions.guard.js';
@@ -50,6 +51,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard.js';
     PaymentsModule,
     BillingModule,
     NotificationsModule,
+    CatalogModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: PlatformThrottlerGuard },

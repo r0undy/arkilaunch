@@ -85,7 +85,7 @@ function LoginPage() {
         <button
           type="button"
           disabled
-          title="Password reset is not available yet"
+          title="Password reset is admin-initiated for now; contact your administrator"
           className="mt-1 text-sm text-text-muted underline decoration-dotted disabled:cursor-not-allowed"
         >
           Forgot password?

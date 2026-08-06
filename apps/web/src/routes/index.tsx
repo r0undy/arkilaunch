@@ -1,4 +1,5 @@
 import { createRoute, useNavigate } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { publicLayoutRoute } from './_public.js';
 import { Button } from '../components/button.js';
@@ -6,22 +7,24 @@ import { EquipmentCard } from '../components/equipment-card.js';
 import { SearchFilterBar, type SortOption } from '../components/search-filter-bar.js';
 import { ProofPill } from '../components/proof-pill.js';
 import { RiseIn } from '../components/rise-in.js';
-import { CATALOG_FIXTURES } from '../lib/equipment-fixtures.js';
+import { catalogQueries } from '../lib/queries.js';
 
 function LandingPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortOption>('new');
+  const { data } = useQuery(catalogQueries.equipment());
 
   const equipment = useMemo(() => {
-    const filtered = CATALOG_FIXTURES.filter((eq) =>
-      `${eq.model} ${eq.make}`.toLowerCase().includes(query.toLowerCase()),
+    const items = data?.items ?? [];
+    const filtered = items.filter((eq) =>
+      `${eq.model} ${eq.equipmentTypeName}`.toLowerCase().includes(query.toLowerCase()),
     );
-    // Fixtures carry no price/rating yet; sort is wired for when a real
-    // catalog endpoint lands (§6 CR scope note).
+    // No price/rating on the real catalog contract yet; sort is wired for
+    // when that lands (§6 CR scope note).
     if (sort === 'new') return filtered;
     return [...filtered];
-  }, [query, sort]);
+  }, [data, query, sort]);
 
   return (
     <div className="flex flex-col gap-16 px-6 py-10 sm:px-10">
@@ -52,9 +55,9 @@ function LandingPage() {
           {equipment.map((eq) => (
             <EquipmentCard
               key={eq.id}
-              imageAlt={`${eq.make} ${eq.model}`}
+              imageAlt={`${eq.equipmentTypeName} ${eq.model}`}
               model={eq.model}
-              make={eq.make}
+              make={eq.equipmentTypeName}
               onRent={() => navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })}
             />
           ))}

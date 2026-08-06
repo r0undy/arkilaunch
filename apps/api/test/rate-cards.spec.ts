@@ -140,7 +140,8 @@ describe('PricingService: rate cards + tenant settings (S18)', () => {
   describe('tenant settings (PATCH /tenants/me)', () => {
     it('legalName is updatable; status/kycState are never touched by this write', async () => {
       const { TenantsService } = await import('../src/tenants/tenants.service.js');
-      const tenantsService = new TenantsService();
+      const { AuthService } = await import('../src/auth/auth.service.js');
+      const tenantsService = new TenantsService(new AuthService(null as never, null as never, null as never));
 
       const before = await tenantsService.me(adminCtxA);
       const updated = await tenantsService.updateSettings(adminCtxA, { legalName: 'Updated Legal Name Co.' });

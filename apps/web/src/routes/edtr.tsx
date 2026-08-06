@@ -1,8 +1,7 @@
 import { createRoute } from '@tanstack/react-router';
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { appLayoutRoute } from './_app.js';
-import { apiGet, apiPost } from '../lib/api-client.js';
-import { readFileAsDataUrl } from '../lib/file-utils.js';
+import { apiGet, apiPost, apiPostForm } from '../lib/api-client.js';
 import { getEquipment, getRentals, type EquipmentRef, type RentalRef } from '../lib/reference-client.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
@@ -27,8 +26,7 @@ function EdtrPage() {
   const [hoursIdle, setHoursIdle] = useState('0');
 
   const [scanPreview, setScanPreview] = useState<string | null>(null);
-  const [scanDataUrl, setScanDataUrl] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
+  const [scanFile, setScanFile] = useState<File | null>(null);
 
   const [reconciliationId, setReconciliationId] = useState('');
   const [adjActive, setAdjActive] = useState('');
@@ -49,43 +47,36 @@ function EdtrPage() {
       .catch(setRefError);
   }, []);
 
-  async function onScanFile(event: ChangeEvent<HTMLInputElement>) {
+  function onScanFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    setScanning(true);
-    setError(null);
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setScanDataUrl(dataUrl);
-      setScanPreview(dataUrl);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setScanning(false);
-    }
+    setScanFile(file);
+    setScanPreview(URL.createObjectURL(file));
   }
 
+  // paper_ocr now posts multipart/form-data -- the API validates
+  // (content-type allowlist, magic-byte sniff, decompression-bomb guard)
+  // and uploads to Supabase Storage before this call returns (RFC-2 §6).
   async function capture(event: FormEvent) {
     event.preventDefault();
     setError(null);
     try {
-      const body =
-        source === 'digital_entry'
-          ? {
-              source: 'digital_entry' as const,
-              rentalId,
-              equipmentId,
-              reportDate,
-              lineItems: { hoursActive: Number(hoursActive), hoursIdle: Number(hoursIdle) },
-            }
-          : {
-              source: 'paper_ocr' as const,
-              rentalId,
-              equipmentId,
-              reportDate,
-              rawFileUri: scanDataUrl ?? '',
-            };
-      const res = await apiPost<{ id: string; status: string }>('/edtr', body);
+      let res: { id: string; status: string };
+      if (source === 'digital_entry') {
+        res = await apiPost<{ id: string; status: string }>('/edtr', {
+          source: 'digital_entry',
+          rentalId,
+          equipmentId,
+          reportDate,
+          lineItems: { hoursActive: Number(hoursActive), hoursIdle: Number(hoursIdle) },
+        });
+      } else {
+        res = await apiPostForm<{ id: string; status: string }>(
+          '/edtr',
+          { source: 'paper_ocr', rentalId, equipmentId, reportDate },
+          scanFile ?? undefined,
+        );
+      }
       setResult(res);
       setEdtrId(res.id);
     } catch (err) {
@@ -230,7 +221,6 @@ function EdtrPage() {
                 onChange={onScanFile}
                 className="text-sm text-text-muted file:mr-3 file:min-h-11 file:rounded-sm file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-text"
               />
-              {scanning && <p className="text-sm text-text-muted">Reading file…</p>}
               {scanPreview && (
                 <div className="flex flex-col gap-1">
                   <p className="text-sm text-text-muted">Preview:</p>
@@ -251,7 +241,7 @@ function EdtrPage() {
           )}
 
           <div>
-            <Button type="submit" disabled={!rentalId || !equipmentId || (source === 'paper_ocr' && !scanDataUrl)}>
+            <Button type="submit" disabled={!rentalId || !equipmentId || (source === 'paper_ocr' && !scanFile)}>
               Capture EDTR
             </Button>
           </div>

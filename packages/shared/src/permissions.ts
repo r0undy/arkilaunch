@@ -24,6 +24,9 @@ export const PERMISSION_CODES = [
   'billing:read',
   // PRD-F4/F5 site + deployment writes (cr-arkilaunch-f9-read-surface.md).
   'site:manage',
+  // Tenant self-registration approval (backend-unblock plan workstream 1).
+  // platform_admin only -- there is no platform-console UI yet, see the CR.
+  'tenant:approve',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];

@@ -2,8 +2,7 @@ import { createRoute } from '@tanstack/react-router';
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
-import { apiGet, apiPost } from '../lib/api-client.js';
-import { readFileAsDataUrl } from '../lib/file-utils.js';
+import { apiGet, apiPost, apiPostForm } from '../lib/api-client.js';
 import { getCustomers, type CustomerRef } from '../lib/reference-client.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
@@ -32,8 +31,7 @@ function KycPage() {
   }, []);
 
   const [scanPreview, setScanPreview] = useState<string | null>(null);
-  const [scanDataUrl, setScanDataUrl] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
+  const [scanFile, setScanFile] = useState<File | null>(null);
 
   const [registryStatus, setRegistryStatus] = useState<'active' | 'suspended' | 'revoked'>('active');
   const [portalMatchScore, setPortalMatchScore] = useState('0.95');
@@ -42,31 +40,25 @@ function KycPage() {
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<unknown>(null);
 
-  async function onScanFile(event: ChangeEvent<HTMLInputElement>) {
+  function onScanFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    setScanning(true);
-    setError(null);
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setScanDataUrl(dataUrl);
-      setScanPreview(file.type.startsWith('image/') ? dataUrl : null);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setScanning(false);
-    }
+    setScanFile(file);
+    setScanPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : null);
   }
 
+  // Posts multipart/form-data -- the API validates (content-type
+  // allowlist, magic-byte sniff, decompression-bomb guard) and uploads to
+  // Supabase Storage before this call returns (RFC-2 §6).
   async function extract(event: FormEvent) {
     event.preventDefault();
     setError(null);
     try {
-      const res = await apiPost<{ kycDocumentId: string }>('/kyc/extract', {
-        customerId,
-        documentType,
-        fileUri: scanDataUrl ?? '',
-      });
+      const res = await apiPostForm<{ kycDocumentId: string }>(
+        '/kyc/extract',
+        { customerId, documentType },
+        scanFile ?? undefined,
+      );
       setResult(res);
       setKycDocumentId(res.kycDocumentId);
     } catch (err) {
@@ -142,7 +134,6 @@ function KycPage() {
               onChange={onScanFile}
               className="text-sm text-text-muted file:mr-3 file:min-h-11 file:rounded-sm file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-text"
             />
-            {scanning && <p className="text-sm text-text-muted">Reading file…</p>}
             {scanPreview && (
               <div className="flex flex-col gap-1">
                 <p className="text-sm text-text-muted">Preview:</p>
@@ -156,7 +147,7 @@ function KycPage() {
             )}
           </div>
           <div>
-            <Button type="submit" disabled={!scanDataUrl || !customerId}>
+            <Button type="submit" disabled={!scanFile || !customerId}>
               Extract
             </Button>
           </div>

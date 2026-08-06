@@ -99,6 +99,33 @@ export const EdtrCaptureRequestSchema = z
   });
 export type EdtrCaptureRequest = z.infer<typeof EdtrCaptureRequestSchema>;
 
+// POST /api/v1/edtr wire contract (backend-unblock plan workstream 4): the
+// client-facing fields, WITHOUT rawFileUri -- for paper_ocr the image now
+// arrives as a multipart `file` field, validated and uploaded to Supabase
+// Storage by the controller (see apps/api/src/storage/upload-validation.ts,
+// RFC-2 §6), which then derives rawFileUri itself as the storage object
+// key. A client can never supply rawFileUri directly. digital_entry has no
+// file and is still posted as plain JSON.
+export const EdtrCaptureFieldsSchema = z
+  .object({
+    source: z.enum(['paper_ocr', 'digital_entry']),
+    rentalId: z.string().uuid(),
+    equipmentId: z.string().uuid(),
+    reportDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    lineItems: z
+      .object({
+        hoursActive: z.number().finite().min(0),
+        hoursIdle: z.number().finite().min(0),
+      })
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.source === 'digital_entry' && !data.lineItems) {
+      ctx.addIssue({ code: 'custom', message: 'lineItems is required for source=digital_entry', path: ['lineItems'] });
+    }
+  });
+export type EdtrCaptureFields = z.infer<typeof EdtrCaptureFieldsSchema>;
+
 const AdjustmentsSchema = z.object({
   hoursActive: z.number().finite().min(0),
   hoursIdle: z.number().finite().min(0),

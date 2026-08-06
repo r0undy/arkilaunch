@@ -49,11 +49,11 @@ async function bootstrap() {
     origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
     credentials: true,
   });
-  // Raised from Express's 100kb default so a scanned photo (sent as a
-  // base64 data: URL in the POC frontend, since no Supabase Storage upload
-  // exists yet) doesn't get rejected with 413 before it ever reaches a
-  // controller.
-  app.useBodyParser('json', { limit: '15mb' });
+  // File uploads (EDTR/KYC) now go through multipart FileInterceptor
+  // (apps/api/src/storage/), not a base64 data: URL in the JSON body, so
+  // the JSON limit only needs to be large enough for normal request
+  // payloads again -- not a scanned photo's base64 encoding.
+  app.useBodyParser('json', { limit: '1mb' });
   // Every controller uses createZodDto (AGENTS.md "Always: validate
   // external input at the boundary with Zod"), but that annotation does
   // nothing on its own -- without this global pipe, invalid/malformed

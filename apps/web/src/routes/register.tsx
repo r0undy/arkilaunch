@@ -13,11 +13,10 @@ function RegisterPersonalDetailsPage() {
   const [mobileNumber, setMobileNumber] = useState('');
   const [email, setEmail] = useState('');
   const [jobTitle, setJobTitle] = useState('');
-  const [password, setPassword] = useState('');
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
-    savePersonalDetails({ firstName, lastName, mobileNumber, email, jobTitle, password });
+    savePersonalDetails({ firstName, lastName, mobileNumber, email, jobTitle });
     navigate({ to: '/register/company' });
   }
 
@@ -41,15 +40,9 @@ function RegisterPersonalDetailsPage() {
         />
         <Input label="Email address" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         <Input label="Job title / position" required value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
-        <Input
-          label="Password"
-          type="password"
-          required
-          minLength={12}
-          hint="Minimum 12 characters required."
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        <p className="text-xs text-text-muted">
+          You will set a password after your application is approved.
+        </p>
         <Button type="submit" className="w-full">
           Next page
         </Button>

@@ -1,4 +1,5 @@
 import { queryOptions } from '@tanstack/react-query';
+import type { CatalogEquipmentListResponse } from '@arkilaunch/shared';
 import { apiGet } from './api-client.js';
 import {
   getCustomers,
@@ -26,6 +27,16 @@ export const equipmentQueries = {
     queryOptions({
       queryKey: ['equipment'] as const,
       queryFn: () => apiGet<EquipmentRef[]>('/equipment'),
+    }),
+};
+
+// @Public, anchor-tenant-only for now -- see catalog.service.ts. Unlike the
+// other factories here this is reachable with no access token.
+export const catalogQueries = {
+  equipment: () =>
+    queryOptions({
+      queryKey: ['catalog', 'equipment'] as const,
+      queryFn: () => apiGet<CatalogEquipmentListResponse>('/catalog/equipment'),
     }),
 };
 

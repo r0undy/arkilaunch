@@ -1,4 +1,5 @@
 import { createZodDto } from 'nestjs-zod';
-import { TenantSettingsUpdateRequestSchema } from '@arkilaunch/shared';
+import { TenantRegisterRequestSchema, TenantSettingsUpdateRequestSchema } from '@arkilaunch/shared';
 
 export class TenantSettingsUpdateDto extends createZodDto(TenantSettingsUpdateRequestSchema) {}
+export class TenantRegisterDto extends createZodDto(TenantRegisterRequestSchema) {}

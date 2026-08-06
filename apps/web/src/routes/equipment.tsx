@@ -1,18 +1,23 @@
 import { createRoute, useNavigate } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { publicLayoutRoute } from './_public.js';
 import { EquipmentCard } from '../components/equipment-card.js';
 import { SearchFilterBar, type SortOption } from '../components/search-filter-bar.js';
-import { CATALOG_FIXTURES } from '../lib/equipment-fixtures.js';
+import { catalogQueries } from '../lib/queries.js';
 
 function EquipmentPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortOption>('new');
+  const { data } = useQuery(catalogQueries.equipment());
 
   const equipment = useMemo(
-    () => CATALOG_FIXTURES.filter((eq) => `${eq.model} ${eq.make}`.toLowerCase().includes(query.toLowerCase())),
-    [query],
+    () =>
+      (data?.items ?? []).filter((eq) =>
+        `${eq.model} ${eq.equipmentTypeName}`.toLowerCase().includes(query.toLowerCase()),
+      ),
+    [data, query],
   );
 
   return (
@@ -23,9 +28,9 @@ function EquipmentPage() {
         {equipment.map((eq) => (
           <EquipmentCard
             key={eq.id}
-            imageAlt={`${eq.make} ${eq.model}`}
+            imageAlt={`${eq.equipmentTypeName} ${eq.model}`}
             model={eq.model}
-            make={eq.make}
+            make={eq.equipmentTypeName}
             onRent={() => navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })}
           />
         ))}

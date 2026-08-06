@@ -151,6 +151,34 @@ export class UsersService {
     });
   }
 
+  // POST /users/:id/reset-password (admin-initiated; no email provider in
+  // the pinned stack, BUILD §3). Deliberately reuses the invite/activate
+  // machinery rather than inventing a parallel "reset token" concept: reroll
+  // the password hash to a fresh unusable value, flip status back to
+  // 'invited', and hand the admin a token bound to that new hash via
+  // AuthService.signActivationToken. The target completes the reset through
+  // the exact same POST /auth/activate path an invite uses, so it is
+  // single-use and self-invalidating with no new state to track. Also
+  // revokes every outstanding refresh-token family so a session hijacked
+  // before the reset does not survive it.
+  async resetPassword(ctx: Ctx, id: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const [user] = await tx.select().from(users).where(eq(users.id, id)).limit(1);
+      if (!user) throw new NotFoundException({ error: 'user_not_found' });
+      if (user.status === 'disabled') throw new ConflictException({ error: 'user_disabled' });
+
+      const placeholderHash = await hash(randomBytes(32).toString('hex'));
+      await tx.update(users).set({ passwordHash: placeholderHash, status: 'invited' }).where(eq(users.id, id));
+
+      await this.audit(tx, ctx, 'UPDATE', id);
+      await this.events.emit(ctx, 'user_password_reset', { user_id: id });
+      await this.refreshTokens.revokeAllForUser(ctx, id);
+
+      const activationToken = this.auth.signActivationToken(ctx.tenantId, id, placeholderHash);
+      return { id, activationToken };
+    });
+  }
+
   // PATCH /users/:id/role (S19). See evaluateUserAdminAction for the
   // privilege-escalation policy this enforces.
   async changeRole(ctx: Ctx, id: string, input: UserRoleChangeRequest) {

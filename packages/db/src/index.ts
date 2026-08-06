@@ -4,6 +4,8 @@ export * from './with-tenant-tx.js';
 export * from './rls.js';
 export * from './auth-lookup.js';
 export * from './payments-lookup.js';
+export * from './catalog-lookup.js';
+export * from './tenant-register.js';
 export * from './reconciliation.js';
 export * from './deposit-ledger.js';
 export * from './seed/ocr-fixtures/golden-set.js';

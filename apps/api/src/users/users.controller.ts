@@ -44,6 +44,12 @@ export class UsersController {
     return this.usersService.changeRole(req.ctx, id, body);
   }
 
+  @Post(':id/reset-password')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  resetPassword(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.usersService.resetPassword(req.ctx, id);
+  }
+
   @Post(':id/deactivate')
   deactivate(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.usersService.deactivate(req.ctx, id);
