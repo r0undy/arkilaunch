@@ -32,6 +32,7 @@ import { appIncidentsRoute } from './routes/app.incidents.js';
 import { appPaymentsRoute } from './routes/app.payments.js';
 import { appUsersRoute } from './routes/app.users.js';
 import { appSettingsRoute } from './routes/app.settings.js';
+import { appPlatformApplicationsRoute } from './routes/app.platform-applications.js';
 import { quotesRoute } from './routes/quotes.js';
 import { edtrRoute } from './routes/edtr.js';
 import { kycRoute } from './routes/kyc.js';
@@ -59,6 +60,7 @@ export const routeTree = rootRoute.addChildren([
     appPaymentsRoute,
     appUsersRoute,
     appSettingsRoute,
+    appPlatformApplicationsRoute,
     quotesRoute,
     edtrRoute,
     kycRoute,

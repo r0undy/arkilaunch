@@ -161,3 +161,44 @@ export const EdtrRejectRequestSchema = z.object({
   reason: z.string().max(2000).optional(),
 });
 export type EdtrRejectRequest = z.infer<typeof EdtrRejectRequestSchema>;
+
+// --- Response schemas (egress allowlists). The one part of the EDTR/KYC/
+// Quotes contract that had no shared schema -- the shapes were inline
+// object literals in edtr.service.ts, hand-typed on the frontend.
+
+export const EdtrCaptureResponseSchema = z.object({
+  id: z.string().uuid(),
+  status: z.string(),
+  source: z.enum(['paper_ocr', 'digital_entry']),
+  pollUrl: z.string(),
+});
+export type EdtrCaptureResponse = z.infer<typeof EdtrCaptureResponseSchema>;
+
+export const EdtrFieldResponseSchema = z.object({
+  name: z.string(),
+  value: z.union([z.number(), z.string()]),
+  confidence: z.number().min(0).max(1),
+  belowGate: z.boolean(),
+  boundingRegion: z.object({ page: z.number().int(), polygon: z.array(z.number()) }).nullable(),
+});
+export type EdtrFieldResponse = z.infer<typeof EdtrFieldResponseSchema>;
+
+export const EdtrReconciliationResponseSchema = z.object({
+  id: z.string().uuid(),
+  status: z.string(),
+  counterpartEdtrId: z.string().uuid().nullable(),
+  deltaHours: z.number().nullable(),
+  tolerance: z.number(),
+  reason: z.string().nullable(),
+});
+export type EdtrReconciliationResponse = z.infer<typeof EdtrReconciliationResponseSchema>;
+
+export const EdtrDetailResponseSchema = z.object({
+  id: z.string().uuid(),
+  status: z.string(),
+  source: z.enum(['paper_ocr', 'digital_entry']),
+  lineItems: z.array(z.object({ hoursActive: z.number(), hoursIdle: z.number() })),
+  fields: z.array(EdtrFieldResponseSchema),
+  reconciliation: EdtrReconciliationResponseSchema.nullable(),
+});
+export type EdtrDetailResponse = z.infer<typeof EdtrDetailResponseSchema>;

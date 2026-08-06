@@ -45,4 +45,4 @@ Disallow: /account/
 Disallow: /field/
 Disallow: /platform/
 
-Sitemap: https://almara.example/sitemap.xml
+Sitemap: https://arkilaunch-dev.vercel.app/sitemap.xml

@@ -25,6 +25,8 @@ import {
   CONFIDENCE_GATE,
   type EdtrApproveRequest,
   type EdtrCaptureRequest,
+  type EdtrCaptureResponse,
+  type EdtrDetailResponse,
   type EdtrListQuery,
   type EdtrRejectRequest,
   type OcrPayload,
@@ -40,7 +42,7 @@ export class EdtrService {
 
   // POST /api/v1/edtr (RFC-2 §3). Enforces the US-02 AC2 site-scope check
   // for timekeepers before anything is written.
-  async capture(ctx: RequestContext, body: EdtrCaptureRequest) {
+  async capture(ctx: RequestContext, body: EdtrCaptureRequest): Promise<EdtrCaptureResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, body.rentalId)).limit(1);
       if (!rental) throw new NotFoundException({ error: 'rental_not_found' });
@@ -104,7 +106,7 @@ export class EdtrService {
 
       await this.events.emit(ctx, 'edtr_uploaded', { edtr_id: created.id, source: body.source });
 
-      return { id: created.id, status: finalStatus, source: created.source, pollUrl: `/api/v1/edtr/${created.id}` };
+      return { id: created.id, status: finalStatus, source: body.source, pollUrl: `/api/v1/edtr/${created.id}` };
     });
   }
 
@@ -185,7 +187,7 @@ export class EdtrService {
   }
 
   // GET /api/v1/edtr/:id (poll target, RFC-2 §3).
-  async get(ctx: RequestContext, id: string) {
+  async get(ctx: RequestContext, id: string): Promise<EdtrDetailResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select().from(edtr).where(eq(edtr.id, id)).limit(1);
       if (!row) throw new NotFoundException({ error: 'edtr_not_found' });
@@ -210,7 +212,7 @@ export class EdtrService {
       return {
         id: row.id,
         status: row.status,
-        source: row.source,
+        source: row.source as 'paper_ocr' | 'digital_entry',
         lineItems: lineItems.map((item) => ({
           hoursActive: Number(item.hoursActive),
           hoursIdle: Number(item.hoursIdle),

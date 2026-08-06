@@ -7,7 +7,9 @@ import {
   matchBand,
   type DocumentIntelligencePort,
   type KycConfirmRequest,
+  type KycDetailResponse,
   type KycExtractRequest,
+  type KycExtractResponse,
   type MatchBand,
   type RequestContext,
 } from '@arkilaunch/shared';
@@ -39,7 +41,7 @@ export class KycService {
   // POST /api/v1/kyc/extract (RFC-2 §2/§3). Azure DI layout+query fields,
   // not the prebuilt idDocument model (scrutiny FC-5: that model covers
   // only US licenses/passports, not PH corporate identifiers).
-  async extract(ctx: RequestContext, body: KycExtractRequest) {
+  async extract(ctx: RequestContext, body: KycExtractRequest): Promise<KycExtractResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [created] = await tx
         .insert(kycDocuments)
@@ -103,7 +105,7 @@ export class KycService {
   // GET /api/v1/kyc/:id (RFC-2 §3). requiresHumanConfirmation is always
   // true -- there is no code path that flips a tenant to production from
   // extraction confidence alone.
-  async get(ctx: RequestContext, id: string) {
+  async get(ctx: RequestContext, id: string): Promise<KycDetailResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [doc] = await tx.select().from(kycDocuments).where(eq(kycDocuments.id, id)).limit(1);
       if (!doc) throw new NotFoundException({ error: 'kyc_document_not_found' });

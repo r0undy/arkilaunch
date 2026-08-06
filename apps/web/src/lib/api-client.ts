@@ -46,3 +46,22 @@ export async function apiGet<T>(path: string): Promise<T> {
   if (!res.ok) throw new ApiError(res.status, payload);
   return payload as T;
 }
+
+export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  const res = await authorizedFetch(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, payload);
+  return payload as T;
+}
+
+export async function apiDelete(path: string): Promise<void> {
+  const res = await authorizedFetch(path, { method: 'DELETE' });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, payload);
+  }
+}

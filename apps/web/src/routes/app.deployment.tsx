@@ -1,8 +1,16 @@
 import { createRoute } from '@tanstack/react-router';
+import type { SiteResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { sitesQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
-import { Surface } from '../components/surface.js';
+import { Table, type TableColumn } from '../components/table.js';
+
+const COLUMNS: TableColumn<SiteResponse>[] = [
+  { header: 'Site', cell: (row) => row.id.slice(0, 8) },
+  { header: 'Latitude', cell: (row) => row.latitude.toFixed(4), align: 'right' },
+  { header: 'Longitude', cell: (row) => row.longitude.toFixed(4), align: 'right' },
+  { header: 'Weather', cell: (row) => row.latestSeverity ?? '—' },
+];
 
 function DeploymentPage() {
   return (
@@ -13,12 +21,12 @@ function DeploymentPage() {
       emptyDescription="Add a project site to deploy equipment to it."
       isEmpty={(data) => data.total === 0}
       render={(data) => (
-        <Surface radius="md" elevation="sm" className="p-4">
-          <p className="mb-2 text-sm text-text-muted">
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-text-muted">
             Deploy/return actions are not wired to the UI yet; sites are shown read-only.
           </p>
-          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(data.items, null, 2)}</pre>
-        </Surface>
+          <Table columns={COLUMNS} rows={data.items} rowKey={(row) => row.id} />
+        </div>
       )}
     />
   );

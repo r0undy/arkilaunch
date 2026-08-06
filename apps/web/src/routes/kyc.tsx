@@ -1,5 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import type { KycDetailResponse, KycExtractResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { apiGet, apiPost, apiPostForm } from '../lib/api-client.js';
@@ -8,13 +9,14 @@ import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
+import { ConfidenceChip } from '../components/confidence-chip.js';
 
-// POC scaffold only (unstyled): exercises POST /kyc/extract (scans a real
-// photo/PDF via <input capture>, encoded as a data: URL since no Supabase
-// Storage upload exists yet), GET /kyc/:id, and POST /kyc/:id/confirm
-// (RFC-2). Confirm requires platform_admin (kyc:verify); expect a 403 when
-// signed in as the tenant admin seed user. Customer comes from GET
-// /reference/customers rather than a hand-typed UUID.
+// Not styled to the full Console spec yet, but exercises the real flow:
+// POST /kyc/extract (multipart, RFC-2 §6 -- the API validates and uploads
+// to Supabase Storage before this call returns), GET /kyc/:id, and POST
+// /kyc/:id/confirm (RFC-2). Confirm requires platform_admin (kyc:verify);
+// expect a 403 when signed in as the tenant admin seed user. Customer comes
+// from GET /reference/customers rather than a hand-typed UUID.
 function KycPage() {
   const [customers, setCustomers] = useState<CustomerRef[]>([]);
   const [refError, setRefError] = useState<unknown>(null);
@@ -38,6 +40,7 @@ function KycPage() {
 
   const [kycDocumentId, setKycDocumentId] = useState<string | null>(null);
   const [result, setResult] = useState<unknown>(null);
+  const [detail, setDetail] = useState<KycDetailResponse | null>(null);
   const [error, setError] = useState<unknown>(null);
 
   function onScanFile(event: ChangeEvent<HTMLInputElement>) {
@@ -53,14 +56,21 @@ function KycPage() {
   async function extract(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setDetail(null);
     try {
-      const res = await apiPostForm<{ kycDocumentId: string }>(
+      const res = await apiPostForm<KycExtractResponse>(
         '/kyc/extract',
         { customerId, documentType },
         scanFile ?? undefined,
       );
       setResult(res);
       setKycDocumentId(res.kycDocumentId);
+      // Extraction runs synchronously (kyc.service.ts has no async worker,
+      // unlike EDTR's paper_ocr) -- a single GET right after extract already
+      // reflects the final extracted values, so no polling loop is needed.
+      const detailRes = await apiGet<KycDetailResponse>(`/kyc/${res.kycDocumentId}`);
+      setResult(detailRes);
+      setDetail(detailRes);
     } catch (err) {
       setError(err);
     }
@@ -70,8 +80,9 @@ function KycPage() {
     if (!kycDocumentId) return;
     setError(null);
     try {
-      const res = await apiGet(`/kyc/${kycDocumentId}`);
+      const res = await apiGet<KycDetailResponse>(`/kyc/${kycDocumentId}`);
       setResult(res);
+      setDetail(res);
     } catch (err) {
       setError(err);
     }
@@ -198,6 +209,27 @@ function KycPage() {
         <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl border-error p-4">
           <h2 className="mb-2 font-display text-[18px] font-semibold text-error">Error</h2>
           <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(error, null, 2)}</pre>
+        </Surface>
+      )}
+      {detail != null && (detail.confidence.secNumber !== null || detail.confidence.tin !== null) && (
+        <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-4">
+          <h2 className="mb-2 font-display text-[18px] font-semibold text-text">Extracted fields</h2>
+          <div className="flex flex-wrap gap-2">
+            {detail.confidence.secNumber !== null && (
+              <ConfidenceChip
+                tone={detail.formatValid.secNumber ? 'match' : 'review'}
+                confidence={detail.confidence.secNumber}
+                fieldLabel={`SEC: ${detail.extracted.secNumber ?? ''}`}
+              />
+            )}
+            {detail.confidence.tin !== null && (
+              <ConfidenceChip
+                tone={detail.formatValid.tin ? 'match' : 'review'}
+                confidence={detail.confidence.tin}
+                fieldLabel={`TIN: ${detail.extracted.tin ?? ''}`}
+              />
+            )}
+          </div>
         </Surface>
       )}
       {result != null && (

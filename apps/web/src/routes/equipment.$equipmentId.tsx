@@ -1,12 +1,14 @@
-import { createRoute, Link } from '@tanstack/react-router';
+import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { publicLayoutRoute } from './_public.js';
 import { Button } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { catalogQueries } from '../lib/queries.js';
+import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
 
 function EquipmentDetailPage() {
   const { equipmentId } = equipmentDetailRoute.useParams();
+  const navigate = useNavigate();
   const { data: equipment } = useQuery(catalogQueries.equipmentDetail(equipmentId));
 
   if (!equipment) {
@@ -32,7 +34,14 @@ function EquipmentDetailPage() {
         <h1 className="font-display text-2xl font-semibold text-ink-mk">{equipment.model}</h1>
         <p className="text-sm text-text-muted">{equipment.equipmentTypeName}</p>
       </div>
-      <Button variant="primary" className="w-fit">
+      <Button
+        variant="primary"
+        className="w-fit"
+        onClick={() => {
+          addToCart({ equipmentId: equipment.id, model: equipment.model, ...defaultRentalWindow() });
+          navigate({ to: '/account/cart' });
+        }}
+      >
         Rent this unit
       </Button>
     </div>

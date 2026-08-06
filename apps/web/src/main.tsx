@@ -4,6 +4,7 @@ import { RouterProvider } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { router } from './router.js';
 import { ApiError } from './lib/api-client.js';
+import { bootstrapSession } from './lib/auth-client.js';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -23,10 +24,15 @@ const queryClient = new QueryClient({
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('#root element missing');
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  </StrictMode>,
-);
+// The access token now lives in memory only (RFC-1 §3), so a reload starts
+// with none -- rehydrate it from the refresh token before the router's own
+// guards run, or every reload of an authed route bounces to /login.
+bootstrapSession().finally(() => {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+});

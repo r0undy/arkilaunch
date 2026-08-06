@@ -33,7 +33,6 @@ describe('authorizedFetch: 401 handling', () => {
   });
 
   it('three concurrent 401s trigger exactly one POST /auth/refresh, and all three succeed on retry', async () => {
-    sessionStorage.setItem('arkilaunch.accessToken', 'stale-token');
     sessionStorage.setItem('arkilaunch.refreshToken', 'refresh-token-1');
 
     let refreshCalls = 0;
@@ -56,7 +55,8 @@ describe('authorizedFetch: 401 handling', () => {
       return Promise.resolve(new Response('{}', { status: 401 }));
     });
     vi.stubGlobal('fetch', fetchMock);
-    const { authorizedFetch } = await import('./auth-client.js');
+    const { authorizedFetch, setAccessToken } = await import('./auth-client.js');
+    setAccessToken('stale-token');
 
     const results = await Promise.all([
       authorizedFetch('/a'),
@@ -71,7 +71,6 @@ describe('authorizedFetch: 401 handling', () => {
   });
 
   it('a failed refresh clears tokens and redirects to /login exactly once', async () => {
-    sessionStorage.setItem('arkilaunch.accessToken', 'stale-token');
     sessionStorage.setItem('arkilaunch.refreshToken', 'dead-refresh-token');
 
     const fetchMock = vi.fn().mockImplementation((url: string) => {
@@ -81,21 +80,22 @@ describe('authorizedFetch: 401 handling', () => {
       return Promise.resolve(new Response('{}', { status: 401 }));
     });
     vi.stubGlobal('fetch', fetchMock);
-    const { authorizedFetch } = await import('./auth-client.js');
+    const { authorizedFetch, setAccessToken } = await import('./auth-client.js');
+    setAccessToken('stale-token');
 
     await authorizedFetch('/a');
 
-    expect(sessionStorage.getItem('arkilaunch.accessToken')).toBeNull();
+    expect((await import('./auth-client.js')).getAccessToken()).toBeNull();
     expect(sessionStorage.getItem('arkilaunch.refreshToken')).toBeNull();
     expect(assignSpy).toHaveBeenCalledTimes(1);
     expect(assignSpy.mock.calls[0]![0]).toContain('/login?redirect=');
   });
 
   it('a persistent 401 with no refresh token does not loop', async () => {
-    sessionStorage.setItem('arkilaunch.accessToken', 'stale-token');
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 401 }));
     vi.stubGlobal('fetch', fetchMock);
-    const { authorizedFetch } = await import('./auth-client.js');
+    const { authorizedFetch, setAccessToken } = await import('./auth-client.js');
+    setAccessToken('stale-token');
 
     const res = await authorizedFetch('/a');
 

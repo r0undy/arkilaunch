@@ -27,6 +27,13 @@ export const APP_NAV: NavItem[] = [
   { label: 'Settings', to: '/app/settings' },
 ];
 
+// platform_admin-only items, appended by the shell that renders APP_NAV for
+// that role (see _app.tsx) rather than filtered here -- keeps this file a
+// plain data module with no role logic of its own.
+export const PLATFORM_ADMIN_NAV: NavItem[] = [
+  { label: 'Tenant Applications', to: '/app/platform-applications' },
+];
+
 export const FIELD_NAV: NavItem[] = [
   { label: 'Dashboard', to: '/field' },
   { label: 'Deployment', to: '/field/deployment' },
