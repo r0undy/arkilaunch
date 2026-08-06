@@ -1,0 +1,99 @@
+name: Deploy
+
+# push to `dev` -> deploy the dev environment; push to `main` -> deploy prod.
+# `.github/workflows/ci.yml`'s lint/typecheck/test/build gate is unchanged
+# and still runs on every PR -- this workflow only builds/deploys.
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    paths: ['infra/terraform/**']
+
+permissions:
+  id-token: write # OIDC federated credential -- see infra/terraform/bootstrap/README.md §3
+  contents: read
+
+jobs:
+  # Runs on any PR touching infra/terraform/**, against whichever environment
+  # the target branch maps to, so a plan is visible before merge. Never
+  # applies.
+  terraform-plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    environment: ${{ github.base_ref == 'main' && 'prod' || 'dev' }}
+    defaults:
+      run:
+        working-directory: infra/terraform/environments/${{ github.base_ref == 'main' && 'prod' || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - run: terraform init -backend-config="storage_account_name=${{ vars.TF_STATE_STORAGE_ACCOUNT }}"
+
+      - run: terraform plan -var image_tag=${{ github.sha }}
+        env:
+          TF_VAR_database_url_direct: ${{ secrets.DATABASE_URL_DIRECT }}
+          TF_VAR_database_url_pooled: ${{ secrets.DATABASE_URL_POOLED }}
+          TF_VAR_app_authenticated_password: ${{ secrets.APP_AUTHENTICATED_PASSWORD }}
+          TF_VAR_supabase_service_role_key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TF_VAR_jwt_private_key: ${{ secrets.JWT_PRIVATE_KEY }}
+          TF_VAR_jwt_public_key: ${{ secrets.JWT_PUBLIC_KEY }}
+          TF_VAR_azure_di_endpoint: ${{ secrets.AZURE_DI_ENDPOINT }}
+          TF_VAR_azure_di_key: ${{ secrets.AZURE_DI_KEY }}
+          TF_VAR_paymongo_secret_key: ${{ secrets.PAYMONGO_SECRET_KEY }}
+          TF_VAR_paymongo_webhook_secret: ${{ secrets.PAYMONGO_WEBHOOK_SECRET }}
+          TF_VAR_open_meteo_api_key: ${{ secrets.OPEN_METEO_API_KEY }}
+
+  deploy:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+    env:
+      ENV_NAME: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+    defaults:
+      run:
+        working-directory: infra/terraform/environments/${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Build/push happens before terraform apply so the image the apply
+      # references (image_tag=$GITHUB_SHA) already exists in the registry --
+      # apply would otherwise create/update a Container App pointing at a
+      # tag ACR has never seen.
+      - name: Build and push image
+        working-directory: .
+        run: |
+          az acr login --name acrarkilaunch${{ env.ENV_NAME }}
+          docker build -t acrarkilaunch${{ env.ENV_NAME }}.azurecr.io/arkilaunch-backend:${{ github.sha }} .
+          docker push acrarkilaunch${{ env.ENV_NAME }}.azurecr.io/arkilaunch-backend:${{ github.sha }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - run: terraform init -backend-config="storage_account_name=${{ vars.TF_STATE_STORAGE_ACCOUNT }}"
+
+      - run: terraform apply -auto-approve -var image_tag=${{ github.sha }}
+        env:
+          TF_VAR_database_url_direct: ${{ secrets.DATABASE_URL_DIRECT }}
+          TF_VAR_database_url_pooled: ${{ secrets.DATABASE_URL_POOLED }}
+          TF_VAR_app_authenticated_password: ${{ secrets.APP_AUTHENTICATED_PASSWORD }}
+          TF_VAR_supabase_service_role_key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TF_VAR_jwt_private_key: ${{ secrets.JWT_PRIVATE_KEY }}
+          TF_VAR_jwt_public_key: ${{ secrets.JWT_PUBLIC_KEY }}
+          TF_VAR_azure_di_endpoint: ${{ secrets.AZURE_DI_ENDPOINT }}
+          TF_VAR_azure_di_key: ${{ secrets.AZURE_DI_KEY }}
+          TF_VAR_paymongo_secret_key: ${{ secrets.PAYMONGO_SECRET_KEY }}
+          TF_VAR_paymongo_webhook_secret: ${{ secrets.PAYMONGO_WEBHOOK_SECRET }}
+          TF_VAR_open_meteo_api_key: ${{ secrets.OPEN_METEO_API_KEY }}

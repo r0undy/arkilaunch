@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+.git
+docs
+apps/web
+.env
+.env.*
+!.env.example
+infra
+.github
+*.md
