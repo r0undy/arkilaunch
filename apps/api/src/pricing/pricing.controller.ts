@@ -1,9 +1,9 @@
-import { Body, Controller, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { PricingService } from './pricing.service.js';
-import { DieselPriceEntryDto, PricingParametersInputDto } from './dto.js';
+import { DieselPriceEntryDto, PricingParametersInputDto, PricingParametersQueryDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -26,5 +26,12 @@ export class PricingController {
   @RequirePermission('pricing:manage')
   setPricingParameters(@Body() body: PricingParametersInputDto, @Req() req: CtxRequest) {
     return this.pricing.setPricingParameters(req.ctx, body);
+  }
+
+  // GET /pricing/parameters?region= (S18 settings screen).
+  @Get('parameters')
+  @RequirePermission('pricing:manage')
+  getPricingParameters(@Query() query: PricingParametersQueryDto, @Req() req: CtxRequest) {
+    return this.pricing.getPricingParameters(req.ctx, query.region);
   }
 }

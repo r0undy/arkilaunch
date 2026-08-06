@@ -1,22 +1,14 @@
 import { createRoute } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
-import { apiGet } from '../lib/api-client.js';
+import { reportQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { Surface } from '../components/surface.js';
 
-interface InsightsData {
-  utilization: unknown;
-  financial: unknown;
-}
-
 function InsightsPage() {
   return (
-    <DataPanel<InsightsData>
+    <DataPanel
       title="Insights"
-      fetcher={async () => ({
-        utilization: await apiGet('/reports/utilization'),
-        financial: await apiGet('/reports/financial'),
-      })}
+      options={reportQueries.snapshot()}
       emptyTitle="No insights yet"
       emptyDescription="Utilization and financial reports appear once the fleet has activity."
       isEmpty={() => false}

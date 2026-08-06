@@ -139,6 +139,7 @@ export class PricingEngineService {
 
   // Loads the rate card and prices one line item per the RFC-3 §3 formula.
   async priceItem(tx: Tx, tenantId: string, diesel: DieselResolution, input: QuoteItemInput): Promise<PricedItem> {
+    const now = new Date();
     const [rateCard] = await tx
       .select()
       .from(rateCards)
@@ -147,6 +148,21 @@ export class PricingEngineService {
 
     if (!rateCard) {
       throw new UnprocessableEntityException({ error: 'rate_card_not_found', rateCardId: input.rateCardId });
+    }
+
+    // A rate card is append-only (only effective_to ever moves; see
+    // migration 0007 + PricingService.setPricingParameters, the existing
+    // precedent). Once superseded, its id must never be able to price a NEW
+    // quote at the old value -- QAD-T44/T48. `revise()` is the only path a
+    // rate change should reach a customer through.
+    const effectiveFrom = new Date(rateCard.effectiveFrom);
+    const effectiveTo = rateCard.effectiveTo ? new Date(rateCard.effectiveTo) : null;
+    if (effectiveFrom > now || (effectiveTo && effectiveTo <= now)) {
+      throw new UnprocessableEntityException({
+        error: 'rate_card_not_effective',
+        rateCardId: input.rateCardId,
+        message: 'This rate card is not currently effective (superseded or not yet active); reload rate cards.',
+      });
     }
 
     const rateCardValuePhp = Number(rateCard.rateValue);
@@ -182,6 +198,7 @@ export class PricingEngineService {
         rate_card_id: rateCard.id,
         rate_card_value_php: rateCardValuePhp,
         rate_card_effective_from: rateCard.effectiveFrom,
+        rate_card_effective_to: rateCard.effectiveTo,
         operator_hourly_php: diesel.operatorHourlyPhp,
         maintenance_hourly_php: diesel.maintenanceHourlyPhp,
         buffer_pct: diesel.bufferPct,

@@ -1,16 +1,30 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
-import { FixtureDocumentIntelligenceAdapter, type RequestContext } from '@arkilaunch/shared';
+import { FixtureDocumentIntelligenceAdapter, type EdtrCaptureRequest, type RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
+import { MAX_UPLOAD_BYTES, validateUpload } from '../storage/upload-validation.js';
+import { StorageService } from '../storage/storage.service.js';
 import { EdtrService } from './edtr.service.js';
 import { EdtrApproveDto, EdtrCaptureDto, EdtrListQueryDto, EdtrRejectDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
+type MulterFile = { buffer: Buffer; size: number; mimetype: string };
+
+const EDTR_BUCKET = () => requireEnv('SUPABASE_STORAGE_BUCKET_EDTR');
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
 
 @Controller('edtr')
 export class EdtrController {
-  constructor(private readonly edtr: EdtrService) {}
+  constructor(
+    private readonly edtr: EdtrService,
+    private readonly storage: StorageService,
+  ) {}
 
   // Dev-only POC trigger: the real edtr-ocr-worker is an ACA Job (a
   // separate scheduled process, RFC-2 §2), not an HTTP-callable service.
@@ -38,12 +52,26 @@ export class EdtrController {
 
   // QAD-T31 (resource abuse / cost bomb): each capture queues an async
   // Azure DI extraction, so this route gets a tighter cap than the global
-  // default.
+  // default. paper_ocr arrives multipart with a `file` field (RFC-2 §6:
+  // validated + uploaded to Storage here, BEFORE the blob reaches Storage,
+  // not via a direct-to-Storage signed upload); digital_entry has no file
+  // and is still plain JSON -- multer's FileInterceptor only activates on a
+  // multipart content-type, so a JSON request passes through untouched.
   @Post()
   @RequirePermission('edtr:create')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  capture(@Body() body: EdtrCaptureDto, @Req() req: CtxRequest) {
-    return this.edtr.capture(req.ctx, body);
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  async capture(@Body() body: EdtrCaptureDto, @UploadedFile() file: MulterFile | undefined, @Req() req: CtxRequest) {
+    let rawFileUri: string | undefined;
+    if (body.source === 'paper_ocr') {
+      const validated = validateUpload(file);
+      const key = this.storage.buildObjectKey(req.ctx.tenantId, validated.extension);
+      await this.storage.uploadObject(EDTR_BUCKET(), key, file!.buffer, validated.contentType);
+      rawFileUri = key;
+    }
+
+    const captureRequest: EdtrCaptureRequest = { ...body, rawFileUri };
+    return this.edtr.capture(req.ctx, captureRequest);
   }
 
   // GET /api/v1/edtr?... (S8 review queue). Same permission as capture:

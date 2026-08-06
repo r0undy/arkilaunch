@@ -50,6 +50,34 @@
       "when": 1785591000407,
       "tag": "0006_paymongo_webhook_lookup",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785591000487,
+      "tag": "0007_rbac_and_pricing_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785591000567,
+      "tag": "0008_tenant_applications_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785591000647,
+      "tag": "0009_tenant_registration",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785591000727,
+      "tag": "0010_public_catalog",
+      "breakpoints": true
     }
   ]
 }

@@ -59,3 +59,19 @@ export const UtilizationQuerySchema = z.object({
     .optional(),
 });
 export type UtilizationQuery = z.infer<typeof UtilizationQuerySchema>;
+
+// GET /catalog/equipment (@Public, anchor-tenant only -- backend-unblock
+// plan workstream 2). Deliberately excludes serialNo/runtimeHours: those
+// are operational data with no reason to be visible to an anonymous caller.
+export const CatalogEquipmentSchema = z.object({
+  id: z.string().uuid(),
+  equipmentTypeName: z.string(),
+  model: z.string(),
+  availabilityStatus: EquipmentStatusSchema,
+});
+export type CatalogEquipment = z.infer<typeof CatalogEquipmentSchema>;
+
+export const CatalogEquipmentListResponseSchema = z.object({
+  items: z.array(CatalogEquipmentSchema),
+});
+export type CatalogEquipmentListResponse = z.infer<typeof CatalogEquipmentListResponseSchema>;

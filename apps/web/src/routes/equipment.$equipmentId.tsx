@@ -1,12 +1,14 @@
 import { createRoute, Link } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
 import { publicLayoutRoute } from './_public.js';
 import { Button } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
-import { CATALOG_FIXTURES } from '../lib/equipment-fixtures.js';
+import { catalogQueries } from '../lib/queries.js';
 
 function EquipmentDetailPage() {
   const { equipmentId } = equipmentDetailRoute.useParams();
-  const equipment = CATALOG_FIXTURES.find((eq) => eq.id === equipmentId);
+  const { data } = useQuery(catalogQueries.equipment());
+  const equipment = data?.items.find((eq) => eq.id === equipmentId);
 
   if (!equipment) {
     return (
@@ -29,7 +31,7 @@ function EquipmentDetailPage() {
       <div className="aspect-video rounded-mk-lg bg-bg-mk-frame" aria-hidden="true" />
       <div>
         <h1 className="font-display text-2xl font-semibold text-ink-mk">{equipment.model}</h1>
-        <p className="text-sm text-text-muted">{equipment.make}</p>
+        <p className="text-sm text-text-muted">{equipment.equipmentTypeName}</p>
       </div>
       <Button variant="primary" className="w-fit">
         Rent this unit

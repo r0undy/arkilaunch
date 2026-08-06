@@ -25,6 +25,6 @@ function requireEnv(name: string): string {
   ],
   controllers: [AuthController, TwoFaController],
   providers: [AuthService, RefreshTokenService, JwtStrategy, TotpService],
-  exports: [JwtModule, PassportModule],
+  exports: [JwtModule, PassportModule, AuthService, RefreshTokenService],
 })
 export class AuthModule {}

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import {
   customers,
   db,
@@ -42,6 +42,15 @@ export class ReferenceService {
 
   async rateCards(ctx: RequestContext, equipmentTypeId?: string) {
     return withTenantTx(ctx, (tx) => {
+      const now = new Date();
+      // Only currently-effective rows: a superseded or not-yet-effective
+      // rate card must never reach the quote-builder's pick-list (it would
+      // let a new quote be priced at a stale value -- QAD-T44/T48; see the
+      // matching guard in PricingEngineService.priceItem).
+      const effectivenessFilter = and(
+        lte(rateCards.effectiveFrom, now),
+        or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, now)),
+      );
       const query = tx
         .select({
           id: rateCards.id,
@@ -51,7 +60,9 @@ export class ReferenceService {
           currency: rateCards.currency,
         })
         .from(rateCards);
-      return equipmentTypeId ? query.where(eq(rateCards.equipmentTypeId, equipmentTypeId)) : query;
+      return equipmentTypeId
+        ? query.where(and(eq(rateCards.equipmentTypeId, equipmentTypeId), effectivenessFilter))
+        : query.where(effectivenessFilter);
     });
   }
 

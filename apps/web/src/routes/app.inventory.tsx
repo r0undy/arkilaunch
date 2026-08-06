@@ -1,17 +1,16 @@
 import { createRoute } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
-import { apiGet } from '../lib/api-client.js';
+import { equipmentQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { Surface } from '../components/surface.js';
 import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon, AlertIcon } from '../components/icons.js';
-import type { EquipmentRef } from '../lib/reference-client.js';
 
 function InventoryPage() {
   return (
-    <DataPanel<EquipmentRef[]>
+    <DataPanel
       title="Inventory"
-      fetcher={() => apiGet<EquipmentRef[]>('/equipment')}
+      options={equipmentQueries.list()}
       emptyTitle="No equipment yet"
       emptyDescription="Add equipment to the fleet to see it listed here."
       isEmpty={(data) => data.length === 0}
