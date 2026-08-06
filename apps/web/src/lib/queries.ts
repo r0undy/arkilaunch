@@ -1,5 +1,14 @@
 import { queryOptions } from '@tanstack/react-query';
-import type { CatalogEquipmentListResponse } from '@arkilaunch/shared';
+import type {
+  BookingListResponse,
+  CatalogEquipment,
+  CatalogEquipmentListResponse,
+  FinancialReportResponse,
+  IncidentListResponse,
+  InvoiceListResponse,
+  SiteListResponse,
+  UtilizationReportResponse,
+} from '@arkilaunch/shared';
 import { apiGet } from './api-client.js';
 import {
   getCustomers,
@@ -38,13 +47,18 @@ export const catalogQueries = {
       queryKey: ['catalog', 'equipment'] as const,
       queryFn: () => apiGet<CatalogEquipmentListResponse>('/catalog/equipment'),
     }),
+  equipmentDetail: (id: string) =>
+    queryOptions({
+      queryKey: ['catalog', 'equipment', id] as const,
+      queryFn: () => apiGet<CatalogEquipment>(`/catalog/equipment/${id}`),
+    }),
 };
 
 export const sitesQueries = {
   list: () =>
     queryOptions({
       queryKey: ['sites'] as const,
-      queryFn: () => apiGet<unknown[]>('/sites'),
+      queryFn: () => apiGet<SiteListResponse>('/sites'),
     }),
 };
 
@@ -52,7 +66,7 @@ export const invoicesQueries = {
   list: () =>
     queryOptions({
       queryKey: ['invoices'] as const,
-      queryFn: () => apiGet<unknown[]>('/invoices'),
+      queryFn: () => apiGet<InvoiceListResponse>('/invoices'),
     }),
 };
 
@@ -60,7 +74,7 @@ export const incidentsQueries = {
   list: () =>
     queryOptions({
       queryKey: ['incidents'] as const,
-      queryFn: () => apiGet<unknown[]>('/incidents'),
+      queryFn: () => apiGet<IncidentListResponse>('/incidents'),
     }),
 };
 
@@ -68,13 +82,13 @@ export const bookingsQueries = {
   list: () =>
     queryOptions({
       queryKey: ['bookings'] as const,
-      queryFn: () => apiGet<unknown[]>('/bookings'),
+      queryFn: () => apiGet<BookingListResponse>('/bookings'),
     }),
 };
 
 export interface ReportsSnapshot {
-  utilization: unknown;
-  financial: unknown;
+  utilization: UtilizationReportResponse;
+  financial: FinancialReportResponse;
 }
 
 export const reportQueries = {
@@ -87,8 +101,8 @@ export const reportQueries = {
       queryKey: ['reports', 'snapshot'] as const,
       queryFn: async (): Promise<ReportsSnapshot> => {
         const [utilization, financial] = await Promise.all([
-          apiGet<unknown>('/reports/utilization'),
-          apiGet<unknown>('/reports/financial'),
+          apiGet<UtilizationReportResponse>('/reports/utilization'),
+          apiGet<FinancialReportResponse>('/reports/financial'),
         ]);
         return { utilization, financial };
       },

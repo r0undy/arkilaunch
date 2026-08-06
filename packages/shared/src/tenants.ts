@@ -39,3 +39,24 @@ export const TenantApplicationDecisionResponseSchema = z.object({
   activationToken: z.string().optional(),
 });
 export type TenantApplicationDecisionResponse = z.infer<typeof TenantApplicationDecisionResponseSchema>;
+
+// GET /tenants/applications (tenant:approve, platform_admin only) --
+// the platform-console list this pass unblocks. GET /tenants/me/application
+// (tenant:manage) reuses the same item shape for an owner's own tenant.
+export const TenantApplicationSchema = z.object({
+  applicationId: z.string().uuid(),
+  tenantId: z.string().uuid(),
+  companyName: z.string(),
+  contactFirstName: z.string(),
+  contactLastName: z.string(),
+  contactMobile: z.string(),
+  contactJobTitle: z.string(),
+  createdAt: z.coerce.date(),
+});
+export type TenantApplication = z.infer<typeof TenantApplicationSchema>;
+
+export const TenantApplicationListResponseSchema = z.object({
+  items: z.array(TenantApplicationSchema),
+  total: z.number().int(),
+});
+export type TenantApplicationListResponse = z.infer<typeof TenantApplicationListResponseSchema>;

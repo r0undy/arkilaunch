@@ -11,13 +11,13 @@ function DeploymentPage() {
       options={sitesQueries.list()}
       emptyTitle="No project sites yet"
       emptyDescription="Add a project site to deploy equipment to it."
-      isEmpty={(data) => data.length === 0}
+      isEmpty={(data) => data.total === 0}
       render={(data) => (
         <Surface radius="md" elevation="sm" className="p-4">
           <p className="mb-2 text-sm text-text-muted">
             Deploy/return actions are not wired to the UI yet; sites are shown read-only.
           </p>
-          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(data, null, 2)}</pre>
+          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(data.items, null, 2)}</pre>
         </Surface>
       )}
     />

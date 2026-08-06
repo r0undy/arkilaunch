@@ -40,6 +40,24 @@ export class TenantsController {
     return this.tenants.register(body);
   }
 
+  // GET /tenants/applications (tenant:approve, platform_admin only). No
+  // GET ':id' route exists on this controller, so this literal path cannot
+  // collide with the ':id/approve' | ':id/reject' POST routes below.
+  @Get('applications')
+  @RequirePermission('tenant:approve')
+  listApplications() {
+    return this.tenants.listApplications();
+  }
+
+  // GET /tenants/me/application (tenant:manage) -- an owner's own pending
+  // application, if any. No platform-console UI exists yet for the list
+  // above, but this unblocks account.applications.tsx immediately.
+  @Get('me/application')
+  @RequirePermission('tenant:manage')
+  myApplication(@Req() req: CtxRequest) {
+    return this.tenants.myApplication(req.ctx);
+  }
+
   // POST /tenants/:id/approve | /reject (tenant:approve, platform_admin
   // only). No platform-console UI exists yet -- this is an API/curl-level
   // step for now (see the Change Record for this workstream).

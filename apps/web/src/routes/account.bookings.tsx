@@ -11,10 +11,10 @@ function MyBookingsPage() {
       options={bookingsQueries.list()}
       emptyTitle="No bookings yet"
       emptyDescription="Rent your first piece of equipment to see it tracked here."
-      isEmpty={(data) => data.length === 0}
+      isEmpty={(data) => data.total === 0}
       render={(data) => (
         <Surface radius="md" elevation="sm" className="p-4">
-          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(data, null, 2)}</pre>
+          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(data.items, null, 2)}</pre>
         </Surface>
       )}
     />

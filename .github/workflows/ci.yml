@@ -63,7 +63,6 @@ jobs:
     # job runs against the Supabase project named by the repo secrets, not
     # the throwaway Postgres above.
     if: ${{ vars.RUN_LIVE_DB_TESTS == 'true' }}
-    runs-on: ubuntu-latest
     needs: migration-expand-contract-check
     steps:
       - uses: actions/checkout@v4

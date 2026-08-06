@@ -78,6 +78,20 @@
       "when": 1785591000727,
       "tag": "0010_public_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785591000807,
+      "tag": "0011_tenant_applications_list",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785591000887,
+      "tag": "0012_public_catalog_detail",
+      "breakpoints": true
     }
   ]
 }

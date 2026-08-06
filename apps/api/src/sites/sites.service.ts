@@ -16,9 +16,14 @@ import {
   WEATHER_STALE_AFTER_MINUTES,
   type DeploymentCreateRequest,
   type IncidentListQuery,
+  type IncidentListResponse,
   type RequestContext,
   type SiteCreateRequest,
+  type SiteDetailResponse,
+  type SiteListResponse,
+  type SiteResponse,
   type SiteUpdateRequest,
+  type WeatherAdvisoryListResponse,
   type WeatherAdvisoryResponse,
   type WeatherObservation,
   type WeatherSeverity,
@@ -27,24 +32,6 @@ import { EventsService } from '../events/events.service.js';
 import { findAvailableAlternatives, overlappingAssignments } from '../common/equipment-availability.js';
 
 const EMPTY_OBSERVATION: WeatherObservation = { tempC: 0, windKph: 0, precipMm: 0, code: 0 };
-
-export interface SiteResponse {
-  id: string;
-  latitude: number;
-  longitude: number;
-  latestSeverity: WeatherSeverity | null;
-}
-
-export interface SiteDetailResponse extends SiteResponse {
-  address: {
-    line1: string;
-    line2: string | null;
-    city: string;
-    province: string;
-    postalCode: string | null;
-    country: string;
-  } | null;
-}
 
 // Pure row-to-response mapping shared by weather() and advisories() (PRD-F5)
 // so a single-site read and the tenant-wide list can never disagree about
@@ -86,7 +73,7 @@ export class SitesService {
   // GET /api/v1/sites (S12). Readable by any authenticated tenant member --
   // site-safety information, same posture as fleet/reference reads; RLS is
   // the isolation boundary.
-  async list(ctx: RequestContext) {
+  async list(ctx: RequestContext): Promise<SiteListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const rows = await tx.select().from(projectSites);
       if (rows.length === 0) return { items: [], total: 0 };
@@ -362,7 +349,7 @@ export class SitesService {
   // GET /api/v1/weather/advisories (S13). Active advisories (status !=
   // 'cleared') across every site in the tenant, one row per site (its
   // latest active reading).
-  async advisories(ctx: RequestContext) {
+  async advisories(ctx: RequestContext): Promise<WeatherAdvisoryListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const rows = await tx
         .select()
@@ -385,7 +372,7 @@ export class SitesService {
   // writes on a new-or-worsening severity crossing (SDD §4 "auto-logs a
   // liability incident") -- a dedicated incidents table would duplicate
   // data the first-party analytics sink already holds (restraint ladder).
-  async incidents(ctx: RequestContext, query: IncidentListQuery) {
+  async incidents(ctx: RequestContext, query: IncidentListQuery): Promise<IncidentListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const conditions: SQL[] = [eq(events.name, 'weather_liability_incident')];
       if (query.projectSiteId) {

@@ -13,7 +13,13 @@ import {
   rentals,
   withTenantTx,
 } from '@arkilaunch/db';
-import type { BookingCreateRequest, RequestContext } from '@arkilaunch/shared';
+import type {
+  BookingCreateRequest,
+  BookingCreateResponse,
+  BookingDetailResponse,
+  BookingListResponse,
+  RequestContext,
+} from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { findAvailableAlternatives, overlappingAssignments } from '../common/equipment-availability.js';
 
@@ -38,7 +44,7 @@ export class BookingsService {
   // candidate equipment rows are locked with FOR UPDATE before the overlap
   // check, so a concurrent booking attempt on the same unit/window is
   // serialized rather than racing past this check (QAD-T21).
-  async create(ctx: RequestContext, body: BookingCreateRequest) {
+  async create(ctx: RequestContext, body: BookingCreateRequest): Promise<BookingCreateResponse> {
     return withTenantTx(ctx, async (tx) => {
       let customerId = body.customerId;
       if (ctx.role === 'customer') {
@@ -129,7 +135,7 @@ export class BookingsService {
   // GET /api/v1/bookings (PRD-F8 US-09). A `customer` sees only their own
   // bookings; staff see the whole tenant (RLS is the tenant boundary,
   // matching reference/* and fleet's read posture).
-  async list(ctx: RequestContext) {
+  async list(ctx: RequestContext): Promise<BookingListResponse> {
     return withTenantTx(ctx, async (tx) => {
       let rows;
       if (ctx.role === 'customer') {
@@ -148,7 +154,7 @@ export class BookingsService {
   // GET /api/v1/bookings/:id (SDD §4 transaction tracker, US-09 AC1). Never
   // stores or returns card/account data (US-08 AC1) -- only provider_ref +
   // status from `payments`.
-  async get(ctx: RequestContext, id: string) {
+  async get(ctx: RequestContext, id: string): Promise<BookingDetailResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, id)).limit(1);
       if (!rental) throw new NotFoundException({ error: 'booking_not_found' });

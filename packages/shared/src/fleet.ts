@@ -75,3 +75,60 @@ export const CatalogEquipmentListResponseSchema = z.object({
   items: z.array(CatalogEquipmentSchema),
 });
 export type CatalogEquipmentListResponse = z.infer<typeof CatalogEquipmentListResponseSchema>;
+
+// --- Response schemas (egress allowlists). ---
+
+export const EquipmentResponseSchema = z.object({
+  id: z.string().uuid(),
+  equipmentTypeId: z.string().uuid(),
+  model: z.string(),
+  serialNo: z.string(),
+  availabilityStatus: z.string(),
+  runtimeHours: z.number(),
+});
+export type EquipmentResponse = z.infer<typeof EquipmentResponseSchema>;
+
+export const EquipmentListResponseSchema = z.object({
+  items: z.array(EquipmentResponseSchema),
+  total: z.number().int(),
+});
+export type EquipmentListResponse = z.infer<typeof EquipmentListResponseSchema>;
+
+export const MaintenanceDetailResponseSchema = z.object({
+  schedule: z
+    .object({
+      hoursInterval: z.number(),
+      nextDue: z.number().nullable(),
+    })
+    .nullable(),
+  runtimeHours: z.number(),
+  logs: z.array(
+    z.object({
+      id: z.string().uuid(),
+      performedAt: z.coerce.date(),
+      notes: z.string().nullable(),
+    }),
+  ),
+});
+export type MaintenanceDetailResponse = z.infer<typeof MaintenanceDetailResponseSchema>;
+
+export const UtilizationReportResponseSchema = z.object({
+  period: z.object({ from: z.string(), to: z.string() }),
+  fleet: z.array(
+    z.object({
+      equipmentId: z.string().uuid(),
+      runtimeHours: z.number(),
+      utilizationPct: z.number(),
+      maintenanceDue: z.boolean(),
+    }),
+  ),
+});
+export type UtilizationReportResponse = z.infer<typeof UtilizationReportResponseSchema>;
+
+export const FinancialReportResponseSchema = z.object({
+  period: z.object({ from: z.string(), to: z.string() }),
+  invoiced: z.object({ byType: z.record(z.string(), z.number()), total: z.number() }),
+  paid: z.number(),
+  depositDeducted: z.number(),
+});
+export type FinancialReportResponse = z.infer<typeof FinancialReportResponseSchema>;

@@ -64,11 +64,24 @@ export function severityMessage(severity: WeatherSeverity): string {
 
 // GET /api/v1/sites/:id/weather response (SDD §4; camelCase wire shape,
 // same naming-convention choice quotes.ts made vs the RFC's illustrative
-// snake_case JSON).
-export interface WeatherAdvisoryResponse {
-  siteId: string;
-  observed: WeatherObservation;
-  advisory: { severity: WeatherSeverity; message: string };
-  isStale: boolean;
-  polledAt: string | null;
-}
+// snake_case JSON). Egress allowlist -- exposes exactly what the poller
+// computes, nothing from the underlying weather_alerts row beyond that.
+export const WeatherAdvisoryResponseSchema = z.object({
+  siteId: z.string().uuid(),
+  observed: z.object({
+    tempC: z.number(),
+    windKph: z.number(),
+    precipMm: z.number(),
+    code: z.number(),
+  }),
+  advisory: z.object({ severity: WeatherSeveritySchema, message: z.string() }),
+  isStale: z.boolean(),
+  polledAt: z.string().datetime().nullable(),
+});
+export type WeatherAdvisoryResponse = z.infer<typeof WeatherAdvisoryResponseSchema>;
+
+export const WeatherAdvisoryListResponseSchema = z.object({
+  items: z.array(WeatherAdvisoryResponseSchema),
+  total: z.number().int(),
+});
+export type WeatherAdvisoryListResponse = z.infer<typeof WeatherAdvisoryListResponseSchema>;

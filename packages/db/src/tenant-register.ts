@@ -79,6 +79,44 @@ export async function decideTenantApplication(
   }
 }
 
+export interface PendingTenantApplication {
+  applicationId: string;
+  tenantId: string;
+  companyName: string;
+  contactFirstName: string;
+  contactLastName: string;
+  contactMobile: string;
+  contactJobTitle: string;
+  createdAt: Date;
+}
+
+// Cross-tenant administrative read for GET /tenants/applications
+// (tenant:approve, platform_admin only) -- same rationale as
+// decideTenantApplication, but for the list a platform console needs before
+// it can call approve/reject at all.
+export async function listPendingTenantApplications(): Promise<PendingTenantApplication[]> {
+  const rows = await db.execute<{
+    application_id: string;
+    tenant_id: string;
+    company_name: string;
+    contact_first_name: string;
+    contact_last_name: string;
+    contact_mobile: string;
+    contact_job_title: string;
+    created_at: string;
+  }>(sql`select * from tenants_list_pending_applications()`);
+  return rows.map((row) => ({
+    applicationId: row.application_id,
+    tenantId: row.tenant_id,
+    companyName: row.company_name,
+    contactFirstName: row.contact_first_name,
+    contactLastName: row.contact_last_name,
+    contactMobile: row.contact_mobile,
+    contactJobTitle: row.contact_job_title,
+    createdAt: new Date(row.created_at),
+  }));
+}
+
 function isApplicationNotPending(err: unknown): boolean {
   return (
     typeof err === 'object' &&

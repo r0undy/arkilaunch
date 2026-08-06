@@ -54,6 +54,22 @@ export const TenantSettingsUpdateRequestSchema = z
 
 export type TenantSettingsUpdateRequest = z.infer<typeof TenantSettingsUpdateRequestSchema>;
 
+// GET /users/me. Self-service profile read -- distinct route from the
+// user:manage-gated UsersController (that controller is class-level gated;
+// a caller reading their OWN record is not a privileged action). No PATCH
+// counterpart yet: users has no self-editable field today (email/role/status
+// are all admin-governed; a display-name column does not exist), so a PATCH
+// route here would either accept nothing or smuggle back a governed field --
+// deferred until there is a real editable field (restraint ladder).
+export const UserSelfResponseSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string(),
+  role: z.string(),
+  status: UserStatusSchema,
+  createdAt: z.coerce.date(),
+});
+export type UserSelfResponse = z.infer<typeof UserSelfResponseSchema>;
+
 // A role any actor may grant through this API. `platform_admin` is absent
 // from every value here -- there is no key that can ever produce it, not
 // merely an empty array, so a future ROLE_CODES addition cannot silently

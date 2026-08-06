@@ -17,7 +17,8 @@ import type {
 import { RefreshTokenService } from './refresh-token.service.js';
 import { TotpService } from './totp.service.js';
 
-const ACCESS_TOKEN_TTL_SECONDS = 600; // ~10 min, RFC-1 §3
+// ~10 min default, RFC-1 §3; overridable via JWT_ACCESS_TOKEN_TTL (seconds).
+const ACCESS_TOKEN_TTL_SECONDS = Number(process.env.JWT_ACCESS_TOKEN_TTL) || 600;
 const TWO_FA_CHALLENGE_TTL_SECONDS = 300; // 5 min
 const TWO_FA_CHALLENGE_PURPOSE = '2fa_challenge';
 const ACTIVATION_TOKEN_TTL_SECONDS = 72 * 60 * 60; // 72h, S19

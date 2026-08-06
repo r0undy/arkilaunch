@@ -7,8 +7,7 @@ import { catalogQueries } from '../lib/queries.js';
 
 function EquipmentDetailPage() {
   const { equipmentId } = equipmentDetailRoute.useParams();
-  const { data } = useQuery(catalogQueries.equipment());
-  const equipment = data?.items.find((eq) => eq.id === equipmentId);
+  const { data: equipment } = useQuery(catalogQueries.equipmentDetail(equipmentId));
 
   if (!equipment) {
     return (

@@ -11,10 +11,10 @@ function OperatorDeploymentPage() {
       options={sitesQueries.list()}
       emptyTitle="No sites assigned"
       emptyDescription="You have no project sites assigned yet."
-      isEmpty={(data) => data.length === 0}
+      isEmpty={(data) => data.total === 0}
       render={(data) => (
         <Surface radius="md" elevation="sm" className="p-4">
-          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(data, null, 2)}</pre>
+          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(data.items, null, 2)}</pre>
         </Surface>
       )}
     />
