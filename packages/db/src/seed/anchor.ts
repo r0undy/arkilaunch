@@ -28,8 +28,50 @@ async function main() {
 
   const adminRoleId = roleIds.get('admin');
   const timekeeperRoleId = roleIds.get('timekeeper');
+  const platformAdminRoleId = roleIds.get('platform_admin');
   if (!adminRoleId) throw new Error('admin role missing from seeded catalog');
   if (!timekeeperRoleId) throw new Error('timekeeper role missing from seeded catalog');
+  if (!platformAdminRoleId) throw new Error('platform_admin role missing from seeded catalog');
+
+  // Phase 2 (S25 Platform Console): platform_admin is RFC-1's reserved
+  // cross-tenant role. It needs SOME tenant row to satisfy users.tenant_id
+  // NOT NULL, even though its authority is cross-tenant via withPlatformTx,
+  // never via this tenant's own RLS scope. A dedicated "platform" tenant
+  // (not Almara) keeps that distinction visible rather than overloading the
+  // anchor tenant with a role that doesn't belong to it.
+  const [platformTenant] = await db
+    .insert(schema.tenants)
+    .values({
+      legalName: 'ArkiLaunch Platform',
+      slug: 'arkilaunch-platform',
+      status: 'active',
+      kycState: 'verified',
+    })
+    .onConflictDoUpdate({ target: schema.tenants.slug, set: { status: 'active' } })
+    .returning();
+  if (!platformTenant) throw new Error('failed to seed the platform tenant');
+
+  const platformPasswordHash = await hash('changeme-dev-only');
+  await db
+    .insert(schema.users)
+    .values({
+      tenantId: platformTenant.id,
+      roleId: platformAdminRoleId,
+      email: 'platform-admin@arkilaunch.test',
+      passwordHash: platformPasswordHash,
+      status: 'active',
+    })
+    .onConflictDoNothing();
+
+  // Phase 2 approval needs a plan to attach to the trialing subscription it
+  // creates; subscription_plans has no other writer anywhere in the codebase.
+  await db
+    .insert(schema.subscriptionPlans)
+    .values([
+      { code: 'starter', name: 'Starter', limits: { equipmentUnits: 10, users: 5 } },
+      { code: 'growth', name: 'Growth', limits: { equipmentUnits: 50, users: 20 } },
+    ])
+    .onConflictDoNothing();
 
   const passwordHash = await hash('changeme-dev-only');
   await db

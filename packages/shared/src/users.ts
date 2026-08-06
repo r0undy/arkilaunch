@@ -54,14 +54,18 @@ export const TenantSettingsUpdateRequestSchema = z
 
 export type TenantSettingsUpdateRequest = z.infer<typeof TenantSettingsUpdateRequestSchema>;
 
-// A role any actor may grant through this API. Note `owner` and
-// `platform_admin` are absent from every value here -- there is no key that
-// can ever produce them, not merely an empty array, so a future ROLE_CODES
-// addition cannot silently become grantable by editing the wrong array.
+// A role any actor may grant through this API. `platform_admin` is absent
+// from every value here -- there is no key that can ever produce it, not
+// merely an empty array, so a future ROLE_CODES addition cannot silently
+// become grantable by editing the wrong array. `owner` gained governance of
+// its OWN tenant (Phase 2, S3 self-service signup: a provisioned tenant's
+// first user is `owner`, and it must be able to invite/administer its own
+// users) but still cannot grant `owner` or `platform_admin` to anyone --
+// minting a co-owner or reaching platform authority stays out of this API.
 export const ROLE_ASSIGNABLE_BY: Record<RoleCode, readonly AssignableRole[]> = {
   platform_admin: ['admin', 'timekeeper', 'customer'],
   admin: ['admin', 'timekeeper', 'customer'],
-  owner: [],
+  owner: ['admin', 'timekeeper', 'customer'],
   timekeeper: [],
   customer: [],
 };
@@ -70,11 +74,14 @@ export const ROLE_ASSIGNABLE_BY: Record<RoleCode, readonly AssignableRole[]> = {
 // assignment-write), regardless of what role is being requested. This is
 // the defense against lateral takeover: an admin who can deactivate the
 // tenant's own owner, or demote a platform_admin, has taken the tenant over
-// without ever granting themselves anything.
+// without ever granting themselves anything. `owner` now governs its own
+// tenant's users, so it is protected only from acting on `platform_admin`
+// (RFC-1's reserved cross-tenant role) -- never from acting on its own
+// admin/timekeeper/customer staff, which is the whole point of the grant.
 export const ROLE_PROTECTED_FROM: Record<RoleCode, readonly RoleCode[]> = {
   platform_admin: ['platform_admin'],
   admin: ['platform_admin', 'owner'],
-  owner: [...ROLE_CODES],
+  owner: ['platform_admin'],
   timekeeper: [...ROLE_CODES],
   customer: [...ROLE_CODES],
 };

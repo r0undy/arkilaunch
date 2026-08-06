@@ -41,9 +41,12 @@ export async function seedPermissionCatalog(db: ReturnType<typeof makeServiceDb>
   // the human portal *verification* is platform_admin's (PRD-F6 US-06).
   // admin also manages the fleet (PRD-F4 US-04: record maintenance,
   // update equipment) and reads reports, and can book/checkout on a
-  // customer's behalf (PRD-F8/F2). owner is read-mostly oversight
+  // customer's behalf (PRD-F8/F2). owner is read-mostly on OPERATIONAL data
   // (PRD §2, PRD-F4 US-10: reports only, no data-entry permission --
-  // QAD-T19), plus booking:read for the same read-mostly posture.
+  // QAD-T19), plus booking:read for the same read-mostly posture -- but it
+  // DOES hold user:manage + tenant:manage (Phase 2, S3 self-service signup):
+  // a provisioned tenant's first user is `owner`, and QAD-T19 was never a
+  // rule against an owner administering their own company's users/settings.
   // timekeeper only ever creates EDTRs on their assigned sites
   // (PRD-F3 US-02); it never approves/deducts. customer (PRD-F8/F2,
   // cr-arkilaunch-f2-f8-bookings-payments.md) can create/read their own
@@ -73,7 +76,13 @@ export async function seedPermissionCatalog(db: ReturnType<typeof makeServiceDb>
       'billing:read',
       'site:manage',
     ],
-    owner: ['quote:read', 'report:read', 'booking:read', 'billing:read'],
+    // owner also governs its own tenant (Phase 2, S3 self-service signup):
+    // a provisioned tenant's first user is `owner`, and QAD-T19's "owner
+    // cannot do data entry" is about OPERATIONAL writes (EDTR, equipment,
+    // quotes) -- it was never a rule against administering one's own
+    // company. Without user:manage + tenant:manage, a freshly approved
+    // tenant's sole user could not invite anyone or edit tenant settings.
+    owner: ['quote:read', 'report:read', 'booking:read', 'billing:read', 'user:manage', 'tenant:manage'],
     timekeeper: ['edtr:create'],
     customer: ['booking:create', 'booking:read', 'payment:checkout', 'quote:read'],
   };
