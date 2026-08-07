@@ -2,23 +2,32 @@ import { createRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { WeatherSeverity } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
-import { edtrQueries, fleetUtilizationPct, reportQueries, sitesQueries } from '../lib/queries.js';
+import { edtrQueries, fleetUtilizationPct, reportQueries, sitesQueries, weatherQueries } from '../lib/queries.js';
 import { GaugeReadout } from '../components/gauge-readout.js';
 import { WeatherBanner, type WeatherTone } from '../components/weather-banner.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { APP_NAV } from '../lib/nav-config.js';
+import { formatRelativeTime } from '../lib/format-time.js';
+import { explainAdvisory } from '../lib/weather-explain.js';
 
-const SEVERITY_TONE: Record<WeatherSeverity, WeatherTone> = {
-  none: 'clear',
-  watch: 'yellow',
-  warning: 'red',
-};
-
-const SEVERITY_CONDITION: Record<WeatherSeverity, string> = {
-  none: 'No advisory in effect',
-  watch: 'Elevated wind/rain: monitor conditions',
-  warning: 'Severe conditions: consider suspending work',
+// Plain-English headline first (readable without knowing the PAGASA scale),
+// PAGASA's own label kept as a secondary tag (BRAND.md §0: the scale is
+// deliberately the one Filipino users already recognize from the news).
+const SEVERITY_META: Record<WeatherSeverity, { tone: WeatherTone; headline: string; tag?: string; condition: string }> = {
+  none: { tone: 'clear', headline: 'Clear', condition: 'No advisory in effect' },
+  watch: {
+    tone: 'yellow',
+    headline: 'Weather watch',
+    tag: 'PAGASA yellow',
+    condition: 'Elevated wind/rain: monitor conditions',
+  },
+  warning: {
+    tone: 'red',
+    headline: 'Severe weather warning',
+    tag: 'PAGASA red',
+    condition: 'Consider suspending site work',
+  },
 };
 
 function AdminDashboardPage() {
@@ -28,6 +37,8 @@ function AdminDashboardPage() {
   const utilizationPct = fleetUtilizationPct(snapshot?.utilization);
   const { data: sites } = useQuery(sitesQueries.list());
   const { data: edtrList } = useQuery(edtrQueries.list());
+  const { data: advisories } = useQuery(weatherQueries.advisories());
+  const advisoryBySite = new Map((advisories?.items ?? []).map((a) => [a.siteId, a]));
 
   const alerts = (sites?.items ?? []).filter((s) => s.latestSeverity && s.latestSeverity !== 'none');
   const reviewItems = ((edtrList?.items ?? []) as { id: string; status?: string }[]).filter(
@@ -46,15 +57,26 @@ function AdminDashboardPage() {
 
       {alerts.length > 0 && (
         <div className="flex flex-col gap-2">
-          {alerts.map((site) => (
-            <WeatherBanner
-              key={site.id}
-              tone={SEVERITY_TONE[site.latestSeverity as WeatherSeverity]}
-              siteName={`Site ${site.id.slice(0, 8)}`}
-              condition={SEVERITY_CONDITION[site.latestSeverity as WeatherSeverity]}
-              timestamp={new Date().toLocaleDateString()}
-            />
-          ))}
+          {alerts.map((site) => {
+            const meta = SEVERITY_META[site.latestSeverity as WeatherSeverity];
+            const advisory = advisoryBySite.get(site.id);
+            const breakdown = advisory
+              ? explainAdvisory(advisory.observed, advisory.advisory.severity)
+              : ['No detailed reading is available for this site yet.'];
+            return (
+              <WeatherBanner
+                key={site.id}
+                tone={meta.tone}
+                severityLabel={meta.headline}
+                {...(meta.tag ? { tagLabel: meta.tag } : {})}
+                siteName={site.city ?? site.province ?? 'Unnamed site'}
+                condition={meta.condition}
+                timestamp={formatRelativeTime(site.observedAt)}
+                breakdown={breakdown}
+                coordinates={{ latitude: site.latitude, longitude: site.longitude }}
+              />
+            );
+          })}
         </div>
       )}
 

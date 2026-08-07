@@ -64,6 +64,9 @@ export const SiteResponseSchema = z.object({
   latitude: z.number(),
   longitude: z.number(),
   latestSeverity: WeatherSeveritySchema.nullable(),
+  city: z.string().nullable(),
+  province: z.string().nullable(),
+  observedAt: z.string().datetime().nullable(),
 });
 export type SiteResponse = z.infer<typeof SiteResponseSchema>;
 
@@ -93,6 +96,8 @@ export type SiteDetailResponse = z.infer<typeof SiteDetailResponseSchema>;
 export const IncidentResponseSchema = z.object({
   id: z.string().uuid(),
   projectSiteId: z.string().uuid().nullable(),
+  siteCity: z.string().nullable(),
+  siteProvince: z.string().nullable(),
   severity: z.string().nullable(),
   observed: z.unknown().nullable(),
   occurredAt: z.coerce.date(),

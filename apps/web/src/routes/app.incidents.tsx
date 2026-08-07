@@ -9,7 +9,11 @@ import { Table, type TableColumn } from '../components/table.js';
 const COLUMNS: TableColumn<IncidentResponse>[] = [
   { header: 'Occurred', cell: (row) => row.occurredAt.toLocaleString() },
   { header: 'Severity', cell: (row) => row.severity ?? '—' },
-  { header: 'Project site', cell: (row) => row.projectSiteId?.slice(0, 8) ?? '—' },
+  {
+    header: 'Project site',
+    cell: (row) =>
+      row.siteCity ?? row.siteProvince ?? (row.projectSiteId ? `Site ${row.projectSiteId.slice(0, 8)}` : '—'),
+  },
 ];
 
 function IncidentsPage() {

@@ -88,12 +88,27 @@ export class SitesService {
         if (!latestBySite.has(alert.projectSiteId)) latestBySite.set(alert.projectSiteId, alert);
       }
 
-      const items: SiteResponse[] = rows.map((row) => ({
-        id: row.id,
-        latitude: Number(row.latitude),
-        longitude: Number(row.longitude),
-        latestSeverity: (latestBySite.get(row.id)?.severity as WeatherSeverity | undefined) ?? null,
-      }));
+      // Human-readable location (BRAND.md: a site is never shown as a bare
+      // UUID) -- same address join get() already does, applied here too.
+      const addressRows = await tx
+        .select()
+        .from(addresses)
+        .where(inArray(addresses.id, rows.map((row) => row.addressId)));
+      const addressById = new Map(addressRows.map((address) => [address.id, address]));
+
+      const items: SiteResponse[] = rows.map((row) => {
+        const latest = latestBySite.get(row.id);
+        const address = addressById.get(row.addressId);
+        return {
+          id: row.id,
+          latitude: Number(row.latitude),
+          longitude: Number(row.longitude),
+          latestSeverity: (latest?.severity as WeatherSeverity | undefined) ?? null,
+          city: address?.city ?? null,
+          province: address?.province ?? null,
+          observedAt: latest?.effectiveAt.toISOString() ?? null,
+        };
+      });
       return { items, total: items.length };
     });
   }
@@ -117,6 +132,9 @@ export class SitesService {
         latitude: Number(site.latitude),
         longitude: Number(site.longitude),
         latestSeverity: (latest?.severity as WeatherSeverity | undefined) ?? null,
+        city: address?.city ?? null,
+        province: address?.province ?? null,
+        observedAt: latest?.effectiveAt.toISOString() ?? null,
         address: address
           ? {
               line1: address.line1,
@@ -385,11 +403,33 @@ export class SitesService {
         .where(and(...conditions))
         .orderBy(desc(events.occurredAt));
 
+      const siteIds = [
+        ...new Set(
+          rows
+            .map((row) => (row.properties as { project_site_id?: string }).project_site_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      // Human-readable location (an incident is never shown as a bare
+      // project_site_id UUID) -- same address-via-site join as GET /sites.
+      const siteRows =
+        siteIds.length === 0
+          ? []
+          : await tx
+              .select({ id: projectSites.id, city: addresses.city, province: addresses.province })
+              .from(projectSites)
+              .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
+              .where(inArray(projectSites.id, siteIds));
+      const siteById = new Map(siteRows.map((site) => [site.id, site]));
+
       const items = rows.map((row) => {
         const properties = row.properties as { project_site_id?: string; severity?: string; observed?: unknown };
+        const site = properties.project_site_id ? siteById.get(properties.project_site_id) : undefined;
         return {
           id: row.id,
           projectSiteId: properties.project_site_id ?? null,
+          siteCity: site?.city ?? null,
+          siteProvince: site?.province ?? null,
           severity: properties.severity ?? null,
           observed: properties.observed ?? null,
           occurredAt: row.occurredAt,

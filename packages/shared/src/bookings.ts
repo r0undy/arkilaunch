@@ -42,6 +42,8 @@ export const BookingSummaryResponseSchema = z.object({
   id: z.string().uuid(),
   status: z.string(),
   projectSiteId: z.string().uuid(),
+  siteCity: z.string().nullable(),
+  siteProvince: z.string().nullable(),
 });
 export type BookingSummaryResponse = z.infer<typeof BookingSummaryResponseSchema>;
 

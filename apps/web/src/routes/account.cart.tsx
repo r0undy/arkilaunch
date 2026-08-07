@@ -119,7 +119,7 @@ function CartPage() {
             </option>
             {(projectSites.data ?? []).map((site) => (
               <option key={site.id} value={site.id}>
-                {site.id.slice(0, 8)}
+                {site.city ?? site.province ?? `Site ${site.id.slice(0, 8)}`}
               </option>
             ))}
           </Select>

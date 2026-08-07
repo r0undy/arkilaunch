@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { desc, eq, inArray } from 'drizzle-orm';
 import {
+  addresses,
   auditLogs,
   customers,
   db,
@@ -144,8 +145,29 @@ export class BookingsService {
       } else {
         rows = await tx.select().from(rentals);
       }
+      if (rows.length === 0) return { items: [], total: 0 };
+
+      // Human-readable location (a booking is never shown as a bare
+      // project_site_id UUID) -- same address-via-site join sites.service.ts
+      // uses for GET /sites.
+      const siteRows = await tx
+        .select({ id: projectSites.id, city: addresses.city, province: addresses.province })
+        .from(projectSites)
+        .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
+        .where(inArray(projectSites.id, rows.map((row) => row.projectSiteId)));
+      const siteById = new Map(siteRows.map((site) => [site.id, site]));
+
       return {
-        items: rows.map((row) => ({ id: row.id, status: row.status, projectSiteId: row.projectSiteId })),
+        items: rows.map((row) => {
+          const site = siteById.get(row.projectSiteId);
+          return {
+            id: row.id,
+            status: row.status,
+            projectSiteId: row.projectSiteId,
+            siteCity: site?.city ?? null,
+            siteProvince: site?.province ?? null,
+          };
+        }),
         total: rows.length,
       };
     });
@@ -186,11 +208,19 @@ export class BookingsService {
               ),
             )
         : [];
+      const [site] = await tx
+        .select({ city: addresses.city, province: addresses.province })
+        .from(projectSites)
+        .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
+        .where(eq(projectSites.id, rental.projectSiteId))
+        .limit(1);
 
       return {
         id: rental.id,
         status: rental.status,
         projectSiteId: rental.projectSiteId,
+        siteCity: site?.city ?? null,
+        siteProvince: site?.province ?? null,
         trackerUrl: `/orders/${rental.id}`,
         items: assignments.map((assignment) => ({
           equipmentId: assignment.equipmentId,

@@ -16,7 +16,7 @@ const SEVERITY_META: Record<string, { tone: StatusTone; label: string; icon: Rea
 };
 
 const COLUMNS: TableColumn<SiteResponse>[] = [
-  { header: 'Site', cell: (row) => `Site ${row.id.slice(0, 8)}` },
+  { header: 'Site', cell: (row) => row.city ?? row.province ?? `Site ${row.id.slice(0, 8)}` },
   { header: 'Latitude', cell: (row) => row.latitude.toFixed(4), align: 'right' },
   { header: 'Longitude', cell: (row) => row.longitude.toFixed(4), align: 'right' },
   {

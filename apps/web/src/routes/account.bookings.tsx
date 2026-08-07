@@ -8,7 +8,10 @@ import { Table, type TableColumn } from '../components/table.js';
 const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
   { header: 'Booking', cell: (row) => row.id.slice(0, 8) },
   { header: 'Status', cell: (row) => row.status },
-  { header: 'Project site', cell: (row) => row.projectSiteId.slice(0, 8) },
+  {
+    header: 'Project site',
+    cell: (row) => row.siteCity ?? row.siteProvince ?? `Site ${row.projectSiteId.slice(0, 8)}`,
+  },
 ];
 
 function MyBookingsPage() {

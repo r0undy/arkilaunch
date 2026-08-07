@@ -10,6 +10,7 @@ import type {
   SiteListResponse,
   UserSelfResponse,
   UtilizationReportResponse,
+  WeatherAdvisoryListResponse,
 } from '@arkilaunch/shared';
 import { apiGet } from './api-client.js';
 import {
@@ -140,7 +141,7 @@ export const weatherQueries = {
   advisories: () =>
     queryOptions({
       queryKey: ['weather', 'advisories'] as const,
-      queryFn: () => apiGet<{ items: unknown[] }>('/weather/advisories'),
+      queryFn: () => apiGet<WeatherAdvisoryListResponse>('/weather/advisories'),
     }),
 };
 

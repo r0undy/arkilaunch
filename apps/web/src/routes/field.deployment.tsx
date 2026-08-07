@@ -6,7 +6,7 @@ import { DataPanel } from '../components/data-panel.js';
 import { Table, type TableColumn } from '../components/table.js';
 
 const COLUMNS: TableColumn<SiteResponse>[] = [
-  { header: 'Site', cell: (row) => row.id.slice(0, 8) },
+  { header: 'Site', cell: (row) => row.city ?? row.province ?? `Site ${row.id.slice(0, 8)}` },
   { header: 'Latitude', cell: (row) => row.latitude.toFixed(4), align: 'right' },
   { header: 'Longitude', cell: (row) => row.longitude.toFixed(4), align: 'right' },
   { header: 'Weather', cell: (row) => row.latestSeverity ?? '—' },

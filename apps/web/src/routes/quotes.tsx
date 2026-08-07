@@ -167,7 +167,7 @@ function QuotesPage() {
             {projectSites.length === 0 && <option value="">(no sites seeded for this tenant)</option>}
             {projectSites.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.id.slice(0, 8)} ({s.latitude}, {s.longitude})
+                {s.city ?? s.province ?? `Site ${s.id.slice(0, 8)}`} ({s.latitude}, {s.longitude})
               </option>
             ))}
           </Select>

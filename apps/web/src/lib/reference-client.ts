@@ -33,6 +33,8 @@ export interface ProjectSiteRef {
   id: string;
   latitude: string;
   longitude: string;
+  city: string | null;
+  province: string | null;
 }
 
 export const getEquipmentTypes = () => apiGet<EquipmentTypeRef[]>('/reference/equipment-types');
