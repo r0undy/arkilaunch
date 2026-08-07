@@ -26,7 +26,10 @@ export function EquipmentCard({ imageAlt, imageUrl, model, make, availabilitySta
     <div className="flex flex-col gap-4 rounded-mk-lg bg-surface-mk p-4 shadow-mk-card">
       <div
         aria-label={imageAlt}
-        className="relative flex h-48 items-center justify-center overflow-hidden rounded-mk-sm bg-bg-mk-frame p-6"
+        className={[
+          'relative flex h-48 items-center justify-center overflow-hidden rounded-mk-sm bg-bg-mk-frame',
+          imageUrl ? '' : 'p-6',
+        ].join(' ')}
       >
         <EquipmentSchematic typeName={make} {...(imageUrl ? { imageUrl } : {})} className="max-h-full" />
         {pill && (

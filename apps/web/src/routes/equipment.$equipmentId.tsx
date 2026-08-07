@@ -6,6 +6,7 @@ import { EmptyState } from '../components/empty-state.js';
 import { EquipmentSchematic } from '../components/equipment-schematic.js';
 import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon, TruckIcon, WrenchIcon } from '../components/icons.js';
+import { equipmentImageUrl } from '../lib/equipment-images.js';
 import { catalogQueries } from '../lib/queries.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
 
@@ -37,11 +38,21 @@ function EquipmentDetailPage() {
   }
 
   const pill = AVAILABILITY_PILL[equipment.availabilityStatus];
+  const imageUrl = equipmentImageUrl(equipment.model);
 
   return (
     <div className="flex flex-col gap-6 px-6 py-10 sm:px-10">
-      <div className="flex aspect-video items-center justify-center rounded-mk-lg bg-bg-mk-frame p-10">
-        <EquipmentSchematic typeName={equipment.equipmentTypeName} className="max-h-full" />
+      <div
+        className={[
+          'flex aspect-video items-center justify-center overflow-hidden rounded-mk-lg bg-bg-mk-frame',
+          imageUrl ? '' : 'p-10',
+        ].join(' ')}
+      >
+        <EquipmentSchematic
+          typeName={equipment.equipmentTypeName}
+          {...(imageUrl ? { imageUrl } : {})}
+          className="max-h-full"
+        />
       </div>
       <div className="flex items-start justify-between gap-4">
         <div>

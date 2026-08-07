@@ -3,6 +3,7 @@ import type {
   BookingListResponse,
   CatalogEquipment,
   CatalogEquipmentListResponse,
+  CatalogTestimonialListResponse,
   EquipmentListResponse,
   FinancialReportResponse,
   IncidentListResponse,
@@ -53,6 +54,11 @@ export const catalogQueries = {
     queryOptions({
       queryKey: ['catalog', 'equipment', id] as const,
       queryFn: () => apiGet<CatalogEquipment>(`/catalog/equipment/${id}`),
+    }),
+  testimonials: () =>
+    queryOptions({
+      queryKey: ['catalog', 'testimonials'] as const,
+      queryFn: () => apiGet<CatalogTestimonialListResponse>('/catalog/testimonials'),
     }),
 };
 

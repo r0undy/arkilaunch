@@ -51,3 +51,28 @@ export async function getCatalogEquipmentForSlug(slug: string, id: string): Prom
     availabilityStatus: row.availability_status,
   };
 }
+
+// GET /catalog/testimonials (@Public, anchor-tenant only). Same
+// pre-tenant-context, SECURITY DEFINER rationale as
+// listCatalogEquipmentForSlug (migration 0015).
+export interface CatalogTestimonialRow {
+  id: string;
+  quote: string;
+  authorName: string;
+  authorTitle: string;
+}
+
+export async function listCatalogTestimonialsForSlug(slug: string): Promise<CatalogTestimonialRow[]> {
+  const rows = await db.execute<{
+    id: string;
+    quote: string;
+    author_name: string;
+    author_title: string;
+  }>(sql`select * from catalog_list_testimonials(${slug})`);
+  return rows.map((row) => ({
+    id: row.id,
+    quote: row.quote,
+    authorName: row.author_name,
+    authorTitle: row.author_title,
+  }));
+}

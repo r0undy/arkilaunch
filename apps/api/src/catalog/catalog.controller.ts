@@ -21,4 +21,10 @@ export class CatalogController {
   getEquipment(@Param('id') id: string) {
     return this.catalog.getEquipment(id);
   }
+
+  @Get('testimonials')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  listTestimonials() {
+    return this.catalog.listTestimonials();
+  }
 }

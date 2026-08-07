@@ -78,3 +78,19 @@ export function WrenchIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function MenuIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3 6h14M3 10h14M3 14h14" />
+    </svg>
+  );
+}
+
+export function CloseIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M5 5l10 10M15 5L5 15" />
+    </svg>
+  );
+}

@@ -51,6 +51,37 @@ async function main() {
     .returning();
   if (!platformTenant) throw new Error('failed to seed the platform tenant');
 
+  const existingPlatformTestimonial = await db
+    .select()
+    .from(schema.testimonials)
+    .where(eq(schema.testimonials.tenantId, platformTenant.id));
+  if (existingPlatformTestimonial.length === 0) {
+    await db.insert(schema.testimonials).values({
+      tenantId: platformTenant.id,
+      quote: 'ArkiLaunch gave us a single console to onboard and audit every tenant on the platform.',
+      authorName: 'Platform Admin',
+      authorTitle: 'ArkiLaunch Platform Operations',
+    });
+  }
+
+  // Per-tenant testimonial for the public storefront (GET
+  // /catalog/testimonials, catalog_list_testimonials). Different text per
+  // tenant so switching ANCHOR_TENANT_SLUG demonstrably changes what the
+  // storefront shows, not just structurally.
+  const existingTestimonial = await db
+    .select()
+    .from(schema.testimonials)
+    .where(eq(schema.testimonials.tenantId, tenant.id));
+  if (existingTestimonial.length === 0) {
+    await db.insert(schema.testimonials).values({
+      tenantId: tenant.id,
+      quote:
+        'Every deduction now has a matched reading behind it -- our clients stopped disputing invoices the week we switched.',
+      authorName: 'Rhandie Almara',
+      authorTitle: 'Owner, Almara Construction',
+    });
+  }
+
   const platformPasswordHash = await hash('changeme-dev-only');
   await db
     .insert(schema.users)

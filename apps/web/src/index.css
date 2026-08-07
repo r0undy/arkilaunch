@@ -140,6 +140,21 @@
   --yb-radius-mk-lg: 24px;
   --yb-radius-mk-xl: 28px;
   --yb-radius-mk-container: 40px;
+
+  /* Re-declare the @theme aliases below (not just their --yb-*-mk sources)
+     right here in the scope where the sources are actually set. A custom
+     property's var() reference resolves using the SAME element's cascade at
+     compute time, not lazily at each use site -- @theme only declares these
+     aliases once, on :root, where --yb-color-*-mk is unset, so without this
+     re-declaration they compute to invalid (and inherit invalid) everywhere,
+     no matter what's set here. That's what made bg-ink-mk/bg-surface-mk
+     silently paint nothing (the "vanishing" filter pill). */
+  --color-bg-mk-frame: var(--yb-color-bg-mk-frame);
+  --color-bg-mk: var(--yb-color-bg-mk);
+  --color-surface-mk: var(--yb-color-surface-mk);
+  --color-ink-mk: var(--yb-color-ink-mk);
+  --color-primary-ink: var(--yb-color-primary-ink);
+  --color-border-glass: var(--yb-border-glass);
 }
 
 @theme {
@@ -265,6 +280,24 @@
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    /* The marketing-tier wrapper (data-tier="marketing") only spans
+       min-h-screen, not the full scrollable area -- rubber-band/elastic
+       overscroll past the top or bottom edge exposes html/body's own
+       background underneath it. Disabling overscroll bounce here removes
+       that "different color flashes in when you scroll too far" seam. */
+    overscroll-behavior-y: none;
+  }
+
+  /* Belt-and-suspenders for browsers that still rubber-band despite
+     overscroll-behavior (Safari): match body's own background to the
+     marketing frame color whenever a marketing-tier page is on screen, so
+     any sliver that peeks through is the same color as the frame, not the
+     console tier's paper background. --sand-200 mirrors
+     --yb-color-bg-mk-frame's value (defined deeper, scoped to
+     [data-tier="marketing"], and not reachable from body/html since that's
+     an ancestor, not a descendant, of that scope). */
+  body:has([data-tier='marketing']) {
+    background-color: var(--sand-200);
   }
 
   body {
