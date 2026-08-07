@@ -1,12 +1,16 @@
 import { createRoute, Outlet } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
 import { rootRoute } from './__root.js';
-import { requireRole } from '../lib/guards.js';
+import { requireRole, getCurrentRole } from '../lib/guards.js';
 import { SidebarShell } from '../components/sidebar-shell.js';
-import { APP_NAV } from '../lib/nav-config.js';
+import { APP_NAV, PLATFORM_ADMIN_NAV } from '../lib/nav-config.js';
+import { usersQueries } from '../lib/queries.js';
 
 function AppLayout() {
+  const navGroups = getCurrentRole() === 'platform_admin' ? [...APP_NAV, ...PLATFORM_ADMIN_NAV] : APP_NAV;
+  const { data: me } = useQuery(usersQueries.me());
   return (
-    <SidebarShell navItems={APP_NAV} tenantLabel="ArkiLaunch / Almara">
+    <SidebarShell navGroups={navGroups} tenantLabel={me?.tenantName ?? 'Loading...'}>
       <Outlet />
     </SidebarShell>
   );

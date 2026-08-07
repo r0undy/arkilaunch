@@ -16,9 +16,14 @@ import {
   WEATHER_STALE_AFTER_MINUTES,
   type DeploymentCreateRequest,
   type IncidentListQuery,
+  type IncidentListResponse,
   type RequestContext,
   type SiteCreateRequest,
+  type SiteDetailResponse,
+  type SiteListResponse,
+  type SiteResponse,
   type SiteUpdateRequest,
+  type WeatherAdvisoryListResponse,
   type WeatherAdvisoryResponse,
   type WeatherObservation,
   type WeatherSeverity,
@@ -27,24 +32,6 @@ import { EventsService } from '../events/events.service.js';
 import { findAvailableAlternatives, overlappingAssignments } from '../common/equipment-availability.js';
 
 const EMPTY_OBSERVATION: WeatherObservation = { tempC: 0, windKph: 0, precipMm: 0, code: 0 };
-
-export interface SiteResponse {
-  id: string;
-  latitude: number;
-  longitude: number;
-  latestSeverity: WeatherSeverity | null;
-}
-
-export interface SiteDetailResponse extends SiteResponse {
-  address: {
-    line1: string;
-    line2: string | null;
-    city: string;
-    province: string;
-    postalCode: string | null;
-    country: string;
-  } | null;
-}
 
 // Pure row-to-response mapping shared by weather() and advisories() (PRD-F5)
 // so a single-site read and the tenant-wide list can never disagree about
@@ -86,7 +73,7 @@ export class SitesService {
   // GET /api/v1/sites (S12). Readable by any authenticated tenant member --
   // site-safety information, same posture as fleet/reference reads; RLS is
   // the isolation boundary.
-  async list(ctx: RequestContext) {
+  async list(ctx: RequestContext): Promise<SiteListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const rows = await tx.select().from(projectSites);
       if (rows.length === 0) return { items: [], total: 0 };
@@ -101,12 +88,27 @@ export class SitesService {
         if (!latestBySite.has(alert.projectSiteId)) latestBySite.set(alert.projectSiteId, alert);
       }
 
-      const items: SiteResponse[] = rows.map((row) => ({
-        id: row.id,
-        latitude: Number(row.latitude),
-        longitude: Number(row.longitude),
-        latestSeverity: (latestBySite.get(row.id)?.severity as WeatherSeverity | undefined) ?? null,
-      }));
+      // Human-readable location (BRAND.md: a site is never shown as a bare
+      // UUID) -- same address join get() already does, applied here too.
+      const addressRows = await tx
+        .select()
+        .from(addresses)
+        .where(inArray(addresses.id, rows.map((row) => row.addressId)));
+      const addressById = new Map(addressRows.map((address) => [address.id, address]));
+
+      const items: SiteResponse[] = rows.map((row) => {
+        const latest = latestBySite.get(row.id);
+        const address = addressById.get(row.addressId);
+        return {
+          id: row.id,
+          latitude: Number(row.latitude),
+          longitude: Number(row.longitude),
+          latestSeverity: (latest?.severity as WeatherSeverity | undefined) ?? null,
+          city: address?.city ?? null,
+          province: address?.province ?? null,
+          observedAt: latest?.effectiveAt.toISOString() ?? null,
+        };
+      });
       return { items, total: items.length };
     });
   }
@@ -130,6 +132,9 @@ export class SitesService {
         latitude: Number(site.latitude),
         longitude: Number(site.longitude),
         latestSeverity: (latest?.severity as WeatherSeverity | undefined) ?? null,
+        city: address?.city ?? null,
+        province: address?.province ?? null,
+        observedAt: latest?.effectiveAt.toISOString() ?? null,
         address: address
           ? {
               line1: address.line1,
@@ -362,7 +367,7 @@ export class SitesService {
   // GET /api/v1/weather/advisories (S13). Active advisories (status !=
   // 'cleared') across every site in the tenant, one row per site (its
   // latest active reading).
-  async advisories(ctx: RequestContext) {
+  async advisories(ctx: RequestContext): Promise<WeatherAdvisoryListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const rows = await tx
         .select()
@@ -385,7 +390,7 @@ export class SitesService {
   // writes on a new-or-worsening severity crossing (SDD §4 "auto-logs a
   // liability incident") -- a dedicated incidents table would duplicate
   // data the first-party analytics sink already holds (restraint ladder).
-  async incidents(ctx: RequestContext, query: IncidentListQuery) {
+  async incidents(ctx: RequestContext, query: IncidentListQuery): Promise<IncidentListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const conditions: SQL[] = [eq(events.name, 'weather_liability_incident')];
       if (query.projectSiteId) {
@@ -398,11 +403,33 @@ export class SitesService {
         .where(and(...conditions))
         .orderBy(desc(events.occurredAt));
 
+      const siteIds = [
+        ...new Set(
+          rows
+            .map((row) => (row.properties as { project_site_id?: string }).project_site_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      // Human-readable location (an incident is never shown as a bare
+      // project_site_id UUID) -- same address-via-site join as GET /sites.
+      const siteRows =
+        siteIds.length === 0
+          ? []
+          : await tx
+              .select({ id: projectSites.id, city: addresses.city, province: addresses.province })
+              .from(projectSites)
+              .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
+              .where(inArray(projectSites.id, siteIds));
+      const siteById = new Map(siteRows.map((site) => [site.id, site]));
+
       const items = rows.map((row) => {
         const properties = row.properties as { project_site_id?: string; severity?: string; observed?: unknown };
+        const site = properties.project_site_id ? siteById.get(properties.project_site_id) : undefined;
         return {
           id: row.id,
           projectSiteId: properties.project_site_id ?? null,
+          siteCity: site?.city ?? null,
+          siteProvince: site?.province ?? null,
           severity: properties.severity ?? null,
           observed: properties.observed ?? null,
           occurredAt: row.occurredAt,

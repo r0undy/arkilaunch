@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WeatherSeveritySchema } from './weather.js';
 
 // PRD-F4/F5 read+write surface backing S12/S13/S14 Sites, Weather, and
 // Liability Incidents (cr-arkilaunch-f9-read-surface.md).
@@ -54,3 +55,57 @@ export const IncidentListQuerySchema = z.object({
   projectSiteId: z.string().uuid().optional(),
 });
 export type IncidentListQuery = z.infer<typeof IncidentListQuerySchema>;
+
+// --- Response schemas (egress allowlists -- expose only what the frontend
+// renders, mirroring the discipline set by catalog_list_equipment). ---
+
+export const SiteResponseSchema = z.object({
+  id: z.string().uuid(),
+  latitude: z.number(),
+  longitude: z.number(),
+  latestSeverity: WeatherSeveritySchema.nullable(),
+  city: z.string().nullable(),
+  province: z.string().nullable(),
+  observedAt: z.string().datetime().nullable(),
+});
+export type SiteResponse = z.infer<typeof SiteResponseSchema>;
+
+export const SiteListResponseSchema = z.object({
+  items: z.array(SiteResponseSchema),
+  total: z.number().int(),
+});
+export type SiteListResponse = z.infer<typeof SiteListResponseSchema>;
+
+// Response shape for the address sub-object: nullable (not optional) fields,
+// since these come back from a nullable DB column, not an omittable request field.
+export const SiteAddressResponseSchema = z.object({
+  line1: z.string(),
+  line2: z.string().nullable(),
+  city: z.string(),
+  province: z.string(),
+  postalCode: z.string().nullable(),
+  country: z.string(),
+});
+export type SiteAddressResponse = z.infer<typeof SiteAddressResponseSchema>;
+
+export const SiteDetailResponseSchema = SiteResponseSchema.extend({
+  address: SiteAddressResponseSchema.nullable(),
+});
+export type SiteDetailResponse = z.infer<typeof SiteDetailResponseSchema>;
+
+export const IncidentResponseSchema = z.object({
+  id: z.string().uuid(),
+  projectSiteId: z.string().uuid().nullable(),
+  siteCity: z.string().nullable(),
+  siteProvince: z.string().nullable(),
+  severity: z.string().nullable(),
+  observed: z.unknown().nullable(),
+  occurredAt: z.coerce.date(),
+});
+export type IncidentResponse = z.infer<typeof IncidentResponseSchema>;
+
+export const IncidentListResponseSchema = z.object({
+  items: z.array(IncidentResponseSchema),
+  total: z.number().int(),
+});
+export type IncidentListResponse = z.infer<typeof IncidentListResponseSchema>;

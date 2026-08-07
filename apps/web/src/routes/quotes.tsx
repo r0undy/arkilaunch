@@ -16,10 +16,39 @@ import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
+import { PageHeader } from '../components/page-header.js';
+import { GaugeReadout } from '../components/gauge-readout.js';
+import { Table, type TableColumn } from '../components/table.js';
 
-// POC scaffold only (unstyled): exercises POST /quotes/preview, POST
-// /quotes, and POST /quotes/:id/approve (RFC-3). Dropdowns are populated
-// from GET /reference/* so you don't have to hand-type UUIDs.
+// Wire shape returned by QuotesService.preview/create (apps/api/src/quotes/quotes.service.ts).
+interface QuoteLineItem {
+  equipmentTypeId: string;
+  quantity: number;
+  estimatedHours: number;
+  hourlyRate: number;
+  subtotal: number;
+}
+interface QuoteResult {
+  status: string;
+  dieselPrice: number;
+  dieselPriceDate: string;
+  priceStale: boolean;
+  lineItems: QuoteLineItem[];
+  subtotal: number;
+  discount: number;
+  total: number;
+}
+
+const LINE_ITEM_COLUMNS: TableColumn<QuoteLineItem>[] = [
+  { header: 'Equipment type', cell: (row) => row.equipmentTypeId.slice(0, 8) },
+  { header: 'Qty', cell: (row) => String(row.quantity), align: 'right' },
+  { header: 'Hours', cell: (row) => row.estimatedHours.toFixed(2), align: 'right' },
+  { header: 'Rate (PHP/h)', cell: (row) => row.hourlyRate.toFixed(2), align: 'right' },
+  { header: 'Subtotal (PHP)', cell: (row) => row.subtotal.toFixed(2), align: 'right' },
+];
+
+// DESIGN.md §4.1 Quotation builder: rate-card selector + live diesel Gauge
+// Readout (with date + staleness label) + computed line items.
 function QuotesPage() {
   const [customers, setCustomers] = useState<CustomerRef[]>([]);
   const [equipmentTypes, setEquipmentTypes] = useState<EquipmentTypeRef[]>([]);
@@ -36,7 +65,7 @@ function QuotesPage() {
   const [mobilizationKm, setMobilizationKm] = useState('0');
   const [demobilizationKm, setDemobilizationKm] = useState('0');
 
-  const [result, setResult] = useState<unknown>(null);
+  const [result, setResult] = useState<QuoteResult | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [quoteId, setQuoteId] = useState<string | null>(null);
 
@@ -77,7 +106,7 @@ function QuotesPage() {
     event.preventDefault();
     setError(null);
     try {
-      const res = await apiPost('/quotes/preview', buildBody());
+      const res = await apiPost<QuoteResult>('/quotes/preview', buildBody());
       setResult(res);
     } catch (err) {
       setError(err);
@@ -88,7 +117,7 @@ function QuotesPage() {
     event.preventDefault();
     setError(null);
     try {
-      const res = await apiPost<{ id: string }>('/quotes', buildBody());
+      const res = await apiPost<QuoteResult & { id: string }>('/quotes', buildBody());
       setResult(res);
       setQuoteId(res.id);
     } catch (err) {
@@ -100,7 +129,7 @@ function QuotesPage() {
     if (!quoteId) return;
     setError(null);
     try {
-      const res = await apiPost(`/quotes/${quoteId}/approve`, {});
+      const res = await apiPost<QuoteResult>(`/quotes/${quoteId}/approve`, {});
       setResult(res);
     } catch (err) {
       setError(err);
@@ -110,10 +139,8 @@ function QuotesPage() {
   const canSubmit = !customerId || !projectSiteId || !equipmentTypeId || !rateCardId;
 
   return (
-    <div className="min-h-screen bg-bg p-6">
-      <h1 className="mb-6 font-display text-[28px] font-semibold leading-[1.15] text-text sm:text-[34px]">
-        Quotes (RFC-3)
-      </h1>
+    <div className="flex flex-col gap-6">
+      <PageHeader eyebrow="Billing" title="Quotes" description="Price a quote against today's diesel rate." />
       {refError != null && (
         <p className="mb-4 text-error">
           Could not load reference data (customers/equipment/rate cards/sites) -- is the API running? See error
@@ -140,7 +167,7 @@ function QuotesPage() {
             {projectSites.length === 0 && <option value="">(no sites seeded for this tenant)</option>}
             {projectSites.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.id.slice(0, 8)} ({s.latitude}, {s.longitude})
+                {s.city ?? s.province ?? `Site ${s.id.slice(0, 8)}`} ({s.latitude}, {s.longitude})
               </option>
             ))}
           </Select>
@@ -219,10 +246,23 @@ function QuotesPage() {
         </Surface>
       )}
       {result != null && (
-        <Surface radius="md" elevation="sm" className="max-w-2xl p-4">
-          <h2 className="mb-2 font-display text-[18px] font-semibold text-text">Result</h2>
-          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(result, null, 2)}</pre>
-        </Surface>
+        <div className="flex max-w-2xl flex-col gap-4">
+          <div className="flex flex-wrap gap-3">
+            <GaugeReadout
+              label="Diesel price"
+              value={result.dieselPrice.toFixed(2)}
+              unit="PHP/L"
+              stale={result.priceStale}
+              staleLabel={`as of ${result.dieselPriceDate}`}
+            />
+            <GaugeReadout label="Total" value={result.total.toFixed(2)} unit="PHP" />
+          </div>
+          <Table columns={LINE_ITEM_COLUMNS} rows={result.lineItems} rowKey={(row) => row.equipmentTypeId} />
+          <p className="text-sm text-text-muted">
+            Subtotal {result.subtotal.toFixed(2)} PHP, discount {result.discount.toFixed(2)} PHP, status{' '}
+            {result.status}.
+          </p>
+        </div>
       )}
     </div>
   );

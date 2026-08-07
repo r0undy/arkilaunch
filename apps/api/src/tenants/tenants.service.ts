@@ -1,19 +1,23 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { hash } from '@node-rs/argon2';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import {
   ApplicationNotPendingError,
   DuplicatePendingApplicationError,
   auditLogs,
   decideTenantApplication,
+  listPendingTenantApplications,
   registerTenant,
+  tenantApplications,
   tenants,
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
   RequestContext,
+  TenantApplication,
   TenantApplicationDecisionResponse,
+  TenantApplicationListResponse,
   TenantRegisterRequest,
   TenantRegisterResponse,
   TenantSettingsUpdateRequest,
@@ -57,6 +61,39 @@ export class TenantsService {
       });
 
       return updated;
+    });
+  }
+
+  // GET /tenants/applications (tenant:approve, platform_admin only). Cross-
+  // tenant by nature, same rationale as decideApplication -- see
+  // tenants_list_pending_applications() in migrations/0011.
+  async listApplications(): Promise<TenantApplicationListResponse> {
+    const items = await listPendingTenantApplications();
+    return { items, total: items.length };
+  }
+
+  // GET /tenants/me/application (tenant:manage). An owner's own pending
+  // application, if any -- same-tenant, so this is a normal RLS-scoped read,
+  // not the cross-tenant SECURITY DEFINER path listApplications() uses.
+  async myApplication(ctx: RequestContext): Promise<TenantApplication | null> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(tenantApplications)
+        .where(eq(tenantApplications.tenantId, ctx.tenantId))
+        .orderBy(desc(tenantApplications.createdAt))
+        .limit(1);
+      if (!row) return null;
+      return {
+        applicationId: row.id,
+        tenantId: row.tenantId,
+        companyName: row.companyName,
+        contactFirstName: row.contactFirstName,
+        contactLastName: row.contactLastName,
+        contactMobile: row.contactMobile,
+        contactJobTitle: row.contactJobTitle,
+        createdAt: row.createdAt,
+      };
     });
   }
 

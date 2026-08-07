@@ -1,54 +1,46 @@
-import { Link, useRouterState } from '@tanstack/react-router';
-import type { ReactNode } from 'react';
-import type { NavItem } from '../lib/nav-config.js';
-import { clearTokens } from '../lib/auth-client.js';
-import { Button } from './button.js';
+import { useRouterState } from '@tanstack/react-router';
+import { useState, type ReactNode } from 'react';
+import type { NavGroup } from '../lib/nav-config.js';
+import { AppBar } from './app-bar.js';
+import { NavGroupList } from './nav-group.js';
 
 export interface SidebarShellProps {
-  navItems: NavItem[];
+  navGroups: NavGroup[];
   tenantLabel: string;
   children: ReactNode;
 }
 
-// DESIGN.md §4.1 Nav shell (role-aware): tenant mark leads, persistent
-// sidebar on desktop, badge/notification slot in the top bar.
-export function SidebarShell({ navItems, tenantLabel, children }: SidebarShellProps) {
+// DESIGN.md §4.1 Nav shell (role-aware): tenant mark leads in the app bar,
+// persistent sidebar on desktop, an off-canvas drawer at the 360px baseline
+// so the console never breaks the mandated mobile floor.
+export function SidebarShell({ navGroups, tenantLabel, children }: SidebarShellProps) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-bg">
-      <aside className="flex w-56 shrink-0 flex-col justify-between border-r border-border bg-surface-sunk px-4 py-6">
-        <div>
-          <div className="mb-6 font-display text-base font-semibold text-text">{tenantLabel}</div>
-          <nav className="flex flex-col gap-1">
-            {navItems.map((item) => {
-              const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={[
-                    'min-h-11 rounded-sm px-3 py-2 text-sm font-medium',
-                    active ? 'bg-primary text-text' : 'text-text-muted hover:bg-surface hover:text-text',
-                  ].join(' ')}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-        <Button
-          variant="ghost"
-          onClick={() => {
-            clearTokens();
-            window.location.assign('/login');
-          }}
-        >
-          Sign out
-        </Button>
-      </aside>
-      <main className="flex-1 p-6">{children}</main>
+    <div className="flex min-h-screen flex-col bg-bg">
+      <AppBar tenantLabel={tenantLabel} onMenuClick={() => setDrawerOpen((v) => !v)} />
+      <div className="flex flex-1">
+        <aside className="hidden w-60 shrink-0 border-r border-border bg-surface-sunk px-3 py-6 lg:block">
+          <NavGroupList groups={navGroups} pathname={pathname} />
+        </aside>
+
+        {drawerOpen && (
+          <div className="fixed inset-0 z-50 flex lg:hidden">
+            <button
+              type="button"
+              aria-label="Close navigation"
+              onClick={() => setDrawerOpen(false)}
+              className="flex-1 bg-[var(--yb-modal-scrim)]"
+            />
+            <div className="w-64 max-w-[80vw] bg-surface-sunk px-3 py-6 shadow-lg">
+              <NavGroupList groups={navGroups} pathname={pathname} onNavigate={() => setDrawerOpen(false)} />
+            </div>
+          </div>
+        )}
+
+        <main className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
+      </div>
     </div>
   );
 }

@@ -58,3 +58,23 @@ export function ClockIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function TruckIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M2.5 13.5V6.5A1 1 0 013.5 5.5h6.5v8" />
+      <path d="M10 8.5h3.2l2.3 2.6v2.4h-15.5" />
+      <circle cx="6" cy="15" r="1.4" />
+      <circle cx="13.5" cy="15" r="1.4" />
+    </svg>
+  );
+}
+
+export function WrenchIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12.5 3.5l-3 3 1 1 3-3a3 3 0 11-1 -1z" />
+      <path d="M9.5 6.5L3.5 12.5a1.4 1.4 0 002 2l6-6" />
+    </svg>
+  );
+}

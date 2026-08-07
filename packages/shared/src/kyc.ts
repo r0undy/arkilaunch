@@ -46,3 +46,24 @@ export function matchBand(score: number): MatchBand {
   if (score < 0.9) return 'confirm_manually';
   return 'strong';
 }
+
+// --- Response schemas (egress allowlists). ---
+
+export const KycExtractResponseSchema = z.object({
+  kycDocumentId: z.string().uuid(),
+  status: z.literal('queued'),
+});
+export type KycExtractResponse = z.infer<typeof KycExtractResponseSchema>;
+
+export const KycDetailResponseSchema = z.object({
+  kycDocumentId: z.string().uuid(),
+  status: z.string(),
+  extracted: z.object({ secNumber: z.string().nullable(), tin: z.string().nullable() }),
+  confidence: z.object({ secNumber: z.number().nullable(), tin: z.number().nullable() }),
+  formatValid: z.object({ secNumber: z.boolean(), tin: z.boolean() }),
+  portalMatchScore: z.number().nullable(),
+  matchBand: z.enum(['mismatch', 'confirm_manually', 'strong']).nullable(),
+  registryStatus: z.string().nullable(),
+  requiresHumanConfirmation: z.literal(true),
+});
+export type KycDetailResponse = z.infer<typeof KycDetailResponseSchema>;

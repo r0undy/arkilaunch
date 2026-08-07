@@ -9,3 +9,20 @@ export const NotificationListQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 export type NotificationListQuery = z.infer<typeof NotificationListQuerySchema>;
+
+// --- Response schemas (egress allowlists). ---
+
+export const NotificationResponseSchema = z.object({
+  id: z.string().uuid(),
+  notificationType: z.string(),
+  payload: z.unknown(),
+  status: z.string(),
+  createdAt: z.coerce.date(),
+});
+export type NotificationResponse = z.infer<typeof NotificationResponseSchema>;
+
+export const NotificationListResponseSchema = z.object({
+  items: z.array(NotificationResponseSchema),
+  total: z.number().int(),
+});
+export type NotificationListResponse = z.infer<typeof NotificationListResponseSchema>;

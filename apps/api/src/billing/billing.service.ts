@@ -10,64 +10,19 @@ import {
   resolveDepositLedger,
   withTenantTx,
 } from '@arkilaunch/db';
-import type { InvoiceListQuery, RequestContext } from '@arkilaunch/shared';
+import type {
+  DepositLedgerResponse,
+  EdtrDeductionEvidence,
+  InvoiceDetailResponse,
+  InvoiceListQuery,
+  InvoiceListResponse,
+  InvoiceSummaryResponse,
+  RequestContext,
+} from '@arkilaunch/shared';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-export interface InvoiceSummary {
-  id: string;
-  rentalId: string;
-  invoiceType: string;
-  amount: number;
-  status: string;
-  dueDate: Date;
-  createdAt: Date;
-}
-
-export interface InvoiceLineItemResponse {
-  id: string;
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  amount: number;
-}
-
-export interface EdtrDeductionEvidence {
-  reconciliationId: string;
-  sourceEdtrIds: string[];
-  status: string;
-  deltaHours: number | null;
-  tolerance: number;
-}
-
-export interface AuditTrailEntry {
-  action: string;
-  actorId: string;
-  timestamp: Date;
-}
-
-export interface InvoiceDetailResponse extends InvoiceSummary {
-  lineItems: InvoiceLineItemResponse[];
-  // Populated only for invoiceType='deposit_deduction' line items whose
-  // description matches edtr.service.ts's evidence-string format
-  // (`EDTR reconciliation {id} (sources: {a}, {b})`, edtr.service.ts:275) --
-  // null for every other invoice type, or if no line item matches.
-  edtrEvidence: EdtrDeductionEvidence | null;
-  auditTrail: AuditTrailEntry[];
-}
-
-export interface DepositLedgerResponse {
-  rentalId: string;
-  // null when this rental has no quotation/rental_contracts chain (see
-  // resolveDepositLedger); the balance is then unmeasurable against a cap,
-  // not zero.
-  depositRequired: number | null;
-  totalDeducted: number;
-  balanceRemaining: number | null;
-  deductions: Array<{ invoiceId: string; amount: number; createdAt: Date }>;
-}
-
-function toInvoiceSummary(row: typeof invoices.$inferSelect): InvoiceSummary {
+function toInvoiceSummary(row: typeof invoices.$inferSelect): InvoiceSummaryResponse {
   return {
     id: row.id,
     rentalId: row.rentalId,
@@ -117,7 +72,7 @@ async function findEdtrEvidence(tx: Tx, lineItems: (typeof invoiceLineItems.$inf
 @Injectable()
 export class BillingService {
   // GET /api/v1/invoices?rentalId=&invoiceType=&status=&from=&to=&limit=&offset=
-  async listInvoices(ctx: RequestContext, query: InvoiceListQuery) {
+  async listInvoices(ctx: RequestContext, query: InvoiceListQuery): Promise<InvoiceListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const conditions: SQL[] = [];
       if (query.rentalId) conditions.push(eq(invoices.rentalId, query.rentalId));

@@ -1,5 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import type { EdtrCaptureResponse, EdtrDetailResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { apiGet, apiPost, apiPostForm } from '../lib/api-client.js';
 import { getEquipment, getRentals, type EquipmentRef, type RentalRef } from '../lib/reference-client.js';
@@ -7,12 +8,16 @@ import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
+import { ConfidenceChip } from '../components/confidence-chip.js';
 
-// POC scaffold only (unstyled): exercises POST /edtr (both digital_entry
-// and paper_ocr -- paper_ocr scans a real photo via <input capture>, encoded
-// as a data: URL since no Supabase Storage upload exists yet), GET
-// /edtr/:id, and POST /edtr/:id/approve (RFC-2). Rental/equipment come from
-// GET /reference/* dropdowns rather than a hand-typed UUID.
+// Not styled to the full Console spec yet, but exercises the real flow:
+// POST /edtr (both digital_entry and multipart paper_ocr, RFC-2 §6), then
+// polls GET /edtr/:id (the pollUrl the capture response hands back) until
+// the record leaves a non-terminal status, and POST /edtr/:id/approve
+// (RFC-2 -- the only path that deducts a deposit). Rental/equipment come
+// from GET /reference/* dropdowns rather than a hand-typed UUID.
+const TERMINAL_STATUSES = new Set(['review', 'reconciled', 'hard_failed']);
+
 function EdtrPage() {
   const [rentals, setRentals] = useState<RentalRef[]>([]);
   const [equipmentList, setEquipmentList] = useState<EquipmentRef[]>([]);
@@ -33,8 +38,41 @@ function EdtrPage() {
   const [adjIdle, setAdjIdle] = useState('');
 
   const [edtrId, setEdtrId] = useState<string | null>(null);
+  const [pollUrl, setPollUrl] = useState<string | null>(null);
   const [result, setResult] = useState<unknown>(null);
+  const [fields, setFields] = useState<EdtrDetailResponse['fields']>([]);
   const [error, setError] = useState<unknown>(null);
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function stopPolling() {
+    if (pollTimer.current) {
+      clearInterval(pollTimer.current);
+      pollTimer.current = null;
+    }
+  }
+
+  // Auto-polls every 3s once a record has a pollUrl, stopping once the
+  // record reaches a terminal status -- the API hands back the poll target
+  // explicitly (EdtrCaptureResponse.pollUrl) rather than the frontend
+  // constructing it.
+  useEffect(() => {
+    if (!pollUrl) return;
+    async function tick() {
+      try {
+        const res = await apiGet<EdtrDetailResponse>(pollUrl!);
+        setResult(res);
+        setFields(res.fields);
+        if (res.reconciliation?.id) setReconciliationId(res.reconciliation.id);
+        if (TERMINAL_STATUSES.has(res.status)) stopPolling();
+      } catch (err) {
+        setError(err);
+        stopPolling();
+      }
+    }
+    void tick();
+    pollTimer.current = setInterval(tick, 3000);
+    return stopPolling;
+  }, [pollUrl]);
 
   useEffect(() => {
     Promise.all([getRentals(), getEquipment()])
@@ -60,10 +98,12 @@ function EdtrPage() {
   async function capture(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    stopPolling();
+    setFields([]);
     try {
-      let res: { id: string; status: string };
+      let res: EdtrCaptureResponse;
       if (source === 'digital_entry') {
-        res = await apiPost<{ id: string; status: string }>('/edtr', {
+        res = await apiPost<EdtrCaptureResponse>('/edtr', {
           source: 'digital_entry',
           rentalId,
           equipmentId,
@@ -71,7 +111,7 @@ function EdtrPage() {
           lineItems: { hoursActive: Number(hoursActive), hoursIdle: Number(hoursIdle) },
         });
       } else {
-        res = await apiPostForm<{ id: string; status: string }>(
+        res = await apiPostForm<EdtrCaptureResponse>(
           '/edtr',
           { source: 'paper_ocr', rentalId, equipmentId, reportDate },
           scanFile ?? undefined,
@@ -79,28 +119,20 @@ function EdtrPage() {
       }
       setResult(res);
       setEdtrId(res.id);
+      setPollUrl(res.pollUrl);
     } catch (err) {
       setError(err);
     }
   }
 
-  async function poll() {
-    if (!edtrId) return;
-    setError(null);
-    try {
-      const res = await apiGet<{ reconciliation?: { id: string } | null }>(`/edtr/${edtrId}`);
-      setResult(res);
-      if (res.reconciliation?.id) setReconciliationId(res.reconciliation.id);
-    } catch (err) {
-      setError(err);
-    }
-  }
-
-  async function runWorkerAndPoll() {
+  // Dev-only manual trigger: apps/api/src/edtr/edtr.controller.ts marks
+  // POST /edtr/dev/run-worker "remove before this ships past a POC" -- the
+  // real edtr-ocr-worker Container App Job runs on its own cron schedule in
+  // every deployed environment, so this button only exists for local dev.
+  async function runWorkerNow() {
     setError(null);
     try {
       await apiPost('/edtr/dev/run-worker', {});
-      await poll();
     } catch (err) {
       setError(err);
     }
@@ -233,9 +265,8 @@ function EdtrPage() {
                 </div>
               )}
               <p className="text-sm text-text-muted">
-                Extraction runs asynchronously by the edtr-ocr-worker job (RFC-2); after capture the record sits at
-                &quot;queued&quot; until that job runs -- use &quot;Run extraction (dev)&quot; below to trigger it for
-                this demo.
+                Extraction runs asynchronously by the edtr-ocr-worker Container App Job (RFC-2); after capture the
+                record sits at &quot;queued&quot; until that job runs. This page polls the status automatically.
               </p>
             </div>
           )}
@@ -248,16 +279,13 @@ function EdtrPage() {
         </form>
       </Surface>
 
-      <div className="mb-6 flex max-w-2xl flex-wrap gap-3">
-        <Button type="button" variant="secondary" onClick={poll} disabled={!edtrId}>
-          Poll status
-        </Button>
-        {source === 'paper_ocr' && (
-          <Button type="button" variant="secondary" onClick={runWorkerAndPoll} disabled={!edtrId}>
-            Run extraction (dev)
+      {import.meta.env.DEV && source === 'paper_ocr' && (
+        <div className="mb-6 flex max-w-2xl flex-wrap gap-3">
+          <Button type="button" variant="secondary" onClick={runWorkerNow} disabled={!edtrId}>
+            Run extraction now (dev only)
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-6">
         <form onSubmit={approve} className="flex flex-col gap-4">
@@ -299,6 +327,21 @@ function EdtrPage() {
         <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl border-error p-4">
           <h2 className="mb-2 font-display text-[18px] font-semibold text-error">Error</h2>
           <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(error, null, 2)}</pre>
+        </Surface>
+      )}
+      {fields.length > 0 && (
+        <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-4">
+          <h2 className="mb-2 font-display text-[18px] font-semibold text-text">Extracted fields</h2>
+          <div className="flex flex-wrap gap-2">
+            {fields.map((field) => (
+              <ConfidenceChip
+                key={field.name}
+                tone={field.belowGate ? 'review' : 'match'}
+                confidence={field.confidence}
+                fieldLabel={`${field.name}: ${field.value}`}
+              />
+            ))}
+          </div>
         </Surface>
       )}
       {result != null && (

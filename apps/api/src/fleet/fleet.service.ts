@@ -15,10 +15,15 @@ import {
 import type {
   EquipmentCreateRequest,
   EquipmentListQuery,
+  EquipmentListResponse,
+  EquipmentResponse,
   EquipmentUpdateRequest,
+  FinancialReportResponse,
+  MaintenanceDetailResponse,
   MaintenanceLogCreateRequest,
   RequestContext,
   UtilizationQuery,
+  UtilizationReportResponse,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { round2HalfUp } from '../quotes/pricing-engine.service.js';
@@ -32,38 +37,6 @@ const BUSINESS_HOURS_PER_DAY = 8;
 const DEFAULT_REPORT_WINDOW_DAYS = 30;
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-export interface EquipmentResponse {
-  id: string;
-  equipmentTypeId: string;
-  model: string;
-  serialNo: string;
-  availabilityStatus: string;
-  runtimeHours: number;
-}
-
-export interface MaintenanceDetailResponse {
-  schedule: { hoursInterval: number; nextDue: number | null } | null;
-  runtimeHours: number;
-  logs: Array<{ id: string; performedAt: Date; notes: string | null }>;
-}
-
-export interface UtilizationReportResponse {
-  period: { from: string; to: string };
-  fleet: Array<{
-    equipmentId: string;
-    runtimeHours: number;
-    utilizationPct: number;
-    maintenanceDue: boolean;
-  }>;
-}
-
-export interface FinancialReportResponse {
-  period: { from: string; to: string };
-  invoiced: { byType: Record<string, number>; total: number };
-  paid: number;
-  depositDeducted: number;
-}
 
 function toEquipmentResponse(row: typeof equipment.$inferSelect): EquipmentResponse {
   return {
@@ -95,7 +68,7 @@ export class FleetService {
   // GET /api/v1/equipment?status=... (PRD-F4). Any authenticated tenant
   // member may read the fleet list; RLS is the isolation boundary, same
   // posture as reference/* (no permission gate on a read).
-  async list(ctx: RequestContext, query: EquipmentListQuery) {
+  async list(ctx: RequestContext, query: EquipmentListQuery): Promise<EquipmentListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const rows = query.status
         ? await tx.select().from(equipment).where(eq(equipment.availabilityStatus, query.status))

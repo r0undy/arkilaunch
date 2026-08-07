@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://almara.example/</loc></url>
-  <url><loc>https://almara.example/equipment</loc></url>
-  <url><loc>https://almara.example/contact</loc></url>
-  <url><loc>https://almara.example/help</loc></url>
-  <url><loc>https://almara.example/terms</loc></url>
-  <url><loc>https://almara.example/privacy</loc></url>
+  <url><loc>https://arkilaunch-dev.vercel.app/</loc></url>
+  <url><loc>https://arkilaunch-dev.vercel.app/equipment</loc></url>
+  <url><loc>https://arkilaunch-dev.vercel.app/contact</loc></url>
+  <url><loc>https://arkilaunch-dev.vercel.app/help</loc></url>
+  <url><loc>https://arkilaunch-dev.vercel.app/terms</loc></url>
+  <url><loc>https://arkilaunch-dev.vercel.app/privacy</loc></url>
 </urlset>

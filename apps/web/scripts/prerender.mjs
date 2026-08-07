@@ -18,26 +18,46 @@ const distDir = path.resolve(__dirname, '../dist');
 const port = 4319;
 const origin = `http://localhost:${port}`;
 
-const PUBLIC_ROUTES = [
+// Public site origin for canonical/OG URLs -- defaults to local dev; set to
+// the deployed Vercel domain in CI (see apps/web/.env.example).
+const SITE_URL = (process.env.VITE_PUBLIC_SITE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+const API_BASE_URL = process.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1';
+
+const STATIC_ROUTES = [
   { route: '/', title: 'Almara | Industrial Fleet Management & Rentals' },
   { route: '/equipment', title: 'Equipments | Almara' },
-  { route: '/equipment/eq-1', title: 'Back Hoe (CAT) | Almara' },
-  { route: '/equipment/eq-2', title: 'Bulldozer (Mitsubishi) | Almara' },
-  { route: '/equipment/eq-3', title: 'Self-Loading Truck (Isuzu) | Almara' },
-  { route: '/equipment/eq-4', title: 'Dump Truck (Komatsu) | Almara' },
-  { route: '/equipment/eq-5', title: 'Back Hoe (Sumitomo) | Almara' },
-  { route: '/equipment/eq-6', title: 'Bulldozer (CAT) | Almara' },
   { route: '/contact', title: 'Contact | Almara' },
   { route: '/help', title: 'Help Center | Almara' },
   { route: '/terms', title: 'Terms of Service | Almara' },
   { route: '/privacy', title: 'Privacy Policy | Almara' },
 ];
 
+// Per-equipment detail routes are fetched from the live, @Public,
+// anchor-tenant-only catalog endpoint rather than hardcoded -- a hardcoded
+// fixture list (eq-1..eq-6) would drift from the real catalog rows and
+// prerender wrong ids/titles. If the fetch fails, equipment detail routes
+// are skipped rather than emitting incorrect pages.
+async function fetchEquipmentRoutes() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/catalog/equipment`);
+    if (!res.ok) throw new Error(`catalog fetch failed: ${res.status}`);
+    const body = await res.json();
+    const items = Array.isArray(body) ? body : body.items ?? [];
+    return items.map((item) => ({
+      route: `/equipment/${item.id}`,
+      title: `${item.equipmentTypeName ?? item.model} | Almara`,
+    }));
+  } catch (err) {
+    console.warn(`prerender: skipping equipment detail routes -- ${err.message}`);
+    return [];
+  }
+}
+
 const ORG_JSON_LD = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
   name: 'Almara Construction',
-  url: 'https://almara.example',
+  url: SITE_URL,
   description: 'Industrial fleet management and heavy-equipment rentals in Quezon City, Philippines.',
 };
 
@@ -68,7 +88,7 @@ function serveDist() {
 }
 
 function injectSeoTags(html, { route, title }) {
-  const canonical = `https://almara.example${route === '/' ? '' : route}`;
+  const canonical = `${SITE_URL}${route === '/' ? '' : route}`;
   let out = html
     .replace(/<meta name="robots" content="noindex, nofollow"\s*\/?>/, '<meta name="robots" content="index, follow" />')
     .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
@@ -92,6 +112,9 @@ async function main() {
     console.error('dist/ not found. Run `vite build` before `prerender`.');
     process.exit(1);
   }
+
+  const equipmentRoutes = await fetchEquipmentRoutes();
+  const PUBLIC_ROUTES = [...STATIC_ROUTES, ...equipmentRoutes];
 
   const server = serveDist();
   const browser = await chromium.launch();

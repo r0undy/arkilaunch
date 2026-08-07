@@ -1,12 +1,24 @@
-import type { AuthTokens, LoginRequest, RefreshRequest, TwoFaChallenge } from '@arkilaunch/shared';
+import type { AuthTokens, LoginRequest, RefreshRequest, TwoFaChallenge, Verify2faRequest } from '@arkilaunch/shared';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1';
 
-const ACCESS_TOKEN_KEY = 'arkilaunch.accessToken';
 const REFRESH_TOKEN_KEY = 'arkilaunch.refreshToken';
 
+// RFC-1 §3: "Client keeps [the access token] in memory (not localStorage)."
+// Held as a module-level variable rather than sessionStorage -- it does not
+// survive a reload, which is why bootstrapSession() below exists to
+// silently re-derive it from the (still sessionStorage-held) refresh token.
+let accessToken: string | null = null;
+
 export function getAccessToken(): string | null {
-  return sessionStorage.getItem(ACCESS_TOKEN_KEY);
+  return accessToken;
+}
+
+// Exported for tests only, which previously seeded state via
+// `sessionStorage.setItem('arkilaunch.accessToken', ...)`; that key no
+// longer exists, so tests call this directly instead.
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
 }
 
 function getRefreshToken(): string | null {
@@ -14,13 +26,26 @@ function getRefreshToken(): string | null {
 }
 
 function storeTokens(tokens: AuthTokens): void {
-  sessionStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken);
+  accessToken = tokens.accessToken;
   sessionStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
 }
 
 export function clearTokens(): void {
-  sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+  accessToken = null;
   sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
+// Called once on app boot (main.tsx) before the router renders: a page
+// reload always starts with accessToken === null now, so without this every
+// reload of an authed route would bounce to /login even with a perfectly
+// valid refresh token sitting in sessionStorage.
+export async function bootstrapSession(): Promise<void> {
+  if (!getRefreshToken()) return;
+  try {
+    await ensureFreshToken();
+  } catch {
+    clearTokens();
+  }
 }
 
 function isAuthTokens(response: AuthTokens | TwoFaChallenge): response is AuthTokens {
@@ -54,6 +79,12 @@ export async function login(request: LoginRequest): Promise<AuthTokens | TwoFaCh
 
 export async function refresh(request: RefreshRequest): Promise<AuthTokens> {
   const tokens = await postJson<AuthTokens>('/auth/refresh', request);
+  storeTokens(tokens);
+  return tokens;
+}
+
+export async function verify2fa(request: Verify2faRequest): Promise<AuthTokens> {
+  const tokens = await postJson<AuthTokens>('/auth/2fa/verify', request);
   storeTokens(tokens);
   return tokens;
 }

@@ -7,6 +7,7 @@ import {
   permissions,
   rolePermissions,
   roles,
+  tenants,
   timekeeperSiteAssignments,
   users,
   withTenantTx,
@@ -20,6 +21,7 @@ import {
   type UserInviteRequest,
   type UserListQuery,
   type UserRoleChangeRequest,
+  type UserSelfResponse,
 } from '@arkilaunch/shared';
 import { AuthService } from '../auth/auth.service.js';
 import { RefreshTokenService } from '../auth/refresh-token.service.js';
@@ -61,6 +63,31 @@ export class UsersService {
         .offset(query.offset);
 
       return { items: rows, total: rows.length };
+    });
+  }
+
+  // GET /users/me. Self-scoped by ctx.userId (from the verified JWT, never
+  // a param) -- reading your own record is not a privileged action, so this
+  // is exposed through UserProfileController, not the user:manage-gated
+  // UsersController above.
+  async me(ctx: Ctx): Promise<UserSelfResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await this.selectUserWithRole(tx, ctx.userId);
+      if (!row) throw new NotFoundException({ error: 'user_not_found' });
+      const [tenant] = await tx
+        .select({ legalName: tenants.legalName, slug: tenants.slug })
+        .from(tenants)
+        .where(eq(tenants.id, ctx.tenantId))
+        .limit(1);
+      return {
+        id: row.id,
+        email: row.email,
+        role: row.roleName,
+        status: row.status as UserSelfResponse['status'],
+        createdAt: row.createdAt,
+        tenantName: tenant?.legalName ?? '',
+        tenantSlug: tenant?.slug ?? '',
+      };
     });
   }
 

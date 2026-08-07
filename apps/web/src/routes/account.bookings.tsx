@@ -1,8 +1,18 @@
 import { createRoute } from '@tanstack/react-router';
+import type { BookingSummaryResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
-import { Surface } from '../components/surface.js';
+import { Table, type TableColumn } from '../components/table.js';
+
+const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
+  { header: 'Booking', cell: (row) => row.id.slice(0, 8) },
+  { header: 'Status', cell: (row) => row.status },
+  {
+    header: 'Project site',
+    cell: (row) => row.siteCity ?? row.siteProvince ?? `Site ${row.projectSiteId.slice(0, 8)}`,
+  },
+];
 
 function MyBookingsPage() {
   return (
@@ -11,12 +21,8 @@ function MyBookingsPage() {
       options={bookingsQueries.list()}
       emptyTitle="No bookings yet"
       emptyDescription="Rent your first piece of equipment to see it tracked here."
-      isEmpty={(data) => data.length === 0}
-      render={(data) => (
-        <Surface radius="md" elevation="sm" className="p-4">
-          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(data, null, 2)}</pre>
-        </Surface>
-      )}
+      isEmpty={(data) => data.total === 0}
+      render={(data) => <Table columns={COLUMNS} rows={data.items} rowKey={(row) => row.id} />}
     />
   );
 }

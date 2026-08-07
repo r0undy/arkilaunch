@@ -28,3 +28,64 @@ export const BookingCreateRequestSchema = z.object({
   items: z.array(BookingItemRequestSchema).min(1),
 });
 export type BookingCreateRequest = z.infer<typeof BookingCreateRequestSchema>;
+
+// --- Response schemas (egress allowlists). ---
+
+export const BookingCreateResponseSchema = z.object({
+  id: z.string().uuid(),
+  status: z.string(),
+  trackerUrl: z.string(),
+});
+export type BookingCreateResponse = z.infer<typeof BookingCreateResponseSchema>;
+
+export const BookingSummaryResponseSchema = z.object({
+  id: z.string().uuid(),
+  status: z.string(),
+  projectSiteId: z.string().uuid(),
+  siteCity: z.string().nullable(),
+  siteProvince: z.string().nullable(),
+});
+export type BookingSummaryResponse = z.infer<typeof BookingSummaryResponseSchema>;
+
+export const BookingListResponseSchema = z.object({
+  items: z.array(BookingSummaryResponseSchema),
+  total: z.number().int(),
+});
+export type BookingListResponse = z.infer<typeof BookingListResponseSchema>;
+
+export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
+  trackerUrl: z.string(),
+  items: z.array(
+    z.object({
+      equipmentId: z.string().uuid(),
+      start: z.coerce.date(),
+      end: z.coerce.date().nullable(),
+      status: z.string(),
+    }),
+  ),
+  quotation: z
+    .object({
+      id: z.string().uuid(),
+      status: z.string(),
+      totalPhp: z.number().nullable(),
+    })
+    .nullable(),
+  invoices: z.array(
+    z.object({
+      id: z.string().uuid(),
+      invoiceType: z.string(),
+      amount: z.number(),
+      status: z.string(),
+    }),
+  ),
+  payments: z.array(
+    z.object({
+      id: z.string().uuid(),
+      method: z.string(),
+      amount: z.number(),
+      status: z.string(),
+      providerRef: z.string().nullable(),
+    }),
+  ),
+});
+export type BookingDetailResponse = z.infer<typeof BookingDetailResponseSchema>;

@@ -24,6 +24,8 @@ describe('requireAuth / requireRole', () => {
 
   it('no token: redirects to /login carrying the attempted location', async () => {
     const { requireAuth } = await import('./guards.js');
+    const { setAccessToken } = await import('./auth-client.js');
+    setAccessToken(null);
     const guard = requireAuth();
 
     const err = await catchRedirect(() =>
@@ -35,10 +37,8 @@ describe('requireAuth / requireRole', () => {
   });
 
   it('expired token, no refresh token: redirects to /login with the attempted location', async () => {
-    sessionStorage.setItem(
-      'arkilaunch.accessToken',
-      makeToken(makeValidClaims({ exp: Math.floor(Date.now() / 1000) - 60 })),
-    );
+    const { setAccessToken } = await import('./auth-client.js');
+    setAccessToken(makeToken(makeValidClaims({ exp: Math.floor(Date.now() / 1000) - 60 })));
     const { requireAuth } = await import('./guards.js');
     const guard = requireAuth();
 
@@ -51,10 +51,8 @@ describe('requireAuth / requireRole', () => {
   });
 
   it('expired token, valid refresh token: resolves without redirecting, refreshing exactly once', async () => {
-    sessionStorage.setItem(
-      'arkilaunch.accessToken',
-      makeToken(makeValidClaims({ exp: Math.floor(Date.now() / 1000) - 60 })),
-    );
+    const { setAccessToken } = await import('./auth-client.js');
+    setAccessToken(makeToken(makeValidClaims({ exp: Math.floor(Date.now() / 1000) - 60 })));
     sessionStorage.setItem('arkilaunch.refreshToken', 'a-valid-refresh-token');
 
     let refreshCalls = 0;
@@ -79,7 +77,8 @@ describe('requireAuth / requireRole', () => {
   });
 
   it('valid token, matching role: resolves without redirecting', async () => {
-    sessionStorage.setItem('arkilaunch.accessToken', makeToken(makeValidClaims({ role: 'admin' })));
+    const { setAccessToken } = await import('./auth-client.js');
+    setAccessToken(makeToken(makeValidClaims({ role: 'admin' })));
     const { requireRole } = await import('./guards.js');
     const guard = requireRole('admin', 'owner');
 
@@ -87,7 +86,8 @@ describe('requireAuth / requireRole', () => {
   });
 
   it('valid token, wrong role: redirects to the role home WITHOUT a redirect param (no loop)', async () => {
-    sessionStorage.setItem('arkilaunch.accessToken', makeToken(makeValidClaims({ role: 'timekeeper' })));
+    const { setAccessToken } = await import('./auth-client.js');
+    setAccessToken(makeToken(makeValidClaims({ role: 'timekeeper' })));
     const { requireRole } = await import('./guards.js');
     const guard = requireRole('admin', 'owner');
 

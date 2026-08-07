@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, type SQL } from 'drizzle-orm';
 import { notifications, withTenantTx } from '@arkilaunch/db';
-import type { NotificationListQuery, RequestContext } from '@arkilaunch/shared';
+import type { NotificationListQuery, NotificationListResponse, RequestContext } from '@arkilaunch/shared';
 
 // Global nav notifications feed (PRD §5.2: "notifications (PM alerts,
 // weather advisories, review-queue count)... on every authed screen").
@@ -12,7 +12,7 @@ import type { NotificationListQuery, RequestContext } from '@arkilaunch/shared';
 // user_id predicate is the boundary, RLS is the backstop behind it.
 @Injectable()
 export class NotificationsService {
-  async list(ctx: RequestContext, query: NotificationListQuery) {
+  async list(ctx: RequestContext, query: NotificationListQuery): Promise<NotificationListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const conditions: SQL[] = [eq(notifications.userId, ctx.userId)];
       if (query.status) conditions.push(eq(notifications.status, query.status));

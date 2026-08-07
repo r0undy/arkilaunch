@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import {
+  addresses,
   customers,
   db,
   equipment,
@@ -88,8 +89,15 @@ export class ReferenceService {
   async projectSites(ctx: RequestContext) {
     return withTenantTx(ctx, (tx) =>
       tx
-        .select({ id: projectSites.id, latitude: projectSites.latitude, longitude: projectSites.longitude })
-        .from(projectSites),
+        .select({
+          id: projectSites.id,
+          latitude: projectSites.latitude,
+          longitude: projectSites.longitude,
+          city: addresses.city,
+          province: addresses.province,
+        })
+        .from(projectSites)
+        .leftJoin(addresses, eq(addresses.id, projectSites.addressId)),
     );
   }
 }

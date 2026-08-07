@@ -1,5 +1,17 @@
 import { queryOptions } from '@tanstack/react-query';
-import type { CatalogEquipmentListResponse } from '@arkilaunch/shared';
+import type {
+  BookingListResponse,
+  CatalogEquipment,
+  CatalogEquipmentListResponse,
+  EquipmentListResponse,
+  FinancialReportResponse,
+  IncidentListResponse,
+  InvoiceListResponse,
+  SiteListResponse,
+  UserSelfResponse,
+  UtilizationReportResponse,
+  WeatherAdvisoryListResponse,
+} from '@arkilaunch/shared';
 import { apiGet } from './api-client.js';
 import {
   getCustomers,
@@ -8,7 +20,6 @@ import {
   getRateCards,
   getRentals,
   type CustomerRef,
-  type EquipmentRef,
   type EquipmentTypeRef,
   type ProjectSiteRef,
   type RateCardRef,
@@ -26,7 +37,7 @@ export const equipmentQueries = {
   list: () =>
     queryOptions({
       queryKey: ['equipment'] as const,
-      queryFn: () => apiGet<EquipmentRef[]>('/equipment'),
+      queryFn: () => apiGet<EquipmentListResponse>('/equipment'),
     }),
 };
 
@@ -38,13 +49,18 @@ export const catalogQueries = {
       queryKey: ['catalog', 'equipment'] as const,
       queryFn: () => apiGet<CatalogEquipmentListResponse>('/catalog/equipment'),
     }),
+  equipmentDetail: (id: string) =>
+    queryOptions({
+      queryKey: ['catalog', 'equipment', id] as const,
+      queryFn: () => apiGet<CatalogEquipment>(`/catalog/equipment/${id}`),
+    }),
 };
 
 export const sitesQueries = {
   list: () =>
     queryOptions({
       queryKey: ['sites'] as const,
-      queryFn: () => apiGet<unknown[]>('/sites'),
+      queryFn: () => apiGet<SiteListResponse>('/sites'),
     }),
 };
 
@@ -52,7 +68,7 @@ export const invoicesQueries = {
   list: () =>
     queryOptions({
       queryKey: ['invoices'] as const,
-      queryFn: () => apiGet<unknown[]>('/invoices'),
+      queryFn: () => apiGet<InvoiceListResponse>('/invoices'),
     }),
 };
 
@@ -60,7 +76,7 @@ export const incidentsQueries = {
   list: () =>
     queryOptions({
       queryKey: ['incidents'] as const,
-      queryFn: () => apiGet<unknown[]>('/incidents'),
+      queryFn: () => apiGet<IncidentListResponse>('/incidents'),
     }),
 };
 
@@ -68,13 +84,13 @@ export const bookingsQueries = {
   list: () =>
     queryOptions({
       queryKey: ['bookings'] as const,
-      queryFn: () => apiGet<unknown[]>('/bookings'),
+      queryFn: () => apiGet<BookingListResponse>('/bookings'),
     }),
 };
 
 export interface ReportsSnapshot {
-  utilization: unknown;
-  financial: unknown;
+  utilization: UtilizationReportResponse;
+  financial: FinancialReportResponse;
 }
 
 export const reportQueries = {
@@ -87,8 +103,8 @@ export const reportQueries = {
       queryKey: ['reports', 'snapshot'] as const,
       queryFn: async (): Promise<ReportsSnapshot> => {
         const [utilization, financial] = await Promise.all([
-          apiGet<unknown>('/reports/utilization'),
-          apiGet<unknown>('/reports/financial'),
+          apiGet<UtilizationReportResponse>('/reports/utilization'),
+          apiGet<FinancialReportResponse>('/reports/financial'),
         ]);
         return { utilization, financial };
       },
@@ -105,11 +121,82 @@ export const referenceQueries = {
     queryOptions({ queryKey: ['reference', 'project-sites'] as const, queryFn: getProjectSites }),
 };
 
-export type {
-  CustomerRef,
-  EquipmentRef,
-  EquipmentTypeRef,
-  ProjectSiteRef,
-  RateCardRef,
-  RentalRef,
+export const usersQueries = {
+  me: () =>
+    queryOptions({
+      queryKey: ['users', 'me'] as const,
+      queryFn: () => apiGet<UserSelfResponse>('/users/me'),
+    }),
 };
+
+export const notificationsQueries = {
+  list: () =>
+    queryOptions({
+      queryKey: ['notifications'] as const,
+      queryFn: () => apiGet<{ items: { id: string; status: string }[] }>('/notifications'),
+    }),
+};
+
+export const weatherQueries = {
+  advisories: () =>
+    queryOptions({
+      queryKey: ['weather', 'advisories'] as const,
+      queryFn: () => apiGet<WeatherAdvisoryListResponse>('/weather/advisories'),
+    }),
+};
+
+export const edtrQueries = {
+  list: () =>
+    queryOptions({
+      queryKey: ['edtr'] as const,
+      queryFn: () => apiGet<{ items: unknown[] }>('/edtr'),
+    }),
+  detail: (id: string) =>
+    queryOptions({
+      queryKey: ['edtr', id] as const,
+      queryFn: () => apiGet<unknown>(`/edtr/${id}`),
+    }),
+};
+
+export const depositQueries = {
+  forRental: (rentalId: string) =>
+    queryOptions({
+      queryKey: ['rentals', rentalId, 'deposit'] as const,
+      queryFn: () => apiGet<unknown>(`/rentals/${rentalId}/deposit`),
+    }),
+};
+
+export const maintenanceQueries = {
+  forEquipment: (equipmentId: string) =>
+    queryOptions({
+      queryKey: ['equipment', equipmentId, 'maintenance'] as const,
+      queryFn: () => apiGet<unknown>(`/equipment/${equipmentId}/maintenance`),
+    }),
+};
+
+export const quoteQueries = {
+  detail: (id: string) =>
+    queryOptions({
+      queryKey: ['quotes', id] as const,
+      queryFn: () => apiGet<unknown>(`/quotes/${id}`),
+    }),
+};
+
+export const invoiceQueries = {
+  detail: (id: string) =>
+    queryOptions({
+      queryKey: ['invoices', id] as const,
+      queryFn: () => apiGet<unknown>(`/invoices/${id}`),
+    }),
+};
+
+// Fleet-wide utilization %, derived client-side from the per-unit
+// UtilizationReportResponse.fleet[].utilizationPct (there is no top-level
+// aggregate field on the wire -- see PLAN Phase 1 note).
+export function fleetUtilizationPct(report: UtilizationReportResponse | undefined): number | null {
+  if (!report || report.fleet.length === 0) return null;
+  const sum = report.fleet.reduce((total, unit) => total + unit.utilizationPct, 0);
+  return sum / report.fleet.length;
+}
+
+export type { CustomerRef, EquipmentTypeRef, ProjectSiteRef, RateCardRef, RentalRef };

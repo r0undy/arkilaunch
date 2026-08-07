@@ -1,13 +1,22 @@
 import { createRoute, Link } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
 import { accountLayoutRoute } from './_account.js';
 import { Button } from '../components/button.js';
+import { bookingsQueries } from '../lib/queries.js';
 
 function AccountHomePage() {
+  const { data: bookings } = useQuery(bookingsQueries.list());
+  const activeCount = bookings?.items.filter((b) => b.status !== 'cancelled' && b.status !== 'completed').length ?? 0;
+
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="font-display text-2xl font-semibold text-text">Home page</h1>
-        <p className="text-sm text-text-muted">Manage your active operations and equipment status.</p>
+        <p className="text-sm text-text-muted">
+          {activeCount > 0
+            ? `${activeCount} active booking${activeCount === 1 ? '' : 's'}.`
+            : 'Manage your active operations and equipment status.'}
+        </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-md border border-border bg-surface p-6">

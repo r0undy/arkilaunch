@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { desc, eq, inArray } from 'drizzle-orm';
 import {
+  addresses,
   auditLogs,
   customers,
   db,
@@ -13,7 +14,13 @@ import {
   rentals,
   withTenantTx,
 } from '@arkilaunch/db';
-import type { BookingCreateRequest, RequestContext } from '@arkilaunch/shared';
+import type {
+  BookingCreateRequest,
+  BookingCreateResponse,
+  BookingDetailResponse,
+  BookingListResponse,
+  RequestContext,
+} from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { findAvailableAlternatives, overlappingAssignments } from '../common/equipment-availability.js';
 
@@ -38,7 +45,7 @@ export class BookingsService {
   // candidate equipment rows are locked with FOR UPDATE before the overlap
   // check, so a concurrent booking attempt on the same unit/window is
   // serialized rather than racing past this check (QAD-T21).
-  async create(ctx: RequestContext, body: BookingCreateRequest) {
+  async create(ctx: RequestContext, body: BookingCreateRequest): Promise<BookingCreateResponse> {
     return withTenantTx(ctx, async (tx) => {
       let customerId = body.customerId;
       if (ctx.role === 'customer') {
@@ -129,7 +136,7 @@ export class BookingsService {
   // GET /api/v1/bookings (PRD-F8 US-09). A `customer` sees only their own
   // bookings; staff see the whole tenant (RLS is the tenant boundary,
   // matching reference/* and fleet's read posture).
-  async list(ctx: RequestContext) {
+  async list(ctx: RequestContext): Promise<BookingListResponse> {
     return withTenantTx(ctx, async (tx) => {
       let rows;
       if (ctx.role === 'customer') {
@@ -138,8 +145,29 @@ export class BookingsService {
       } else {
         rows = await tx.select().from(rentals);
       }
+      if (rows.length === 0) return { items: [], total: 0 };
+
+      // Human-readable location (a booking is never shown as a bare
+      // project_site_id UUID) -- same address-via-site join sites.service.ts
+      // uses for GET /sites.
+      const siteRows = await tx
+        .select({ id: projectSites.id, city: addresses.city, province: addresses.province })
+        .from(projectSites)
+        .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
+        .where(inArray(projectSites.id, rows.map((row) => row.projectSiteId)));
+      const siteById = new Map(siteRows.map((site) => [site.id, site]));
+
       return {
-        items: rows.map((row) => ({ id: row.id, status: row.status, projectSiteId: row.projectSiteId })),
+        items: rows.map((row) => {
+          const site = siteById.get(row.projectSiteId);
+          return {
+            id: row.id,
+            status: row.status,
+            projectSiteId: row.projectSiteId,
+            siteCity: site?.city ?? null,
+            siteProvince: site?.province ?? null,
+          };
+        }),
         total: rows.length,
       };
     });
@@ -148,7 +176,7 @@ export class BookingsService {
   // GET /api/v1/bookings/:id (SDD §4 transaction tracker, US-09 AC1). Never
   // stores or returns card/account data (US-08 AC1) -- only provider_ref +
   // status from `payments`.
-  async get(ctx: RequestContext, id: string) {
+  async get(ctx: RequestContext, id: string): Promise<BookingDetailResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, id)).limit(1);
       if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
@@ -180,11 +208,19 @@ export class BookingsService {
               ),
             )
         : [];
+      const [site] = await tx
+        .select({ city: addresses.city, province: addresses.province })
+        .from(projectSites)
+        .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
+        .where(eq(projectSites.id, rental.projectSiteId))
+        .limit(1);
 
       return {
         id: rental.id,
         status: rental.status,
         projectSiteId: rental.projectSiteId,
+        siteCity: site?.city ?? null,
+        siteProvince: site?.province ?? null,
         trackerUrl: `/orders/${rental.id}`,
         items: assignments.map((assignment) => ({
           equipmentId: assignment.equipmentId,
