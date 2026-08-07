@@ -76,6 +76,21 @@ export const CatalogEquipmentListResponseSchema = z.object({
 });
 export type CatalogEquipmentListResponse = z.infer<typeof CatalogEquipmentListResponseSchema>;
 
+// GET /catalog/testimonials (@Public, anchor-tenant only). Same posture as
+// CatalogEquipmentSchema -- a per-tenant quote, nothing else.
+export const CatalogTestimonialSchema = z.object({
+  id: z.string().uuid(),
+  quote: z.string(),
+  authorName: z.string(),
+  authorTitle: z.string(),
+});
+export type CatalogTestimonial = z.infer<typeof CatalogTestimonialSchema>;
+
+export const CatalogTestimonialListResponseSchema = z.object({
+  items: z.array(CatalogTestimonialSchema),
+});
+export type CatalogTestimonialListResponse = z.infer<typeof CatalogTestimonialListResponseSchema>;
+
 // --- Response schemas (egress allowlists). ---
 
 export const EquipmentResponseSchema = z.object({

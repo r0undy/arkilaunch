@@ -6,3 +6,4 @@ export * from './billing.js';
 export * from './weather.js';
 export * from './pricing.js';
 export * from './events.js';
+export * from './testimonials.js';

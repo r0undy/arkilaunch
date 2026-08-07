@@ -28,15 +28,23 @@ const FOOTER_COLUMNS = [
   },
 ];
 
+// The marketing shell used to be a padded, rounded "floating card" (outer
+// frame padding + rounded-mk-container on an inner wrapper). That meant the
+// nav and footer never actually reached the viewport's top/bottom/side
+// edges -- and the padding gap let the frame's own background peek through
+// during scroll overscroll, which read as a stray color flash. Nav and
+// footer are now full-bleed, sitting directly on the marketing frame
+// background; only the page's own content (via each route + the footer's
+// inner row) is width-capped with max-w-shell.
 function PublicLayout() {
   return (
-    <div data-tier="marketing" className="min-h-screen bg-bg-mk-frame py-4 sm:py-6">
-      <div className="mx-auto max-w-shell overflow-hidden rounded-mk-container bg-bg-mk shadow-mk-inset">
-        <FloatingNav />
-        <main>
-          <Outlet />
-        </main>
-        <footer className="flex flex-col gap-8 bg-surface-mk px-6 py-12 sm:flex-row sm:justify-between">
+    <div data-tier="marketing" className="flex min-h-screen flex-col bg-bg-mk-frame">
+      <FloatingNav />
+      <main className="mx-auto w-full max-w-shell flex-1 bg-bg-mk shadow-mk-inset">
+        <Outlet />
+      </main>
+      <footer className="bg-surface-mk">
+        <div className="mx-auto flex max-w-shell flex-col gap-8 px-6 py-12 sm:flex-row sm:justify-between">
           <div>
             <p className="font-display text-lg font-semibold text-ink-mk">Almara</p>
             <p className="mt-2 text-sm text-text-muted">Almara &copy; 2026. All rights reserved.</p>
@@ -57,8 +65,8 @@ function PublicLayout() {
               </div>
             ))}
           </div>
-        </footer>
-      </div>
+        </div>
+      </footer>
     </div>
   );
 }

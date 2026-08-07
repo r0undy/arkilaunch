@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { publicLayoutRoute } from './_public.js';
 import { EquipmentCard } from '../components/equipment-card.js';
 import { SearchFilterBar, type AvailabilityFilter } from '../components/search-filter-bar.js';
+import { equipmentImageUrl } from '../lib/equipment-images.js';
 import { catalogQueries } from '../lib/queries.js';
 
 function EquipmentPage() {
@@ -32,16 +33,20 @@ function EquipmentPage() {
         onAvailabilityChange={setAvailability}
       />
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {equipment.map((eq) => (
-          <EquipmentCard
-            key={eq.id}
-            imageAlt={`${eq.equipmentTypeName} ${eq.model}`}
-            model={eq.model}
-            make={eq.equipmentTypeName}
-            availabilityStatus={eq.availabilityStatus}
-            onRent={() => navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })}
-          />
-        ))}
+        {equipment.map((eq) => {
+          const imageUrl = equipmentImageUrl(eq.model);
+          return (
+            <EquipmentCard
+              key={eq.id}
+              imageAlt={`${eq.equipmentTypeName} ${eq.model}`}
+              {...(imageUrl ? { imageUrl } : {})}
+              model={eq.model}
+              make={eq.equipmentTypeName}
+              availabilityStatus={eq.availabilityStatus}
+              onRent={() => navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })}
+            />
+          );
+        })}
       </div>
     </div>
   );

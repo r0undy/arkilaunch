@@ -1,10 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { getCatalogEquipmentForSlug, listCatalogEquipmentForSlug } from '@arkilaunch/db';
+import {
+  getCatalogEquipmentForSlug,
+  listCatalogEquipmentForSlug,
+  listCatalogTestimonialsForSlug,
+} from '@arkilaunch/db';
 import {
   CatalogEquipmentListResponseSchema,
   CatalogEquipmentSchema,
+  CatalogTestimonialListResponseSchema,
   type CatalogEquipment,
   type CatalogEquipmentListResponse,
+  type CatalogTestimonialListResponse,
 } from '@arkilaunch/shared';
 
 // GET /catalog/equipment (@Public). Anchor-tenant only for now: the
@@ -33,5 +39,14 @@ export class CatalogService {
     const row = await getCatalogEquipmentForSlug(slug, id);
     if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
     return CatalogEquipmentSchema.parse(row);
+  }
+
+  // GET /catalog/testimonials (@Public, anchor-tenant only). Same
+  // "no tenant configured -> nothing to serve" posture as listEquipment().
+  async listTestimonials(): Promise<CatalogTestimonialListResponse> {
+    const slug = process.env.ANCHOR_TENANT_SLUG;
+    if (!slug) return { items: [] };
+    const items = await listCatalogTestimonialsForSlug(slug);
+    return CatalogTestimonialListResponseSchema.parse({ items });
   }
 }

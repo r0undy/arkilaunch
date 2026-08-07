@@ -92,6 +92,27 @@
       "when": 1785591000887,
       "tag": "0012_public_catalog_detail",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786070984330,
+      "tag": "0013_testimonials_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786070984410,
+      "tag": "0014_force_rls_testimonials",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1786070984490,
+      "tag": "0015_public_catalog_testimonials",
+      "breakpoints": true
     }
   ]
 }
