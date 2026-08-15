@@ -45,8 +45,6 @@ jobs:
           TF_VAR_supabase_service_role_key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TF_VAR_jwt_private_key: ${{ secrets.JWT_PRIVATE_KEY }}
           TF_VAR_jwt_public_key: ${{ secrets.JWT_PUBLIC_KEY }}
-          TF_VAR_azure_di_endpoint: ${{ secrets.AZURE_DI_ENDPOINT }}
-          TF_VAR_azure_di_key: ${{ secrets.AZURE_DI_KEY }}
           TF_VAR_paymongo_secret_key: ${{ secrets.PAYMONGO_SECRET_KEY }}
           TF_VAR_paymongo_webhook_secret: ${{ secrets.PAYMONGO_WEBHOOK_SECRET }}
           TF_VAR_open_meteo_api_key: ${{ secrets.OPEN_METEO_API_KEY }}
@@ -92,8 +90,6 @@ jobs:
           TF_VAR_supabase_service_role_key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TF_VAR_jwt_private_key: ${{ secrets.JWT_PRIVATE_KEY }}
           TF_VAR_jwt_public_key: ${{ secrets.JWT_PUBLIC_KEY }}
-          TF_VAR_azure_di_endpoint: ${{ secrets.AZURE_DI_ENDPOINT }}
-          TF_VAR_azure_di_key: ${{ secrets.AZURE_DI_KEY }}
           TF_VAR_paymongo_secret_key: ${{ secrets.PAYMONGO_SECRET_KEY }}
           TF_VAR_paymongo_webhook_secret: ${{ secrets.PAYMONGO_WEBHOOK_SECRET }}
           TF_VAR_open_meteo_api_key: ${{ secrets.OPEN_METEO_API_KEY }}

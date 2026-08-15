@@ -9,6 +9,14 @@ import { config } from 'dotenv';
 // too late. require() them explicitly, after config(), instead.
 config({ path: path.resolve(__dirname, '../../../.env') });
 
+// Azure Monitor must be initialized before any instrumented module loads
+// (http, express, @nestjs/*) -- the same hazard the dotenv call above
+// solves. It needs APPLICATIONINSIGHTS_CONNECTION_STRING from env, so it
+// comes right after config() and before every other require() below.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { initTelemetry, shutdownTelemetry } = require('./telemetry/instrumentation.js');
+initTelemetry();
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 require('reflect-metadata');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -64,6 +72,16 @@ async function bootstrap() {
   const port = process.env.API_PORT ?? 3000;
   await app.listen(port);
   console.log(`ArkiLaunch API listening on :${port}`);
+
+  // ACA sends SIGTERM on revision replacement; without flushing here the
+  // exporter's last batch is dropped on every deploy.
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(signal, async () => {
+      await app.close().catch(() => {});
+      await shutdownTelemetry();
+      process.exit(0);
+    });
+  }
 }
 
 bootstrap();

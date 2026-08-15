@@ -2,6 +2,7 @@ import { desc, eq } from 'drizzle-orm';
 import { events, projectSites, rentals, weatherAlerts } from '@arkilaunch/db';
 import { evaluateSeverity, UnavailableWeatherAdapter, type WeatherPort } from '@arkilaunch/shared';
 import { makeJobDb } from './db-client.js';
+import { runInstrumentedJob } from './telemetry.js';
 
 // PRD-F5 §4/NFR-4: ACA Job cron, every 30 min per active site.
 //
@@ -104,7 +105,7 @@ export async function runWeatherPoll(
 
 const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
 if (isMainModule) {
-  runWeatherPoll().catch((err) => {
+  runInstrumentedJob('weather-poll', () => runWeatherPoll()).catch((err) => {
     console.error(err);
     process.exit(1);
   });

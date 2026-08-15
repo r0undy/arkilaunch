@@ -2,7 +2,7 @@
 
 variable "location" {
   type    = string
-  default = "southeastasia" # PH data-residency intent, docs/clr-arkilaunch.md gap E1 -- UNVERIFIED against Azure DI region availability. Confirm before relying on this for compliance.
+  default = "southeastasia" # PH data-residency intent, docs/clr-arkilaunch.md gap E1. Azure DI model/region availability confirmed (docs/cr-arkilaunch-azure-di-provisioning.md); the RA 10173 cross-border transfer basis (AIA-R7) is the remaining open item, not region availability.
 }
 
 variable "image_tag" {
@@ -117,18 +117,6 @@ variable "jwt_private_key" {
 variable "jwt_public_key" {
   type      = string
   sensitive = true
-}
-
-variable "azure_di_endpoint" {
-  type      = string
-  sensitive = true
-  default   = "" # blank until a real Azure DI resource + PH-residency confirmation land
-}
-
-variable "azure_di_key" {
-  type      = string
-  sensitive = true
-  default   = ""
 }
 
 variable "paymongo_secret_key" {

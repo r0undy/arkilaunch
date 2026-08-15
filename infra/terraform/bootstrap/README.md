@@ -51,6 +51,10 @@ Then set these as GitHub repo (or per-environment `dev`/`prod`) variables/secret
 `TF_STATE_STORAGE_ACCOUNT` (this bootstrap's `storage_account_name` output)
 as **variables**, not secrets — OIDC needs no client secret, and the state
 storage account name isn't sensitive. Plus every app secret from
-`.env.example` (`DATABASE_URL_POOLED`, `JWT_PRIVATE_KEY`, `AZURE_DI_KEY`,
+`.env.example` (`DATABASE_URL_POOLED`, `JWT_PRIVATE_KEY`,
 `PAYMONGO_SECRET_KEY`, etc.) as encrypted **secrets** — see
 `docs/runbook-local-dev.md` for the full list and what each one is.
+`AZURE_DI_ENDPOINT`/`AZURE_DI_KEY` are no longer GitHub secrets: Terraform
+provisions the Document Intelligence resource directly and feeds its
+`endpoint`/`primary_access_key` outputs into the Container App secrets (see
+`infra/terraform/modules/document_intelligence`).

@@ -39,8 +39,8 @@ locals {
     supabase-service-role-key     = var.supabase_service_role_key
     jwt-private-key               = var.jwt_private_key
     jwt-public-key                = var.jwt_public_key
-    azure-di-endpoint             = var.azure_di_endpoint
-    azure-di-key                  = var.azure_di_key
+    azure-di-endpoint             = module.document_intelligence.endpoint
+    azure-di-key                  = module.document_intelligence.primary_access_key
     paymongo-secret-key           = var.paymongo_secret_key
     paymongo-webhook-secret       = var.paymongo_webhook_secret
     open-meteo-api-key            = var.open_meteo_api_key
@@ -104,6 +104,15 @@ module "log_analytics" {
   name                = "law-${local.name}"
   resource_group_name = module.resource_group.name
   location            = var.location
+  tags                = local.tags
+}
+
+module "document_intelligence" {
+  source              = "../../modules/document_intelligence"
+  name                = "di-${local.name}"
+  resource_group_name = module.resource_group.name
+  location            = var.location
+  sku_name            = "S0" # prod: real documents, no F0 page-truncation/file-size limits
   tags                = local.tags
 }
 
@@ -222,6 +231,10 @@ module "maintenance_notify_job" {
 
 output "api_fqdn" {
   value = module.api_app.fqdn
+}
+
+output "azure_di_endpoint" {
+  value = module.document_intelligence.endpoint
 }
 
 output "registry_login_server" {

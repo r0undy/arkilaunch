@@ -4,6 +4,15 @@ import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared/testing';
 import type { RequestContext } from '@arkilaunch/shared';
 import { KycService } from '../src/kyc/kyc.service.js';
 import { EventsService } from '../src/events/events.service.js';
+import type { StorageService } from '../src/storage/storage.service.js';
+
+// KycService now fetches the document via a signed download URL before
+// calling port.analyze(); a data: URL lets native fetch() resolve it without
+// a real Supabase Storage round trip or mocking global fetch.
+const stubStorage = {
+  createSignedDownloadUrl: async () =>
+    `data:application/octet-stream;base64,${Buffer.from('fixture-bytes').toString('base64')}`,
+} as unknown as StorageService;
 
 // RFC-2 §2/§3 KYC sub-flow (PRD-F6). QAD-T6 (happy), QAD-T18 (sad: below
 // threshold / portal mismatch stays unverified), QAD-T32 (abuse: no
@@ -33,7 +42,7 @@ describe('KycService: extraction, format checks, and human portal confirmation',
         tin: { value: '123-456-789', confidence: 0.93 },
       },
     });
-    const kyc = new KycService(new EventsService(), fixture);
+    const kyc = new KycService(new EventsService(), stubStorage, fixture);
 
     const created = await kyc.extract(ctx, { customerId, documentType: 'sec_certificate', fileUri: 'storage://fixtures/sec.jpg' });
     expect(created.status).toBe('queued');
@@ -58,7 +67,7 @@ describe('KycService: extraction, format checks, and human portal confirmation',
         tin: { value: 'not-a-tin', confidence: 0.9 },
       },
     });
-    const kyc = new KycService(new EventsService(), fixture);
+    const kyc = new KycService(new EventsService(), stubStorage, fixture);
     const created = await kyc.extract(ctx, { customerId, documentType: 'sec_certificate', fileUri: 'storage://fixtures/sec2.jpg' });
     const polled = await kyc.get(ctx, created.kycDocumentId);
     expect(polled.formatValid.tin).toBe(false);
@@ -72,7 +81,7 @@ describe('KycService: extraction, format checks, and human portal confirmation',
         tin: { value: '123-456-789', confidence: 0.95 },
       },
     });
-    const kyc = new KycService(new EventsService(), fixture);
+    const kyc = new KycService(new EventsService(), stubStorage, fixture);
     const created = await kyc.extract(ctx, { customerId, documentType: 'sec_certificate', fileUri: 'storage://fixtures/sec3.jpg' });
 
     const confirmed = await kyc.confirm(ctx, created.kycDocumentId, { registryStatus: 'suspended', portalMatchScore: 0.2 });
@@ -83,7 +92,7 @@ describe('KycService: extraction, format checks, and human portal confirmation',
 
   it('QAD-T32: unreadable/empty extraction never fabricates a SEC/TIN value', async () => {
     const emptyFixture = new FixtureDocumentIntelligenceAdapter({ fields: {} });
-    const kyc = new KycService(new EventsService(), emptyFixture);
+    const kyc = new KycService(new EventsService(), stubStorage, emptyFixture);
     const created = await kyc.extract(ctx, { customerId, documentType: 'sec_certificate', fileUri: 'storage://fixtures/empty.jpg' });
     const polled = await kyc.get(ctx, created.kycDocumentId);
     expect(polled.extracted.secNumber).toBeNull();

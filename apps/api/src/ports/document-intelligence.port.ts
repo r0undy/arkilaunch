@@ -13,6 +13,7 @@ import {
   UnavailableDocumentIntelligenceAdapter,
   type DocumentIntelligencePort,
 } from '@arkilaunch/shared';
+import { AzureDocumentIntelligenceAdapter } from '@arkilaunch/document-intelligence';
 
 export {
   type DocumentExtractionResult,
@@ -40,8 +41,12 @@ export function isOcrKycEnabled(): boolean {
 // never accepts traffic -- rather than accepting paper uploads it has
 // nothing to extract with, or silently degrading to a value that looks
 // real. RFC-2 §7 specifies these flags; this is where they become true.
+//
+// hasAdapter: true asserts that AzureDocumentIntelligenceAdapter really is
+// constructed below -- this is the only caller allowed to make that
+// assertion (docs/cr-arkilaunch-azure-di-provisioning.md).
 export function createDocumentIntelligenceAdapter(): DocumentIntelligencePort {
-  const availability = documentIntelligenceAvailability(process.env);
+  const availability = documentIntelligenceAvailability(process.env, true);
   const requested = isOcrPipelineEnabled() || isOcrKycEnabled();
 
   if (requested && !availability.available) {
@@ -50,8 +55,16 @@ export function createDocumentIntelligenceAdapter(): DocumentIntelligencePort {
   if (!availability.available) {
     return new UnavailableDocumentIntelligenceAdapter(availability.reason);
   }
-  // Unreachable today: documentIntelligenceAvailability() cannot return
-  // available:true until a real Azure DI adapter is implemented. Kept as
-  // the explicit seam so landing that adapter is a one-line change here.
-  return new UnavailableDocumentIntelligenceAdapter('no_adapter');
+  if (!requested) {
+    // Credentials exist in every environment now (Terraform always creates
+    // the DI resource), so availability alone no longer implies extraction
+    // should happen -- the feature flags are the switch.
+    return new UnavailableDocumentIntelligenceAdapter('flag_disabled');
+  }
+
+  return new AzureDocumentIntelligenceAdapter({
+    endpoint: process.env.AZURE_DI_ENDPOINT!,
+    apiKey: process.env.AZURE_DI_KEY!,
+    ...(process.env.AZURE_DI_MAX_PAGES ? { maxPagesPerDocument: Number(process.env.AZURE_DI_MAX_PAGES) } : {}),
+  });
 }

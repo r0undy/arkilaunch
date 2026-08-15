@@ -16,6 +16,7 @@ import {
   type RequestContext,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import { DOCUMENT_INTELLIGENCE_PORT } from './kyc.tokens.js';
 
 interface KycOcrPayload {
@@ -37,6 +38,7 @@ export class KycService {
   // of the flow.
   constructor(
     private readonly events: EventsService,
+    private readonly storage: StorageService,
     @Inject(DOCUMENT_INTELLIGENCE_PORT) private readonly port: DocumentIntelligencePort,
   ) {}
 
@@ -70,7 +72,19 @@ export class KycService {
       // through (cr-arkilaunch-pilot-honesty.md §2).
       let result: DocumentExtractionResult | null = null;
       try {
-        result = await this.port.analyze(KYC_MODEL_ID, Buffer.alloc(0));
+        // Default matches infra/terraform/environments/*/variables.tf's own
+        // default, so this stays inert in CI/local dev where the env var is
+        // unset (CI's api-integration-suite runs with no Supabase config at
+        // all -- StorageService itself is not exercised there since these
+        // tests inject a stub in place of it).
+        const signedUrl = await this.storage.createSignedDownloadUrl(
+          process.env.SUPABASE_STORAGE_BUCKET_KYC ?? 'kyc-documents',
+          body.fileUri,
+        );
+        const res = await fetch(signedUrl);
+        if (!res.ok) throw new Error(`kyc_storage_download_failed:${res.status}`);
+        const bytes = Buffer.from(await res.arrayBuffer());
+        result = await this.port.analyze(KYC_MODEL_ID, bytes);
       } catch (error) {
         if (!(error instanceof ExtractionUnavailableError)) throw error;
         await this.events.emit(ctx, 'ocr_extraction_unavailable', {

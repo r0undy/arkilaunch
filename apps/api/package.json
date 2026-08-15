@@ -11,7 +11,10 @@
   },
   "dependencies": {
     "@arkilaunch/db": "workspace:*",
+    "@arkilaunch/document-intelligence": "workspace:*",
     "@arkilaunch/shared": "workspace:*",
+    "@azure/monitor-opentelemetry": "1.19.0",
+    "@opentelemetry/sdk-trace-base": "2.9.0",
     "@nestjs/common": "11.1.28",
     "@nestjs/config": "4.0.4",
     "@nestjs/core": "11.1.28",

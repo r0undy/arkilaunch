@@ -1,5 +1,6 @@
 import { dieselPriceReadings, events } from '@arkilaunch/db';
 import { makeJobDb } from './db-client.js';
+import { runInstrumentedJob } from './telemetry.js';
 
 // RFC-3 §3/§6/§8 (QUOTE-04): daily ACA Job cron. Fetches the DOE public
 // oil-price-watch page, parses the diesel figure defensively, bound-checks
@@ -89,7 +90,7 @@ export async function runDieselRefresh(): Promise<void> {
 
 const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
 if (isMainModule) {
-  runDieselRefresh().catch((err) => {
+  runInstrumentedJob('diesel', () => runDieselRefresh()).catch((err) => {
     console.error(err);
     process.exit(1);
   });

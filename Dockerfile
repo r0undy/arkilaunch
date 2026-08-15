@@ -13,20 +13,23 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/db/package.json packages/db/package.json
+COPY packages/document-intelligence/package.json packages/document-intelligence/package.json
 COPY jobs/package.json jobs/package.json
 COPY apps/api/package.json apps/api/package.json
 RUN pnpm install --frozen-lockfile
 
-# --- build: shared -> db -> jobs -> api, the same dependency order this repo
-# already builds in by hand (each package's tsc output is the next one's
-# input via workspace symlinks). ---
+# --- build: shared -> db -> document-intelligence -> jobs -> api, the same
+# dependency order this repo already builds in by hand (each package's tsc
+# output is the next one's input via workspace symlinks). ---
 FROM deps AS build
 COPY packages/shared packages/shared
 COPY packages/db packages/db
+COPY packages/document-intelligence packages/document-intelligence
 COPY jobs jobs
 COPY apps/api apps/api
 RUN pnpm --filter @arkilaunch/shared build \
  && pnpm --filter @arkilaunch/db build \
+ && pnpm --filter @arkilaunch/document-intelligence build \
  && pnpm --filter @arkilaunch/jobs build \
  && pnpm --filter @arkilaunch/api build
 
@@ -43,6 +46,7 @@ COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 COPY --from=build /app/packages/shared packages/shared
 COPY --from=build /app/packages/db packages/db
+COPY --from=build /app/packages/document-intelligence packages/document-intelligence
 COPY --from=build /app/jobs jobs
 COPY --from=build /app/apps/api apps/api
 

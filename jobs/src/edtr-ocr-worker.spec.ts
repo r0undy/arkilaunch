@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll } from 'vitest';
+import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
 import postgres from 'postgres';
 import { and, eq } from 'drizzle-orm';
 import { edtr, edtrReconciliations } from '@arkilaunch/db';
@@ -27,6 +27,19 @@ describe('edtr-ocr-worker', () => {
     await sql.end();
   });
 
+  // The worker gates on ENABLE_OCR_PIPELINE before anything else (see
+  // edtr-ocr-worker.ts); these tests exercise the claim/extract/reconcile
+  // loop itself, so they always run with the flag on.
+  beforeEach(() => {
+    process.env.ENABLE_OCR_PIPELINE = 'true';
+  });
+
+  // The worker fetches document bytes via a Supabase Storage signed URL
+  // before calling port.analyze(); these tests exercise the fixture adapter
+  // (which ignores the buffer contents) so this stub avoids a real network
+  // call. The fixture adapters don't read the bytes, so any Buffer is fine.
+  const stubFetchBytes = async () => Buffer.from('fixture-bytes');
+
   async function insertQueuedPaperEdtr(reportDate: string) {
     const { db, client } = makeJobDb();
     const [row] = await db
@@ -54,7 +67,7 @@ describe('edtr-ocr-worker', () => {
       },
     });
 
-    await runEdtrOcrWorker(fixture);
+    await runEdtrOcrWorker(fixture, stubFetchBytes);
 
     const { db, client } = makeJobDb();
     const [updated] = await db.select().from(edtr).where(eq(edtr.id, row.id));
@@ -68,7 +81,7 @@ describe('edtr-ocr-worker', () => {
     const row = await insertQueuedPaperEdtr('2020-02-02');
     const emptyFixture = new FixtureDocumentIntelligenceAdapter({ fields: {} });
 
-    await runEdtrOcrWorker(emptyFixture);
+    await runEdtrOcrWorker(emptyFixture, stubFetchBytes);
 
     const { db, client } = makeJobDb();
     const [updated] = await db.select().from(edtr).where(eq(edtr.id, row.id));
@@ -111,7 +124,7 @@ describe('edtr-ocr-worker', () => {
         hours_idle: { value: '1.0', confidence: 0.94 },
       },
     });
-    await runEdtrOcrWorker(fixture);
+    await runEdtrOcrWorker(fixture, stubFetchBytes);
 
     const { db: db2, client: client2 } = makeJobDb();
     const [updatedPaper] = await db2.select().from(edtr).where(eq(edtr.id, paperRow.id));
@@ -150,7 +163,7 @@ describe('edtr-ocr-worker', () => {
         hours_idle: { value: '1.0', confidence: 0.94 },
       },
     });
-    await runEdtrOcrWorker(fixture);
+    await runEdtrOcrWorker(fixture, stubFetchBytes);
 
     const { db: db2, client: client2 } = makeJobDb();
     const [updatedPaper] = await db2.select().from(edtr).where(eq(edtr.id, paperRow.id));

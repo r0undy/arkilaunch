@@ -51,22 +51,27 @@ export type DocumentIntelligenceAvailability =
 // packages/shared stays importable from the browser bundle. Callers in
 // apps/api and jobs pass process.env.
 //
-// This can never return { available: true } today, and that is the point:
-// no real Azure DI adapter exists, so there is no configuration -- however
-// many keys are set -- that can make the system believe it can extract.
-// A wrong answer here would be a fabricated value reaching a KYC reviewer.
+// `hasAdapter` defaults to false so any caller that forgets to pass it gets
+// the old fail-closed answer, not a silent upgrade to available:true. The
+// real Azure DI network client lives in @arkilaunch/document-intelligence
+// (not here -- this package stays browser-safe, dependency-light); its
+// factory is the only caller allowed to pass hasAdapter: true, and only
+// once it has actually constructed a real adapter
+// (docs/cr-arkilaunch-azure-di-provisioning.md). Before that CR, this could
+// never return { available: true } for any environment -- see
+// document-intelligence-port.spec.ts for the conformance suite the real
+// adapter must satisfy.
 export function documentIntelligenceAvailability(
   env: Record<string, string | undefined>,
+  hasAdapter = false,
 ): DocumentIntelligenceAvailability {
   if (!env.AZURE_DI_ENDPOINT || !env.AZURE_DI_KEY) {
     return { available: false, reason: 'no_credentials' };
   }
-  // Credentials are configured, but the real network client is deliberately
-  // not built yet (cr-arkilaunch-pilot-honesty.md §8): writing the async
-  // 202 + Operation-Location polling loop blind, against an API version
-  // that will move before a key arrives, is speculative code. When it
-  // lands, it must first satisfy document-intelligence-port.spec.ts.
-  return { available: false, reason: 'no_adapter' };
+  if (!hasAdapter) {
+    return { available: false, reason: 'no_adapter' };
+  }
+  return { available: true };
 }
 
 // The honest failure mode. This replaces the former

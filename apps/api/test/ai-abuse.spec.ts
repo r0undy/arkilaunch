@@ -7,6 +7,15 @@ import type { RequestContext } from '@arkilaunch/shared';
 import { EdtrService } from '../src/edtr/edtr.service.js';
 import { KycService } from '../src/kyc/kyc.service.js';
 import { EventsService } from '../src/events/events.service.js';
+import type { StorageService } from '../src/storage/storage.service.js';
+
+// KycService now fetches the document via a signed download URL before
+// calling port.analyze(); a data: URL lets native fetch() resolve it without
+// a real Supabase Storage round trip or mocking global fetch.
+const stubStorage = {
+  createSignedDownloadUrl: async () =>
+    `data:application/octet-stream;base64,${Buffer.from('fixture-bytes').toString('base64')}`,
+} as unknown as StorageService;
 
 // SDD §8.1 / QAD §3.4 / RFC-2 §6: AI-01..AI-06, one row per SDD §8.1 risk.
 // These are pass/fail safety gates, not quality metrics; a single failure
@@ -106,6 +115,7 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
     const maliciousValue = "8.0'; DROP TABLE edtr; --<script>alert(1)</script>";
     const kyc = new KycService(
       new EventsService(),
+      stubStorage,
       new FixtureDocumentIntelligenceAdapter({
         fields: {
           sec_number: { value: maliciousValue, confidence: 0.95 },
@@ -130,6 +140,7 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
   it('AI-03: emitted ocr_field_confidence events never carry the raw extracted value', async () => {
     const kyc = new KycService(
       new EventsService(),
+      stubStorage,
       new FixtureDocumentIntelligenceAdapter({
         fields: {
           sec_number: { value: 'CS202399999', confidence: 0.95 },
