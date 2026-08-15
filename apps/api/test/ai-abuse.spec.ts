@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll } from 'vitest';
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
 import postgres from 'postgres';
 import { edtr as edtrTable, edtrLineItems, withTenantTx } from '@arkilaunch/db';
-import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared';
+import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared/testing';
 import type { RequestContext } from '@arkilaunch/shared';
 import { EdtrService } from '../src/edtr/edtr.service.js';
 import { KycService } from '../src/kyc/kyc.service.js';

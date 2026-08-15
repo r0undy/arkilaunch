@@ -1,20 +1,24 @@
 import { desc, eq } from 'drizzle-orm';
 import { events, projectSites, rentals, weatherAlerts } from '@arkilaunch/db';
-import { evaluateSeverity, StubWeatherAdapter, type WeatherPort } from '@arkilaunch/shared';
+import { evaluateSeverity, UnavailableWeatherAdapter, type WeatherPort } from '@arkilaunch/shared';
 import { makeJobDb } from './db-client.js';
 
-// PRD-F5 §4/NFR-4: ACA Job cron, every 30 min per active site. Runs
-// against the stub Open-Meteo adapter by default -- the real adapter is a
-// follow-up once a live commercial-plan key exists (decided for this pass,
-// the same stubbed-pending posture as diesel.ts/edtr-ocr-worker.ts).
+// PRD-F5 §4/NFR-4: ACA Job cron, every 30 min per active site.
 //
-// Gated by ENABLE_WEATHER_POLL (default false): no live Open-Meteo key in
-// this pass.
+// Gated by ENABLE_WEATHER_POLL (default false). The default port is the
+// Unavailable adapter, which THROWS rather than returning a reading. It
+// used to be a stub returning all zeros, which evaluateSeverity() reads as
+// calm weather -- writing a fabricated all-clear for a construction site.
+// With the unavailable adapter, the per-site catch below fires instead and
+// no weather_alerts row is written at all, which sites.service.ts already
+// reports honestly as isStale: true / polledAt: null.
 const SEVERITY_RANK: Record<string, number> = { none: 0, watch: 1, warning: 2 };
 
-export async function runWeatherPoll(port: WeatherPort = new StubWeatherAdapter()): Promise<void> {
+export async function runWeatherPoll(
+  port: WeatherPort = new UnavailableWeatherAdapter('no_adapter'),
+): Promise<void> {
   if (process.env.ENABLE_WEATHER_POLL !== 'true') {
-    console.log('weather-poll: ENABLE_WEATHER_POLL is off; skipping (no live Open-Meteo key in this pass).');
+    console.log('weather-poll: ENABLE_WEATHER_POLL is off; skipping.');
     return;
   }
 

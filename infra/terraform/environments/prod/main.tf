@@ -77,7 +77,7 @@ locals {
     PAYMONGO_CANCEL_URL          = var.paymongo_cancel_url
     ENABLE_OCR_PIPELINE          = tostring(var.enable_ocr_pipeline)
     ENABLE_OCR_KYC               = tostring(var.enable_ocr_kyc)
-    ENABLE_QUOTE_ENGINE          = tostring(var.enable_quote_engine)
+    ENABLE_WEATHER_POLL          = tostring(var.enable_weather_poll)
     ENABLE_DIESEL_SCRAPE         = tostring(var.enable_diesel_scrape)
     ENABLE_PAYMENTS              = tostring(var.enable_payments)
   }

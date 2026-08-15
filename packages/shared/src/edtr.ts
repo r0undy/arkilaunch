@@ -32,6 +32,43 @@ export type OcrPayload = z.infer<typeof OcrPayloadSchema>;
 export const CONFIDENCE_GATE = 0.9;
 export const DEFAULT_TOLERANCE_HOURS = 0.25;
 
+// The model_id recorded when a human read the paper sheet instead of a
+// model (cr-arkilaunch-pilot-honesty.md §2.1). Not a real model, and
+// deliberately named so no query, report, or reviewer can mistake it for
+// one.
+export const MANUAL_TRANSCRIPTION_MODEL_ID = 'manual_transcription';
+
+export function isManualTranscription(payload: { model_id?: string } | null | undefined): boolean {
+  return payload?.model_id === MANUAL_TRANSCRIPTION_MODEL_ID;
+}
+
+// Builds the ocr_payload for a human-transcribed paper EDTR.
+//
+// min_field_confidence is 1, and that is correct rather than a fudge:
+// packages/db/src/reconciliation.ts already returns 1 for digital_entry on
+// the stated grounds that it "has no OCR step". A human transcription has
+// no OCR step either. The 0.90 gate exists to gate MODEL output; where
+// there is no model there is nothing for it to gate, and the double-entry
+// tolerance check against the counterpart log remains the real control --
+// which is the whole point of RFC-2's two-independent-logs design.
+export function buildManualTranscriptionPayload(input: {
+  hoursActive: number;
+  hoursIdle: number;
+  analyzedAt: string;
+}): OcrPayload {
+  return OcrPayloadSchema.parse({
+    model_id: MANUAL_TRANSCRIPTION_MODEL_ID,
+    api_version: 'n/a',
+    analyzed_at: input.analyzedAt,
+    fields: [
+      { name: 'hours_active', value: input.hoursActive, value_type: 'number', confidence: 1 },
+      { name: 'hours_idle', value: input.hoursIdle, value_type: 'number', confidence: 1 },
+    ],
+    min_field_confidence: 1,
+    pages: 1,
+  });
+}
+
 export type ReconciliationReason =
   | 'auto_accept'
   | 'low_confidence'
@@ -193,6 +230,16 @@ export const EdtrReconciliationResponseSchema = z.object({
 });
 export type EdtrReconciliationResponse = z.infer<typeof EdtrReconciliationResponseSchema>;
 
+// Provenance of the hours on this row, so a client can never present a
+// human transcription as a model result. A confidence of 1.00 from
+// `manual_transcription` must render as "Human transcription", NOT as
+// "OCR 100% confident" -- the two mean opposite things to a reviewer.
+export const EdtrExtractionResponseSchema = z.object({
+  modelId: z.string(),
+  analyzedAt: z.string(),
+  isManualTranscription: z.boolean(),
+});
+
 export const EdtrDetailResponseSchema = z.object({
   id: z.string().uuid(),
   status: z.string(),
@@ -200,5 +247,8 @@ export const EdtrDetailResponseSchema = z.object({
   lineItems: z.array(z.object({ hoursActive: z.number(), hoursIdle: z.number() })),
   fields: z.array(EdtrFieldResponseSchema),
   reconciliation: EdtrReconciliationResponseSchema.nullable(),
+  // null for digital_entry (no extraction step at all) and for a paper row
+  // still queued for the worker.
+  extraction: EdtrExtractionResponseSchema.nullable(),
 });
 export type EdtrDetailResponse = z.infer<typeof EdtrDetailResponseSchema>;

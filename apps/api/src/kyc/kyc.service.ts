@@ -5,6 +5,8 @@ import {
   SEC_REGEX,
   TIN_REGEX,
   matchBand,
+  ExtractionUnavailableError,
+  type DocumentExtractionResult,
   type DocumentIntelligencePort,
   type KycConfirmRequest,
   type KycDetailResponse,
@@ -55,14 +57,30 @@ export class KycService {
         .returning();
       if (!created) throw new Error('kyc_documents insert returned no row');
 
-      // Extraction runs synchronously against the stub/injected port in
-      // this pass (Azure DI calls are near-instant for the stub; a real
+      // Extraction runs synchronously against the injected port (a real
       // adapter would move this to an async worker mirroring
       // jobs/src/edtr-ocr-worker.ts). The state machine and format/human
       // gates are unaffected by sync vs async execution.
-      const result = await this.port.analyze(KYC_MODEL_ID, Buffer.alloc(0));
-      const secField = result.fields.sec_number;
-      const tinField = result.fields.tin;
+      //
+      // When no real adapter can serve the request, the port throws rather
+      // than returning an empty result -- an empty result is
+      // indistinguishable from "the document really was blank". The
+      // document is still stored and still queued for a human, who keys
+      // the identifiers in at confirm time; nothing is invented on the way
+      // through (cr-arkilaunch-pilot-honesty.md §2).
+      let result: DocumentExtractionResult | null = null;
+      try {
+        result = await this.port.analyze(KYC_MODEL_ID, Buffer.alloc(0));
+      } catch (error) {
+        if (!(error instanceof ExtractionUnavailableError)) throw error;
+        await this.events.emit(ctx, 'ocr_extraction_unavailable', {
+          doc_type: 'kyc',
+          reason: error.reason,
+        });
+      }
+
+      const secField = result?.fields.sec_number;
+      const tinField = result?.fields.tin;
 
       const ocrPayload: KycOcrPayload = {
         ...(secField ? { sec_number: secField.value, sec_confidence: secField.confidence } : {}),
@@ -78,7 +96,10 @@ export class KycService {
       await tx
         .update(kycDocuments)
         .set({
-          ocrPayload,
+          // null, not {}, when no extraction ran: an empty payload would
+          // read as "the model found nothing", which is a different and
+          // untrue claim.
+          ocrPayload: result ? ocrPayload : null,
           formatValid,
           confidence: confidence !== null ? String(confidence) : null,
           // Every extraction lands at needs_review -- there is no

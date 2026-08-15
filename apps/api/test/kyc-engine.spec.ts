@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import postgres from 'postgres';
-import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared';
+import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared/testing';
 import type { RequestContext } from '@arkilaunch/shared';
 import { KycService } from '../src/kyc/kyc.service.js';
 import { EventsService } from '../src/events/events.service.js';

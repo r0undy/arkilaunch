@@ -23,6 +23,8 @@ import {
 } from '@arkilaunch/db';
 import {
   CONFIDENCE_GATE,
+  buildManualTranscriptionPayload,
+  isManualTranscription,
   type EdtrApproveRequest,
   type EdtrCaptureRequest,
   type EdtrCaptureResponse,
@@ -34,6 +36,7 @@ import {
   type RequestContext,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
+import { isOcrPipelineEnabled } from '../ports/document-intelligence.port.js';
 import { round2HalfUp } from '../quotes/pricing-engine.service.js';
 
 @Injectable()
@@ -71,7 +74,45 @@ export class EdtrService {
         }
       }
 
-      const initialStatus = body.source === 'digital_entry' ? 'extracted' : 'queued';
+      // Manual transcription (cr-arkilaunch-pilot-honesty.md §2.1).
+      //
+      // Reconciliation pairs one paper_ocr row with one digital_entry row
+      // (packages/db/src/reconciliation.ts uses ne(source)). With no OCR
+      // adapter a paper row could never carry line items, so no pair could
+      // ever form, so every log stalled at single_source -> pending and
+      // approve() rejected it with 422 -- meaning NO deposit deduction was
+      // approvable at all. RFC-2 already specifies that a hard extraction
+      // failure "routes to manual entry and re-enters the pipeline as a
+      // second log"; this makes that path reachable at capture time.
+      //
+      // The two logs stay genuinely independent (the timekeeper's reading
+      // at the site, the PM's from their own record), so the tolerance
+      // gate, the FOR UPDATE pair lock, and 409 already_approved all keep
+      // working at full strength.
+      const ocrWillRun = isOcrPipelineEnabled();
+      if (body.source === 'paper_ocr') {
+        if (ocrWillRun && body.lineItems) {
+          // Ambiguous: the worker would overwrite whatever was typed here.
+          throw new UnprocessableEntityException({
+            error: 'line_items_not_accepted',
+            detail: 'The OCR pipeline is enabled; hours are extracted from the uploaded sheet.',
+          });
+        }
+        if (!ocrWillRun && !body.lineItems) {
+          throw new UnprocessableEntityException({
+            error: 'line_items_required',
+            detail:
+              'Document extraction is unavailable, so a photographed sheet must be accompanied by the hours read from it.',
+          });
+        }
+      }
+
+      const useManualTranscription = body.source === 'paper_ocr' && !ocrWillRun && !!body.lineItems;
+      // A transcribed paper row is 'extracted' immediately: there is no
+      // worker step left for it to wait on.
+      const initialStatus =
+        body.source === 'digital_entry' || useManualTranscription ? 'extracted' : 'queued';
+
       const [created] = await tx
         .insert(edtr)
         .values({
@@ -84,13 +125,28 @@ export class EdtrService {
           // rawFileUri is present for paper_ocr and lineItems for
           // digital_entry before this service method ever runs.
           rawFileUri: body.source === 'paper_ocr' ? (body.rawFileUri ?? null) : null,
+          // Records HOW the hours were obtained, permanently and queryably,
+          // so a transcription can never later be mistaken for a real
+          // extraction. digital_entry keeps a null payload exactly as
+          // before.
+          ocrPayload:
+            useManualTranscription && body.lineItems
+              ? buildManualTranscriptionPayload({
+                  hoursActive: body.lineItems.hoursActive,
+                  hoursIdle: body.lineItems.hoursIdle,
+                  analyzedAt: new Date().toISOString(),
+                })
+              : null,
           status: initialStatus,
         })
         .returning();
       if (!created) throw new Error('edtr insert returned no row');
 
       let finalStatus: string = created.status;
-      if (body.source === 'digital_entry' && body.lineItems) {
+      // Reconcile whenever line items are present, whatever the source --
+      // previously this ran only for digital_entry, which is why a paper
+      // row could never enter the gate.
+      if (body.lineItems) {
         await tx.insert(edtrLineItems).values({
           tenantId: ctx.tenantId,
           edtrId: created.id,
@@ -218,6 +274,15 @@ export class EdtrService {
           hoursIdle: Number(item.hoursIdle),
         })),
         fields,
+        // Provenance, so the client cannot render a human transcription's
+        // confidence of 1.00 as though a model were certain.
+        extraction: payload
+          ? {
+              modelId: payload.model_id,
+              analyzedAt: payload.analyzed_at,
+              isManualTranscription: isManualTranscription(payload),
+            }
+          : null,
         reconciliation: reconciliation
           ? {
               id: reconciliation.id,

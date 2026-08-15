@@ -8,6 +8,6 @@ supabase_url       = "https://ydalnvzyeseycdakofgp.supabase.co" # derived from t
 
 enable_ocr_pipeline  = false
 enable_ocr_kyc       = false
-enable_quote_engine  = false
+enable_weather_poll  = false
 enable_diesel_scrape = false
 enable_payments      = false

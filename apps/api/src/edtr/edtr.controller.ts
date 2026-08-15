@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, Req, UploadedFile, UseInterc
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
-import { FixtureDocumentIntelligenceAdapter, type EdtrCaptureRequest, type RequestContext } from '@arkilaunch/shared';
+import { type EdtrCaptureRequest, type RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { MAX_UPLOAD_BYTES, validateUpload } from '../storage/upload-validation.js';
 import { StorageService } from '../storage/storage.service.js';
@@ -26,29 +26,17 @@ export class EdtrController {
     private readonly storage: StorageService,
   ) {}
 
-  // Dev-only POC trigger: the real edtr-ocr-worker is an ACA Job (a
-  // separate scheduled process, RFC-2 §2), not an HTTP-callable service.
-  // This lets the demo frontend show a paper_ocr scan moving from
-  // "queued" to "reconciled"/"review" without standing up a real cron
-  // scheduler. Remove before this ships past a POC.
-  @Post('dev/run-worker')
-  @RequirePermission('edtr:approve')
-  async runWorker() {
-    const { runEdtrOcrWorker } = await import('@arkilaunch/jobs');
-    // No live Azure DI adapter exists yet (decided for this pass); a fixed
-    // fixture with plausible values keeps the POC demo meaningful instead
-    // of every scan hard-failing against the always-empty stub adapter.
-    // The image content itself is not actually read in this pass.
-    await runEdtrOcrWorker(
-      new FixtureDocumentIntelligenceAdapter({
-        fields: {
-          hours_active: { value: '8.0', confidence: 0.95 },
-          hours_idle: { value: '1.0', confidence: 0.94 },
-        },
-      }),
-    );
-    return { ok: true };
-  }
+  // The `POST edtr/dev/run-worker` POC shim was removed here by
+  // cr-arkilaunch-pilot-honesty.md. Its own comment said "Remove before
+  // this ships past a POC", and it did two things a shipping build must
+  // not: it exposed the ACA Job's entrypoint over HTTP (the real
+  // edtr-ocr-worker is a separate scheduled process, RFC-2 §2), and it
+  // injected a fixture with literal hours_active: '8.0' while never
+  // reading the uploaded image at all.
+  //
+  // Local-dev replacement, matching how production actually runs it
+  // (infra/terraform/modules/cron_job): `pnpm --filter @arkilaunch/jobs
+  // worker:edtr`. See docs/runbook-local-dev.md.
 
   // QAD-T31 (resource abuse / cost bomb): each capture queues an async
   // Azure DI extraction, so this route gets a tighter cap than the global

@@ -125,19 +125,6 @@ function EdtrPage() {
     }
   }
 
-  // Dev-only manual trigger: apps/api/src/edtr/edtr.controller.ts marks
-  // POST /edtr/dev/run-worker "remove before this ships past a POC" -- the
-  // real edtr-ocr-worker Container App Job runs on its own cron schedule in
-  // every deployed environment, so this button only exists for local dev.
-  async function runWorkerNow() {
-    setError(null);
-    try {
-      await apiPost('/edtr/dev/run-worker', {});
-    } catch (err) {
-      setError(err);
-    }
-  }
-
   async function approve(event: FormEvent) {
     event.preventDefault();
     if (!edtrId) return;
@@ -278,14 +265,6 @@ function EdtrPage() {
           </div>
         </form>
       </Surface>
-
-      {import.meta.env.DEV && source === 'paper_ocr' && (
-        <div className="mb-6 flex max-w-2xl flex-wrap gap-3">
-          <Button type="button" variant="secondary" onClick={runWorkerNow} disabled={!edtrId}>
-            Run extraction now (dev only)
-          </Button>
-        </div>
-      )}
 
       <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-6">
         <form onSubmit={approve} className="flex flex-col gap-4">

@@ -8,7 +8,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "worker:edtr": "tsx src/edtr-ocr-worker.ts",
+    "worker:weather": "tsx src/weather-poll.ts",
+    "worker:diesel": "tsx src/diesel.ts",
+    "worker:pm-notify": "tsx src/maintenance-notify.ts"
   },
   "dependencies": {
     "@arkilaunch/db": "workspace:*",

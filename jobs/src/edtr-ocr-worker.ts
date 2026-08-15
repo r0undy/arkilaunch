@@ -2,16 +2,20 @@ import { and, eq, isNull, lt } from 'drizzle-orm';
 import { edtr, edtrLineItems, events, reconcileEdtr } from '@arkilaunch/db';
 import {
   OcrPayloadSchema,
-  StubDocumentIntelligenceAdapter,
+  documentIntelligenceAvailability,
+  UnavailableDocumentIntelligenceAdapter,
   type DocumentIntelligencePort,
   type OcrPayload,
 } from '@arkilaunch/shared';
 import { makeJobDb } from './db-client.js';
 
 // RFC-2 §2/§3 (RFC2-02): claim/lock/retry loop + extraction + reconciliation
-// gate. Runs against the stub DocumentIntelligencePort by default -- the
-// real Azure DI adapter is a follow-up once live credentials and a trained
-// custom model exist (decided for this pass; see the F3 plan notes).
+// gate.
+//
+// NOTE: EDTR_MODEL_ID below names a custom neural model that DOES NOT EXIST
+// yet. Training it needs labeled Almara sheets, and the field names this
+// worker keys on (hours_active/hours_idle) are a guess until that training
+// run fixes the labels. Recorded in cr-arkilaunch-pilot-honesty.md §4.
 const MAX_ATTEMPTS = 5;
 const CLAIM_BATCH_SIZE = 10;
 const EDTR_MODEL_ID = 'arkilaunch-edtr-neural-v1';
@@ -45,7 +49,43 @@ function fieldNumber(payload: OcrPayload, name: string): number | null {
   return field && typeof field.value === 'number' ? field.value : null;
 }
 
-export async function runEdtrOcrWorker(port: DocumentIntelligencePort = new StubDocumentIntelligenceAdapter()) {
+export async function runEdtrOcrWorker(port?: DocumentIntelligencePort) {
+  // Fail closed BEFORE the claim UPDATE. A worker that cannot extract must
+  // not flip rows to 'extracting', burn an attempt, and drop them back --
+  // that churns `attempts` toward MAX_ATTEMPTS and eventually hard-fails
+  // perfectly good captures for a reason that has nothing to do with them.
+  // Returning early leaves every queued row exactly as it was, so the
+  // moment a real adapter is configured the backlog drains normally.
+  if (!port) {
+    const availability = documentIntelligenceAvailability(process.env);
+    if (!availability.available) {
+      console.log(
+        `edtr-ocr-worker: document extraction unavailable (${availability.reason}); claiming nothing.`,
+      );
+      const { db: probeDb, client: probeClient } = makeJobDb();
+      try {
+        // Tenant-scoped analytics need a tenant; this is a platform-level
+        // degradation, so record it against every tenant that currently
+        // has work waiting rather than inventing a tenant id.
+        const waiting = await probeDb.selectDistinct({ tenantId: edtr.tenantId }).from(edtr).where(eq(edtr.status, 'queued'));
+        for (const row of waiting) {
+          await probeDb.insert(events).values({
+            tenantId: row.tenantId,
+            name: 'external_dependency_degraded',
+            properties: { dependency: 'azure_document_intelligence', mode: 'unavailable', reason: availability.reason },
+          });
+        }
+      } finally {
+        await probeClient.end();
+      }
+      return;
+    }
+    // Reached only once documentIntelligenceAvailability() can return
+    // available:true, which requires a real Azure DI adapter to exist.
+    // This is the seam where it gets constructed.
+    port = new UnavailableDocumentIntelligenceAdapter('no_adapter');
+  }
+
   const { db, client } = makeJobDb();
 
   try {

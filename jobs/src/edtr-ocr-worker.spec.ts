@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll } from 'vitest';
 import postgres from 'postgres';
 import { and, eq } from 'drizzle-orm';
 import { edtr, edtrReconciliations } from '@arkilaunch/db';
-import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared';
+import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared/testing';
 import { runEdtrOcrWorker } from './edtr-ocr-worker.js';
 import { makeJobDb } from './db-client.js';
 

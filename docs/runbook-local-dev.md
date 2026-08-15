@@ -56,7 +56,7 @@ pnpm db:seed:test       # OR: two tenants, for isolation testing
 ## 4. Run
 
 ```
-pnpm dev                # both apps/api and apps/web, parallel
+pnpm dev                # both apps/api and apps/web, concurrently with [api]/[web] labeled output
 ```
 
 - API: `http://localhost:3000/api/v1` (see `apps/web/.env`'s `VITE_API_BASE_URL`)
@@ -64,6 +64,24 @@ pnpm dev                # both apps/api and apps/web, parallel
 - Health check: `GET /health` — now runs a trivial DB query, so a 200 means both "API is up" and
   "API can reach Postgres"; a 503 with `{"status":"db_unreachable"}` means the pooler connection is
   bad (check `DATABASE_URL_POOLED`).
+
+### 4.1 Running a cron job by hand
+
+The four ACA Jobs are separate scheduled processes, not HTTP endpoints. Run one the same way
+production does (`infra/terraform/modules/cron_job` runs `node jobs/dist/<entrypoint>.js`):
+
+```
+pnpm --filter @arkilaunch/jobs worker:edtr        # EDTR OCR + reconciliation
+pnpm --filter @arkilaunch/jobs worker:weather     # needs ENABLE_WEATHER_POLL=true
+pnpm --filter @arkilaunch/jobs worker:diesel      # needs ENABLE_DIESEL_SCRAPE=true
+pnpm --filter @arkilaunch/jobs worker:pm-notify   # ungated
+```
+
+`worker:edtr` will report `document extraction unavailable (no_credentials); claiming nothing` and
+exit without touching any row — correct, and deliberate: with no Azure DI credentials there is
+nothing to extract with, and claiming rows anyway would burn their retry budget. Capture a paper
+EDTR with the hours typed in alongside the photo instead (see §5), which is the pilot's actual
+double-entry path.
 
 ## 5. Verify
 

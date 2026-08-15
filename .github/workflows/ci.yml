@@ -10,6 +10,12 @@ on:
 # slice will populate (OCR accuracy gate, Newman API suite, money-path
 # Playwright E2E) are declared and explicitly marked skipped, not omitted,
 # so their absence is visible rather than silent.
+#
+# node-unit-tests and api-integration-suite were added by
+# cr-arkilaunch-pilot-honesty.md. Before them this pipeline ran only the
+# apps/web suite, so 33 already-written spec files -- including every
+# AI-adversarial (AI-01..AI-06) and money-gate test -- had never gated a
+# single pull request.
 jobs:
   lint-typecheck-build:
     runs-on: ubuntu-latest
@@ -41,6 +47,93 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @arkilaunch/shared build
       - run: pnpm --filter @arkilaunch/web test
+
+  node-unit-tests:
+    runs-on: ubuntu-latest
+    # packages/shared is pure logic (Zod schemas, the reconciliation gate,
+    # weather severity, OCR accuracy math) with no DB dependency, so it runs
+    # without a service container.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @arkilaunch/shared test
+
+  api-integration-suite:
+    runs-on: ubuntu-latest
+    # The apps/api, jobs, and packages/db suites are integration tests
+    # against a real Postgres, not unit tests -- packages/db/src/client.ts
+    # throws at import unless DATABASE_URL_POOLED is set. Before this job
+    # existed, 33 spec files (including the whole AI-adversarial and
+    # money-gate suite) ran in no CI job at all.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Throwaway credentials for an ephemeral container that is destroyed
+      # with the runner. Never reuse this shape for a real environment.
+      APP_AUTHENTICATED_PASSWORD: ci_throwaway_not_a_secret
+      DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/postgres
+      # Load-bearing: the pooled URL connects as app_authenticated, NOT as
+      # postgres. postgres is a superuser and superusers bypass RLS
+      # regardless of FORCE, so running the suite as postgres would make
+      # every tenant-isolation assertion pass vacuously (RFC-1 §3).
+      DATABASE_URL_POOLED: postgresql://app_authenticated:ci_throwaway_not_a_secret@localhost:5432/postgres
+      ANCHOR_TENANT_SLUG: test-tenant-a
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build workspace packages the apps import
+        run: pnpm -r --filter=./packages/* build
+      - name: Generate a throwaway RS256 keypair
+        # RS256 per RFC-1. The suite reads these with .replace(/\\n/g,'\n')
+        # (see apps/api/src/auth/auth.module.ts), so the PEM is flattened to
+        # a single line with literal \n escapes, matching the runbook's
+        # documented .env format.
+        run: |
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/jwt.key
+          openssl rsa -in /tmp/jwt.key -pubout -out /tmp/jwt.pub
+          echo "JWT_PRIVATE_KEY=$(sed -z 's/\n/\\n/g' /tmp/jwt.key)" >> "$GITHUB_ENV"
+          echo "JWT_PUBLIC_KEY=$(sed -z 's/\n/\\n/g' /tmp/jwt.pub)" >> "$GITHUB_ENV"
+      - name: Apply migrations and set the app_authenticated password
+        run: pnpm --filter @arkilaunch/db migrate
+      - name: Seed the two-tenant isolation fixtures
+        run: pnpm db:seed:test
+      - name: apps/api suite
+        run: pnpm --filter @arkilaunch/api test
+      - name: jobs suite
+        run: pnpm --filter @arkilaunch/jobs test
+      - name: packages/db pooler-independent suites
+        # Explicit file list, never a silent skipIf: guc-pooler-leak.spec.ts
+        # genuinely needs Supavisor and runs in cross-tenant-isolation-suite
+        # below. Naming the files here means a security test cannot quietly
+        # vanish from CI by being skipped at runtime.
+        run: >-
+          pnpm --filter @arkilaunch/db exec vitest run
+          test/tenant-isolation.spec.ts
+          test/rls-enumeration.spec.ts
+          test/audit-log-immutability.spec.ts
 
   migration-expand-contract-check:
     runs-on: ubuntu-latest
@@ -100,14 +193,14 @@ jobs:
   ocr-accuracy-gate:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "skipped: lands with RFC-2 / F3 (golden-set fixtures, >=90.06% gate, QAD-T39)"
+      - run: 'echo "skipped: lands with RFC-2 / F3 (golden-set fixtures, >=90.06% gate, QAD-T39)"'
 
   newman-api-suite:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "skipped: lands with F1/F2 (webhook idempotency, 409 reconciliation-discrepancy gate)"
+      - run: 'echo "skipped: lands with F1/F2 (webhook idempotency, 409 reconciliation-discrepancy gate)"'
 
   money-path-e2e:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "skipped: lands with F3/F1 (OCR->reconciliation->deduction; quote->PayMongo->webhook)"
+      - run: 'echo "skipped: lands with F3/F1 (OCR->reconciliation->deduction; quote->PayMongo->webhook)"'

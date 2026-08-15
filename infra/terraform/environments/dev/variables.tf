@@ -43,7 +43,7 @@ variable "enable_ocr_kyc" {
   default = false
 }
 
-variable "enable_quote_engine" {
+variable "enable_weather_poll" {
   type    = bool
   default = false
 }

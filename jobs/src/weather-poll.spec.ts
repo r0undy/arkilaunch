@@ -2,7 +2,8 @@ import { describe, expect, it, beforeAll } from 'vitest';
 import postgres from 'postgres';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { addresses, events, projectSites, rentals, weatherAlerts } from '@arkilaunch/db';
-import { FixtureWeatherAdapter, type WeatherPort } from '@arkilaunch/shared';
+import { FixtureWeatherAdapter } from '@arkilaunch/shared/testing';
+import type { WeatherPort } from '@arkilaunch/shared';
 import { runWeatherPoll } from './weather-poll.js';
 import { makeJobDb } from './db-client.js';
 
