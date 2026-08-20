@@ -205,6 +205,9 @@ importers:
       '@arkilaunch/shared':
         specifier: workspace:*
         version: link:../packages/shared
+      '@arkilaunch/weather':
+        specifier: workspace:*
+        version: link:../packages/weather
       '@azure/monitor-opentelemetry':
         specifier: 1.19.0
         version: 1.19.0
@@ -293,6 +296,25 @@ importers:
       vitest:
         specifier: 3.2.7
         version: 3.2.7(@types/node@26.1.2)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.33.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
+
+  packages/weather:
+    dependencies:
+      '@arkilaunch/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: 4.0.17
+        version: 4.0.17
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: 5.7.3
+        version: 5.7.3
+      vitest:
+        specifier: 3.2.7
+        version: 3.2.7(@types/node@24.13.3)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.33.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
 
 packages:
 

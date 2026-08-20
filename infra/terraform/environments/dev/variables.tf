@@ -71,6 +71,15 @@ variable "weather_poll_cron" {
   default = "*/30 * * * *"
 }
 
+# Open-Meteo free tier caps at 10,000 calls/day
+# (docs/cr-arkilaunch-open-meteo-free-tier.md). At the 30-min cadence above
+# that is 48 calls/site/day, so this ceiling supports ~200 active sites; a
+# poll cycle over the ceiling truncates loudly rather than over-calling.
+variable "weather_poll_max_sites" {
+  type    = number
+  default = 200
+}
+
 variable "edtr_ocr_worker_cron" {
   type    = string
   default = "*/5 * * * *"
@@ -141,8 +150,3 @@ variable "paymongo_cancel_url" {
   default = ""
 }
 
-variable "open_meteo_api_key" {
-  type      = string
-  sensitive = true
-  default   = ""
-}

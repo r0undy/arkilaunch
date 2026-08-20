@@ -50,9 +50,13 @@ jobs:
 
   node-unit-tests:
     runs-on: ubuntu-latest
-    # packages/shared is pure logic (Zod schemas, the reconciliation gate,
-    # weather severity, OCR accuracy math) with no DB dependency, so it runs
-    # without a service container.
+    # packages/shared (Zod schemas, the reconciliation gate, weather
+    # severity, OCR accuracy math), packages/document-intelligence (the
+    # Azure DI adapter, stubbed fetch), and packages/weather (the Open-Meteo
+    # adapter, stubbed fetch) are all pure logic with no DB dependency, so
+    # they run without a service container. document-intelligence and
+    # weather were previously built by lint-typecheck-build but never
+    # tested in any CI job (docs/cr-arkilaunch-open-meteo-free-tier.md).
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -63,7 +67,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @arkilaunch/shared build
       - run: pnpm --filter @arkilaunch/shared test
+      - run: pnpm --filter @arkilaunch/document-intelligence test
+      - run: pnpm --filter @arkilaunch/weather test
 
   api-integration-suite:
     runs-on: ubuntu-latest

@@ -35,6 +35,16 @@ export const DEFAULT_WEATHER_THRESHOLDS: WeatherThresholds = {
 export const WEATHER_POLL_CADENCE_MINUTES = 30;
 export const WEATHER_STALE_AFTER_MINUTES = WEATHER_POLL_CADENCE_MINUTES * 2;
 
+// Open-Meteo's free tier (docs/cr-arkilaunch-open-meteo-free-tier.md) caps
+// at 10,000 calls/day. Derived, not a magic number, so a future cadence
+// change carries the ceiling with it: one site costs
+// (1440 / WEATHER_POLL_CADENCE_MINUTES) calls/day, so this is the largest
+// active-site count the poller can serve without exceeding the cap.
+export const OPEN_METEO_FREE_DAILY_CALL_CAP = 10_000;
+export const MAX_POLLED_SITES_PER_CYCLE = Math.floor(
+  OPEN_METEO_FREE_DAILY_CALL_CAP / (24 * 60 / WEATHER_POLL_CADENCE_MINUTES),
+);
+
 // Pure severity evaluation, no DB/IO. Threshold-crossing is what the
 // poller uses to decide whether to also append the liability `events` row
 // (SDD §4 "auto-logs a liability incident").

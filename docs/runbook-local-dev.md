@@ -37,13 +37,15 @@ Feature flags for local frontend work (auth real, everything vendor-backed stubb
 ```
 ENABLE_OCR_PIPELINE=false
 ENABLE_OCR_KYC=false
-ENABLE_QUOTE_ENGINE=false
+ENABLE_WEATHER_POLL=false
 ENABLE_DIESEL_SCRAPE=false
 ENABLE_PAYMENTS=false
 ```
 
-Leave `AZURE_DI_*`, `PAYMONGO_*`, `OPEN_METEO_API_KEY` blank — the stub/fixture adapters are used
-instead (see `packages/shared/src/document-intelligence-port.ts`).
+Leave `AZURE_DI_*` and `PAYMONGO_*` blank — the stub/fixture adapters are used instead (see
+`packages/shared/src/document-intelligence-port.ts`). Weather needs no credential at all
+(`docs/cr-arkilaunch-open-meteo-free-tier.md`): set `ENABLE_WEATHER_POLL=true` and the free-tier
+Open-Meteo client works immediately, no key to fill in.
 
 ## 3. Migrate and seed
 

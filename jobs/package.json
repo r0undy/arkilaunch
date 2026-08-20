@@ -18,6 +18,7 @@
     "@arkilaunch/db": "workspace:*",
     "@arkilaunch/document-intelligence": "workspace:*",
     "@arkilaunch/shared": "workspace:*",
+    "@arkilaunch/weather": "workspace:*",
     "@azure/monitor-opentelemetry": "1.19.0",
     "dotenv": "17.4.2",
     "drizzle-orm": "0.44.7",

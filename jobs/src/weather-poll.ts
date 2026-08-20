@@ -1,23 +1,24 @@
 import { desc, eq } from 'drizzle-orm';
 import { events, projectSites, rentals, weatherAlerts } from '@arkilaunch/db';
-import { evaluateSeverity, UnavailableWeatherAdapter, type WeatherPort } from '@arkilaunch/shared';
+import { evaluateSeverity, MAX_POLLED_SITES_PER_CYCLE, type WeatherPort } from '@arkilaunch/shared';
+import { createWeatherAdapter } from '@arkilaunch/weather';
 import { makeJobDb } from './db-client.js';
 import { runInstrumentedJob } from './telemetry.js';
 
 // PRD-F5 §4/NFR-4: ACA Job cron, every 30 min per active site.
 //
-// Gated by ENABLE_WEATHER_POLL (default false). The default port is the
-// Unavailable adapter, which THROWS rather than returning a reading. It
-// used to be a stub returning all zeros, which evaluateSeverity() reads as
-// calm weather -- writing a fabricated all-clear for a construction site.
-// With the unavailable adapter, the per-site catch below fires instead and
-// no weather_alerts row is written at all, which sites.service.ts already
+// Gated by ENABLE_WEATHER_POLL (default false). createWeatherAdapter()
+// resolves the real OpenMeteoAdapter (free tier;
+// docs/cr-arkilaunch-open-meteo-free-tier.md) when the flag is on, and the
+// throwing UnavailableWeatherAdapter otherwise -- it used to be a stub
+// returning all zeros, which evaluateSeverity() reads as calm weather,
+// writing a fabricated all-clear for a construction site. With the
+// unavailable adapter, the per-site catch below fires instead and no
+// weather_alerts row is written at all, which sites.service.ts already
 // reports honestly as isStale: true / polledAt: null.
 const SEVERITY_RANK: Record<string, number> = { none: 0, watch: 1, warning: 2 };
 
-export async function runWeatherPoll(
-  port: WeatherPort = new UnavailableWeatherAdapter('no_adapter'),
-): Promise<void> {
+export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter()): Promise<void> {
   if (process.env.ENABLE_WEATHER_POLL !== 'true') {
     console.log('weather-poll: ENABLE_WEATHER_POLL is off; skipping.');
     return;
@@ -38,6 +39,31 @@ export async function runWeatherPoll(
       .from(projectSites)
       .innerJoin(rentals, eq(rentals.projectSiteId, projectSites.id))
       .where(eq(rentals.status, 'active'));
+
+    const ceiling = Number(process.env.WEATHER_POLL_MAX_SITES ?? MAX_POLLED_SITES_PER_CYCLE);
+    if (activeSites.length > ceiling) {
+      // Abort the whole cycle rather than polling only the first N: a
+      // partial cycle leaves an arbitrary row-order-dependent subset of
+      // sites fresh and the rest silently stale, which is indistinguishable
+      // at the UI from a per-site outage. Aborting means every site ages
+      // toward is_stale uniformly (already surfaced honestly by the read
+      // endpoint's own staleness check) and produces one loud, explicable
+      // signal instead -- and it protects against the worse outcome of
+      // tripping the free tier's rate limiter and losing every site's
+      // weather at once mid-cycle.
+      console.error(
+        `weather-poll: ${activeSites.length} active sites exceeds the ${ceiling}-site free-tier ceiling; skipping this cycle entirely.`,
+      );
+      const affectedTenants = [...new Set(activeSites.map((site) => site.tenantId))];
+      for (const tenantId of affectedTenants) {
+        await db.insert(events).values({
+          tenantId,
+          name: 'external_dependency_degraded',
+          properties: { dependency: 'open_meteo', mode: 'quota_ceiling', active_sites: activeSites.length, ceiling },
+        });
+      }
+      return;
+    }
 
     console.log(`weather-poll: polling ${activeSites.length} active site(s).`);
 

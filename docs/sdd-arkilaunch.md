@@ -615,7 +615,7 @@ Response 200:
   "polled_at": timestamptz
 }
 ```
-The `POST /internal/jobs/weather-poll` cron writes `weather_alerts` and auto-logs a liability incident when a risk threshold is crossed. Open-Meteo down returns the cached last-known Luzon reading with `is_stale: true`; the cycle retries and alerts rather than dropping silently (US-05).
+The `POST /internal/jobs/weather-poll` cron writes `weather_alerts` and auto-logs a liability incident when a risk threshold is crossed. Open-Meteo down returns the cached last-known Luzon reading with `is_stale: true`; the cycle retries and alerts rather than dropping silently (US-05). **Addendum (2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md`):** the real `OpenMeteoAdapter` itself does not retry within a cycle -- the next 30-minute cycle is the retry (`jobs/src/weather-poll.ts` is the direct entrypoint, per the prior `cr-arkilaunch-f4-f5-fleet-weather.md` addendum on this endpoint's shape). Runs against the FREE Open-Meteo tier, not the commercial plan; see the CR for the accepted licensing exposure.
 
 ### `POST /api/v1/bookings` · PRD-F8
 
@@ -780,7 +780,7 @@ sequenceDiagram
 |---------|---------|------------------------|
 | Azure AI Document Intelligence | EDTR extraction (F3), KYC SEC/TIN extraction (F6) | Async queue + retry with backoff; unreadable input hard-fails to manual entry, never fabricates; per-page priced. SE Asia region / residency is a carried gap (AIA §5 + CLR). Emits `external_dependency_degraded`. |
 | PayMongo | Hosted checkout + deposit webhooks (F2) | 429 backoff; webhook signature-verified + idempotent on `provider_ref`; status derived from webhook not redirect. Refund/dispute detail carried (G-10). |
-| Open-Meteo (commercial plan) | Per-site weather poll (F5) | Commercial plan required (free tier is non-commercial; FC-7). Serve cached last-known Luzon reading on outage, mark `is_stale`, retry and alert, never drop the cycle silently. |
+| Open-Meteo (commercial plan) | Per-site weather poll (F5) | Commercial plan required (free tier is non-commercial; FC-7). Serve cached last-known Luzon reading on outage, mark `is_stale`, retry and alert, never drop the cycle silently. **Addendum (2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md`): ships against the FREE tier instead, keyless, 10,000 calls/day cap; a per-cycle site-count ceiling aborts the whole cycle rather than exceeding it.** |
 | Diesel price source (RFC-3) | Live diesel index for quotes (F1) | Source resolved (G-3 closed): hybrid DOE scrape + platform/tenant manual override. Snapshot price into each versioned quotation; on stale/unavailable use last-known with a staleness warning; full design in [RFC-3](rfc-arkilaunch-quotation-pricing-engine.md). |
 | Supabase Storage | EDTR + KYC image blobs (F3/F6) | Short-TTL signed URLs; access mediated by API; RLS on metadata rows; images never served on a public URL. |
 
@@ -823,7 +823,7 @@ sequenceDiagram
 
 **Edge / weather / diesel operational notes:**
 - Cloudflare WAF fronts every public route; the booking portal (`/t/:tenantSlug`) additionally gets bot mitigation.
-- **Open-Meteo commercial plan** (the free tier is non-commercial, up to 10k/day, CC BY 4.0; ArkiLaunch is commercial, FC-7). Quota and cost alerting live in OPS. Fallback: the last-known Luzon reading persisted per site, served with `is_stale: true`.
+- **Open-Meteo commercial plan** (the free tier is non-commercial, up to 10k/day, CC BY 4.0; ArkiLaunch is commercial, FC-7). Quota and cost alerting live in OPS. Fallback: the last-known Luzon reading persisted per site, served with `is_stale: true`. **Addendum (2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md`): the free tier ships instead** (keyless, 10,000 calls/day). Quota alerting is restated as the free-tier cap; the non-commercial-use restriction is an accepted, open exposure -- see the CR.
 - **Diesel-price source is resolved** (G-3 closed) in [RFC-3](rfc-arkilaunch-quotation-pricing-engine.md): hybrid DOE scrape + manual override. The current price is snapshotted into each quotation for reproducibility regardless of source.
 - ACA Jobs guard overlapping cron runs via a replica/parallelism limit or a Postgres advisory lock.
 

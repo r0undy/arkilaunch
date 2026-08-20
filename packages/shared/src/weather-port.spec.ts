@@ -14,6 +14,15 @@ describe('UnavailableWeatherAdapter', () => {
       reason: 'flag_disabled',
     });
   });
+
+  // The free tier is keyless, so 'no_credentials' can never be the true
+  // story in production -- the default must not name a cause that cannot
+  // happen.
+  it('defaults to no_adapter, not no_credentials', async () => {
+    await expect(new UnavailableWeatherAdapter().getConditions(0, 0)).rejects.toMatchObject({
+      reason: 'no_adapter',
+    });
+  });
 });
 
 // Regression rationale, pinned as an executable assertion so nobody

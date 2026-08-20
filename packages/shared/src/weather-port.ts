@@ -10,12 +10,23 @@ export interface WeatherObservation {
   code: number;
 }
 
-// Open-Meteo commercial plan (PRD-F5; the free tier is non-commercial per
-// CLR, so it must not be used in production).
+// Open-Meteo FREE tier (PRD-F5). The free tier is keyless and restricted to
+// non-commercial use; ArkiLaunch ships against it anyway as a deliberate,
+// recorded divergence from the Locked PRD's "requires the commercial plan"
+// line -- see docs/cr-arkilaunch-open-meteo-free-tier.md before assuming
+// this contradicts anything. CC BY 4.0 attribution is rendered in
+// apps/web/src/components/weather-banner.tsx; the non-commercial-use
+// exposure is carried as an open item there, not resolved.
 export interface WeatherPort {
   getConditions(latitude: number, longitude: number): Promise<WeatherObservation>;
 }
 
+// 'no_credentials' stays in the union for symmetry with
+// ExtractionUnavailableReason's shared vocabulary, but is unreachable in
+// production now that the free tier needs no key -- there is nothing left
+// to be missing. 'no_adapter' is UnavailableWeatherAdapter's default for
+// exactly that reason: a default of 'no_credentials' would name a cause
+// that can no longer be true.
 export type WeatherUnavailableReason = 'no_credentials' | 'no_adapter' | 'flag_disabled';
 
 export class WeatherUnavailableError extends Error {
@@ -40,7 +51,7 @@ export class WeatherUnavailableError extends Error {
 // all, and sites.service.ts's existing `!latest` branch already reports
 // that honestly as `isStale: true, polledAt: null`.
 export class UnavailableWeatherAdapter implements WeatherPort {
-  constructor(private readonly reason: WeatherUnavailableReason = 'no_credentials') {}
+  constructor(private readonly reason: WeatherUnavailableReason = 'no_adapter') {}
 
   async getConditions(_latitude: number, _longitude: number): Promise<WeatherObservation> {
     throw new WeatherUnavailableError(this.reason);

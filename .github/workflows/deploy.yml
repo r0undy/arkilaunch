@@ -47,7 +47,6 @@ jobs:
           TF_VAR_jwt_public_key: ${{ secrets.JWT_PUBLIC_KEY }}
           TF_VAR_paymongo_secret_key: ${{ secrets.PAYMONGO_SECRET_KEY }}
           TF_VAR_paymongo_webhook_secret: ${{ secrets.PAYMONGO_WEBHOOK_SECRET }}
-          TF_VAR_open_meteo_api_key: ${{ secrets.OPEN_METEO_API_KEY }}
 
   deploy:
     if: github.event_name == 'push'
@@ -92,4 +91,3 @@ jobs:
           TF_VAR_jwt_public_key: ${{ secrets.JWT_PUBLIC_KEY }}
           TF_VAR_paymongo_secret_key: ${{ secrets.PAYMONGO_SECRET_KEY }}
           TF_VAR_paymongo_webhook_secret: ${{ secrets.PAYMONGO_WEBHOOK_SECRET }}
-          TF_VAR_open_meteo_api_key: ${{ secrets.OPEN_METEO_API_KEY }}
