@@ -11,10 +11,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_applications TO app_authenticated
 
 -- Registration is an unauthenticated write with no tenant context yet --
 -- same situation auth_find_user_by_email and payments_find_tenant_by_invoice
--- solve, but for a WRITE rather than a read. Migration 0007 revoked INSERT
--- on `tenants` for app_authenticated entirely (a tenant can only ever update
--- its own legal_name), so a SECURITY DEFINER function is not optional here;
--- there is no other path that could create a tenant row at all. In one
+-- solve, but for a WRITE rather than a read. Migration 0007 only revoked
+-- UPDATE and DELETE on `tenants` for app_authenticated -- INSERT is still
+-- granted (0002_force_rls_and_grants.sql) and `tenants` carries no RLS
+-- policy at all, so this SECURITY DEFINER function is not the only path
+-- that can create a tenant row; that grant gap is tracked separately, not
+-- fixed by this migration. In one
 -- transaction: creates the tenant (status='onboarding'), the owner user
 -- (status='invited' -- the password hash passed in is an unusable random
 -- placeholder hashed in Node, never a real password; see

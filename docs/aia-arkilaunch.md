@@ -88,6 +88,8 @@
 
 > **Govern (cross-cutting):** the ArkiLaunch team owns this register, reviews it each release and after any incident, and routes changes through a Change Record. No row ships "Open" at launch without an escalation flag in §4 (AIA-R5 is monitored with an accuracy SLO; AIA-R7 is escalated to counsel).
 
+> **Status note (`cr-arkilaunch-pilot-honesty.md` §2.5, 2026-08-13):** with no Azure DI model running during the pilot (both OCR flags `false`, no vendor credentials), AIA-R1, AIA-R3, and AIA-R5 above are honestly **not exercised** rather than "Mitigated" or "Open (monitored)" — there is no live extraction to mitigate against. AIA-R7 (cross-border data residency) is correspondingly not a pilot-launch blocker for the same reason. `cr-arkilaunch-azure-di-provisioning.md` (2026-08-15) re-arms AIA-R7 to `Open (escalated)` now that a real Azure DI resource exists in southeastasia (see the row below), and both flags remain `false` until the counsel/DPO clearance in §4 closes.
+
 **Self-check:**
 - [x] Every applicable SDD §8.1 control (AI-01..AI-06) appears as a row with its eval
 - [x] Each row names an owner and a status; the two Open rows carry an escalation/monitoring path (§4)
