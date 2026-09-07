@@ -5,7 +5,7 @@
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Locked
-**Last reconciled:** 2026-08-02 (see docs/index.md §1); frontend prerender amendment recorded via Change Record `docs/cr-arkilaunch-frontend-storefront-shell.md`; §2/§4/§5/§6/§7 amended 2026-08-20 by `docs/cr-arkilaunch-open-meteo-free-tier.md`
+**Last reconciled:** 2026-09-07 (see docs/index.md §1); §3's `delta_hours` definition and §4's 409 body corrected 2026-09-07 by `docs/cr-arkilaunch-m4-money-path-gates.md`; frontend prerender amendment recorded via Change Record `docs/cr-arkilaunch-frontend-storefront-shell.md`; §2/§4/§5/§6/§7 amended 2026-08-20 by `docs/cr-arkilaunch-open-meteo-free-tier.md`
 **PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
 **Event / context:** FMD engine v1.28.1; Scale Full.
 
@@ -224,7 +224,7 @@ Full column definitions follow for the multi-tenant additions and the load-beari
 | `tenant_id` | UUID | No | | FK `tenants.id`, idx | RESTRICT |
 | `edtr_id` | UUID | No | | FK `edtr.id`, UNIQUE | one reconciliation per EDTR |
 | `counterpart_edtr_id` | UUID | Yes | | FK `edtr.id` | the second independent log compared against |
-| `delta_hours` | NUMERIC(6,2) | Yes | | | absolute difference between the two logs |
+| `delta_hours` | NUMERIC(6,2) | Yes | | | worst single-dimension divergence between the two logs: the largest of the `hours_active`, `hours_idle`, and summed-total absolute differences (`worstDelta()`, `packages/shared/src/edtr.ts`). Not the sum — comparing only a sum let an equal-and-opposite active/idle misclassification net to zero, see RFC-2 §2. The per-dimension breakdown sits in `adjustments.deltas` |
 | `tolerance` | NUMERIC(6,2) | No | | | configured tenant tolerance (for example 0.25h) |
 | `verified_by` | UUID | Yes | | FK `users.id` | human approver on HITL resolution |
 | `adjustments` | JSONB | Yes | | | logged corrections for billing precision |
@@ -566,7 +566,8 @@ Request:
 Response 200:
 {
   "reconciliation": { "id": uuid, "status": "approved",
-                      "delta_hours": number, "tolerance": number },
+                      "delta_hours": number, "deltas": { "active": number, "idle": number, "total": number }|null,
+  "tolerance": number },
   "invoice_line": { "invoice_id": uuid, "hours": number,
                     "source_logs": [uuid, uuid] },
   "deposit": { "balance_before": number, "deducted": number, "balance_after": number }

@@ -6,7 +6,7 @@
 **Version:** 0.1
 **Author:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** `Locked`
-**Last reconciled:** 2026-08-01 (see docs/index.md §1)
+**Last reconciled:** 2026-09-07 (see docs/index.md §1); §3's global-table addendum added by `docs/cr-arkilaunch-m4-money-path-gates.md` (migration `0016`: `tenants` gains RLS; the two global catalogues become read-only to `app_authenticated`)
 **PRD Reference:** [prd-arkilaunch.md](prd-arkilaunch.md) PRD-F7 (§3), US-07 (§4)
 **SDD Reference:** [sdd-arkilaunch.md](sdd-arkilaunch.md) §3 (data architecture, GUC pattern), §5 (security & authorization)
 **RFC ID:** `arkilaunch-rfc-001`
@@ -144,6 +144,23 @@ GRANT app_authenticated TO <connection role used by the API>;
 ```
 
 **RLS: enabled and forced on every tenant-owned table.** `FORCE ROW LEVEL SECURITY` is load-bearing: without it, the table owner is exempt from its own policies, which is exactly the hole that lets a migration-owned connection read everything. The canonical policy, applied to all 28 tenant-owned tables (generated in the migration, one per table). **This exact five-element form (`FORCE`, `TO app_authenticated`, `USING`, `WITH CHECK`, `missing_ok`) is mandatory for every tenant-owned table added by any future RFC or migration, with no partial-form exception:**
+
+> **Addendum, 2026-09-07 (`cr-arkilaunch-m4-money-path-gates.md`): the tenant-owned set was never the whole attack surface.**
+> This section's five-element form was applied correctly to all 28 (now 32) tenant-owned tables. The gap was the other seven: SDD §3's
+> 35 tables include global ones with no `tenant_id`, which are therefore exempt from the policy above and from the enumeration test that
+> checks it. On three of them — `tenants`, `subscription_plans`, `equipment_types` — `0002` had granted `app_authenticated` all four
+> DML verbs and `0007` narrowed only `UPDATE`/`DELETE`, and only on `tenants`. With no policy and no `FORCE`, the grant was the sole
+> control, so any authenticated user could rewrite both platform catalogues, `INSERT` a tenant row directly (bypassing the PRD-F6 KYC
+> gate that `tenants_register()` exists to enforce), and `SELECT` the entire tenant registry.
+>
+> Closed by `0016_reference_table_grants.sql`: the two catalogues are read-only, `INSERT` on `tenants` is revoked, and `tenants` gains
+> `ENABLE` + `FORCE` plus a bespoke `tenant_self` policy keyed on `id` — it cannot use the form below or the shared
+> `tenantIsolationPolicy()` helper, because it has no `tenant_id` column: its primary key **is** the tenant id. Every cross-tenant and
+> pre-auth reader of `tenants` is `SECURITY DEFINER` and so unaffected.
+>
+> The standing rule this adds: a table without a `tenant_id` is not thereby safe. It needs either a bespoke policy (if its rows belong
+> to a tenant by some other key) or least privilege (if it is genuinely a platform catalogue). Both halves are now asserted by
+> `packages/db/test/rls-enumeration.spec.ts`, which previously checked only the RLS half and so skipped these three tables entirely.
 
 ```
 -- pattern applied to equipment, users, edtr, invoices, ... (all tenant-owned)

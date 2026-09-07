@@ -6,7 +6,7 @@
 **Version:** 0.1
 **Author:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** `Locked`
-**Last reconciled:** 2026-08-01 (see docs/index.md §1); pilot-honesty addendum below reconciled 2026-08-20 via `docs/cr-arkilaunch-pilot-honesty.md` §2.1/§2.4 (the addendum itself shipped 2026-08-13 but was never written back into this file until now — see `docs/cr-arkilaunch-doc-reconcile-2026-08-20.md`)
+**Last reconciled:** 2026-09-07 (see docs/index.md §1); §2's reconciliation-dimension gap narrowed by `docs/cr-arkilaunch-m4-money-path-gates.md` (the summed-hours false-accept is closed in code; start-time/end-time/breakdown-status remain unrepresentable). Prior: pilot-honesty addendum reconciled 2026-08-20 via `docs/cr-arkilaunch-pilot-honesty.md` §2.1/§2.4 (that addendum shipped 2026-08-13 but was not written back into this file until then — see `docs/cr-arkilaunch-doc-reconcile-2026-08-20.md`)
 **PRD Reference:** [prd-arkilaunch.md](prd-arkilaunch.md) PRD-F3, PRD-F6, §7 AI Feature Specifications
 **SDD Reference:** [sdd-arkilaunch.md](sdd-arkilaunch.md) §4 (endpoints + §4.1 sequences), §8 (AI architecture), §8.1 (AI threat surface)
 **RFC ID:** `arkilaunch-rfc-002`
@@ -60,7 +60,7 @@ The thesis argued for "deterministic zonal OCR": fixed coordinate regions on the
 
 "Two independent logs" is literal. For a given equipment-day there are two records with `edtr.source` values `paper_ocr` and `digital_entry` (or two independent submissions where a project-management tracker and the rental-company tracker both log the same unit). One is the rental company's tracker; the other is the project-management side's tracker. They are entered by different people through different paths, which is what makes the check meaningful. Reconciliation compares them on start time, end time, active hours, idle hours, and breakdown status, and passes when the divergence sits within a configured tolerance (default **+/- 0.25h**, tenant-tunable on `edtr_reconciliations.tolerance`). If only one log exists, the record waits in a bounded pairing window, then routes to review rather than auto-accepting a single unchecked source. Single-source can never auto-accept; that would defeat the whole point.
 
-> **Implementation gap, as built 2026-08-13 (`cr-arkilaunch-pilot-honesty.md`):** the shipped `reconcileEdtr()` (`packages/db/src/reconciliation.ts`) compares only a single summed value per log (`hours_active + hours_idle`), not the five-dimension comparison specified above; there is no start-time, end-time, or breakdown-status field on `edtr_line_items` to compare at all. This means an active/idle misclassification on one side can offset an equal-and-opposite misclassification on the other and still auto-accept at `delta_hours = 0`, even though the deduction it then approves prices `hours_active` alone. This is an open implementation gap, not a spec change — see `docs/cr-arkilaunch-doc-reconcile-2026-08-20.md`. The bounded pairing window described above (`AwaitingCounterpart` in the state diagram, §3) is also unimplemented; a single log currently routes to review immediately rather than waiting.
+> **Implementation gap, narrowed 2026-09-07 (`cr-arkilaunch-m4-money-path-gates.md`).** The shipped `reconcileEdtr()` (`packages/db/src/reconciliation.ts`) originally compared a single summed value per log (`hours_active + hours_idle`) rather than the five dimensions specified above, so an active/idle misclassification on one side could be offset by an equal-and-opposite misclassification on the other and still auto-accept at `delta_hours = 0` — even though the deduction it then approved prices `hours_active` alone. **That false-accept is now closed:** `evaluateGate()` compares `hours_active`, `hours_idle`, and the summed total as three independent dimensions, each of which must sit within tolerance, and `edtr_reconciliations.delta_hours` now stores the worst of the three rather than the sum. The summed total is retained as a checked dimension deliberately, so the gate is strictly stricter than the one it replaced: two same-signed errors that each clear tolerance individually (active +0.2h, idle +0.2h against a 0.25h tolerance) still accumulate past it. Fixed in the same pass: a log with no `edtr_line_items` rows at all summed to zero in every dimension and so read as perfect agreement, auto-accepting a pair carrying no evidence; it now fails closed to review. **Still open**, and the reason this remains a gap rather than a closed item: there is no start-time, end-time, or breakdown-status field on `edtr_line_items` to compare, so three of the five specified dimensions are not merely uncompared but unrepresentable, and closing them needs a schema migration plus extraction-path and DTO changes. The bounded pairing window described above (`AwaitingCounterpart` in the state diagram, §3) is also still unimplemented; a single log routes to review immediately rather than waiting.
 
 **The state machine.**
 
@@ -184,6 +184,14 @@ Response 200:
     "delta_hours": number|null,
     "tolerance": number,
     "reason": "auto_accept"|"low_confidence"|"tolerance_exceeded"|"single_source"|"unreadable"|null
+    // As of 2026-09-07, `unreadable` covers two cases, not one: the hard-fail
+    // corrupt-image case in the state machine above, AND a paired log that
+    // carries no `edtr_line_items` rows at all. The second routes to
+    // discrepancy/review rather than hard_failed, and `delta_hours` is null
+    // for it -- there is no second reading to measure a divergence against,
+    // and reporting one computed against an absent log would tell a reviewer
+    // the two sheets disagree about N hours when the truth is that one sheet
+    // recorded none. See `cr-arkilaunch-m4-money-path-gates.md`.
   }
 }
 ```
@@ -203,7 +211,8 @@ Response 200 (gate held; deducted in one transaction):
 }
 
 Response 409 (gate NOT held; deducts nothing):
-{ "error": "reconciliation_discrepancy", "delta_hours": number, "tolerance": number }
+{ "error": "reconciliation_discrepancy", "delta_hours": number,
+  "deltas": { "active": number, "idle": number, "total": number }|null, "tolerance": number }
 
 Response 409 (already approved; deducts nothing):
 { "error": "already_approved", "reconciliation_id": uuid, "approved_reconciliation_id": uuid|null }

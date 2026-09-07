@@ -5,7 +5,7 @@
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Locked
-**Last reconciled:** 2026-08-01 (see docs/index.md §1); §2/§4 deviations below reconciled 2026-08-20 via `docs/cr-arkilaunch-pilot-honesty.md` §2.2/§2.3 (shipped 2026-08-13, written back 2026-08-20 — see `docs/cr-arkilaunch-doc-reconcile-2026-08-20.md`)
+**Last reconciled:** 2026-09-07 (see docs/index.md §1); §4's CI-stub deviation and §6's progress note updated by `docs/cr-arkilaunch-m4-money-path-gates.md` (QAD-T26/T40 now CI-enforced; QAD-T39 still unmeasurable). Prior: §2/§4 deviations reconciled 2026-08-20 via `docs/cr-arkilaunch-pilot-honesty.md` §2.2/§2.3 (shipped 2026-08-13, written back 2026-08-20 — see `docs/cr-arkilaunch-doc-reconcile-2026-08-20.md`)
 **PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
 **SDD:** [sdd-arkilaunch.md](sdd-arkilaunch.md)
 **RFC(s):** [rfc-arkilaunch-tenancy-rls-auth.md](rfc-arkilaunch-tenancy-rls-auth.md) (RFC-1, PRD-F7), [rfc-arkilaunch-ocr-edtr-reconciliation.md](rfc-arkilaunch-ocr-edtr-reconciliation.md) (RFC-2, PRD-F3), [rfc-arkilaunch-quotation-pricing-engine.md](rfc-arkilaunch-quotation-pricing-engine.md) (RFC-3, PRD-F1)
@@ -199,7 +199,7 @@ These turn the BRD metrics into pass/fail gates with a real measurement method.
 
 > **Deviation (`cr-arkilaunch-pilot-honesty.md` §2.2, 2026-08-13):** no Postman collection exists anywhere in the repository. The API-contract coverage above (409 reconciliation-discrepancy shape, webhook signature rejection, status codes) runs as supertest inside the NestJS Vitest suite instead — one test stack instead of two, no collection to hand-synchronize. Recorded as a deliberate deviation, not a gap; a Newman collection can be added later without undoing it.
 >
-> **As of 2026-08-20, three of the items above are not live in `.github/workflows/ci.yml`.** `ocr-accuracy-gate`, `newman-api-suite`, and `money-path-e2e` are declared as explicit `echo "skipped: …"` jobs rather than omitted, but they gate nothing: QAD-T37/T38/T39 (>= 90.06% accuracy) and QAD-T40 (0% reconciliation discrepancy at deduction) currently have no CI enforcement, and `apps/api/test/ai-abuse.spec.ts` has test coverage for AI-01..AI-04 only — AI-05 and AI-06 have no dedicated test. See `docs/cr-arkilaunch-doc-reconcile-2026-08-20.md`.
+> **Updated 2026-09-07 (`cr-arkilaunch-m4-money-path-gates.md`).** Two of the three `echo "skipped: …"` jobs are now real. **`money-path-e2e`** runs against a throwaway Postgres 17 and enforces QAD-T26 and QAD-T40 for the first time: it names `apps/api/test/money-path.spec.ts` (new), `apps/api/test/edtr-engine.spec.ts`, `jobs/src/edtr-ocr-worker.spec.ts`, and the `packages/db` isolation specs, so a money-path test cannot vanish from CI by being skipped at runtime. **`ocr-accuracy-gate`** runs the accuracy harness and the new `assertAccuracyGate()` enforcement, but **deliberately does not assert >= 90.06%**: the golden set is still a synthetic placeholder scoring 6/8 by construction and `arkilaunch-edtr-neural-v1` remains untrained, so asserting the product threshold would be a passing check that means nothing. QAD-T39's §6 release criterion therefore stays unchecked — what the job enforces is that the threshold decision still fails correctly below the bar and on an empty corpus. **`newman-api-suite` is still a stub**, waiting on a committed Postman collection; its assertions remain covered by `apps/api/test/payments-engine.spec.ts` and the new money-path job, so it is a documentation gap rather than a coverage one. Also still open: `apps/api/test/ai-abuse.spec.ts` covers AI-01..AI-04 only — AI-05 and AI-06 have no dedicated test.
 
 **CI gate:** a PR cannot merge if any automated check fails. A merge to `staging` deploys staging; a tagged release on `main` deploys prod. The CI pipeline is the single source of truth for what is live (feeds the PRD §9 rollback).
 
@@ -229,6 +229,20 @@ These turn the BRD metrics into pass/fail gates with a real measurement method.
 ## 6. Release Criteria (Definition of Done)
 
 Launch (anchor pilot, module by module behind feature flags) is approved when all of the following are true:
+
+> **Progress note, 2026-09-07 (`cr-arkilaunch-m4-money-path-gates.md`), M4 iteration 1.** No box below is ticked yet, and that is
+> accurate rather than pending housekeeping — each remaining criterion needs either staging execution or evidence that does not exist.
+> What changed: the deduction gate (QAD-T26) and the 0%-discrepancy-at-deduction target (QAD-T40) now have executable tests and a
+> real CI job enforcing them, and a live false-accept was fixed in the process — `reconcileEdtr()` had been comparing a single summed
+> hours value, so an equal-and-opposite active/idle misclassification auto-accepted at `delta_hours = 0` while the deduction priced
+> `hours_active` alone (see RFC-2 §2). A `tenants` / `equipment_types` / `subscription_plans` grant hole was closed alongside it
+> (RFC-1 §3, migration `0016`), with the privilege assertions added to `packages/db/test/rls-enumeration.spec.ts`.
+>
+> Explicitly **not** earned by that pass, and blocking the boxes below: OCR >= 90.06% (QAD-T39) cannot be measured at all until a
+> labeled golden set exists and `arkilaunch-edtr-neural-v1` is trained; AI-05 and AI-06 still have no dedicated test, so the
+> "every AI eval passes" criterion cannot be evaluated; the >= 80% coverage figure is not measured by any job; the cross-tenant suite
+> still runs only when `RUN_LIVE_DB_TESTS` is set; and nothing below has been exercised in staging, since the Deploy workflow has been
+> failing on `azure/login` since 2026-08-06 (`cr-arkilaunch-azure-di-provisioning.md` §6).
 
 - [ ] All P0 bugs resolved.
 - [ ] All P1 bugs resolved.
