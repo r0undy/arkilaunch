@@ -2,16 +2,22 @@ import { and, eq, isNull, lt } from 'drizzle-orm';
 import { edtr, edtrLineItems, events, reconcileEdtr } from '@arkilaunch/db';
 import {
   OcrPayloadSchema,
-  StubDocumentIntelligenceAdapter,
+  documentIntelligenceAvailability,
   type DocumentIntelligencePort,
   type OcrPayload,
 } from '@arkilaunch/shared';
+import { AzureDocumentIntelligenceAdapter } from '@arkilaunch/document-intelligence';
 import { makeJobDb } from './db-client.js';
+import { fetchStorageObject } from './storage.js';
+import { runInstrumentedJob } from './telemetry.js';
 
 // RFC-2 §2/§3 (RFC2-02): claim/lock/retry loop + extraction + reconciliation
-// gate. Runs against the stub DocumentIntelligencePort by default -- the
-// real Azure DI adapter is a follow-up once live credentials and a trained
-// custom model exist (decided for this pass; see the F3 plan notes).
+// gate.
+//
+// NOTE: EDTR_MODEL_ID below names a custom neural model that DOES NOT EXIST
+// yet. Training it needs labeled Almara sheets, and the field names this
+// worker keys on (hours_active/hours_idle) are a guess until that training
+// run fixes the labels. Recorded in cr-arkilaunch-pilot-honesty.md §4.
 const MAX_ATTEMPTS = 5;
 const CLAIM_BATCH_SIZE = 10;
 const EDTR_MODEL_ID = 'arkilaunch-edtr-neural-v1';
@@ -45,7 +51,66 @@ function fieldNumber(payload: OcrPayload, name: string): number | null {
   return field && typeof field.value === 'number' ? field.value : null;
 }
 
-export async function runEdtrOcrWorker(port: DocumentIntelligencePort = new StubDocumentIntelligenceAdapter()) {
+export async function runEdtrOcrWorker(
+  port?: DocumentIntelligencePort,
+  // Testable seam: production defaults to a real Supabase Storage signed-URL
+  // fetch; jobs/src/edtr-ocr-worker.spec.ts injects a stub so tests never
+  // make a real network call. Bucket comes from the same env var apps/api
+  // uses for EDTR uploads (SUPABASE_STORAGE_BUCKET_EDTR).
+  fetchBytes: (key: string) => Promise<Buffer> = (key) =>
+    fetchStorageObject(process.env.SUPABASE_STORAGE_BUCKET_EDTR ?? 'edtr-documents', key),
+) {
+  // Gated by ENABLE_OCR_PIPELINE (default false), mirroring weather-poll.ts.
+  // This must be checked before the availability probe below: once a real
+  // adapter exists and Terraform has populated real AZURE_DI_* credentials,
+  // documentIntelligenceAvailability() starts returning available:true, and
+  // without this gate the cron would begin actually calling Azure DI every
+  // run regardless of whether an operator asked for the pipeline.
+  if (process.env.ENABLE_OCR_PIPELINE !== 'true') {
+    console.log('edtr-ocr-worker: ENABLE_OCR_PIPELINE is off; skipping.');
+    return;
+  }
+
+  // Fail closed BEFORE the claim UPDATE. A worker that cannot extract must
+  // not flip rows to 'extracting', burn an attempt, and drop them back --
+  // that churns `attempts` toward MAX_ATTEMPTS and eventually hard-fails
+  // perfectly good captures for a reason that has nothing to do with them.
+  // Returning early leaves every queued row exactly as it was, so the
+  // moment a real adapter is configured the backlog drains normally.
+  if (!port) {
+    const availability = documentIntelligenceAvailability(process.env, true);
+    if (!availability.available) {
+      console.log(
+        `edtr-ocr-worker: document extraction unavailable (${availability.reason}); claiming nothing.`,
+      );
+      const { db: probeDb, client: probeClient } = makeJobDb();
+      try {
+        // Tenant-scoped analytics need a tenant; this is a platform-level
+        // degradation, so record it against every tenant that currently
+        // has work waiting rather than inventing a tenant id.
+        const waiting = await probeDb.selectDistinct({ tenantId: edtr.tenantId }).from(edtr).where(eq(edtr.status, 'queued'));
+        for (const row of waiting) {
+          await probeDb.insert(events).values({
+            tenantId: row.tenantId,
+            name: 'external_dependency_degraded',
+            properties: { dependency: 'azure_document_intelligence', mode: 'unavailable', reason: availability.reason },
+          });
+        }
+      } finally {
+        await probeClient.end();
+      }
+      return;
+    }
+    // Reached only once documentIntelligenceAvailability() returns
+    // available:true, which now requires the flag check above to have
+    // passed AND real AZURE_DI_* credentials AND a real adapter to exist.
+    port = new AzureDocumentIntelligenceAdapter({
+      endpoint: process.env.AZURE_DI_ENDPOINT!,
+      apiKey: process.env.AZURE_DI_KEY!,
+      ...(process.env.AZURE_DI_MAX_PAGES ? { maxPagesPerDocument: Number(process.env.AZURE_DI_MAX_PAGES) } : {}),
+    });
+  }
+
   const { db, client } = makeJobDb();
 
   try {
@@ -62,38 +127,51 @@ export async function runEdtrOcrWorker(port: DocumentIntelligencePort = new Stub
 
     for (const row of batch) {
       try {
+        if (!row.rawFileUri) {
+          // Should not happen for paper_ocr (raw_file_uri is required at
+          // capture time); hard-fail rather than guess.
+          await db
+            .update(edtr)
+            .set({ status: 'hard_failed', lockedAt: null, lastError: 'missing_raw_file_uri' })
+            .where(eq(edtr.id, row.id));
+          continue;
+        }
+
+        // Storage read + Azure DI analyze happen OUTSIDE the DB transaction
+        // below. With a real adapter these are two network round trips that
+        // can take seconds; holding them inside db.transaction() would pin a
+        // Supavisor transaction-mode pool connection for the whole duration,
+        // per row, risking idle-in-transaction timeouts under load.
+        const bytes = await fetchBytes(row.rawFileUri);
+        const result = await port.analyze(EDTR_MODEL_ID, bytes);
+        const hasFields = Object.keys(result.fields).length > 0;
+
+        if (!hasFields) {
+          // Unreadable/corrupt input hard-fails to manual entry; never
+          // fabricate a value (RFC-2 §2, AGENTS.md "Never").
+          await db
+            .update(edtr)
+            .set({ status: 'hard_failed', lockedAt: null, lastError: 'unreadable_or_empty_extraction' })
+            .where(eq(edtr.id, row.id));
+          continue;
+        }
+
+        const ocrPayload = toOcrPayload(result.fields);
+        const hoursActive = fieldNumber(ocrPayload, 'hours_active');
+        const hoursIdle = fieldNumber(ocrPayload, 'hours_idle');
+
+        if (hoursActive === null || hoursIdle === null) {
+          // A field the model did not return is not zero hours -- writing 0
+          // would be a fabricated reading handed to the deduction gate as
+          // real (RFC-2 §2, AGENTS.md "Never"). Hard-fail to manual entry.
+          await db
+            .update(edtr)
+            .set({ status: 'hard_failed', lockedAt: null, lastError: 'missing_required_field' })
+            .where(eq(edtr.id, row.id));
+          continue;
+        }
+
         await db.transaction(async (tx) => {
-          if (!row.rawFileUri) {
-            // Should not happen for paper_ocr (raw_file_uri is required at
-            // capture time); hard-fail rather than guess.
-            await tx
-              .update(edtr)
-              .set({ status: 'hard_failed', lockedAt: null, lastError: 'missing_raw_file_uri' })
-              .where(eq(edtr.id, row.id));
-            return;
-          }
-
-          // The real adapter reads the image via a short-TTL signed URL
-          // (Supabase Storage, RFC-2 §6); Storage integration is a
-          // follow-up, so this passes an empty buffer for now -- the stub
-          // and fixture adapters do not read it.
-          const result = await port.analyze(EDTR_MODEL_ID, Buffer.alloc(0));
-          const hasFields = Object.keys(result.fields).length > 0;
-
-          if (!hasFields) {
-            // Unreadable/corrupt input hard-fails to manual entry; never
-            // fabricate a value (RFC-2 §2, AGENTS.md "Never").
-            await tx
-              .update(edtr)
-              .set({ status: 'hard_failed', lockedAt: null, lastError: 'unreadable_or_empty_extraction' })
-              .where(eq(edtr.id, row.id));
-            return;
-          }
-
-          const ocrPayload = toOcrPayload(result.fields);
-          const hoursActive = fieldNumber(ocrPayload, 'hours_active') ?? 0;
-          const hoursIdle = fieldNumber(ocrPayload, 'hours_idle') ?? 0;
-
           await tx.update(edtr).set({ status: 'extracted', ocrPayload, lockedAt: null }).where(eq(edtr.id, row.id));
 
           await tx.insert(edtrLineItems).values({
@@ -135,7 +213,7 @@ export async function runEdtrOcrWorker(port: DocumentIntelligencePort = new Stub
 
 const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
 if (isMainModule) {
-  runEdtrOcrWorker().catch((err) => {
+  runInstrumentedJob('edtr-ocr-worker', () => runEdtrOcrWorker()).catch((err) => {
     console.error(err);
     process.exit(1);
   });

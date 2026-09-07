@@ -2,7 +2,8 @@ import { describe, expect, it, beforeAll } from 'vitest';
 import postgres from 'postgres';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { addresses, events, projectSites, rentals, weatherAlerts } from '@arkilaunch/db';
-import { FixtureWeatherAdapter, type WeatherPort } from '@arkilaunch/shared';
+import { FixtureWeatherAdapter } from '@arkilaunch/shared/testing';
+import type { WeatherPort } from '@arkilaunch/shared';
 import { runWeatherPoll } from './weather-poll.js';
 import { makeJobDb } from './db-client.js';
 
@@ -80,9 +81,38 @@ describe('weather-poll (PRD-F5)', () => {
     return row ?? null;
   }
 
+  // The quota-ceiling event is platform-level (no single project_site_id),
+  // so it is looked up by tenant + mode instead of by site.
+  async function latestQuotaCeilingEventForTenant() {
+    const { db, client } = makeJobDb();
+    const [row] = await db
+      .select()
+      .from(events)
+      .where(
+        and(
+          eq(events.tenantId, tenantId),
+          eq(events.name, 'external_dependency_degraded'),
+          sql`${events.properties} ->> 'mode' = 'quota_ceiling'`,
+        ),
+      )
+      .orderBy(desc(events.occurredAt))
+      .limit(1);
+    await client.end();
+    return row ?? null;
+  }
+
   it('is a no-op when ENABLE_WEATHER_POLL is off (default)', async () => {
     delete process.env.ENABLE_WEATHER_POLL;
     await runWeatherPoll(new FixtureWeatherAdapter({ tempC: 30, windKph: 100, precipMm: 100, code: 1 }));
+    expect(await latestAlertFor(siteId)).toBeNull();
+  });
+
+  // The default port is createWeatherAdapter(), which resolves the real
+  // OpenMeteoAdapter once the flag is on -- but with the flag off, this
+  // must stay a true no-op without ever constructing (or calling) it.
+  it('is a no-op with the flag off even when no port is injected (real default resolution)', async () => {
+    delete process.env.ENABLE_WEATHER_POLL;
+    await runWeatherPoll();
     expect(await latestAlertFor(siteId)).toBeNull();
   });
 
@@ -130,5 +160,24 @@ describe('weather-poll (PRD-F5)', () => {
     const event = await latestEventForSite('external_dependency_degraded');
     expect(event).toBeTruthy();
     expect((event!.properties as Record<string, unknown>).dependency).toBe('open_meteo');
+  });
+
+  it('aborts the whole cycle and emits a quota_ceiling event when active sites exceed WEATHER_POLL_MAX_SITES', async () => {
+    process.env.WEATHER_POLL_MAX_SITES = '0';
+    try {
+      const before = await latestAlertFor(siteId);
+      await runWeatherPoll(new FixtureWeatherAdapter({ tempC: 30, windKph: 5, precipMm: 0, code: 1 }));
+
+      const after = await latestAlertFor(siteId);
+      expect(after?.id).toBe(before?.id); // no row written -- the cycle aborted before polling any site
+
+      const event = await latestQuotaCeilingEventForTenant();
+      expect(event).toBeTruthy();
+      const properties = event!.properties as Record<string, unknown>;
+      expect(properties.dependency).toBe('open_meteo');
+      expect(properties.ceiling).toBe(0);
+    } finally {
+      delete process.env.WEATHER_POLL_MAX_SITES;
+    }
   });
 });

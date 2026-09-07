@@ -81,7 +81,7 @@ Specialist build agents are defined in the SAD ([docs/sad-arkilaunch.md](docs/sa
 | Auth | Passport-JWT in NestJS (@nestjs/passport) | passport-jwt 4.0, @nestjs/passport 11.x | 2026-07-25 | docs.nestjs.com/security/authentication |
 | OCR / IDP | Azure AI Document Intelligence (Foundry Tools) | doc-intel 4.x | 2026-07-25 | learn.microsoft.com/azure/ai-services/document-intelligence |
 | Payments | PayMongo (Hosted Checkout + webhooks) | n/a; managed API, no client SDK version to pin | 2026-07-25 | paymongo.com/docs |
-| Weather | Open-Meteo (commercial plan) | n/a; versionless HTTP API | 2026-07-25 | open-meteo.com |
+| Weather | Open-Meteo (**free tier, keyless**; changed 2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md` -- see the divergence row below) | n/a; versionless HTTP API | 2026-07-25 | open-meteo.com |
 | Backend hosting | Azure Container Apps (app + ACA Jobs cron) | n/a; managed platform | 2026-07-25 | learn.microsoft.com/azure/container-apps/jobs |
 | Frontend hosting | Vercel (Edge) | n/a; managed platform | 2026-07-25 | vercel.com/docs |
 | Edge security | Cloudflare (WAF + L3/L4/L7 DDoS) | n/a; managed platform | 2026-07-25 | developers.cloudflare.com |
@@ -104,7 +104,7 @@ This register **overrides training memory**. It records the deliberate divergenc
 | Axios | Native `fetch` (thin typed wrapper) | Universal, no extra dependency; Axios optional | developer.mozilla.org |
 | class-validator / class-transformer | **Zod** (+ `nestjs-zod`) end to end | One schema shared client and server; less duplication | github.com/BenLorantfy/nestjs-zod |
 | `prebuilt-idDocument` for PH corporate docs | Azure DI **layout + query fields / custom neural** | prebuilt ID model covers only US licenses + international passports, not PH SEC/TIN | learn.microsoft.com (id-document) |
-| Open-Meteo free tier for production | Open-Meteo **commercial plan** | Free tier is non-commercial (10k/day, CC BY 4.0); ArkiLaunch is a commercial SaaS | open-meteo.com/en/about |
+| Open-Meteo **commercial plan** (original thesis) | Open-Meteo **free tier** (`cr-arkilaunch-open-meteo-free-tier.md`, 2026-08-20) | Pilot scale fits inside the 10k/day free-tier cap at <=~208 sites; CC BY 4.0 attribution shipped in the UI. **The free tier's non-commercial-use restriction is accepted as an open exposure (SCRUTINY G-4), not resolved** -- ArkiLaunch is a commercial SaaS | open-meteo.com/en/about |
 | Only Vitest + Postman (thesis) | Add **Playwright** for E2E | The money paths (OCR->deduction, quote->payment) need browser-level happy/sad/abuse coverage | playwright.dev |
 
 **Fast-moving deps that require live verification before coding:** Azure AI Document Intelligence SDK/API (model IDs, query-fields, regions), Supabase RLS + Supavisor pooler behavior with `set_config(local=true)`, Drizzle RLS API, PayMongo API + webhook signature scheme, React 19 / Vite 8 build config. Verify the exact API shape against current docs every time.

@@ -5,6 +5,22 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
+    }
+  },
+  "//typesVersions": "apps/api typechecks with moduleResolution:Node (node10), which predates the exports map above. This is the standard compat shim so tsc can resolve the ./testing subpath; at runtime the specs run under Vitest, which honours exports.",
+  "typesVersions": {
+    "*": {
+      "testing": ["./dist/testing/index.d.ts"]
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

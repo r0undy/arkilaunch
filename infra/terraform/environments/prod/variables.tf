@@ -2,7 +2,7 @@
 
 variable "location" {
   type    = string
-  default = "southeastasia" # PH data-residency intent, docs/clr-arkilaunch.md gap E1 -- UNVERIFIED against Azure DI region availability. Confirm before relying on this for compliance.
+  default = "southeastasia" # PH data-residency intent, docs/clr-arkilaunch.md gap E1. Azure DI model/region availability confirmed (docs/cr-arkilaunch-azure-di-provisioning.md); the RA 10173 cross-border transfer basis (AIA-R7) is the remaining open item, not region availability.
 }
 
 variable "image_tag" {
@@ -43,7 +43,7 @@ variable "enable_ocr_kyc" {
   default = false
 }
 
-variable "enable_quote_engine" {
+variable "enable_weather_poll" {
   type    = bool
   default = false
 }
@@ -69,6 +69,15 @@ variable "jwt_access_token_ttl" {
 variable "weather_poll_cron" {
   type    = string
   default = "*/30 * * * *"
+}
+
+# Open-Meteo free tier caps at 10,000 calls/day
+# (docs/cr-arkilaunch-open-meteo-free-tier.md). At the 30-min cadence above
+# that is 48 calls/site/day, so this ceiling supports ~200 active sites; a
+# poll cycle over the ceiling truncates loudly rather than over-calling.
+variable "weather_poll_max_sites" {
+  type    = number
+  default = 200
 }
 
 variable "edtr_ocr_worker_cron" {
@@ -119,18 +128,6 @@ variable "jwt_public_key" {
   sensitive = true
 }
 
-variable "azure_di_endpoint" {
-  type      = string
-  sensitive = true
-  default   = "" # blank until a real Azure DI resource + PH-residency confirmation land
-}
-
-variable "azure_di_key" {
-  type      = string
-  sensitive = true
-  default   = ""
-}
-
 variable "paymongo_secret_key" {
   type      = string
   sensitive = true
@@ -153,8 +150,3 @@ variable "paymongo_cancel_url" {
   default = ""
 }
 
-variable "open_meteo_api_key" {
-  type      = string
-  sensitive = true
-  default   = ""
-}

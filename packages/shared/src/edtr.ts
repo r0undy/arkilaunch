@@ -32,6 +32,43 @@ export type OcrPayload = z.infer<typeof OcrPayloadSchema>;
 export const CONFIDENCE_GATE = 0.9;
 export const DEFAULT_TOLERANCE_HOURS = 0.25;
 
+// The model_id recorded when a human read the paper sheet instead of a
+// model (cr-arkilaunch-pilot-honesty.md §2.1). Not a real model, and
+// deliberately named so no query, report, or reviewer can mistake it for
+// one.
+export const MANUAL_TRANSCRIPTION_MODEL_ID = 'manual_transcription';
+
+export function isManualTranscription(payload: { model_id?: string } | null | undefined): boolean {
+  return payload?.model_id === MANUAL_TRANSCRIPTION_MODEL_ID;
+}
+
+// Builds the ocr_payload for a human-transcribed paper EDTR.
+//
+// min_field_confidence is 1, and that is correct rather than a fudge:
+// packages/db/src/reconciliation.ts already returns 1 for digital_entry on
+// the stated grounds that it "has no OCR step". A human transcription has
+// no OCR step either. The 0.90 gate exists to gate MODEL output; where
+// there is no model there is nothing for it to gate, and the double-entry
+// tolerance check against the counterpart log remains the real control --
+// which is the whole point of RFC-2's two-independent-logs design.
+export function buildManualTranscriptionPayload(input: {
+  hoursActive: number;
+  hoursIdle: number;
+  analyzedAt: string;
+}): OcrPayload {
+  return OcrPayloadSchema.parse({
+    model_id: MANUAL_TRANSCRIPTION_MODEL_ID,
+    api_version: 'n/a',
+    analyzed_at: input.analyzedAt,
+    fields: [
+      { name: 'hours_active', value: input.hoursActive, value_type: 'number', confidence: 1 },
+      { name: 'hours_idle', value: input.hoursIdle, value_type: 'number', confidence: 1 },
+    ],
+    min_field_confidence: 1,
+    pages: 1,
+  });
+}
+
 export type ReconciliationReason =
   | 'auto_accept'
   | 'low_confidence'
@@ -45,19 +82,59 @@ export interface GateResult {
   reason: ReconciliationReason;
 }
 
+// The divergence between two independent logs of the same equipment-day.
+// RFC-2 §2 names five dimensions (start time, end time, active hours, idle
+// hours, breakdown status); only the two hour fields exist on
+// edtr_line_items today, so only those two are compared here.
+//
+// `total` is carried separately rather than derived from `active` + `idle`
+// because it is NOT derivable from them: the per-dimension deltas are
+// absolute values, so they have already discarded the sign that decides
+// whether two errors accumulate or cancel.
+export interface HourDeltas {
+  active: number;
+  idle: number;
+  total: number;
+}
+
+// The single worst divergence across every compared dimension. This is both
+// what the gate tests and what gets persisted to
+// edtr_reconciliations.delta_hours, deliberately from one definition: if the
+// stored number were computed separately it could drift from the number that
+// actually decided the gate, and a review screen would then show a delta
+// inside tolerance on a row the gate had rejected.
+export function worstDelta(deltas: HourDeltas): number {
+  return Math.max(deltas.active, deltas.idle, deltas.total);
+}
+
 // Pure gate evaluation (RFC-2 §3 state machine), no DB/IO -- unit-testable
 // in isolation from the worker's claim/lock loop and the DB orchestration
 // in packages/db/src/reconciliation.ts.
+//
+// Every dimension is compared against the tolerance, and ALL of them must
+// pass. Comparing only a single summed total was a false-accept hole: a log
+// reading 8h active / 0h idle and a counterpart reading 0h active / 8h idle
+// both sum to 8, so the pair auto-accepted at delta 0 even though the
+// deduction it then approved prices hours_active alone (apps/api/src/edtr/
+// edtr.service.ts). An equal-and-opposite misclassification is exactly the
+// error two independent logs exist to catch, so it has to fail the gate.
+//
+// The summed total is still checked alongside the per-dimension deltas, and
+// deliberately so: dropping it would make this gate LOOSER than the one it
+// replaces for same-signed errors, where active +0.2 and idle +0.2 clear a
+// 0.25 tolerance individually but accumulate to 0.4. Checking all three is
+// strictly stricter than either rule alone, so no pair that is blocked
+// today can start passing.
 export function evaluateGate(
   minConfidenceA: number,
   minConfidenceB: number,
-  deltaHours: number,
+  deltas: HourDeltas,
   tolerance: number,
 ): GateResult {
   if (minConfidenceA < CONFIDENCE_GATE || minConfidenceB < CONFIDENCE_GATE) {
     return { matched: false, reason: 'low_confidence' };
   }
-  if (deltaHours > tolerance) {
+  if (worstDelta(deltas) > tolerance) {
     return { matched: false, reason: 'tolerance_exceeded' };
   }
   return { matched: true, reason: 'auto_accept' };
@@ -193,6 +270,16 @@ export const EdtrReconciliationResponseSchema = z.object({
 });
 export type EdtrReconciliationResponse = z.infer<typeof EdtrReconciliationResponseSchema>;
 
+// Provenance of the hours on this row, so a client can never present a
+// human transcription as a model result. A confidence of 1.00 from
+// `manual_transcription` must render as "Human transcription", NOT as
+// "OCR 100% confident" -- the two mean opposite things to a reviewer.
+export const EdtrExtractionResponseSchema = z.object({
+  modelId: z.string(),
+  analyzedAt: z.string(),
+  isManualTranscription: z.boolean(),
+});
+
 export const EdtrDetailResponseSchema = z.object({
   id: z.string().uuid(),
   status: z.string(),
@@ -200,5 +287,8 @@ export const EdtrDetailResponseSchema = z.object({
   lineItems: z.array(z.object({ hoursActive: z.number(), hoursIdle: z.number() })),
   fields: z.array(EdtrFieldResponseSchema),
   reconciliation: EdtrReconciliationResponseSchema.nullable(),
+  // null for digital_entry (no extraction step at all) and for a paper row
+  // still queued for the worker.
+  extraction: EdtrExtractionResponseSchema.nullable(),
 });
 export type EdtrDetailResponse = z.infer<typeof EdtrDetailResponseSchema>;

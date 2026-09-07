@@ -6,7 +6,7 @@
 **Version:** 0.1
 **Author:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** `Locked`
-**Last reconciled:** 2026-08-01 (see docs/index.md §1)
+**Last reconciled:** 2026-09-07 (see docs/index.md §1); §2's reconciliation-dimension gap narrowed by `docs/cr-arkilaunch-m4-money-path-gates.md` (the summed-hours false-accept is closed in code; start-time/end-time/breakdown-status remain unrepresentable). Prior: pilot-honesty addendum reconciled 2026-08-20 via `docs/cr-arkilaunch-pilot-honesty.md` §2.1/§2.4 (that addendum shipped 2026-08-13 but was not written back into this file until then — see `docs/cr-arkilaunch-doc-reconcile-2026-08-20.md`)
 **PRD Reference:** [prd-arkilaunch.md](prd-arkilaunch.md) PRD-F3, PRD-F6, §7 AI Feature Specifications
 **SDD Reference:** [sdd-arkilaunch.md](sdd-arkilaunch.md) §4 (endpoints + §4.1 sequences), §8 (AI architecture), §8.1 (AI threat surface)
 **RFC ID:** `arkilaunch-rfc-002`
@@ -60,6 +60,8 @@ The thesis argued for "deterministic zonal OCR": fixed coordinate regions on the
 
 "Two independent logs" is literal. For a given equipment-day there are two records with `edtr.source` values `paper_ocr` and `digital_entry` (or two independent submissions where a project-management tracker and the rental-company tracker both log the same unit). One is the rental company's tracker; the other is the project-management side's tracker. They are entered by different people through different paths, which is what makes the check meaningful. Reconciliation compares them on start time, end time, active hours, idle hours, and breakdown status, and passes when the divergence sits within a configured tolerance (default **+/- 0.25h**, tenant-tunable on `edtr_reconciliations.tolerance`). If only one log exists, the record waits in a bounded pairing window, then routes to review rather than auto-accepting a single unchecked source. Single-source can never auto-accept; that would defeat the whole point.
 
+> **Implementation gap, narrowed 2026-09-07 (`cr-arkilaunch-m4-money-path-gates.md`).** The shipped `reconcileEdtr()` (`packages/db/src/reconciliation.ts`) originally compared a single summed value per log (`hours_active + hours_idle`) rather than the five dimensions specified above, so an active/idle misclassification on one side could be offset by an equal-and-opposite misclassification on the other and still auto-accept at `delta_hours = 0` — even though the deduction it then approved prices `hours_active` alone. **That false-accept is now closed:** `evaluateGate()` compares `hours_active`, `hours_idle`, and the summed total as three independent dimensions, each of which must sit within tolerance, and `edtr_reconciliations.delta_hours` now stores the worst of the three rather than the sum. The summed total is retained as a checked dimension deliberately, so the gate is strictly stricter than the one it replaced: two same-signed errors that each clear tolerance individually (active +0.2h, idle +0.2h against a 0.25h tolerance) still accumulate past it. Fixed in the same pass: a log with no `edtr_line_items` rows at all summed to zero in every dimension and so read as perfect agreement, auto-accepting a pair carrying no evidence; it now fails closed to review. **Still open**, and the reason this remains a gap rather than a closed item: there is no start-time, end-time, or breakdown-status field on `edtr_line_items` to compare, so three of the five specified dimensions are not merely uncompared but unrepresentable, and closing them needs a schema migration plus extraction-path and DTO changes. The bounded pairing window described above (`AwaitingCounterpart` in the state diagram, §3) is also still unimplemented; a single log routes to review immediately rather than waiting.
+
 **The state machine.**
 
 Three confidence-and-tolerance outcomes, each with an exhaustive terminal state:
@@ -67,6 +69,8 @@ Three confidence-and-tolerance outcomes, each with an exhaustive terminal state:
 - **Auto-accept**: every extracted field is at or above the confidence gate (start **0.90**) **and** the two logs reconcile within tolerance. Reconciliation status becomes `matched`; the record joins the approve-ready list. It still needs a human approve before any deduction (no autonomous money movement).
 - **Needs-review**: any field is below 0.90 **or** the logs diverge beyond tolerance. Routes to the human-in-the-loop admin audit (the DSD Evidence Split View, [DSD §4.1](dsd-arkilaunch.md)), where the admin sees the original handwritten image beside the editable fields with confidence chips and a two-log delta bar. The admin corrects, confirms, or rejects. Raises `reconciliation_discrepancy` when the cause is tolerance.
 - **Hard-fail**: the image is unreadable or corrupt. Routes to manual entry. The system never fabricates a value; the field is entered by a human and re-enters the pipeline as a `digital_entry` log.
+
+**Pilot addendum — `manual_transcription` as a first-class log source (`cr-arkilaunch-pilot-honesty.md` §2.1, 2026-08-13).** With no Azure DI credentials available for the pilot, a `paper_ocr` capture may carry human-transcribed line items: the timekeeper photographs the paper EDTR sheet and types the hours it shows. The row keeps `source = 'paper_ocr'` and records `ocr_payload.model_id = 'manual_transcription'` with `min_field_confidence: 1`. This stays faithful to the double-entry principle above — the two logs remain independent (the timekeeper's transcription vs. the project manager's `digital_entry`) — and reuses the hard-fail path's own "re-enters the pipeline as a second log" rule, made reachable without a working extractor. `minFieldConfidence` already returns `1` for `digital_entry` on the grounds that it has no OCR step; a human transcription has no OCR step either, so the 0.90 gate correctly does not apply and the tolerance check remains the real control. `model_id` is a permanent, queryable record of how the row was produced.
 
 **Deduction gate.** A deposit deduction (an `invoices` row of type `deposit_deduction` plus a `payments`/ledger movement) fires only when the reconciliation is `matched` or human-resolved **and** a human approves. Auto-accept buys the admin a one-click approve without opening the split view; it does not skip the approve. This is a deliberate trust-first choice over automation-first, because BRD-V1 is falsified the day an admin stops trusting the gate and goes back to re-keying. We would rather make the admin press approve than silently move money.
 
@@ -128,7 +132,7 @@ CREATE INDEX edtr_worker_claim_idx
   WHERE status = 'queued' AND locked_at IS NULL AND attempts < 5;
 ```
 
-**`ocr_payload` JSONB contract (both EDTR and KYC).** The worker writes exactly this shape; downstream code validates it with Zod before use (guards AI-02, insecure output handling):
+**`ocr_payload` JSONB contract (both EDTR and KYC).** The worker writes exactly this shape; downstream code validates it with Zod before use (guards AI-02, insecure output handling). **As of `cr-arkilaunch-azure-di-provisioning.md` (2026-08-15), `arkilaunch-edtr-neural-v1` has not been trained** — no labeled Almara sheets exist yet — so the field names below (`hours_active`, `hours_idle`) are provisional pending that training run, not a confirmed Azure DI query-field schema:
 
 ```json
 {
@@ -180,6 +184,14 @@ Response 200:
     "delta_hours": number|null,
     "tolerance": number,
     "reason": "auto_accept"|"low_confidence"|"tolerance_exceeded"|"single_source"|"unreadable"|null
+    // As of 2026-09-07, `unreadable` covers two cases, not one: the hard-fail
+    // corrupt-image case in the state machine above, AND a paired log that
+    // carries no `edtr_line_items` rows at all. The second routes to
+    // discrepancy/review rather than hard_failed, and `delta_hours` is null
+    // for it -- there is no second reading to measure a divergence against,
+    // and reporting one computed against an absent log would tell a reviewer
+    // the two sheets disagree about N hours when the truth is that one sheet
+    // recorded none. See `cr-arkilaunch-m4-money-path-gates.md`.
   }
 }
 ```
@@ -199,7 +211,8 @@ Response 200 (gate held; deducted in one transaction):
 }
 
 Response 409 (gate NOT held; deducts nothing):
-{ "error": "reconciliation_discrepancy", "delta_hours": number, "tolerance": number }
+{ "error": "reconciliation_discrepancy", "delta_hours": number,
+  "deltas": { "active": number, "idle": number, "total": number }|null, "tolerance": number }
 
 Response 409 (already approved; deducts nothing):
 { "error": "already_approved", "reconciliation_id": uuid, "approved_reconciliation_id": uuid|null }
@@ -354,7 +367,7 @@ Notes that keep the diagram honest:
 
 ## 7. Execution Plan
 
-**Can this ship behind a feature flag?** Yes. `ENABLE_OCR_PIPELINE` gates the worker and the capture endpoints; `ENABLE_OCR_KYC` gates the KYC sub-flow independently. With the flag off, EDTR capture accepts `digital_entry` only and reconciliation still runs on two digital logs, so the trusted-billing slice degrades to manual entry without losing the gate.
+**Can this ship behind a feature flag?** Yes. `ENABLE_OCR_PIPELINE` gates the worker and the capture endpoints; `ENABLE_OCR_KYC` gates the KYC sub-flow independently. With the flag off, EDTR capture accepts `digital_entry` and `manual_transcription`-tagged `paper_ocr` captures (per the pilot addendum above); no row is ever routed to the Azure DI worker while the flag is off, so the trusted-billing slice degrades to manual entry without losing the gate.
 
 **Ticket breakdown** (create once this RFC is Approved; feeds PRD §9 M3):
 

@@ -37,13 +37,15 @@ Feature flags for local frontend work (auth real, everything vendor-backed stubb
 ```
 ENABLE_OCR_PIPELINE=false
 ENABLE_OCR_KYC=false
-ENABLE_QUOTE_ENGINE=false
+ENABLE_WEATHER_POLL=false
 ENABLE_DIESEL_SCRAPE=false
 ENABLE_PAYMENTS=false
 ```
 
-Leave `AZURE_DI_*`, `PAYMONGO_*`, `OPEN_METEO_API_KEY` blank — the stub/fixture adapters are used
-instead (see `packages/shared/src/document-intelligence-port.ts`).
+Leave `AZURE_DI_*` and `PAYMONGO_*` blank — the stub/fixture adapters are used instead (see
+`packages/shared/src/document-intelligence-port.ts`). Weather needs no credential at all
+(`docs/cr-arkilaunch-open-meteo-free-tier.md`): set `ENABLE_WEATHER_POLL=true` and the free-tier
+Open-Meteo client works immediately, no key to fill in.
 
 ## 3. Migrate and seed
 
@@ -56,7 +58,7 @@ pnpm db:seed:test       # OR: two tenants, for isolation testing
 ## 4. Run
 
 ```
-pnpm dev                # both apps/api and apps/web, parallel
+pnpm dev                # both apps/api and apps/web, concurrently with [api]/[web] labeled output
 ```
 
 - API: `http://localhost:3000/api/v1` (see `apps/web/.env`'s `VITE_API_BASE_URL`)
@@ -64,6 +66,24 @@ pnpm dev                # both apps/api and apps/web, parallel
 - Health check: `GET /health` — now runs a trivial DB query, so a 200 means both "API is up" and
   "API can reach Postgres"; a 503 with `{"status":"db_unreachable"}` means the pooler connection is
   bad (check `DATABASE_URL_POOLED`).
+
+### 4.1 Running a cron job by hand
+
+The four ACA Jobs are separate scheduled processes, not HTTP endpoints. Run one the same way
+production does (`infra/terraform/modules/cron_job` runs `node jobs/dist/<entrypoint>.js`):
+
+```
+pnpm --filter @arkilaunch/jobs worker:edtr        # EDTR OCR + reconciliation
+pnpm --filter @arkilaunch/jobs worker:weather     # needs ENABLE_WEATHER_POLL=true
+pnpm --filter @arkilaunch/jobs worker:diesel      # needs ENABLE_DIESEL_SCRAPE=true
+pnpm --filter @arkilaunch/jobs worker:pm-notify   # ungated
+```
+
+`worker:edtr` will report `document extraction unavailable (no_credentials); claiming nothing` and
+exit without touching any row — correct, and deliberate: with no Azure DI credentials there is
+nothing to extract with, and claiming rows anyway would burn their retry budget. Capture a paper
+EDTR with the hours typed in alongside the photo instead (see §5), which is the pilot's actual
+double-entry path.
 
 ## 5. Verify
 

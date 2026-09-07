@@ -4,6 +4,7 @@ export * from './permissions.js';
 export * from './quotes.js';
 export * from './pricing.js';
 export * from './document-intelligence-port.js';
+export * from './telemetry-redact.js';
 export * from './edtr.js';
 export * from './kyc.js';
 export * from './ocr-accuracy.js';

@@ -5,6 +5,8 @@ import {
   SEC_REGEX,
   TIN_REGEX,
   matchBand,
+  ExtractionUnavailableError,
+  type DocumentExtractionResult,
   type DocumentIntelligencePort,
   type KycConfirmRequest,
   type KycDetailResponse,
@@ -14,6 +16,7 @@ import {
   type RequestContext,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import { DOCUMENT_INTELLIGENCE_PORT } from './kyc.tokens.js';
 
 interface KycOcrPayload {
@@ -35,6 +38,7 @@ export class KycService {
   // of the flow.
   constructor(
     private readonly events: EventsService,
+    private readonly storage: StorageService,
     @Inject(DOCUMENT_INTELLIGENCE_PORT) private readonly port: DocumentIntelligencePort,
   ) {}
 
@@ -55,14 +59,42 @@ export class KycService {
         .returning();
       if (!created) throw new Error('kyc_documents insert returned no row');
 
-      // Extraction runs synchronously against the stub/injected port in
-      // this pass (Azure DI calls are near-instant for the stub; a real
+      // Extraction runs synchronously against the injected port (a real
       // adapter would move this to an async worker mirroring
       // jobs/src/edtr-ocr-worker.ts). The state machine and format/human
       // gates are unaffected by sync vs async execution.
-      const result = await this.port.analyze(KYC_MODEL_ID, Buffer.alloc(0));
-      const secField = result.fields.sec_number;
-      const tinField = result.fields.tin;
+      //
+      // When no real adapter can serve the request, the port throws rather
+      // than returning an empty result -- an empty result is
+      // indistinguishable from "the document really was blank". The
+      // document is still stored and still queued for a human, who keys
+      // the identifiers in at confirm time; nothing is invented on the way
+      // through (cr-arkilaunch-pilot-honesty.md §2).
+      let result: DocumentExtractionResult | null = null;
+      try {
+        // Default matches infra/terraform/environments/*/variables.tf's own
+        // default, so this stays inert in CI/local dev where the env var is
+        // unset (CI's api-integration-suite runs with no Supabase config at
+        // all -- StorageService itself is not exercised there since these
+        // tests inject a stub in place of it).
+        const signedUrl = await this.storage.createSignedDownloadUrl(
+          process.env.SUPABASE_STORAGE_BUCKET_KYC ?? 'kyc-documents',
+          body.fileUri,
+        );
+        const res = await fetch(signedUrl);
+        if (!res.ok) throw new Error(`kyc_storage_download_failed:${res.status}`);
+        const bytes = Buffer.from(await res.arrayBuffer());
+        result = await this.port.analyze(KYC_MODEL_ID, bytes);
+      } catch (error) {
+        if (!(error instanceof ExtractionUnavailableError)) throw error;
+        await this.events.emit(ctx, 'ocr_extraction_unavailable', {
+          doc_type: 'kyc',
+          reason: error.reason,
+        });
+      }
+
+      const secField = result?.fields.sec_number;
+      const tinField = result?.fields.tin;
 
       const ocrPayload: KycOcrPayload = {
         ...(secField ? { sec_number: secField.value, sec_confidence: secField.confidence } : {}),
@@ -78,7 +110,10 @@ export class KycService {
       await tx
         .update(kycDocuments)
         .set({
-          ocrPayload,
+          // null, not {}, when no extraction ran: an empty payload would
+          // read as "the model found nothing", which is a different and
+          // untrue claim.
+          ocrPayload: result ? ocrPayload : null,
           formatValid,
           confidence: confidence !== null ? String(confidence) : null,
           // Every extraction lands at needs_review -- there is no

@@ -8,6 +8,11 @@ supabase_url       = "https://ydalnvzyeseycdakofgp.supabase.co" # derived from t
 
 enable_ocr_pipeline  = false
 enable_ocr_kyc       = false
-enable_quote_engine  = false
+# On in dev only (docs/cr-arkilaunch-open-meteo-free-tier.md): the free
+# tier is keyless, so there is no credential-provisioning step left to gate
+# on the way the OCR flags above are. Prod's terraform.tfvars keeps this
+# false -- an operator flips it deliberately after checking active-site
+# count against the free tier's ~200-site ceiling (WEATHER_POLL_MAX_SITES).
+enable_weather_poll  = true
 enable_diesel_scrape = false
 enable_payments      = false

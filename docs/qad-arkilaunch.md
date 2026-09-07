@@ -5,7 +5,7 @@
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Locked
-**Last reconciled:** 2026-08-01 (see docs/index.md §1)
+**Last reconciled:** 2026-09-07 (see docs/index.md §1); §4's CI-stub deviation and §6's progress note updated by `docs/cr-arkilaunch-m4-money-path-gates.md` (QAD-T26/T40 now CI-enforced; QAD-T39 still unmeasurable). Prior: §2/§4 deviations reconciled 2026-08-20 via `docs/cr-arkilaunch-pilot-honesty.md` §2.2/§2.3 (shipped 2026-08-13, written back 2026-08-20 — see `docs/cr-arkilaunch-doc-reconcile-2026-08-20.md`)
 **PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
 **SDD:** [sdd-arkilaunch.md](sdd-arkilaunch.md)
 **RFC(s):** [rfc-arkilaunch-tenancy-rls-auth.md](rfc-arkilaunch-tenancy-rls-auth.md) (RFC-1, PRD-F7), [rfc-arkilaunch-ocr-edtr-reconciliation.md](rfc-arkilaunch-ocr-edtr-reconciliation.md) (RFC-2, PRD-F3), [rfc-arkilaunch-quotation-pricing-engine.md](rfc-arkilaunch-quotation-pricing-engine.md) (RFC-3, PRD-F1)
@@ -53,6 +53,8 @@ The system that must not fail is the trusted-billing loop: scan an EDTR, reconci
 ## 2. Test Environments & Data
 
 **Staging URL:** `https://staging.arkilaunch.app` (Vercel frontend, ACA staging API revision, Supabase staging project, behind Cloudflare).
+
+> **Deviation (`cr-arkilaunch-pilot-honesty.md` §2.3, 2026-08-13):** Terraform defines only `dev` and `prod`; no third `staging` environment exists. For a single-tenant pilot with fewer than ten daily users, a third environment triples upkeep for no proportionate gain. The existing `dev` environment is designated as staging and is the safe home for the live-DB isolation suite (`cross-tenant-isolation-suite` in `.github/workflows/ci.yml`, gated on `vars.RUN_LIVE_DB_TESTS`), which must never run against prod because `pnpm db:seed:test` writes fixture tenants.
 **Test credentials:** Stored in the team password manager under "ArkiLaunch QA Accounts" (never committed). One admin (Rhea proxy), one owner, one timekeeper (2FA-enrolled), one customer, one platform admin, per seeded tenant.
 **Data policy:** Seeded synthetic accounts in staging only. Never use production PII. KYC/ID document images in test are synthetic or public-domain samples, never a real person's ID (RA 10173). No card or account numbers anywhere; PayMongo runs in test mode.
 
@@ -97,7 +99,7 @@ Every row has a stable `QAD-T#` and traces to a `PRD-F#` (and, where relevant, a
 | QAD-T14 | Large upload on 3 to 5 Mbps | Timekeeper uploads a large paper-EDTR photo on a throttled cheap-Android link | Client compresses and queues; visible progress + retry; **already-entered data is not lost** on a failed attempt | PRD-F3 / US-02 AC3 |
 | QAD-T15 | Stale / unavailable diesel price | Diesel source stale or down at quote time | Uses last-known price; labels quote with the price date + staleness warning; `price_stale=true`; **never silently prices against an unknown value** | PRD-F1 / US-03 AC2 |
 | QAD-T16 | Deploy a flagged / busy unit | Attempt to deploy or double-book a maintenance-flagged or already-deployed unit | Assignment blocked with an explaining reason | PRD-F4 / US-04 AC2 |
-| QAD-T17 | Open-Meteo down | Scheduled poll runs while Open-Meteo is unavailable | Serves cached last-known Luzon reading marked `is_stale=true`; retries and alerts; **does not drop the cycle silently**; `external_dependency_degraded` fires | PRD-F5 / US-05 AC2 |
+| QAD-T17 | Open-Meteo down | Scheduled poll runs while Open-Meteo is unavailable | Serves cached last-known Luzon reading marked `is_stale=true`; retries and alerts; **does not drop the cycle silently**; `external_dependency_degraded` fires. **Addendum (2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md`): "retries" means the next 30-minute cycle, not an in-adapter retry** -- the real `OpenMeteoAdapter` does not retry within a cycle by design (restraint ladder; a retry would double-spend against the free tier's daily call cap during exactly the failure, rate-limiting, where retrying makes it worse). | PRD-F5 / US-05 AC2 |
 | QAD-T18 | KYC below threshold or portal mismatch | Extraction confidence below threshold, or admin cannot match values on SEC/BIR portals | Tenant kept in unverified state; **no production access granted** | PRD-F6 / US-06 AC2 |
 | QAD-T19 | Owner attempts a data edit | Owner (no data-entry permission) tries to edit | RBAC denies the action | PRD-F4 / US-10 AC2 |
 | QAD-T20 | Abandoned / failed checkout | Customer abandons checkout or payment fails | Booking stays unpaid/pending; status reconciled by the **idempotent PayMongo webhook**, not the browser redirect | PRD-F2 / US-08 AC2 |
@@ -118,7 +120,7 @@ Every row has a stable `QAD-T#` and traces to a `PRD-F#` (and, where relevant, a
 | QAD-T28 | Webhook forgery / replay | Unsigned, tampered, or replayed PayMongo webhook | Signature verified before body parse; bad signature rejected; `provider_ref` UNIQUE makes replays idempotent; **no double credit**; status derives from the webhook, never the redirect | PRD-F2 / US-08, SDD §4 |
 | QAD-T29 | Timekeeper site-scope abuse | Timekeeper submits or views an EDTR for a site they are not assigned to | Request denied; attempt logged | PRD-F3 / US-02 AC2 |
 | QAD-T30 | Injection in free-text | SQL / XSS / command payload in a free-text field (`notes`, `company_name`, quote fields) | Drizzle parameterized queries and Zod validation neutralize it; stored/rendered inert; never string-built into SQL, never unescaped HTML | PRD-F4, PRD-F1 / SDD §5 |
-| QAD-T31 | Resource abuse / cost bomb | Rapid repeated expensive calls (OCR extraction, quote generation, checkout creation) to burn Azure DI pages or DB | Rate limit + per-tenant quota enforced; abusive burst throttled (429 with retry-after); DI page spend does not run unbounded | PRD-F3, PRD-F1 / SDD §5/§8 |
+| QAD-T31 | Resource abuse / cost bomb | Rapid repeated expensive calls (OCR extraction, quote generation, checkout creation) to burn Azure DI pages or DB | Rate limit + per-tenant quota enforced; abusive burst throttled (429 with retry-after); DI page spend does not run unbounded. **Addendum (2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md`), extending to PRD-F5:** an active-site count exceeding the free tier's ~208-site daily-call ceiling aborts the whole weather-poll cycle (rather than exceeding the cap) and emits `external_dependency_degraded{mode:'quota_ceiling'}`. | PRD-F3, PRD-F1 / SDD §5/§8 |
 | QAD-T32 | KYC portal-automation attempt | System is pushed to auto-verify against BIR ORUS | **No automated portal verification is attempted** (ORUS CAPTCHA); the human step is required; tenant stays unverified without it | PRD-F6 / US-06 AC3 |
 
 ### 3.4 AI / OCR Adversarial Test Cases (SDD §8.1, one row per `AI-#`)
@@ -195,6 +197,10 @@ These turn the BRD metrics into pass/fail gates with a real measurement method.
 - Cross-tenant isolation suite against the two-tenant seed (QAD-T23, QAD-T24)
 ```
 
+> **Deviation (`cr-arkilaunch-pilot-honesty.md` §2.2, 2026-08-13):** no Postman collection exists anywhere in the repository. The API-contract coverage above (409 reconciliation-discrepancy shape, webhook signature rejection, status codes) runs as supertest inside the NestJS Vitest suite instead — one test stack instead of two, no collection to hand-synchronize. Recorded as a deliberate deviation, not a gap; a Newman collection can be added later without undoing it.
+>
+> **Updated 2026-09-07 (`cr-arkilaunch-m4-money-path-gates.md`).** Two of the three `echo "skipped: …"` jobs are now real. **`money-path-e2e`** runs against a throwaway Postgres 17 and enforces QAD-T26 and QAD-T40 for the first time: it names `apps/api/test/money-path.spec.ts` (new), `apps/api/test/edtr-engine.spec.ts`, `jobs/src/edtr-ocr-worker.spec.ts`, and the `packages/db` isolation specs, so a money-path test cannot vanish from CI by being skipped at runtime. **`ocr-accuracy-gate`** runs the accuracy harness and the new `assertAccuracyGate()` enforcement, but **deliberately does not assert >= 90.06%**: the golden set is still a synthetic placeholder scoring 6/8 by construction and `arkilaunch-edtr-neural-v1` remains untrained, so asserting the product threshold would be a passing check that means nothing. QAD-T39's §6 release criterion therefore stays unchecked — what the job enforces is that the threshold decision still fails correctly below the bar and on an empty corpus. **`newman-api-suite` is still a stub**, waiting on a committed Postman collection; its assertions remain covered by `apps/api/test/payments-engine.spec.ts` and the new money-path job, so it is a documentation gap rather than a coverage one. Also still open: `apps/api/test/ai-abuse.spec.ts` covers AI-01..AI-04 only — AI-05 and AI-06 have no dedicated test.
+
 **CI gate:** a PR cannot merge if any automated check fails. A merge to `staging` deploys staging; a tagged release on `main` deploys prod. The CI pipeline is the single source of truth for what is live (feeds the PRD §9 rollback).
 
 ### Manual / Exploratory
@@ -223,6 +229,20 @@ These turn the BRD metrics into pass/fail gates with a real measurement method.
 ## 6. Release Criteria (Definition of Done)
 
 Launch (anchor pilot, module by module behind feature flags) is approved when all of the following are true:
+
+> **Progress note, 2026-09-07 (`cr-arkilaunch-m4-money-path-gates.md`), M4 iteration 1.** No box below is ticked yet, and that is
+> accurate rather than pending housekeeping — each remaining criterion needs either staging execution or evidence that does not exist.
+> What changed: the deduction gate (QAD-T26) and the 0%-discrepancy-at-deduction target (QAD-T40) now have executable tests and a
+> real CI job enforcing them, and a live false-accept was fixed in the process — `reconcileEdtr()` had been comparing a single summed
+> hours value, so an equal-and-opposite active/idle misclassification auto-accepted at `delta_hours = 0` while the deduction priced
+> `hours_active` alone (see RFC-2 §2). A `tenants` / `equipment_types` / `subscription_plans` grant hole was closed alongside it
+> (RFC-1 §3, migration `0016`), with the privilege assertions added to `packages/db/test/rls-enumeration.spec.ts`.
+>
+> Explicitly **not** earned by that pass, and blocking the boxes below: OCR >= 90.06% (QAD-T39) cannot be measured at all until a
+> labeled golden set exists and `arkilaunch-edtr-neural-v1` is trained; AI-05 and AI-06 still have no dedicated test, so the
+> "every AI eval passes" criterion cannot be evaluated; the >= 80% coverage figure is not measured by any job; the cross-tenant suite
+> still runs only when `RUN_LIVE_DB_TESTS` is set; and nothing below has been exercised in staging, since the Deploy workflow has been
+> failing on `azure/login` since 2026-08-06 (`cr-arkilaunch-azure-di-provisioning.md` §6).
 
 - [ ] All P0 bugs resolved.
 - [ ] All P1 bugs resolved.

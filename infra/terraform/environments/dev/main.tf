@@ -37,8 +37,9 @@ locals {
   #
   # Azure rejects a Container App secret with an empty string value ("value
   # or keyVaultUrl and identity should be provided") -- so unset vendor keys
-  # (Azure DI/PayMongo/Open-Meteo, all blank until those integrations go
-  # live) are filtered out of both maps entirely, not wired in as blank.
+  # (Azure DI/PayMongo, blank until those integrations go live) are filtered
+  # out of both maps entirely, not wired in as blank. Open-Meteo needs no
+  # key at all (free tier, cr-arkilaunch-open-meteo-free-tier.md).
   all_secrets = {
     database-url-direct           = var.database_url_direct
     database-url-pooled           = var.database_url_pooled
@@ -46,11 +47,10 @@ locals {
     supabase-service-role-key     = var.supabase_service_role_key
     jwt-private-key               = var.jwt_private_key
     jwt-public-key                = var.jwt_public_key
-    azure-di-endpoint             = var.azure_di_endpoint
-    azure-di-key                  = var.azure_di_key
+    azure-di-endpoint             = module.document_intelligence.endpoint
+    azure-di-key                  = module.document_intelligence.primary_access_key
     paymongo-secret-key           = var.paymongo_secret_key
     paymongo-webhook-secret       = var.paymongo_webhook_secret
-    open-meteo-api-key            = var.open_meteo_api_key
     appinsights-connection-string = module.log_analytics.app_insights_connection_string
   }
   secrets = { for k, v in local.all_secrets : k => v if v != "" }
@@ -66,7 +66,6 @@ locals {
     AZURE_DI_KEY                          = "azure-di-key"
     PAYMONGO_SECRET_KEY                   = "paymongo-secret-key"
     PAYMONGO_WEBHOOK_SECRET               = "paymongo-webhook-secret"
-    OPEN_METEO_API_KEY                    = "open-meteo-api-key"
     APPLICATIONINSIGHTS_CONNECTION_STRING = "appinsights-connection-string"
   }
   secret_env_vars = { for k, v in local.all_secret_env_vars : k => v if contains(keys(local.secrets), v) }
@@ -84,9 +83,13 @@ locals {
     PAYMONGO_CANCEL_URL          = var.paymongo_cancel_url
     ENABLE_OCR_PIPELINE          = tostring(var.enable_ocr_pipeline)
     ENABLE_OCR_KYC               = tostring(var.enable_ocr_kyc)
-    ENABLE_QUOTE_ENGINE          = tostring(var.enable_quote_engine)
+    ENABLE_WEATHER_POLL          = tostring(var.enable_weather_poll)
+    WEATHER_POLL_MAX_SITES       = tostring(var.weather_poll_max_sites)
     ENABLE_DIESEL_SCRAPE         = tostring(var.enable_diesel_scrape)
     ENABLE_PAYMENTS              = tostring(var.enable_payments)
+    # F0 (this env's DI sku) analyzes only the first 2 pages of any
+    # document; the adapter hard-fails rather than silently truncate one.
+    AZURE_DI_MAX_PAGES = "2"
   }
 }
 
@@ -110,6 +113,15 @@ module "log_analytics" {
   name                = "law-${local.name}"
   resource_group_name = module.resource_group.name
   location            = var.location
+  tags                = local.tags
+}
+
+module "document_intelligence" {
+  source              = "../../modules/document_intelligence"
+  name                = "di-${local.name}"
+  resource_group_name = module.resource_group.name
+  location            = var.location
+  sku_name            = "F0" # dev: smoke-test tier only, never a real multi-page document
   tags                = local.tags
 }
 
@@ -232,6 +244,10 @@ module "maintenance_notify_job" {
 
 output "api_fqdn" {
   value = module.api_app.fqdn
+}
+
+output "azure_di_endpoint" {
+  value = module.document_intelligence.endpoint
 }
 
 output "registry_login_server" {

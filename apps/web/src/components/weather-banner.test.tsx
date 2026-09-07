@@ -89,6 +89,33 @@ describe('WeatherBanner', () => {
     expect(html).not.toContain('View live map');
   });
 
+  // CC BY 4.0 requires attribution wherever Open-Meteo's data is displayed
+  // (docs/cr-arkilaunch-open-meteo-free-tier.md); this must render
+  // regardless of whether site coordinates are also available.
+  it('always renders the Open-Meteo CC BY 4.0 attribution link', () => {
+    const html = renderToStaticMarkup(
+      <WeatherBanner tone="clear" severityLabel="Clear" siteName="Bagumbayan" condition="No advisory" timestamp={null} />,
+    );
+    expect(html).toContain('Open-Meteo.com');
+    expect(html).toContain('CC BY 4.0');
+    expect(html).toContain('https://open-meteo.com/');
+  });
+
+  it('renders the Open-Meteo attribution link alongside the map link when coordinates are provided', () => {
+    const html = renderToStaticMarkup(
+      <WeatherBanner
+        tone="clear"
+        severityLabel="Clear"
+        siteName="Bagumbayan"
+        condition="No advisory"
+        timestamp={null}
+        coordinates={{ latitude: 14.676, longitude: 121.0437 }}
+      />,
+    );
+    expect(html).toContain('View live map');
+    expect(html).toContain('Open-Meteo.com');
+  });
+
   it('renders an optional action slot, e.g. a link to the incident log', () => {
     const html = renderToStaticMarkup(
       <WeatherBanner

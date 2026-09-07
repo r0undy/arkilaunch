@@ -44,6 +44,14 @@ function windyUrl(latitude: number, longitude: number): string {
   return `https://www.windy.com/?${latitude},${longitude},11`;
 }
 
+// CC BY 4.0 requires attribution wherever Open-Meteo's data is displayed
+// (docs/cr-arkilaunch-open-meteo-free-tier.md). Rendered unconditionally --
+// not gated on `coordinates` or on a reading existing -- because this
+// banner is the one surface that shows Open-Meteo-derived values, and
+// under-attributing costs a licence breach where over-attributing costs one
+// line of text.
+const OPEN_METEO_URL = 'https://open-meteo.com/';
+
 // Full-width strip driven by the PAGASA weather scale (DESIGN.md §4/§4.1).
 // Leads with a plain-English headline so it's readable without knowing the
 // PAGASA scale, keeps the PAGASA tag as a secondary chip so it still carries
@@ -118,6 +126,15 @@ export function WeatherBanner({
             <span className="sr-only">(opens a live weather map for this site in a new tab)</span>
           </a>
         )}
+        <a
+          href={OPEN_METEO_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 inline-flex w-fit items-center gap-1 text-xs font-medium underline decoration-dotted opacity-80"
+        >
+          Weather data by Open-Meteo.com (CC BY 4.0) <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          <span className="sr-only">(opens Open-Meteo's site in a new tab)</span>
+        </a>
       </div>
       {action}
     </div>

@@ -5,7 +5,7 @@
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Locked
-**Last reconciled:** 2026-08-01 (see docs/index.md §1)
+**Last reconciled:** 2026-09-07 (see docs/index.md §1); §5.6's `reconciliation_discrepancy` field note corrected 2026-09-07 by `docs/cr-arkilaunch-m4-money-path-gates.md`; §8 amended 2026-08-20 by `docs/cr-arkilaunch-open-meteo-free-tier.md`
 **BRD:** [brd-arkilaunch.md](brd-arkilaunch.md)
 
 ---
@@ -297,7 +297,7 @@ Every `BRD-M#` metric has at least one feeding event, wired at feature build tim
 |------------|-----------|----------------|--------------|
 | `tenant_module_active` | An admin completes a core action in F3/F1/F4/F7 within a session | tenant_id, module, role, ts | BRD-M1 (anchor in production use) |
 | `ocr_field_confidence` | Azure DI returns a field (EDTR hours/breakdown, or KYC SEC/TIN) | tenant_id, doc_type, field, confidence, auto_accepted (bool), ts | BRD-M2 (OCR extraction accuracy) |
-| `reconciliation_discrepancy` | Two independent logs diverge beyond tolerance at the gate | tenant_id, equipment_id, delta_hours, tolerance, resolved (bool), ts | BRD-M3 (0% discrepancy at deduction) |
+| `reconciliation_discrepancy` | Two independent logs diverge beyond tolerance at the gate on any compared dimension | tenant_id, equipment_id, delta_hours (worst dimension, not the sum — see SDD §3), tolerance, resolved (bool), ts | BRD-M3 (0% discrepancy at deduction) |
 | `deposit_deduction_committed` | A deduction posts after a reconciliation match + human approve | tenant_id, invoice_id, hours, gate_passed (bool), ts | BRD-M3 (verifies gate held) |
 | `quote_generated` | A quote is produced in the Quotation Builder | tenant_id, latency_ms, diesel_price_date, price_stale (bool), ts | BRD-M4 (quotation turnaround < 1 min) |
 | `uat_response_recorded` | A UAT participant submits an ISO/IEC 25010 Likert response | participant_role, sub_characteristic, score (1 to 5), ts | BRD-M5 (UAT mean rating >= 3.41) |
@@ -375,7 +375,7 @@ Azure DI is priced per page, not per token. Budget scales with EDTR and KYC page
 **Dependencies:**
 - Azure AI Document Intelligence (OCR/IDP for PRD-F3 and PRD-F6). Region/data-residency for PH document images is a carried gap (scrutiny G-5; resolved in AIA §5 + CLR).
 - PayMongo hosted checkout (PRD-F2); webhook, idempotency, and refund/dispute handling detail is a carried gap (scrutiny G-10).
-- Open-Meteo (PRD-F5). Requires the **commercial plan**; the free tier is non-commercial only, and ArkiLaunch is commercial (scrutiny FC-7 / G-4). Fallback is a cached last-known reading.
+- Open-Meteo (PRD-F5). Requires the **commercial plan**; the free tier is non-commercial only, and ArkiLaunch is commercial (scrutiny FC-7 / G-4). Fallback is a cached last-known reading. **Addendum (2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md`): the real adapter ships against the FREE tier instead**, keyless, as a deliberate accepted exposure for the pilot -- the non-commercial-use restriction is carried forward as an open item under scrutiny G-4, not resolved. CC BY 4.0 attribution is rendered in the UI.
 - Supabase Postgres for tenant data with row-level isolation (PRD-F7).
 - A persistent backend host for the cron scheduler and async OCR/reconciliation workers. Serverless-only (for example Vercel) cannot run these (scrutiny G-6; resolved by design, for example Azure Container Apps).
 - Diesel-price source for PRD-F1: DOE price-watch scrape vs admin input vs third-party feed. **TBD**, decided in RFC-3 (quotation-pricing-engine).

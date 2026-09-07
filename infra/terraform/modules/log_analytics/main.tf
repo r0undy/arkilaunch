@@ -18,5 +18,11 @@ resource "azurerm_application_insights" "this" {
   workspace_id        = azurerm_log_analytics_workspace.this.id
   application_type    = "Node.JS"
   retention_in_days   = var.app_insights_retention_in_days
-  tags                = var.tags
+  # Cost backstop, not a steady-state control -- this only fires on a
+  # runaway (an error loop, or a future change re-enabling console/winston
+  # log capture, which would double-bill every log line the ACA environment
+  # already ships to this same workspace).
+  daily_data_cap_in_gb                 = var.app_insights_daily_cap_gb
+  daily_data_cap_notifications_enabled = true
+  tags                                 = var.tags
 }

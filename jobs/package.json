@@ -8,11 +8,18 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "worker:edtr": "tsx src/edtr-ocr-worker.ts",
+    "worker:weather": "tsx src/weather-poll.ts",
+    "worker:diesel": "tsx src/diesel.ts",
+    "worker:pm-notify": "tsx src/maintenance-notify.ts"
   },
   "dependencies": {
     "@arkilaunch/db": "workspace:*",
+    "@arkilaunch/document-intelligence": "workspace:*",
     "@arkilaunch/shared": "workspace:*",
+    "@arkilaunch/weather": "workspace:*",
+    "@azure/monitor-opentelemetry": "1.19.0",
     "dotenv": "17.4.2",
     "drizzle-orm": "0.44.7",
     "postgres": "3.4.9"
