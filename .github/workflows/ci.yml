@@ -30,6 +30,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      # Typecheck resolves workspace imports through each package's built
+      # .d.ts, not its source, so the packages have to be built first.
+      # Without this step `pnpm typecheck` fails on TS2307 "cannot find
+      # module '@arkilaunch/shared'" from packages/document-intelligence and
+      # packages/weather -- which it had been doing on every run since those
+      # two packages landed (2026-08-15 and 2026-08-20). The apps typechecked
+      # only because they are ordered after packages/shared in the recursive
+      # run and so saw the dist the earlier build had already produced.
+      - name: Build workspace packages the typecheck resolves against
+        run: pnpm -r --filter=./packages/* build
       - run: pnpm typecheck
       - run: pnpm build
 
