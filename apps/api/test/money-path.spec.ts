@@ -7,6 +7,8 @@ import {
   edtrLineItems,
   edtrReconciliations,
   invoices as invoicesTable,
+  invoiceLineItems,
+  reconcileEdtr,
   withTenantTx,
 } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
@@ -119,11 +121,18 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     });
   }
 
-  const deductionInvoiceCount = async (): Promise<number> => {
+  // Counted by reconciliation id, not by rental. The seeded fixtures give
+  // every suite in this package the same first rental, and vitest runs spec
+  // files in parallel by default, so a rental-wide count would race
+  // edtr-engine.spec.ts's own approvals and fail intermittently. The
+  // description written at edtr.service.ts:446 embeds the reconciliation
+  // id, which makes the count exact and immune to anything else running.
+  const deductionInvoiceCount = async (reconciliationId: string): Promise<number> => {
     const rows = await withTenantTx(adminCtx, (tx) =>
       tx
-        .select()
-        .from(invoicesTable)
+        .select({ description: invoiceLineItems.description })
+        .from(invoiceLineItems)
+        .innerJoin(invoicesTable, eq(invoiceLineItems.invoiceId, invoicesTable.id))
         .where(
           and(
             eq(invoicesTable.rentalId, rentalId),
@@ -131,7 +140,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
           ),
         ),
     );
-    return rows.length;
+    return rows.filter((row) => row.description.includes(reconciliationId)).length;
   };
 
   const storedAdjustments = async (reconciliationId: string): Promise<Record<string, unknown>> => {
@@ -176,20 +185,28 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     const polled = await edtr.get(adminCtx, digital.id);
     expect(polled.reconciliation?.status).toBe('discrepancy');
 
-    const invoicesBefore = await deductionInvoiceCount();
+    const digitalReconId = polled.reconciliation!.id;
+    expect(await deductionInvoiceCount(digitalReconId)).toBe(0);
     await expect(
-      edtr.approve(adminCtx, digital.id, { reconciliationId: polled.reconciliation!.id }),
+      edtr.approve(adminCtx, digital.id, { reconciliationId: digitalReconId }),
     ).rejects.toThrow(ConflictException);
     // The assertion that matters: the gate refused AND nothing was written.
-    expect(await deductionInvoiceCount()).toBe(invoicesBefore);
+    expect(await deductionInvoiceCount(digitalReconId)).toBe(0);
 
     // Neither side is approvable -- the block is a property of the pair,
-    // not of whichever row the admin happened to open.
+    // not of whichever row the admin happened to open. reconcileEdtr()
+    // writes one reconciliation row per EDTR id, and the row keyed on the
+    // paper side only exists once reconcile has run from that side too (in
+    // production, the OCR worker does this); without it get() returns a
+    // null reconciliation and there is nothing to attempt an approve with.
+    await withTenantTx(adminCtx, (tx) => reconcileEdtr(tx, adminCtx.tenantId, paperId));
     const paperPolled = await edtr.get(adminCtx, paperId);
+    expect(paperPolled.reconciliation?.status).toBe('discrepancy');
+    const paperReconId = paperPolled.reconciliation!.id;
     await expect(
-      edtr.approve(adminCtx, paperId, { reconciliationId: paperPolled.reconciliation!.id }),
+      edtr.approve(adminCtx, paperId, { reconciliationId: paperReconId }),
     ).rejects.toThrow(ConflictException);
-    expect(await deductionInvoiceCount()).toBe(invoicesBefore);
+    expect(await deductionInvoiceCount(paperReconId)).toBe(0);
   });
 
   // Pins delta_hours' meaning. Active diverges by 0.4 and idle by 0.3, so
@@ -234,13 +251,14 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     expect(polled.reconciliation?.status).toBe('matched');
     expect(polled.reconciliation?.deltaHours).toBe(0);
 
-    const invoicesBefore = await deductionInvoiceCount();
+    const reconId = polled.reconciliation!.id;
+    expect(await deductionInvoiceCount(reconId)).toBe(0);
     const approved = await edtr.approve(adminCtx, digital.id, {
-      reconciliationId: polled.reconciliation!.id,
+      reconciliationId: reconId,
       adjustments: { hoursActive: 6, hoursIdle: 1 },
     });
     expect(approved.reconciliation.status).toBe('approved');
-    expect(await deductionInvoiceCount()).toBe(invoicesBefore + 1);
+    expect(await deductionInvoiceCount(reconId)).toBe(1);
 
     // The human's adjustment must not erase the machine's own finding:
     // reconstructing "what the gate concluded vs what the human approved"
@@ -284,5 +302,12 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     expect(polled.reconciliation?.counterpartEdtrId).toBe(emptyPaperId);
     expect(polled.reconciliation?.status).toBe('discrepancy');
     expect(polled.status).toBe('review');
+    // Pin the guard specifically. Without asserting the reason, this test
+    // would still pass if the guard were deleted and the empty side merely
+    // produced a tolerance_exceeded from its phantom all-zero sums -- the
+    // weaker of the two behaviours, and one that reports a hours
+    // disagreement where the truth is that a log has no hours at all.
+    expect(polled.reconciliation?.reason).toBe('unreadable');
+    expect(polled.reconciliation?.deltaHours).toBeNull();
   });
 });

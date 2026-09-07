@@ -339,11 +339,18 @@ export class EdtrService {
         // told the pair diverged but not whether the disagreement is in
         // billable active hours or only in idle classification, which is
         // the whole basis for deciding what to approve.
+        const stored = reconciliation.adjustments as
+          | { reason?: ReconciliationReason; deltas?: HourDeltas }
+          | null;
         throw new ConflictException({
           error: 'reconciliation_discrepancy',
+          // `reason` matters as much as the numbers: an 'unreadable' block
+          // carries null deltas because one log recorded no hours at all,
+          // and without the reason that reads as a missing value rather
+          // than as the reason the pair was stopped.
+          reason: stored?.reason ?? null,
           deltaHours: reconciliation.deltaHours !== null ? Number(reconciliation.deltaHours) : null,
-          deltas:
-            (reconciliation.adjustments as { deltas?: HourDeltas } | null)?.deltas ?? null,
+          deltas: stored?.deltas ?? null,
           tolerance: Number(reconciliation.tolerance),
         });
       }

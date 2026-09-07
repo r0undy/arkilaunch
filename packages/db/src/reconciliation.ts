@@ -131,9 +131,6 @@ export async function reconcileEdtr(tx: Tx, tenantId: string, edtrId: string): P
     tx.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, record.id)),
     tx.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, counterpart.id)),
   ]);
-  const deltas = hourDeltas(sumHours(aItems), sumHours(bItems));
-  const deltaHours = worstDelta(deltas);
-
   // A side with no line items at all sums to zero in every dimension, which
   // would otherwise read as perfect agreement and auto-accept a pair that
   // carries no evidence whatsoever. Fail closed instead: this is the money
@@ -141,8 +138,18 @@ export async function reconcileEdtr(tx: Tx, tenantId: string, edtrId: string): P
   // reason to match. reconcileEdtr() is reachable from the worker
   // (jobs/src/edtr-ocr-worker.ts) as well as from capture, so this cannot
   // rely on the caller having validated line items.
+  const noEvidence = aItems.length === 0 || bItems.length === 0;
+
+  // Deltas are only meaningful when both sides actually recorded hours.
+  // Measuring against an absent log would persist a delta computed against
+  // a phantom all-zero side -- a reviewer would read "the logs disagree
+  // about 8 active hours" when the truth is that one log has no hours at
+  // all. null instead, exactly as the single_source branch above does.
+  const deltas = noEvidence ? null : hourDeltas(sumHours(aItems), sumHours(bItems));
+  const deltaHours = deltas ? worstDelta(deltas) : null;
+
   const gate =
-    aItems.length === 0 || bItems.length === 0
+    deltas === null
       ? { matched: false, reason: 'unreadable' as ReconciliationReason }
       : evaluateGate(
           minFieldConfidence(record.source, record.ocrPayload),
@@ -157,7 +164,7 @@ export async function reconcileEdtr(tx: Tx, tenantId: string, edtrId: string): P
     tenantId,
     edtrId: record.id,
     counterpartEdtrId: counterpart.id,
-    deltaHours: String(deltaHours),
+    deltaHours: deltaHours === null ? null : String(deltaHours),
     tolerance: String(tolerance),
     status,
     // `deltas` is the per-dimension breakdown behind the single delta_hours
