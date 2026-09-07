@@ -199,15 +199,114 @@ jobs:
 
   ocr-accuracy-gate:
     runs-on: ubuntu-latest
+    # QAD-T39. Runs the accuracy harness and the threshold-enforcement unit
+    # tests for real, and deliberately does NOT assert >= 90.06%: the gate's
+    # input does not exist yet. The golden set is a synthetic placeholder
+    # that scores 6/8 = 75% by construction, and arkilaunch-edtr-neural-v1
+    # has never been trained (no labeled Almara sheets exist). Asserting the
+    # product threshold against synthetic fixtures would be a green check
+    # that means nothing.
+    #
+    # What this job does enforce is that assertAccuracyGate() still fails
+    # correctly -- below threshold, and on an empty corpus -- so the
+    # enforcement code cannot rot before the fixtures land. QAD-T39's
+    # release checkbox stays unchecked until it can be measured honestly.
     steps:
-      - run: 'echo "skipped: lands with RFC-2 / F3 (golden-set fixtures, >=90.06% gate, QAD-T39)"'
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build workspace packages the harness imports
+        run: pnpm -r --filter=./packages/* build
+      - name: Accuracy metric + threshold enforcement
+        run: >-
+          pnpm --filter @arkilaunch/shared exec vitest run
+          src/ocr-accuracy.spec.ts
 
   newman-api-suite:
     runs-on: ubuntu-latest
+    # Still a stub, and still declared rather than omitted so it stays
+    # visible. Waiting on a committed Postman collection: the assertions it
+    # would carry (PayMongo webhook idempotency, and the 409
+    # reconciliation-discrepancy gate) are covered today by
+    # apps/api/test/payments-engine.spec.ts and the money-path-e2e job
+    # below, so this job is a documentation gap rather than a coverage one.
     steps:
-      - run: 'echo "skipped: lands with F1/F2 (webhook idempotency, 409 reconciliation-discrepancy gate)"'
+      - run: 'echo "skipped: needs a committed Postman collection; assertions currently covered by payments-engine.spec.ts + money-path-e2e"'
 
   money-path-e2e:
     runs-on: ubuntu-latest
+    # QAD-T26 ("deduction without reconciliation": 409, deducts nothing) and
+    # QAD-T40 ("0% reconciliation discrepancy before deduction") -- RFC-2's
+    # central invariant, which had no CI enforcement at all until now.
+    #
+    # Named files, not a whole-package run, following the same reasoning as
+    # api-integration-suite's packages/db step: naming them means a money
+    # -path test cannot quietly vanish from CI by being skipped at runtime.
+    # These files also run inside api-integration-suite; the duplication is
+    # deliberate, so that a failure here points at the money path by name
+    # rather than being one red line in a 300-test run.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Throwaway credentials for an ephemeral container that is destroyed
+      # with the runner. Never reuse this shape for a real environment.
+      APP_AUTHENTICATED_PASSWORD: ci_throwaway_not_a_secret
+      DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/postgres
+      # Load-bearing, same as api-integration-suite: the pooled URL connects
+      # as app_authenticated, NOT as postgres. postgres is a superuser and
+      # superusers bypass RLS regardless of FORCE, which would make the
+      # tenant-registry assertions in rls-enumeration.spec.ts pass
+      # vacuously (RFC-1 §3).
+      DATABASE_URL_POOLED: postgresql://app_authenticated:ci_throwaway_not_a_secret@localhost:5432/postgres
+      ANCHOR_TENANT_SLUG: test-tenant-a
     steps:
-      - run: 'echo "skipped: lands with F3/F1 (OCR->reconciliation->deduction; quote->PayMongo->webhook)"'
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build workspace packages the apps import
+        run: pnpm -r --filter=./packages/* build
+      - name: Generate a throwaway RS256 keypair
+        run: |
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/jwt.key
+          openssl rsa -in /tmp/jwt.key -pubout -out /tmp/jwt.pub
+          echo "JWT_PRIVATE_KEY=$(sed -z 's/\n/\\n/g' /tmp/jwt.key)" >> "$GITHUB_ENV"
+          echo "JWT_PUBLIC_KEY=$(sed -z 's/\n/\\n/g' /tmp/jwt.pub)" >> "$GITHUB_ENV"
+      - name: Apply migrations and set the app_authenticated password
+        run: pnpm --filter @arkilaunch/db migrate
+      - name: Seed the two-tenant isolation fixtures
+        run: pnpm db:seed:test
+      - name: OCR -> reconciliation -> deduction gate (QAD-T26, QAD-T40)
+        run: >-
+          pnpm --filter @arkilaunch/api exec vitest run
+          test/money-path.spec.ts
+          test/edtr-engine.spec.ts
+      - name: Reconciliation gate through the OCR worker
+        run: >-
+          pnpm --filter @arkilaunch/jobs exec vitest run
+          src/edtr-ocr-worker.spec.ts
+      - name: Tenant isolation and reference-table privilege (RFC-1 §3)
+        run: >-
+          pnpm --filter @arkilaunch/db exec vitest run
+          test/rls-enumeration.spec.ts
+          test/tenant-isolation.spec.ts
