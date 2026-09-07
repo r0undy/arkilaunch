@@ -25,6 +25,7 @@ import {
   CONFIDENCE_GATE,
   buildManualTranscriptionPayload,
   isManualTranscription,
+  type HourDeltas,
   type EdtrApproveRequest,
   type EdtrCaptureRequest,
   type EdtrCaptureResponse,
@@ -333,9 +334,16 @@ export class EdtrService {
       // supplying corrected adjustments in this same call; otherwise the
       // gate holds and nothing is deducted (US-01 AC2, QAD-T26).
       if (reconciliation.status === 'discrepancy' && !body.adjustments) {
+        // deltaHours is one scalar for a multi-dimension check, so the
+        // per-dimension breakdown rides along: without it a reviewer is
+        // told the pair diverged but not whether the disagreement is in
+        // billable active hours or only in idle classification, which is
+        // the whole basis for deciding what to approve.
         throw new ConflictException({
           error: 'reconciliation_discrepancy',
           deltaHours: reconciliation.deltaHours !== null ? Number(reconciliation.deltaHours) : null,
+          deltas:
+            (reconciliation.adjustments as { deltas?: HourDeltas } | null)?.deltas ?? null,
           tolerance: Number(reconciliation.tolerance),
         });
       }
@@ -445,12 +453,21 @@ export class EdtrService {
       // rows for this matched pair transition together, so the counterpart
       // is never independently approvable afterward (the lock/check above
       // already proved neither row was 'approved' before this point).
+      // Merged, not replaced, following reject()'s precedent below. A bare
+      // spread of body.adjustments overwrote the whole column, erasing the
+      // machine's own finding (`reason`, and the per-dimension `deltas`
+      // behind delta_hours) exactly on the discrepancy-resolution path
+      // where "what the gate concluded vs what the human overrode" is the
+      // audit question. The keys do not collide, so the merge is lossless.
+      const priorAdjustments = (reconciliation.adjustments as Record<string, unknown> | null) ?? {};
       await tx
         .update(edtrReconciliations)
         .set({
           status: 'approved',
           verifiedBy: ctx.userId,
-          adjustments: body.adjustments ? { ...body.adjustments } : reconciliation.adjustments,
+          adjustments: body.adjustments
+            ? { ...priorAdjustments, ...body.adjustments }
+            : reconciliation.adjustments,
         })
         .where(eq(edtrReconciliations.id, reconciliation.id));
       if (reconciliation.counterpartEdtrId) {

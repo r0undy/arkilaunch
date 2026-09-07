@@ -1,5 +1,11 @@
 import { and, eq, ne } from 'drizzle-orm';
-import { evaluateGate, DEFAULT_TOLERANCE_HOURS, type ReconciliationReason } from '@arkilaunch/shared';
+import {
+  evaluateGate,
+  worstDelta,
+  DEFAULT_TOLERANCE_HOURS,
+  type HourDeltas,
+  type ReconciliationReason,
+} from '@arkilaunch/shared';
 import { db } from './client.js';
 import { edtr, edtrLineItems, edtrReconciliations } from './schema/index.js';
 
@@ -21,8 +27,33 @@ function minFieldConfidence(source: string, ocrPayload: unknown): number {
   return payload?.min_field_confidence ?? 0;
 }
 
-function sumHours(items: Array<{ hoursActive: string; hoursIdle: string }>): number {
-  return items.reduce((sum, item) => sum + Number(item.hoursActive) + Number(item.hoursIdle), 0);
+interface HourSums {
+  active: number;
+  idle: number;
+}
+
+function sumHours(items: Array<{ hoursActive: string; hoursIdle: string }>): HourSums {
+  return items.reduce(
+    (acc, item) => ({
+      active: acc.active + Number(item.hoursActive),
+      idle: acc.idle + Number(item.hoursIdle),
+    }),
+    { active: 0, idle: 0 },
+  );
+}
+
+// active and idle are compared as their own dimensions, not folded into one
+// number, because the deduction prices hours_active alone -- see the
+// evaluateGate() comment in packages/shared/src/edtr.ts for the
+// offsetting-misclassification hole this closes. `total` is kept as a third
+// dimension so the new gate cannot be looser than the summed-total one it
+// replaces.
+function hourDeltas(a: HourSums, b: HourSums): HourDeltas {
+  return {
+    active: Math.abs(a.active - b.active),
+    idle: Math.abs(a.idle - b.idle),
+    total: Math.abs(a.active + a.idle - (b.active + b.idle)),
+  };
 }
 
 // RFC-2 §2/§3 double-entry reconciliation, run by the edtr-ocr-worker after
@@ -100,14 +131,25 @@ export async function reconcileEdtr(tx: Tx, tenantId: string, edtrId: string): P
     tx.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, record.id)),
     tx.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, counterpart.id)),
   ]);
-  const deltaHours = Math.abs(sumHours(aItems) - sumHours(bItems));
+  const deltas = hourDeltas(sumHours(aItems), sumHours(bItems));
+  const deltaHours = worstDelta(deltas);
 
-  const gate = evaluateGate(
-    minFieldConfidence(record.source, record.ocrPayload),
-    minFieldConfidence(counterpart.source, counterpart.ocrPayload),
-    deltaHours,
-    tolerance,
-  );
+  // A side with no line items at all sums to zero in every dimension, which
+  // would otherwise read as perfect agreement and auto-accept a pair that
+  // carries no evidence whatsoever. Fail closed instead: this is the money
+  // path, and "no hours recorded" is a reason for a human to look, never a
+  // reason to match. reconcileEdtr() is reachable from the worker
+  // (jobs/src/edtr-ocr-worker.ts) as well as from capture, so this cannot
+  // rely on the caller having validated line items.
+  const gate =
+    aItems.length === 0 || bItems.length === 0
+      ? { matched: false, reason: 'unreadable' as ReconciliationReason }
+      : evaluateGate(
+          minFieldConfidence(record.source, record.ocrPayload),
+          minFieldConfidence(counterpart.source, counterpart.ocrPayload),
+          deltas,
+          tolerance,
+        );
   const status = gate.matched ? ('matched' as const) : ('discrepancy' as const);
   const edtrStatus = gate.matched ? 'reconciled' : 'review';
 
@@ -118,7 +160,11 @@ export async function reconcileEdtr(tx: Tx, tenantId: string, edtrId: string): P
     deltaHours: String(deltaHours),
     tolerance: String(tolerance),
     status,
-    adjustments: { reason: gate.reason },
+    // `deltas` is the per-dimension breakdown behind the single delta_hours
+    // scalar, so a reviewer can see WHICH dimension diverged rather than
+    // just that something did. Lives in the existing free-form jsonb
+    // alongside `reason`; no schema change.
+    adjustments: { reason: gate.reason, deltas },
   };
   const [reconciliation] = existingRecon
     ? await tx.update(edtrReconciliations).set(values).where(eq(edtrReconciliations.id, existingRecon.id)).returning()
