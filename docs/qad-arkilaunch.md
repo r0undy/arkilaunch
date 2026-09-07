@@ -5,7 +5,7 @@
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Locked
-**Last reconciled:** 2026-08-01 (see docs/index.md §1)
+**Last reconciled:** 2026-08-01 (see docs/index.md §1); §2/§4 deviations below reconciled 2026-08-20 via `docs/cr-arkilaunch-pilot-honesty.md` §2.2/§2.3 (shipped 2026-08-13, written back 2026-08-20 — see `docs/cr-arkilaunch-doc-reconcile-2026-08-20.md`)
 **PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
 **SDD:** [sdd-arkilaunch.md](sdd-arkilaunch.md)
 **RFC(s):** [rfc-arkilaunch-tenancy-rls-auth.md](rfc-arkilaunch-tenancy-rls-auth.md) (RFC-1, PRD-F7), [rfc-arkilaunch-ocr-edtr-reconciliation.md](rfc-arkilaunch-ocr-edtr-reconciliation.md) (RFC-2, PRD-F3), [rfc-arkilaunch-quotation-pricing-engine.md](rfc-arkilaunch-quotation-pricing-engine.md) (RFC-3, PRD-F1)
@@ -53,6 +53,8 @@ The system that must not fail is the trusted-billing loop: scan an EDTR, reconci
 ## 2. Test Environments & Data
 
 **Staging URL:** `https://staging.arkilaunch.app` (Vercel frontend, ACA staging API revision, Supabase staging project, behind Cloudflare).
+
+> **Deviation (`cr-arkilaunch-pilot-honesty.md` §2.3, 2026-08-13):** Terraform defines only `dev` and `prod`; no third `staging` environment exists. For a single-tenant pilot with fewer than ten daily users, a third environment triples upkeep for no proportionate gain. The existing `dev` environment is designated as staging and is the safe home for the live-DB isolation suite (`cross-tenant-isolation-suite` in `.github/workflows/ci.yml`, gated on `vars.RUN_LIVE_DB_TESTS`), which must never run against prod because `pnpm db:seed:test` writes fixture tenants.
 **Test credentials:** Stored in the team password manager under "ArkiLaunch QA Accounts" (never committed). One admin (Rhea proxy), one owner, one timekeeper (2FA-enrolled), one customer, one platform admin, per seeded tenant.
 **Data policy:** Seeded synthetic accounts in staging only. Never use production PII. KYC/ID document images in test are synthetic or public-domain samples, never a real person's ID (RA 10173). No card or account numbers anywhere; PayMongo runs in test mode.
 
@@ -194,6 +196,10 @@ These turn the BRD metrics into pass/fail gates with a real measurement method.
 - OCR accuracy harness against the golden set (QAD-T39, gate: >= 90.06%)
 - Cross-tenant isolation suite against the two-tenant seed (QAD-T23, QAD-T24)
 ```
+
+> **Deviation (`cr-arkilaunch-pilot-honesty.md` §2.2, 2026-08-13):** no Postman collection exists anywhere in the repository. The API-contract coverage above (409 reconciliation-discrepancy shape, webhook signature rejection, status codes) runs as supertest inside the NestJS Vitest suite instead — one test stack instead of two, no collection to hand-synchronize. Recorded as a deliberate deviation, not a gap; a Newman collection can be added later without undoing it.
+>
+> **As of 2026-08-20, three of the items above are not live in `.github/workflows/ci.yml`.** `ocr-accuracy-gate`, `newman-api-suite`, and `money-path-e2e` are declared as explicit `echo "skipped: …"` jobs rather than omitted, but they gate nothing: QAD-T37/T38/T39 (>= 90.06% accuracy) and QAD-T40 (0% reconciliation discrepancy at deduction) currently have no CI enforcement, and `apps/api/test/ai-abuse.spec.ts` has test coverage for AI-01..AI-04 only — AI-05 and AI-06 have no dedicated test. See `docs/cr-arkilaunch-doc-reconcile-2026-08-20.md`.
 
 **CI gate:** a PR cannot merge if any automated check fails. A merge to `staging` deploys staging; a tagged release on `main` deploys prod. The CI pipeline is the single source of truth for what is live (feeds the PRD §9 rollback).
 

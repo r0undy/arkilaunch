@@ -5,7 +5,7 @@
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Locked
-**Last reconciled:** 2026-08-02 (see docs/index.md §1); frontend prerender amendment recorded via Change Record `docs/cr-arkilaunch-frontend-storefront-shell.md`
+**Last reconciled:** 2026-08-02 (see docs/index.md §1); frontend prerender amendment recorded via Change Record `docs/cr-arkilaunch-frontend-storefront-shell.md`; §2/§4/§5/§6/§7 amended 2026-08-20 by `docs/cr-arkilaunch-open-meteo-free-tier.md`
 **PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
 **Event / context:** FMD engine v1.28.1; Scale Full.
 
