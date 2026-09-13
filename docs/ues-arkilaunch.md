@@ -36,7 +36,7 @@
 |-----------|-------|-------|
 | Customer Segments | Cohorts / UES-D8 | PH heavy-equipment rental MSMEs (the tenant), anchored by Almara. Primary in-tenant user: the back-office admin. Contractors are end users of a tenant's portal, not ArkiLaunch's paying customer. |
 | Revenue Streams | UES-E1 | Recurring subscription per tenant, tiered by fleet size and seats. Illustrative tiers set below in §1. PayMongo deposits excluded (pass-through). |
-| Cost Structure | UES-E2, UES-F# | Per-page Azure DI OCR (EDTR + KYC); Open-Meteo commercial plan; Supabase Postgres/Storage plus a persistent backend host for cron and async OCR workers; email/SMS OTP; per-tenant support. PayMongo fees are pass-through. |
+| Cost Structure | UES-E2, UES-F# | Per-page Azure DI OCR (EDTR + KYC); Open-Meteo free tier (PHP 0 since 2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md`); Supabase Postgres/Storage plus a persistent backend host for cron and async OCR workers; email/SMS OTP; per-tenant support. PayMongo fees are pass-through. |
 | Impact variables (`BRD-V#`) | Asset allocation / experiments | BRD-V1 OCR/reconciliation billing-trust (rank 1); BRD-V2 anchor retention/expansion (rank 2); BRD-V3 tenant acquisition efficiency (rank 3). Capital concentrates on V1 and V2 first. |
 
 ---

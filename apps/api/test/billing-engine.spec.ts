@@ -157,6 +157,15 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     expect(polled.reconciliation?.status).toBe('matched');
     const approved = await edtr.approve(adminCtxA, digital.id, { reconciliationId: polled.reconciliation!.id });
 
+    // Pins the rate, not just the direction of travel. The deduction must
+    // price at the seed card in force on report_date (850/hr), never at
+    // whichever card merely sorts newest: quotes-engine.spec.ts (QAD-T44/T48)
+    // leaves a permanent 999999/hr card, effective_from = now, on this
+    // tenant and equipment type in this shared, never-reset test project.
+    // Before edtr.service.ts filtered by effectiveness that card won the
+    // `order by effective_from desc` and priced this at 4 * 999999.
+    expect(approved.deposit.deducted).toBe(4 * 850);
+
     const after = await billing.depositLedger(adminCtxA, depositRentalId);
     expect(after.totalDeducted).toBe(before.totalDeducted + approved.deposit.deducted);
     expect(after.balanceRemaining).toBe(DEPOSIT_REQUIRED - after.totalDeducted);
@@ -181,6 +190,36 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     await expect(edtr.approve(adminCtxA, digital.id, { reconciliationId: polled.reconciliation!.id })).rejects.toMatchObject({
       response: { error: 'deposit_exhausted' },
     });
+    const after = await billing.depositLedger(adminCtxA, depositRentalId);
+    expect(after.totalDeducted).toBe(before.totalDeducted);
+  });
+
+  it('rejects an approve where no rate card was in force on the report date, instead of deducting at zero', async () => {
+    // 2019 is before the seeded card's effective_from (2020-01-01) and long
+    // before the 999999 card quotes-engine.spec.ts leaves at effective_from
+    // = now, so rate cards exist for this equipment type but none covers
+    // the date. That state only became reachable once the deduction path
+    // started filtering by effectiveness; the danger is that it collapses
+    // into the same "no card" branch as an unconfigured equipment type and
+    // silently prices at 0, posting a zero-value deduction invoice that
+    // reads as a real approved one and under-bills the tenant.
+    const reportDate = '2019-06-01';
+    await insertExtractedPaperCounterpart(reportDate, 3, 0);
+    const digital = await edtr.capture(adminCtxA, {
+      source: 'digital_entry',
+      rentalId: depositRentalId,
+      equipmentId: equipmentIdA,
+      reportDate,
+      lineItems: { hoursActive: 3, hoursIdle: 0 },
+    });
+    const polled = await edtr.get(adminCtxA, digital.id);
+    expect(polled.reconciliation?.status).toBe('matched');
+
+    const before = await billing.depositLedger(adminCtxA, depositRentalId);
+    await expect(edtr.approve(adminCtxA, digital.id, { reconciliationId: polled.reconciliation!.id })).rejects.toMatchObject({
+      response: { error: 'rate_card_not_effective' },
+    });
+    // Fails closed: no deduction, no invoice, ledger untouched.
     const after = await billing.depositLedger(adminCtxA, depositRentalId);
     expect(after.totalDeducted).toBe(before.totalDeducted);
   });

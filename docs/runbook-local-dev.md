@@ -55,6 +55,36 @@ pnpm db:seed            # single anchor tenant — matches ANCHOR_TENANT_SLUG
 pnpm db:seed:test       # OR: two tenants, for isolation testing
 ```
 
+### Sign-in accounts
+
+`pnpm db:seed` creates one account per role, all sharing the password `admin`:
+
+| Email | Role | Lands on | What it can do |
+|-------|------|----------|----------------|
+| `admin@admin.com` | `admin` | `/app` | The tenant's back-office admin: users, quotes, fleet, and the EDTR approve/deduct gate (PRD-F3 US-01) |
+| `owner@admin.com` | `owner` | `/app/insights` | Read-mostly on operational data (QAD-T19); manages its own users and tenant settings |
+| `timekeeper@admin.com` | `timekeeper` | `/field` | Creates EDTRs on assigned sites only; never approves or deducts (PRD-F3 US-02) |
+| `customer@admin.com` | `customer` | `/account` | Own bookings, quotes and deposit checkout; holds no staff permission (PRD-F8/F2) |
+| `platform@admin.com` | `platform_admin` | `/app` | Every permission; cross-tenant authority via `withPlatformTx`, never via tenant RLS (RFC-1 §3) |
+
+Switching between these is the quickest way to exercise RBAC: the same screen should
+show, hide, or 403 different things per role.
+
+> **These are local-only credentials.** `admin` is five characters and would be rejected
+> by `UserPasswordSchema` (min 12), which governs every path where a password is actually
+> *chosen* — invite activation and password reset. The seed writes the Argon2id hash
+> directly, so it bypasses that; login only requires min(1). Because of that asymmetry
+> the seed **refuses to run against a non-local database**: point `DATABASE_URL_DIRECT`
+> at a remote host and it aborts before connecting. Set `SEED_PASSWORD` to a real
+> password (>= 12 chars) to seed a remote environment, or `ALLOW_WEAK_SEED_CREDENTIALS=true`
+> to override deliberately. See `packages/db/src/seed/seed-identities.ts`.
+
+Re-running `pnpm db:seed` resets all five passwords and re-asserts each role, so an
+account you have since changed converges back on the table above. Accounts seeded before
+2026-09-13 (`admin@almara.test`, `timekeeper@almara.test`,
+`platform-admin@arkilaunch.test`) are renamed in place on the next seed, keeping their
+user ids so existing EDTRs, rentals and deposit entries still point at a real creator.
+
 ## 4. Run
 
 ```
@@ -87,7 +117,7 @@ double-entry path.
 
 ## 5. Verify
 
-Log in with a seeded user through `/login`; confirm it lands on the expected role home
+Log in with a seeded user through `/login` (see the table in §3); confirm it lands on the expected role home
 (`customer`→`/account`, `owner`→`/app/insights`, `timekeeper`→`/field`, `admin`/`platform_admin`→`/app`,
 per `apps/web/src/lib/guards.ts`).
 

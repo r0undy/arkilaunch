@@ -6,7 +6,11 @@ import {
   type DocumentIntelligencePort,
   type OcrPayload,
 } from '@arkilaunch/shared';
-import { AzureDocumentIntelligenceAdapter } from '@arkilaunch/document-intelligence';
+import {
+  AzureDocumentIntelligenceAdapter,
+  EDTR_MODEL_ID,
+  EDTR_REQUIRED_FIELDS,
+} from '@arkilaunch/document-intelligence';
 import { makeJobDb } from './db-client.js';
 import { fetchStorageObject } from './storage.js';
 import { runInstrumentedJob } from './telemetry.js';
@@ -14,13 +18,13 @@ import { runInstrumentedJob } from './telemetry.js';
 // RFC-2 §2/§3 (RFC2-02): claim/lock/retry loop + extraction + reconciliation
 // gate.
 //
-// NOTE: EDTR_MODEL_ID below names a custom neural model that DOES NOT EXIST
-// yet. Training it needs labeled Almara sheets, and the field names this
-// worker keys on (hours_active/hours_idle) are a guess until that training
-// run fixes the labels. Recorded in cr-arkilaunch-pilot-honesty.md §4.
+// EDTR_MODEL_ID and EDTR_REQUIRED_FIELDS come from
+// @arkilaunch/document-intelligence's model registry, which is the one place
+// that knows what a logical model id really is and what it returns. Both are
+// still awaiting a training run over labeled Almara sheets -- see the caveats
+// recorded against them there and in cr-arkilaunch-pilot-honesty.md §4.
 const MAX_ATTEMPTS = 5;
 const CLAIM_BATCH_SIZE = 10;
-const EDTR_MODEL_ID = 'arkilaunch-edtr-neural-v1';
 const API_VERSION = '2024-11-30';
 
 function toOcrPayload(fields: Record<string, { value: string; confidence: number }>): OcrPayload {
@@ -44,6 +48,16 @@ function toOcrPayload(fields: Record<string, { value: string; confidence: number
     min_field_confidence: minConfidence,
     pages: 1,
   });
+}
+
+function requireField(values: Map<string, number>, name: string): number {
+  const value = values.get(name);
+  if (value === undefined) {
+    // Lands in the per-row catch: the row retries and eventually routes to
+    // review. It never becomes a persisted reading.
+    throw new Error(`required field ${name} passed validation but is absent`);
+  }
+  return value;
 }
 
 function fieldNumber(payload: OcrPayload, name: string): number | null {
@@ -157,19 +171,40 @@ export async function runEdtrOcrWorker(
         }
 
         const ocrPayload = toOcrPayload(result.fields);
-        const hoursActive = fieldNumber(ocrPayload, 'hours_active');
-        const hoursIdle = fieldNumber(ocrPayload, 'hours_idle');
+        // One pass builds the values and finds the gaps, so there is no way
+        // for the check and the read to disagree about what was present.
+        const required = new Map<string, number>();
+        const missing: string[] = [];
+        for (const name of EDTR_REQUIRED_FIELDS) {
+          const value = fieldNumber(ocrPayload, name);
+          if (value === null) missing.push(name);
+          else required.set(name, value);
+        }
 
-        if (hoursActive === null || hoursIdle === null) {
+        if (missing.length > 0) {
           // A field the model did not return is not zero hours -- writing 0
           // would be a fabricated reading handed to the deduction gate as
-          // real (RFC-2 §2, AGENTS.md "Never"). Hard-fail to manual entry.
+          // real (RFC-2 §2, AGENTS.md "Never"). Hard-fail to manual entry,
+          // naming the fields so an operator can tell a model-schema drift
+          // apart from a genuinely illegible sheet.
           await db
             .update(edtr)
-            .set({ status: 'hard_failed', lockedAt: null, lastError: 'missing_required_field' })
+            .set({
+              status: 'hard_failed',
+              lockedAt: null,
+              lastError: `missing_required_field:${missing.join(',')}`,
+            })
             .where(eq(edtr.id, row.id));
           continue;
         }
+
+        // Unreachable: the missing-field branch above returns for exactly
+        // these names. It throws rather than defaulting because a `?? 0` here
+        // would be the fabricated zero this whole path exists to prevent --
+        // and an unreachable default is still the wrong value to write down
+        // in a file where zero means "the machine idled".
+        const hoursActive = requireField(required, 'hours_active');
+        const hoursIdle = requireField(required, 'hours_idle');
 
         await db.transaction(async (tx) => {
           await tx.update(edtr).set({ status: 'extracted', ocrPayload, lockedAt: null }).where(eq(edtr.id, row.id));

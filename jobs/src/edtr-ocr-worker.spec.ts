@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
 import postgres from 'postgres';
 import { and, eq } from 'drizzle-orm';
-import { edtr, edtrReconciliations } from '@arkilaunch/db';
+import { edtr, edtrLineItems, edtrReconciliations } from '@arkilaunch/db';
 import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared/testing';
 import { runEdtrOcrWorker } from './edtr-ocr-worker.js';
 import { makeJobDb } from './db-client.js';
@@ -89,6 +89,33 @@ describe('edtr-ocr-worker', () => {
 
     expect(updated!.status).toBe('hard_failed');
     expect(updated!.lastError).toBe('unreadable_or_empty_extraction');
+  });
+
+  it('a partial extraction hard-fails and names the missing field, never substituting zero', async () => {
+    const row = await insertQueuedPaperEdtr('2020-02-06');
+    // The model answered, and answered confidently -- but only for one of the
+    // two fields reconciliation needs. This is the dangerous shape: it is not
+    // an empty result, so the unreadable branch does not catch it, and a zero
+    // written for the absent field would reach the deduction gate looking
+    // exactly like a machine that genuinely idled for zero hours.
+    const partialFixture = new FixtureDocumentIntelligenceAdapter({
+      fields: { hours_active: { value: '8.0', confidence: 0.97 } },
+    });
+
+    await runEdtrOcrWorker(partialFixture, stubFetchBytes);
+
+    const { db, client } = makeJobDb();
+    const [updated] = await db.select().from(edtr).where(eq(edtr.id, row.id));
+    const lineItems = await db.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, row.id));
+    await client.end();
+
+    expect(updated!.status).toBe('hard_failed');
+    // The field is named so an operator can tell a model-schema drift from an
+    // illegible sheet.
+    expect(updated!.lastError).toBe('missing_required_field:hours_idle');
+    // The load-bearing assertion: nothing was persisted at all. A row here
+    // with hoursIdle '0' would be a fabricated reading.
+    expect(lineItems).toHaveLength(0);
   });
 
   it('two matching independent logs (both above the confidence gate, within tolerance) auto-accept', async () => {

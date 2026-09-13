@@ -164,38 +164,6 @@ export const edtrQueries = {
     }),
 };
 
-export const depositQueries = {
-  forRental: (rentalId: string) =>
-    queryOptions({
-      queryKey: ['rentals', rentalId, 'deposit'] as const,
-      queryFn: () => apiGet<unknown>(`/rentals/${rentalId}/deposit`),
-    }),
-};
-
-export const maintenanceQueries = {
-  forEquipment: (equipmentId: string) =>
-    queryOptions({
-      queryKey: ['equipment', equipmentId, 'maintenance'] as const,
-      queryFn: () => apiGet<unknown>(`/equipment/${equipmentId}/maintenance`),
-    }),
-};
-
-export const quoteQueries = {
-  detail: (id: string) =>
-    queryOptions({
-      queryKey: ['quotes', id] as const,
-      queryFn: () => apiGet<unknown>(`/quotes/${id}`),
-    }),
-};
-
-export const invoiceQueries = {
-  detail: (id: string) =>
-    queryOptions({
-      queryKey: ['invoices', id] as const,
-      queryFn: () => apiGet<unknown>(`/invoices/${id}`),
-    }),
-};
-
 // Fleet-wide utilization %, derived client-side from the per-unit
 // UtilizationReportResponse.fleet[].utilizationPct (there is no top-level
 // aggregate field on the wire -- see PLAN Phase 1 note).

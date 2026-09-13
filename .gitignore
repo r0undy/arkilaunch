@@ -22,3 +22,13 @@ Thumbs.db
 
 playwright-report/
 test-results/
+
+# Labeled OCR fixtures staging (real EDTR/KYC scans -- never committed)
+.ocr-fixtures/
+
+# Claude Code local state. Both were previously ignored only by a
+# developer's global gitignore / .git/info/exclude, which does not travel
+# to another clone: settings.local.json is per-machine tool permissions,
+# and scheduled_tasks.lock is runtime state (a session id and a live PID).
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
