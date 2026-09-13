@@ -213,10 +213,10 @@ Once the code is live and PRD/SDD are Locked, prefer the Change Workflow over re
 
 ### Indexability checklist
 
-- [x] Public marketing/booking pages are crawlable HTML (server-rendered or pre-rendered, not empty client shells) -- pre-rendered via `apps/web/scripts/prerender.mjs` (CR: frontend-storefront-shell; see `sdd-arkilaunch.md` §6)
-- [x] `sitemap.xml` published for public pages only -- `apps/web/public/sitemap.xml`
-- [x] Canonical URLs set on public pages -- injected by the prerender step
-- [x] Authenticated app routes carry `noindex` and are excluded from the sitemap -- `/app/*`, `/account/*`, `/field/*`, `/platform` are never prerendered and keep the default `noindex` shell
+- [~] Public marketing/booking pages are crawlable HTML (server-rendered or pre-rendered, not empty client shells) -- `apps/web/scripts/prerender.mjs` exists and does this (CR: frontend-storefront-shell; see `sdd-arkilaunch.md` §6), but **it does not run on deploy**: `apps/web/vercel.json`'s `buildCommand` is `pnpm --filter @arkilaunch/shared build && pnpm --filter @arkilaunch/web build` and never invokes `pnpm prerender`, so the deployed public pages are still the client shell. Wiring it in needs a Playwright browser download in the Vercel build, which is a deploy-pipeline decision, not a docs fix
+- [x] `sitemap.xml` published for public pages only -- `apps/web/public/sitemap.xml`, a hand-maintained static file, so this holds independently of the prerender step
+- [~] Canonical URLs set on public pages -- injected by the prerender step, and therefore not in effect on deploy for the same reason as the first box. `VITE_PUBLIC_SITE_URL` is also unset in CI, so a prerender run today would emit `http://localhost:5173` canonicals
+- [x] Authenticated app routes carry `noindex` and are excluded from the sitemap -- `/app/*`, `/account/*`, `/field/*`, `/platform` are never prerendered and keep the default `noindex` shell; this holds independently of the prerender step, since `noindex` is the shell's default and prerender is what would *remove* it
 
 ### robots.txt policy
 
