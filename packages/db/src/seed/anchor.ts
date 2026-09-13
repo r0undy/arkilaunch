@@ -1,7 +1,14 @@
 import { hash } from '@node-rs/argon2';
-import { eq } from 'drizzle-orm';
+import { ROLE_CODES } from '@arkilaunch/shared';
+import { and, eq } from 'drizzle-orm';
 import * as schema from '../schema/index.js';
 import { makeServiceDb, seedPermissionCatalog } from './permission-catalog.js';
+import {
+  LEGACY_EMAIL_MIGRATIONS,
+  SEED_IDENTITIES,
+  SEED_PASSWORD,
+  assertSeedTargetIsLocal,
+} from './seed-identities.js';
 
 // Loading dotenv happens in permission-catalog.js (imported above), which
 // every seed entrypoint already imports.
@@ -11,6 +18,10 @@ import { makeServiceDb, seedPermissionCatalog } from './permission-catalog.js';
 // customer, and a rental) that the admin/timekeeper POC screens have real
 // IDs to reference instead of requiring a hand-typed UUID guess. Idempotent.
 async function main() {
+  // Before opening a connection: these are weak, shared development
+  // credentials and must never land in a live environment.
+  assertSeedTargetIsLocal(process.env.DATABASE_URL_DIRECT);
+
   const { db, client } = makeServiceDb();
   const { roleIds } = await seedPermissionCatalog(db);
 
@@ -26,12 +37,14 @@ async function main() {
     .returning();
   if (!tenant) throw new Error('failed to seed the Almara tenant');
 
-  const adminRoleId = roleIds.get('admin');
-  const timekeeperRoleId = roleIds.get('timekeeper');
-  const platformAdminRoleId = roleIds.get('platform_admin');
-  if (!adminRoleId) throw new Error('admin role missing from seeded catalog');
-  if (!timekeeperRoleId) throw new Error('timekeeper role missing from seeded catalog');
-  if (!platformAdminRoleId) throw new Error('platform_admin role missing from seeded catalog');
+  // Every role in ROLE_CODES gets a seeded account, so RBAC can be
+  // exercised end-to-end rather than only for the three roles that used to
+  // exist here (owner and customer had none, which made QAD-T19's
+  // read-mostly owner posture and the customer booking path untestable
+  // without hand-creating users).
+  for (const role of ROLE_CODES) {
+    if (!roleIds.get(role)) throw new Error(`${role} role missing from seeded catalog`);
+  }
 
   // Phase 2 (S25 Platform Console): platform_admin is RFC-1's reserved
   // cross-tenant role. It needs SOME tenant row to satisfy users.tenant_id
@@ -82,18 +95,6 @@ async function main() {
     });
   }
 
-  const platformPasswordHash = await hash('changeme-dev-only');
-  await db
-    .insert(schema.users)
-    .values({
-      tenantId: platformTenant.id,
-      roleId: platformAdminRoleId,
-      email: 'platform-admin@arkilaunch.test',
-      passwordHash: platformPasswordHash,
-      status: 'active',
-    })
-    .onConflictDoNothing();
-
   // Phase 2 approval needs a plan to attach to the trialing subscription it
   // creates; subscription_plans has no other writer anywhere in the codebase.
   await db
@@ -104,25 +105,67 @@ async function main() {
     ])
     .onConflictDoNothing();
 
-  const passwordHash = await hash('changeme-dev-only');
-  await db
-    .insert(schema.users)
-    .values({ tenantId: tenant.id, roleId: adminRoleId, email: 'admin@almara.test', passwordHash, status: 'active' })
-    .onConflictDoNothing();
-  await db
-    .insert(schema.users)
-    .values({
-      tenantId: tenant.id,
-      roleId: timekeeperRoleId,
-      email: 'timekeeper@almara.test',
-      passwordHash,
-      status: 'active',
-    })
-    .onConflictDoNothing();
+  // --- Users -------------------------------------------------------------
+  //
+  // One password across all five roles (see seed-identities.ts for why that
+  // is safe only against a local database, and what stops it reaching a
+  // real one).
+  //
+  // An already-seeded database is migrated by UPDATEing the old rows rather
+  // than deleting them. users.id is referenced by rentals, EDTR reports,
+  // weather incidents, deposit ledger entries and timekeeper site
+  // assignments, mostly without ON DELETE CASCADE, so delete-and-recreate
+  // would either fail on a foreign key or force wiping the operational data
+  // these accounts are here to look at. Renaming keeps every reference and
+  // every piece of seeded history intact.
+  const passwordHash = await hash(SEED_PASSWORD);
+
+  for (const [legacyEmail, currentEmail] of LEGACY_EMAIL_MIGRATIONS) {
+    const [legacy] = await db.select().from(schema.users).where(eq(schema.users.email, legacyEmail));
+    if (!legacy) continue;
+    // If a row already exists under the new address IN THE SAME TENANT (a
+    // fresh seed ran first) the unique index would reject the rename, so
+    // leave the legacy row be and let the upsert below own the address.
+    // Scoped by tenant because users_tenant_email_uq is (tenant_id, email).
+    const [taken] = await db
+      .select()
+      .from(schema.users)
+      .where(and(eq(schema.users.email, currentEmail), eq(schema.users.tenantId, legacy.tenantId)));
+    if (taken) continue;
+    await db.update(schema.users).set({ email: currentEmail }).where(eq(schema.users.id, legacy.id));
+    console.log(`  migrated ${legacyEmail} -> ${currentEmail} (same user id, references intact)`);
+  }
+
+  for (const identity of SEED_IDENTITIES) {
+    const owningTenantId = identity.tenant === 'platform' ? platformTenant.id : tenant.id;
+    await db
+      .insert(schema.users)
+      .values({
+        tenantId: owningTenantId,
+        roleId: roleIds.get(identity.role)!,
+        email: identity.email,
+        passwordHash,
+        status: 'active',
+      })
+      // Re-seeding resets the password and re-asserts the role, so an
+      // account that drifted (or was renamed above) converges on the
+      // identity declared in seed-identities.ts.
+      //
+      // The conflict target is (tenant_id, email), not email: users.email is
+      // only unique PER TENANT (`users_tenant_email_uq`, migration 0002,
+      // declared in raw SQL rather than in the Drizzle table). Naming email
+      // alone would fail at runtime with "no unique or exclusion constraint
+      // matching the ON CONFLICT specification".
+      .onConflictDoUpdate({
+        target: [schema.users.tenantId, schema.users.email],
+        set: { passwordHash, roleId: roleIds.get(identity.role)!, status: 'active' },
+      });
+  }
+
   const [timekeeper] = await db
     .select()
     .from(schema.users)
-    .where(eq(schema.users.email, 'timekeeper@almara.test'));
+    .where(and(eq(schema.users.email, 'timekeeper@admin.com'), eq(schema.users.tenantId, tenant.id)));
 
   const [equipmentType] = await db
     .insert(schema.equipmentTypes)
@@ -213,6 +256,17 @@ async function main() {
     existingCustomer[0] ??
     (await db.insert(schema.customers).values({ tenantId: tenant.id, companyName: 'Almara Sample Customer Co.' }).returning())[0];
   if (!customerRow) throw new Error('failed to seed a customer for Almara');
+
+  // Bind the customer-role login to the customer record, so customer@admin.com
+  // actually resolves to a customer with rentals and a deposit rather than an
+  // authenticated user with nothing to read (PRD-F8/F2).
+  const [customerUser] = await db
+    .select()
+    .from(schema.users)
+    .where(and(eq(schema.users.email, 'customer@admin.com'), eq(schema.users.tenantId, tenant.id)));
+  if (customerUser && customerRow.userId !== customerUser.id) {
+    await db.update(schema.customers).set({ userId: customerUser.id }).where(eq(schema.customers.id, customerRow.id));
+  }
 
   const existingAddress = await db.select().from(schema.addresses).where(eq(schema.addresses.tenantId, tenant.id));
   const address =
@@ -682,6 +736,12 @@ async function main() {
 
   await client.end();
   console.log('Anchor tenant seeded: Almara Construction.');
+  console.log('');
+  console.log(`Sign-in accounts (all share the password "${SEED_PASSWORD}"):`);
+  for (const identity of SEED_IDENTITIES) {
+    console.log(`  ${identity.email.padEnd(24)} ${identity.role.padEnd(15)} ${identity.note}`);
+  }
+  console.log('');
   console.log('Sample IDs for the POC screens:');
   console.log(`  customerId:       ${customerRow.id}`);
   console.log(`  projectSiteId:    ${site.id}`);
