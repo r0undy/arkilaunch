@@ -34,14 +34,19 @@ describe('the money path: no deduction without a passing reconciliation', () => 
   let rentalId: string;
   let equipmentId: string;
 
-  // Own date range, disjoint from edtr-engine.spec.ts's 2021-03-0X, so the
-  // two suites can never pair against each other's equipment-days.
+  // Own date range, disjoint from every other suite's. Vitest runs spec
+  // files in parallel and they all draw the same seeded rental and
+  // equipment, so two suites sharing an equipment-day will pair against
+  // each other's rows -- and the beforeAll cleanup below will delete them.
+  // Taken as of this commit: 2020-02-0X (billing), 2021-03-01..10
+  // (edtr-engine), 2021-04-01..02 (ai-abuse), 2021-05-01..03 (fleet).
+  // 2021-06 is free; check this list before adding a date here.
   const DATES = {
-    swap: '2021-04-01',
-    asymmetric: '2021-04-02',
-    refused: '2021-04-03',
-    match: '2021-04-04',
-    noEvidence: '2021-04-05',
+    swap: '2021-06-01',
+    asymmetric: '2021-06-02',
+    refused: '2021-06-03',
+    match: '2021-06-04',
+    noEvidence: '2021-06-05',
   };
 
   beforeAll(async () => {

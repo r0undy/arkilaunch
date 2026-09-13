@@ -143,24 +143,78 @@ describe('UsersService (S19)', () => {
   });
 
   describe('last_user_manager guard', () => {
-    it('deactivating the tenant\'s only user:manage holder is rejected, even when the actor is not that holder', async () => {
+    it('deactivating the last remaining user:manage holder is rejected', async () => {
       // adminCtxA deactivating THEMSELVES is self-mutation (a different,
-      // earlier-checked denial); the last-user-manager guard specifically
-      // needs a DIFFERENT actor -- platformCtxA, a support/onboarding
-      // context (RFC-1 §3) -- attempting to deactivate the tenant's sole
-      // admin, which really would leave zero active user:manage holders.
-      await expect(usersService.deactivate(platformCtxA, adminCtxA.userId)).rejects.toThrow(ForbiddenException);
+      // earlier-checked denial); this guard needs a DIFFERENT actor --
+      // platformCtxA, a support/onboarding context (RFC-1 §3).
+      //
+      // The seeded tenant has TWO active user:manage holders, not one:
+      // `owner` gained user:manage and tenant:manage in
+      // cr-arkilaunch-f9-read-surface.md ("a provisioned tenant's first
+      // user is owner"), see ROLE_PERMISSIONS in the seed catalog. So
+      // deactivating the admin alone leaves the owner still managing and
+      // the guard is RIGHT to allow it. This test asserted otherwise on a
+      // stale reading of the catalog, and its failure disabled the seeded
+      // admin as a side effect -- which is what cascaded into
+      // auth-lockout, refresh-rotation and billing-engine.
+      //
+      // So stand the invariant up honestly: remove the other holder first,
+      // and then the admin really is the last one.
+      await usersService.deactivate(platformCtxA, ownerUserIdA);
+      try {
+        await expect(usersService.deactivate(platformCtxA, adminCtxA.userId)).rejects.toThrow(
+          ForbiddenException,
+        );
+        // The admin is still active afterwards: a refused deactivation must
+        // not have written anything, which rejects.toThrow() alone does not
+        // prove.
+        const stillThere = await usersService.get(platformCtxA, adminCtxA.userId);
+        expect(stillThere.status).toBe('active');
+      } finally {
+        // Restore the fixture whatever happened above -- every spec file in
+        // this package draws the same seeded tenant and vitest runs them in
+        // parallel.
+        await usersService.reactivate(platformCtxA, ownerUserIdA);
+      }
+    });
+
+    it('allows deactivating one user:manage holder while another stays active', async () => {
+      // The positive half: the guard must not be so eager that a tenant
+      // with two managers can deactivate neither.
+      try {
+        const result = await usersService.deactivate(platformCtxA, ownerUserIdA);
+        expect(result.status).toBe('disabled');
+      } finally {
+        await usersService.reactivate(platformCtxA, ownerUserIdA);
+      }
     });
   });
 
-  describe('owner is read-mostly (QAD-T19)', () => {
-    it('owner ctx cannot invite: ROLE_ASSIGNABLE_BY.owner is empty, a second denial layer behind PermissionsGuard', async () => {
-      // PermissionsGuard would already deny an owner ctx before this
-      // service method is ever reached (owner holds no user:manage
-      // permission). This proves the service does not ALSO silently allow
-      // it if that guard were ever misconfigured or bypassed.
+  describe('owner administers its own tenant, within limits (QAD-T19)', () => {
+    // This block asserted that an owner cannot invite at all, on two
+    // premises that are both stale: cr-arkilaunch-f9-read-surface.md gave
+    // owner `user:manage` + `tenant:manage`, and ROLE_ASSIGNABLE_BY.owner
+    // is now ['admin','timekeeper','customer'] -- because a self-service
+    // tenant's FIRST user is an owner, who could otherwise never add
+    // anyone. The seed catalog says it outright: "QAD-T19 was never a rule
+    // against an owner administering their own company's users."
+    //
+    // QAD-T19 still means something -- owner is read-mostly on OPERATIONAL
+    // data, not powerless over its own roster -- so assert the boundary
+    // that actually exists rather than dropping the coverage.
+    it('owner can invite a timekeeper to its own tenant', async () => {
       const email = uniqueEmail('owner-invited');
-      await expect(usersService.invite(ownerCtxA, { email, role: 'timekeeper' })).rejects.toThrow(ForbiddenException);
+      const invited = await usersService.invite(ownerCtxA, { email, role: 'timekeeper' });
+      expect(invited.status).toBe('invited');
+    });
+
+    it('owner still cannot mint another owner', async () => {
+      // 'owner' is absent from ROLE_ASSIGNABLE_BY.owner, so an owner cannot
+      // clone its own privilege level -- the escalation that widening
+      // user:manage could have opened.
+      await expect(
+        usersService.invite(ownerCtxA, { email: uniqueEmail('owner-escalate'), role: 'owner' as never }),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 

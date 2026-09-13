@@ -119,7 +119,25 @@ Note on the `ai-ocr-abuse-runner` and `edtr-ocr-worker` runs: neither could exec
 
 ---
 
-## 6. Verification
+## 6. What the first real CI run found
+
+The two jobs this pass un-stubbed were green before it only because they did nothing. Making them real produced findings immediately, which is the point; recorded here because a CR that omits its own red build is not a record.
+
+**Baseline, before this branch (PR #5, run `34092075419`):** `lint-typecheck-build` red, `api-integration-suite` red (9 failures / 4 files), and `ocr-accuracy-gate` + `money-path-e2e` "green" in 3–4 seconds because they were `echo` stubs.
+
+**First run of this branch (`34097789400`):** `api-integration-suite` at 10 failures / 5 files, i.e. **exactly one new failure**, and `apps/api/test/money-path.spec.ts` **passed**.
+
+Three things fixed in `202aadb`:
+
+1. **A date collision, and it was mine.** `money-path.spec.ts` took `2021-04-01..05` to stay clear of `edtr-engine.spec.ts`'s `2021-03-0X`, but `ai-abuse.spec.ts` already owned `2021-04-01`/`02` on the same seeded rental and equipment. Vitest parallelises spec files, so the suites paired against each other's equipment-days and this suite's `beforeAll` cleanup deleted rows out from under **AI-04**, which went green → red (`expected 'pending' to be 'discrepancy'`). Moved to `2021-06-0X` with the full list of taken dates written beside it. Worth noting plainly: the hazard was described in the comment directly above the constant, and I walked into it anyway.
+2. **`diesel_price_readings:INSERT`** — the new privilege assertion found a second instance of the class it was written for, on its first run. This one is **justified, not a hole**: `0005_diesel_manual_entry_grant.sql` adds it for RFC-3's platform-admin manual-entry route, which runs on the request path as `app_authenticated` because `service_role` there is forbidden, gated by the `diesel:manage` permission and audit-logged by the route. Allowlisted as `table:VERB`, so adding `UPDATE`/`DELETE` there would still fail, and the failure message now explains how to justify an exception rather than only how to revoke one.
+3. **`lint-typecheck-build` was broken before this branch and is now fixed.** The job ran `pnpm typecheck` without building the workspace packages, and typecheck resolves workspace imports through each package's built `.d.ts` rather than its source — so it failed `TS2307` on `packages/document-intelligence` and `packages/weather` on every run since those landed (2026-08-15, 2026-08-20). Diagnosis verified rather than guessed: deleting `packages/*/dist` locally reproduces the identical two-package failure, and building them clears it. The apps escaped only because they are ordered after `packages/shared` in the recursive run. Strictly outside this pass's scope, but it gates the PR and it is three lines in a file already being touched.
+
+**Still red and pre-existing, deliberately not fixed here:** the 9 baseline `api-integration-suite` failures across `users-admin.spec.ts` (2), `billing-engine.spec.ts` (4) and `refresh-rotation.spec.ts` (2), plus one more. They predate this branch, are unrelated to the money path or tenancy, and belong to M4 iteration 2 — they are the "0 P0/P1" QAD §6 criterion's actual content. Naming the count here so the next pass starts from a known number rather than rediscovering it.
+
+---
+
+## 7. Verification
 
 **Runnable in this environment, and run:**
 
@@ -132,6 +150,8 @@ pnpm --filter @arkilaunch/web test            # 67 passed
 ```
 
 The shared suite is where the money-path fix is actually pinned: `packages/shared/src/edtr.spec.ts` executes the equal-and-opposite swap case, active-only and idle-only divergence, the same-signed accumulation case that proves the gate did not get looser, tolerance boundaries, and confidence precedence.
+
+**Since superseded by §6:** the CI run has now executed the DB-backed suites, so the statement below describes the state at authoring time. `money-path.spec.ts` passed; the `rls-enumeration.spec.ts` addition found one justified grant needing an allowlist entry; migration `0016` applied cleanly.
 
 **Not runnable here, and therefore not claimed:** the `apps/api`, `jobs` and `packages/db` suites are integration tests against a real Postgres. This environment has no Docker daemon and no local Postgres, and `.env` points at a live Supabase project carrying pilot data, so `pnpm db:seed:test` was **not** run against it — that would overwrite the pilot fixtures. `apps/api/test/money-path.spec.ts`, the `rls-enumeration.spec.ts` additions, and migration `0016` applying cleanly are verified by the PR's own CI run (`money-path-e2e`, `api-integration-suite`, `migration-expand-contract-check`), not by a local pass. The pass/fail state of those suites was unconfirmed at the time this record was written.
 

@@ -166,6 +166,21 @@ describe('global reference tables are not writable by the request-path role', ()
   // the exception is explicit rather than invisible.
   const ALLOWED_COLUMN_GRANTS = ['tenants.legal_name', 'rate_cards.effective_to', 'pricing_parameters.effective_to'];
 
+  // Justified table-wide write grants on global tables. Deliberately spelled
+  // `table:VERB` rather than by table name, so widening an existing
+  // exception still fails: adding UPDATE or DELETE on diesel_price_readings
+  // would not be covered by this entry.
+  //
+  // diesel_price_readings:INSERT is 0005_diesel_manual_entry_grant.sql. RFC-3
+  // §2/§3 puts writes on either the service_role scrape cron or a
+  // platform-admin manual-entry route, and that route runs on the normal
+  // request path as app_authenticated -- using service_role there is
+  // forbidden (AGENTS.md "Never"). The table is global, non-PII reference
+  // data with no RLS, so the write is gated at the app layer by the
+  // `diesel:manage` permission (platform_admin only) and audit-logged by the
+  // calling route. INSERT only: readings are append-only, never revised.
+  const JUSTIFIED_WRITE_GRANTS = ['diesel_price_readings:INSERT'];
+
   beforeAll(async () => {
     privileges = await sql<PrivilegeRow[]>`
       select table_name, privilege_type
@@ -185,6 +200,7 @@ describe('global reference tables are not writable by the request-path role', ()
     const writable = privileges
       .filter((p) => EXPECTED_GLOBAL_TABLES.includes(p.table_name))
       .map((p) => `${p.table_name}:${p.privilege_type}`)
+      .filter((grant) => !JUSTIFIED_WRITE_GRANTS.includes(grant))
       .sort();
 
     expect(
@@ -193,6 +209,9 @@ describe('global reference tables are not writable by the request-path role', ()
         'These have no tenant_id and therefore no RLS policy, so the grant is the ONLY control: ' +
         'one tenant could rewrite the catalogue for every tenant. REVOKE it and GRANT SELECT ' +
         'instead, as 0007 did for roles/permissions and 0016 did for the rest. ' +
+        'If the grant is genuinely required, add it to JUSTIFIED_WRITE_GRANTS with the migration ' +
+        'that introduced it and the app-layer control that gates it. ' +
+        `Currently justified: ${JUSTIFIED_WRITE_GRANTS.join(', ') || 'none'}. ` +
         `Narrow column grants are fine and are allowlisted: ${ALLOWED_COLUMN_GRANTS.join(', ')}.`,
     ).toEqual([]);
   });
