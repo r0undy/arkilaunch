@@ -40,6 +40,12 @@ import { EventsService } from '../events/events.service.js';
 import { isOcrPipelineEnabled } from '../ports/document-intelligence.port.js';
 import { round2HalfUp } from '../quotes/pricing-engine.service.js';
 
+// Calendar day that a bare `date` column means. Fixed rather than
+// per-tenant because the product is PH-only (docs/clr-arkilaunch.md gap E1,
+// and the Azure region is southeastasia for the same reason); if tenants
+// ever span zones, this belongs on `tenants` and not in a constant here.
+const TENANT_TIME_ZONE = 'Asia/Manila';
+
 @Injectable()
 export class EdtrService {
   constructor(private readonly events: EventsService) {}
@@ -388,19 +394,81 @@ export class EdtrService {
       const billableHoursActive = body.adjustments?.hoursActive ?? recordedActive;
 
       // Deduction amount: billable (revenue-generating) active hours priced
-      // at the equipment type's currently-effective hourly rate card. The
+      // at the rate card that was in force on the EDTR's report_date. The
       // RFC specifies the gate, not the money formula in this level of
-      // detail; this reuses the same rate-card lookup the quotation engine
-      // uses (RFC-3) rather than inventing a second pricing path.
+      // detail; this applies the same effectiveness rule the quotation
+      // engine does (RFC-3 / QAD-T44/T48,
+      // apps/api/src/quotes/pricing-engine.service.ts) rather than inventing
+      // a second pricing path.
+      //
+      // Three things this must not do. It must not take whichever card sorts
+      // newest regardless of effectiveness -- that lets a superseded or
+      // future-dated card price a money-moving deduction, which is the
+      // defect QAD-T44/T48 exists to prevent on the quote side. It must not
+      // price against `now`: the work happened on report_date, so a rate
+      // change made afterwards cannot retroactively reprice it. And it must
+      // not mix rate types -- `rate_type` is free text ('hourly', 'daily')
+      // and pricing.service.ts's overlap guard is scoped by it, so an hourly
+      // and a daily card for one equipment type are *designed* to be
+      // effective at once. Multiplying a daily rate by hours is a 24x
+      // mispricing, and without this filter which one wins is unspecified.
+      //
+      // `report_date` is a bare date and `effective_from`/`effective_to` are
+      // timestamptz, so both sides are compared as Manila calendar dates.
+      // Casting the date to a timestamp instead would anchor it to midnight
+      // UTC, which is 08:00 in Manila: a card created during business hours
+      // on the report date would be read as not yet effective, and where it
+      // was the only card the approval would fail closed on a state that is
+      // actually correct. The zone is fixed because the product is
+      // PH-only (docs/clr-arkilaunch.md gap E1); a tenant-level zone would
+      // belong on `tenants` first.
       const [equipmentRow] = await tx.select().from(equipment).where(eq(equipment.id, record.equipmentId)).limit(1);
       const [rateCard] = equipmentRow
         ? await tx
             .select()
             .from(rateCards)
-            .where(and(eq(rateCards.tenantId, ctx.tenantId), eq(rateCards.equipmentTypeId, equipmentRow.equipmentTypeId)))
+            .where(
+              and(
+                eq(rateCards.tenantId, ctx.tenantId),
+                eq(rateCards.equipmentTypeId, equipmentRow.equipmentTypeId),
+                eq(rateCards.rateType, 'hourly'),
+                sql`(${rateCards.effectiveFrom} at time zone ${TENANT_TIME_ZONE})::date <= ${record.reportDate}::date`,
+                sql`(${rateCards.effectiveTo} is null or (${rateCards.effectiveTo} at time zone ${TENANT_TIME_ZONE})::date > ${record.reportDate}::date)`,
+              ),
+            )
             .orderBy(desc(rateCards.effectiveFrom))
             .limit(1)
         : [];
+      // Adding the effectiveness filter above introduces a case that could
+      // not happen before it: cards exist for this equipment type, but none
+      // covers report_date. Falling through to a 0 rate there would post a
+      // zero deduction that reads as a real, approved one and silently
+      // under-bills the tenant, so it fails closed instead. A type with no
+      // rate cards at all keeps the previous behaviour -- there is nothing
+      // misconfigured to report, and no deduction to price.
+      if (equipmentRow && !rateCard) {
+        const [anyCard] = await tx
+          .select({ id: rateCards.id })
+          .from(rateCards)
+          .where(
+            and(
+              eq(rateCards.tenantId, ctx.tenantId),
+              eq(rateCards.equipmentTypeId, equipmentRow.equipmentTypeId),
+              eq(rateCards.rateType, 'hourly'),
+            ),
+          )
+          .limit(1);
+        if (anyCard) {
+          throw new UnprocessableEntityException({
+            error: 'rate_card_not_effective',
+            equipmentTypeId: equipmentRow.equipmentTypeId,
+            reportDate: record.reportDate,
+            message:
+              'No rate card was in force on this EDTR report date (all are superseded or not yet active); fix the rate card before approving.',
+          });
+        }
+      }
+
       const hourlyRate = rateCard ? Number(rateCard.rateValue) : 0;
       const deductedAmount = round2HalfUp(billableHoursActive * hourlyRate);
 
