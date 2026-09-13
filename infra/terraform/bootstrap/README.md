@@ -43,9 +43,9 @@ terraform apply \
   -var github_repository=<org>/<repo>
 ```
 
-That declares an Entra application, its service principal, a Contributor role
-assignment at subscription scope, and one federated credential per
-environment with these subjects:
+That declares a user-assigned managed identity, a Contributor role assignment
+at subscription scope, and one federated credential per environment with these
+subjects:
 
 ```
 repo:<org>/<repo>:environment:dev
@@ -58,6 +58,16 @@ jobs in `deploy.yml` declare `environment:`, and GitHub then issues the token
 with an `environment:` subject claim rather than a branch ref. A credential
 registered against the ref form is silently unmatchable, and `azure/login`
 fails closed with no useful message.
+
+A managed identity rather than an Entra app registration, because the
+subscription sits in a tenant we do not administer. That directory allows
+creating an app registration and then refuses to let the creator own, modify
+or delete it, so the app-registration version of this failed halfway: the
+application was created, the service principal and both credentials got 403,
+and the ownerless application cannot be cleaned up from here. A managed
+identity is an ARM resource, so subscription Owner is sufficient and no
+directory privilege is involved. Nothing in `deploy.yml` changes either way;
+`azure/login` takes the same client, tenant and subscription ids.
 
 Then set these on the GitHub `dev` and `prod` environments (the workflow reads
 them per-environment, with a repo-scope fallback): `AZURE_CLIENT_ID` and
