@@ -56,20 +56,40 @@ describe('UsersService (S19)', () => {
     const [ownerRole] = await sql`select id from roles where name = 'owner'`;
     const [adminHashRow] = await sql`select password_hash from users where id = ${(adminA as { id: string }).id}`;
     const passwordHash = (adminHashRow as { password_hash: string }).password_hash;
+
+    // Restore the seeded admin before anything else. The last_user_manager
+    // test below deactivates users for real, and if its assertion fails the
+    // admin is left disabled -- which breaks not just this file but
+    // auth-lockout and refresh-rotation, both of which log in as it. The
+    // test's own `finally` covers the normal path; this covers the run that
+    // already went wrong, so the suite heals instead of staying broken.
+    await sql`
+      update users set status = 'active'
+      where id = ${(adminA as { id: string }).id} and status <> 'active'
+    `;
+
+    // Clear accumulated user:manage holders BEFORE inserting this run's
+    // owner fixture, so exactly two managers exist when the guard is
+    // tested: the seeded admin and that fixture.
+    //
+    // `owner` belongs in this list. It gained user:manage in
+    // cr-arkilaunch-f9-read-surface.md, this file inserts one active owner
+    // per run and never removes it, and its earlier omission is what let 18
+    // of them accumulate: with a spare manager always active, the guard
+    // correctly allowed deactivating the admin, the assertion failed, and
+    // the admin was disabled as a side effect. Ordering matters -- run this
+    // after the insert and it would disable the fixture owner the test
+    // needs.
+    await sql`
+      update users set status = 'disabled'
+      where tenant_id = ${tenantIdA} and status = 'active' and id != ${(adminA as { id: string }).id}
+        and role_id in (select id from roles where name in ('admin', 'platform_admin', 'owner'))
+    `;
+
     const [ownerRow] = await sql`
       insert into users (tenant_id, role_id, email, password_hash, status)
       values (${tenantIdA}, ${(ownerRole as { id: string }).id}, ${`owner-fixture-${Date.now()}@test-tenant-a.test`}, ${passwordHash}, 'active')
       returning id
-    `;
-
-    // This file's own earlier runs leave activated admin-role users behind
-    // (invite/activate tests are real, committed DB writes with no
-    // teardown) -- the last_user_manager guard's "there is exactly one
-    // active manager" premise only holds if those are cleared first.
-    await sql`
-      update users set status = 'disabled'
-      where tenant_id = ${tenantIdA} and status = 'active' and id != ${(adminA as { id: string }).id}
-        and role_id in (select id from roles where name in ('admin', 'platform_admin'))
     `;
 
     adminCtxA = { tenantId: tenantIdA, userId: (adminA as { id: string }).id, role: 'admin' };
