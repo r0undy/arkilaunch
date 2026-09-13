@@ -180,6 +180,34 @@ jobs:
         env:
           DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # packages/shared resolves through its built dist (see its package.json
+      # "main"), and the seed's permission catalog imports ROLE_CODES and
+      # PERMISSION_CODES from it, so it has to exist before the seed runs.
+      - name: Build the shared package the seed imports
+        run: pnpm --filter @arkilaunch/shared build
+
+      # The anchor seed ran in no CI job at all -- api-integration-suite
+      # seeds the two-tenant isolation fixtures instead -- so a break in it
+      # surfaced only when a developer ran `pnpm db:seed` by hand. It is the
+      # seed that creates the five RBAC sign-in accounts, so it is worth a
+      # gate. Runs here rather than in api-integration-suite because this
+      # job owns a clean throwaway database and no test asserts against it,
+      # so seeding Almara cannot collide with the test tenants.
+      #
+      # Run twice on purpose: the seed claims to be idempotent, and the
+      # second run is what proves it -- it exercises every
+      # onConflictDoUpdate and the legacy-email migration's "already taken"
+      # branch, neither of which the first run reaches.
+      - name: Anchor seed runs, and is idempotent
+        run: |
+          pnpm --filter @arkilaunch/db seed:anchor
+          pnpm --filter @arkilaunch/db seed:anchor
+        env:
+          # localhost, so assertSeedTargetIsLocal() permits the weak
+          # development credentials this seed writes.
+          DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/postgres
+          ANCHOR_TENANT_SLUG: almara
+
   cross-tenant-isolation-suite:
     runs-on: ubuntu-latest
     # QAD §3: "A test that 'confirms isolation' against a single-tenant
