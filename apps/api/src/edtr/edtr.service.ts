@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import {
   auditLogs,
   edtr,
@@ -388,19 +388,59 @@ export class EdtrService {
       const billableHoursActive = body.adjustments?.hoursActive ?? recordedActive;
 
       // Deduction amount: billable (revenue-generating) active hours priced
-      // at the equipment type's currently-effective hourly rate card. The
+      // at the rate card that was in force on the EDTR's report_date. The
       // RFC specifies the gate, not the money formula in this level of
-      // detail; this reuses the same rate-card lookup the quotation engine
-      // uses (RFC-3) rather than inventing a second pricing path.
+      // detail; this applies the same effectiveness rule the quotation
+      // engine does (RFC-3 / QAD-T44/T48, pricing-engine.service.ts) rather
+      // than inventing a second pricing path.
+      //
+      // Two things this must not do. It must not take whichever card sorts
+      // newest regardless of effectiveness -- that lets a superseded or
+      // future-dated card price a money-moving deduction, which is the
+      // defect QAD-T44/T48 exists to prevent on the quote side. And it must
+      // not price against `now`: the work happened on report_date, so a rate
+      // change made afterwards cannot retroactively reprice it.
+      const pricedAt = new Date(record.reportDate);
       const [equipmentRow] = await tx.select().from(equipment).where(eq(equipment.id, record.equipmentId)).limit(1);
       const [rateCard] = equipmentRow
         ? await tx
             .select()
             .from(rateCards)
-            .where(and(eq(rateCards.tenantId, ctx.tenantId), eq(rateCards.equipmentTypeId, equipmentRow.equipmentTypeId)))
+            .where(
+              and(
+                eq(rateCards.tenantId, ctx.tenantId),
+                eq(rateCards.equipmentTypeId, equipmentRow.equipmentTypeId),
+                lte(rateCards.effectiveFrom, pricedAt),
+                or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, pricedAt)),
+              ),
+            )
             .orderBy(desc(rateCards.effectiveFrom))
             .limit(1)
         : [];
+      // Adding the effectiveness filter above introduces a case that could
+      // not happen before it: cards exist for this equipment type, but none
+      // covers report_date. Falling through to a 0 rate there would post a
+      // zero deduction that reads as a real, approved one and silently
+      // under-bills the tenant, so it fails closed instead. A type with no
+      // rate cards at all keeps the previous behaviour -- there is nothing
+      // misconfigured to report, and no deduction to price.
+      if (equipmentRow && !rateCard) {
+        const [anyCard] = await tx
+          .select({ id: rateCards.id })
+          .from(rateCards)
+          .where(and(eq(rateCards.tenantId, ctx.tenantId), eq(rateCards.equipmentTypeId, equipmentRow.equipmentTypeId)))
+          .limit(1);
+        if (anyCard) {
+          throw new UnprocessableEntityException({
+            error: 'rate_card_not_effective',
+            equipmentTypeId: equipmentRow.equipmentTypeId,
+            reportDate: record.reportDate,
+            message:
+              'No rate card was in force on this EDTR report date (all are superseded or not yet active); fix the rate card before approving.',
+          });
+        }
+      }
+
       const hourlyRate = rateCard ? Number(rateCard.rateValue) : 0;
       const deductedAmount = round2HalfUp(billableHoursActive * hourlyRate);
 
