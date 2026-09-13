@@ -6,7 +6,7 @@
 # Usage:
 #   cd infra/terraform/bootstrap
 #   terraform init
-#   terraform apply -var subscription_id=<sub-id>
+#   terraform apply -var subscription_id=<sub-id> -var github_repository=<org>/<repo>
 #
 # After apply, note the storage_account_name output and put it in
 # environments/{dev,prod}/main.tf's backend "azurerm" block.
