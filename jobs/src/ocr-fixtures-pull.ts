@@ -22,6 +22,7 @@
 import { createHash } from 'node:crypto';
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { AzureDocumentIntelligenceAdapter } from '@arkilaunch/document-intelligence';
 import { OCR_CORPUS_FLOOR } from '@arkilaunch/shared';
 import type { DocumentExtractionResult, GoldSample } from '@arkilaunch/shared';
@@ -304,7 +305,10 @@ async function runGolden(opts: Options) {
     );
   }
 
-  const target = path.resolve('packages/db/src/seed/ocr-fixtures/golden-set.ts');
+  // Anchored to this module, not to cwd: `pnpm ocr:fixtures:pull` runs with
+  // cwd = jobs/, so a repo-relative resolve would write (or fail) at
+  // jobs/packages/db/... depending on where the operator invoked it from.
+  const target = path.resolve(fileURLToPath(import.meta.url), '../../../packages/db/src/seed/ocr-fixtures/golden-set.ts');
   await writeFile(target, renderGoldenSet(built, { partial: opts.partial, skipped }));
 
   console.log(`wrote ${target}`);
@@ -366,7 +370,12 @@ async function main() {
   else await runGolden(opts);
 }
 
-const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
+// pathToFileURL rather than the `file://${argv[1]}` idiom the four workers
+// use: on Windows that spelling yields `file://C:/...` where Node reports
+// `file:///C:/...`, so the guard never matches and the script exits silently
+// with status 0. The workers only ever run on Linux in a container, where the
+// two spellings agree; this script is run by an operator on their own machine.
+const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMainModule) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : err);
