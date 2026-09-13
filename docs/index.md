@@ -35,6 +35,12 @@
 | OPS · Ops & Observability | [ops-arkilaunch.md](ops-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
 | LOG · Build Session Log | [log-arkilaunch.md](log-arkilaunch.md) | 0.1 | Draft (append-only) | 2026-07-25 | N/A |
 
+### Runbooks (operational procedure, not suite docs)
+
+| Runbook | File | Supports | Status |
+|---------|------|----------|--------|
+| OCR fixtures + EDTR model training | [runbook-ocr-fixtures.md](runbook-ocr-fixtures.md) | RFC-002 §2/§5, QAD-T39, QAD §2 corpus floor | Draft |
+
 **Materialized at project root (not in `docs/`):** `README.md`, `BRAND.md`, `DESIGN.md`, `AGENTS.md`, `MODEL_CARD.md` (from AIA §1). All five exist and are current as of the 2026-08-01 remediation pass.
 
 ### RFCs (one per major feature)

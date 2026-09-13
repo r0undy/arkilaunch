@@ -21,7 +21,8 @@
     "typecheck": "pnpm -r typecheck",
     "db:migrate": "pnpm --filter @arkilaunch/db migrate",
     "db:seed": "pnpm --filter @arkilaunch/db seed:anchor",
-    "db:seed:test": "pnpm --filter @arkilaunch/db seed:test-two-tenant"
+    "db:seed:test": "pnpm --filter @arkilaunch/db seed:test-two-tenant",
+    "ocr:fixtures:pull": "pnpm --filter @arkilaunch/jobs ocr:fixtures:pull"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

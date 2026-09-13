@@ -61,6 +61,24 @@ export function computeAccuracy(samples: GoldSample[], confidenceGate = 0.9): Ac
 // the bar to beat, not a round number chosen for looking like one.
 export const OCR_ACCURACY_THRESHOLD = 0.9006;
 
+// QAD §2's corpus floor: the labeled-sample count below which a measurement
+// is not evidence about the model, only about a handful of pages. Lives here
+// rather than at either call site so the fixture generator
+// (jobs/src/ocr-fixtures-pull.ts) and the harness that reads its output
+// (apps/api/src/edtr/accuracy-harness.spec.ts) cannot drift apart on what
+// "enough samples" means.
+export const OCR_CORPUS_FLOOR = { edtr: 200, kyc: 50 } as const;
+
+export type OcrCorpusKind = keyof typeof OCR_CORPUS_FLOOR;
+
+// Whether a corpus is large enough for assertAccuracyGate's verdict to mean
+// anything about the product. A corpus below the floor is not a failing
+// model -- it is an absent measurement, and the two must not be reported as
+// the same thing.
+export function meetsCorpusFloor(kind: OcrCorpusKind, sampleCount: number): boolean {
+  return sampleCount >= OCR_CORPUS_FLOOR[kind];
+}
+
 export interface AccuracyGateResult {
   passed: boolean;
   /** Human-readable reason a gate failed; null when it passed. */

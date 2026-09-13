@@ -22,3 +22,6 @@ Thumbs.db
 
 playwright-report/
 test-results/
+
+# Labeled OCR fixtures staging (real EDTR/KYC scans -- never committed)
+.ocr-fixtures/
