@@ -23,12 +23,14 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { AzureDocumentIntelligenceAdapter } from '@arkilaunch/document-intelligence';
+import { OCR_CORPUS_FLOOR } from '@arkilaunch/shared';
 import type { DocumentExtractionResult, GoldSample } from '@arkilaunch/shared';
 
-// QAD §2's corpus floor. A golden set below this measures nothing
-// trustworthy, so writing one requires an explicit --partial.
-const MIN_EDTR_SAMPLES = 200;
-const MIN_KYC_SAMPLES = 50;
+// QAD §2's corpus floor is defined once in @arkilaunch/shared, alongside the
+// gate that consumes it -- a second copy here is exactly how the generator
+// and the harness would end up disagreeing about what a full corpus is.
+const MIN_EDTR_SAMPLES = OCR_CORPUS_FLOOR.edtr;
+const MIN_KYC_SAMPLES = OCR_CORPUS_FLOOR.kyc;
 
 const DOC_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.pdf', '.tif', '.tiff'];
 
