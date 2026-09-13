@@ -43,7 +43,17 @@ RUN pnpm --filter "@arkilaunch/api..." --filter "@arkilaunch/jobs..." build
 # --- runtime: slim image, no build toolchain. Keeps the full node_modules
 # tree (workspace symlinks + transitive deps) rather than pruning -- pnpm
 # workspace pruning (`pnpm deploy`/`--prod`) is a follow-up size optimization,
-# not required for correctness. ---
+# not required for correctness.
+#
+# Every workspace package api or jobs can reach must be copied here too, for
+# the same reason the deps stage lists every manifest. node_modules carries
+# pnpm's workspace symlinks, so a package missing from this list is not a
+# build error -- it is a *dangling symlink* that only fails at runtime, on
+# the first import, inside a cron job nobody is watching. packages/weather
+# was missing here from the day it landed: jobs/src/weather-poll.ts imports
+# it and dev runs that job on a cron with enable_weather_poll = true, so
+# every tick died on ERR_MODULE_NOT_FOUND. Adding a package to the build
+# means adding it here. ---
 FROM node:24-slim AS runtime
 ENV NODE_ENV=production
 RUN corepack enable && corepack prepare pnpm@11.11.0 --activate
@@ -54,6 +64,7 @@ COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml
 COPY --from=build /app/packages/shared packages/shared
 COPY --from=build /app/packages/db packages/db
 COPY --from=build /app/packages/document-intelligence packages/document-intelligence
+COPY --from=build /app/packages/weather packages/weather
 COPY --from=build /app/jobs jobs
 COPY --from=build /app/apps/api apps/api
 

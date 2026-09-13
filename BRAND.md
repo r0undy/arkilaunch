@@ -1,4 +1,4 @@
-> Materialized from docs/dsd-arkilaunch.md by scripts/materialize.py on 2026-07-25 (marketing-tier amendment hand-materialized 2026-08-02, CR: dsd-marketing-tier; see docs/cr-arkilaunch-dsd-marketing-tier.md). Do not hand-edit; edit the canonical doc and re-run.
+> Materialized from docs/dsd-arkilaunch.md, originally by the FMD engine's materialize.py on 2026-07-25 and hand-materialized since (the engine is not vendored in this repo, so there is no scripts/materialize.py here -- see docs/index.md §4); marketing-tier amendment hand-materialized 2026-08-02, CR: dsd-marketing-tier; see docs/cr-arkilaunch-dsd-marketing-tier.md. Do not hand-edit as a source of truth; edit the canonical doc and re-materialize.
 
 # Brand: ArkiLaunch
 
