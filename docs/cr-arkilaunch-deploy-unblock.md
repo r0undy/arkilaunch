@@ -52,6 +52,16 @@ Adding `owners` would have fixed a clean apply but could not repair an app alrea
 
 `45528f5` then drops `resource_group_name` (no longer used) and renames `parent_id` to `user_assigned_identity_id` on the credentials, which the provider warned were deprecated. That plans as no changes against the live infrastructure.
 
+### 3.1b The subject was wrong a second time, and CI caught it (`910a563`)
+
+The first CI run on the PR got further than any run since 2026-08-06: `azure/login` reached token exchange instead of dying on empty inputs, and was rejected with `AADSTS700213: No matching federated identity record found`.
+
+The credential said `repo:<owner>/<repo>:environment:dev`. GitHub presented `repo:<owner>@<owner-id>/<repo>@<repo-id>:environment:dev`. This repository has immutable subjects enabled, the default for new repositories, so the subject carries numeric owner and repository ids and the readable form cannot match.
+
+That is the same class of mistake as §1.2, made twice: composing the subject string from a repository name. So `github_repository` is replaced by `github_subject_prefix`, read from `repos/<owner>/<repo>/actions/oidc/customization/sub`, and the configuration no longer assembles a subject at all. Immutable subjects are kept rather than disabled, since they survive a rename and cannot be spoofed by recreating a repository under the same name.
+
+Worth stating plainly: this defect would not have been found by any local check. Only a real run produces a real token, which is the argument for merging the pipeline and letting it run rather than reasoning about it further.
+
 ### 3.2 The runbook, corrected (`b14f69c`)
 
 `README.md` §3 now documents the `terraform apply` path, both correct `environment:` subjects, and why the ref form cannot work. Step 1's usage picks up the new required `github_repository` variable.
@@ -88,7 +98,7 @@ Applied for real, 2026-09-13, against the pilot subscription:
 
 Not run, and not claimed:
 
-- The `Deploy` workflow end to end. Every prerequisite it failed on is now in place, but no run has yet proven `azure/login` succeeds. The first push to `dev` after this merges is the real test, and until it goes green the pipeline is unproven rather than fixed.
+- The `Deploy` workflow end to end. The subject fix above was applied to the live credentials and verified with `az identity federated-credential list`, but at the time of writing no run has yet completed against the corrected subjects. Until one goes green the pipeline is unproven rather than fixed.
 - `actionlint` is not installed in this environment, so the workflow was structurally parsed rather than lint-checked.
 
 One unintended action, recorded because it touched a live database. A command intended to prove `migrate.ts` fails cleanly with `DATABASE_URL_DIRECT` unset instead picked the value up from a local `.env` and ran the migrator against the hosted Supabase **dev** database. All seventeen migrations were already applied on 2026-08-07, so the replay wrote no schema change, which is the idempotency the M4 record claims. The single write was `ALTER ROLE app_authenticated WITH PASSWORD`, setting the dev password to the value it already held. No production system was contacted. The intended check was therefore not obtained by execution; the throw at `packages/db/src/migrate.ts:11-14` was confirmed by reading instead.
