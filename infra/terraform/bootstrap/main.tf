@@ -132,6 +132,23 @@ resource "azurerm_role_assignment" "github_deploy" {
   principal_id         = azurerm_user_assigned_identity.github_deploy.principal_id
 }
 
+# Contributor is a management-plane role: it can read the storage account's
+# properties but not its blobs. `terraform init` lists blobs in the state
+# container to enumerate workspaces, which is a data-plane call, so without
+# this the backend fails with
+# `403 AuthorizationPermissionMismatch: listing blobs`.
+#
+# Scoped to the state account alone rather than the subscription. The
+# subscription-wide Contributor above is unavoidable (the workflow creates and
+# destroys whole environments); handing the same breadth to blob data would
+# give the deploy identity read and write over every storage account in a
+# subscription that hosts other people's work.
+resource "azurerm_role_assignment" "github_deploy_state" {
+  scope                = azurerm_storage_account.state.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_user_assigned_identity.github_deploy.principal_id
+}
+
 # Subject must be the `environment:` form, not `ref:refs/heads/`, because both
 # jobs in deploy.yml declare `environment:`. The prefix in front of it comes
 # from GitHub (see var.github_subject_prefix) rather than from string
