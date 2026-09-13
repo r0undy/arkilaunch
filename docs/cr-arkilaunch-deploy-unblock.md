@@ -38,11 +38,19 @@ Out, deliberately, and carried to §4: the fork exposure on `terraform-plan`.
 
 ## 3. What shipped
 
-### 3.1 The credential, declared (`684a739`)
+### 3.1 The credential, declared (`684a739`, `e2f973c`, `45528f5`)
 
-`infra/terraform/bootstrap/main.tf` gains the `azuread` provider, an `azuread_application` and its service principal, a Contributor role assignment at subscription scope, and two `azuread_application_federated_identity_credential` resources subjected on `repo:${var.github_repository}:environment:{dev,prod}`. Outputs `github_deploy_client_id` and `github_deploy_tenant_id` give the two values that go into the GitHub environments.
+`infra/terraform/bootstrap/main.tf` gains a user-assigned managed identity, a Contributor role assignment at subscription scope, and two `azurerm_federated_identity_credential` resources subjected on `repo:${var.github_repository}:environment:{dev,prod}`. Outputs `github_deploy_client_id` and `github_deploy_tenant_id` give the two values that go into the GitHub environments.
 
 Bootstrap is the right home and introduces no chicken-and-egg: its header already establishes it as applied once, by hand, with local state and a human `az login`, exactly like the state storage account beside it.
+
+**It was first written as an Entra app registration, and that was wrong for this tenant.** `684a739` declared `azuread_application`, its service principal and two `azuread_application_federated_identity_credential` resources. Applying it failed halfway: the application was created, then the service principal returned 403 (`the backing application ... must in the local tenant`) and both credentials returned 403 (`Insufficient privileges`).
+
+The cause is that the `azuread` provider creates an application ownerless unless `owners` is set, and the directory that owns this subscription (a shared tenant we do not administer) permits a non-admin to *create* an app registration but not to own, modify or delete one afterward. That was confirmed three ways against the stranded app: `az ad app owner add`, the Graph owners write, and `az ad app delete` all returned `Insufficient privileges`, while `defaultUserRolePermissions.allowedToCreateApps` reads `true`.
+
+Adding `owners` would have fixed a clean apply but could not repair an app already created without one, so `e2f973c` replaces the whole approach with a user-assigned managed identity and drops the `azuread` provider. A managed identity carries the same OIDC federated credential with the same subject, audience and issuer, but it is an ARM resource governed by subscription RBAC rather than an Entra directory object, and subscription Owner is sufficient. **Nothing in `deploy.yml` changes**: `azure/login` takes the same client, tenant and subscription ids either way.
+
+`45528f5` then drops `resource_group_name` (no longer used) and renames `parent_id` to `user_assigned_identity_id` on the credentials, which the provider warned were deprecated. That plans as no changes against the live infrastructure.
 
 ### 3.2 The runbook, corrected (`b14f69c`)
 
@@ -59,7 +67,8 @@ It passes `DATABASE_URL_DIRECT`, not the pooled URL: pooled is transaction mode 
 ## 4. Recorded, not fixed
 
 - **The `terraform-plan` fork exposure.** The job runs on `pull_request` with `environment: dev`, so a pull request can obtain Azure Contributor credentials. Widening this pass to cover it would have mixed an access-control argument into a pipeline repair. It wants its own review.
-- **Deploy is still red after this record.** Nothing here creates the Entra application or populates the GitHub environment variables. Those need a human with directory permission to run the bootstrap apply and paste two outputs. This record unblocks that work; it does not complete it.
+- **An ownerless Entra application is stranded in a directory we do not control.** The failed first apply left `arkilaunch-github-deploy` in that tenant. It has no owner, no service principal, no credentials and no role assignment, so it grants nothing and is inert. It cannot be deleted from here; only a directory admin in that tenant can remove it. It has been dropped from Terraform state so nothing tries to manage it. Worth one message to that tenant's admins.
+- **The deploy identity lives in a shared subscription.** `rg-arkilaunch-identity` and the Contributor assignment sit in the Visual Studio Enterprise subscription that visibly hosts other people's resource groups. Contributor is subscription-wide because the workflow creates and destroys whole environments, so the blast radius is the whole subscription. A dedicated subscription would be the real fix and is out of scope here.
 - **`0016` was already live on dev.** The dev database shows all seventeen migrations applied 2026-08-07, by hand. The migrate step therefore prevents future drift rather than repairing a stale database. The claim in [index.md](index.md) §4 that `0016` "has no deployment path" was true of the pipeline and never of the dev database.
 
 ## 5. Verification
@@ -71,13 +80,20 @@ Run, with real results:
 - `terraform validate` — **Success! The configuration is valid.**
 - `deploy.yml` parsed with the workspace `yaml` library: two jobs, `deploy.needs = terraform-plan`, `terraform-plan` carries no `if`, so the graph has no skipped-dependency deadlock. Step order in `deploy` confirmed as build-and-push (2), migrations (6), apply (9).
 
+Applied for real, 2026-09-13, against the pilot subscription:
+
+- `terraform apply` in bootstrap — **Apply complete! Resources: 5 added, 0 changed, 0 destroyed.** Created `rg-arkilaunch-identity`, `id-arkilaunch-github-deploy`, the two federated credentials, and the Contributor assignment.
+- A follow-up `terraform plan` after the deprecation rename reports **No changes. Your infrastructure matches the configuration**, with zero warnings.
+- The four variables are set and read back on both the `dev` and `prod` GitHub environments: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `TF_STATE_STORAGE_ACCOUNT`. Variables, not secrets, as §3 of the bootstrap runbook requires.
+
 Not run, and not claimed:
 
-- `terraform apply` in bootstrap. Needs a human `az login` with permission to create an Entra app registration.
-- The `Deploy` workflow end to end. It cannot go green until the bootstrap is applied and the environment variables exist.
+- The `Deploy` workflow end to end. Every prerequisite it failed on is now in place, but no run has yet proven `azure/login` succeeds. The first push to `dev` after this merges is the real test, and until it goes green the pipeline is unproven rather than fixed.
 - `actionlint` is not installed in this environment, so the workflow was structurally parsed rather than lint-checked.
 
 One unintended action, recorded because it touched a live database. A command intended to prove `migrate.ts` fails cleanly with `DATABASE_URL_DIRECT` unset instead picked the value up from a local `.env` and ran the migrator against the hosted Supabase **dev** database. All seventeen migrations were already applied on 2026-08-07, so the replay wrote no schema change, which is the idempotency the M4 record claims. The single write was `ALTER ROLE app_authenticated WITH PASSWORD`, setting the dev password to the value it already held. No production system was contacted. The intended check was therefore not obtained by execution; the throw at `packages/db/src/migrate.ts:11-14` was confirmed by reading instead.
+
+Identifiers are deliberately absent from this record. This repository is public, and while an Azure client, tenant or subscription id is not a secret and grants nothing without a GitHub-issued token matching the credential's subject, publishing them aids targeting for no benefit. `terraform output` in `infra/terraform/bootstrap` prints them for anyone who needs them.
 
 ## 6. Pre-merge gate runs
 
