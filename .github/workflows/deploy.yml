@@ -14,16 +14,19 @@ permissions:
   contents: read
 
 jobs:
-  # Runs on any PR touching infra/terraform/**, against whichever environment
-  # the target branch maps to, so a plan is visible before merge. Never
-  # applies.
+  # Runs on any PR touching infra/terraform/**, and on every deploying push,
+  # against whichever environment the target branch maps to. Never applies.
+  # On push it is what `deploy` gates on: a plan that errors stops the apply
+  # before an image is built or a migration runs.
+  #
+  # `github.base_ref` is set only on pull_request, and is empty on push, so
+  # the fallback picks the branch being pushed.
   terraform-plan:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    environment: ${{ github.base_ref == 'main' && 'prod' || 'dev' }}
+    environment: ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || 'dev' }}
     defaults:
       run:
-        working-directory: infra/terraform/environments/${{ github.base_ref == 'main' && 'prod' || 'dev' }}
+        working-directory: infra/terraform/environments/${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || 'dev' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -50,13 +53,14 @@ jobs:
 
   deploy:
     if: github.event_name == 'push'
+    needs: terraform-plan
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+    environment: ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || 'dev' }}
     env:
-      ENV_NAME: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+      ENV_NAME: ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || 'dev' }}
     defaults:
       run:
-        working-directory: infra/terraform/environments/${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+        working-directory: infra/terraform/environments/${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || 'dev' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -76,6 +80,35 @@ jobs:
           az acr login --name acrarkilaunch${{ env.ENV_NAME }}
           docker build -t acrarkilaunch${{ env.ENV_NAME }}.azurecr.io/arkilaunch-backend:${{ github.sha }} .
           docker push acrarkilaunch${{ env.ENV_NAME }}.azurecr.io/arkilaunch-backend:${{ github.sha }}
+
+      # Migrations run after the image exists but before `terraform apply`,
+      # because apply is what rolls the API revision and the cron jobs onto
+      # the new image. Applying first would leave new code reading a schema
+      # that is not there yet. Migrations here are expand-only and idempotent
+      # (docs/cr-arkilaunch-m4-money-path-gates.md), so the old revision
+      # tolerates the new schema for the length of the apply.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Run database migrations
+        working-directory: .
+        run: pnpm db:migrate
+        env:
+          # Direct connection, session mode. The pooled URL is transaction
+          # mode and cannot carry the prepared statements the migrator needs.
+          DATABASE_URL_DIRECT: ${{ secrets.DATABASE_URL_DIRECT }}
+          # Not optional in practice: packages/db/src/migrate.ts only warns
+          # when this is absent, so omitting it would leave the step green
+          # while app_authenticated keeps a stale password and every pooled
+          # runtime connection fails.
+          APP_AUTHENTICATED_PASSWORD: ${{ secrets.APP_AUTHENTICATED_PASSWORD }}
 
       - uses: hashicorp/setup-terraform@v3
 
