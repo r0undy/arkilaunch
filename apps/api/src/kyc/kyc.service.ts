@@ -15,6 +15,7 @@ import {
   type MatchBand,
   type RequestContext,
 } from '@arkilaunch/shared';
+import { KYC_MODEL_ID } from '@arkilaunch/document-intelligence';
 import { EventsService } from '../events/events.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { DOCUMENT_INTELLIGENCE_PORT } from './kyc.tokens.js';
@@ -26,7 +27,6 @@ interface KycOcrPayload {
   tin_confidence?: number;
 }
 
-const KYC_MODEL_ID = 'arkilaunch-kyc-layout-query';
 
 @Injectable()
 export class KycService {
