@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
 import postgres from 'postgres';
-import { edtr as edtrTable, edtrLineItems, withTenantTx } from '@arkilaunch/db';
+import { edtr as edtrTable, edtrLineItems, reconcileEdtr, withTenantTx } from '@arkilaunch/db';
 import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared/testing';
 import type { RequestContext } from '@arkilaunch/shared';
 import { EdtrService } from '../src/edtr/edtr.service.js';
@@ -193,5 +193,130 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
     // the rejected attempt (no side effect from a thrown, rejected call).
     const after = await edtrService.get(ctx, single.id);
     expect(after.reconciliation?.status).toBe('pending');
+  });
+
+  // AI-05 (QAD-T37): a forged or altered document. The adversarial framing
+  // the happy/sad-path tests don't cover: the forgery is CONFIDENT. A model
+  // reading a cleanly-faked SEC certificate has no signal that it is fake --
+  // it reports a well-formed SEC number at high confidence, which is exactly
+  // what a genuine one looks like. So the control cannot be confidence or
+  // format; it has to be that no extraction result, however clean, is
+  // capable of granting status on its own.
+  it('AI-05: a well-formed, high-confidence forged KYC document still cannot self-verify', async () => {
+    const kyc = new KycService(
+      new EventsService(),
+      stubStorage,
+      new FixtureDocumentIntelligenceAdapter({
+        fields: {
+          // Passes SEC_REGEX and TIN_REGEX, and sits far above the 0.90
+          // auto-accept gate. A forged document's whole point is to look
+          // like this.
+          sec_number: { value: 'CS202412345', confidence: 0.99 },
+          tin: { value: '111-222-333', confidence: 0.99 },
+        },
+      }),
+    );
+
+    const created = await kyc.extract(ctx, {
+      customerId,
+      documentType: 'sec_certificate',
+      fileUri: 'storage://fixtures/forged-sec.jpg',
+    });
+    const detail = await kyc.get(ctx, created.kycDocumentId);
+
+    // Format-valid and above the gate on both fields -- and still not
+    // verified. There is no auto-verify edge to take.
+    expect(detail.formatValid?.secNumber).toBe(true);
+    expect(detail.formatValid?.tin).toBe(true);
+    expect(detail.status).toBe('needs_review');
+    expect(detail.requiresHumanConfirmation).toBe(true);
+
+    // The confirmation that does exist is a human asserting a check against
+    // the SEC/BIR portals. Extraction never stands in for it.
+    const url = process.env.DATABASE_URL_DIRECT!;
+    const sql = postgres(url, { max: 1 });
+    const [row] = await sql`
+      select status from kyc_documents where id = ${created.kycDocumentId} and tenant_id = ${ctx.tenantId}
+    `;
+    await sql.end();
+    expect((row as { status: string }).status).toBe('needs_review');
+  });
+
+  // AI-06 (QAD-T38): an extraction error that would cause wrong billing.
+  // The adversarial shape is a plausible misread, not a garbage one: an
+  // 8.0-hour sheet read as 3.0 is still a number a machine could genuinely
+  // have logged, so nothing about the value itself is suspicious. The only
+  // thing that catches it is the second independent log disagreeing, and the
+  // control is that disagreement blocks the deduction rather than averaging,
+  // preferring the higher-confidence side, or picking either one.
+  it('AI-06: a confident but wrong reading is blocked by the counterpart log, never reconciled away', async () => {
+    const edtrService = new EdtrService(new EventsService());
+    const reportDate = '2021-04-03';
+
+    // The truth, from the digital log: 8.0 active hours.
+    await edtrService.capture(ctx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 8, hoursIdle: 1 },
+    });
+
+    // The paper log, misread as 3.0 at very high confidence. Well beyond the
+    // tolerance band, and the model is sure.
+    const misread = await withTenantTx(ctx, async (tx) => {
+      const [row] = await tx
+        .insert(edtrTable)
+        .values({
+          tenantId: ctx.tenantId,
+          rentalId,
+          equipmentId,
+          source: 'paper_ocr',
+          reportDate,
+          rawFileUri: 'storage://fixtures/misread.jpg',
+          status: 'extracted',
+          ocrPayload: {
+            model_id: 'test',
+            api_version: '2024-11-30',
+            analyzed_at: new Date().toISOString(),
+            fields: [{ name: 'hours_active', value: 3, value_type: 'number', confidence: 0.99 }],
+            min_field_confidence: 0.99,
+            pages: 1,
+          },
+        })
+        .returning();
+      await tx.insert(edtrLineItems).values({
+        tenantId: ctx.tenantId,
+        edtrId: row!.id,
+        hoursActive: '3.0',
+        hoursIdle: '1.0',
+      });
+      // The same call the OCR worker makes immediately after extraction
+      // (RFC-2 §2 step 5/6), so this exercises the real pairing path rather
+      // than a reconciliation shape hand-written by the test.
+      await reconcileEdtr(tx, ctx.tenantId, row!.id);
+      return row!;
+    });
+
+    const detail = await edtrService.get(ctx, misread.id);
+
+    // High confidence buys nothing. The logs disagree, so the deduction is
+    // blocked -- the gate is the disagreement, not the model's certainty.
+    expect(detail.reconciliation?.status).not.toBe('matched');
+    expect(Math.abs(Number(detail.reconciliation?.deltaHours))).toBeGreaterThan(0.25);
+
+    // A discrepancy refuses at approve() with a Conflict; a single-source
+    // pending refuses with Unprocessable (AI-04). Either way there is no
+    // edge that deducts -- this asserts the discrepancy one specifically, so
+    // a future change that downgraded it to a warning would fail here.
+    await expect(
+      edtrService.approve(ctx, misread.id, { reconciliationId: detail.reconciliation!.id }),
+    ).rejects.toThrow(ConflictException);
+
+    // And nothing silently reconciled it in the meantime: no averaging, no
+    // preferring the confident side. A wrong reading stays visibly wrong
+    // until a human resolves it.
+    const after = await edtrService.get(ctx, misread.id);
+    expect(after.reconciliation?.status).not.toBe('matched');
   });
 });
