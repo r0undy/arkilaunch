@@ -12,7 +12,7 @@ cd infra/terraform/bootstrap
 terraform init
 terraform apply \
   -var subscription_id=<your-subscription-id> \
-  -var github_repository=<org>/<repo>
+  -var github_subject_prefix="$(gh api repos/<org>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix)"
 ```
 
 Note the `storage_account_name` output.
@@ -35,12 +35,12 @@ described here as a manual `az ad` sequence, which is why it was never
 actually created and why every Deploy run since 2026-08-06 failed at
 `azure/login` in about twelve seconds.
 
-Pass the repository the workflow runs from, so the credential is scoped to it:
+Pass the subject prefix GitHub will present, so the credential is scoped to this repository:
 
 ```
 terraform apply \
   -var subscription_id=<sub-id> \
-  -var github_repository=<org>/<repo>
+  -var github_subject_prefix="$(gh api repos/<org>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix)"
 ```
 
 That declares a user-assigned managed identity, a Contributor role assignment
@@ -48,9 +48,17 @@ at subscription scope, and one federated credential per environment with these
 subjects:
 
 ```
-repo:<org>/<repo>:environment:dev
-repo:<org>/<repo>:environment:prod
+<prefix>:environment:dev
+<prefix>:environment:prod
 ```
+
+Read the prefix from GitHub, never assemble it by hand. With immutable
+subjects on, which is the default for new repositories, GitHub presents
+`repo:<owner>@<owner-id>/<repo>@<repo-id>` rather than the readable
+`repo:<owner>/<repo>`, and a credential built from the readable form is
+rejected with `AADSTS700213: No matching federated identity record found`.
+The `gh api .../actions/oidc/customization/sub` call above returns the exact
+prefix that repository will present.
 
 Note the `environment:` form. An earlier version of this README prescribed
 `repo:<org>/<repo>:ref:refs/heads/dev` instead, which cannot work here: both
