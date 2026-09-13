@@ -27,8 +27,25 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     const [admin] = await sql`select id from users where tenant_id = ${tenantId} and email = 'admin@test-tenant-a.test'`;
     const [timekeeper] = await sql`select id from users where tenant_id = ${tenantId} and email = 'timekeeper@test-tenant-a.test'`;
     const [rental] = await sql`select id from rentals where tenant_id = ${tenantId} limit 1`;
-    const [equipment] = await sql`select id from equipment where tenant_id = ${tenantId} limit 1`;
     const [customer] = await sql`select id from customers where tenant_id = ${tenantId} limit 1`;
+
+    // A dedicated equipment unit, not `select ... from equipment limit 1`.
+    // This spec asserts on equipment.runtime_hours as a delta around its own
+    // approve(), and money-path.spec.ts resolves its equipment with the same
+    // unordered limit-1 and also approves. Against this shared, never-reset
+    // test project the two can land on the same row and accrue into each
+    // other's window, which reads as runtime_hours jumping by twice the
+    // hours logged. billing-engine.spec.ts already dedicates its equipment
+    // for the same reason. The rate card is keyed by tenant+equipment type,
+    // so the type is taken from an hourly card to keep the deduction priced.
+    const [rateCardRow] =
+      await sql`select equipment_type_id from rate_cards where tenant_id = ${tenantId} and rate_type = 'hourly' limit 1`;
+    const equipmentTypeId = (rateCardRow as { equipment_type_id: string }).equipment_type_id;
+    const [equipment] = await sql`
+      insert into equipment (tenant_id, equipment_type_id, model, serial_no)
+      values (${tenantId}, ${equipmentTypeId}, 'EDTR Engine Test Unit', ${`test-tenant-a-serial-edtr-${Date.now()}`})
+      returning id
+    `;
 
     adminCtx = { tenantId, userId: (admin as { id: string }).id, role: 'admin' };
     timekeeperCtx = { tenantId, userId: (timekeeper as { id: string }).id, role: 'timekeeper' };
