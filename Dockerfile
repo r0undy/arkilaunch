@@ -18,20 +18,21 @@ COPY jobs/package.json jobs/package.json
 COPY apps/api/package.json apps/api/package.json
 RUN pnpm install --frozen-lockfile
 
-# --- build: shared -> db -> document-intelligence -> jobs -> api, the same
-# dependency order this repo already builds in by hand (each package's tsc
-# output is the next one's input via workspace symlinks). ---
+# --- build: api and jobs, each preceded by whatever it depends on. Each
+# package's tsc output is the next one's input via workspace symlinks, so
+# the order matters -- but it is pnpm's to work out, not ours. The previous
+# hand-written chain named five packages explicitly and went stale the
+# moment @arkilaunch/weather was added: jobs/src/weather-poll.ts imports it,
+# nothing built it, and the image build failed on TS2307. `<pkg>...` means
+# the package and its dependencies, topologically ordered, so a new package
+# is picked up by being depended on rather than by someone remembering to
+# edit this line. apps/web is excluded by construction; it is deployed to
+# Vercel, not into this image. ---
 FROM deps AS build
-COPY packages/shared packages/shared
-COPY packages/db packages/db
-COPY packages/document-intelligence packages/document-intelligence
+COPY packages packages
 COPY jobs jobs
 COPY apps/api apps/api
-RUN pnpm --filter @arkilaunch/shared build \
- && pnpm --filter @arkilaunch/db build \
- && pnpm --filter @arkilaunch/document-intelligence build \
- && pnpm --filter @arkilaunch/jobs build \
- && pnpm --filter @arkilaunch/api build
+RUN pnpm --filter "@arkilaunch/api..." --filter "@arkilaunch/jobs..." build
 
 # --- runtime: slim image, no build toolchain. Keeps the full node_modules
 # tree (workspace symlinks + transitive deps) rather than pruning -- pnpm
