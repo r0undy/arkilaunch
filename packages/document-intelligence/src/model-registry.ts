@@ -17,8 +17,36 @@ export type ModelRequest =
 // azure-adapter.ts, not here.
 const KYC_QUERY_FIELDS = ['SecNumber', 'Tin'];
 
+// The logical model id the EDTR worker analyzes against. Held here rather
+// than in jobs/ so the id and the fields it is expected to return are stated
+// in one place; the worker imports both.
+//
+// NOTE: this model has NOT been trained yet. Until a training run over
+// labeled Almara sheets exists, Azure answers :analyze with a 404, which
+// azure-adapter.ts surfaces as a hard DocumentAnalysisError -- never a silent
+// empty result. Recorded in docs/cr-arkilaunch-pilot-honesty.md §4.
+export const EDTR_MODEL_ID = 'arkilaunch-edtr-neural-v1';
+
+export const KYC_MODEL_ID = 'arkilaunch-kyc-layout-query';
+
+// The fields reconciliation cannot proceed without. A document missing any of
+// them hard-fails to manual entry rather than being written with a
+// substituted zero -- a field the model did not return is not a reading of
+// zero hours, and the deduction gate has no way to tell the difference once
+// it is persisted (RFC-2 §2).
+//
+// THESE NAMES ARE NOT YET CONFIRMED AGAINST A TRAINED MODEL. They are the
+// names the schema is expected to use; the training run is what makes them
+// fact. Re-derive them from the trained model's own output (the field keys in
+// its analyze response) and correct this list before the pipeline is enabled
+// anywhere real. Keeping the guess in one named constant is the point: there
+// is exactly one line to change, not two call sites to find.
+export const EDTR_REQUIRED_FIELDS = ['hours_active', 'hours_idle'] as const;
+
+export type EdtrRequiredField = (typeof EDTR_REQUIRED_FIELDS)[number];
+
 export function resolveModelRequest(modelId: string): ModelRequest {
-  if (modelId === 'arkilaunch-kyc-layout-query') {
+  if (modelId === KYC_MODEL_ID) {
     return { kind: 'query-fields', modelId: 'prebuilt-layout', queryFields: KYC_QUERY_FIELDS };
   }
   // arkilaunch-edtr-neural-v1 and any other id: pass through as a real
