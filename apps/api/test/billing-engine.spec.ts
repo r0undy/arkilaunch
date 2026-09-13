@@ -157,6 +157,15 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     expect(polled.reconciliation?.status).toBe('matched');
     const approved = await edtr.approve(adminCtxA, digital.id, { reconciliationId: polled.reconciliation!.id });
 
+    // Pins the rate, not just the direction of travel. The deduction must
+    // price at the seed card in force on report_date (850/hr), never at
+    // whichever card merely sorts newest: quotes-engine.spec.ts (QAD-T44/T48)
+    // leaves a permanent 999999/hr card, effective_from = now, on this
+    // tenant and equipment type in this shared, never-reset test project.
+    // Before edtr.service.ts filtered by effectiveness that card won the
+    // `order by effective_from desc` and priced this at 4 * 999999.
+    expect(approved.deposit.deducted).toBe(4 * 850);
+
     const after = await billing.depositLedger(adminCtxA, depositRentalId);
     expect(after.totalDeducted).toBe(before.totalDeducted + approved.deposit.deducted);
     expect(after.balanceRemaining).toBe(DEPOSIT_REQUIRED - after.totalDeducted);
