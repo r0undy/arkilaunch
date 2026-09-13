@@ -10,10 +10,16 @@ WORKDIR /app
 # --- deps: install once, cached across builds as long as lockfile/manifests
 # are unchanged (source-code edits below never bust this layer). ---
 FROM base AS deps
+# Manifests only, so a source edit does not bust this layer. Every workspace
+# package that api or jobs can reach must be listed: a missing manifest does
+# not fail `pnpm install`, it just silently leaves that package unlinked, and
+# the error surfaces much later as a TS2307 in the build stage. That is
+# exactly how packages/weather went missing from this file.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/db/package.json packages/db/package.json
 COPY packages/document-intelligence/package.json packages/document-intelligence/package.json
+COPY packages/weather/package.json packages/weather/package.json
 COPY jobs/package.json jobs/package.json
 COPY apps/api/package.json apps/api/package.json
 RUN pnpm install --frozen-lockfile
