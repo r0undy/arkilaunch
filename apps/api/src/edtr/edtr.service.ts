@@ -308,6 +308,24 @@ export class EdtrService {
   // Asserts matched-or-human-resolved before opening the deduction write;
   // there is no override edge (AGENTS.md "Never": deduct without a passing
   // reconciliation or explicit human approval).
+  // Approve addressed by the reconciliation itself. The review queue knows a
+  // reconciliation id, not the EDTR that owns it, so requiring the caller to
+  // supply both made the gate reachable only from the capture screen that had
+  // just created the pair. Resolution happens here; every gate, lock and
+  // deduction rule still runs in approve() below, unchanged.
+  async approveByReconciliation(ctx: RequestContext, reconciliationId: string, body: EdtrApproveRequest) {
+    const edtrId = await withTenantTx(ctx, async (tx) => {
+      const [row] = await tx
+        .select({ edtrId: edtrReconciliations.edtrId })
+        .from(edtrReconciliations)
+        .where(eq(edtrReconciliations.id, reconciliationId))
+        .limit(1);
+      if (!row) throw new NotFoundException({ error: 'reconciliation_not_found' });
+      return row.edtrId;
+    });
+    return this.approve(ctx, edtrId, { ...body, reconciliationId });
+  }
+
   async approve(ctx: RequestContext, edtrId: string, body: EdtrApproveRequest) {
     return withTenantTx(ctx, async (tx) => {
       const [record] = await tx.select().from(edtr).where(eq(edtr.id, edtrId)).limit(1);
@@ -318,8 +336,22 @@ export class EdtrService {
         .from(edtrReconciliations)
         .where(eq(edtrReconciliations.id, body.reconciliationId))
         .limit(1);
-      if (!reconciliation || reconciliation.edtrId !== edtrId) {
+      if (!reconciliation) {
+        // RLS scopes the select above, so another tenant's reconciliation is
+        // indistinguishable from a nonexistent one here -- which is the
+        // intended isolation behaviour, not a gap.
         throw new NotFoundException({ error: 'reconciliation_not_found' });
+      }
+      // A reconciliation belongs to exactly one EDTR. Reporting a mismatch as
+      // 'not found' told a reviewer the row did not exist when it did, which
+      // is the wrong thing to act on; name the real problem and hand back the
+      // EDTR that actually owns it so the caller can retry correctly.
+      if (reconciliation.edtrId !== edtrId) {
+        throw new UnprocessableEntityException({
+          error: 'reconciliation_belongs_to_other_edtr',
+          reconciliationId: reconciliation.id,
+          edtrId: reconciliation.edtrId,
+        });
       }
 
       // A pair is approved ONCE, not once per side. reconcileEdtr()

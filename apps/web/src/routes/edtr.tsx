@@ -4,6 +4,7 @@ import type { EdtrCaptureResponse, EdtrDetailResponse } from '@arkilaunch/shared
 import { appLayoutRoute } from './_app.js';
 import { apiGet, apiPost, apiPostForm } from '../lib/api-client.js';
 import { getEquipment, getRentals, type EquipmentRef, type RentalRef } from '../lib/reference-client.js';
+import { explainEdtrError } from '../lib/edtr-error.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
@@ -111,9 +112,15 @@ function EdtrPage() {
           lineItems: { hoursActive: Number(hoursActive), hoursIdle: Number(hoursIdle) },
         });
       } else {
+        // Multipart carries strings only, so transcribed hours travel as a
+        // JSON-encoded field the API decodes back into an object.
+        const transcribed =
+          hoursActive !== '' && hoursIdle !== ''
+            ? { lineItems: JSON.stringify({ hoursActive: Number(hoursActive), hoursIdle: Number(hoursIdle) }) }
+            : {};
         res = await apiPostForm<EdtrCaptureResponse>(
           '/edtr',
-          { source: 'paper_ocr', rentalId, equipmentId, reportDate },
+          { source: 'paper_ocr', rentalId, equipmentId, reportDate, ...transcribed },
           scanFile ?? undefined,
         );
       }
@@ -127,14 +134,20 @@ function EdtrPage() {
 
   async function approve(event: FormEvent) {
     event.preventDefault();
-    if (!edtrId) return;
     setError(null);
     try {
       const adjustments =
         adjActive !== '' && adjIdle !== ''
           ? { hoursActive: Number(adjActive), hoursIdle: Number(adjIdle) }
           : null;
-      const res = await apiPost(`/edtr/${edtrId}/approve`, { reconciliationId, adjustments });
+      // Address the reconciliation directly. Posting to the EDTR captured in
+      // this page session only ever worked when that capture happened to be
+      // the one that created the pair; any other reconciliation id came back
+      // as "not found" for a row that plainly existed.
+      const res = await apiPost(`/edtr/reconciliations/${reconciliationId}/approve`, {
+        reconciliationId,
+        adjustments,
+      });
       setResult(res);
     } catch (err) {
       setError(err);
@@ -229,6 +242,30 @@ function EdtrPage() {
             </>
           ) : (
             <div className="flex flex-col gap-2">
+              {/* While automatic extraction is switched off, a scan alone is
+                  not enough -- the API needs the hours transcribed by the
+                  person holding the sheet. The fields were absent here, so
+                  a paper log could not be captured at all in that mode. */}
+              <Input
+                numeric
+                id="paperHoursActive"
+                label="Hours active, as written on the sheet"
+                type="number"
+                value={hoursActive}
+                onChange={(e) => setHoursActive(e.target.value)}
+              />
+              <Input
+                numeric
+                id="paperHoursIdle"
+                label="Hours idle, as written on the sheet"
+                type="number"
+                value={hoursIdle}
+                onChange={(e) => setHoursIdle(e.target.value)}
+              />
+              <p className="text-sm text-text-muted">
+                Leave both blank if automatic extraction is enabled for this environment; fill
+                them in to transcribe the sheet by hand. The scan is stored either way.
+              </p>
               <label htmlFor="scanFile" className="text-sm font-medium text-text">
                 Scan / upload the EDTR sheet
               </label>
@@ -295,7 +332,7 @@ function EdtrPage() {
             onChange={(e) => setAdjIdle(e.target.value)}
           />
           <div>
-            <Button type="submit" variant="approve" disabled={!edtrId}>
+            <Button type="submit" variant="approve" disabled={reconciliationId.trim() === ''}>
               Approve
             </Button>
           </div>
@@ -304,8 +341,12 @@ function EdtrPage() {
 
       {error != null && (
         <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl border-error p-4">
-          <h2 className="mb-2 font-display text-[18px] font-semibold text-error">Error</h2>
-          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(error, null, 2)}</pre>
+          <h2 className="mb-2 font-display text-[18px] font-semibold text-error">{explainEdtrError(error).title}</h2>
+          <p className="mb-3 text-text">{explainEdtrError(error).detail}</p>
+          <details>
+            <summary className="cursor-pointer text-sm text-text-muted">Technical detail</summary>
+            <pre className="mt-2 overflow-x-auto font-mono text-sm text-text">{JSON.stringify(error, null, 2)}</pre>
+          </details>
         </Surface>
       )}
       {fields.length > 0 && (
