@@ -8,6 +8,9 @@ docker-compose or local Postgres path — `packages/db/test/*` (RLS/GUC-leak sui
 Supavisor pooler, so a throwaway local Postgres would not actually prove isolation. Use a Supabase
 dev project.
 
+This runbook is the *local* path. To apply the schema and seed to a remote Supabase project,
+see [runbook-deploy-supabase.md](runbook-deploy-supabase.md).
+
 ## 1. Create a Supabase dev project
 
 Use a project dedicated to local dev, separate from staging/prod. Note the project ref (the
@@ -78,6 +81,8 @@ show, hide, or 403 different things per role.
 > at a remote host and it aborts before connecting. Set `SEED_PASSWORD` to a real
 > password (>= 12 chars) to seed a remote environment, or `ALLOW_WEAK_SEED_CREDENTIALS=true`
 > to override deliberately. See `packages/db/src/seed/seed-identities.ts`.
+> For the remote case end to end -- identifying the target project, migrating, and
+> seeding past that guard -- see [runbook-deploy-supabase.md](runbook-deploy-supabase.md).
 
 Re-running `pnpm db:seed` resets all five passwords and re-asserts each role, so an
 account you have since changed converges back on the table above. Accounts seeded before
