@@ -81,15 +81,30 @@ export class BookingsService {
         const equipmentRow = equipmentById.get(item.equipmentId);
         if (!equipmentRow) throw new NotFoundException({ error: 'equipment_not_found', equipmentId: item.equipmentId });
 
+        // Both refusals below are 'equipment_unavailable', which left the
+        // customer unable to tell "this machine is off the road" from "those
+        // particular dates are taken" -- the second is fixed by picking other
+        // dates, the first is not. `reason` separates them.
         if (equipmentRow.availabilityStatus !== 'available') {
           const alternatives = await findAvailableAlternatives(tx, equipmentRow.equipmentTypeId, item, equipmentIds);
-          throw new ConflictException({ error: 'equipment_unavailable', equipmentId: item.equipmentId, alternatives });
+          throw new ConflictException({
+            error: 'equipment_unavailable',
+            reason: 'not_in_service',
+            status: equipmentRow.availabilityStatus,
+            equipmentId: item.equipmentId,
+            alternatives,
+          });
         }
 
         const overlapping = await overlappingAssignments(tx, item.equipmentId, item);
         if (overlapping.length > 0) {
           const alternatives = await findAvailableAlternatives(tx, equipmentRow.equipmentTypeId, item, equipmentIds);
-          throw new ConflictException({ error: 'equipment_unavailable', equipmentId: item.equipmentId, alternatives });
+          throw new ConflictException({
+            error: 'equipment_unavailable',
+            reason: 'dates_taken',
+            equipmentId: item.equipmentId,
+            alternatives,
+          });
         }
       }
 
