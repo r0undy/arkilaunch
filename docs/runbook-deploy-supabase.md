@@ -107,3 +107,21 @@ remote target is the password.
 - `pnpm db:seed:test` creates the two-tenant isolation fixture. It accumulates
   `*@test-tenant-a.test` / `*@test-tenant-b.test` rows on whatever database it runs against;
   on a long-lived dev project these pile up and are worth periodically clearing.
+
+## 5. Run record
+
+**2026-09-15 — dev project `ydalnvzyeseycdakofgp` (ap-southeast-1).**
+
+- `pnpm db:migrate`: no new migrations; the journal was already at `0016`. The run's
+  effect was re-asserting the `app_authenticated` password from `APP_AUTHENTICATED_PASSWORD`.
+- `pnpm db:seed` with a 19-char `SEED_PASSWORD` (guard satisfied without
+  `ALLOW_WEAK_SEED_CREDENTIALS`). Seeded `almara` (Almara Construction, active) and
+  `arkilaunch-platform` (ArkiLaunch Platform, active), and all five accounts active:
+  `owner@`/`admin@`/`timekeeper@`/`customer@admin.com` on `almara`,
+  `platform@admin.com` on `arkilaunch-platform`. Zero legacy `*.test` seed emails remained,
+  so the rename-in-place path had already run.
+- Verified: `app_authenticated` reports `rolbypassrls = false`; with no tenant GUC it sees
+  0 users and cannot see `tenants` at all; with the GUC set to `almara` it sees exactly the
+  four anchor users and not `platform@admin.com`.
+- Observed, not fixed: the dev database carries ~25 accumulated `*@test-tenant-a.test`
+  timekeeper rows in `invited` status from repeated `db:seed:test` runs (see §4).
