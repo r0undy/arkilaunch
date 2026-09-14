@@ -110,7 +110,8 @@ remote target is the password.
 
 ## 5. Run record
 
-**2026-09-15 — dev project `ydalnvzyeseycdakofgp` (ap-southeast-1).**
+**2026-09-15 — the dev project (ap-southeast-1). Project ref deliberately not recorded here;
+read it from `.env`.**
 
 - `pnpm db:migrate`: no new migrations; the journal was already at `0016`. The run's
   effect was re-asserting the `app_authenticated` password from `APP_AUTHENTICATED_PASSWORD`.
