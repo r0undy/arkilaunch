@@ -45,4 +45,4 @@ Disallow: /account/
 Disallow: /field/
 Disallow: /platform/
 
-Sitemap: https://arkilaunch-dev.vercel.app/sitemap.xml
+Sitemap: https://arkilaunch-web-24lk.vercel.app/sitemap.xml
