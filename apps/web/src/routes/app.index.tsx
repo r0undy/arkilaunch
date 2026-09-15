@@ -2,7 +2,13 @@ import { createRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { WeatherSeverity } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
-import { edtrQueries, fleetUtilizationPct, reportQueries, sitesQueries, weatherQueries } from '../lib/queries.js';
+import {
+  edtrQueries,
+  fleetUtilizationPct,
+  reportQueries,
+  sitesQueries,
+  weatherQueries,
+} from '../lib/queries.js';
 import { GaugeReadout } from '../components/gauge-readout.js';
 import { WeatherBanner, type WeatherTone } from '../components/weather-banner.js';
 import { PageHeader } from '../components/page-header.js';
@@ -10,11 +16,16 @@ import { Surface } from '../components/surface.js';
 import { APP_NAV } from '../lib/nav-config.js';
 import { formatRelativeTime } from '../lib/format-time.js';
 import { explainAdvisory } from '../lib/weather-explain.js';
+import { equipmentQueries } from '../lib/queries.js';
+import { formatDate, shortCode } from '../lib/format.js';
 
 // Plain-English headline first (readable without knowing the PAGASA scale),
 // PAGASA's own label kept as a secondary tag (BRAND.md §0: the scale is
 // deliberately the one Filipino users already recognize from the news).
-const SEVERITY_META: Record<WeatherSeverity, { tone: WeatherTone; headline: string; tag?: string; condition: string }> = {
+const SEVERITY_META: Record<
+  WeatherSeverity,
+  { tone: WeatherTone; headline: string; tag?: string; condition: string }
+> = {
   none: { tone: 'clear', headline: 'Clear', condition: 'No advisory in effect' },
   watch: {
     tone: 'yellow',
@@ -40,11 +51,27 @@ function AdminDashboardPage() {
   const { data: advisories } = useQuery(weatherQueries.advisories());
   const advisoryBySite = new Map((advisories?.items ?? []).map((a) => [a.siteId, a]));
 
-  const alerts = (sites?.items ?? []).filter((s) => s.latestSeverity && s.latestSeverity !== 'none');
-  const reviewItems = ((edtrList?.items ?? []) as { id: string; status?: string }[]).filter(
-    (e) => e.status === 'review',
+  const alerts = (sites?.items ?? []).filter(
+    (s) => s.latestSeverity && s.latestSeverity !== 'none',
   );
-  const recoveredHours = snapshot?.utilization.fleet.reduce((sum, u) => sum + u.runtimeHours, 0) ?? null;
+  const { data: fleet } = useQuery(equipmentQueries.list());
+  const reviewItems = (
+    (edtrList?.items ?? []) as {
+      id: string;
+      status?: string;
+      equipmentId?: string;
+      reportDate?: string;
+    }[]
+  ).filter((e) => e.status === 'review');
+
+  // Name the machine rather than print a UUID stub: this is the first work
+  // list anyone sees after signing in.
+  function machineName(equipmentId: string | undefined): string {
+    const match = (fleet?.items ?? []).find((item) => item.id === equipmentId);
+    return match ? match.model : 'Unknown machine';
+  }
+  const recoveredHours =
+    snapshot?.utilization.fleet.reduce((sum, u) => sum + u.runtimeHours, 0) ?? null;
   const depositDeducted = snapshot?.financial.depositDeducted ?? null;
 
   return (
@@ -85,7 +112,11 @@ function AdminDashboardPage() {
           <GaugeReadout label="Fleet utilization" value={utilizationPct.toFixed(1)} unit="%" />
         )}
         {recoveredHours !== null && (
-          <GaugeReadout label="Recovered billable hours" value={recoveredHours.toFixed(1)} unit="h" />
+          <GaugeReadout
+            label="Recovered billable hours"
+            value={recoveredHours.toFixed(1)}
+            unit="h"
+          />
         )}
         {depositDeducted !== null && (
           <GaugeReadout label="Deposit deducted" value={depositDeducted.toFixed(2)} unit="PHP" />
@@ -107,8 +138,16 @@ function AdminDashboardPage() {
                 to="/app/ocr"
                 className="flex items-center justify-between rounded-md border border-border bg-surface px-4 py-3 text-sm hover:border-border-strong"
               >
-                <span className="font-mono text-text-muted">{item.id.slice(0, 8)}</span>
-                <span className="font-medium text-text">Needs reconciliation review</span>
+                <span className="flex flex-col">
+                  <span className="font-medium text-text">
+                    {machineName(item.equipmentId)}
+                    {item.reportDate ? ` - ${formatDate(item.reportDate)}` : ''}
+                  </span>
+                  <span className="font-mono text-xs text-text-muted">
+                    {shortCode('log', item.id)}
+                  </span>
+                </span>
+                <span className="text-text-muted">Waiting on your decision</span>
               </Link>
             ))}
           </div>

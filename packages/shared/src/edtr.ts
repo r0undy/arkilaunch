@@ -189,11 +189,24 @@ export const EdtrCaptureFieldsSchema = z
     rentalId: z.string().uuid(),
     equipmentId: z.string().uuid(),
     reportDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    // A paper capture is multipart, and multipart carries every field as a
+    // string -- so a nested object could not be expressed at all, and a
+    // transcribed paper log (the required shape while OCR is disabled) was
+    // rejected as "expected object, received string" no matter how it was
+    // sent. Accept the JSON encoding multipart can actually carry. A
+    // malformed string fails the object check below rather than throwing.
     lineItems: z
-      .object({
+      .preprocess((value) => {
+        if (typeof value !== 'string') return value;
+        try {
+          return JSON.parse(value) as unknown;
+        } catch {
+          return value;
+        }
+      }, z.object({
         hoursActive: z.number().finite().min(0),
         hoursIdle: z.number().finite().min(0),
-      })
+      }))
       .optional(),
   })
   .superRefine((data, ctx) => {

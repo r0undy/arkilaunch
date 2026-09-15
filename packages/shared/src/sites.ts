@@ -53,7 +53,21 @@ export type DeploymentCreateRequest = z.infer<typeof DeploymentCreateRequestSche
 // GET /api/v1/incidents?projectSiteId=...
 export const IncidentListQuerySchema = z.object({
   projectSiteId: z.string().uuid().optional(),
+  // Paging, matching the shape the users/invoices/field-log endpoints
+  // already use: a page of rows plus the unpaged total, so a list can say
+  // how much there is rather than silently truncating at the cap.
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
 });
+
+export const SiteListQuerySchema = z.object({
+  // Paging, matching the shape the users/invoices/field-log endpoints
+  // already use: a page of rows plus the unpaged total, so a list can say
+  // how much there is rather than silently truncating at the cap.
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export type SiteListQuery = z.infer<typeof SiteListQuerySchema>;
 export type IncidentListQuery = z.infer<typeof IncidentListQuerySchema>;
 
 // --- Response schemas (egress allowlists -- expose only what the frontend

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { router } from './router.js';
 import { ApiError } from './lib/api-client.js';
 import { bootstrapSession } from './lib/auth-client.js';
+import { ToastProvider } from './components/toast.js';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -16,7 +17,8 @@ const queryClient = new QueryClient({
       // access token; retrying a 4xx here would just repeat a request that
       // is never going to succeed (e.g. a 403 permission denial).
       retry: (failureCount, error) =>
-        failureCount < 2 && !(error instanceof ApiError && error.status >= 400 && error.status < 500),
+        failureCount < 2 &&
+        !(error instanceof ApiError && error.status >= 400 && error.status < 500),
     },
   },
 });
@@ -31,7 +33,9 @@ bootstrapSession().finally(() => {
   createRoot(rootElement).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <ToastProvider>
+          <RouterProvider router={router} />
+        </ToastProvider>
       </QueryClientProvider>
     </StrictMode>,
   );

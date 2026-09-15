@@ -8,6 +8,7 @@ import { Button } from '../components/button.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
 import { apiPost } from '../lib/api-client.js';
+import { explainBookingError } from '../lib/booking-error.js';
 import { referenceQueries } from '../lib/queries.js';
 import { getCart, removeFromCart, clearCart, type CartItem } from '../lib/cart-client.js';
 
@@ -34,13 +35,25 @@ function CartPage() {
       clearCart();
       setItems([]);
     },
-    onError: () => setError('Could not create this booking. Check the equipment is still available.'),
+    onError: (err: unknown) => setError(explainBookingError(err)),
   });
+
+  const [checkoutUnavailable, setCheckoutUnavailable] = useState(false);
 
   const checkout = useMutation({
     mutationFn: () => apiPost<{ checkoutUrl: string }>(`/bookings/${booking?.id}/checkout`, {}),
     onSuccess: (data) => {
-      window.location.assign(data.checkoutUrl);
+      // With no payment provider configured the API answers with the stub
+      // adapter's placeholder ("about:blank?amount=..."), which is a
+      // successful response carrying a URL that is not a payment page.
+      // Navigating to it dropped the customer on a blank screen with no
+      // explanation, because the error branch below never ran. Check the
+      // destination is a real http(s) page before leaving the app.
+      if (/^https?:\/\//i.test(data.checkoutUrl)) {
+        window.location.assign(data.checkoutUrl);
+        return;
+      }
+      setCheckoutUnavailable(true);
     },
   });
 
@@ -58,9 +71,11 @@ function CartPage() {
           >
             Proceed to payment
           </Button>
-          {checkout.isError && (
+          {(checkout.isError || checkoutUnavailable) && (
             <p className="text-sm text-error">
-              Payment checkout is not fully configured in this environment yet.
+              Online payment is not available in this environment yet, so this booking stays
+              unpaid. It is saved as {booking.id.slice(0, 8)} and will stay pending until the
+              deposit is settled.
             </p>
           )}
         </Surface>

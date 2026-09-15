@@ -80,7 +80,7 @@ describe('SitesService (PRD-F4/F5)', () => {
     const detail = await sites.get(adminCtxA, siteIdA);
     expect(detail.address?.city).toBe('Taguig');
 
-    const { items, total } = await sites.list(adminCtxA);
+    const { items, total } = await sites.list(adminCtxA, { limit: 50, offset: 0 });
     expect(total).toBeGreaterThan(0);
     expect(items.some((item) => item.id === siteIdA)).toBe(true);
 
@@ -201,12 +201,12 @@ describe('SitesService (PRD-F4/F5)', () => {
         properties: { project_site_id: siteIdA, severity: 'warning', observed: { tempC: 31 } },
       }),
     );
-    const { items: incidents } = await sites.incidents(adminCtxA, { projectSiteId: siteIdA });
+    const { items: incidents } = await sites.incidents(adminCtxA, { projectSiteId: siteIdA, limit: 50, offset: 0 });
     expect(incidents.length).toBeGreaterThan(0);
     expect(incidents.every((incident) => incident.projectSiteId === siteIdA)).toBe(true);
 
     // Tenant B sees none of tenant A's incidents (RLS).
-    const { items: crossTenantIncidents } = await sites.incidents(adminCtxB, { projectSiteId: siteIdA });
+    const { items: crossTenantIncidents } = await sites.incidents(adminCtxB, { projectSiteId: siteIdA, limit: 50, offset: 0 });
     expect(crossTenantIncidents.length).toBe(0);
   });
 });

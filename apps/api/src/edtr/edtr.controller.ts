@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  ServiceUnavailableException,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
@@ -13,9 +24,19 @@ type CtxRequest = Request & { ctx: RequestContext };
 type MulterFile = { buffer: Buffer; size: number; mimetype: string };
 
 const EDTR_BUCKET = () => requireEnv('SUPABASE_STORAGE_BUCKET_EDTR');
+// A missing storage bucket is an operator misconfiguration, not a bad
+// request. Thrown as a bare Error it surfaced to the user as an opaque 500
+// "Internal server error" that named nothing and looked like data loss; say
+// which setting is absent and that the log was not stored.
 function requireEnv(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`${name} is required`);
+  if (!value) {
+    throw new ServiceUnavailableException({
+      error: 'storage_not_configured',
+      missing: name,
+      detail: 'Document storage is not configured in this environment, so the scan was not saved.',
+    });
+  }
   return value;
 }
 
@@ -75,6 +96,18 @@ export class EdtrController {
   @RequirePermission('edtr:create')
   get(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.edtr.get(req.ctx, id);
+  }
+
+  // Addressed by reconciliation id: what a reviewer working the queue
+  // actually holds. Three segments, so it never collides with ':id/approve'.
+  @Post('reconciliations/:reconciliationId/approve')
+  @RequirePermission('edtr:approve')
+  approveByReconciliation(
+    @Param('reconciliationId') reconciliationId: string,
+    @Body() body: EdtrApproveDto,
+    @Req() req: CtxRequest,
+  ) {
+    return this.edtr.approveByReconciliation(req.ctx, reconciliationId, body);
   }
 
   @Post(':id/approve')

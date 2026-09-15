@@ -49,8 +49,7 @@ describe('PricingService: rate cards + tenant settings (S18)', () => {
 
     const { items } = await pricing.listRateCards(adminCtxA, {
       equipmentTypeId: dedicatedEquipmentTypeId,
-      includeSuperseded: false,
-    });
+      includeSuperseded: false, limit: 50, offset: 0 });
     expect(items.some((row) => row.id === created!.id)).toBe(true);
   });
 
@@ -68,8 +67,7 @@ describe('PricingService: rate cards + tenant settings (S18)', () => {
   it('supersede closes the old row (rate_value unchanged) and inserts a successor with the new value', async () => {
     const { items } = await pricing.listRateCards(adminCtxA, {
       equipmentTypeId: dedicatedEquipmentTypeId,
-      includeSuperseded: false,
-    });
+      includeSuperseded: false, limit: 50, offset: 0 });
     const current = items[0]!;
     const originalRateValue = current.rateValue;
 
@@ -92,23 +90,20 @@ describe('PricingService: rate cards + tenant settings (S18)', () => {
   it('the pick-list (includeSuperseded=false) excludes the superseded card and includes the successor', async () => {
     const { items } = await pricing.listRateCards(adminCtxA, {
       equipmentTypeId: dedicatedEquipmentTypeId,
-      includeSuperseded: false,
-    });
+      includeSuperseded: false, limit: 50, offset: 0 });
     expect(items.length).toBe(1);
     expect(items[0]!.rateValue).toBe('750.00');
 
     const all = await pricing.listRateCards(adminCtxA, {
       equipmentTypeId: dedicatedEquipmentTypeId,
-      includeSuperseded: true,
-    });
+      includeSuperseded: true, limit: 50, offset: 0 });
     expect(all.items.length).toBe(2);
   });
 
   it('retire closes the window without deleting the row', async () => {
     const { items } = await pricing.listRateCards(adminCtxA, {
       equipmentTypeId: dedicatedEquipmentTypeId,
-      includeSuperseded: false,
-    });
+      includeSuperseded: false, limit: 50, offset: 0 });
     const current = items[0]!;
 
     await pricing.retireRateCard(adminCtxA, current.id);
@@ -119,19 +114,17 @@ describe('PricingService: rate cards + tenant settings (S18)', () => {
 
     const { items: currentAfter } = await pricing.listRateCards(adminCtxA, {
       equipmentTypeId: dedicatedEquipmentTypeId,
-      includeSuperseded: false,
-    });
+      includeSuperseded: false, limit: 50, offset: 0 });
     expect(currentAfter.length).toBe(0);
   });
 
   it('a tenant-B ctx cannot read or supersede a tenant-A rate card (T24)', async () => {
     const { items } = await pricing.listRateCards(adminCtxA, {
       equipmentTypeId: dedicatedEquipmentTypeId,
-      includeSuperseded: true,
-    });
+      includeSuperseded: true, limit: 50, offset: 0 });
     const tenantACardId = items[0]!.id;
 
-    const fromB = await pricing.listRateCards(adminCtxB, { equipmentTypeId: dedicatedEquipmentTypeId, includeSuperseded: true });
+    const fromB = await pricing.listRateCards(adminCtxB, { equipmentTypeId: dedicatedEquipmentTypeId, includeSuperseded: true, limit: 50, offset: 0 });
     expect(fromB.items.length).toBe(0);
 
     await expect(pricing.supersedeRateCard(adminCtxB, tenantACardId, { rateValue: 1 })).rejects.toThrow(NotFoundException);

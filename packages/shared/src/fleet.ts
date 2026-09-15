@@ -12,6 +12,11 @@ export type EquipmentStatus = z.infer<typeof EquipmentStatusSchema>;
 // boundary with Zod"), not passed through as a raw string.
 export const EquipmentListQuerySchema = z.object({
   status: EquipmentStatusSchema.optional(),
+  // Paging, matching the shape the users/invoices/field-log endpoints
+  // already use: a page of rows plus the unpaged total, so a list can say
+  // how much there is rather than silently truncating at the cap.
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
 });
 export type EquipmentListQuery = z.infer<typeof EquipmentListQuerySchema>;
 

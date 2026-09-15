@@ -1,15 +1,40 @@
 import { createRoute } from '@tanstack/react-router';
+import { useState } from 'react';
 import { appLayoutRoute } from './_app.js';
 import { reportQueries, type ReportsSnapshot } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
+import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon, WrenchIcon } from '../components/icons.js';
+import { useQuery } from '@tanstack/react-query';
+import { equipmentQueries } from '../lib/queries.js';
+import { formatHours, formatInvoiceType, formatPeso, shortCode } from '../lib/format.js';
+
+// The utilization report identifies a unit only by id. Rather than print a
+// UUID stub in the column a yard manager reads first, look the machine up in
+// the fleet list that is already cached for the Equipment screen.
+function MachineName({ equipmentId }: { equipmentId: string }) {
+  const fleet = useQuery(equipmentQueries.list());
+  const match = fleet.data?.items.find((item) => item.id === equipmentId);
+  if (!match)
+    return (
+      <span className="font-mono text-xs text-text-muted">
+        {shortCode('equipment', equipmentId)}
+      </span>
+    );
+  return (
+    <span className="flex flex-col">
+      <span>{match.model}</span>
+      <span className="font-mono text-xs text-text-muted">{match.serialNo}</span>
+    </span>
+  );
+}
 
 const UTILIZATION_COLUMNS: TableColumn<ReportsSnapshot['utilization']['fleet'][number]>[] = [
-  { header: 'Unit', cell: (row) => row.equipmentId.slice(0, 8) },
-  { header: 'Runtime hours', cell: (row) => row.runtimeHours.toFixed(1), align: 'right' },
+  { header: 'Machine', cell: (row) => <MachineName equipmentId={row.equipmentId} /> },
+  { header: 'Hours run', cell: (row) => formatHours(row.runtimeHours), align: 'right' },
   { header: 'Utilization', cell: (row) => `${row.utilizationPct.toFixed(1)}%`, align: 'right' },
   {
     header: 'Maintenance',
@@ -23,56 +48,93 @@ const UTILIZATION_COLUMNS: TableColumn<ReportsSnapshot['utilization']['fleet'][n
 ];
 
 function InsightsPage() {
+  // The report arrives whole, so the fleet table pages in the browser. The
+  // financial breakdown is one row per invoice type -- a handful at most, so
+  // a pager there would be furniture.
+  const [fleetOffset, setFleetOffset] = useState(0);
   return (
-    <DataPanel
-      title="Reports"
-      options={reportQueries.snapshot()}
-      emptyTitle="No insights yet"
-      emptyDescription="Utilization and financial reports appear once the fleet has activity."
-      isEmpty={() => false}
-      render={(data) => (
-        <div className="flex flex-col gap-8">
-          <PageHeader eyebrow="Billing" title="Reports" description="Fleet utilization and financial breakdown." />
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="Billing"
+        title="Reports"
+        description="How hard the fleet is working, and what it has earned."
+      />
+      <DataPanel
+        title="Reports"
+        options={reportQueries.snapshot()}
+        emptyTitle="No insights yet"
+        emptyDescription="Utilization and financial reports appear once the fleet has activity."
+        isEmpty={() => false}
+        render={(data) => (
+          <div className="flex flex-col gap-8">
+            <div>
+              <h2 className="mb-3 font-display text-base font-semibold text-text">
+                Fleet utilization
+              </h2>
+              <Table
+                columns={UTILIZATION_COLUMNS}
+                rows={data.utilization.fleet.slice(fleetOffset, fleetOffset + PAGE_SIZE)}
+                rowKey={(row) => row.equipmentId}
+              />
+              <Pagination
+                offset={fleetOffset}
+                limit={PAGE_SIZE}
+                total={data.utilization.fleet.length}
+                onOffsetChange={setFleetOffset}
+                noun="machines"
+              />
+            </div>
 
-          <div>
-            <h2 className="mb-3 font-display text-base font-semibold text-text">Fleet utilization</h2>
-            <Table columns={UTILIZATION_COLUMNS} rows={data.utilization.fleet} rowKey={(row) => row.equipmentId} />
-          </div>
-
-          <div>
-            <h2 className="mb-3 font-display text-base font-semibold text-text">Financial breakdown</h2>
-            <Table
-              columns={[
-                { header: 'Invoice type', cell: (row: [string, number]) => row[0].replace('_', ' ') },
-                { header: 'Invoiced (PHP)', cell: (row: [string, number]) => row[1].toFixed(2), align: 'right' },
-              ]}
-              rows={Object.entries(data.financial.invoiced.byType)}
-              rowKey={(row) => row[0]}
-            />
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-md border border-border-strong bg-surface px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">Total invoiced</p>
-                <p className="font-mono text-xl tabular-nums text-text">
-                  {data.financial.invoiced.total.toFixed(2)}
-                </p>
-              </div>
-              <div className="rounded-md border border-border-strong bg-surface px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">Paid</p>
-                <p className="font-mono text-xl tabular-nums text-text">{data.financial.paid.toFixed(2)}</p>
-              </div>
-              <div className="rounded-md border border-border-strong bg-surface px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
-                  Deposit deducted
-                </p>
-                <p className="font-mono text-xl tabular-nums text-text">
-                  {data.financial.depositDeducted.toFixed(2)}
-                </p>
+            <div>
+              <h2 className="mb-3 font-display text-base font-semibold text-text">
+                Financial breakdown
+              </h2>
+              <Table
+                columns={[
+                  {
+                    header: 'Invoice type',
+                    cell: (row: [string, number]) => formatInvoiceType(row[0]),
+                  },
+                  {
+                    header: 'Invoiced',
+                    cell: (row: [string, number]) => formatPeso(row[1]),
+                    align: 'right',
+                  },
+                ]}
+                rows={Object.entries(data.financial.invoiced.byType)}
+                rowKey={(row) => row[0]}
+              />
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-md border border-border-strong bg-surface px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+                    Total invoiced
+                  </p>
+                  <p className="font-mono text-xl tabular-nums text-text">
+                    {formatPeso(data.financial.invoiced.total)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border-strong bg-surface px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+                    Paid
+                  </p>
+                  <p className="font-mono text-xl tabular-nums text-text">
+                    {formatPeso(data.financial.paid)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border-strong bg-surface px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+                    Deposit deducted
+                  </p>
+                  <p className="font-mono text-xl tabular-nums text-text">
+                    {formatPeso(data.financial.depositDeducted)}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    />
+        )}
+      />
+    </div>
   );
 }
 

@@ -1,6 +1,12 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, gt, isNull, lte, or } from 'drizzle-orm';
-import { auditLogs, dieselPriceReadings, pricingParameters, rateCards, withTenantTx } from '@arkilaunch/db';
+import {
+  auditLogs,
+  dieselPriceReadings,
+  pricingParameters,
+  rateCards,
+  withTenantTx,
+} from '@arkilaunch/db';
 import type {
   DieselPriceEntry,
   PricingParametersInput,
@@ -70,7 +76,8 @@ export class PricingService {
           fuelLPerHour: String(input.fuelLPerHour),
           fuelLPerKm: String(input.fuelLPerKm),
           transportPhpPerKm: String(input.transportPhpPerKm),
-          dieselOverridePhp: input.dieselOverridePhp !== undefined ? String(input.dieselOverridePhp) : null,
+          dieselOverridePhp:
+            input.dieselOverridePhp !== undefined ? String(input.dieselOverridePhp) : null,
           dieselOverrideDate: input.dieselOverrideDate ?? null,
           effectiveFrom,
         })
@@ -119,19 +126,24 @@ export class PricingService {
     return withTenantTx(ctx, async (tx) => {
       const now = new Date();
       const conditions = [];
-      if (query.equipmentTypeId) conditions.push(eq(rateCards.equipmentTypeId, query.equipmentTypeId));
+      if (query.equipmentTypeId)
+        conditions.push(eq(rateCards.equipmentTypeId, query.equipmentTypeId));
       if (query.rateType) conditions.push(eq(rateCards.rateType, query.rateType));
       if (!query.includeSuperseded) {
         conditions.push(lte(rateCards.effectiveFrom, now));
         conditions.push(or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, now)));
       }
 
+      const where = conditions.length > 0 ? and(...conditions) : undefined;
       const rows = await tx
         .select()
         .from(rateCards)
-        .where(conditions.length > 0 ? and(...conditions) : undefined)
-        .orderBy(desc(rateCards.effectiveFrom));
-      return { items: rows, total: rows.length };
+        .where(where)
+        .orderBy(desc(rateCards.effectiveFrom))
+        .limit(query.limit)
+        .offset(query.offset);
+      const all = await tx.select({ id: rateCards.id }).from(rateCards).where(where);
+      return { items: rows, total: all.length };
     });
   }
 

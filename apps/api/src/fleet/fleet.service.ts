@@ -70,10 +70,18 @@ export class FleetService {
   // posture as reference/* (no permission gate on a read).
   async list(ctx: RequestContext, query: EquipmentListQuery): Promise<EquipmentListResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const rows = query.status
-        ? await tx.select().from(equipment).where(eq(equipment.availabilityStatus, query.status))
-        : await tx.select().from(equipment);
-      return { items: rows.map(toEquipmentResponse), total: rows.length };
+      const where = query.status ? eq(equipment.availabilityStatus, query.status) : undefined;
+      const rows = await tx
+        .select()
+        .from(equipment)
+        .where(where)
+        .orderBy(desc(equipment.createdAt))
+        .limit(query.limit)
+        .offset(query.offset);
+      // The unpaged count, so the caller can page: rows.length only ever
+      // described the page it was handed.
+      const all = await tx.select({ id: equipment.id }).from(equipment).where(where);
+      return { items: rows.map(toEquipmentResponse), total: all.length };
     });
   }
 
@@ -118,9 +126,17 @@ export class FleetService {
   // transition to `deployed` when the unit is already deployed or is
   // maintenance-flagged -- the fleet half of QAD-T16. The double-book half
   // (equipment_assignments overlap) belongs to F8 and is not covered here.
-  async update(ctx: RequestContext, equipmentId: string, body: EquipmentUpdateRequest): Promise<EquipmentResponse> {
+  async update(
+    ctx: RequestContext,
+    equipmentId: string,
+    body: EquipmentUpdateRequest,
+  ): Promise<EquipmentResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const [existing] = await tx.select().from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
+      const [existing] = await tx
+        .select()
+        .from(equipment)
+        .where(eq(equipment.id, equipmentId))
+        .limit(1);
       if (!existing) throw new NotFoundException({ error: 'equipment_not_found' });
 
       if (body.availabilityStatus === 'deployed') {
@@ -137,7 +153,9 @@ export class FleetService {
         .update(equipment)
         .set({
           ...(body.model !== undefined ? { model: body.model } : {}),
-          ...(body.availabilityStatus !== undefined ? { availabilityStatus: body.availabilityStatus } : {}),
+          ...(body.availabilityStatus !== undefined
+            ? { availabilityStatus: body.availabilityStatus }
+            : {}),
         })
         .where(eq(equipment.id, equipmentId))
         .returning();
@@ -156,7 +174,10 @@ export class FleetService {
   }
 
   // GET /api/v1/equipment/:id/maintenance (SDD §4).
-  async maintenanceDetail(ctx: RequestContext, equipmentId: string): Promise<MaintenanceDetailResponse> {
+  async maintenanceDetail(
+    ctx: RequestContext,
+    equipmentId: string,
+  ): Promise<MaintenanceDetailResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select().from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
       if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
@@ -170,7 +191,10 @@ export class FleetService {
 
       return {
         schedule: schedule
-          ? { hoursInterval: Number(schedule.hoursInterval), nextDue: schedule.nextDue !== null ? Number(schedule.nextDue) : null }
+          ? {
+              hoursInterval: Number(schedule.hoursInterval),
+              nextDue: schedule.nextDue !== null ? Number(schedule.nextDue) : null,
+            }
           : null,
         runtimeHours: Number(row.runtimeHours),
         logs: logs.map((log) => ({ id: log.id, performedAt: log.performedAt, notes: log.notes })),
@@ -185,7 +209,11 @@ export class FleetService {
   // never mutates state itself). Only advances an EXISTING schedule row --
   // creating one is out of scope for this pass (a schedule is seeded per
   // unit; see packages/db/src/seed/anchor.ts).
-  async recordMaintenanceLog(ctx: RequestContext, equipmentId: string, body: MaintenanceLogCreateRequest) {
+  async recordMaintenanceLog(
+    ctx: RequestContext,
+    equipmentId: string,
+    body: MaintenanceLogCreateRequest,
+  ) {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select().from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
       if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
@@ -204,7 +232,10 @@ export class FleetService {
       const schedule = await this.currentSchedule(tx, equipmentId);
       if (schedule) {
         const nextDue = round2HalfUp(Number(row.runtimeHours) + Number(schedule.hoursInterval));
-        await tx.update(maintenanceSchedules).set({ nextDue: String(nextDue) }).where(eq(maintenanceSchedules.id, schedule.id));
+        await tx
+          .update(maintenanceSchedules)
+          .set({ nextDue: String(nextDue) })
+          .where(eq(maintenanceSchedules.id, schedule.id));
       }
 
       await tx.insert(auditLogs).values({
@@ -214,7 +245,10 @@ export class FleetService {
         entity: 'maintenance_logs',
         entityId: created.id,
       });
-      await this.events.emit(ctx, 'maintenance_log_recorded', { equipment_id: equipmentId, maintenance_log_id: created.id });
+      await this.events.emit(ctx, 'maintenance_log_recorded', {
+        equipment_id: equipmentId,
+        maintenance_log_id: created.id,
+      });
 
       return { id: created.id, equipmentId, performedAt: created.performedAt };
     });
@@ -227,7 +261,10 @@ export class FleetService {
   // "aggregates equipment.runtime_hours AND edtr/edtr_line_items over the
   // period" wording -- the two sources answer different questions
   // (lifetime total vs period activity), not the same one twice.
-  async utilizationReport(ctx: RequestContext, query: UtilizationQuery): Promise<UtilizationReportResponse> {
+  async utilizationReport(
+    ctx: RequestContext,
+    query: UtilizationQuery,
+  ): Promise<UtilizationReportResponse> {
     const to = query.to ?? new Date().toISOString().slice(0, 10);
     const from = query.from ?? defaultFromDate(to, DEFAULT_REPORT_WINDOW_DAYS);
 
@@ -238,17 +275,23 @@ export class FleetService {
         .select({ equipmentId: edtr.equipmentId, hoursActive: edtrLineItems.hoursActive })
         .from(edtr)
         .innerJoin(edtrLineItems, eq(edtrLineItems.edtrId, edtr.id))
-        .where(and(eq(edtr.status, 'reconciled'), gte(edtr.reportDate, from), lte(edtr.reportDate, to)));
+        .where(
+          and(eq(edtr.status, 'reconciled'), gte(edtr.reportDate, from), lte(edtr.reportDate, to)),
+        );
 
       const scheduleByEquipment = new Map<string, (typeof scheduleRows)[number]>();
       for (const schedule of scheduleRows) {
         const current = scheduleByEquipment.get(schedule.equipmentId);
-        if (!current || schedule.createdAt > current.createdAt) scheduleByEquipment.set(schedule.equipmentId, schedule);
+        if (!current || schedule.createdAt > current.createdAt)
+          scheduleByEquipment.set(schedule.equipmentId, schedule);
       }
 
       const activeHoursByEquipment = new Map<string, number>();
       for (const row of hoursRows) {
-        activeHoursByEquipment.set(row.equipmentId, (activeHoursByEquipment.get(row.equipmentId) ?? 0) + Number(row.hoursActive));
+        activeHoursByEquipment.set(
+          row.equipmentId,
+          (activeHoursByEquipment.get(row.equipmentId) ?? 0) + Number(row.hoursActive),
+        );
       }
 
       const totalPossibleHours = daysBetweenInclusive(from, to) * BUSINESS_HOURS_PER_DAY;
@@ -261,7 +304,10 @@ export class FleetService {
         return {
           equipmentId: row.id,
           runtimeHours: round2HalfUp(Number(row.runtimeHours)),
-          utilizationPct: totalPossibleHours > 0 ? round2HalfUp((periodActiveHours / totalPossibleHours) * 100) : 0,
+          utilizationPct:
+            totalPossibleHours > 0
+              ? round2HalfUp((periodActiveHours / totalPossibleHours) * 100)
+              : 0,
           maintenanceDue,
         };
       });
@@ -274,7 +320,10 @@ export class FleetService {
   // financial summaries"; only the utilization half existed before this
   // pass). Aggregates invoices/payments over the period -- read-only, same
   // report:read gate and default 30-day window as utilizationReport.
-  async financialReport(ctx: RequestContext, query: UtilizationQuery): Promise<FinancialReportResponse> {
+  async financialReport(
+    ctx: RequestContext,
+    query: UtilizationQuery,
+  ): Promise<FinancialReportResponse> {
     const to = query.to ?? new Date().toISOString().slice(0, 10);
     const from = query.from ?? defaultFromDate(to, DEFAULT_REPORT_WINDOW_DAYS);
 
@@ -282,7 +331,12 @@ export class FleetService {
       const invoiceRows = await tx
         .select()
         .from(invoices)
-        .where(and(gte(invoices.createdAt, new Date(`${from}T00:00:00Z`)), lte(invoices.createdAt, new Date(`${to}T23:59:59.999Z`))));
+        .where(
+          and(
+            gte(invoices.createdAt, new Date(`${from}T00:00:00Z`)),
+            lte(invoices.createdAt, new Date(`${to}T23:59:59.999Z`)),
+          ),
+        );
 
       const invoiceIds = invoiceRows.map((row) => row.id);
       const paymentRows = invoiceIds.length
@@ -297,7 +351,9 @@ export class FleetService {
         invoicedTotal = round2HalfUp(invoicedTotal + amount);
       }
       const paidTotal = round2HalfUp(
-        paymentRows.filter((payment) => payment.status === 'paid').reduce((sum, payment) => sum + Number(payment.amount), 0),
+        paymentRows
+          .filter((payment) => payment.status === 'paid')
+          .reduce((sum, payment) => sum + Number(payment.amount), 0),
       );
 
       return {
@@ -319,7 +375,11 @@ export class FleetService {
     return schedule ?? null;
   }
 
-  private async isMaintenanceDue(tx: Tx, equipmentId: string, runtimeHours: string): Promise<boolean> {
+  private async isMaintenanceDue(
+    tx: Tx,
+    equipmentId: string,
+    runtimeHours: string,
+  ): Promise<boolean> {
     const schedule = await this.currentSchedule(tx, equipmentId);
     if (!schedule || schedule.nextDue === null) return false;
     return Number(runtimeHours) >= Number(schedule.nextDue);
