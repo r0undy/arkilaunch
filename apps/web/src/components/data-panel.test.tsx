@@ -23,11 +23,17 @@ describe('DataPanel', () => {
         emptyTitle="No widgets"
         emptyDescription="none"
         isEmpty={(data) => data.length === 0}
-        render={(data) => <ul>{data.map((d) => <li key={d}>{d}</li>)}</ul>}
+        render={(data) => (
+          <ul>
+            {data.map((d) => (
+              <li key={d}>{d}</li>
+            ))}
+          </ul>
+        )}
       />,
     );
 
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(screen.getByText(/loading widgets/i)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('a')).toBeInTheDocument());
   });
 
@@ -44,7 +50,13 @@ describe('DataPanel', () => {
         emptyTitle="No widgets yet"
         emptyDescription="Add one."
         isEmpty={(data) => data.length === 0}
-        render={(data) => <ul>{data.map((d) => <li key={d}>{d}</li>)}</ul>}
+        render={(data) => (
+          <ul>
+            {data.map((d) => (
+              <li key={d}>{d}</li>
+            ))}
+          </ul>
+        )}
       />,
     );
 
@@ -68,8 +80,31 @@ describe('DataPanel', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText(/could not load widgets/i)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/widgets could not be loaded/i)).toBeInTheDocument(),
+    );
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it('renders no heading of its own -- the page owns its title (no duplicate h1)', async () => {
+    const options = queryOptions({
+      queryKey: ['test', 'no-heading'],
+      queryFn: () => Promise.resolve(['a']),
+    });
+
+    renderWithClient(
+      <DataPanel
+        title="Widgets"
+        options={options}
+        emptyTitle="No widgets"
+        emptyDescription="none"
+        isEmpty={(data) => data.length === 0}
+        render={(data) => <p>{data[0]}</p>}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('a')).toBeInTheDocument());
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
   });
 
   it('regression: a parent re-render does not cause a refetch (the old fetcher-identity bug)', async () => {
@@ -86,7 +121,13 @@ describe('DataPanel', () => {
             emptyTitle="No widgets"
             emptyDescription="none"
             isEmpty={(data) => data.length === 0}
-            render={(data) => <ul>{data.map((d) => <li key={d}>{d}</li>)}</ul>}
+            render={(data) => (
+              <ul>
+                {data.map((d) => (
+                  <li key={d}>{d}</li>
+                ))}
+              </ul>
+            )}
           />
         </div>
       );

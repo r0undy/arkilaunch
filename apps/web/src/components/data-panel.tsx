@@ -32,21 +32,31 @@ export function DataPanel<T, TQueryKey extends QueryKey = QueryKey>({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="font-display text-2xl font-semibold text-text">{title}</h1>
-      {query.isPending && <p className="text-sm text-text-muted">Loading...</p>}
+      {/* No <h1> here. Every screen already renders one through PageHeader,
+          and rendering a second produced the visible duplicate title -- and
+          two competing document outlines for a screen reader. `title` is
+          still used to word the states below. */}
+      {query.isPending && (
+        <p className="text-sm text-text-muted">Loading {title.toLowerCase()}...</p>
+      )}
       {query.isError && (
         <Surface radius="md" elevation="sm" className="flex flex-col gap-3 border-error p-4">
           <p className="text-sm text-error">
             {query.error instanceof ApiError && query.error.status === 403
               ? `You do not have permission to view ${title.toLowerCase()}.`
-              : `Could not load ${title.toLowerCase()}. Is the API running?`}
+              : `${title} could not be loaded just now. Check your connection and try again.`}
           </p>
           <Button variant="secondary" onClick={() => query.refetch()}>
             Retry
           </Button>
         </Surface>
       )}
-      {query.isSuccess && (isEmpty(query.data) ? <EmptyState title={emptyTitle} description={emptyDescription} /> : render(query.data))}
+      {query.isSuccess &&
+        (isEmpty(query.data) ? (
+          <EmptyState title={emptyTitle} description={emptyDescription} />
+        ) : (
+          render(query.data)
+        ))}
     </div>
   );
 }
