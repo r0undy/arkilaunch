@@ -7,6 +7,10 @@ import { PayloadTooLargeException, UnprocessableEntityException } from '@nestjs/
 // REST API -- exactly where the RFC puts it, on the API container, not
 // after a direct-to-Storage signed upload.
 
+// MIRRORED PAIR: MAX_UPLOAD_BYTES and the MAGIC_SIGNATURES allowlist below are
+// copied into apps/web/src/lib/image-compression.ts so the client can refuse a
+// doomed upload before spending the bandwidth. This file stays authoritative;
+// the client copy is a courtesy, never a substitute. Change both together.
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // ~10MB; SDD §2 assumes client-compressed 1-3MB phone photos
 const MAX_PDF_PAGES = 20;
 const MAX_PNG_PIXELS = 50_000_000; // crude decompression-bomb guard: a tiny file claiming huge dimensions

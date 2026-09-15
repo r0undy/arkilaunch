@@ -39,7 +39,7 @@ function stubBrowser({ width = 4000, height = 3000, sizes, decodeFails = false }
   } as unknown as CanvasRenderingContext2D);
 
   vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((cb) => {
-    const size = sizes[Math.min(call, sizes.length - 1)];
+    const size = sizes[Math.min(call, sizes.length - 1)] ?? 1;
     call += 1;
     // jsdom derives Blob.size from its content, so the stub allocates the
     // exact byte count the case needs.
