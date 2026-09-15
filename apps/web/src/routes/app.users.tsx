@@ -7,6 +7,7 @@ import { requireRole } from '../lib/guards.js';
 import { apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
+import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { useToast } from '../components/toast.js';
 import { formatRole, formatStatus } from '../lib/format.js';
@@ -29,10 +30,10 @@ interface UserListResponse {
   total: number;
 }
 
-const usersListQuery = {
-  queryKey: ['users'] as const,
-  queryFn: () => apiGet<UserListResponse>('/users'),
-};
+const usersListQuery = (limit: number, offset: number) => ({
+  queryKey: ['users', limit, offset] as const,
+  queryFn: () => apiGet<UserListResponse>(`/users?limit=${limit}&offset=${offset}`),
+});
 
 function InviteForm() {
   const queryClient = useQueryClient();
@@ -285,6 +286,7 @@ function UserActions({ user }: { user: UserRow }) {
 }
 
 function ManageUsersPage() {
+  const [offset, setOffset] = useState(0);
   const columns: TableColumn<UserRow>[] = [
     { header: 'Email', cell: (row) => row.email },
     { header: 'Role', cell: (row) => formatRole(row.roleName) },
@@ -302,11 +304,22 @@ function ManageUsersPage() {
       <InviteForm />
       <DataPanel
         title="Users"
-        options={usersListQuery}
+        options={usersListQuery(PAGE_SIZE, offset)}
         emptyTitle="No users yet"
         emptyDescription="Invite your first teammate above."
         isEmpty={(data) => data.total === 0}
-        render={(data) => <Table columns={columns} rows={data.items} rowKey={(row) => row.id} />}
+        render={(data) => (
+          <div>
+            <Table columns={columns} rows={data.items} rowKey={(row) => row.id} />
+            <Pagination
+              offset={offset}
+              limit={PAGE_SIZE}
+              total={data.total}
+              onOffsetChange={setOffset}
+              noun="people"
+            />
+          </div>
+        )}
       />
     </div>
   );

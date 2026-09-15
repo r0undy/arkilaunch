@@ -9,14 +9,16 @@ import { DataPanel } from '../components/data-panel.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { Button } from '../components/button.js';
 import { PageHeader } from '../components/page-header.js';
+import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { useToast } from '../components/toast.js';
 import { formatDate } from '../lib/format.js';
 
-const applicationsListQuery = {
-  queryKey: ['tenants', 'applications'] as const,
-  queryFn: () => apiGet<TenantApplicationListResponse>('/tenants/applications'),
-};
+const applicationsListQuery = (limit: number, offset: number) => ({
+  queryKey: ['tenants', 'applications', limit, offset] as const,
+  queryFn: () =>
+    apiGet<TenantApplicationListResponse>(`/tenants/applications?limit=${limit}&offset=${offset}`),
+});
 
 function ApplicationActions({ application }: { application: TenantApplication }) {
   const queryClient = useQueryClient();
@@ -114,6 +116,7 @@ function ApplicationActions({ application }: { application: TenantApplication })
 }
 
 function PlatformApplicationsPage() {
+  const [offset, setOffset] = useState(0);
   const columns: TableColumn<TenantApplication>[] = [
     { header: 'Company', cell: (row) => row.companyName },
     { header: 'Contact', cell: (row) => `${row.contactFirstName} ${row.contactLastName}` },
@@ -130,12 +133,21 @@ function PlatformApplicationsPage() {
       />
       <DataPanel
         title="Pending applications"
-        options={applicationsListQuery}
+        options={applicationsListQuery(PAGE_SIZE, offset)}
         emptyTitle="No pending applications"
         emptyDescription="New tenant registrations will appear here for review."
         isEmpty={(data) => data.total === 0}
         render={(data) => (
-          <Table columns={columns} rows={data.items} rowKey={(row) => row.applicationId} />
+          <div>
+            <Table columns={columns} rows={data.items} rowKey={(row) => row.applicationId} />
+            <Pagination
+              offset={offset}
+              limit={PAGE_SIZE}
+              total={data.total}
+              onOffsetChange={setOffset}
+              noun="applications"
+            />
+          </div>
         )}
       />
     </div>

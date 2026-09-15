@@ -1,9 +1,11 @@
 import { createRoute } from '@tanstack/react-router';
+import { useState } from 'react';
 import { appLayoutRoute } from './_app.js';
 import { reportQueries, type ReportsSnapshot } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
+import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon, WrenchIcon } from '../components/icons.js';
 import { useQuery } from '@tanstack/react-query';
@@ -46,6 +48,10 @@ const UTILIZATION_COLUMNS: TableColumn<ReportsSnapshot['utilization']['fleet'][n
 ];
 
 function InsightsPage() {
+  // The report arrives whole, so the fleet table pages in the browser. The
+  // financial breakdown is one row per invoice type -- a handful at most, so
+  // a pager there would be furniture.
+  const [fleetOffset, setFleetOffset] = useState(0);
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -67,8 +73,15 @@ function InsightsPage() {
               </h2>
               <Table
                 columns={UTILIZATION_COLUMNS}
-                rows={data.utilization.fleet}
+                rows={data.utilization.fleet.slice(fleetOffset, fleetOffset + PAGE_SIZE)}
                 rowKey={(row) => row.equipmentId}
+              />
+              <Pagination
+                offset={fleetOffset}
+                limit={PAGE_SIZE}
+                total={data.utilization.fleet.length}
+                onOffsetChange={setFleetOffset}
+                noun="machines"
               />
             </div>
 

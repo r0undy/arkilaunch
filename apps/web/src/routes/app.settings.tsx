@@ -12,6 +12,7 @@ import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
 import { PageHeader } from '../components/page-header.js';
+import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { useToast } from '../components/toast.js';
 import { formatDate, formatPeso, formatRateType } from '../lib/format.js';
@@ -31,10 +32,13 @@ interface RateCardListResponse {
   total: number;
 }
 
-const rateCardsListQuery = {
-  queryKey: ['rate-cards'] as const,
-  queryFn: () => apiGet<RateCardListResponse>('/rate-cards?includeSuperseded=false'),
-};
+const rateCardsListQuery = (limit: number, offset: number) => ({
+  queryKey: ['rate-cards', limit, offset] as const,
+  queryFn: () =>
+    apiGet<RateCardListResponse>(
+      `/rate-cards?includeSuperseded=false&limit=${limit}&offset=${offset}`,
+    ),
+});
 
 function RateCardForm() {
   const queryClient = useQueryClient();
@@ -165,6 +169,7 @@ function RetireAction({ id, label }: { id: string; label: string }) {
 }
 
 function SettingsPage() {
+  const [offset, setOffset] = useState(0);
   // The table showed a UUID stub where the form's own dropdown already had
   // the readable name; same source, now used in both places.
   const equipmentTypes = useQuery(referenceQueries.equipmentTypes());
@@ -198,11 +203,22 @@ function SettingsPage() {
       <RateCardForm />
       <DataPanel
         title="Rate cards"
-        options={rateCardsListQuery}
+        options={rateCardsListQuery(PAGE_SIZE, offset)}
         emptyTitle="No rate cards yet"
         emptyDescription="Add a rate card above to make an equipment type quotable."
         isEmpty={(data) => data.total === 0}
-        render={(data) => <Table columns={columns} rows={data.items} rowKey={(row) => row.id} />}
+        render={(data) => (
+          <div>
+            <Table columns={columns} rows={data.items} rowKey={(row) => row.id} />
+            <Pagination
+              offset={offset}
+              limit={PAGE_SIZE}
+              total={data.total}
+              onOffsetChange={setOffset}
+              noun="rate cards"
+            />
+          </div>
+        )}
       />
     </div>
   );
