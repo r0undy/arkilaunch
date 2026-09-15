@@ -26,6 +26,7 @@ import {
   type RateCardRef,
   type RentalRef,
 } from './reference-client.js';
+import { PAGE_SIZE } from '../components/pagination.js';
 
 // Query-key convention: [resourceSegment, ...identifiers, filters?],
 // lowercase, mirroring the API path -- ['equipment'], ['equipment', id],
@@ -35,10 +36,10 @@ import {
 // them, so they cannot drift out of sync with each other.
 
 export const equipmentQueries = {
-  list: () =>
+  list: (limit = PAGE_SIZE, offset = 0) =>
     queryOptions({
-      queryKey: ['equipment'] as const,
-      queryFn: () => apiGet<EquipmentListResponse>('/equipment'),
+      queryKey: ['equipment', limit, offset] as const,
+      queryFn: () => apiGet<EquipmentListResponse>(`/equipment?limit=${limit}&offset=${offset}`),
     }),
 };
 
@@ -63,34 +64,34 @@ export const catalogQueries = {
 };
 
 export const sitesQueries = {
-  list: () =>
+  list: (limit = PAGE_SIZE, offset = 0) =>
     queryOptions({
-      queryKey: ['sites'] as const,
-      queryFn: () => apiGet<SiteListResponse>('/sites'),
+      queryKey: ['sites', limit, offset] as const,
+      queryFn: () => apiGet<SiteListResponse>(`/sites?limit=${limit}&offset=${offset}`),
     }),
 };
 
 export const invoicesQueries = {
-  list: () =>
+  list: (limit = PAGE_SIZE, offset = 0) =>
     queryOptions({
-      queryKey: ['invoices'] as const,
-      queryFn: () => apiGet<InvoiceListResponse>('/invoices'),
+      queryKey: ['invoices', limit, offset] as const,
+      queryFn: () => apiGet<InvoiceListResponse>(`/invoices?limit=${limit}&offset=${offset}`),
     }),
 };
 
 export const incidentsQueries = {
-  list: () =>
+  list: (limit = PAGE_SIZE, offset = 0) =>
     queryOptions({
-      queryKey: ['incidents'] as const,
-      queryFn: () => apiGet<IncidentListResponse>('/incidents'),
+      queryKey: ['incidents', limit, offset] as const,
+      queryFn: () => apiGet<IncidentListResponse>(`/incidents?limit=${limit}&offset=${offset}`),
     }),
 };
 
 export const bookingsQueries = {
-  list: () =>
+  list: (limit = PAGE_SIZE, offset = 0) =>
     queryOptions({
-      queryKey: ['bookings'] as const,
-      queryFn: () => apiGet<BookingListResponse>('/bookings'),
+      queryKey: ['bookings', limit, offset] as const,
+      queryFn: () => apiGet<BookingListResponse>(`/bookings?limit=${limit}&offset=${offset}`),
     }),
 };
 
@@ -119,10 +120,15 @@ export const reportQueries = {
 
 export const referenceQueries = {
   equipmentTypes: () =>
-    queryOptions({ queryKey: ['reference', 'equipment-types'] as const, queryFn: getEquipmentTypes }),
-  rateCards: () => queryOptions({ queryKey: ['reference', 'rate-cards'] as const, queryFn: getRateCards }),
+    queryOptions({
+      queryKey: ['reference', 'equipment-types'] as const,
+      queryFn: getEquipmentTypes,
+    }),
+  rateCards: () =>
+    queryOptions({ queryKey: ['reference', 'rate-cards'] as const, queryFn: getRateCards }),
   rentals: () => queryOptions({ queryKey: ['reference', 'rentals'] as const, queryFn: getRentals }),
-  customers: () => queryOptions({ queryKey: ['reference', 'customers'] as const, queryFn: getCustomers }),
+  customers: () =>
+    queryOptions({ queryKey: ['reference', 'customers'] as const, queryFn: getCustomers }),
   projectSites: () =>
     queryOptions({ queryKey: ['reference', 'project-sites'] as const, queryFn: getProjectSites }),
 };
