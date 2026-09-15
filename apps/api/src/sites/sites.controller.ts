@@ -3,7 +3,13 @@ import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { SitesService } from './sites.service.js';
-import { DeploymentCreateDto, IncidentListQueryDto, SiteCreateDto, SiteUpdateDto } from './dto.js';
+import {
+  DeploymentCreateDto,
+  IncidentListQueryDto,
+  SiteCreateDto,
+  SiteListQueryDto,
+  SiteUpdateDto,
+} from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -17,8 +23,8 @@ export class SitesController {
   constructor(private readonly sites: SitesService) {}
 
   @Get('sites')
-  list(@Req() req: CtxRequest) {
-    return this.sites.list(req.ctx);
+  list(@Query() query: SiteListQueryDto, @Req() req: CtxRequest) {
+    return this.sites.list(req.ctx, query);
   }
 
   @Post('sites')
@@ -46,7 +52,11 @@ export class SitesController {
 
   @Patch('sites/:id/deployments/:assignmentId/return')
   @RequirePermission('site:manage')
-  returnDeployment(@Param('id') id: string, @Param('assignmentId') assignmentId: string, @Req() req: CtxRequest) {
+  returnDeployment(
+    @Param('id') id: string,
+    @Param('assignmentId') assignmentId: string,
+    @Req() req: CtxRequest,
+  ) {
     return this.sites.returnDeployment(req.ctx, id, assignmentId);
   }
 

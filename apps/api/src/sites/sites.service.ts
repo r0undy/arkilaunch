@@ -16,6 +16,7 @@ import {
   WEATHER_STALE_AFTER_MINUTES,
   type DeploymentCreateRequest,
   type IncidentListQuery,
+  type SiteListQuery,
   type IncidentListResponse,
   type RequestContext,
   type SiteCreateRequest,
@@ -29,7 +30,10 @@ import {
   type WeatherSeverity,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
-import { findAvailableAlternatives, overlappingAssignments } from '../common/equipment-availability.js';
+import {
+  findAvailableAlternatives,
+  overlappingAssignments,
+} from '../common/equipment-availability.js';
 
 const EMPTY_OBSERVATION: WeatherObservation = { tempC: 0, windKph: 0, precipMm: 0, code: 0 };
 
@@ -73,15 +77,28 @@ export class SitesService {
   // GET /api/v1/sites (S12). Readable by any authenticated tenant member --
   // site-safety information, same posture as fleet/reference reads; RLS is
   // the isolation boundary.
-  async list(ctx: RequestContext): Promise<SiteListResponse> {
+  async list(ctx: RequestContext, query: SiteListQuery): Promise<SiteListResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const rows = await tx.select().from(projectSites);
-      if (rows.length === 0) return { items: [], total: 0 };
+      // Count first: an empty page past the end still has to report the real
+      // total, or the pager cannot offer a way back.
+      const all = await tx.select({ id: projectSites.id }).from(projectSites);
+      const rows = await tx
+        .select()
+        .from(projectSites)
+        .orderBy(desc(projectSites.createdAt))
+        .limit(query.limit)
+        .offset(query.offset);
+      if (rows.length === 0) return { items: [], total: all.length };
 
       const alertRows = await tx
         .select()
         .from(weatherAlerts)
-        .where(inArray(weatherAlerts.projectSiteId, rows.map((row) => row.id)))
+        .where(
+          inArray(
+            weatherAlerts.projectSiteId,
+            rows.map((row) => row.id),
+          ),
+        )
         .orderBy(desc(weatherAlerts.effectiveAt));
       const latestBySite = new Map<string, (typeof alertRows)[number]>();
       for (const alert of alertRows) {
@@ -93,7 +110,12 @@ export class SitesService {
       const addressRows = await tx
         .select()
         .from(addresses)
-        .where(inArray(addresses.id, rows.map((row) => row.addressId)));
+        .where(
+          inArray(
+            addresses.id,
+            rows.map((row) => row.addressId),
+          ),
+        );
       const addressById = new Map(addressRows.map((address) => [address.id, address]));
 
       const items: SiteResponse[] = rows.map((row) => {
@@ -109,7 +131,7 @@ export class SitesService {
           observedAt: latest?.effectiveAt.toISOString() ?? null,
         };
       });
-      return { items, total: items.length };
+      return { items, total: all.length };
     });
   }
 
@@ -119,7 +141,11 @@ export class SitesService {
       const [site] = await tx.select().from(projectSites).where(eq(projectSites.id, id)).limit(1);
       if (!site) throw new NotFoundException({ error: 'project_site_not_found' });
 
-      const [address] = await tx.select().from(addresses).where(eq(addresses.id, site.addressId)).limit(1);
+      const [address] = await tx
+        .select()
+        .from(addresses)
+        .where(eq(addresses.id, site.addressId))
+        .limit(1);
       const [latest] = await tx
         .select()
         .from(weatherAlerts)
@@ -195,7 +221,11 @@ export class SitesService {
   // PATCH /api/v1/sites/:id. site:manage-gated.
   async update(ctx: RequestContext, id: string, body: SiteUpdateRequest) {
     return withTenantTx(ctx, async (tx) => {
-      const [existing] = await tx.select().from(projectSites).where(eq(projectSites.id, id)).limit(1);
+      const [existing] = await tx
+        .select()
+        .from(projectSites)
+        .where(eq(projectSites.id, id))
+        .limit(1);
       if (!existing) throw new NotFoundException({ error: 'project_site_not_found' });
 
       const [updated] = await tx
@@ -216,7 +246,11 @@ export class SitesService {
         entityId: id,
       });
 
-      return { id: updated.id, latitude: Number(updated.latitude), longitude: Number(updated.longitude) };
+      return {
+        id: updated.id,
+        latitude: Number(updated.latitude),
+        longitude: Number(updated.longitude),
+      };
     });
   }
 
@@ -229,10 +263,18 @@ export class SitesService {
   // own availabilityStatus flips to 'deployed' immediately.
   async createDeployment(ctx: RequestContext, siteId: string, body: DeploymentCreateRequest) {
     return withTenantTx(ctx, async (tx) => {
-      const [site] = await tx.select().from(projectSites).where(eq(projectSites.id, siteId)).limit(1);
+      const [site] = await tx
+        .select()
+        .from(projectSites)
+        .where(eq(projectSites.id, siteId))
+        .limit(1);
       if (!site) throw new NotFoundException({ error: 'project_site_not_found' });
 
-      const [rental] = await tx.select().from(rentals).where(eq(rentals.id, body.rentalId)).limit(1);
+      const [rental] = await tx
+        .select()
+        .from(rentals)
+        .where(eq(rentals.id, body.rentalId))
+        .limit(1);
       // A rental for a different site can never deploy "to" this one --
       // equipment_assignments has no project_site_id of its own (it is
       // derived from the rental), so this is also what keeps
@@ -250,13 +292,31 @@ export class SitesService {
       if (!equipmentRow) throw new NotFoundException({ error: 'equipment_not_found' });
 
       if (equipmentRow.availabilityStatus !== 'available') {
-        const alternatives = await findAvailableAlternatives(tx, equipmentRow.equipmentTypeId, body, [body.equipmentId]);
-        throw new ConflictException({ error: 'equipment_unavailable', equipmentId: body.equipmentId, alternatives });
+        const alternatives = await findAvailableAlternatives(
+          tx,
+          equipmentRow.equipmentTypeId,
+          body,
+          [body.equipmentId],
+        );
+        throw new ConflictException({
+          error: 'equipment_unavailable',
+          equipmentId: body.equipmentId,
+          alternatives,
+        });
       }
       const overlapping = await overlappingAssignments(tx, body.equipmentId, body);
       if (overlapping.length > 0) {
-        const alternatives = await findAvailableAlternatives(tx, equipmentRow.equipmentTypeId, body, [body.equipmentId]);
-        throw new ConflictException({ error: 'equipment_unavailable', equipmentId: body.equipmentId, alternatives });
+        const alternatives = await findAvailableAlternatives(
+          tx,
+          equipmentRow.equipmentTypeId,
+          body,
+          [body.equipmentId],
+        );
+        throw new ConflictException({
+          error: 'equipment_unavailable',
+          equipmentId: body.equipmentId,
+          alternatives,
+        });
       }
 
       const [assignment] = await tx
@@ -272,7 +332,10 @@ export class SitesService {
         .returning();
       if (!assignment) throw new Error('equipment_assignments insert returned no row');
 
-      await tx.update(equipment).set({ availabilityStatus: 'deployed' }).where(eq(equipment.id, body.equipmentId));
+      await tx
+        .update(equipment)
+        .set({ availabilityStatus: 'deployed' })
+        .where(eq(equipment.id, body.equipmentId));
 
       await tx.insert(auditLogs).values({
         tenantId: ctx.tenantId,
@@ -309,7 +372,11 @@ export class SitesService {
         .limit(1);
       if (!assignment) throw new NotFoundException({ error: 'deployment_not_found' });
 
-      const [rental] = await tx.select().from(rentals).where(eq(rentals.id, assignment.rentalId)).limit(1);
+      const [rental] = await tx
+        .select()
+        .from(rentals)
+        .where(eq(rentals.id, assignment.rentalId))
+        .limit(1);
       if (!rental || rental.projectSiteId !== siteId) {
         throw new NotFoundException({ error: 'deployment_not_found' });
       }
@@ -321,7 +388,10 @@ export class SitesService {
         .update(equipmentAssignments)
         .set({ end: new Date(), status: 'completed' })
         .where(eq(equipmentAssignments.id, assignmentId));
-      await tx.update(equipment).set({ availabilityStatus: 'available' }).where(eq(equipment.id, assignment.equipmentId));
+      await tx
+        .update(equipment)
+        .set({ availabilityStatus: 'available' })
+        .where(eq(equipment.id, assignment.equipmentId));
 
       await tx.insert(auditLogs).values({
         tenantId: ctx.tenantId,
@@ -350,7 +420,11 @@ export class SitesService {
   // reference/*.
   async weather(ctx: RequestContext, siteId: string): Promise<WeatherAdvisoryResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const [site] = await tx.select().from(projectSites).where(eq(projectSites.id, siteId)).limit(1);
+      const [site] = await tx
+        .select()
+        .from(projectSites)
+        .where(eq(projectSites.id, siteId))
+        .limit(1);
       if (!site) throw new NotFoundException({ error: 'project_site_not_found' });
 
       const [latest] = await tx
@@ -380,7 +454,9 @@ export class SitesService {
         if (!latestBySite.has(row.projectSiteId)) latestBySite.set(row.projectSiteId, row);
       }
 
-      const items = Array.from(latestBySite.entries()).map(([siteId, row]) => toWeatherAdvisoryResponse(siteId, row));
+      const items = Array.from(latestBySite.entries()).map(([siteId, row]) =>
+        toWeatherAdvisoryResponse(siteId, row),
+      );
       return { items, total: items.length };
     });
   }
@@ -397,11 +473,17 @@ export class SitesService {
         conditions.push(sql`${events.properties} ->> 'project_site_id' = ${query.projectSiteId}`);
       }
 
+      const all = await tx
+        .select({ id: events.id })
+        .from(events)
+        .where(and(...conditions));
       const rows = await tx
         .select()
         .from(events)
         .where(and(...conditions))
-        .orderBy(desc(events.occurredAt));
+        .orderBy(desc(events.occurredAt))
+        .limit(query.limit)
+        .offset(query.offset);
 
       const siteIds = [
         ...new Set(
@@ -423,8 +505,14 @@ export class SitesService {
       const siteById = new Map(siteRows.map((site) => [site.id, site]));
 
       const items = rows.map((row) => {
-        const properties = row.properties as { project_site_id?: string; severity?: string; observed?: unknown };
-        const site = properties.project_site_id ? siteById.get(properties.project_site_id) : undefined;
+        const properties = row.properties as {
+          project_site_id?: string;
+          severity?: string;
+          observed?: unknown;
+        };
+        const site = properties.project_site_id
+          ? siteById.get(properties.project_site_id)
+          : undefined;
         return {
           id: row.id,
           projectSiteId: properties.project_site_id ?? null,
@@ -435,7 +523,7 @@ export class SitesService {
           occurredAt: row.occurredAt,
         };
       });
-      return { items, total: items.length };
+      return { items, total: all.length };
     });
   }
 }

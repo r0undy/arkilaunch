@@ -45,10 +45,13 @@ export const RateCardCreateRequestSchema = z
     effectiveFrom: z.string().datetime({ offset: true }).optional(),
     effectiveTo: z.string().datetime({ offset: true }).optional(),
   })
-  .refine((data) => !data.effectiveTo || !data.effectiveFrom || data.effectiveTo > data.effectiveFrom, {
-    message: 'effectiveTo must be after effectiveFrom',
-    path: ['effectiveTo'],
-  });
+  .refine(
+    (data) => !data.effectiveTo || !data.effectiveFrom || data.effectiveTo > data.effectiveFrom,
+    {
+      message: 'effectiveTo must be after effectiveFrom',
+      path: ['effectiveTo'],
+    },
+  );
 export type RateCardCreateRequest = z.infer<typeof RateCardCreateRequestSchema>;
 
 // PATCH /rate-cards/:id: append-only supersede, never an in-place edit
@@ -64,6 +67,11 @@ export const RateCardListQuerySchema = z.object({
   equipmentTypeId: z.string().uuid().optional(),
   rateType: RateTypeSchema.optional(),
   includeSuperseded: z.coerce.boolean().default(false),
+  // Paging, matching the shape the users/invoices/field-log endpoints
+  // already use: a page of rows plus the unpaged total, so a list can say
+  // how much there is rather than silently truncating at the cap.
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
 });
 export type RateCardListQuery = z.infer<typeof RateCardListQuerySchema>;
 

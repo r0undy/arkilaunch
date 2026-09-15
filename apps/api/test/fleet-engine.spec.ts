@@ -40,7 +40,7 @@ describe('FleetService (PRD-F4)', () => {
     });
     expect(created.runtimeHours).toBe(0);
 
-    const { items, total } = await fleet.list(adminCtx, { status: 'available' });
+    const { items, total } = await fleet.list(adminCtx, { status: 'available', limit: 50, offset: 0 });
     expect(total).toBeGreaterThan(0);
     expect(items.some((item) => item.id === created.id)).toBe(true);
   });
@@ -172,7 +172,7 @@ describe('FleetService (PRD-F4)', () => {
     expect(detail.logs[0]!.notes).toBe(payload);
 
     // The table this payload targets is still there and still queryable.
-    const stillThere = await fleet.list(adminCtx, {});
+    const stillThere = await fleet.list(adminCtx, { limit: 50, offset: 0 });
     expect(stillThere.total).toBeGreaterThan(0);
   });
 
