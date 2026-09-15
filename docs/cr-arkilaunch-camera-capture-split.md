@@ -63,11 +63,13 @@ Per `AGENTS.md` §5.2 and SAD §4.
 
 | Gate | Verdict |
 |---|---|
-| `restraint-guardian` | *pending* |
-| `ai-ocr-abuse-runner` | *pending* |
-| `tenant-isolation-checker` | *pending* |
+| `restraint-guardian` | **PASS**, with one non-blocking simplify note, acted on. It confirmed the native file input was taken over a `getUserMedia` viewfinder and that compression was hand-rolled rather than pulling in an npm image library, and it asserted no validation, authz, RLS, a11y or test control was cut. The note: `prepareUpload` carried optional `maxEdge`/`quality` overrides no caller passed and no test exercised. Those are gone (the scale rungs stay as module constants), and so is an exported content-type allowlist that had no reader at all |
+| `ai-ocr-abuse-runner` | **PASS** on AI-01..AI-06, and explicitly that the client-side pre-checks weaken no server-side boundary control: the multer size limit, the magic-byte sniff and both decompression-bomb guards still run in the same order, before `uploadObject()` and before any extraction |
+| `tenant-isolation-checker` | **PASS**. No `service_role` on a request path, no raw SQL, no DB access outside an RLS transaction, no client influence over `tenant_id` or over the Storage object key, no new tenant-owned table. The compression and capture work is local file handling in the browser and touches no data path |
 
 `migration-rls-guardian` and `edtr-ocr-worker` are not triggered: no schema, migration, query, or worker code is touched by this pass.
+
+These three verdicts come from reading the diff against the specs, not from executing `apps/api/test/ai-abuse.spec.ts`. That suite is DB-backed and cannot run here (no Docker, no local Postgres, and `.env` points at live pilot data), so it is verified by CI on the PR, as in `cr-arkilaunch-m4-money-path-gates.md` §5. All six evals do have dedicated tests, contrary to the QAD §4 addendum of 2026-09-07, which recorded AI-05 and AI-06 as untested; that note is stale and is flagged here rather than edited, since QAD is Locked and correcting it is not in this pass's scope.
 
 ## 6. Money path
 
