@@ -1,49 +1,326 @@
 import { createRoute } from '@tanstack/react-router';
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EdtrCaptureResponse, EdtrDetailResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { apiGet, apiPost, apiPostForm } from '../lib/api-client.js';
-import { getEquipment, getRentals, type EquipmentRef, type RentalRef } from '../lib/reference-client.js';
+import {
+  getCustomers,
+  getEquipment,
+  getProjectSites,
+  getRentals,
+  type CustomerRef,
+  type EquipmentRef,
+  type ProjectSiteRef,
+  type RentalRef,
+} from '../lib/reference-client.js';
 import { explainEdtrError } from '../lib/edtr-error.js';
+import {
+  formatDate,
+  formatHours,
+  formatLogSource,
+  formatStatus,
+  shortCode,
+  siteName,
+} from '../lib/format.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
+import { Modal } from '../components/modal.js';
+import { ConfirmDialog } from '../components/confirm-dialog.js';
+import { PageHeader } from '../components/page-header.js';
+import { StatusPill, type StatusTone } from '../components/status-pill.js';
+import { AlertIcon, CheckIcon, ClockIcon, XCircleIcon } from '../components/icons.js';
+import { EmptyState } from '../components/empty-state.js';
+import { Table } from '../components/table.js';
 import { ConfidenceChip } from '../components/confidence-chip.js';
+import { useToast } from '../components/toast.js';
 
-// Not styled to the full Console spec yet, but exercises the real flow:
-// POST /edtr (both digital_entry and multipart paper_ocr, RFC-2 §6), then
-// polls GET /edtr/:id (the pollUrl the capture response hands back) until
-// the record leaves a non-terminal status, and POST /edtr/:id/approve
-// (RFC-2 -- the only path that deducts a deposit). Rental/equipment come
-// from GET /reference/* dropdowns rather than a hand-typed UUID.
+// The day's work, as the office sees it: a queue of field logs with the ones
+// needing a decision at the top. Recording a log and approving one are both
+// modals opened from here, so nobody has to copy an identifier between two
+// standing forms -- which is what the previous version of this screen asked
+// for, and why its Approve button only worked on a log captured seconds
+// earlier.
 const TERMINAL_STATUSES = new Set(['review', 'reconciled', 'hard_failed']);
+const APPROVABLE = new Set(['matched', 'discrepancy']);
+
+interface EdtrListItem {
+  id: string;
+  rentalId: string;
+  equipmentId: string;
+  source: 'paper_ocr' | 'digital_entry';
+  reportDate: string;
+  status: string;
+  reconciliation: {
+    id: string;
+    status: string;
+    deltaHours: number | null;
+    tolerance: number;
+  } | null;
+}
+
+// Reconciliation states read differently from record states: 'pending' here
+// means "the second log has not arrived", not "queued for processing".
+const MATCH_LABELS: Record<string, string> = {
+  pending: 'Waiting for the second log',
+  single_source: 'Waiting for the second log',
+  matched: 'Both logs agree',
+  discrepancy: 'Logs disagree',
+  unreadable: 'One log is unreadable',
+  approved: 'Billed',
+};
+
+function matchLabel(status: string): string {
+  return MATCH_LABELS[status] ?? formatStatus(status);
+}
+
+function statusPill(status: string): { tone: StatusTone; icon: ReactNode } {
+  if (status === 'reconciled')
+    return { tone: 'recon-match', icon: <CheckIcon className="h-4 w-4" aria-hidden /> };
+  if (status === 'review')
+    return { tone: 'recon-review', icon: <AlertIcon className="h-4 w-4" aria-hidden /> };
+  if (status === 'hard_failed')
+    return { tone: 'recon-failed', icon: <XCircleIcon className="h-4 w-4" aria-hidden /> };
+  return { tone: 'recon-review', icon: <ClockIcon className="h-4 w-4" aria-hidden /> };
+}
 
 function EdtrPage() {
-  const [rentals, setRentals] = useState<RentalRef[]>([]);
+  const toast = useToast();
+  const queryClient = useQueryClient();
+
   const [equipmentList, setEquipmentList] = useState<EquipmentRef[]>([]);
+  const [rentals, setRentals] = useState<RentalRef[]>([]);
+  const [customers, setCustomers] = useState<CustomerRef[]>([]);
+  const [sites, setSites] = useState<ProjectSiteRef[]>([]);
   const [refError, setRefError] = useState<unknown>(null);
 
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [approving, setApproving] = useState<EdtrListItem | null>(null);
+
+  const queue = useQuery({
+    queryKey: ['edtr'] as const,
+    queryFn: () => apiGet<{ items: EdtrListItem[]; total: number }>('/edtr'),
+  });
+
+  useEffect(() => {
+    Promise.all([getEquipment(), getRentals(), getCustomers(), getProjectSites()])
+      .then(([e, r, c, s]) => {
+        setEquipmentList(e);
+        setRentals(r);
+        setCustomers(c);
+        setSites(s);
+      })
+      .catch(setRefError);
+  }, []);
+
+  const equipmentById = useMemo(
+    () => new Map(equipmentList.map((e) => [e.id, e])),
+    [equipmentList],
+  );
+
+  function machineName(equipmentId: string): string {
+    const match = equipmentById.get(equipmentId);
+    return match ? match.model : `Machine ${shortCode('equipment', equipmentId)}`;
+  }
+
+  /** A rental named by who it is for and where, not by its id. */
+  function rentalLabel(rental: RentalRef): string {
+    const customer = customers.find((c) => c.id === rental.customerId)?.companyName;
+    const site = sites.find((s) => s.id === rental.projectSiteId);
+    const where = site ? siteName(site) : null;
+    const who = customer ?? 'Unnamed customer';
+    return [who, where].filter(Boolean).join(' - ');
+  }
+
+  function onCaptured() {
+    void queryClient.invalidateQueries({ queryKey: ['edtr'] });
+  }
+
+  const items = queue.data?.items ?? [];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="Billing"
+        title="Field logs"
+        description="Each day's hours, recorded twice and matched before anything is billed."
+        actions={
+          <Button variant="primary" onClick={() => setCaptureOpen(true)}>
+            Record a field log
+          </Button>
+        }
+      />
+
+      {refError != null && (
+        <Surface radius="md" elevation="sm" className="border-error p-4">
+          <p className="text-sm text-error">
+            The machine and rental lists could not be loaded, so recording a log is unavailable
+            right now.
+          </p>
+        </Surface>
+      )}
+
+      {queue.isPending && <p className="text-sm text-text-muted">Loading field logs...</p>}
+
+      {queue.isError && (
+        <Surface radius="md" elevation="sm" className="flex flex-col gap-3 border-error p-4">
+          <p className="text-sm text-error">Field logs could not be loaded just now.</p>
+          <Button variant="secondary" onClick={() => void queue.refetch()}>
+            Try again
+          </Button>
+        </Surface>
+      )}
+
+      {queue.isSuccess &&
+        (items.length === 0 ? (
+          <EmptyState
+            title="No field logs yet"
+            description="Record the first one to start matching hours against the deposit."
+            action={
+              <Button variant="primary" onClick={() => setCaptureOpen(true)}>
+                Record a field log
+              </Button>
+            }
+          />
+        ) : (
+          <Table
+            rows={items}
+            rowKey={(row) => row.id}
+            columns={[
+              {
+                header: 'Machine',
+                cell: (row) => (
+                  <div className="flex flex-col">
+                    <span className="text-text">{machineName(row.equipmentId)}</span>
+                    <span className="font-mono text-xs text-text-muted">
+                      {shortCode('log', row.id)}
+                    </span>
+                  </div>
+                ),
+              },
+              { header: 'Day worked', cell: (row) => formatDate(row.reportDate) },
+              { header: 'Recorded', cell: (row) => formatLogSource(row.source) },
+              {
+                header: 'Status',
+                cell: (row) => {
+                  const pill = statusPill(row.status);
+                  return (
+                    <StatusPill
+                      tone={pill.tone}
+                      icon={pill.icon}
+                      label={formatStatus(row.status)}
+                    />
+                  );
+                },
+              },
+              {
+                header: 'Match',
+                cell: (row) => {
+                  if (!row.reconciliation) return <span className="text-text-muted">--</span>;
+                  const { status, deltaHours } = row.reconciliation;
+                  if (status === 'approved') return <span className="text-text-muted">Billed</span>;
+                  if (deltaHours === null) return matchLabel(status);
+                  return (
+                    <span
+                      className={
+                        deltaHours > row.reconciliation.tolerance ? 'text-error' : 'text-text'
+                      }
+                    >
+                      {matchLabel(status)} ({formatHours(deltaHours)} apart)
+                    </span>
+                  );
+                },
+              },
+              {
+                header: '',
+                align: 'right',
+                cell: (row) =>
+                  row.reconciliation && APPROVABLE.has(row.reconciliation.status) ? (
+                    <Button variant="approve" size="field" onClick={() => setApproving(row)}>
+                      Review and bill
+                    </Button>
+                  ) : null,
+              },
+            ]}
+          />
+        ))}
+
+      <CaptureModal
+        open={captureOpen}
+        onClose={() => setCaptureOpen(false)}
+        rentals={rentals}
+        equipmentList={equipmentList}
+        rentalLabel={rentalLabel}
+        onCaptured={onCaptured}
+        toast={toast}
+      />
+
+      {approving && (
+        <ApproveModal
+          item={approving}
+          machine={machineName(approving.equipmentId)}
+          onClose={() => setApproving(null)}
+          onApproved={() => {
+            setApproving(null);
+            void queryClient.invalidateQueries({ queryKey: ['edtr'] });
+          }}
+          toast={toast}
+        />
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------- capture
+
+interface CaptureModalProps {
+  open: boolean;
+  onClose: () => void;
+  rentals: RentalRef[];
+  equipmentList: EquipmentRef[];
+  rentalLabel: (rental: RentalRef) => string;
+  onCaptured: () => void;
+  toast: ReturnType<typeof useToast>;
+}
+
+function CaptureModal({
+  open,
+  onClose,
+  rentals,
+  equipmentList,
+  rentalLabel,
+  onCaptured,
+  toast,
+}: CaptureModalProps) {
   const [source, setSource] = useState<'digital_entry' | 'paper_ocr'>('digital_entry');
   const [rentalId, setRentalId] = useState('');
   const [equipmentId, setEquipmentId] = useState('');
   const [reportDate, setReportDate] = useState('');
   const [hoursActive, setHoursActive] = useState('8');
   const [hoursIdle, setHoursIdle] = useState('0');
-
   const [scanPreview, setScanPreview] = useState<string | null>(null);
   const [scanFile, setScanFile] = useState<File | null>(null);
-
-  const [reconciliationId, setReconciliationId] = useState('');
-  const [adjActive, setAdjActive] = useState('');
-  const [adjIdle, setAdjIdle] = useState('');
-
-  const [edtrId, setEdtrId] = useState<string | null>(null);
-  const [pollUrl, setPollUrl] = useState<string | null>(null);
-  const [result, setResult] = useState<unknown>(null);
-  const [fields, setFields] = useState<EdtrDetailResponse['fields']>([]);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown>(null);
+
+  const [pollUrl, setPollUrl] = useState<string | null>(null);
+  const [detail, setDetail] = useState<EdtrDetailResponse | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (rentals[0] && !rentalId) setRentalId(rentals[0].id);
+    if (equipmentList[0] && !equipmentId) setEquipmentId(equipmentList[0].id);
+  }, [rentals, equipmentList, rentalId, equipmentId]);
 
   function stopPolling() {
     if (pollTimer.current) {
@@ -52,19 +329,16 @@ function EdtrPage() {
     }
   }
 
-  // Auto-polls every 3s once a record has a pollUrl, stopping once the
-  // record reaches a terminal status -- the API hands back the poll target
-  // explicitly (EdtrCaptureResponse.pollUrl) rather than the frontend
-  // constructing it.
   useEffect(() => {
     if (!pollUrl) return;
     async function tick() {
       try {
         const res = await apiGet<EdtrDetailResponse>(pollUrl!);
-        setResult(res);
-        setFields(res.fields);
-        if (res.reconciliation?.id) setReconciliationId(res.reconciliation.id);
-        if (TERMINAL_STATUSES.has(res.status)) stopPolling();
+        setDetail(res);
+        if (TERMINAL_STATUSES.has(res.status)) {
+          stopPolling();
+          onCaptured();
+        }
       } catch (err) {
         setError(err);
         stopPolling();
@@ -73,18 +347,22 @@ function EdtrPage() {
     void tick();
     pollTimer.current = setInterval(tick, 3000);
     return stopPolling;
-  }, [pollUrl]);
+  }, [pollUrl, onCaptured]);
 
-  useEffect(() => {
-    Promise.all([getRentals(), getEquipment()])
-      .then(([r, e]) => {
-        setRentals(r);
-        setEquipmentList(e);
-        if (r[0]) setRentalId(r[0].id);
-        if (e[0]) setEquipmentId(e[0].id);
-      })
-      .catch(setRefError);
-  }, []);
+  function reset() {
+    stopPolling();
+    setPollUrl(null);
+    setDetail(null);
+    setError(null);
+    setScanFile(null);
+    setScanPreview(null);
+    setSubmitting(false);
+  }
+
+  function handleClose() {
+    reset();
+    onClose();
+  }
 
   function onScanFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -93,14 +371,10 @@ function EdtrPage() {
     setScanPreview(URL.createObjectURL(file));
   }
 
-  // paper_ocr now posts multipart/form-data -- the API validates
-  // (content-type allowlist, magic-byte sniff, decompression-bomb guard)
-  // and uploads to Supabase Storage before this call returns (RFC-2 §6).
   async function capture(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    stopPolling();
-    setFields([]);
+    setSubmitting(true);
     try {
       let res: EdtrCaptureResponse;
       if (source === 'digital_entry') {
@@ -116,7 +390,12 @@ function EdtrPage() {
         // JSON-encoded field the API decodes back into an object.
         const transcribed =
           hoursActive !== '' && hoursIdle !== ''
-            ? { lineItems: JSON.stringify({ hoursActive: Number(hoursActive), hoursIdle: Number(hoursIdle) }) }
+            ? {
+                lineItems: JSON.stringify({
+                  hoursActive: Number(hoursActive),
+                  hoursIdle: Number(hoursIdle),
+                }),
+              }
             : {};
         res = await apiPostForm<EdtrCaptureResponse>(
           '/edtr',
@@ -124,47 +403,44 @@ function EdtrPage() {
           scanFile ?? undefined,
         );
       }
-      setResult(res);
-      setEdtrId(res.id);
       setPollUrl(res.pollUrl);
+      toast.success(
+        'Field log recorded',
+        `${formatDate(reportDate)} - waiting for its matching log.`,
+      );
+      onCaptured();
     } catch (err) {
       setError(err);
+      const { title, detail: why } = explainEdtrError(err);
+      toast.error(title, why);
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  async function approve(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-    try {
-      const adjustments =
-        adjActive !== '' && adjIdle !== ''
-          ? { hoursActive: Number(adjActive), hoursIdle: Number(adjIdle) }
-          : null;
-      // Address the reconciliation directly. Posting to the EDTR captured in
-      // this page session only ever worked when that capture happened to be
-      // the one that created the pair; any other reconciliation id came back
-      // as "not found" for a row that plainly existed.
-      const res = await apiPost(`/edtr/reconciliations/${reconciliationId}/approve`, {
-        reconciliationId,
-        adjustments,
-      });
-      setResult(res);
-    } catch (err) {
-      setError(err);
-    }
-  }
+  const explained = error != null ? explainEdtrError(error) : null;
 
   return (
-    <div className="min-h-screen bg-bg p-6">
-      <h1 className="mb-6 font-display text-[28px] font-semibold leading-[1.15] text-text sm:text-[34px]">
-        EDTR (RFC-2)
-      </h1>
-      {refError != null && (
-        <p className="mb-4 text-error">Could not load rentals/equipment -- is the API running? See error below.</p>
-      )}
-      <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-6">
-        <form onSubmit={capture} className="flex flex-col gap-4">
-          <h2 className="font-display text-[22px] font-semibold leading-[1.2] text-text sm:text-[26px]">Capture</h2>
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title="Record a field log"
+      description="One day, one machine. Record it twice from two sources and the hours are matched before billing."
+      size="md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={handleClose}>
+            {detail ? 'Done' : 'Cancel'}
+          </Button>
+          <Button variant="primary" onClick={capture} loading={submitting} disabled={!reportDate}>
+            Record log
+          </Button>
+        </>
+      }
+    >
+      <form onSubmit={capture} className="flex flex-col gap-4">
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1 text-sm font-medium text-text">How was it recorded?</legend>
           <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
             <label className="flex min-h-11 items-center gap-2 text-text">
               <input
@@ -175,7 +451,7 @@ function EdtrPage() {
                 onChange={() => setSource('digital_entry')}
                 className="h-5 w-5 accent-accent"
               />
-              Digital entry (type in hours)
+              Typed in from the office
             </label>
             <label className="flex min-h-11 items-center gap-2 text-text">
               <input
@@ -186,196 +462,309 @@ function EdtrPage() {
                 onChange={() => setSource('paper_ocr')}
                 className="h-5 w-5 accent-accent"
               />
-              Scan paper EDTR (camera / file upload)
+              Photo of the paper sheet
             </label>
           </div>
+        </fieldset>
 
-          <Select id="rentalId" label="Rental" value={rentalId} onChange={(e) => setRentalId(e.target.value)} required>
-            {rentals.length === 0 && <option value="">(no rentals seeded for this tenant)</option>}
-            {rentals.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.id.slice(0, 8)} ({r.status})
-              </option>
-            ))}
-          </Select>
-          <Select
-            id="equipmentId"
-            label="Equipment"
-            value={equipmentId}
-            onChange={(e) => setEquipmentId(e.target.value)}
-            required
-          >
-            {equipmentList.length === 0 && <option value="">(no equipment seeded for this tenant)</option>}
-            {equipmentList.map((eq) => (
-              <option key={eq.id} value={eq.id}>
-                {eq.model} ({eq.serialNo})
-              </option>
-            ))}
-          </Select>
+        <Select
+          id="rentalId"
+          label="Rental"
+          value={rentalId}
+          onChange={(e) => setRentalId(e.target.value)}
+          required
+        >
+          {rentals.length === 0 && <option value="">No rentals available</option>}
+          {rentals.map((r) => (
+            <option key={r.id} value={r.id}>
+              {rentalLabel(r)} ({shortCode('rental', r.id)})
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          id="equipmentId"
+          label="Machine"
+          value={equipmentId}
+          onChange={(e) => setEquipmentId(e.target.value)}
+          required
+        >
+          {equipmentList.length === 0 && <option value="">No machines available</option>}
+          {equipmentList.map((eq) => (
+            <option key={eq.id} value={eq.id}>
+              {eq.model} ({eq.serialNo})
+            </option>
+          ))}
+        </Select>
+
+        <Input
+          id="reportDate"
+          label="Day worked"
+          type="date"
+          value={reportDate}
+          onChange={(e) => setReportDate(e.target.value)}
+          required
+        />
+
+        {source === 'paper_ocr' && (
+          <div className="flex flex-col gap-2">
+            <label htmlFor="scanFile" className="text-sm font-medium text-text">
+              Photo of the sheet
+            </label>
+            <input
+              id="scanFile"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={onScanFile}
+              className="text-sm text-text-muted file:mr-3 file:min-h-11 file:rounded-sm file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-text"
+            />
+            {scanPreview && (
+              <img
+                src={scanPreview}
+                alt="The sheet you selected"
+                className="max-h-48 w-fit rounded-sm border border-border"
+              />
+            )}
+          </div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2">
           <Input
-            id="reportDate"
-            label="Report date"
-            type="date"
-            value={reportDate}
-            onChange={(e) => setReportDate(e.target.value)}
-            required
+            numeric
+            id="hoursActive"
+            label="Hours working"
+            type="number"
+            step="0.25"
+            value={hoursActive}
+            onChange={(e) => setHoursActive(e.target.value)}
           />
+          <Input
+            numeric
+            id="hoursIdle"
+            label="Hours idle"
+            type="number"
+            step="0.25"
+            value={hoursIdle}
+            onChange={(e) => setHoursIdle(e.target.value)}
+          />
+        </div>
+        {source === 'paper_ocr' && (
+          <p className="-mt-2 text-sm text-text-muted">
+            Type the hours exactly as written on the sheet. The photo is kept either way, so the
+            original can always be checked against what was billed.
+          </p>
+        )}
 
-          {source === 'digital_entry' ? (
-            <>
-              <Input
-                numeric
-                id="hoursActive"
-                label="Hours active"
-                type="number"
-                value={hoursActive}
-                onChange={(e) => setHoursActive(e.target.value)}
-              />
-              <Input
-                numeric
-                id="hoursIdle"
-                label="Hours idle"
-                type="number"
-                value={hoursIdle}
-                onChange={(e) => setHoursIdle(e.target.value)}
-              />
-            </>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {/* While automatic extraction is switched off, a scan alone is
-                  not enough -- the API needs the hours transcribed by the
-                  person holding the sheet. The fields were absent here, so
-                  a paper log could not be captured at all in that mode. */}
-              <Input
-                numeric
-                id="paperHoursActive"
-                label="Hours active, as written on the sheet"
-                type="number"
-                value={hoursActive}
-                onChange={(e) => setHoursActive(e.target.value)}
-              />
-              <Input
-                numeric
-                id="paperHoursIdle"
-                label="Hours idle, as written on the sheet"
-                type="number"
-                value={hoursIdle}
-                onChange={(e) => setHoursIdle(e.target.value)}
-              />
+        {explained && (
+          <Surface radius="md" elevation="sm" className="border-error p-3">
+            <p className="text-sm font-semibold text-error">{explained.title}</p>
+            <p className="mt-1 text-sm text-text">{explained.detail}</p>
+          </Surface>
+        )}
+
+        {detail && (
+          <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-3">
+            <p className="text-sm text-text">
+              Recorded as <span className="font-mono text-xs">{shortCode('log', detail.id)}</span> -{' '}
+              {formatStatus(detail.status)}.
+            </p>
+            {detail.lineItems[0] && (
               <p className="text-sm text-text-muted">
-                Leave both blank if automatic extraction is enabled for this environment; fill
-                them in to transcribe the sheet by hand. The scan is stored either way.
+                {formatHours(detail.lineItems[0].hoursActive)} working,{' '}
+                {formatHours(detail.lineItems[0].hoursIdle)} idle.
               </p>
-              <label htmlFor="scanFile" className="text-sm font-medium text-text">
-                Scan / upload the EDTR sheet
-              </label>
-              <input
-                id="scanFile"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={onScanFile}
-                className="text-sm text-text-muted file:mr-3 file:min-h-11 file:rounded-sm file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-text"
-              />
-              {scanPreview && (
-                <div className="flex flex-col gap-1">
-                  <p className="text-sm text-text-muted">Preview:</p>
-                  <img
-                    src={scanPreview}
-                    alt="Scanned EDTR preview"
-                    width={240}
-                    className="rounded-md border border-border"
+            )}
+            {detail.fields.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {detail.fields.map((field) => (
+                  <ConfidenceChip
+                    key={field.name}
+                    fieldLabel={field.name}
+                    confidence={field.confidence}
+                    tone={field.belowGate ? 'review' : 'match'}
                   />
-                </div>
-              )}
+                ))}
+              </div>
+            )}
+            {detail.reconciliation?.status === 'single_source' && (
               <p className="text-sm text-text-muted">
-                Extraction runs asynchronously by the edtr-ocr-worker Container App Job (RFC-2); after capture the
-                record sits at &quot;queued&quot; until that job runs. This page polls the status automatically.
+                Waiting for the second record of this machine-day before anything can be billed.
               </p>
-            </div>
-          )}
-
-          <div>
-            <Button type="submit" disabled={!rentalId || !equipmentId || (source === 'paper_ocr' && !scanFile)}>
-              Capture EDTR
-            </Button>
-          </div>
-        </form>
-      </Surface>
-
-      <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-6">
-        <form onSubmit={approve} className="flex flex-col gap-4">
-          <h2 className="font-display text-[22px] font-semibold leading-[1.2] text-text sm:text-[26px]">
-            Approve / deduct
-          </h2>
-          <Input
-            id="reconciliationId"
-            label="Reconciliation ID"
-            value={reconciliationId}
-            onChange={(e) => setReconciliationId(e.target.value)}
-            required
-          />
-          <Input
-            numeric
-            id="adjActive"
-            label="Adjustment: hours active (optional)"
-            type="number"
-            value={adjActive}
-            onChange={(e) => setAdjActive(e.target.value)}
-          />
-          <Input
-            numeric
-            id="adjIdle"
-            label="Adjustment: hours idle (optional)"
-            type="number"
-            value={adjIdle}
-            onChange={(e) => setAdjIdle(e.target.value)}
-          />
-          <div>
-            <Button type="submit" variant="approve" disabled={reconciliationId.trim() === ''}>
-              Approve
-            </Button>
-          </div>
-        </form>
-      </Surface>
-
-      {error != null && (
-        <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl border-error p-4">
-          <h2 className="mb-2 font-display text-[18px] font-semibold text-error">{explainEdtrError(error).title}</h2>
-          <p className="mb-3 text-text">{explainEdtrError(error).detail}</p>
-          <details>
-            <summary className="cursor-pointer text-sm text-text-muted">Technical detail</summary>
-            <pre className="mt-2 overflow-x-auto font-mono text-sm text-text">{JSON.stringify(error, null, 2)}</pre>
-          </details>
-        </Surface>
-      )}
-      {fields.length > 0 && (
-        <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-4">
-          <h2 className="mb-2 font-display text-[18px] font-semibold text-text">Extracted fields</h2>
-          <div className="flex flex-wrap gap-2">
-            {fields.map((field) => (
-              <ConfidenceChip
-                key={field.name}
-                tone={field.belowGate ? 'review' : 'match'}
-                confidence={field.confidence}
-                fieldLabel={`${field.name}: ${field.value}`}
-              />
-            ))}
-          </div>
-        </Surface>
-      )}
-      {result != null && (
-        <Surface radius="md" elevation="sm" className="max-w-2xl p-4">
-          <h2 className="mb-2 font-display text-[18px] font-semibold text-text">Result</h2>
-          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(result, null, 2)}</pre>
-        </Surface>
-      )}
-    </div>
+            )}
+          </Surface>
+        )}
+      </form>
+    </Modal>
   );
 }
 
-// Route path is /app/ocr (the Figma "OCR Tool" screen); the file/component
-// name stays edtr for continuity with RFC-2 and the existing test/docs trail.
+// ------------------------------------------------------------------- approve
+
+interface ApproveModalProps {
+  item: EdtrListItem;
+  machine: string;
+  onClose: () => void;
+  onApproved: () => void;
+  toast: ReturnType<typeof useToast>;
+}
+
+interface ApproveResult {
+  deposit?: { balanceBefore: number; deducted: number; balanceAfter: number };
+}
+
+function ApproveModal({ item, machine, onClose, onApproved, toast }: ApproveModalProps) {
+  const [adjActive, setAdjActive] = useState('');
+  const [adjIdle, setAdjIdle] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+
+  const recon = item.reconciliation!;
+  const disagrees = recon.status === 'discrepancy';
+  const adjusted = adjActive !== '' && adjIdle !== '';
+
+  async function submit() {
+    setPending(true);
+    setError(null);
+    try {
+      const res = await apiPost<ApproveResult>(`/edtr/reconciliations/${recon.id}/approve`, {
+        reconciliationId: recon.id,
+        adjustments: adjusted
+          ? { hoursActive: Number(adjActive), hoursIdle: Number(adjIdle) }
+          : null,
+      });
+      const deducted = res.deposit?.deducted;
+      toast.success(
+        'Hours billed to the deposit',
+        deducted != null
+          ? `${machine}, ${formatDate(item.reportDate)} - ${new Intl.NumberFormat('en-PH', {
+              style: 'currency',
+              currency: 'PHP',
+            }).format(deducted)} deducted.`
+          : undefined,
+      );
+      setConfirming(false);
+      onApproved();
+    } catch (err) {
+      setError(err);
+      const { title, detail } = explainEdtrError(err);
+      toast.error(title, detail);
+      setConfirming(false);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const explained = error != null ? explainEdtrError(error) : null;
+
+  return (
+    <>
+      <Modal
+        open={!confirming}
+        onClose={onClose}
+        title="Review and bill"
+        description={`${machine} - ${formatDate(item.reportDate)}`}
+        size="md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={onClose}>
+              Not now
+            </Button>
+            <Button
+              variant="approve"
+              onClick={() => setConfirming(true)}
+              disabled={disagrees && !adjusted}
+            >
+              Bill these hours
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Surface radius="md" elevation="sm" className="flex flex-col gap-1 p-3">
+            <p className="text-sm text-text">
+              {disagrees
+                ? 'The two records of this day do not agree.'
+                : 'Both records of this day agree, within tolerance.'}
+            </p>
+            {recon.deltaHours !== null && (
+              <p className="text-sm text-text-muted">
+                They differ by {formatHours(recon.deltaHours)}. Anything over{' '}
+                {formatHours(recon.tolerance)} needs a person to decide.
+              </p>
+            )}
+          </Surface>
+
+          {disagrees && (
+            <>
+              <p className="text-sm text-text">
+                Enter the hours you are approving. Nothing is billed until you do -- this is the
+                decision the system will not make on its own.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  numeric
+                  id="adjActive"
+                  label="Hours working to bill"
+                  type="number"
+                  step="0.25"
+                  value={adjActive}
+                  onChange={(e) => setAdjActive(e.target.value)}
+                />
+                <Input
+                  numeric
+                  id="adjIdle"
+                  label="Hours idle to record"
+                  type="number"
+                  step="0.25"
+                  value={adjIdle}
+                  onChange={(e) => setAdjIdle(e.target.value)}
+                />
+              </div>
+            </>
+          )}
+
+          {explained && (
+            <Surface radius="md" elevation="sm" className="border-error p-3">
+              <p className="text-sm font-semibold text-error">{explained.title}</p>
+              <p className="mt-1 text-sm text-text">{explained.detail}</p>
+            </Surface>
+          )}
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={confirming}
+        title="Bill these hours?"
+        tone="approve"
+        pending={pending}
+        confirmLabel="Yes, bill them"
+        cancelLabel="Go back"
+        body={
+          <>
+            <p>
+              This deducts from the customer's deposit for <strong>{machine}</strong> on{' '}
+              <strong>{formatDate(item.reportDate)}</strong>.
+            </p>
+            {adjusted && (
+              <p className="mt-2">
+                Billing {formatHours(Number(adjActive))} working and {formatHours(Number(adjIdle))}{' '}
+                idle, as you entered.
+              </p>
+            )}
+            <p className="mt-2 text-text-muted">
+              It is recorded against your name and cannot be undone here.
+            </p>
+          </>
+        }
+        onConfirm={submit}
+        onCancel={() => setConfirming(false)}
+      />
+    </>
+  );
+}
+
 export const edtrRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/ocr',
