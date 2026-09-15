@@ -13,12 +13,12 @@
 // server still sniffs magic bytes and enforces its own caps on every request;
 // nothing here is trusted by the API.
 
-// MIRRORED PAIR: these two constants must stay in step with
-// apps/api/src/storage/upload-validation.ts (MAX_UPLOAD_BYTES and the
-// MAGIC_SIGNATURES allowlist). The server is authoritative; this copy exists
-// only so the client can refuse early instead of wasting the upload.
+// MIRRORED PAIR: this cap must stay in step with MAX_UPLOAD_BYTES in
+// apps/api/src/storage/upload-validation.ts. The server is authoritative; this
+// copy exists only so the client can refuse early instead of wasting the
+// upload. The type allowlist is not mirrored: everything this module emits is
+// a JPEG or an untouched PDF, so the server's list has nothing to duplicate.
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-export const ACCEPTED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'application/pdf'] as const;
 
 // A long edge of 2200px keeps handwriting legible for Azure DI while cutting a
 // 12MP photo to roughly a tenth of its bytes. The retry rung is what a very
@@ -71,11 +71,6 @@ export function describeUploadProblem(error: unknown): UploadProblem {
   }
 }
 
-export interface PrepareUploadOptions {
-  maxEdge?: number;
-  quality?: number;
-}
-
 async function encodeAtScale(file: File, maxEdge: number, quality: number): Promise<File> {
   let bitmap: ImageBitmap;
   try {
@@ -115,7 +110,7 @@ async function encodeAtScale(file: File, maxEdge: number, quality: number): Prom
 
 // Turns whatever the camera or the file picker handed us into something the
 // API will accept, or throws an UploadPrepareError describing why it cannot.
-export async function prepareUpload(file: File, opts: PrepareUploadOptions = {}): Promise<File> {
+export async function prepareUpload(file: File): Promise<File> {
   // A PDF is passed through untouched. Re-encoding one through a canvas would
   // destroy it, and the KYC path legitimately accepts scanned corporate docs.
   if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
@@ -131,7 +126,7 @@ export async function prepareUpload(file: File, opts: PrepareUploadOptions = {})
     throw new UploadPrepareError('unsupported_file_type', `content type ${file.type} is not accepted`);
   }
 
-  const prepared = await encodeAtScale(file, opts.maxEdge ?? DEFAULT_MAX_EDGE, opts.quality ?? DEFAULT_QUALITY);
+  const prepared = await encodeAtScale(file, DEFAULT_MAX_EDGE, DEFAULT_QUALITY);
   if (prepared.size <= MAX_UPLOAD_BYTES) return prepared;
 
   // One more rung down before giving up, rather than bouncing the user for a
