@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type FormEvent,
   type ReactNode,
 } from 'react';
@@ -32,6 +31,7 @@ import {
   siteName,
 } from '../lib/format.js';
 import { Button } from '../components/button.js';
+import { CaptureField } from '../components/capture-field.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
@@ -322,7 +322,6 @@ function CaptureModal({
   const [reportDate, setReportDate] = useState('');
   const [hoursActive, setHoursActive] = useState('8');
   const [hoursIdle, setHoursIdle] = useState('0');
-  const [scanPreview, setScanPreview] = useState<string | null>(null);
   const [scanFile, setScanFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -369,20 +368,12 @@ function CaptureModal({
     setDetail(null);
     setError(null);
     setScanFile(null);
-    setScanPreview(null);
     setSubmitting(false);
   }
 
   function handleClose() {
     reset();
     onClose();
-  }
-
-  function onScanFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setScanFile(file);
-    setScanPreview(URL.createObjectURL(file));
   }
 
   async function capture(event: FormEvent) {
@@ -521,26 +512,14 @@ function CaptureModal({
         />
 
         {source === 'paper_ocr' && (
-          <div className="flex flex-col gap-2">
-            <label htmlFor="scanFile" className="text-sm font-medium text-text">
-              Photo of the sheet
-            </label>
-            <input
-              id="scanFile"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={onScanFile}
-              className="text-sm text-text-muted file:mr-3 file:min-h-11 file:rounded-sm file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-text"
-            />
-            {scanPreview && (
-              <img
-                src={scanPreview}
-                alt="The sheet you selected"
-                className="max-h-48 w-fit rounded-sm border border-border"
-              />
-            )}
-          </div>
+          <CaptureField
+            id="scanFile"
+            label="Photo of the sheet"
+            accept="image/*"
+            size="field"
+            value={scanFile}
+            onChange={setScanFile}
+          />
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">

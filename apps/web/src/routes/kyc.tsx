@@ -1,11 +1,12 @@
 import { createRoute } from '@tanstack/react-router';
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import type { KycDetailResponse, KycExtractResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { apiGet, apiPost, apiPostForm } from '../lib/api-client.js';
 import { getCustomers, type CustomerRef } from '../lib/reference-client.js';
 import { Button } from '../components/button.js';
+import { CaptureField } from '../components/capture-field.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
@@ -32,7 +33,6 @@ function KycPage() {
       .catch(setRefError);
   }, []);
 
-  const [scanPreview, setScanPreview] = useState<string | null>(null);
   const [scanFile, setScanFile] = useState<File | null>(null);
 
   const [registryStatus, setRegistryStatus] = useState<'active' | 'suspended' | 'revoked'>(
@@ -44,13 +44,6 @@ function KycPage() {
   const [result, setResult] = useState<unknown>(null);
   const [detail, setDetail] = useState<KycDetailResponse | null>(null);
   const [error, setError] = useState<unknown>(null);
-
-  function onScanFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setScanFile(file);
-    setScanPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : null);
-  }
 
   // Posts multipart/form-data -- the API validates (content-type
   // allowlist, magic-byte sniff, decompression-bomb guard) and uploads to
@@ -141,30 +134,13 @@ function KycPage() {
             onChange={(e) => setDocumentType(e.target.value)}
             required
           />
-          <div className="flex flex-col gap-2">
-            <label htmlFor="scanFile" className="text-sm font-medium text-text">
-              Scan / upload the corporate document
-            </label>
-            <input
-              id="scanFile"
-              type="file"
-              accept="image/*,application/pdf"
-              capture="environment"
-              onChange={onScanFile}
-              className="text-sm text-text-muted file:mr-3 file:min-h-11 file:rounded-sm file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-text"
-            />
-            {scanPreview && (
-              <div className="flex flex-col gap-1">
-                <p className="text-sm text-text-muted">Preview:</p>
-                <img
-                  src={scanPreview}
-                  alt="Scanned document preview"
-                  width={240}
-                  className="rounded-md border border-border"
-                />
-              </div>
-            )}
-          </div>
+          <CaptureField
+            id="scanFile"
+            label="Scan / upload the corporate document"
+            accept="image/*,application/pdf"
+            value={scanFile}
+            onChange={setScanFile}
+          />
           <div>
             <Button type="submit" disabled={!scanFile || !customerId}>
               Extract
