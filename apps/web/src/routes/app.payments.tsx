@@ -8,6 +8,13 @@ import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { CheckIcon, AlertIcon, ClockIcon } from '../components/icons.js';
+import {
+  formatDate,
+  formatInvoiceType,
+  formatPeso,
+  formatStatus,
+  shortCode,
+} from '../lib/format.js';
 
 const STATUS_META: Record<string, { tone: StatusTone; icon: ReactElement }> = {
   paid: { tone: 'recon-approved', icon: <CheckIcon /> },
@@ -17,34 +24,43 @@ const STATUS_META: Record<string, { tone: StatusTone; icon: ReactElement }> = {
 };
 
 const COLUMNS: TableColumn<InvoiceSummaryResponse>[] = [
-  { header: 'Invoice', cell: (row) => row.id.slice(0, 8) },
-  { header: 'Type', cell: (row) => row.invoiceType.replace('_', ' ') },
+  {
+    header: 'Invoice',
+    cell: (row) => (
+      <div className="flex flex-col">
+        <span className="text-text">{formatInvoiceType(row.invoiceType)}</span>
+        <span className="font-mono text-xs text-text-muted">{shortCode('invoice', row.id)}</span>
+      </div>
+    ),
+  },
   {
     header: 'Status',
     cell: (row) => {
       const meta = STATUS_META[row.status] ?? STATUS_META['draft']!;
-      return <StatusPill tone={meta.tone} label={row.status} icon={meta.icon} />;
+      return <StatusPill tone={meta.tone} label={formatStatus(row.status)} icon={meta.icon} />;
     },
   },
-  { header: 'Due', cell: (row) => row.dueDate.toLocaleDateString() },
-  { header: 'Amount', cell: (row) => row.amount.toFixed(2), align: 'right' },
+  { header: 'Due', cell: (row) => formatDate(row.dueDate) },
+  { header: 'Amount', cell: (row) => formatPeso(row.amount), align: 'right' },
 ];
 
 function PaymentsPage() {
   return (
-    <DataPanel
-      title="Invoices"
-      options={invoicesQueries.list()}
-      emptyTitle="No invoices yet"
-      emptyDescription="Invoices appear once a reconciliation is approved and a deduction is posted."
-      isEmpty={(data) => data.total === 0}
-      render={(data) => (
-        <div className="flex flex-col gap-4">
-          <PageHeader eyebrow="Billing" title="Invoices" description={`${data.total} invoices on file.`} />
-          <Table columns={COLUMNS} rows={data.items} rowKey={(row) => row.id} />
-        </div>
-      )}
-    />
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="Billing"
+        title="Invoices"
+        description="Deposits taken and hours billed against them."
+      />
+      <DataPanel
+        title="Invoices"
+        options={invoicesQueries.list()}
+        emptyTitle="No invoices yet"
+        emptyDescription="Invoices appear once a reconciliation is approved and a deduction is posted."
+        isEmpty={(data) => data.total === 0}
+        render={(data) => <Table columns={COLUMNS} rows={data.items} rowKey={(row) => row.id} />}
+      />
+    </div>
   );
 }
 

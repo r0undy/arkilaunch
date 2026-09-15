@@ -17,15 +17,19 @@ const STATUS_META: Record<string, { tone: StatusTone; label: string; icon: React
 
 function InventoryPage() {
   return (
-    <DataPanel
-      title="Equipment"
-      options={equipmentQueries.list()}
-      emptyTitle="No equipment yet"
-      emptyDescription="Add equipment to the fleet to see it listed here."
-      isEmpty={(data) => data.items.length === 0}
-      render={(data) => (
-        <div className="flex flex-col gap-4">
-          <PageHeader eyebrow="Fleet" title="Equipment" description={`${data.total} units in the fleet.`} />
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="Fleet"
+        title="Equipment"
+        description="Every machine in the fleet and where it stands."
+      />
+      <DataPanel
+        title="Equipment"
+        options={equipmentQueries.list()}
+        emptyTitle="No equipment yet"
+        emptyDescription="Add equipment to the fleet to see it listed here."
+        isEmpty={(data) => data.items.length === 0}
+        render={(data) => (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {data.items.map((eq) => {
               const meta = STATUS_META[eq.availabilityStatus] ?? STATUS_META['available']!;
@@ -37,7 +41,9 @@ function InventoryPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-text">{eq.model}</p>
-                      <p className="font-mono text-xs tabular-nums text-text-muted">{eq.serialNo}</p>
+                      <p className="font-mono text-xs tabular-nums text-text-muted">
+                        {eq.serialNo}
+                      </p>
                     </div>
                     <StatusPill tone={meta.tone} label={meta.label} icon={meta.icon} />
                   </div>
@@ -45,9 +51,9 @@ function InventoryPage() {
               );
             })}
           </div>
-        </div>
-      )}
-    />
+        )}
+      />
+    </div>
   );
 }
 
