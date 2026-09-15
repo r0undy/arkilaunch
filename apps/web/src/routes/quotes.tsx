@@ -140,17 +140,27 @@ function QuotesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader eyebrow="Billing" title="Quotes" description="Price a quote against today's diesel rate." />
+      <PageHeader
+        eyebrow="Billing"
+        title="Quotes"
+        description="Price a quote against today's diesel rate."
+      />
       {refError != null && (
         <p className="mb-4 text-error">
-          Could not load reference data (customers/equipment/rate cards/sites) -- is the API running? See error
-          below.
+          Could not load reference data (customers/equipment/rate cards/sites) -- is the API
+          running? See error below.
         </p>
       )}
       <Surface radius="md" elevation="sm" className="mb-6 flex max-w-2xl flex-col gap-4 p-6">
         <form className="flex flex-col gap-4">
-          <Select id="customerId" label="Customer" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
-            {customers.length === 0 && <option value="">(no customers seeded for this tenant)</option>}
+          <Select
+            id="customerId"
+            label="Customer"
+            value={customerId}
+            onChange={(e) => setCustomerId(e.target.value)}
+            required
+          >
+            {customers.length === 0 && <option value="">No customers on file yet</option>}
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.companyName}
@@ -164,7 +174,7 @@ function QuotesPage() {
             onChange={(e) => setProjectSiteId(e.target.value)}
             required
           >
-            {projectSites.length === 0 && <option value="">(no sites seeded for this tenant)</option>}
+            {projectSites.length === 0 && <option value="">No project sites yet</option>}
             {projectSites.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.city ?? s.province ?? `Site ${s.id.slice(0, 8)}`} ({s.latitude}, {s.longitude})
@@ -184,8 +194,14 @@ function QuotesPage() {
               </option>
             ))}
           </Select>
-          <Select id="rateCardId" label="Rate card" value={rateCardId} onChange={(e) => setRateCardId(e.target.value)} required>
-            {rateCards.length === 0 && <option value="">(no rate cards seeded for this tenant)</option>}
+          <Select
+            id="rateCardId"
+            label="Rate card"
+            value={rateCardId}
+            onChange={(e) => setRateCardId(e.target.value)}
+            required
+          >
+            {rateCards.length === 0 && <option value="">No rate cards set up yet</option>}
             {rateCards.map((rc) => (
               <option key={rc.id} value={rc.id}>
                 {rc.rateType} @ {rc.currency} {rc.rateValue}/hr
@@ -242,7 +258,9 @@ function QuotesPage() {
       {error != null && (
         <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl border-error p-4">
           <h2 className="mb-2 font-display text-[18px] font-semibold text-error">Error</h2>
-          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(error, null, 2)}</pre>
+          <pre className="overflow-x-auto font-mono text-sm text-text">
+            {JSON.stringify(error, null, 2)}
+          </pre>
         </Surface>
       )}
       {result != null && (
@@ -257,10 +275,14 @@ function QuotesPage() {
             />
             <GaugeReadout label="Total" value={result.total.toFixed(2)} unit="PHP" />
           </div>
-          <Table columns={LINE_ITEM_COLUMNS} rows={result.lineItems} rowKey={(row) => row.equipmentTypeId} />
+          <Table
+            columns={LINE_ITEM_COLUMNS}
+            rows={result.lineItems}
+            rowKey={(row) => row.equipmentTypeId}
+          />
           <p className="text-sm text-text-muted">
-            Subtotal {result.subtotal.toFixed(2)} PHP, discount {result.discount.toFixed(2)} PHP, status{' '}
-            {result.status}.
+            Subtotal {result.subtotal.toFixed(2)} PHP, discount {result.discount.toFixed(2)} PHP,
+            status {result.status}.
           </p>
         </div>
       )}

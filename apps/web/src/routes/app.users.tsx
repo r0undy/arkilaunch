@@ -7,6 +7,9 @@ import { requireRole } from '../lib/guards.js';
 import { apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
+import { ConfirmDialog } from '../components/confirm-dialog.js';
+import { useToast } from '../components/toast.js';
+import { formatRole, formatStatus } from '../lib/format.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
@@ -45,7 +48,8 @@ function InviteForm() {
       setEmail('');
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: () => setError('Could not invite this user. Check the email is not already registered.'),
+    onError: () =>
+      setError('Could not invite this user. Check the email is not already registered.'),
   });
 
   function onSubmit(event: FormEvent) {
@@ -71,7 +75,12 @@ function InviteForm() {
           />
         </div>
         <div className="w-40">
-          <Select label="Role" id="invite-role" value={role} onChange={(e) => setRole(e.target.value as AssignableRole)}>
+          <Select
+            label="Role"
+            id="invite-role"
+            value={role}
+            onChange={(e) => setRole(e.target.value as AssignableRole)}
+          >
             <option value="customer">Customer</option>
             <option value="timekeeper">Timekeeper</option>
             <option value="admin">Admin</option>
@@ -83,8 +92,11 @@ function InviteForm() {
       </form>
       {activationToken && (
         <p className="text-sm text-text-muted">
-          No email provider is wired up yet -- relay this activation token to the new user out of band:{' '}
-          <code className="rounded-sm bg-surface-sunk px-1.5 py-0.5 font-mono text-xs">{activationToken}</code>
+          No email provider is wired up yet -- relay this activation token to the new user out of
+          band:{' '}
+          <code className="rounded-sm bg-surface-sunk px-1.5 py-0.5 font-mono text-xs">
+            {activationToken}
+          </code>
         </p>
       )}
     </Surface>
@@ -97,26 +109,53 @@ function UserActions({ user }: { user: UserRow }) {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['users'] });
   const [lastToken, setLastToken] = useState<string | null>(null);
+  const [pendingRole, setPendingRole] = useState<AssignableRole | null>(null);
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const toast = useToast();
 
   const changeRole = useMutation({
     mutationFn: (role: AssignableRole) => apiPatch(`/users/${user.id}/role`, { role }),
-    onSuccess: invalidate,
+    onSuccess: (_data, role) => {
+      invalidate();
+      toast.success('Role changed', `${user.email} is now ${formatRole(role).toLowerCase()}.`);
+    },
+    onError: () =>
+      toast.error('Could not change that role', 'Nothing was changed. Try again in a moment.'),
   });
   const reinvite = useMutation({
-    mutationFn: () => apiPost<{ id: string; activationToken: string }>(`/users/${user.id}/invite`, {}),
-    onSuccess: (data) => setLastToken(data.activationToken),
+    mutationFn: () =>
+      apiPost<{ id: string; activationToken: string }>(`/users/${user.id}/invite`, {}),
+    onSuccess: (data) => {
+      setLastToken(data.activationToken);
+      toast.success('New invite ready', 'Send the sign-up link below to this person.');
+    },
+    onError: () => toast.error('Could not create an invite', 'Nothing was sent.'),
   });
   const resetPassword = useMutation({
-    mutationFn: () => apiPost<{ id: string; activationToken: string }>(`/users/${user.id}/reset-password`, {}),
-    onSuccess: (data) => setLastToken(data.activationToken),
+    mutationFn: () =>
+      apiPost<{ id: string; activationToken: string }>(`/users/${user.id}/reset-password`, {}),
+    onSuccess: (data) => {
+      setLastToken(data.activationToken);
+      toast.success('Password reset started', 'Their current password no longer works.');
+    },
+    onError: () => toast.error('Could not reset that password', 'Nothing was changed.'),
   });
   const deactivate = useMutation({
     mutationFn: () => apiPost(`/users/${user.id}/deactivate`, {}),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success('Access removed', `${user.email} can no longer sign in.`);
+    },
+    onError: () => toast.error('Could not remove access', 'Nothing was changed.'),
   });
   const reactivate = useMutation({
     mutationFn: () => apiPost(`/users/${user.id}/reactivate`, {}),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success('Access restored', `${user.email} can sign in again.`);
+    },
+    onError: () => toast.error('Could not restore access', 'Nothing was changed.'),
   });
 
   return (
@@ -126,36 +165,121 @@ function UserActions({ user }: { user: UserRow }) {
           aria-label={`Change role for ${user.email}`}
           value={user.roleName}
           disabled={changeRole.isPending}
-          onChange={(e) => changeRole.mutate(e.target.value as AssignableRole)}
+          onChange={(e) => setPendingRole(e.target.value as AssignableRole)}
           className="min-h-11 rounded-sm border border-border bg-surface px-2 text-sm text-text"
         >
           {ASSIGNABLE_ROLES.map((role) => (
             <option key={role} value={role}>
-              {role}
+              {formatRole(role)}
             </option>
           ))}
         </select>
       )}
       {user.status === 'invited' && (
-        <Button variant="secondary" size="field" onClick={() => reinvite.mutate()} loading={reinvite.isPending}>
+        <Button
+          variant="secondary"
+          size="field"
+          onClick={() => reinvite.mutate()}
+          loading={reinvite.isPending}
+        >
           Re-invite
         </Button>
       )}
-      <Button variant="secondary" size="field" onClick={() => resetPassword.mutate()} loading={resetPassword.isPending}>
+      <Button
+        variant="secondary"
+        size="field"
+        onClick={() => setConfirmingReset(true)}
+        loading={resetPassword.isPending}
+      >
         Reset password
       </Button>
       {user.status === 'disabled' ? (
-        <Button variant="secondary" size="field" onClick={() => reactivate.mutate()} loading={reactivate.isPending}>
+        <Button
+          variant="secondary"
+          size="field"
+          onClick={() => reactivate.mutate()}
+          loading={reactivate.isPending}
+        >
           Reactivate
         </Button>
       ) : (
-        <Button variant="destructive" size="field" onClick={() => deactivate.mutate()} loading={deactivate.isPending}>
-          Deactivate
+        <Button
+          variant="destructive"
+          size="field"
+          onClick={() => setConfirmingDeactivate(true)}
+          loading={deactivate.isPending}
+        >
+          Remove access
         </Button>
       )}
       {lastToken && (
-        <code className="rounded-sm bg-surface-sunk px-1.5 py-0.5 font-mono text-xs">{lastToken}</code>
+        <code className="rounded-sm bg-surface-sunk px-1.5 py-0.5 font-mono text-xs">
+          {lastToken}
+        </code>
       )}
+
+      <ConfirmDialog
+        open={pendingRole !== null}
+        title="Change this role?"
+        tone={pendingRole === 'admin' ? 'danger' : 'neutral'}
+        confirmLabel="Change role"
+        pending={changeRole.isPending}
+        body={
+          <>
+            <p>
+              <strong>{user.email}</strong> becomes {formatRole(pendingRole ?? '').toLowerCase()}.
+            </p>
+            {pendingRole === 'admin' && (
+              <p className="mt-2">
+                Administrators can approve field logs, which takes money from a deposit.
+              </p>
+            )}
+          </>
+        }
+        onConfirm={() => {
+          if (pendingRole) changeRole.mutate(pendingRole);
+          setPendingRole(null);
+        }}
+        onCancel={() => setPendingRole(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmingDeactivate}
+        title="Remove this person's access?"
+        tone="danger"
+        confirmLabel="Remove access"
+        pending={deactivate.isPending}
+        body={
+          <p>
+            <strong>{user.email}</strong> will be signed out and cannot sign in again until someone
+            restores their access. Everything they recorded stays intact.
+          </p>
+        }
+        onConfirm={() => {
+          deactivate.mutate();
+          setConfirmingDeactivate(false);
+        }}
+        onCancel={() => setConfirmingDeactivate(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmingReset}
+        title="Reset this password?"
+        tone="danger"
+        confirmLabel="Reset password"
+        pending={resetPassword.isPending}
+        body={
+          <p>
+            <strong>{user.email}</strong> will be signed out and their current password will stop
+            working. You will get a link to send them.
+          </p>
+        }
+        onConfirm={() => {
+          resetPassword.mutate();
+          setConfirmingReset(false);
+        }}
+        onCancel={() => setConfirmingReset(false)}
+      />
     </div>
   );
 }
@@ -163,14 +287,18 @@ function UserActions({ user }: { user: UserRow }) {
 function ManageUsersPage() {
   const columns: TableColumn<UserRow>[] = [
     { header: 'Email', cell: (row) => row.email },
-    { header: 'Role', cell: (row) => row.roleName },
-    { header: 'Status', cell: (row) => row.status },
+    { header: 'Role', cell: (row) => formatRole(row.roleName) },
+    { header: 'Status', cell: (row) => formatStatus(row.status) },
     { header: 'Actions', cell: (row) => <UserActions user={row} /> },
   ];
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader eyebrow="Administration" title="People" description="Manage teammates, roles, and access." />
+      <PageHeader
+        eyebrow="Administration"
+        title="People"
+        description="Manage teammates, roles, and access."
+      />
       <InviteForm />
       <DataPanel
         title="Users"

@@ -16,8 +16,11 @@ function EquipmentPage() {
   const equipment = useMemo(
     () =>
       (data?.items ?? []).filter((eq) => {
-        const matchesQuery = `${eq.model} ${eq.equipmentTypeName}`.toLowerCase().includes(query.toLowerCase());
-        const matchesAvailability = availability === 'all' || eq.availabilityStatus === availability;
+        const matchesQuery = `${eq.model} ${eq.equipmentTypeName}`
+          .toLowerCase()
+          .includes(query.toLowerCase());
+        const matchesAvailability =
+          availability === 'all' || eq.availabilityStatus === availability;
         return matchesQuery && matchesAvailability;
       }),
     [data, query, availability],
@@ -25,7 +28,7 @@ function EquipmentPage() {
 
   return (
     <div className="flex flex-col gap-6 px-6 py-10 sm:px-10">
-      <h1 className="font-display text-2xl font-semibold text-ink-mk">Equipments</h1>
+      <h1 className="font-display text-2xl font-semibold text-ink-mk">Equipment for hire</h1>
       <SearchFilterBar
         query={query}
         onQueryChange={setQuery}
@@ -43,7 +46,9 @@ function EquipmentPage() {
               model={eq.model}
               make={eq.equipmentTypeName}
               availabilityStatus={eq.availabilityStatus}
-              onRent={() => navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })}
+              onRent={() =>
+                navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })
+              }
             />
           );
         })}

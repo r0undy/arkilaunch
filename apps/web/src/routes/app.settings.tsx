@@ -11,6 +11,10 @@ import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
+import { PageHeader } from '../components/page-header.js';
+import { ConfirmDialog } from '../components/confirm-dialog.js';
+import { useToast } from '../components/toast.js';
+import { formatDate, formatPeso, formatRateType } from '../lib/format.js';
 
 interface RateCardRow {
   id: string;
@@ -104,7 +108,11 @@ function RateCardForm() {
             {...(error ? { error } : {})}
           />
         </div>
-        <Button type="submit" loading={create.isPending} disabled={create.isPending || !equipmentTypeId}>
+        <Button
+          type="submit"
+          loading={create.isPending}
+          disabled={create.isPending || !equipmentTypeId}
+        >
           Add rate card
         </Button>
       </form>
@@ -112,31 +120,81 @@ function RateCardForm() {
   );
 }
 
-function RetireAction({ id }: { id: string }) {
+function RetireAction({ id, label }: { id: string; label: string }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
   const retire = useMutation({
     mutationFn: () => apiDelete(`/rate-cards/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rate-cards'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['rate-cards'] });
+      toast.success('Rate card retired', `${label} will not be used for new quotes.`);
+    },
+    onError: () => toast.error('Could not retire that rate card', 'Nothing was changed.'),
   });
   return (
-    <Button variant="destructive" size="field" onClick={() => retire.mutate()} loading={retire.isPending}>
-      Retire
-    </Button>
+    <>
+      <Button
+        variant="destructive"
+        size="field"
+        onClick={() => setConfirming(true)}
+        loading={retire.isPending}
+      >
+        Retire
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        title="Retire this rate card?"
+        tone="danger"
+        confirmLabel="Retire it"
+        pending={retire.isPending}
+        body={
+          <p>
+            New quotes will stop using <strong>{label}</strong>. Quotes already priced against it
+            keep the rate they were given.
+          </p>
+        }
+        onConfirm={() => {
+          retire.mutate();
+          setConfirming(false);
+        }}
+        onCancel={() => setConfirming(false)}
+      />
+    </>
   );
 }
 
 function SettingsPage() {
+  // The table showed a UUID stub where the form's own dropdown already had
+  // the readable name; same source, now used in both places.
+  const equipmentTypes = useQuery(referenceQueries.equipmentTypes());
+  const typeName = (id: string): string =>
+    (equipmentTypes.data ?? []).find((type) => type.id === id)?.name ?? 'Unknown type';
+
   const columns: TableColumn<RateCardRow>[] = [
-    { header: 'Equipment type', cell: (row) => row.equipmentTypeId.slice(0, 8) },
-    { header: 'Rate type', cell: (row) => row.rateType },
-    { header: 'Rate (PHP)', cell: (row) => row.rateValue, align: 'right' },
-    { header: 'Effective from', cell: (row) => new Date(row.effectiveFrom).toLocaleDateString() },
-    { header: '', cell: (row) => <RetireAction id={row.id} /> },
+    { header: 'Equipment type', cell: (row) => typeName(row.equipmentTypeId) },
+    { header: 'Charged', cell: (row) => formatRateType(row.rateType) },
+    { header: 'Rate', cell: (row) => formatPeso(row.rateValue), align: 'right' },
+    { header: 'In use since', cell: (row) => formatDate(row.effectiveFrom) },
+    {
+      header: '',
+      align: 'right',
+      cell: (row) => (
+        <RetireAction
+          id={row.id}
+          label={`${typeName(row.equipmentTypeId)} (${formatRateType(row.rateType).toLowerCase()})`}
+        />
+      ),
+    },
   ];
 
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="font-display text-2xl font-semibold text-text">Settings</h1>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="Administration"
+        title="Rate cards"
+        description="What each kind of machine is charged at, and from when."
+      />
       <RateCardForm />
       <DataPanel
         title="Rate cards"

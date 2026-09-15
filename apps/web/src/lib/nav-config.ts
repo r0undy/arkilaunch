@@ -31,7 +31,7 @@ export const APP_NAV: NavGroup[] = [
     title: 'Dispatch',
     items: [
       { label: 'Dashboard', to: '/app' },
-      { label: 'Sites & deployment', to: '/app/deployment' },
+      { label: 'Sites and deployment', to: '/app/deployment' },
     ],
   },
   {
@@ -64,11 +64,11 @@ export const APP_NAV: NavGroup[] = [
 export const PLATFORM_ADMIN_NAV: NavGroup[] = [
   {
     title: 'Platform',
-    items: [{ label: 'Tenant applications', to: '/app/platform-applications' }],
+    items: [{ label: 'Company applications', to: '/app/platform-applications' }],
   },
 ];
 
 export const FIELD_NAV: NavItem[] = [
   { label: 'Dashboard', to: '/field' },
-  { label: 'Deployment', to: '/field/deployment' },
+  { label: 'Your sites', to: '/field/deployment' },
 ];

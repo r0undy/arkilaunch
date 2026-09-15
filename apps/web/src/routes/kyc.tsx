@@ -35,7 +35,9 @@ function KycPage() {
   const [scanPreview, setScanPreview] = useState<string | null>(null);
   const [scanFile, setScanFile] = useState<File | null>(null);
 
-  const [registryStatus, setRegistryStatus] = useState<'active' | 'suspended' | 'revoked'>('active');
+  const [registryStatus, setRegistryStatus] = useState<'active' | 'suspended' | 'revoked'>(
+    'active',
+  );
   const [portalMatchScore, setPortalMatchScore] = useState('0.95');
 
   const [kycDocumentId, setKycDocumentId] = useState<string | null>(null);
@@ -106,12 +108,18 @@ function KycPage() {
   return (
     <div className="min-h-screen bg-bg p-6">
       <h1 className="mb-6 font-display text-[28px] font-semibold leading-[1.15] text-text sm:text-[34px]">
-        KYC (RFC-2)
+        Business verification
       </h1>
-      {refError != null && <p className="mb-4 text-error">Could not load customers -- is the API running? See error below.</p>}
+      {refError != null && (
+        <p className="mb-4 text-error">
+          Your customer list could not be loaded, so a document cannot be checked right now.
+        </p>
+      )}
       <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-6">
         <form onSubmit={extract} className="flex flex-col gap-4">
-          <h2 className="font-display text-[22px] font-semibold leading-[1.2] text-text sm:text-[26px]">Extract</h2>
+          <h2 className="font-display text-[22px] font-semibold leading-[1.2] text-text sm:text-[26px]">
+            Extract
+          </h2>
           <Select
             id="customerId"
             label="Customer"
@@ -119,7 +127,7 @@ function KycPage() {
             onChange={(e) => setCustomerId(e.target.value)}
             required
           >
-            {customers.length === 0 && <option value="">(no customers seeded for this tenant)</option>}
+            {customers.length === 0 && <option value="">No customers on file yet</option>}
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.companyName}
@@ -174,7 +182,7 @@ function KycPage() {
       <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-6">
         <form onSubmit={confirm} className="flex flex-col gap-4">
           <h2 className="font-display text-[22px] font-semibold leading-[1.2] text-text sm:text-[26px]">
-            Human portal confirmation (platform_admin only)
+            Confirm against the official registry
           </h2>
           <Select
             id="registryStatus"
@@ -208,34 +216,41 @@ function KycPage() {
       {error != null && (
         <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl border-error p-4">
           <h2 className="mb-2 font-display text-[18px] font-semibold text-error">Error</h2>
-          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(error, null, 2)}</pre>
+          <pre className="overflow-x-auto font-mono text-sm text-text">
+            {JSON.stringify(error, null, 2)}
+          </pre>
         </Surface>
       )}
-      {detail != null && (detail.confidence.secNumber !== null || detail.confidence.tin !== null) && (
-        <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-4">
-          <h2 className="mb-2 font-display text-[18px] font-semibold text-text">Extracted fields</h2>
-          <div className="flex flex-wrap gap-2">
-            {detail.confidence.secNumber !== null && (
-              <ConfidenceChip
-                tone={detail.formatValid.secNumber ? 'match' : 'review'}
-                confidence={detail.confidence.secNumber}
-                fieldLabel={`SEC: ${detail.extracted.secNumber ?? ''}`}
-              />
-            )}
-            {detail.confidence.tin !== null && (
-              <ConfidenceChip
-                tone={detail.formatValid.tin ? 'match' : 'review'}
-                confidence={detail.confidence.tin}
-                fieldLabel={`TIN: ${detail.extracted.tin ?? ''}`}
-              />
-            )}
-          </div>
-        </Surface>
-      )}
+      {detail != null &&
+        (detail.confidence.secNumber !== null || detail.confidence.tin !== null) && (
+          <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl p-4">
+            <h2 className="mb-2 font-display text-[18px] font-semibold text-text">
+              Extracted fields
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {detail.confidence.secNumber !== null && (
+                <ConfidenceChip
+                  tone={detail.formatValid.secNumber ? 'match' : 'review'}
+                  confidence={detail.confidence.secNumber}
+                  fieldLabel={`SEC: ${detail.extracted.secNumber ?? ''}`}
+                />
+              )}
+              {detail.confidence.tin !== null && (
+                <ConfidenceChip
+                  tone={detail.formatValid.tin ? 'match' : 'review'}
+                  confidence={detail.confidence.tin}
+                  fieldLabel={`TIN: ${detail.extracted.tin ?? ''}`}
+                />
+              )}
+            </div>
+          </Surface>
+        )}
       {result != null && (
         <Surface radius="md" elevation="sm" className="max-w-2xl p-4">
           <h2 className="mb-2 font-display text-[18px] font-semibold text-text">Result</h2>
-          <pre className="overflow-x-auto font-mono text-sm text-text">{JSON.stringify(result, null, 2)}</pre>
+          <pre className="overflow-x-auto font-mono text-sm text-text">
+            {JSON.stringify(result, null, 2)}
+          </pre>
         </Surface>
       )}
     </div>
