@@ -41,6 +41,7 @@ import { PageHeader } from '../components/page-header.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { AlertIcon, CheckIcon, ClockIcon, XCircleIcon } from '../components/icons.js';
 import { EmptyState } from '../components/empty-state.js';
+import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Table } from '../components/table.js';
 import { ConfidenceChip } from '../components/confidence-chip.js';
 import { useToast } from '../components/toast.js';
@@ -107,9 +108,11 @@ function EdtrPage() {
   const [captureOpen, setCaptureOpen] = useState(false);
   const [approving, setApproving] = useState<EdtrListItem | null>(null);
 
+  const [offset, setOffset] = useState(0);
   const queue = useQuery({
-    queryKey: ['edtr'] as const,
-    queryFn: () => apiGet<{ items: EdtrListItem[]; total: number }>('/edtr'),
+    queryKey: ['edtr', PAGE_SIZE, offset] as const,
+    queryFn: () =>
+      apiGet<{ items: EdtrListItem[]; total: number }>(`/edtr?limit=${PAGE_SIZE}&offset=${offset}`),
   });
 
   useEffect(() => {
@@ -254,6 +257,17 @@ function EdtrPage() {
             ]}
           />
         ))}
+
+      {queue.isSuccess && items.length > 0 && (
+        <Pagination
+          offset={offset}
+          limit={PAGE_SIZE}
+          total={queue.data.total}
+          onOffsetChange={setOffset}
+          noun="field logs"
+          busy={queue.isFetching}
+        />
+      )}
 
       <CaptureModal
         open={captureOpen}

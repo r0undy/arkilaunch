@@ -186,6 +186,26 @@ export function formatDate(value: string | Date | null | undefined): string {
   return date.toLocaleDateString('en-PH', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+/**
+ * Date and time together, for a log entry where the hour matters.
+ *
+ * Takes a string as well as a Date on purpose: these values arrive as JSON,
+ * so a field typed `Date` on the wire schema is a string at runtime, and
+ * calling .toLocaleString() on it silently returned the raw ISO text.
+ */
+export function formatDateTime(value: string | Date | null | undefined): string {
+  if (!value) return '--';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+  return date.toLocaleString('en-PH', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 /** "8-12 Sep 2026", collapsing the repeated month and year. */
 export function formatDateRange(
   start: string | Date | null | undefined,

@@ -1,10 +1,12 @@
 import { createRoute } from '@tanstack/react-router';
+import { useState } from 'react';
 import type { BookingSummaryResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
+import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { formatStatus, shortCode, siteName } from '../lib/format.js';
 
 const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
@@ -23,6 +25,8 @@ const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
 ];
 
 function MyBookingsPage() {
+  const [offset, setOffset] = useState(0);
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -31,11 +35,22 @@ function MyBookingsPage() {
       />
       <DataPanel
         title="My bookings"
-        options={bookingsQueries.list()}
+        options={bookingsQueries.list(PAGE_SIZE, offset)}
         emptyTitle="No bookings yet"
         emptyDescription="Rent your first piece of equipment to see it tracked here."
         isEmpty={(data) => data.total === 0}
-        render={(data) => <Table columns={COLUMNS} rows={data.items} rowKey={(row) => row.id} />}
+        render={(data) => (
+          <div>
+            <Table columns={COLUMNS} rows={data.items} rowKey={(row) => row.id} />
+            <Pagination
+              offset={offset}
+              limit={PAGE_SIZE}
+              total={data.total}
+              onOffsetChange={setOffset}
+              noun="bookings"
+            />
+          </div>
+        )}
       />
     </div>
   );
