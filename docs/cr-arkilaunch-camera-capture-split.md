@@ -43,7 +43,7 @@ Failures render inline under `role="alert"` and the field is left empty: it is e
 
 A PDF is passed through untouched. Canvas re-encoding one would destroy it, and the KYC path legitimately accepts scanned corporate documents.
 
-**3.3 The mirrored constants are labelled as such.** `MAX_UPLOAD_BYTES` and the accepted-type list now exist on both sides. `apps/api/src/storage/upload-validation.ts` carries a comment saying so, and so does the client copy. The server remains authoritative and unchanged in behaviour: it still sniffs magic bytes, still ignores the client `Content-Type`, still enforces its own caps on every request. Nothing added in this pass is a security control, and the API trusts none of it.
+**3.3 The one mirrored constant is labelled as such.** `MAX_UPLOAD_BYTES` now exists on both sides, and `apps/api/src/storage/upload-validation.ts` carries a comment saying so, as does the client copy. The type allowlist is deliberately **not** mirrored: everything the client emits is a JPEG or an untouched PDF, so there is nothing for a second list to decide. The server remains authoritative and unchanged in behaviour: it still sniffs magic bytes, still ignores the client `Content-Type`, still enforces its own caps on every request. Nothing added in this pass is a security control, and the API trusts none of it.
 
 **3.4 Both routes rewired.** `edtr.tsx` and `kyc.tsx` drop their `onScanFile` handlers and their `scanPreview` state and render `<CaptureField>`. The submit path is untouched: the same `File` still goes to `apiPostForm`.
 
