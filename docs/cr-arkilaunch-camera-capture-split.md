@@ -6,7 +6,7 @@
 **Version:** 0.1
 **Status:** `Applied`
 **Trigger doc:** [build-arkilaunch.md](build-arkilaunch.md) §5.1 Brownfield Change Workflow
-**Docs touched by this record:** [rfc-arkilaunch-ocr-edtr-reconciliation.md](rfc-arkilaunch-ocr-edtr-reconciliation.md) §2 (capture step), [prd-arkilaunch.md](prd-arkilaunch.md) US-02 AC3, [index.md](index.md) §2 (Change Log)
+**Docs touched by this record:** [rfc-arkilaunch-ocr-edtr-reconciliation.md](rfc-arkilaunch-ocr-edtr-reconciliation.md) §2 (capture step), [prd-arkilaunch.md](prd-arkilaunch.md) US-02 AC3 and §5.1 (S21), [index.md](index.md) §2 (Change Log)
 
 ---
 
@@ -24,6 +24,10 @@ On most mobile browsers `capture` does not add the camera as one option among se
 That gap is survivable while the input is a deliberate file choice and expensive the moment it is camera-first. A modern phone camera produces a 3 to 12MB image, frequently HEIC, and `apps/api/src/storage/upload-validation.ts` allows only JPEG, PNG and PDF under 10MB. Both refusals (413 `file_too_large`, 422 `unsupported_or_forged_content_type`) arrive only after the entire file has crossed a 3 to 5 Mbps link. This is drift between Locked docs and code, so it is recorded here rather than coded around.
 
 **1.3 Every selected image leaked an object URL.** `onScanFile` in both routes called `URL.createObjectURL` and never revoked it, so a capture session retained every photo it previewed.
+
+**1.4 The timekeeper could not reach EDTR capture at all.** Found while testing 1.1 on a real phone, and worse than the defect that started this pass. `/app/ocr` is the only screen in the app that opens the capture modal, and `apps/web/src/routes/_app.tsx` guards it with `requireRole('admin', 'owner', 'platform_admin')`. A timekeeper signing in is routed to `/field`, whose nav offers Dashboard and Your sites and nothing else. So the persona PRD US-02 is written for ("enter EDTR hours directly on my phone ... or fall back to photographing the paper sheet") had no way to record anything, and S21, specified in PRD §5.1 as the mobile-first timekeeper console with "digital EDTR entry; paper upload", did not have either.
+
+This was never a server-side restriction. `POST /edtr` requires `edtr:create` (`apps/api/src/edtr/edtr.controller.ts:70`), which `permission-catalog.ts` grants the timekeeper role, and the reference pick-list endpoints carry no `@RequirePermission` at all. The whole gap was a missing screen.
 
 ## 2. Scope as agreed with the user before implementation
 
@@ -47,7 +51,9 @@ A PDF is passed through untouched. Canvas re-encoding one would destroy it, and 
 
 **3.4 Both routes rewired.** `edtr.tsx` and `kyc.tsx` drop their `onScanFile` handlers and their `scanPreview` state and render `<CaptureField>`. The submit path is untouched: the same `File` still goes to `apiPostForm`.
 
-**3.5 Tests.** `capture-field.test.tsx` (8) and `image-compression.test.ts` (12). The load-bearing assertion is that the file-picker input must not carry `capture`, which is the exact defect 1.1 describes and the one a future refactor is most likely to reintroduce.
+**3.5 The timekeeper console has a capture entry point** (closing 1.4). `CaptureModal` moves out of `routes/edtr.tsx` into `apps/web/src/components/capture-modal.tsx` unchanged, and `routes/field.index.tsx` gains a full-width "Record a field log" action at 48px that opens it, loading the same pick lists. When nothing is out on rental at the operator's sites the button is disabled with a sentence saying why, rather than opening a form with an empty machine list. `apps/web/src/test/render-route.tsx` now wraps the tree in `ToastProvider`, matching `main.tsx`; without it any toast-using screen throws under test, which is why no route test had reached this modal before.
+
+**3.6 Tests.** `capture-field.test.tsx` (8), `image-compression.test.ts` (12) and `field.index.test.tsx` (3, covering the 1.4 entry point end to end through the real route tree and its guards). The load-bearing assertion is that the file-picker input must not carry `capture`, which is the exact defect 1.1 describes and the one a future refactor is most likely to reintroduce.
 
 ## 4. Recorded, not fixed
 
