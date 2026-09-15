@@ -369,7 +369,9 @@ Notes that keep the diagram honest:
 
 ## 7. Execution Plan
 
-**Can this ship behind a feature flag?** Yes. `ENABLE_OCR_PIPELINE` gates the worker and the capture endpoints; `ENABLE_OCR_KYC` gates the KYC sub-flow independently. With the flag off, EDTR capture accepts `digital_entry` and `manual_transcription`-tagged `paper_ocr` captures (per the pilot addendum above); no row is ever routed to the Azure DI worker while the flag is off, so the trusted-billing slice degrades to manual entry without losing the gate.
+**Can this ship behind a feature flag?** Yes. `ENABLE_OCR_PIPELINE` gates the worker and the capture endpoints; `ENABLE_OCR_KYC` gates the KYC sub-flow independently.
+
+> **Addendum, 2026-09-16 (`docs/cr-arkilaunch-ocr-extraction-enablement.md`):** the independence of the two flags turned out to matter more than this section anticipated, because the two flows are not in the same state. `ENABLE_OCR_KYC` can be turned on today: it resolves to `prebuilt-layout` plus `queryFields`, which needs no trained model and was verified working against the live resource. `ENABLE_OCR_PIPELINE` cannot: `arkilaunch-edtr-neural-v1` returns 404 because it has never been trained, so enabling it would reject the transcribed hours the pilot depends on and drive every paper capture to `hard_failed`. Turning it on is strictly worse than leaving it off until a labeled corpus and a training run exist, and until `EDTR_REQUIRED_FIELDS` is re-derived from the trained model's real output keys. With the flag off, EDTR capture accepts `digital_entry` and `manual_transcription`-tagged `paper_ocr` captures (per the pilot addendum above); no row is ever routed to the Azure DI worker while the flag is off, so the trusted-billing slice degrades to manual entry without losing the gate.
 
 **Ticket breakdown** (create once this RFC is Approved; feeds PRD §9 M3):
 
