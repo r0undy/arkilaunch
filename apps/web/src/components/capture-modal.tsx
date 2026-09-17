@@ -292,8 +292,13 @@ export function CaptureModal({
             </p>
             {detail.lineItems[0] && (
               <p className="text-sm text-text-muted">
-                {formatHours(detail.lineItems[0].hoursActive)} working,{' '}
-                {formatHours(detail.lineItems[0].hoursIdle)} idle.
+                {formatHours(detail.lineItems[0].hoursActive)} working
+                {/* A paper sheet has no idle column, so idle is genuinely
+                    unrecorded rather than zero. Saying "0.0 idle" would
+                    report a reading nobody took. */}
+                {detail.lineItems[0].hoursIdle === null
+                  ? '. Idle hours not recorded on this sheet.'
+                  : `, ${formatHours(detail.lineItems[0].hoursIdle)} idle.`}
               </p>
             )}
             {detail.fields.length > 0 && (
