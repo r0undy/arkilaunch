@@ -102,3 +102,11 @@ export function BellIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function LogOutIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M8 17H5a1.5 1.5 0 01-1.5-1.5v-11A1.5 1.5 0 015 3h3M13 14l4-4-4-4M17 10H8" />
+    </svg>
+  );
+}
