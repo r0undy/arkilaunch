@@ -191,50 +191,66 @@ Screen count: **25**. Grouped by area. Every interactive screen defines empty / 
 
 | Destination | Nav label | Maps to screen | Route / path | Auth required | Feature(s) |
 |-------------|-----------|----------------|--------------|---------------|------------|
-| Dashboard | Home | S4 Admin Dashboard | `/app` | Yes (tenant) | PRD-F4, PRD-F5 |
+| Dashboard | Dashboard | S4 Admin Dashboard | `/app` | Yes (tenant) | PRD-F4, PRD-F5 |
 | Quotes | Quotes | S5 / S6 | `/app/quotes` | Yes | PRD-F1 |
-| EDTR & Billing | Billing | S7 / S8 / S9 | `/app/edtr`, `/app/billing` | Yes | PRD-F3, PRD-F2 |
-| Fleet | Fleet | S10 / S11 | `/app/fleet` | Yes | PRD-F4 |
-| Sites & Weather | Sites | S12 / S13 / S14 | `/app/sites`, `/app/weather` | Yes | PRD-F4, PRD-F5 |
-| Reports | Reports | S15 / S20 | `/app/reports` | Yes | PRD-F4 |
-| Bookings | Bookings | S16 | `/app/bookings` | Yes | PRD-F8 |
-| KYC | KYC | S17 | `/app/kyc` | Yes (admin) | PRD-F6 |
-| Settings | Settings | S18 / S19 | `/app/settings` | Yes (admin) | PRD-F1, PRD-F7 |
+| EDTR | Field logs | S7 / S8 | `/app/ocr` | Yes | PRD-F3 |
+| Billing | Invoices | S9 | `/app/payments`, `/app/billing/weekly` | Yes | PRD-F2, PRD-F3 |
+| Fleet | Equipment | S10 / S11 | `/app/inventory` | Yes | PRD-F4 |
+| Sites & Weather | Sites and deployment | S12 / S13 | `/app/deployment` | Yes | PRD-F4, PRD-F5 |
+| Incidents | Incident log | S14 | `/app/incidents` | Yes | PRD-F5 |
+| Reports | Reports | S15 / S20 | `/app/insights` | Yes | PRD-F4 |
+| Bookings | My bookings | S16 | `/account/bookings` | Yes (customer) | PRD-F8 |
+| KYC | Onboarding | S17 | `/app/registration`, `/app/companies/*` | Yes (admin) | PRD-F6 |
+| Settings | Rate cards | S18 | `/app/settings` | Yes (admin) | PRD-F1 |
+| Users | People | S19 | `/app/users` | Yes (admin) | PRD-F7 |
 | Field | Field | S21 | `/field` | Yes (timekeeper, 2FA) | PRD-F3 |
-| Catalog | Browse | S22 | `/t/:tenantSlug` | No (public) | PRD-F8 |
-| Checkout | Book | S23 / S24 | `/t/:tenantSlug/cart`, `/orders/:id` | No (guest) / Yes | PRD-F2, PRD-F8 |
-| Platform | Platform | S25 | `/platform` | Yes (platform admin) | PRD-F6, PRD-F7 |
+| Catalog | Browse equipment | S22 | `/equipment` | No (public) | PRD-F8 |
+| Checkout | Checkout | S23 / S24 | `/account/cart`, `/account/checkout/*` | Yes (customer) | PRD-F2, PRD-F8 |
+| Platform | Company applications | S25 | `/app/platform-applications` | Yes (platform admin) | PRD-F6, PRD-F7 |
+
+> **Amended 2026-09-17 (`docs/cr-arkilaunch-figma-ia-alignment.md`).** The table and tree below now state the routes that actually shipped. They had described `/app/fleet`, `/app/edtr`, `/app/sites`, `/app/reports`, `/app/billing`, `/app/kyc` and `/app/bookings` since 2026-07-25; the storefront-shell pass renamed or moved every one of them on 2026-08-02 and this doc was never updated, so §5.2 named routes that returned 404 for six weeks. The frozen `S1`-`S25` IDs in §5.1 are unchanged and are **not** renumbered; screens the Figma prototype adds beyond that inventory are catalogued in [report-figma-route-alignment.md](report-figma-route-alignment.md), not spliced in here. `/account/*` is now a named branch rather than recorded drift. `/t/:tenantSlug` never shipped: the catalog is single-tenant at `/equipment`, per `cr-arkilaunch-frontend-storefront-shell.md`. **Checkout hands off to PayMongo hosted checkout**; the prototype's in-app GCash-authentication and OTP screens are rejected, not deferred, under DSD §4.1's "Don't: collect card data in-app".
 
 **Information architecture (hierarchy):**
 
 ```
 / (public landing)
 ├── /login
-├── /register            (tenant onboarding + OCR KYC)
-├── /t/:tenantSlug       (public catalog; booking portal)
-│   ├── /t/:tenantSlug/equipment/:id
-│   ├── /t/:tenantSlug/cart
-│   └── /orders/:id      (transaction tracker; PayMongo return target)
+├── /register            ├── /register/company   └── /register/pending
+├── /equipment           └── /equipment/:equipmentId
+├── /contact  /help  /terms  /privacy
+├── /account             (authed customer)
+│   ├── /account/bookings  ├── /account/bookings/:id  └── /account/bookings/:id/extend
+│   ├── /account/applications
+│   ├── /account/cart
+│   ├── /account/checkout  ├── /account/checkout/confirm  └── /account/checkout/success
+│   ├── /account/invoices/:invoiceId
+│   ├── /account/companies/new
+│   ├── /account/negotiation/:quoteId  (chat | call | final)
+│   ├── /account/notifications
+│   └── /account/settings
 ├── /app                 (authed, tenant-scoped by JWT tenant_id)
-│   ├── /app/quotes  ├── /app/quotes/new  └── /app/quotes/:id
-│   ├── /app/edtr    └── /app/edtr/review
-│   ├── /app/billing
-│   ├── /app/fleet   └── /app/fleet/:id
-│   ├── /app/sites   ├── /app/sites/:id   ├── /app/weather  └── /app/incidents
-│   ├── /app/reports
-│   ├── /app/bookings
-│   ├── /app/kyc
-│   └── /app/settings/rate-cards  └── /app/settings/users
-├── /field               (timekeeper mobile console, 2FA)
-│   └── /field/edtr/new
-└── /platform            (platform admin: tenants + subscriptions)
+│   ├── /app/quotes
+│   ├── /app/ocr
+│   ├── /app/payments    └── /app/billing/weekly
+│   ├── /app/inventory
+│   ├── /app/deployment
+│   ├── /app/incidents
+│   ├── /app/insights
+│   ├── /app/registration  ├── /app/registration/pending  ├── /app/registration/verified  └── /app/registration/review
+│   ├── /app/companies/pending  ├── /app/companies/approved  └── /app/companies/:applicationId
+│   ├── /app/platform-applications   (platform admin)
+│   ├── /app/tickets  /app/security-logs  /app/notifications  /app/profile
+│   └── /app/users   /app/settings
+└── /field               (timekeeper console, 2FA)
+    ├── /field/deployment
+    └── /field/notifications  /field/settings  /field/profile
 ```
 
 **Persistent / global elements:** Top app bar with tenant name, active-tenant badge, notifications (PM alerts, weather advisories, review-queue count), and account menu on every authed screen. Sidebar hidden during onboarding and on the timekeeper console.
 
-**Auth boundaries:** Public: `/`, `/login`, `/register`, `/t/:tenantSlug/*` (catalog browse). Authed tenant: `/app/*` and `/field/*`, scoped to the JWT tenant_id with row-level isolation. Platform admin: `/platform/*`. RBAC gates admin-only routes (`/app/kyc`, `/app/settings/*`) from owner and timekeeper roles.
+**Auth boundaries:** Public: `/`, `/login`, `/register/*`, `/equipment/*`, `/contact`, `/help`, `/terms`, `/privacy`. Authed customer: `/account/*`. Authed tenant: `/app/*` and `/field/*`, scoped to the JWT tenant_id with row-level isolation. Platform admin: `/app/platform-applications`. RBAC gates admin-only routes (`/app/registration`, `/app/companies/*`, `/app/users`, `/app/settings`) from owner and timekeeper roles.
 
-**Deep-link / external entry points:** PayMongo hosted-checkout return to `/orders/:id?status=...`; emailed quote link to a printable quote; push notification to a weather advisory or a review-queue item; platform invite link to `/register`.
+**Deep-link / external entry points:** PayMongo hosted-checkout return to `/account/checkout/success`; emailed quote link to a printable quote; push notification to a weather advisory or a review-queue item; platform invite link to `/register`.
 
 ### 5.3 App Flow
 

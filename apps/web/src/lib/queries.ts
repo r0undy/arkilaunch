@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 import type {
+  BookingDetailResponse,
   BookingListResponse,
   CatalogEquipment,
   CatalogEquipmentListResponse,
@@ -7,6 +8,7 @@ import type {
   EquipmentListResponse,
   FinancialReportResponse,
   IncidentListResponse,
+  InvoiceDetailResponse,
   InvoiceListResponse,
   SiteListResponse,
   UserSelfResponse,
@@ -77,6 +79,11 @@ export const invoicesQueries = {
       queryKey: ['invoices', limit, offset] as const,
       queryFn: () => apiGet<InvoiceListResponse>(`/invoices?limit=${limit}&offset=${offset}`),
     }),
+  detail: (invoiceId: string) =>
+    queryOptions({
+      queryKey: ['invoice', invoiceId] as const,
+      queryFn: () => apiGet<InvoiceDetailResponse>(`/invoices/${invoiceId}`),
+    }),
 };
 
 export const incidentsQueries = {
@@ -92,6 +99,11 @@ export const bookingsQueries = {
     queryOptions({
       queryKey: ['bookings', limit, offset] as const,
       queryFn: () => apiGet<BookingListResponse>(`/bookings?limit=${limit}&offset=${offset}`),
+    }),
+  detail: (bookingId: string) =>
+    queryOptions({
+      queryKey: ['booking', bookingId] as const,
+      queryFn: () => apiGet<BookingDetailResponse>(`/bookings/${bookingId}`),
     }),
 };
 
