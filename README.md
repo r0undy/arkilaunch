@@ -17,7 +17,7 @@ Read this before trusting any other status claim in the repo; [docs/index.md](do
 - **Database:** 35 tables against a real Supabase project, RLS forced on all 28 tenant-owned tables, RS256 JWT with refresh rotation.
 - **Frontend:** a working shell, not a finished product. Storefront landing, auth flow, and role-aware route groups are live on the Yardboard design system; several routes are still thin and some query hooks return `unknown`.
 - **Deployment: not yet proven.** `cr-arkilaunch-deploy-unblock.md` (2026-09-13) put every prerequisite in place, but no `Deploy` run has yet gone green, so the pipeline is unproven rather than fixed. PRD §9 M5 (anchor pilot deployment) has not started.
-- **The OCR path has never analyzed a real document.** `arkilaunch-edtr-neural-v1` is an untrained model id, `ENABLE_OCR_PIPELINE` is off everywhere, and the QAD-T39 accuracy gate cannot be measured until labeled fixtures exist. See [docs/runbook-ocr-fixtures.md](docs/runbook-ocr-fixtures.md).
+- **The OCR path has never analyzed a real *filled* document.** EDTR extraction now runs end to end against live Azure DI via `prebuilt-layout` tables, and one capture of the real Almara multi-day form fans out into one row per dated line (`docs/cr-arkilaunch-edtr-real-form.md`). But everything measured so far used machine-generated sheets: handwriting is entirely unexercised, no labeled corpus exists, and the QAD-T39 >= 90.06% accuracy gate is still unmeasured. `ENABLE_OCR_PIPELINE` is on in dev only; AIA-R7 stays Open (escalated) and CLR gap E1 is uncleared. See [docs/runbook-ocr-fixtures.md](docs/runbook-ocr-fixtures.md).
 
 Two Change Records remain open on their own terms: `cr-arkilaunch-pilot-honesty.md` and `cr-arkilaunch-azure-di-provisioning.md`.
 
