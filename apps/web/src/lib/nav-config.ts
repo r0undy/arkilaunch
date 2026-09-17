@@ -79,6 +79,8 @@ export const APP_NAV: NavGroup[] = [
       { label: 'Notifications', to: '/app/notifications', icon: Bell },
       { label: 'My profile', to: '/app/profile', icon: UserCircle },
       { label: 'People', to: '/app/users', icon: Users },
+      { label: 'Tickets', to: '/app/tickets', icon: ClipboardList },
+      { label: 'Security logs', to: '/app/security-logs', icon: ShieldAlert },
       { label: 'Rate cards', to: '/app/settings', icon: Settings },
       { label: 'Onboarding', to: '/app/registration', icon: UserPlus },
       { label: 'Registration pending', to: '/app/registration/pending', icon: ClipboardList },
@@ -106,4 +108,5 @@ export const FIELD_NAV: NavItem[] = [
   { label: 'Your sites', to: '/field/deployment' },
   { label: 'Notifications', to: '/field/notifications' },
   { label: 'My profile', to: '/field/profile' },
+  { label: 'Settings', to: '/field/settings' },
 ];

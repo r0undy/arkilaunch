@@ -64,6 +64,16 @@ import {
   fieldNotificationsRoute,
 } from './routes/notifications.js';
 import { appProfileRoute, fieldProfileRoute } from './routes/profile.js';
+import {
+  appTicketsRoute,
+  appSecurityLogsRoute,
+  fieldSettingsRoute,
+  accountCompanyNewRoute,
+  accountNegotiationRoute,
+  accountNegotiationChatRoute,
+  accountNegotiationCallRoute,
+  accountNegotiationFinalRoute,
+} from './routes/unbacked-screens.js';
 
 export const routeTree = rootRoute.addChildren([
   publicLayoutRoute.addChildren([indexRoute, equipmentRoute, equipmentDetailRoute, contactRoute, helpRoute, termsRoute, privacyRoute]),
@@ -80,6 +90,11 @@ export const routeTree = rootRoute.addChildren([
     accountNotificationsRoute,
     accountBookingRoute,
     accountBookingExtendRoute,
+    accountCompanyNewRoute,
+    accountNegotiationRoute,
+    accountNegotiationChatRoute,
+    accountNegotiationCallRoute,
+    accountNegotiationFinalRoute,
   ]),
   appLayoutRoute.addChildren([
     appIndexRoute,
@@ -103,12 +118,15 @@ export const routeTree = rootRoute.addChildren([
     appCompanyApplicationRoute,
     appNotificationsRoute,
     appProfileRoute,
+    appTicketsRoute,
+    appSecurityLogsRoute,
   ]),
   fieldLayoutRoute.addChildren([
     fieldIndexRoute,
     fieldDeploymentRoute,
     fieldNotificationsRoute,
     fieldProfileRoute,
+    fieldSettingsRoute,
   ]),
 ]);
 
