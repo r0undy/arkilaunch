@@ -7,6 +7,7 @@ import type {
   EquipmentListResponse,
   FinancialReportResponse,
   IncidentListResponse,
+  InvoiceDetailResponse,
   InvoiceListResponse,
   SiteListResponse,
   UserSelfResponse,
@@ -76,6 +77,11 @@ export const invoicesQueries = {
     queryOptions({
       queryKey: ['invoices', limit, offset] as const,
       queryFn: () => apiGet<InvoiceListResponse>(`/invoices?limit=${limit}&offset=${offset}`),
+    }),
+  detail: (invoiceId: string) =>
+    queryOptions({
+      queryKey: ['invoice', invoiceId] as const,
+      queryFn: () => apiGet<InvoiceDetailResponse>(`/invoices/${invoiceId}`),
     }),
 };
 
