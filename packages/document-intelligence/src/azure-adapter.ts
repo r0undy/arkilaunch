@@ -35,6 +35,11 @@ interface AzureAnalyzeField {
   confidence?: number;
 }
 
+interface AzureSpan {
+  offset?: number;
+  length?: number;
+}
+
 interface AzureAnalyzeTable {
   rowCount?: number;
   columnCount?: number;
@@ -44,14 +49,20 @@ interface AzureAnalyzeTable {
     rowSpan?: number;
     columnSpan?: number;
     content?: string;
+    spans?: AzureSpan[];
   }>;
+}
+
+interface AzureWord {
+  confidence?: number;
+  span?: AzureSpan;
 }
 
 interface AzureAnalyzeOperation {
   status: 'notStarted' | 'running' | 'succeeded' | 'failed';
   error?: { code?: string; message?: string };
   analyzeResult?: {
-    pages?: unknown[];
+    pages?: Array<{ words?: AzureWord[] }>;
     documents?: Array<{ fields?: Record<string, AzureAnalyzeField> }>;
     tables?: AzureAnalyzeTable[];
   };
@@ -112,7 +123,7 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
       );
     }
 
-    const tables = mapTables(analyzeResult.tables);
+    const tables = mapTables(analyzeResult.tables, analyzeResult.pages);
     return { fields: this.mapFields(request, analyzeResult), ...(tables.length > 0 ? { tables } : {}) };
   }
 
@@ -213,7 +224,34 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
 // validates that the grid it was handed is complete before reading any
 // hours off it, so a dropped cell surfaces as a refusal to parse -- never
 // as a time silently shifted into a neighbouring date's column.
-function mapTables(tables: AzureAnalyzeTable[] | undefined): ExtractedTable[] {
+// The lowest word confidence overlapping a cell's spans. Words carry
+// confidence and offsets into the same content string the cell's spans
+// index into, so this is a real measurement rather than a stand-in.
+function cellConfidence(spans: AzureSpan[] | undefined, words: AzureWord[]): number {
+  const ranges = (spans ?? [])
+    .filter((s) => typeof s.offset === 'number' && typeof s.length === 'number')
+    .map((s) => [s.offset!, s.offset! + s.length!] as const);
+  if (ranges.length === 0) return 0;
+
+  let min = Number.POSITIVE_INFINITY;
+  for (const word of words) {
+    const offset = word.span?.offset;
+    const length = word.span?.length;
+    if (typeof offset !== 'number' || typeof length !== 'number') continue;
+    if (!ranges.some(([start, end]) => offset < end && offset + length > start)) continue;
+    const c = word.confidence;
+    // Same flooring rule the field mapper uses: an absent or out-of-range
+    // confidence becomes 0, never 1.
+    min = Math.min(min, typeof c === 'number' && Number.isFinite(c) && c >= 0 && c <= 1 ? c : 0);
+  }
+  return Number.isFinite(min) ? min : 0;
+}
+
+function mapTables(
+  tables: AzureAnalyzeTable[] | undefined,
+  pages: Array<{ words?: AzureWord[] }> | undefined,
+): ExtractedTable[] {
+  const words = (pages ?? []).flatMap((p) => p.words ?? []);
   return (tables ?? [])
     .filter((t) => typeof t.rowCount === 'number' && typeof t.columnCount === 'number')
     .map((t) => ({
@@ -231,6 +269,7 @@ function mapTables(tables: AzureAnalyzeTable[] | undefined): ExtractedTable[] {
           rowIndex: c.rowIndex!,
           columnIndex: c.columnIndex!,
           content: (c.content ?? '').replace(/\s+/g, ' ').trim(),
+          confidence: cellConfidence(c.spans, words),
         })),
     }));
 }

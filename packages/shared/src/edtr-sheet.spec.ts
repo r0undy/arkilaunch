@@ -17,7 +17,7 @@ function table(dataRows: string[][]): ExtractedTable {
     rowCount: rows.length,
     columnCount: 9,
     cells: rows.flatMap((row, rowIndex) =>
-      row.map((content, columnIndex) => ({ rowIndex, columnIndex, content })),
+      row.map((content, columnIndex) => ({ rowIndex, columnIndex, content, confidence: 0.99 })),
     ),
   };
 }
@@ -118,10 +118,10 @@ describe('parseEdtrSheet', () => {
       rowCount: 2,
       columnCount: 2,
       cells: [
-        { rowIndex: 0, columnIndex: 0, content: 'CHARGE TO' },
-        { rowIndex: 0, columnIndex: 1, content: 'Tower 3 Podium Works' },
-        { rowIndex: 1, columnIndex: 0, content: 'EQPT. TYPE' },
-        { rowIndex: 1, columnIndex: 1, content: 'Crawler Crane CC-07' },
+        { rowIndex: 0, columnIndex: 0, content: 'CHARGE TO', confidence: 0.99 },
+        { rowIndex: 0, columnIndex: 1, content: 'Tower 3 Podium Works', confidence: 0.99 },
+        { rowIndex: 1, columnIndex: 0, content: 'EQPT. TYPE', confidence: 0.99 },
+        { rowIndex: 1, columnIndex: 1, content: 'Crawler Crane CC-07', confidence: 0.99 },
       ],
     };
     const result = parseEdtrSheet(

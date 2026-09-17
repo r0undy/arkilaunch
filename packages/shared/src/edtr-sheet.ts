@@ -28,6 +28,13 @@ export interface EdtrSheetDay {
   // contradicts itself, so this day must reach a human even if a digital
   // counterpart happens to agree with the written total.
   totalMismatch: boolean;
+  // Lowest OCR confidence across the two cells whose values become the
+  // record: the date and the written total. The time cells are deliberately
+  // excluded -- they never become a stored reading, they only corroborate,
+  // and a smudged time that produces a wrong cross-check already routes the
+  // day to review via totalMismatch. Feeds min_field_confidence and so the
+  // 0.90 gate.
+  confidence: number;
 }
 
 export type EdtrSheetParse =
@@ -48,6 +55,7 @@ function norm(s: string): string {
 
 interface Grid {
   rows: string[][];
+  confidences: number[][];
   rowCount: number;
   columnCount: number;
 }
@@ -56,6 +64,9 @@ function toGrid(table: ExtractedTable): Grid | null {
   const rows: string[][] = Array.from({ length: table.rowCount }, () =>
     Array<string>(table.columnCount).fill(''),
   );
+  const confidences: number[][] = Array.from({ length: table.rowCount }, () =>
+    Array<number>(table.columnCount).fill(0),
+  );
   for (const cell of table.cells) {
     // A cell outside the declared bounds means the grid we were handed is
     // not the grid Azure described. Refuse rather than read hours off a
@@ -63,8 +74,9 @@ function toGrid(table: ExtractedTable): Grid | null {
     if (cell.rowIndex >= table.rowCount || cell.columnIndex >= table.columnCount) return null;
     if (cell.rowIndex < 0 || cell.columnIndex < 0) return null;
     rows[cell.rowIndex]![cell.columnIndex] = cell.content;
+    confidences[cell.rowIndex]![cell.columnIndex] = cell.confidence;
   }
-  return { rows, rowCount: table.rowCount, columnCount: table.columnCount };
+  return { rows, confidences, rowCount: table.rowCount, columnCount: table.columnCount };
 }
 
 interface Columns {
@@ -236,11 +248,13 @@ export function parseEdtrSheet(
     seen.add(reportDate);
 
     const computedHours = computeHours(row, columns.pairs);
+    const cellConfidences = grid.confidences[r]!;
     days.push({
       reportDate,
       hoursActive,
       computedHours,
       totalMismatch: computedHours !== null && Math.abs(computedHours - hoursActive) > tolerance,
+      confidence: Math.min(cellConfidences[columns.date] ?? 0, cellConfidences[columns.total] ?? 0),
     });
   }
 

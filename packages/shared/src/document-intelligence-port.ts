@@ -24,6 +24,13 @@ export interface ExtractedTableCell {
   rowIndex: number;
   columnIndex: number;
   content: string;
+  // prebuilt-layout reports no confidence on a table cell, but it does
+  // report one per recognised word. This is the lowest confidence among
+  // the words that make up this cell, so the 0.90 gate keeps grading real
+  // OCR certainty rather than a number we picked. A non-empty cell whose
+  // words cannot be located floors to 0 -- below the gate, so it routes to
+  // a human -- exactly as a missing field confidence does.
+  confidence: number;
 }
 
 export interface ExtractedTable {
