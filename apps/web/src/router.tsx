@@ -54,6 +54,12 @@ import {
 import { fieldLayoutRoute } from './routes/_field.js';
 import { fieldIndexRoute } from './routes/field.index.js';
 import { fieldDeploymentRoute } from './routes/field.deployment.js';
+import {
+  appNotificationsRoute,
+  accountNotificationsRoute,
+  fieldNotificationsRoute,
+} from './routes/notifications.js';
+import { appProfileRoute, fieldProfileRoute } from './routes/profile.js';
 
 export const routeTree = rootRoute.addChildren([
   publicLayoutRoute.addChildren([indexRoute, equipmentRoute, equipmentDetailRoute, contactRoute, helpRoute, termsRoute, privacyRoute]),
@@ -67,6 +73,7 @@ export const routeTree = rootRoute.addChildren([
     accountInvoiceRoute,
     accountCheckoutRoute,
     accountCheckoutSuccessRoute,
+    accountNotificationsRoute,
   ]),
   appLayoutRoute.addChildren([
     appIndexRoute,
@@ -88,8 +95,15 @@ export const routeTree = rootRoute.addChildren([
     appCompaniesPendingRoute,
     appCompaniesApprovedRoute,
     appCompanyApplicationRoute,
+    appNotificationsRoute,
+    appProfileRoute,
   ]),
-  fieldLayoutRoute.addChildren([fieldIndexRoute, fieldDeploymentRoute]),
+  fieldLayoutRoute.addChildren([
+    fieldIndexRoute,
+    fieldDeploymentRoute,
+    fieldNotificationsRoute,
+    fieldProfileRoute,
+  ]),
 ]);
 
 export const router = createRouter({ routeTree });

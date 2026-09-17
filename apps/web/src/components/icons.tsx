@@ -94,3 +94,11 @@ export function CloseIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function BellIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M10 3a4.5 4.5 0 00-4.5 4.5c0 3-1.5 4.5-1.5 4.5h12s-1.5-1.5-1.5-4.5A4.5 4.5 0 0010 3zM8.6 15a1.6 1.6 0 002.8 0" />
+    </svg>
+  );
+}

@@ -8,6 +8,8 @@ import {
   Receipt,
   CalendarRange,
   Settings,
+  Bell,
+  UserCircle,
   ShieldAlert,
   ShoppingCart,
   Store,
@@ -39,6 +41,7 @@ export const ACCOUNT_NAV: NavGroup[] = [
       { label: 'Browse equipment', to: '/equipment', icon: Boxes },
       { label: 'My bookings', to: '/account/bookings', icon: ShoppingCart },
       { label: 'Applications', to: '/account/applications', icon: FileText },
+      { label: 'Notifications', to: '/account/notifications', icon: Bell },
       { label: 'Settings', to: '/account/settings', icon: Settings },
     ],
   },
@@ -73,6 +76,8 @@ export const APP_NAV: NavGroup[] = [
   {
     title: 'Administration',
     items: [
+      { label: 'Notifications', to: '/app/notifications', icon: Bell },
+      { label: 'My profile', to: '/app/profile', icon: UserCircle },
       { label: 'People', to: '/app/users', icon: Users },
       { label: 'Rate cards', to: '/app/settings', icon: Settings },
       { label: 'Onboarding', to: '/app/registration', icon: UserPlus },
@@ -99,4 +104,6 @@ export const PLATFORM_ADMIN_NAV: NavGroup[] = [
 export const FIELD_NAV: NavItem[] = [
   { label: 'Dashboard', to: '/field' },
   { label: 'Your sites', to: '/field/deployment' },
+  { label: 'Notifications', to: '/field/notifications' },
+  { label: 'My profile', to: '/field/profile' },
 ];
