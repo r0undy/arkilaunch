@@ -40,6 +40,16 @@ import { appPlatformApplicationsRoute } from './routes/app.platform-applications
 import { quotesRoute } from './routes/quotes.js';
 import { edtrRoute } from './routes/edtr.js';
 import { kycRoute } from './routes/kyc.js';
+import {
+  appCompaniesPendingRoute,
+  appCompaniesApprovedRoute,
+  appCompanyApplicationRoute,
+} from './routes/app.companies.js';
+import {
+  appRegistrationPendingRoute,
+  appRegistrationVerifiedRoute,
+  appRegistrationReviewRoute,
+} from './routes/app.registration.queues.js';
 
 import { fieldLayoutRoute } from './routes/_field.js';
 import { fieldIndexRoute } from './routes/field.index.js';
@@ -72,6 +82,12 @@ export const routeTree = rootRoute.addChildren([
     quotesRoute,
     edtrRoute,
     kycRoute,
+    appRegistrationPendingRoute,
+    appRegistrationVerifiedRoute,
+    appRegistrationReviewRoute,
+    appCompaniesPendingRoute,
+    appCompaniesApprovedRoute,
+    appCompanyApplicationRoute,
   ]),
   fieldLayoutRoute.addChildren([fieldIndexRoute, fieldDeploymentRoute]),
 ]);

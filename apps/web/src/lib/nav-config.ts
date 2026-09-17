@@ -76,6 +76,8 @@ export const APP_NAV: NavGroup[] = [
       { label: 'People', to: '/app/users', icon: Users },
       { label: 'Rate cards', to: '/app/settings', icon: Settings },
       { label: 'Onboarding', to: '/app/registration', icon: UserPlus },
+      { label: 'Registration pending', to: '/app/registration/pending', icon: ClipboardList },
+      { label: 'Registration verified', to: '/app/registration/verified', icon: ShieldAlert },
     ],
   },
 ];
@@ -86,7 +88,11 @@ export const APP_NAV: NavGroup[] = [
 export const PLATFORM_ADMIN_NAV: NavGroup[] = [
   {
     title: 'Platform',
-    items: [{ label: 'Company applications', to: '/app/platform-applications', icon: Store }],
+    items: [
+      { label: 'Company applications', to: '/app/platform-applications', icon: Store },
+      { label: 'Pending companies', to: '/app/companies/pending', icon: ClipboardList },
+      { label: 'Approved companies', to: '/app/companies/approved', icon: Store },
+    ],
   },
 ];
 
