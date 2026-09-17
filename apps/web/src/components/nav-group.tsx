@@ -57,12 +57,13 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
                   activeOptions={{ exact: true }}
                   aria-current={isActive ? 'page' : undefined}
                   className={[
-                    'min-h-11 rounded-sm border-l-[3px] px-3 py-2 text-sm font-medium',
+                    'flex min-h-11 items-center gap-2.5 rounded-sm border-l-[3px] px-3 py-2 text-sm font-medium',
                     isActive
                       ? 'border-primary bg-surface font-semibold text-text'
                       : 'border-transparent text-text-muted hover:bg-surface hover:text-text',
                   ].join(' ')}
                 >
+                  {item.icon && <item.icon aria-hidden="true" className="h-4 w-4 shrink-0" />}
                   {item.label}
                 </Link>
               );

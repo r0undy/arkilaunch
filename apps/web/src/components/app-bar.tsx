@@ -24,8 +24,8 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   const reviewQueueCount = reviewItems ? reviewItems.filter((e) => e.status === 'review').length : null;
 
   return (
-    <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between gap-4 border-b border-border bg-surface px-4 py-2">
-      <div className="flex items-center gap-3">
+    <header className="sticky top-0 z-40 flex min-h-14 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border bg-surface px-4 py-2">
+      <div className="flex min-w-0 items-center gap-3">
         {onMenuClick && (
           <button
             type="button"
@@ -38,7 +38,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             </svg>
           </button>
         )}
-        <span className="font-display text-base font-semibold text-text">{tenantLabel}</span>
+        <span className="truncate font-display text-base font-semibold text-text">{tenantLabel}</span>
       </div>
 
       <div className="flex items-center gap-3">
