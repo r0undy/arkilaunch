@@ -126,8 +126,23 @@ export const accountCompanyNewRoute = createRoute({
 // ponytail: static screens, no transport. A real negotiation needs a
 // thread table, an RBAC role for the counterparty, and a Change Record
 // before any of this becomes interactive.
-function NegotiationScreen({ title, gap }: { title: string; gap: string }) {
-  const { quoteId } = accountNegotiationRoute.useParams();
+// `quoteId` arrives as a prop, taken from each route's OWN useParams().
+// It first read accountNegotiationRoute.useParams() for all four screens,
+// which threw "Could not find an active match" on the three children: they
+// are siblings of that route, not nested under it, so its match is not
+// active on /chat, /call or /final and every one of them rendered the error
+// boundary instead of a page. Live browser QA caught it; the route-
+// resolution test could not, because the route resolves fine -- it is the
+// component that blows up once mounted.
+function NegotiationScreen({
+  title,
+  gap,
+  quoteId,
+}: {
+  title: string;
+  gap: string;
+  quoteId: string;
+}) {
   return (
     <GapScreen
       eyebrow="Negotiation"
@@ -144,46 +159,70 @@ function NegotiationScreen({ title, gap }: { title: string; gap: string }) {
   );
 }
 
-export const accountNegotiationRoute = createRoute({
-  getParentRoute: () => accountLayoutRoute,
-  path: '/account/negotiation/$quoteId',
-  component: () => (
+function NegotiationDetails() {
+  const { quoteId } = accountNegotiationRoute.useParams();
+  return (
     <NegotiationScreen
+      quoteId={quoteId}
       title="Negotiation details"
       gap="There is no negotiation in the data model: a quote is priced by the engine and accepted or not. Counter-offers, their history and the party making them have nowhere to live yet."
     />
-  ),
+  );
+}
+
+export const accountNegotiationRoute = createRoute({
+  getParentRoute: () => accountLayoutRoute,
+  path: '/account/negotiation/$quoteId',
+  component: NegotiationDetails,
 });
+
+function NegotiationChat() {
+  const { quoteId } = accountNegotiationChatRoute.useParams();
+  return (
+    <NegotiationScreen
+      quoteId={quoteId}
+      title="Negotiation chat"
+      gap="Messaging needs a thread store and a transport, neither of which exists here. Talk to the yard through the contact page until it does."
+    />
+  );
+}
 
 export const accountNegotiationChatRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/negotiation/$quoteId/chat',
-  component: () => (
-    <NegotiationScreen
-      title="Negotiation chat"
-      gap="Messaging needs a thread store and a transport, neither of which exists here. Talk to the yard through the contact page until it does."
-    />
-  ),
+  component: NegotiationChat,
 });
+
+function NegotiationCall() {
+  const { quoteId } = accountNegotiationCallRoute.useParams();
+  return (
+    <NegotiationScreen
+      quoteId={quoteId}
+      title="Negotiation call"
+      gap="In-app calling needs a telephony provider this product has not chosen, let alone integrated. The yard's phone number is on the contact page."
+    />
+  );
+}
 
 export const accountNegotiationCallRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/negotiation/$quoteId/call',
-  component: () => (
-    <NegotiationScreen
-      title="Negotiation call"
-      gap="In-app calling needs a telephony provider this product has not chosen, let alone integrated. The yard's phone number is on the contact page."
-    />
-  ),
+  component: NegotiationCall,
 });
+
+function NegotiationFinal() {
+  const { quoteId } = accountNegotiationFinalRoute.useParams();
+  return (
+    <NegotiationScreen
+      quoteId={quoteId}
+      title="Negotiation finalised"
+      gap="Nothing records a settled negotiation, because nothing records the negotiation. An agreed price today is a quote the yard issues and you accept."
+    />
+  );
+}
 
 export const accountNegotiationFinalRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/negotiation/$quoteId/final',
-  component: () => (
-    <NegotiationScreen
-      title="Negotiation finalised"
-      gap="Nothing records a settled negotiation, because nothing records the negotiation. An agreed price today is a quote the yard issues and you accept."
-    />
-  ),
+  component: NegotiationFinal,
 });

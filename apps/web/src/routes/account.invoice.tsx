@@ -9,7 +9,14 @@ import { Surface } from '../components/surface.js';
 import { Button } from '../components/button.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { CheckIcon, AlertIcon, ClockIcon } from '../components/icons.js';
-import { formatDate, formatInvoiceType, formatPeso, formatStatus, shortCode } from '../lib/format.js';
+import {
+  condenseIds,
+  formatDate,
+  formatInvoiceType,
+  formatPeso,
+  formatStatus,
+  shortCode,
+} from '../lib/format.js';
 
 const STATUS_META: Record<string, { tone: StatusTone; icon: ReactElement }> = {
   paid: { tone: 'recon-approved', icon: <CheckIcon /> },
@@ -118,7 +125,7 @@ function InvoiceDetail({ invoice }: { invoice: InvoiceDetailResponse }) {
             <tbody>
               {invoice.lineItems.map((line) => (
                 <tr key={line.id} className="border-b border-border last:border-b-0">
-                  <td className="px-4 py-3 text-text">{line.description}</td>
+                  <td className="px-4 py-3 text-text">{condenseIds(line.description)}</td>
                   <td className="px-4 py-3 text-right font-mono text-text">{line.quantity}</td>
                   <td className="px-4 py-3 text-right font-mono text-text">
                     {formatPeso(line.unitPrice)}

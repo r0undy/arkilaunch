@@ -124,10 +124,19 @@ function Statement({ snapshot }: { snapshot: ReportsSnapshot }) {
             <span className="text-text-muted">Paid</span>
             <span className="font-mono text-text">{formatPeso(financial.paid)}</span>
           </div>
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="text-text-muted">Deposit deducted</span>
-            <span className="font-mono text-text">{formatPeso(financial.depositDeducted)}</span>
-          </div>
+          {/* `depositDeducted` is not a separate charge -- it is the same
+              money `invoiced.byType.deposit_deduction` already itemises
+              above. Live QA showed both lines rendering PHP 37,187.50 under
+              near-identical labels ("Deposit deduction" and "Deposit
+              deducted"), which reads as the customer being charged twice.
+              Show it only if the breakdown above did not already account
+              for it. */}
+          {financial.depositDeducted > 0 && !('deposit_deduction' in financial.invoiced.byType) && (
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-text-muted">Deposit deducted</span>
+              <span className="font-mono text-text">{formatPeso(financial.depositDeducted)}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-3 border-t-2 border-text pt-3">
             <span className="font-display text-base font-semibold uppercase text-text">
               Total invoiced

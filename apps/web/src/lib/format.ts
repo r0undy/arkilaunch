@@ -37,6 +37,26 @@ export function shortCode(kind: CodeKind, id: string | null | undefined): string
   return `${CODE_PREFIXES[kind]}-${stem}`;
 }
 
+/**
+ * Replace bare UUIDs inside server-generated prose with short codes.
+ *
+ * Invoice line descriptions are written by the reconciliation engine and
+ * embed the ids it acted on, e.g. "EDTR reconciliation 90aa8b0a-2b49-...
+ * (sources: 7a2a8af6-..., 680d7442-...)". That is three 36-character
+ * identifiers on the line a customer reads to understand a charge, which
+ * live QA of the invoice screen showed wrapping across two lines and
+ * crowding out the part that means something.
+ *
+ * The ids are not dropped -- they become the same REC-/LOG- style reference
+ * used everywhere else, so the row stays traceable and stays readable.
+ */
+export function condenseIds(text: string, kind: CodeKind = 'recon'): string {
+  return text.replace(
+    /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
+    (id) => shortCode(kind, id),
+  );
+}
+
 // ---------------------------------------------------------------- enum labels
 
 const STATUS_LABELS: Record<string, string> = {
