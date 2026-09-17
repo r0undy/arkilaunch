@@ -23,6 +23,8 @@ import { accountCartRoute } from './routes/account.cart.js';
 import { accountSettingsRoute } from './routes/account.settings.js';
 import { accountApplicationsRoute } from './routes/account.applications.js';
 import { accountInvoiceRoute } from './routes/account.invoice.js';
+import { accountCheckoutRoute } from './routes/account.checkout.js';
+import { accountCheckoutSuccessRoute } from './routes/account.checkout.success.js';
 
 import { appLayoutRoute } from './routes/_app.js';
 import { appIndexRoute } from './routes/app.index.js';
@@ -52,6 +54,8 @@ export const routeTree = rootRoute.addChildren([
     accountSettingsRoute,
     accountApplicationsRoute,
     accountInvoiceRoute,
+    accountCheckoutRoute,
+    accountCheckoutSuccessRoute,
   ]),
   appLayoutRoute.addChildren([
     appIndexRoute,

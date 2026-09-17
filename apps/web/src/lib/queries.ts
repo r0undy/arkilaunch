@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 import type {
+  BookingDetailResponse,
   BookingListResponse,
   CatalogEquipment,
   CatalogEquipmentListResponse,
@@ -98,6 +99,11 @@ export const bookingsQueries = {
     queryOptions({
       queryKey: ['bookings', limit, offset] as const,
       queryFn: () => apiGet<BookingListResponse>(`/bookings?limit=${limit}&offset=${offset}`),
+    }),
+  detail: (bookingId: string) =>
+    queryOptions({
+      queryKey: ['booking', bookingId] as const,
+      queryFn: () => apiGet<BookingDetailResponse>(`/bookings/${bookingId}`),
     }),
 };
 
