@@ -83,4 +83,14 @@ Nine of the added routes have **no backend at all** and render a named gap rathe
 
 `tsc --noEmit` clean and eslint clean across every touched file. The suite grew from 105 tests in 19 files to 141 in 21: `leaseProgress` gets three assertions (the failure that matters is not an off-by-one percentage, it is a confident "0% complete, 0 days remaining" on a hire whose dates are unknown, which reads as "your rental is over"), and a new `router.test.ts` pins `nav-config`'s targets to the registered route tree, since the sidebar and the router are hand-maintained in two different files and a nav entry pointing at an unregistered path renders as a dead link indistinguishable from a working one.
 
-**Deliberately not claimed:** the pages were not opened in a browser against live data this pass. `tsc`, eslint, the unit suite and the route-resolution test all pass, and a production build succeeds, but no screen was visually diffed against its Figma frame at 1440px and none was measured for horizontal overflow at 360px -- the last pass found a 360px overflow that only a real viewport exposed (`cr` history, `app-bar.tsx`). That QA is outstanding.
+**Live-browser QA (2026-09-17).** Every screen was then run in Chromium against the seeded Almara tenant at 1440px and 360px, signed in as both `admin` and `platform_admin`: 36 route/viewport captures plus the parameterised detail screens against real invoice and booking records. Result: **zero horizontal overflow at 360px, no console errors, no failed requests**, and the platform-only company screens correctly redirect a tenant `admin` to `/app` while rendering for `platform_admin`.
+
+It found three defects that every static check had passed:
+
+1. **`/account/negotiation/:id/chat`, `/call` and `/final` crashed to the error boundary.** All four screens read `accountNegotiationRoute.useParams()`, but the three children are siblings of that route rather than nested under it, so its match is not active on them and each threw "Could not find an active match". The route-resolution test could not catch this -- the routes resolve; the component throws once mounted. This is the argument for the live pass: a green unit suite said nothing about three of the added screens being unreachable.
+2. **Weekly billing listed the same money twice** -- "Deposit deduction" and "Deposit deducted" both rendering PHP 37,187.50, which reads as a double charge.
+3. **An invoice line dumped three raw UUIDs** at the customer; `condenseIds()` now renders them as the `REC-` references used elsewhere, keeping traceability.
+
+All three are fixed and covered. Suite: **144 tests / 22 files**.
+
+**Still not claimed:** the screens were checked for structure, data correctness and overflow, not pixel-diffed against their Figma frames; the prototype's palette is deliberately not matched, so a pixel diff would fail by design. Three captures showed a query still loading at screenshot time (bookings, notifications) -- verified as harness timing against a remote Supabase, since the same endpoints answer in under two seconds and render fully on a direct load.
