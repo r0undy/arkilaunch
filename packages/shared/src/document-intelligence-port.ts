@@ -15,11 +15,16 @@ export interface ExtractedField {
   confidence: number;
 }
 
-// A cell of a table prebuilt-layout found on the page. rowSpan/colSpan are
-// deliberately NOT modelled: the Almara EDTR grid has none, and a merged
-// cell we silently flattened would misalign a whole row of times against
-// the wrong dates -- a wrong reading, not a missing one. The sheet parser
-// rejects a table whose cells do not tile a plain grid instead.
+// A cell of a table prebuilt-layout found on the page, as a plain grid:
+// a merged cell is expanded into every position it covers, so consumers
+// index by (rowIndex, columnIndex) without reasoning about spans.
+//
+// Expanding is safe because Azure reports an explicit rowIndex and
+// columnIndex for every cell -- nothing is positional, so duplicating a
+// span's content across its own covered cells cannot shift a neighbour.
+// The real Almara header depends on this: "AM" spans two columns above its
+// IN/OUT pair and "DATE" spans both header rows, so dropping spanning cells
+// deleted the header outright and the sheet parsed as no table at all.
 export interface ExtractedTableCell {
   rowIndex: number;
   columnIndex: number;

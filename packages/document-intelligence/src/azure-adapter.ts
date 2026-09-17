@@ -220,10 +220,6 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
   }
 }
 
-// A spanning cell is dropped rather than flattened. The EDTR sheet parser
-// validates that the grid it was handed is complete before reading any
-// hours off it, so a dropped cell surfaces as a refusal to parse -- never
-// as a time silently shifted into a neighbouring date's column.
 // The lowest word confidence overlapping a cell's spans. Words carry
 // confidence and offsets into the same content string the cell's spans
 // index into, so this is a real measurement rather than a stand-in.
@@ -258,19 +254,18 @@ function mapTables(
       rowCount: t.rowCount!,
       columnCount: t.columnCount!,
       cells: (t.cells ?? [])
-        .filter(
-          (c) =>
-            typeof c.rowIndex === 'number' &&
-            typeof c.columnIndex === 'number' &&
-            (c.rowSpan ?? 1) === 1 &&
-            (c.columnSpan ?? 1) === 1,
-        )
-        .map((c) => ({
-          rowIndex: c.rowIndex!,
-          columnIndex: c.columnIndex!,
-          content: (c.content ?? '').replace(/\s+/g, ' ').trim(),
-          confidence: cellConfidence(c.spans, words),
-        })),
+        .filter((c) => typeof c.rowIndex === 'number' && typeof c.columnIndex === 'number')
+        .flatMap((c) => {
+          const content = (c.content ?? '').replace(/\s+/g, ' ').trim();
+          const confidence = cellConfidence(c.spans, words);
+          const out: ExtractedTable['cells'] = [];
+          for (let dr = 0; dr < Math.max(1, c.rowSpan ?? 1); dr++) {
+            for (let dc = 0; dc < Math.max(1, c.columnSpan ?? 1); dc++) {
+              out.push({ rowIndex: c.rowIndex! + dr, columnIndex: c.columnIndex! + dc, content, confidence });
+            }
+          }
+          return out;
+        }),
     }));
 }
 

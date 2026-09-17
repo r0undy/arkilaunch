@@ -260,9 +260,12 @@ describe('AzureDocumentIntelligenceAdapter', () => {
     expect(result.tables![0]!.cells[0]!.confidence).toBe(0);
   });
 
-  it('drops a spanning cell rather than flattening it into the wrong column', async () => {
-    // A merged cell silently collapsed would shift a row of times under the
-    // wrong date. The sheet parser then refuses the grid instead.
+  it('expands a merged header cell across every column it covers', async () => {
+    // The real Almara header merges "AM" across its IN/OUT pair. Dropping
+    // such a cell deleted the header outright and the whole sheet parsed as
+    // no timesheet at all -- which is how this was caught, against the live
+    // resource. Azure reports explicit indices, so expanding cannot shift a
+    // neighbouring column.
     (fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(
         new Response(null, { status: 202, headers: { 'Operation-Location': OPERATION_LOCATION } }),
@@ -287,7 +290,10 @@ describe('AzureDocumentIntelligenceAdapter', () => {
 
     const adapter = new AzureDocumentIntelligenceAdapter({ endpoint: ENDPOINT, apiKey: 'k' });
     const result = await adapter.analyze(EDTR_MODEL_ID, Buffer.from('x'));
-    expect(result.tables![0]!.cells).toEqual([]);
+    expect(result.tables![0]!.cells).toEqual([
+      { rowIndex: 0, columnIndex: 0, content: 'AM', confidence: 0.99 },
+      { rowIndex: 0, columnIndex: 1, content: 'AM', confidence: 0.99 },
+    ]);
   });
 
   it('sends the EDTR model to prebuilt-layout without queryFields', async () => {

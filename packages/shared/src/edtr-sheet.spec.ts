@@ -134,6 +134,42 @@ describe('parseEdtrSheet', () => {
     expect(result.days).toHaveLength(1);
   });
 
+  it('reads the merged-header shape the real form actually produces', () => {
+    // After the adapter expands spans, "AM" repeats across its IN/OUT pair
+    // and "DATE"/"TOTAL HOURS" repeat down both header rows. This is the
+    // real grid, and the earlier blank-padded HEADER above is the
+    // already-separated variant; both must parse.
+    const merged = [
+      ['DATE', 'AM', 'AM', 'PM', 'PM', 'OVERTIME', 'OVERTIME', 'TOTAL HOURS', 'SIGNATURE'],
+      ['DATE', 'IN', 'OUT', 'IN', 'OUT', 'IN', 'OUT', 'TOTAL HOURS', 'SIGNATURE'],
+      ['03/01', '07:00', '11:30', '13:00', '17:00', '18:00', '20:00', '10.5', ''],
+    ];
+    const result = parseEdtrSheet(
+      [
+        {
+          rowCount: merged.length,
+          columnCount: 9,
+          cells: merged.flatMap((row, rowIndex) =>
+            row.map((content, columnIndex) => ({ rowIndex, columnIndex, content, confidence: 0.99 })),
+          ),
+        },
+      ],
+      CAPTURE,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.days).toEqual([
+      {
+        reportDate: '2026-03-01',
+        hoursActive: 10.5,
+        computedHours: 10.5,
+        totalMismatch: false,
+        confidence: 0.99,
+      },
+    ]);
+  });
+
   it('refuses a page with no timesheet grid at all', () => {
     expect(parseEdtrSheet([], CAPTURE)).toEqual({ ok: false, reason: 'no_timesheet_table' });
     expect(parseEdtrSheet(undefined, CAPTURE)).toEqual({ ok: false, reason: 'no_timesheet_table' });

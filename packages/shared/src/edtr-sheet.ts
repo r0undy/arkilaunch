@@ -106,10 +106,14 @@ function findColumns(grid: Grid): Columns | null {
     if (at < 0) continue;
     const ins: number[] = [];
     const outs: number[] = [];
-    // Bounded by the next non-empty row-0 label, so OVERTIME cannot reach
-    // across into the TOTAL HOURS column and read a total as a time.
+    // Bounded by the next DIFFERENT row-0 label, so OVERTIME cannot reach
+    // across into the TOTAL HOURS column and read a total as a time. The
+    // label either repeats across the block (a merged header cell expanded
+    // by the adapter, which is what the real form produces) or is followed
+    // by blanks; both shapes are accepted.
     for (let c = at; c < grid.columnCount; c++) {
-      if (c > at && norm(row0[c] ?? '') !== '') break;
+      const label = norm(row0[c] ?? '');
+      if (c > at && label !== '' && label !== group) break;
       const sub = norm(row1[c] ?? '');
       if (sub === 'IN') ins.push(c);
       if (sub === 'OUT') outs.push(c);
