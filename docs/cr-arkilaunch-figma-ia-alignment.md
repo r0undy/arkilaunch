@@ -90,7 +90,8 @@ It found three defects that every static check had passed:
 1. **`/account/negotiation/:id/chat`, `/call` and `/final` crashed to the error boundary.** All four screens read `accountNegotiationRoute.useParams()`, but the three children are siblings of that route rather than nested under it, so its match is not active on them and each threw "Could not find an active match". The route-resolution test could not catch this -- the routes resolve; the component throws once mounted. This is the argument for the live pass: a green unit suite said nothing about three of the added screens being unreachable.
 2. **Weekly billing listed the same money twice** -- "Deposit deduction" and "Deposit deducted" both rendering PHP 37,187.50, which reads as a double charge.
 3. **An invoice line dumped three raw UUIDs** at the customer; `condenseIds()` now renders them as the `REC-` references used elsewhere, keeping traceability.
+4. **A booking with no equipment lines told the customer the wrong thing.** The seeded active booking has zero items, and the rental screen fell through to the timeline's "no return date is set yet" copy while omitting the machine panel entirely. Each now states which is actually true. Every fixture used while building had items; only real data had this shape.
 
-All three are fixed and covered. Suite: **144 tests / 22 files**.
+All four are fixed and covered. Suite: **144 tests / 22 files**.
 
 **Still not claimed:** the screens were checked for structure, data correctness and overflow, not pixel-diffed against their Figma frames; the prototype's palette is deliberately not matched, so a pixel diff would fail by design. Three captures showed a query still loading at screenshot time (bookings, notifications) -- verified as harness timing against a remote Supabase, since the same endpoints answer in under two seconds and render fully on a direct load.
