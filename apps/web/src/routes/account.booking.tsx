@@ -99,6 +99,23 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
           <MachineCard key={`${item.equipmentId}-${String(item.start)}`} equipmentId={item.equipmentId} />
         ))}
 
+        {/* A booking with no equipment lines is a real state in this data --
+            the seeded active booking has none -- and the page used to fall
+            through to the timeline's "no return date" copy, which told the
+            customer the wrong thing about a booking that has no machine on
+            it at all. Say which it is. */}
+        {booking.items.length === 0 && (
+          <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-2 p-5">
+            <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">
+              Machine on hire
+            </h2>
+            <p className="text-sm text-text-muted">
+              No equipment is recorded against this booking yet. The charges below still apply to
+              it; ask the yard if you expected a machine to be listed here.
+            </p>
+          </Surface>
+        )}
+
         <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">
@@ -129,7 +146,9 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
             </>
           ) : (
             <p className="text-sm text-text-muted">
-              No return date is set on this booking yet, so there is no progress to show.
+              {booking.items.length === 0
+                ? 'This booking has no equipment lines, so there is no hire period to track.'
+                : 'No return date is set on this booking yet, so there is no progress to show.'}
             </p>
           )}
 
