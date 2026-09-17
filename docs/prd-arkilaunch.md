@@ -5,7 +5,7 @@
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Locked
-**Last reconciled:** 2026-09-07 (see docs/index.md §1); §5.6's `reconciliation_discrepancy` field note corrected 2026-09-07 by `docs/cr-arkilaunch-m4-money-path-gates.md`; §8 amended 2026-08-20 by `docs/cr-arkilaunch-open-meteo-free-tier.md`
+**Last reconciled:** 2026-09-16 (see docs/index.md §1); US-02 AC3 partially met, split recorded 2026-09-16 by `docs/cr-arkilaunch-camera-capture-split.md`; prior 2026-09-07: §5.6's `reconciliation_discrepancy` field note corrected 2026-09-07 by `docs/cr-arkilaunch-m4-money-path-gates.md`; §8 amended 2026-08-20 by `docs/cr-arkilaunch-open-meteo-free-tier.md`
 **BRD:** [brd-arkilaunch.md](brd-arkilaunch.md)
 
 ---
@@ -84,6 +84,8 @@ Acceptance Criteria:
 - Given a timekeeper authenticated with 2FA and assigned to a site, when they submit a digital EDTR for equipment deployed on that site, then the system SHALL record it as one of the two independent logs, timestamped and attributed to that timekeeper.
 - Given a timekeeper attempts to submit or view an EDTR for a site they are not assigned to, when the request is made, then the system SHALL deny it and SHALL log the attempt.
 - Given a 3 to 5 Mbps connection and a large photo upload, when the timekeeper uploads a paper EDTR, then the client SHALL compress and queue the upload, SHALL show progress with a retry, and MUST NOT lose already-entered data on a failed attempt.
+
+> **Addendum, 2026-09-16 (`docs/cr-arkilaunch-camera-capture-split.md`):** AC3 is now **partially** met, and the split is recorded here so it is not read as closed. "SHALL compress" holds: client-side compression shipped in `apps/web/src/lib/image-compression.ts` (it had been specified here and in SDD §4 since 2026-07-25 and never built). The visible upload progress indicator, the retry, the offline queue and chunked/resumable transfer (PRD-NFR8, SDD NFR-8, DSD §6) are **still not built**. The same pass made photographing the sheet and choosing an existing file two separate actions on S7/S21; a single input carrying `capture="environment"` had made the fallback camera-only on mobile. Found while testing that on a device: **the timekeeper console had no EDTR capture entry point at all**, so neither half of this story was reachable by the role it is written for. `/app/ocr` is the only screen that opens the capture modal and it is guarded to admin/owner/platform_admin, leaving S21 without the "digital EDTR entry; paper upload" §5.1 specifies. `/field` now carries a "Record a field log" action. The server had always permitted it: `POST /edtr` requires `edtr:create`, which the timekeeper role holds.
 
 **US-03; Generate a diesel-indexed quote in under a minute (PRD-F1, Must-Have)**
 > As the Administrator, I want a diesel-indexed quote with mobilization and demobilization distance computed automatically, so that I send a printable quote in under a minute.
