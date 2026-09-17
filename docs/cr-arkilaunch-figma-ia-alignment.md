@@ -94,4 +94,13 @@ It found three defects that every static check had passed:
 
 All four are fixed and covered. Suite: **144 tests / 22 files**.
 
+**App bar, mobile (follow-up pass).** Reviewing the captures, the bar itself was the ugliest thing on a phone: it wrapped to two rows, breaking "Review queue" across two lines inside its own pill and "Sign out" in half, and spending ~100px of screen before any content. The wrap was the cheap fix for the 360px overflow an earlier pass found; it is now one row at every width (100px to 61px), with counts as icon + number below `sm` so the tenant name truncates instead of the controls.
+
+Re-measuring with device emulation turned up two further defects that the previous QA could not have seen:
+
+- **Every mobile check so far had run without Playwright's `isMobile`,** so it measured a 360px layout viewport. A real phone lays the same page out at **320px**, where the action group measured 361px: the bar genuinely overflowed on device, on every authed screen, while the desktop-sized check reported clean. Device emulation is now part of the sweep.
+- **The full pill was rendering on phones beside the compact badge** -- 153px of it. `hidden` on `StatusPill` lost to the component's own `inline-flex`, because between two single-class display utilities the winner is CSS source order, not class-attribute order. It is hidden by a wrapper element now.
+
+The compact badge also fills amber and sets dark text rather than drawing amber text on white: `--recon-review` is PAGASA yellow, **2.45:1** against the bar, under both the 4.5:1 DSD §6 asks of text and the 3:1 a non-text indicator needs.
+
 **Still not claimed:** the screens were checked for structure, data correctness and overflow, not pixel-diffed against their Figma frames; the prototype's palette is deliberately not matched, so a pixel diff would fail by design. Three captures showed a query still loading at screenshot time (bookings, notifications) -- verified as harness timing against a remote Supabase, since the same endpoints answer in under two seconds and render fully on a direct load.
