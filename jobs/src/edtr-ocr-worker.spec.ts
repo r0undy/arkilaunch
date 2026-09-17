@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
 import postgres from 'postgres';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { edtr, edtrLineItems, edtrReconciliations } from '@arkilaunch/db';
 import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared/testing';
 import { runEdtrOcrWorker } from './edtr-ocr-worker.js';
@@ -204,5 +204,73 @@ describe('edtr-ocr-worker', () => {
     expect(reconciliation!.status).toBe('discrepancy');
     const adjustments = reconciliation!.adjustments as { reason?: string };
     expect(adjustments.reason).toBe('tolerance_exceeded');
+  });
+  // Placed last: both leave rows behind that a subsequent worker run in this
+  // file would claim, so each cleans up after itself.
+  it('claims at most CLAIM_BATCH_SIZE rows and leaves the rest queued, never stranded in extracting', async () => {
+    // The regression: the claim UPDATE matched every queued row and the
+    // batch limit was applied to its RESULT, so rows 11..n were flipped to
+    // 'extracting' with locked_at set and then never processed by anyone --
+    // the claim predicate only looks at 'queued'. On any backlog over ten,
+    // captures were silently lost.
+    const dates = Array.from({ length: 12 }, (_, i) => `2020-03-${String(i + 1).padStart(2, '0')}`);
+    const rows = [];
+    for (const date of dates) rows.push(await insertQueuedPaperEdtr(date));
+
+    const fixture = new FixtureDocumentIntelligenceAdapter({
+      fields: {
+        hours_active: { value: '8.0', confidence: 0.97 },
+        hours_idle: { value: '1.0', confidence: 0.96 },
+      },
+    });
+    await runEdtrOcrWorker(fixture, stubFetchBytes);
+
+    const { db, client } = makeJobDb();
+    const after = await db
+      .select()
+      .from(edtr)
+      .where(inArray(edtr.id, rows.map((r) => r.id)));
+
+    const statuses = after.map((r) => r.status);
+    // Ten processed (single_source -> review), two untouched and still
+    // claimable on the next run. Zero left mid-flight.
+    expect(statuses.filter((s) => s === 'queued')).toHaveLength(2);
+    expect(statuses.filter((s) => s === 'extracting')).toHaveLength(0);
+
+    await db.delete(edtrLineItems).where(inArray(edtrLineItems.edtrId, rows.map((r) => r.id)));
+    await db.delete(edtrReconciliations).where(inArray(edtrReconciliations.edtrId, rows.map((r) => r.id)));
+    await db.delete(edtr).where(inArray(edtr.id, rows.map((r) => r.id)));
+    await client.end();
+  });
+
+  it('reclaims a row abandoned in extracting by a dead worker, burning one attempt', async () => {
+    const row = await insertQueuedPaperEdtr('2020-03-20');
+    const { db, client } = makeJobDb();
+    // What a crash between the claim UPDATE and the terminal write leaves
+    // behind. Before the reaper this row was unreachable forever.
+    await db
+      .update(edtr)
+      .set({ status: 'extracting', lockedAt: new Date(Date.now() - 60 * 60 * 1000) })
+      .where(eq(edtr.id, row.id));
+    await client.end();
+
+    const fixture = new FixtureDocumentIntelligenceAdapter({
+      fields: {
+        hours_active: { value: '8.0', confidence: 0.97 },
+        hours_idle: { value: '1.0', confidence: 0.96 },
+      },
+    });
+    // First run reaps it back to queued; the second claims and extracts it.
+    await runEdtrOcrWorker(fixture, stubFetchBytes);
+    await runEdtrOcrWorker(fixture, stubFetchBytes);
+
+    const { db: db2, client: client2 } = makeJobDb();
+    const [updated] = await db2.select().from(edtr).where(eq(edtr.id, row.id));
+    await client2.end();
+
+    expect(updated!.status).toBe('review'); // single_source, i.e. it got extracted
+    // The attempt is burned so a row that reliably kills the worker cannot
+    // loop forever.
+    expect(updated!.attempts).toBe(1);
   });
 });

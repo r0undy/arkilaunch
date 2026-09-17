@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt } from 'drizzle-orm';
+import { and, eq, lt, sql } from 'drizzle-orm';
 import { edtr, edtrLineItems, events, reconcileEdtr } from '@arkilaunch/db';
 import {
   OcrPayloadSchema,
@@ -25,6 +25,14 @@ import { runInstrumentedJob } from './telemetry.js';
 // recorded against them there and in cr-arkilaunch-pilot-honesty.md §4.
 const MAX_ATTEMPTS = 5;
 const CLAIM_BATCH_SIZE = 10;
+// A row is 'extracting' only while a worker is mid-flight. A crash, an OOM
+// kill, or a deploy between the claim UPDATE and the terminal write leaves
+// it 'extracting' with locked_at set forever -- and the claim predicate
+// below (status='queued' AND locked_at IS NULL) can never pick it up again.
+// It is silently lost capture. Longer than POLL_TIMEOUT_MS (60s) in
+// azure-adapter.ts plus the storage read, so this never steals a row from a
+// worker that is still legitimately working on it.
+const STALE_LOCK_MS = 15 * 60 * 1000;
 const API_VERSION = '2024-11-30';
 
 function toOcrPayload(fields: Record<string, { value: string; confidence: number }>): OcrPayload {
@@ -128,15 +136,40 @@ export async function runEdtrOcrWorker(
   const { db, client } = makeJobDb();
 
   try {
-    // Claim a batch: queued, unlocked, under the retry cap (matches the
-    // partial index edtr_worker_claim_idx from the RFC2-01 migration).
-    const claimed = await db
+    // Release rows abandoned mid-extraction by a dead worker. attempts is
+    // incremented so a row that reliably kills the worker walks toward
+    // MAX_ATTEMPTS and routes to review, instead of being re-claimed and
+    // re-crashing forever.
+    const reaped = await db
+      .update(edtr)
+      .set({
+        status: 'queued',
+        lockedAt: null,
+        attempts: sql`${edtr.attempts} + 1`,
+        lastError: 'stale_lock_reclaimed',
+      })
+      .where(and(eq(edtr.status, 'extracting'), lt(edtr.lockedAt, new Date(Date.now() - STALE_LOCK_MS))))
+      .returning({ id: edtr.id });
+    if (reaped.length > 0) {
+      console.warn(`edtr-ocr-worker: reclaimed ${reaped.length} row(s) stuck in 'extracting'.`);
+    }
+
+    // Claim a batch: queued, unlocked, under the retry cap.
+    //
+    // The LIMIT is inside the UPDATE, not applied to its result. Claiming
+    // every queued row and then slicing to CLAIM_BATCH_SIZE flipped rows
+    // 11..n to 'extracting' with locked_at set and then never touched them
+    // -- on any backlog over ten they were stranded, since the claim
+    // predicate only ever looks at 'queued' rows. Drizzle has no .limit()
+    // on update, hence the subquery; FOR UPDATE SKIP LOCKED also makes two
+    // concurrent workers claim disjoint batches rather than block.
+    const batch = await db
       .update(edtr)
       .set({ status: 'extracting', lockedAt: new Date() })
-      .where(and(eq(edtr.status, 'queued'), isNull(edtr.lockedAt), lt(edtr.attempts, MAX_ATTEMPTS)))
+      .where(
+        sql`${edtr.id} in (select id from edtr where status = 'queued' and locked_at is null and attempts < ${MAX_ATTEMPTS} order by created_at limit ${CLAIM_BATCH_SIZE} for update skip locked)`,
+      )
       .returning();
-
-    const batch = claimed.slice(0, CLAIM_BATCH_SIZE);
     console.log(`edtr-ocr-worker: claimed ${batch.length} row(s).`);
 
     for (const row of batch) {
