@@ -1,11 +1,26 @@
 name: Deploy
 
-# push to `dev` -> deploy the dev environment; push to `main` -> deploy prod.
-# `.github/workflows/ci.yml`'s lint/typecheck/test/build gate is unchanged
-# and still runs on every PR -- this workflow only builds/deploys.
+# push to `dev` -> deploy the dev environment. `.github/workflows/ci.yml`'s
+# lint/typecheck/test/build gate is unchanged and still runs on every PR --
+# this workflow only builds/deploys.
+#
+# `main` is deliberately NOT a trigger. Prod has never been provisioned --
+# there is no acrarkilaunchprod, and `infra/terraform/environments/prod`
+# still carries placeholder values -- so every one of the eight deploys this
+# workflow attempted from `main` between 2026-08-07 and 2026-09-15 failed at
+# `az acr login`, and would have kept failing.
+#
+# It could not have succeeded on its own, either: the deploy job pushes the
+# image BEFORE `terraform apply` (so apply never points a Container App at a
+# tag the registry has not seen), but apply is also what creates the
+# registry. That order is right for an environment that already exists and
+# impossible for one that does not. Standing prod up therefore needs a real
+# prod Supabase project, the prod tfvars and environment secrets filled in,
+# and one apply run by hand to create the registry -- after which `main` can
+# be added back here.
 on:
   push:
-    branches: [dev, main]
+    branches: [dev]
   pull_request:
     paths: ['infra/terraform/**']
 

@@ -38,46 +38,21 @@ function CartPage() {
     onError: (err: unknown) => setError(explainBookingError(err)),
   });
 
-  const [checkoutUnavailable, setCheckoutUnavailable] = useState(false);
-
-  const checkout = useMutation({
-    mutationFn: () => apiPost<{ checkoutUrl: string }>(`/bookings/${booking?.id}/checkout`, {}),
-    onSuccess: (data) => {
-      // With no payment provider configured the API answers with the stub
-      // adapter's placeholder ("about:blank?amount=..."), which is a
-      // successful response carrying a URL that is not a payment page.
-      // Navigating to it dropped the customer on a blank screen with no
-      // explanation, because the error branch below never ran. Check the
-      // destination is a real http(s) page before leaving the app.
-      if (/^https?:\/\//i.test(data.checkoutUrl)) {
-        window.location.assign(data.checkoutUrl);
-        return;
-      }
-      setCheckoutUnavailable(true);
-    },
-  });
-
   if (booking) {
     return (
       <div className="flex flex-col gap-4">
         <h1 className="font-display text-2xl font-semibold text-text">Booking created</h1>
-        <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
-          <p className="text-text">Booking {booking.id.slice(0, 8)} is now {booking.status}.</p>
-          <Button
-            variant="primary"
-            className="w-fit"
-            onClick={() => checkout.mutate()}
-            loading={checkout.isPending}
-          >
-            Proceed to payment
-          </Button>
-          {(checkout.isError || checkoutUnavailable) && (
-            <p className="text-sm text-error">
-              Online payment is not available in this environment yet, so this booking stays
-              unpaid. It is saved as {booking.id.slice(0, 8)} and will stay pending until the
-              deposit is settled.
-            </p>
-          )}
+        <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-3 p-4">
+          <p className="text-text">
+            Booking {booking.id.slice(0, 8)} is now {booking.status}.
+          </p>
+          {/* Payment used to be a button here that called the checkout
+              endpoint inline. It now lives on its own screen (Figma
+              168:2161), so the cart hands the booking over rather than
+              carrying a second copy of the PayMongo handoff. */}
+          <Link to="/account/checkout/$bookingId" params={{ bookingId: booking.id }}>
+            <Button variant="primary">Proceed to payment</Button>
+          </Link>
         </Surface>
       </div>
     );

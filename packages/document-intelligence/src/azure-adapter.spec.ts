@@ -128,6 +128,53 @@ describe('AzureDocumentIntelligenceAdapter', () => {
     expect(result.fields.tin).toEqual({ value: '123-456-789-000', confidence: 0.92 });
   });
 
+  // Pins the REQUEST, not just the response. The mapping above was written
+  // against a hand-made payload; this shape was verified on 2026-09-16
+  // against the live di-arkilaunch-dev resource, which accepted exactly this
+  // URL and body (202 -> succeeded, SecNumber at 0.995). Azure rejects
+  // queryFields unless `features=queryFields` accompanies it, and a custom
+  // model id must NOT carry either, so both halves are asserted here.
+  it('sends the queryFields request shape Azure actually accepts, and a bare model id without it', async () => {
+    const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    const succeeded = () =>
+      jsonResponse(200, {
+        status: 'succeeded',
+        analyzeResult: { pages: [{}], documents: [{ fields: {} }] },
+      });
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, { status: 202, headers: { 'Operation-Location': OPERATION_LOCATION } }),
+      )
+      .mockResolvedValueOnce(succeeded());
+
+    const adapter = new AzureDocumentIntelligenceAdapter({ endpoint: ENDPOINT, apiKey: 'k' });
+    await adapter.analyze('arkilaunch-kyc-layout-query', Buffer.from('hello'));
+
+    const [kycUrl, kycInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    // The logical id resolves to the prebuilt model; the custom id is never sent.
+    expect(kycUrl).toContain('/documentModels/prebuilt-layout:analyze');
+    expect(kycUrl).not.toContain('arkilaunch-kyc-layout-query');
+    expect(kycUrl).toContain('api-version=2024-11-30');
+    expect(kycUrl).toContain('features=queryFields');
+    expect(decodeURIComponent(kycUrl)).toContain('queryFields=SecNumber,Tin');
+    // Bytes travel base64-in-JSON, not as a raw binary body.
+    expect(kycInit.headers).toMatchObject({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(String(kycInit.body))).toEqual({ base64Source: Buffer.from('hello').toString('base64') });
+
+    fetchMock.mockClear();
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, { status: 202, headers: { 'Operation-Location': OPERATION_LOCATION } }),
+      )
+      .mockResolvedValueOnce(succeeded());
+
+    await adapter.analyze('arkilaunch-edtr-neural-v1', Buffer.from('hello'));
+    const [edtrUrl] = fetchMock.mock.calls[0] as [string];
+    expect(edtrUrl).toContain('/documentModels/arkilaunch-edtr-neural-v1:analyze');
+    expect(edtrUrl).not.toContain('queryFields');
+  });
+
   it('never returns a fabricated result when the operation fails', async () => {
     (fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(

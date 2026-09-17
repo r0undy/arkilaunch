@@ -1,4 +1,4 @@
-import { createRoute } from '@tanstack/react-router';
+import { createRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import type { BookingSummaryResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
@@ -22,6 +22,18 @@ const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
     ),
   },
   { header: 'Status', cell: (row) => formatStatus(row.status) },
+  {
+    header: 'Details',
+    cell: (row) => (
+      <Link
+        to="/account/bookings/$bookingId"
+        params={{ bookingId: row.id }}
+        className="font-semibold text-accent underline"
+      >
+        Open
+      </Link>
+    ),
+  },
 ];
 
 function MyBookingsPage() {

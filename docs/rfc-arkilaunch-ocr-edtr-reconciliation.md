@@ -6,7 +6,7 @@
 **Version:** 0.1
 **Author:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** `Locked`
-**Last reconciled:** 2026-09-07 (see docs/index.md §1); §2's reconciliation-dimension gap narrowed by `docs/cr-arkilaunch-m4-money-path-gates.md` (the summed-hours false-accept is closed in code; start-time/end-time/breakdown-status remain unrepresentable). Prior: pilot-honesty addendum reconciled 2026-08-20 via `docs/cr-arkilaunch-pilot-honesty.md` §2.1/§2.4 (that addendum shipped 2026-08-13 but was not written back into this file until then — see `docs/cr-arkilaunch-doc-reconcile-2026-08-20.md`)
+**Last reconciled:** 2026-09-16 (see docs/index.md §1); §2's client-side compression implemented and paper capture split into two explicit intents by `docs/cr-arkilaunch-camera-capture-split.md`. Prior: 2026-09-07; §2's reconciliation-dimension gap narrowed by `docs/cr-arkilaunch-m4-money-path-gates.md` (the summed-hours false-accept is closed in code; start-time/end-time/breakdown-status remain unrepresentable). Prior: pilot-honesty addendum reconciled 2026-08-20 via `docs/cr-arkilaunch-pilot-honesty.md` §2.1/§2.4 (that addendum shipped 2026-08-13 but was not written back into this file until then — see `docs/cr-arkilaunch-doc-reconcile-2026-08-20.md`)
 **PRD Reference:** [prd-arkilaunch.md](prd-arkilaunch.md) PRD-F3, PRD-F6, §7 AI Feature Specifications
 **SDD Reference:** [sdd-arkilaunch.md](sdd-arkilaunch.md) §4 (endpoints + §4.1 sequences), §8 (AI architecture), §8.1 (AI threat surface)
 **RFC ID:** `arkilaunch-rfc-002`
@@ -49,6 +49,8 @@ The thesis argued for "deterministic zonal OCR": fixed coordinate regions on the
 **The pipeline, end to end (EDTR path):**
 
 1. **Capture.** `POST /api/v1/edtr` accepts either a `paper_ocr` image (compressed client-side) or a `digital_entry` payload. Paper writes the blob to Supabase Storage and creates an `edtr` row at `status=queued`. Digital entry skips extraction and lands at `status=extracted` directly. Both return 202 with a poll URL. The request never waits on Azure DI.
+
+> **Addendum, 2026-09-16 (`docs/cr-arkilaunch-camera-capture-split.md`):** "compressed client-side" is now actually implemented, in `apps/web/src/lib/image-compression.ts`. It had never been built: the raw file from the picker went straight to the API, so a phone photo crossed the link whole and a HEIC one was rejected only after arriving. Capture now decodes with the EXIF orientation applied, caps the long edge at 2200px, and re-encodes to JPEG before upload. The same pass splits paper capture into two explicit intents on the intake screen, taking a photo and choosing an existing file, which one file input carrying `capture="environment"` had prevented on mobile. Server-side validation at the boundary (§6) is unchanged and remains authoritative; the client copy of the caps is a bandwidth courtesy, never a control.
 2. **Claim.** The `edtr-ocr-worker` ACA Job polls for `queued` rows, claims one with a transactional lock (a `locked_at` stamp plus a bounded `attempts` counter), and reads the image via a short-TTL signed URL. Overlapping runs are guarded per SDD §6 (parallelism limit or Postgres advisory lock).
 3. **Extract.** The worker calls Azure DI: Read for handwriting plus the labeled custom neural model for the EDTR fields (active hours, idle hours, breakdown status). Azure DI returns each field with a value, a bounding region (page plus polygon), and a confidence in [0, 1].
 4. **Persist.** The worker writes the raw structured result to `edtr.ocr_payload` (JSONB), derives one `edtr_line_items` row (hours_active, hours_idle), and records the minimum per-field confidence on the reconciliation record. It emits `ocr_field_confidence` per field.
@@ -367,7 +369,9 @@ Notes that keep the diagram honest:
 
 ## 7. Execution Plan
 
-**Can this ship behind a feature flag?** Yes. `ENABLE_OCR_PIPELINE` gates the worker and the capture endpoints; `ENABLE_OCR_KYC` gates the KYC sub-flow independently. With the flag off, EDTR capture accepts `digital_entry` and `manual_transcription`-tagged `paper_ocr` captures (per the pilot addendum above); no row is ever routed to the Azure DI worker while the flag is off, so the trusted-billing slice degrades to manual entry without losing the gate.
+**Can this ship behind a feature flag?** Yes. `ENABLE_OCR_PIPELINE` gates the worker and the capture endpoints; `ENABLE_OCR_KYC` gates the KYC sub-flow independently.
+
+> **Addendum, 2026-09-16 (`docs/cr-arkilaunch-ocr-extraction-enablement.md`):** the independence of the two flags turned out to matter more than this section anticipated, because the two flows are not in the same state. `ENABLE_OCR_KYC` can be turned on today: it resolves to `prebuilt-layout` plus `queryFields`, which needs no trained model and was verified working against the live resource. `ENABLE_OCR_PIPELINE` cannot: `arkilaunch-edtr-neural-v1` returns 404 because it has never been trained, so enabling it would reject the transcribed hours the pilot depends on and drive every paper capture to `hard_failed`. Turning it on is strictly worse than leaving it off until a labeled corpus and a training run exist, and until `EDTR_REQUIRED_FIELDS` is re-derived from the trained model's real output keys. With the flag off, EDTR capture accepts `digital_entry` and `manual_transcription`-tagged `paper_ocr` captures (per the pilot addendum above); no row is ever routed to the Azure DI worker while the flag is off, so the trusted-billing slice degrades to manual entry without losing the gate.
 
 **Ticket breakdown** (create once this RFC is Approved; feeds PRD §9 M3):
 

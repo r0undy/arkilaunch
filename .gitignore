@@ -32,3 +32,6 @@ test-results/
 # and scheduled_tasks.lock is runtime state (a session id and a live PID).
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# Local env backups (never commit: these hold real secrets)
+*.lanbak

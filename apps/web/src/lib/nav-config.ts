@@ -1,6 +1,29 @@
+import type { LucideIcon } from 'lucide-react';
+import {
+  Boxes,
+  ClipboardList,
+  FileText,
+  LayoutDashboard,
+  MapPin,
+  Receipt,
+  CalendarRange,
+  Settings,
+  Bell,
+  UserCircle,
+  ShieldAlert,
+  ShoppingCart,
+  Store,
+  TrendingUp,
+  UserPlus,
+  Users,
+} from 'lucide-react';
+
 export interface NavItem {
   label: string;
   to: string;
+  // Rendered beside the label in the sidebar; a destination is quicker to
+  // find by its shape than by reading five words of Condensed caps.
+  icon?: LucideIcon;
 }
 
 export interface NavGroup {
@@ -14,11 +37,12 @@ export const ACCOUNT_NAV: NavGroup[] = [
   {
     title: 'My account',
     items: [
-      { label: 'Home', to: '/account' },
-      { label: 'Browse equipment', to: '/equipment' },
-      { label: 'My bookings', to: '/account/bookings' },
-      { label: 'Applications', to: '/account/applications' },
-      { label: 'Settings', to: '/account/settings' },
+      { label: 'Home', to: '/account', icon: LayoutDashboard },
+      { label: 'Browse equipment', to: '/equipment', icon: Boxes },
+      { label: 'My bookings', to: '/account/bookings', icon: ShoppingCart },
+      { label: 'Applications', to: '/account/applications', icon: FileText },
+      { label: 'Notifications', to: '/account/notifications', icon: Bell },
+      { label: 'Settings', to: '/account/settings', icon: Settings },
     ],
   },
 ];
@@ -30,30 +54,37 @@ export const APP_NAV: NavGroup[] = [
   {
     title: 'Dispatch',
     items: [
-      { label: 'Dashboard', to: '/app' },
-      { label: 'Sites and deployment', to: '/app/deployment' },
+      { label: 'Dashboard', to: '/app', icon: LayoutDashboard },
+      { label: 'Sites and deployment', to: '/app/deployment', icon: MapPin },
     ],
   },
   {
     title: 'Fleet',
-    items: [{ label: 'Equipment', to: '/app/inventory' }],
+    items: [{ label: 'Equipment', to: '/app/inventory', icon: Boxes }],
   },
   {
     title: 'Billing',
     items: [
-      { label: 'Field logs', to: '/app/ocr' },
-      { label: 'Quotes', to: '/app/quotes' },
-      { label: 'Invoices', to: '/app/payments' },
-      { label: 'Reports', to: '/app/insights' },
-      { label: 'Incident log', to: '/app/incidents' },
+      { label: 'Field logs', to: '/app/ocr', icon: ClipboardList },
+      { label: 'Quotes', to: '/app/quotes', icon: FileText },
+      { label: 'Invoices', to: '/app/payments', icon: Receipt },
+      { label: 'Weekly billing', to: '/app/billing/weekly', icon: CalendarRange },
+      { label: 'Reports', to: '/app/insights', icon: TrendingUp },
+      { label: 'Incident log', to: '/app/incidents', icon: ShieldAlert },
     ],
   },
   {
     title: 'Administration',
     items: [
-      { label: 'People', to: '/app/users' },
-      { label: 'Rate cards', to: '/app/settings' },
-      { label: 'Onboarding', to: '/app/registration' },
+      { label: 'Notifications', to: '/app/notifications', icon: Bell },
+      { label: 'My profile', to: '/app/profile', icon: UserCircle },
+      { label: 'People', to: '/app/users', icon: Users },
+      { label: 'Tickets', to: '/app/tickets', icon: ClipboardList },
+      { label: 'Security logs', to: '/app/security-logs', icon: ShieldAlert },
+      { label: 'Rate cards', to: '/app/settings', icon: Settings },
+      { label: 'Onboarding', to: '/app/registration', icon: UserPlus },
+      { label: 'Registration pending', to: '/app/registration/pending', icon: ClipboardList },
+      { label: 'Registration verified', to: '/app/registration/verified', icon: ShieldAlert },
     ],
   },
 ];
@@ -64,11 +95,18 @@ export const APP_NAV: NavGroup[] = [
 export const PLATFORM_ADMIN_NAV: NavGroup[] = [
   {
     title: 'Platform',
-    items: [{ label: 'Company applications', to: '/app/platform-applications' }],
+    items: [
+      { label: 'Company applications', to: '/app/platform-applications', icon: Store },
+      { label: 'Pending companies', to: '/app/companies/pending', icon: ClipboardList },
+      { label: 'Approved companies', to: '/app/companies/approved', icon: Store },
+    ],
   },
 ];
 
 export const FIELD_NAV: NavItem[] = [
   { label: 'Dashboard', to: '/field' },
   { label: 'Your sites', to: '/field/deployment' },
+  { label: 'Notifications', to: '/field/notifications' },
+  { label: 'My profile', to: '/field/profile' },
+  { label: 'Settings', to: '/field/settings' },
 ];

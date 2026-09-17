@@ -5,7 +5,7 @@
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Locked
-**Last reconciled:** 2026-09-07 (see docs/index.md §1); §5.6's `reconciliation_discrepancy` field note corrected 2026-09-07 by `docs/cr-arkilaunch-m4-money-path-gates.md`; §8 amended 2026-08-20 by `docs/cr-arkilaunch-open-meteo-free-tier.md`
+**Last reconciled:** 2026-09-16 (see docs/index.md §1); US-02 AC3 partially met, split recorded 2026-09-16 by `docs/cr-arkilaunch-camera-capture-split.md`; prior 2026-09-07: §5.6's `reconciliation_discrepancy` field note corrected 2026-09-07 by `docs/cr-arkilaunch-m4-money-path-gates.md`; §8 amended 2026-08-20 by `docs/cr-arkilaunch-open-meteo-free-tier.md`
 **BRD:** [brd-arkilaunch.md](brd-arkilaunch.md)
 
 ---
@@ -84,6 +84,8 @@ Acceptance Criteria:
 - Given a timekeeper authenticated with 2FA and assigned to a site, when they submit a digital EDTR for equipment deployed on that site, then the system SHALL record it as one of the two independent logs, timestamped and attributed to that timekeeper.
 - Given a timekeeper attempts to submit or view an EDTR for a site they are not assigned to, when the request is made, then the system SHALL deny it and SHALL log the attempt.
 - Given a 3 to 5 Mbps connection and a large photo upload, when the timekeeper uploads a paper EDTR, then the client SHALL compress and queue the upload, SHALL show progress with a retry, and MUST NOT lose already-entered data on a failed attempt.
+
+> **Addendum, 2026-09-16 (`docs/cr-arkilaunch-camera-capture-split.md`):** AC3 is now **partially** met, and the split is recorded here so it is not read as closed. "SHALL compress" holds: client-side compression shipped in `apps/web/src/lib/image-compression.ts` (it had been specified here and in SDD §4 since 2026-07-25 and never built). The visible upload progress indicator, the retry, the offline queue and chunked/resumable transfer (PRD-NFR8, SDD NFR-8, DSD §6) are **still not built**. The same pass made photographing the sheet and choosing an existing file two separate actions on S7/S21; a single input carrying `capture="environment"` had made the fallback camera-only on mobile. Found while testing that on a device: **the timekeeper console had no EDTR capture entry point at all**, so neither half of this story was reachable by the role it is written for. `/app/ocr` is the only screen that opens the capture modal and it is guarded to admin/owner/platform_admin, leaving S21 without the "digital EDTR entry; paper upload" §5.1 specifies. `/field` now carries a "Record a field log" action. The server had always permitted it: `POST /edtr` requires `edtr:create`, which the timekeeper role holds.
 
 **US-03; Generate a diesel-indexed quote in under a minute (PRD-F1, Must-Have)**
 > As the Administrator, I want a diesel-indexed quote with mobilization and demobilization distance computed automatically, so that I send a printable quote in under a minute.
@@ -189,50 +191,66 @@ Screen count: **25**. Grouped by area. Every interactive screen defines empty / 
 
 | Destination | Nav label | Maps to screen | Route / path | Auth required | Feature(s) |
 |-------------|-----------|----------------|--------------|---------------|------------|
-| Dashboard | Home | S4 Admin Dashboard | `/app` | Yes (tenant) | PRD-F4, PRD-F5 |
+| Dashboard | Dashboard | S4 Admin Dashboard | `/app` | Yes (tenant) | PRD-F4, PRD-F5 |
 | Quotes | Quotes | S5 / S6 | `/app/quotes` | Yes | PRD-F1 |
-| EDTR & Billing | Billing | S7 / S8 / S9 | `/app/edtr`, `/app/billing` | Yes | PRD-F3, PRD-F2 |
-| Fleet | Fleet | S10 / S11 | `/app/fleet` | Yes | PRD-F4 |
-| Sites & Weather | Sites | S12 / S13 / S14 | `/app/sites`, `/app/weather` | Yes | PRD-F4, PRD-F5 |
-| Reports | Reports | S15 / S20 | `/app/reports` | Yes | PRD-F4 |
-| Bookings | Bookings | S16 | `/app/bookings` | Yes | PRD-F8 |
-| KYC | KYC | S17 | `/app/kyc` | Yes (admin) | PRD-F6 |
-| Settings | Settings | S18 / S19 | `/app/settings` | Yes (admin) | PRD-F1, PRD-F7 |
+| EDTR | Field logs | S7 / S8 | `/app/ocr` | Yes | PRD-F3 |
+| Billing | Invoices | S9 | `/app/payments`, `/app/billing/weekly` | Yes | PRD-F2, PRD-F3 |
+| Fleet | Equipment | S10 / S11 | `/app/inventory` | Yes | PRD-F4 |
+| Sites & Weather | Sites and deployment | S12 / S13 | `/app/deployment` | Yes | PRD-F4, PRD-F5 |
+| Incidents | Incident log | S14 | `/app/incidents` | Yes | PRD-F5 |
+| Reports | Reports | S15 / S20 | `/app/insights` | Yes | PRD-F4 |
+| Bookings | My bookings | S16 | `/account/bookings` | Yes (customer) | PRD-F8 |
+| KYC | Onboarding | S17 | `/app/registration`, `/app/companies/*` | Yes (admin) | PRD-F6 |
+| Settings | Rate cards | S18 | `/app/settings` | Yes (admin) | PRD-F1 |
+| Users | People | S19 | `/app/users` | Yes (admin) | PRD-F7 |
 | Field | Field | S21 | `/field` | Yes (timekeeper, 2FA) | PRD-F3 |
-| Catalog | Browse | S22 | `/t/:tenantSlug` | No (public) | PRD-F8 |
-| Checkout | Book | S23 / S24 | `/t/:tenantSlug/cart`, `/orders/:id` | No (guest) / Yes | PRD-F2, PRD-F8 |
-| Platform | Platform | S25 | `/platform` | Yes (platform admin) | PRD-F6, PRD-F7 |
+| Catalog | Browse equipment | S22 | `/equipment` | No (public) | PRD-F8 |
+| Checkout | Checkout | S23 / S24 | `/account/cart`, `/account/checkout/*` | Yes (customer) | PRD-F2, PRD-F8 |
+| Platform | Company applications | S25 | `/app/platform-applications` | Yes (platform admin) | PRD-F6, PRD-F7 |
+
+> **Amended 2026-09-17 (`docs/cr-arkilaunch-figma-ia-alignment.md`).** The table and tree below now state the routes that actually shipped. They had described `/app/fleet`, `/app/edtr`, `/app/sites`, `/app/reports`, `/app/billing`, `/app/kyc` and `/app/bookings` since 2026-07-25; the storefront-shell pass renamed or moved every one of them on 2026-08-02 and this doc was never updated, so §5.2 named routes that returned 404 for six weeks. The frozen `S1`-`S25` IDs in §5.1 are unchanged and are **not** renumbered; screens the Figma prototype adds beyond that inventory are catalogued in [report-figma-route-alignment.md](report-figma-route-alignment.md), not spliced in here. `/account/*` is now a named branch rather than recorded drift. `/t/:tenantSlug` never shipped: the catalog is single-tenant at `/equipment`, per `cr-arkilaunch-frontend-storefront-shell.md`. **Checkout hands off to PayMongo hosted checkout**; the prototype's in-app GCash-authentication and OTP screens are rejected, not deferred, under DSD §4.1's "Don't: collect card data in-app".
 
 **Information architecture (hierarchy):**
 
 ```
 / (public landing)
 ├── /login
-├── /register            (tenant onboarding + OCR KYC)
-├── /t/:tenantSlug       (public catalog; booking portal)
-│   ├── /t/:tenantSlug/equipment/:id
-│   ├── /t/:tenantSlug/cart
-│   └── /orders/:id      (transaction tracker; PayMongo return target)
+├── /register            ├── /register/company   └── /register/pending
+├── /equipment           └── /equipment/:equipmentId
+├── /contact  /help  /terms  /privacy
+├── /account             (authed customer)
+│   ├── /account/bookings  ├── /account/bookings/:id  └── /account/bookings/:id/extend
+│   ├── /account/applications
+│   ├── /account/cart
+│   ├── /account/checkout  ├── /account/checkout/confirm  └── /account/checkout/success
+│   ├── /account/invoices/:invoiceId
+│   ├── /account/companies/new
+│   ├── /account/negotiation/:quoteId  (chat | call | final)
+│   ├── /account/notifications
+│   └── /account/settings
 ├── /app                 (authed, tenant-scoped by JWT tenant_id)
-│   ├── /app/quotes  ├── /app/quotes/new  └── /app/quotes/:id
-│   ├── /app/edtr    └── /app/edtr/review
-│   ├── /app/billing
-│   ├── /app/fleet   └── /app/fleet/:id
-│   ├── /app/sites   ├── /app/sites/:id   ├── /app/weather  └── /app/incidents
-│   ├── /app/reports
-│   ├── /app/bookings
-│   ├── /app/kyc
-│   └── /app/settings/rate-cards  └── /app/settings/users
-├── /field               (timekeeper mobile console, 2FA)
-│   └── /field/edtr/new
-└── /platform            (platform admin: tenants + subscriptions)
+│   ├── /app/quotes
+│   ├── /app/ocr
+│   ├── /app/payments    └── /app/billing/weekly
+│   ├── /app/inventory
+│   ├── /app/deployment
+│   ├── /app/incidents
+│   ├── /app/insights
+│   ├── /app/registration  ├── /app/registration/pending  ├── /app/registration/verified  └── /app/registration/review
+│   ├── /app/companies/pending  ├── /app/companies/approved  └── /app/companies/:applicationId
+│   ├── /app/platform-applications   (platform admin)
+│   ├── /app/tickets  /app/security-logs  /app/notifications  /app/profile
+│   └── /app/users   /app/settings
+└── /field               (timekeeper console, 2FA)
+    ├── /field/deployment
+    └── /field/notifications  /field/settings  /field/profile
 ```
 
 **Persistent / global elements:** Top app bar with tenant name, active-tenant badge, notifications (PM alerts, weather advisories, review-queue count), and account menu on every authed screen. Sidebar hidden during onboarding and on the timekeeper console.
 
-**Auth boundaries:** Public: `/`, `/login`, `/register`, `/t/:tenantSlug/*` (catalog browse). Authed tenant: `/app/*` and `/field/*`, scoped to the JWT tenant_id with row-level isolation. Platform admin: `/platform/*`. RBAC gates admin-only routes (`/app/kyc`, `/app/settings/*`) from owner and timekeeper roles.
+**Auth boundaries:** Public: `/`, `/login`, `/register/*`, `/equipment/*`, `/contact`, `/help`, `/terms`, `/privacy`. Authed customer: `/account/*`. Authed tenant: `/app/*` and `/field/*`, scoped to the JWT tenant_id with row-level isolation. Platform admin: `/app/platform-applications`. RBAC gates admin-only routes (`/app/registration`, `/app/companies/*`, `/app/users`, `/app/settings`) from owner and timekeeper roles.
 
-**Deep-link / external entry points:** PayMongo hosted-checkout return to `/orders/:id?status=...`; emailed quote link to a printable quote; push notification to a weather advisory or a review-queue item; platform invite link to `/register`.
+**Deep-link / external entry points:** PayMongo hosted-checkout return to `/account/checkout/success`; emailed quote link to a printable quote; push notification to a weather advisory or a review-queue item; platform invite link to `/register`.
 
 ### 5.3 App Flow
 
