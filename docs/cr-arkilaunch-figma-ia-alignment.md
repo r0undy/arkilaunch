@@ -65,16 +65,22 @@ Confirmed with the user on 2026-09-17: build the **PayMongo-shaped subset** only
 Registration split (prototype models six states the code lumped into two routes):
 `/app/registration/pending`, `/app/registration/verified`, `/app/registration/review`, `/app/companies/pending`, `/app/companies/approved`, `/app/companies/$applicationId`.
 
-Checkout (PayMongo-shaped, per §3): `/account/checkout`, `/account/checkout/confirm`, `/account/checkout/success`, `/account/invoices/$invoiceId`, `/app/billing/weekly`.
+Checkout (PayMongo-shaped, per §3): `/account/checkout/:bookingId` (method choice beside an order summary) and `/account/checkout/success` (the provider's return target), plus `/account/invoices/:invoiceId` and `/app/billing/weekly`. The frame's six payment screens collapse to two because four of them exist only to capture credentials the hosted page now takes; the cart's inline copy of the checkout call was deleted rather than left as a second path to the same endpoint.
 
-Rental lifecycle and admin ops: `/account/bookings/$bookingId`, `/account/bookings/$bookingId/extend`, `/account/companies/new`, `/account/notifications`, `/app/notifications`, `/app/profile`, `/app/tickets`, `/app/security-logs`, `/field/notifications`, `/field/settings`, `/field/profile`.
+Rental lifecycle and admin ops: `/account/bookings/:bookingId`, `/account/bookings/:bookingId/extend`, `/account/companies/new`, `/account/notifications`, `/app/notifications`, `/app/profile`, `/app/tickets`, `/app/security-logs`, `/field/notifications`, `/field/settings`, `/field/profile`.
+
+Of these, three turned out to have endpoints nothing had ever called: `GET /bookings/:id` (items, quotation, invoices, payments), `GET /notifications` + `PATCH /notifications/:id/read`, and `GET /users/me`. The active-rental, notification-centre and profile screens are therefore real, not placeholders. `maintenance-notify` had been writing notifications that no reader existed for.
 
 Negotiation (layout only, no transport): `/account/negotiation/$quoteId` and its `chat`, `call`, `final` children. The prototype's chat and phone-call screens have no backend, no PRD feature and no RBAC model for a negotiating party; they remain on the `cr-arkilaunch-frontend-storefront-shell.md` §4 backlog and are built here as static layout so the IA is complete and reviewable, not as working features.
 
 ## 6. Still deferred
 
-`/app/security-logs` and `/app/tickets` have **no backend**. There is no audit endpoint and no ticket table. Both are built as layout against static placeholder rows and are marked as such in the UI; wiring them needs its own CR and an SDD §5 API addition. Every other item on `cr-arkilaunch-frontend-storefront-shell.md` §4 stands unchanged, except in-app payment credential capture, which §3 above closes as **rejected** rather than deferred.
+Nine of the added routes have **no backend at all** and render a named gap rather than sample rows: `/app/tickets`, `/app/security-logs`, `/field/settings`, `/account/companies/new`, `/account/bookings/:bookingId/extend`, and the four negotiation screens. So do `/app/companies/approved` and the three `/app/registration/*` queues. A queue full of invented tickets or fabricated security events is worse than an empty one: it looks finished, it gets screenshotted into a report, and afterwards nobody can tell which numbers were real. Each screen names the exact missing query instead.
+
+`/app/security-logs` and `/app/tickets` in particular have no backend. There is no audit endpoint and no ticket table. Both are built as layout against static placeholder rows and are marked as such in the UI; wiring them needs its own CR and an SDD §5 API addition. Every other item on `cr-arkilaunch-frontend-storefront-shell.md` §4 stands unchanged, except in-app payment credential capture, which §3 above closes as **rejected** rather than deferred.
 
 ## 7. Verification
 
-`tsc --noEmit` clean; the existing vitest suite passes; `nav-config` targets all resolve; each new page visually diffed against its Figma frame at 1440px and checked for zero horizontal overflow at 360px.
+`tsc --noEmit` clean and eslint clean across every touched file. The suite grew from 105 tests in 19 files to 141 in 21: `leaseProgress` gets three assertions (the failure that matters is not an off-by-one percentage, it is a confident "0% complete, 0 days remaining" on a hire whose dates are unknown, which reads as "your rental is over"), and a new `router.test.ts` pins `nav-config`'s targets to the registered route tree, since the sidebar and the router are hand-maintained in two different files and a nav entry pointing at an unregistered path renders as a dead link indistinguishable from a working one.
+
+**Deliberately not claimed:** the pages were not opened in a browser against live data this pass. `tsc`, eslint, the unit suite and the route-resolution test all pass, and a production build succeeds, but no screen was visually diffed against its Figma frame at 1440px and none was measured for horizontal overflow at 360px -- the last pass found a 360px overflow that only a real viewport exposed (`cr` history, `app-bar.tsx`). That QA is outstanding.

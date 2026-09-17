@@ -56,9 +56,9 @@ Inventory add / edit / delete / delete-confirmation (`292:1344`, `293:2668`, `29
 | Figma frame | Node | Route added | Priority |
 |---|---|---|---|
 | Billing Invoice Page | `168:2304` | `/account/invoices/$invoiceId` | A |
-| Payment Page - Digital Bank | `168:2161` | `/account/checkout` | A |
-| Payment Page - Bank Transfer | `216:2049` | `/account/checkout` | A |
-| Payment Confirmation | `168:3297` | `/account/checkout/confirm` | A |
+| Payment Page - Digital Bank | `168:2161` | `/account/checkout/$bookingId` | A |
+| Payment Page - Bank Transfer | `216:2049` | `/account/checkout/$bookingId` | A |
+| Payment Confirmation | `168:3297` | `/account/checkout/$bookingId` | A |
 | Bank Transfer Successful | `168:3376` | `/account/checkout/success` | A |
 | Weekly Billing | `280:2095` | `/app/billing/weekly` | A |
 | Registration Pendings | `282:7320` | `/app/registration/pending` | B |
@@ -103,8 +103,18 @@ Kept. These are real, working surfaces the prototype never caught up with — de
 
 ## 5. Known gaps behind the new routes
 
+Endpoints that turned out to exist and had never been called by anything:
+`GET /bookings/:id`, `GET /invoices/:id`, `GET /notifications` +
+`PATCH /notifications/:id/read`, and `GET /users/me`. The active rental,
+invoice, notification-centre and profile screens are real as a result.
+
+
 - `/app/security-logs` — no audit endpoint exists. Layout only, placeholder rows.
 - `/app/tickets` — no ticket table, no endpoint. Layout only.
 - `/account/negotiation/*` — no negotiation backend, no RBAC model for a negotiating party. Layout only.
 - `/app/notifications`, `/account/notifications`, `/field/notifications` — no notification endpoint; the app bar's notification affordance (DSD §4.1 Nav shell) is likewise unbuilt.
-- Profile routes read from the JWT claims already decoded in `apps/web/src/lib/jwt.ts`; there is no profile endpoint to write back to.
+- Profiles read `GET /users/me`, which is read-only: nothing writes a display name, avatar or phone number back, so no edit affordance is offered.
+- `/account/bookings/:id/extend` -- bookings can be created, listed and read; no endpoint moves a return date.
+- `/account/companies/new` -- `POST /tenants/register` takes the personal details from the first registration step and nothing attaches a second company to an existing account.
+- `/app/companies/approved` and the three `/app/registration/*` queues -- `tenants_list_pending_applications` returns pending rows only, and KYC documents are readable one at a time by document id with nothing listing them per tenant or per state.
+- The Figma company-application frame's compliance repository and verification trail need that same missing KYC list.
