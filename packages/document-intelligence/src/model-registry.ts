@@ -17,15 +17,29 @@ export type ModelRequest =
 // azure-adapter.ts, not here.
 const KYC_QUERY_FIELDS = ['SecNumber', 'Tin'];
 
-// The logical model id the EDTR worker analyzes against. Held here rather
-// than in jobs/ so the id and the fields it is expected to return are stated
-// in one place; the worker imports both.
+// EDTR extraction takes the same prebuilt-layout + queryFields route as KYC
+// above, rather than the custom neural model the earlier design assumed.
+// Training arkilaunch-edtr-neural-v1 needs >= 200 labeled Almara pages with
+// bounding boxes drawn in DI Studio and an S0 resource (F0 cannot train
+// custom neural models); none of those exist. queryFields needs none of it
+// and works against the resource that is already provisioned.
 //
-// NOTE: this model has NOT been trained yet. Until a training run over
-// labeled Almara sheets exists, Azure answers :analyze with a 404, which
-// azure-adapter.ts surfaces as a hard DocumentAnalysisError -- never a silent
-// empty result. Recorded in docs/cr-arkilaunch-pilot-honesty.md §4.
-export const EDTR_MODEL_ID = 'arkilaunch-edtr-neural-v1';
+// The trade is accuracy, and it is NOT yet measured against the RFC-2
+// 90.06% gate -- see docs/cr-arkilaunch-edtr-query-fields.md. What makes
+// this safe to ship unmeasured is that every downstream guard is unchanged:
+// a field queryFields does not return is a missing field, which hard-fails
+// to manual entry rather than becoming a zero; a null confidence floors to
+// 0 in azure-adapter.ts, which is below CONFIDENCE_GATE and so routes to
+// human review; and the double-entry reconciliation against the second
+// independent log is what actually gates the deduction. A weaker extractor
+// produces more review, never a wrong deduction.
+const EDTR_QUERY_FIELDS = ['HoursActive', 'HoursIdle'];
+
+// The logical model id the EDTR worker analyzes against, and what lands in
+// ocr_payload.model_id as provenance. Named for what it actually is: the
+// old 'arkilaunch-edtr-neural-v1' would now be a lie in a provenance field,
+// claiming a trained neural model read the sheet when prebuilt-layout did.
+export const EDTR_MODEL_ID = 'arkilaunch-edtr-layout-query';
 
 export const KYC_MODEL_ID = 'arkilaunch-kyc-layout-query';
 
@@ -35,12 +49,12 @@ export const KYC_MODEL_ID = 'arkilaunch-kyc-layout-query';
 // zero hours, and the deduction gate has no way to tell the difference once
 // it is persisted (RFC-2 §2).
 //
-// THESE NAMES ARE NOT YET CONFIRMED AGAINST A TRAINED MODEL. They are the
-// names the schema is expected to use; the training run is what makes them
-// fact. Re-derive them from the trained model's own output (the field keys in
-// its analyze response) and correct this list before the pipeline is enabled
-// anywhere real. Keeping the guess in one named constant is the point: there
-// is exactly one line to change, not two call sites to find.
+// These are no longer a guess about a model that does not exist: with
+// queryFields WE choose the field names, and QUERY_FIELD_TO_PORT_KEY below
+// maps Azure's PascalCase answers back onto exactly these keys. What is
+// still unconfirmed is whether a real Almara sheet's layout lets
+// prebuilt-layout find them at all -- that is an accuracy question the
+// golden-set harness answers, not a naming one.
 export const EDTR_REQUIRED_FIELDS = ['hours_active', 'hours_idle'] as const;
 
 export type EdtrRequiredField = (typeof EDTR_REQUIRED_FIELDS)[number];
@@ -49,17 +63,25 @@ export function resolveModelRequest(modelId: string): ModelRequest {
   if (modelId === KYC_MODEL_ID) {
     return { kind: 'query-fields', modelId: 'prebuilt-layout', queryFields: KYC_QUERY_FIELDS };
   }
-  // arkilaunch-edtr-neural-v1 and any other id: pass through as a real
-  // custom model id. If it hasn't been trained yet, Azure DI's own 404
-  // surfaces as a hard failure in azure-adapter.ts -- never a silent empty
-  // result.
+  if (modelId === EDTR_MODEL_ID) {
+    return { kind: 'query-fields', modelId: 'prebuilt-layout', queryFields: EDTR_QUERY_FIELDS };
+  }
+  // Any other id: pass through as a real custom model id. If it hasn't been
+  // trained yet, Azure DI's own 404 surfaces as a hard failure in
+  // azure-adapter.ts -- never a silent empty result. This is the branch a
+  // future trained arkilaunch-edtr-neural-v1 takes; swapping EDTR_MODEL_ID
+  // to that string is the whole migration.
   return { kind: 'model', modelId };
 }
 
 // The inverse of the queryFields camelCase mapping above, so callers keep
 // seeing the same snake_case keys the port contract already promised
 // (packages/shared/src/document-intelligence-port.ts).
+// One map across both models: the key spaces do not overlap, and a second
+// per-model map would be two places to forget a field in.
 export const QUERY_FIELD_TO_PORT_KEY: Record<string, string> = {
   SecNumber: 'sec_number',
   Tin: 'tin',
+  HoursActive: 'hours_active',
+  HoursIdle: 'hours_idle',
 };

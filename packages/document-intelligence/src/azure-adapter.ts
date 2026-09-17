@@ -3,6 +3,7 @@ import {
   type DocumentExtractionResult,
   type DocumentIntelligencePort,
   type ExtractedField,
+  type ExtractedTable,
 } from '@arkilaunch/shared';
 import { QUERY_FIELD_TO_PORT_KEY, resolveModelRequest, type ModelRequest } from './model-registry.js';
 
@@ -34,12 +35,25 @@ interface AzureAnalyzeField {
   confidence?: number;
 }
 
+interface AzureAnalyzeTable {
+  rowCount?: number;
+  columnCount?: number;
+  cells?: Array<{
+    rowIndex?: number;
+    columnIndex?: number;
+    rowSpan?: number;
+    columnSpan?: number;
+    content?: string;
+  }>;
+}
+
 interface AzureAnalyzeOperation {
   status: 'notStarted' | 'running' | 'succeeded' | 'failed';
   error?: { code?: string; message?: string };
   analyzeResult?: {
     pages?: unknown[];
     documents?: Array<{ fields?: Record<string, AzureAnalyzeField> }>;
+    tables?: AzureAnalyzeTable[];
   };
 }
 
@@ -98,7 +112,8 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
       );
     }
 
-    return { fields: this.mapFields(request, analyzeResult) };
+    const tables = mapTables(analyzeResult.tables);
+    return { fields: this.mapFields(request, analyzeResult), ...(tables.length > 0 ? { tables } : {}) };
   }
 
   private async startAnalyze(request: ModelRequest, imageStream: Buffer): Promise<string> {
@@ -192,6 +207,32 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
 
     return fields;
   }
+}
+
+// A spanning cell is dropped rather than flattened. The EDTR sheet parser
+// validates that the grid it was handed is complete before reading any
+// hours off it, so a dropped cell surfaces as a refusal to parse -- never
+// as a time silently shifted into a neighbouring date's column.
+function mapTables(tables: AzureAnalyzeTable[] | undefined): ExtractedTable[] {
+  return (tables ?? [])
+    .filter((t) => typeof t.rowCount === 'number' && typeof t.columnCount === 'number')
+    .map((t) => ({
+      rowCount: t.rowCount!,
+      columnCount: t.columnCount!,
+      cells: (t.cells ?? [])
+        .filter(
+          (c) =>
+            typeof c.rowIndex === 'number' &&
+            typeof c.columnIndex === 'number' &&
+            (c.rowSpan ?? 1) === 1 &&
+            (c.columnSpan ?? 1) === 1,
+        )
+        .map((c) => ({
+          rowIndex: c.rowIndex!,
+          columnIndex: c.columnIndex!,
+          content: (c.content ?? '').replace(/\s+/g, ' ').trim(),
+        })),
+    }));
 }
 
 function extractValue(field: AzureAnalyzeField): string | null {

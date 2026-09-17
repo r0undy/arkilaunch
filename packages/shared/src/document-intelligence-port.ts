@@ -15,8 +15,31 @@ export interface ExtractedField {
   confidence: number;
 }
 
+// A cell of a table prebuilt-layout found on the page. rowSpan/colSpan are
+// deliberately NOT modelled: the Almara EDTR grid has none, and a merged
+// cell we silently flattened would misalign a whole row of times against
+// the wrong dates -- a wrong reading, not a missing one. The sheet parser
+// rejects a table whose cells do not tile a plain grid instead.
+export interface ExtractedTableCell {
+  rowIndex: number;
+  columnIndex: number;
+  content: string;
+}
+
+export interface ExtractedTable {
+  rowCount: number;
+  columnCount: number;
+  cells: ExtractedTableCell[];
+}
+
 export interface DocumentExtractionResult {
   fields: Record<string, ExtractedField>;
+  // Optional so every existing caller (KYC, and the fixture adapters) is
+  // unaffected: they ask a document for scalar fields and get exactly what
+  // they got before. The EDTR path needs the grid instead, because the real
+  // Almara sheet is a 22-row timesheet and not a set of document-level
+  // fields -- see docs/cr-arkilaunch-edtr-real-form.md.
+  tables?: ExtractedTable[];
 }
 
 // Azure AI Document Intelligence is extraction only -- it never decides,
