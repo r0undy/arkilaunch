@@ -7,7 +7,11 @@ import tailwindcss from '@tailwindcss/vite';
 // generated routeTree.gen.ts to keep in sync.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { port: 5173 },
+  // host: true binds 0.0.0.0 so a phone on the same network can load the dev
+  // server. The OCR capture path can only really be exercised from a phone
+  // camera, and apps/web/.env already points VITE_API_BASE_URL at the LAN
+  // address, which is useless while Vite itself answers on localhost only.
+  server: { host: true, port: 5173 },
   test: {
     // Scope vitest to src/ only; e2e/ holds Playwright specs (run via `pnpm e2e`),
     // which vitest's default glob would otherwise pick up and crash on.
