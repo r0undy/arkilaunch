@@ -3,5 +3,5 @@
   "buildCommand": "pnpm --filter @arkilaunch/shared build && pnpm --filter @arkilaunch/web build",
   "outputDirectory": "dist",
   "cleanUrls": true,
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [{ "source": "/(.*)", "destination": "/" }]
 }
