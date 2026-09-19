@@ -19,6 +19,7 @@ import type {
   InvoiceSummaryResponse,
   RequestContext,
 } from '@arkilaunch/shared';
+import { countRows } from '../common/count-rows.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -88,7 +89,7 @@ export class BillingService {
         .orderBy(desc(invoices.createdAt))
         .limit(query.limit)
         .offset(query.offset);
-      const total = (await tx.select().from(invoices).where(and(...conditions))).length;
+      const total = await countRows(tx, invoices, and(...conditions));
 
       return { items: rows.map(toInvoiceSummary), total };
     });

@@ -9,6 +9,7 @@ import {
   CatalogEquipmentSchema,
   CatalogTestimonialListResponseSchema,
   type CatalogEquipment,
+  type CatalogEquipmentListQuery,
   type CatalogEquipmentListResponse,
   type CatalogTestimonialListResponse,
 } from '@arkilaunch/shared';
@@ -20,10 +21,10 @@ import {
 // deferred, see the Change Record for this workstream.
 @Injectable()
 export class CatalogService {
-  async listEquipment(): Promise<CatalogEquipmentListResponse> {
+  async listEquipment(query: CatalogEquipmentListQuery): Promise<CatalogEquipmentListResponse> {
     const slug = process.env.ANCHOR_TENANT_SLUG;
     if (!slug) return { items: [] };
-    const items = await listCatalogEquipmentForSlug(slug);
+    const items = await listCatalogEquipmentForSlug(slug, query.limit, query.offset);
     // availability_status is a free-text column at the DB level; parse
     // rather than cast so a corrupt/unexpected value fails loudly instead
     // of silently mistyping past the response contract.

@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
 import { ReferenceService } from './reference.service.js';
+import { ReferenceRateCardQueryDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -31,8 +32,8 @@ export class ReferenceController {
 
   @Get('rate-cards')
   @RequirePermission(...STAFF_READ)
-  rateCards(@Req() req: CtxRequest, @Query('equipmentTypeId') equipmentTypeId?: string) {
-    return this.reference.rateCards(req.ctx, equipmentTypeId);
+  rateCards(@Req() req: CtxRequest, @Query() query: ReferenceRateCardQueryDto) {
+    return this.reference.rateCards(req.ctx, query.equipmentTypeId);
   }
 
   @Get('rentals')

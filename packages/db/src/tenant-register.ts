@@ -94,7 +94,23 @@ export interface PendingTenantApplication {
 // (tenant:approve, platform_admin only) -- same rationale as
 // decideTenantApplication, but for the list a platform console needs before
 // it can call approve/reject at all.
-export async function listPendingTenantApplications(): Promise<PendingTenantApplication[]> {
+// Paged at the database rather than in Node. The SECURITY DEFINER
+// function itself is unchanged -- LIMIT/OFFSET wrap its result set, so
+// Postgres stops shipping rows past the page, and the platform queue no
+// longer returns every pending application in one response
+// (audit-api-surface.md #4). `total` is a separate count over the same
+// function so a caller can page.
+export async function countPendingTenantApplications(): Promise<number> {
+  const [row] = await db.execute<{ total: string }>(
+    sql`select count(*)::text as total from tenants_list_pending_applications()`,
+  );
+  return Number(row?.total ?? 0);
+}
+
+export async function listPendingTenantApplications(
+  limit: number,
+  offset: number,
+): Promise<PendingTenantApplication[]> {
   const rows = await db.execute<{
     application_id: string;
     tenant_id: string;
@@ -104,7 +120,7 @@ export async function listPendingTenantApplications(): Promise<PendingTenantAppl
     contact_mobile: string;
     contact_job_title: string;
     created_at: string;
-  }>(sql`select * from tenants_list_pending_applications()`);
+  }>(sql`select * from tenants_list_pending_applications() limit ${limit} offset ${offset}`);
   return rows.map((row) => ({
     applicationId: row.application_id,
     tenantId: row.tenant_id,

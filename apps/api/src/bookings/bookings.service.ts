@@ -14,6 +14,7 @@ import {
 } from '@arkilaunch/db';
 import type {
   BookingCreateRequest,
+  BookingListQuery,
   BookingCreateResponse,
   BookingDetailResponse,
   BookingListResponse,
@@ -22,6 +23,7 @@ import type {
 import { EventsService } from '../events/events.service.js';
 import { findAvailableAlternatives, overlappingAssignments } from '../common/equipment-availability.js';
 import { ownCustomer } from '../common/customer-scope.js';
+import { countRows } from '../common/count-rows.js';
 
 // A booking IS a `rentals` row plus one `equipment_assignments` row per
 // item -- no new table (SDD §3's 35-table catalog already models an order
@@ -140,16 +142,25 @@ export class BookingsService {
   // GET /api/v1/bookings (PRD-F8 US-09). A `customer` sees only their own
   // bookings; staff see the whole tenant (RLS is the tenant boundary,
   // matching reference/* and fleet's read posture).
-  async list(ctx: RequestContext): Promise<BookingListResponse> {
+  async list(ctx: RequestContext, query: BookingListQuery): Promise<BookingListResponse> {
     return withTenantTx(ctx, async (tx) => {
-      let rows;
+      // The role branch was always correct; it was the BOUND that was
+      // missing, on both branches (audit-api-surface.md #5).
+      let where;
       if (ctx.role === 'customer') {
         const own = await ownCustomer(tx, ctx);
-        rows = own ? await tx.select().from(rentals).where(eq(rentals.customerId, own.id)) : [];
-      } else {
-        rows = await tx.select().from(rentals);
+        if (!own) return { items: [], total: 0 };
+        where = eq(rentals.customerId, own.id);
       }
-      if (rows.length === 0) return { items: [], total: 0 };
+      const rows = await tx
+        .select()
+        .from(rentals)
+        .where(where)
+        .orderBy(desc(rentals.createdAt))
+        .limit(query.limit)
+        .offset(query.offset);
+      const total = await countRows(tx, rentals, where);
+      if (rows.length === 0) return { items: [], total };
 
       // Human-readable location (a booking is never shown as a bare
       // project_site_id UUID) -- same address-via-site join sites.service.ts
@@ -172,7 +183,7 @@ export class BookingsService {
             siteProvince: site?.province ?? null,
           };
         }),
-        total: rows.length,
+        total,
       };
     });
   }

@@ -15,6 +15,7 @@ import type {
   RateCardSupersedeRequest,
   RequestContext,
 } from '@arkilaunch/shared';
+import { countRows } from '../common/count-rows.js';
 
 @Injectable()
 export class PricingService {
@@ -142,8 +143,8 @@ export class PricingService {
         .orderBy(desc(rateCards.effectiveFrom))
         .limit(query.limit)
         .offset(query.offset);
-      const all = await tx.select({ id: rateCards.id }).from(rateCards).where(where);
-      return { items: rows, total: all.length };
+      const total = await countRows(tx, rateCards, where);
+      return { items: rows, total };
     });
   }
 

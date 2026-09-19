@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { SEC_REGEX, TIN_REGEX } from './kyc.js';
+import { PaginationQuerySchema } from './pagination.js';
 
 // POST /tenants/register (@Public, backend-unblock plan workstream 1).
 // Mirrors apps/web/src/lib/registration-client.ts's PersonalDetails +
@@ -54,6 +55,12 @@ export const TenantApplicationSchema = z.object({
   createdAt: z.coerce.date(),
 });
 export type TenantApplication = z.infer<typeof TenantApplicationSchema>;
+
+// The platform queue is cross-tenant and was returning every pending
+// application in one unbounded response while ignoring the ?limit=&offset=
+// app.companies.tsx sends (audit-api-surface.md #4).
+export const TenantApplicationListQuerySchema = PaginationQuerySchema;
+export type TenantApplicationListQuery = z.infer<typeof TenantApplicationListQuerySchema>;
 
 export const TenantApplicationListResponseSchema = z.object({
   items: z.array(TenantApplicationSchema),

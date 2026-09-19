@@ -34,6 +34,12 @@ import {
   findAvailableAlternatives,
   overlappingAssignments,
 } from '../common/equipment-availability.js';
+import { countRows } from '../common/count-rows.js';
+
+// Upper bound on the active-alert scan behind GET /weather/advisories.
+// One row per site is returned after the JS dedupe; this caps the rows
+// read to get there.
+const ACTIVE_ADVISORY_SCAN_LIMIT = 1000;
 
 const EMPTY_OBSERVATION: WeatherObservation = { tempC: 0, windKph: 0, precipMm: 0, code: 0 };
 
@@ -81,14 +87,14 @@ export class SitesService {
     return withTenantTx(ctx, async (tx) => {
       // Count first: an empty page past the end still has to report the real
       // total, or the pager cannot offer a way back.
-      const all = await tx.select({ id: projectSites.id }).from(projectSites);
+      const total = await countRows(tx, projectSites);
       const rows = await tx
         .select()
         .from(projectSites)
         .orderBy(desc(projectSites.createdAt))
         .limit(query.limit)
         .offset(query.offset);
-      if (rows.length === 0) return { items: [], total: all.length };
+      if (rows.length === 0) return { items: [], total };
 
       const alertRows = await tx
         .select()
@@ -131,7 +137,7 @@ export class SitesService {
           observedAt: latest?.effectiveAt.toISOString() ?? null,
         };
       });
-      return { items, total: all.length };
+      return { items, total };
     });
   }
 
@@ -443,11 +449,18 @@ export class SitesService {
   // latest active reading).
   async advisories(ctx: RequestContext): Promise<WeatherAdvisoryListResponse> {
     return withTenantTx(ctx, async (tx) => {
+      // The response is bounded by site count, but the query was not: it
+      // selected every active alert in the tenant and collapsed it in a JS
+      // Map afterwards (audit-api-surface.md #10). Bound it the way the
+      // sibling incidents() in this file already does. The cap is on
+      // alerts, not sites, so it is set well above the per-site fan-out a
+      // tenant's sites can produce.
       const rows = await tx
         .select()
         .from(weatherAlerts)
         .where(eq(weatherAlerts.status, 'active'))
-        .orderBy(desc(weatherAlerts.effectiveAt));
+        .orderBy(desc(weatherAlerts.effectiveAt))
+        .limit(ACTIVE_ADVISORY_SCAN_LIMIT);
 
       const latestBySite = new Map<string, (typeof rows)[number]>();
       for (const row of rows) {
@@ -473,10 +486,7 @@ export class SitesService {
         conditions.push(sql`${events.properties} ->> 'project_site_id' = ${query.projectSiteId}`);
       }
 
-      const all = await tx
-        .select({ id: events.id })
-        .from(events)
-        .where(and(...conditions));
+      const total = await countRows(tx, events, and(...conditions));
       const rows = await tx
         .select()
         .from(events)
@@ -523,7 +533,7 @@ export class SitesService {
           occurredAt: row.occurredAt,
         };
       });
-      return { items, total: all.length };
+      return { items, total };
     });
   }
 }
