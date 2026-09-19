@@ -137,14 +137,29 @@ artifact. Everything else diffs clean once the `docs/` link-prefix rewrite is no
   `apps/api/src/edtr/edtr.service.ts:374-394` (409 on `discrepancy`, deducts nothing), `:396-421`
   (FOR UPDATE pair lock) and `:609-612` (`gate_passed: true` only after the gate);
   `apps/api/test/money-path.spec.ts:181-274` asserts it.
-- **CRs describing work never shipped:** none. All 98 repo-relative paths and all 60 endpoints
-  named across the 20 CRs were existence-checked. The three missing files are each recorded as
-  deleted by a later CR, and the five missing endpoints are each explicitly recorded as not built
-  or rejected.
+- **CRs describing work never shipped:** none, and this check is complete. All 98 repo-relative
+  paths, all 60 endpoints, and all 382 unique backticked identifiers named across the 20 CRs were
+  existence-checked against `apps/`, `packages/`, `jobs/` and `infra/`. Every miss is accounted
+  for: three files and several symbols a later CR explicitly records as deleted (`EvidenceHero`
+  and four dead `*Queries` factories per `cr-arkilaunch-repo-cleanup-audit.md:31`;
+  `onScanFile`/`scanPreview` per `cr-arkilaunch-camera-capture-split.md:52`;
+  `ENABLE_QUOTE_ENGINE` per `cr-arkilaunch-pilot-honesty.md:71,147`; `OPEN_METEO_API_KEY` dropped
+  by the free-tier CR); five endpoints each recorded as not built or rejected (`GET /dashboard`,
+  `PATCH /users/me`, the two `POST /internal/jobs/*`, `POST /edtr/dev/run-worker`); commit SHAs
+  and external tool names; and `weather_readings`, which `cr-arkilaunch-f4-f5-fleet-weather.md:45`
+  explicitly says it did *not* create — confirmed against `packages/db/src/schema/weather.ts`,
+  which defines only `weatherAlerts` and `notifications`.
 
-**Coverage caveat:** the CR sweep verified all path and endpoint claims exhaustively plus a
-claim-by-claim read of the two highest-risk CRs. A symbol-level sweep of every backticked
-identifier was still running at cutoff and had produced no findings.
+  The two highest-risk CRs were also read claim by claim.
+  `cr-arkilaunch-azure-di-provisioning.md` (Status `In Progress`, the most aspirational doc)
+  verifies: the terraform module, the adapter and registry files, `@azure/monitor-opentelemetry`
+  present in `apps/api` and `jobs` and absent from web/shared exactly as claimed, the
+  `ENABLE_OCR_PIPELINE` gate, the `analyze()` call hoisted outside the transaction, and the
+  `hoursActive ?? 0` fallback replaced by a throw. Its unshipped parts (the trained
+  `arkilaunch-edtr-neural-v1` model, the prod terraform apply) are stated as unshipped in its own
+  §2/§3.1.
+
+  The CR set is unusually honest about its deferrals.
 
 ## Suggested order
 
