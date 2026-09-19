@@ -13,11 +13,13 @@ export class PermissionsGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const required = this.reflector.getAllAndOverride<string | undefined>(PERMISSION_KEY, [
+    const declared = this.reflector.getAllAndOverride<string | string[] | undefined>(PERMISSION_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
-    if (!required) return true; // no permission declared: guard is a no-op
+    if (!declared) return true; // no permission declared: guard is a no-op
+    const required = Array.isArray(declared) ? declared : [declared];
+    if (required.length === 0) return true;
 
     const req = context.switchToHttp().getRequest<Request & { ctx?: RequestContext }>();
     if (!req.ctx) return false;
@@ -31,6 +33,6 @@ export class PermissionsGuard implements CanActivate {
         .where(eq(roles.name, req.ctx!.role)),
     );
 
-    return granted.some((row) => row.code === required);
+    return granted.some((row) => required.includes(row.code));
   }
 }

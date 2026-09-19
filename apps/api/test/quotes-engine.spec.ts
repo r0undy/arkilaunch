@@ -20,6 +20,8 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
   let rateCardIdA: string;
   let equipmentTypeIdA: string;
   let customerIdA: string;
+  let customerCtxA: RequestContext;
+  let otherCustomerIdA: string;
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL_DIRECT;
@@ -38,6 +40,33 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     rateCardIdA = (rateCardA as { id: string }).id;
     equipmentTypeIdA = (rateCardA as { equipment_type_id: string }).equipment_type_id;
     customerIdA = (customerA as { id: string }).id;
+
+    // audit-api-surface.md #1: `customer` is an intra-tenant role, so RLS
+    // alone does not stop one customer reading another's quote. The
+    // fixture seeds exactly one customers row per tenant (linked to the
+    // customer user), so a SECOND, unowned customer is needed to prove the
+    // ownership predicate actually bites.
+    const [customerUserA] = await sql`select id from users where tenant_id = ${(tenantA as { id: string }).id} and email = 'customer@test-tenant-a.test'`;
+    customerCtxA = {
+      tenantId: (tenantA as { id: string }).id,
+      userId: (customerUserA as { id: string }).id,
+      role: 'customer',
+    };
+
+    const [existingOther] = await sql`
+      select id from customers
+      where tenant_id = ${(tenantA as { id: string }).id} and company_name = 'Quote Scope Fixture Co'
+    `;
+    if (existingOther) {
+      otherCustomerIdA = (existingOther as { id: string }).id;
+    } else {
+      const [inserted] = await sql`
+        insert into customers (tenant_id, company_name)
+        values (${(tenantA as { id: string }).id}, 'Quote Scope Fixture Co')
+        returning id
+      `;
+      otherCustomerIdA = (inserted as { id: string }).id;
+    }
 
     await sql.end();
   });
@@ -281,5 +310,32 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     });
 
     await expect(quotes.get(ctxB, created.id)).rejects.toThrow(NotFoundException);
+  });
+
+  // audit-api-surface.md #1. `customer` holds quote:read, and GET /quotes/:id
+  // had no ownership predicate, so any customer JWT plus any quotation id
+  // returned another customer's rates, discounts and totals.
+  it('a customer cannot read another customer’s quote in the same tenant', async () => {
+    const theirs = await quotes.create(ctxA, {
+      customerId: otherCustomerIdA,
+      projectSiteId: '00000000-0000-0000-0000-000000000000',
+      discount: { type: 'none', value: 0 },
+      items: itemsFor(rateCardIdA, equipmentTypeIdA),
+    });
+
+    // 404, not 403: a 403 would confirm the id exists.
+    await expect(quotes.get(customerCtxA, theirs.id)).rejects.toThrow(NotFoundException);
+  });
+
+  it('a customer can still read their own quote', async () => {
+    const mine = await quotes.create(ctxA, {
+      customerId: customerIdA,
+      projectSiteId: '00000000-0000-0000-0000-000000000000',
+      discount: { type: 'none', value: 0 },
+      items: itemsFor(rateCardIdA, equipmentTypeIdA),
+    });
+
+    const read = await quotes.get(customerCtxA, mine.id);
+    expect(read.id).toBe(mine.id);
   });
 });

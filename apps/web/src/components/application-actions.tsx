@@ -66,7 +66,7 @@ export function ApplicationActions({ application }: { application: TenantApplica
         <span className="text-sm text-text-muted">
           Send this sign-up link to the owner:{' '}
           <code className="rounded-sm bg-surface-sunk px-1.5 py-0.5 font-mono text-xs">
-            {activationToken}
+            {`${window.location.origin}/activate?token=${encodeURIComponent(activationToken)}`}
           </code>
         </span>
       )}

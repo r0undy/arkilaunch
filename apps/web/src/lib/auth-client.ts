@@ -1,4 +1,11 @@
-import type { AuthTokens, LoginRequest, RefreshRequest, TwoFaChallenge, Verify2faRequest } from '@arkilaunch/shared';
+import type {
+  AuthTokens,
+  LoginRequest,
+  RefreshRequest,
+  TwoFaChallenge,
+  UserActivateRequest,
+  Verify2faRequest,
+} from '@arkilaunch/shared';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1';
 
@@ -87,6 +94,16 @@ export async function verify2fa(request: Verify2faRequest): Promise<AuthTokens> 
   const tokens = await postJson<AuthTokens>('/auth/2fa/verify', request);
   storeTokens(tokens);
   return tokens;
+}
+
+// POST /auth/activate: redeems the activationToken an approval hands out
+// and sets the account's first password. Returns 204 with no body and no
+// tokens, so the caller sends the user to /login afterwards. The endpoint
+// has existed since S19 but had no client at all, which left an approved
+// owner holding a token with no screen to redeem it
+// (audit-api-surface.md #3).
+export async function activateAccount(request: UserActivateRequest): Promise<void> {
+  await postJson<void>('/auth/activate', request);
 }
 
 // Single-flight refresh: apps/api/test/refresh-rotation.spec.ts proves a
