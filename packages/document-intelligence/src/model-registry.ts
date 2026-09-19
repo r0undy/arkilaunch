@@ -17,42 +17,47 @@ export type ModelRequest =
 // azure-adapter.ts, not here.
 const KYC_QUERY_FIELDS = ['SecNumber', 'Tin'];
 
-// The logical model id the EDTR worker analyzes against. Held here rather
-// than in jobs/ so the id and the fields it is expected to return are stated
-// in one place; the worker imports both.
+// EDTR extraction is prebuilt-layout's TABLE output, not queryFields and
+// not a custom neural model.
 //
-// NOTE: this model has NOT been trained yet. Until a training run over
-// labeled Almara sheets exists, Azure answers :analyze with a 404, which
-// azure-adapter.ts surfaces as a hard DocumentAnalysisError -- never a silent
-// empty result. Recorded in docs/cr-arkilaunch-pilot-honesty.md §4.
-export const EDTR_MODEL_ID = 'arkilaunch-edtr-neural-v1';
+// Measured against the live resource with a replica of the real Almara form
+// (docs/cr-arkilaunch-edtr-real-form.md): layout returned the 22x9 timesheet
+// grid exactly, while queryFields asked for the same sheet's Operator
+// answered "ALMARA CONSTRUCTION CORPORATION" at 0.883 -- confidently wrong,
+// having read the letterhead. queryFields answers per-document scalars; this
+// sheet's payload is a table of dated rows, so layout is the right tool and
+// queryFields is an actively misleading one here.
+//
+// Training a custom neural model would need >= 200 labeled Almara pages with
+// bounding boxes drawn in DI Studio and an S0 resource (F0 cannot train
+// custom neural models); none of those exist, and layout needs none of them.
+export const EDTR_MODEL_ID = 'arkilaunch-edtr-layout-table';
 
 export const KYC_MODEL_ID = 'arkilaunch-kyc-layout-query';
 
-// The fields reconciliation cannot proceed without. A document missing any of
-// them hard-fails to manual entry rather than being written with a
-// substituted zero -- a field the model did not return is not a reading of
-// zero hours, and the deduction gate has no way to tell the difference once
-// it is persisted (RFC-2 §2).
-//
-// THESE NAMES ARE NOT YET CONFIRMED AGAINST A TRAINED MODEL. They are the
-// names the schema is expected to use; the training run is what makes them
-// fact. Re-derive them from the trained model's own output (the field keys in
-// its analyze response) and correct this list before the pipeline is enabled
-// anywhere real. Keeping the guess in one named constant is the point: there
-// is exactly one line to change, not two call sites to find.
-export const EDTR_REQUIRED_FIELDS = ['hours_active', 'hours_idle'] as const;
-
-export type EdtrRequiredField = (typeof EDTR_REQUIRED_FIELDS)[number];
+// EDTR_REQUIRED_FIELDS is gone. It named hours_active and hours_idle as the
+// document-level fields reconciliation keys on, and the real form has
+// neither: it records AM/PM/OVERTIME in-out pairs and a written TOTAL HOURS
+// per dated row, and no idle column at all. What a readable sheet must
+// contain now lives in parseEdtrSheet()
+// (packages/shared/src/edtr-sheet.ts), which refuses the whole capture
+// naming the day it could not read.
 
 export function resolveModelRequest(modelId: string): ModelRequest {
   if (modelId === KYC_MODEL_ID) {
     return { kind: 'query-fields', modelId: 'prebuilt-layout', queryFields: KYC_QUERY_FIELDS };
   }
-  // arkilaunch-edtr-neural-v1 and any other id: pass through as a real
-  // custom model id. If it hasn't been trained yet, Azure DI's own 404
-  // surfaces as a hard failure in azure-adapter.ts -- never a silent empty
-  // result.
+  if (modelId === EDTR_MODEL_ID) {
+    // No queryFields: the timesheet grid comes back in analyzeResult.tables
+    // for a plain layout call, and asking for query fields on top would add
+    // a premium feature that answers the wrong question.
+    return { kind: 'model', modelId: 'prebuilt-layout' };
+  }
+  // Any other id: pass through as a real custom model id. If it hasn't been
+  // trained yet, Azure DI's own 404 surfaces as a hard failure in
+  // azure-adapter.ts -- never a silent empty result. This is the branch a
+  // future trained arkilaunch-edtr-neural-v1 takes; swapping EDTR_MODEL_ID
+  // to that string is the whole migration.
   return { kind: 'model', modelId };
 }
 

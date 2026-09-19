@@ -93,8 +93,18 @@ export interface GateResult {
 // whether two errors accumulate or cancel.
 export interface HourDeltas {
   active: number;
-  idle: number;
-  total: number;
+  // null when either log did not record idle hours at all. The real Almara
+  // paper form has no idle column (docs/cr-arkilaunch-edtr-real-form.md),
+  // so this is the normal case for a paper/digital pair, not an edge case.
+  //
+  // An absent dimension is skipped, not defaulted to 0. A 0 delta would be
+  // an assertion that the two logs AGREE about idle hours, which is a claim
+  // nobody made -- it would pull a real disagreement elsewhere through the
+  // gate on the strength of evidence that does not exist.
+  idle: number | null;
+  // Null whenever idle is, since the summed total includes idle hours and
+  // so cannot be compared either.
+  total: number | null;
 }
 
 // The single worst divergence across every compared dimension. This is both
@@ -104,7 +114,15 @@ export interface HourDeltas {
 // actually decided the gate, and a review screen would then show a delta
 // inside tolerance on a row the gate had rejected.
 export function worstDelta(deltas: HourDeltas): number {
-  return Math.max(deltas.active, deltas.idle, deltas.total);
+  return Math.max(...comparableDeltas(deltas));
+}
+
+// The dimensions both logs actually recorded. `active` is always present:
+// it is the hours the deduction is priced on, and a pair with no active
+// reading never reaches the gate (packages/db/src/reconciliation.ts fails
+// that closed as 'unreadable').
+function comparableDeltas(deltas: HourDeltas): number[] {
+  return [deltas.active, deltas.idle, deltas.total].filter((d): d is number => d !== null);
 }
 
 // Pure gate evaluation (RFC-2 §3 state machine), no DB/IO -- unit-testable
@@ -297,7 +315,7 @@ export const EdtrDetailResponseSchema = z.object({
   id: z.string().uuid(),
   status: z.string(),
   source: z.enum(['paper_ocr', 'digital_entry']),
-  lineItems: z.array(z.object({ hoursActive: z.number(), hoursIdle: z.number() })),
+  lineItems: z.array(z.object({ hoursActive: z.number(), hoursIdle: z.number().nullable() })),
   fields: z.array(EdtrFieldResponseSchema),
   reconciliation: EdtrReconciliationResponseSchema.nullable(),
   // null for digital_entry (no extraction step at all) and for a paper row

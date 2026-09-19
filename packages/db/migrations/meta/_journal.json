@@ -120,6 +120,13 @@
       "when": 1786070984570,
       "tag": "0016_reference_table_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786070984571,
+      "tag": "0017_edtr_hours_idle_nullable",
+      "breakpoints": true
     }
   ]
 }
