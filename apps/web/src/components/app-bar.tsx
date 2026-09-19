@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { clearTokens } from '../lib/auth-client.js';
+import { getCurrentRole } from '../lib/guards.js';
 import { edtrQueries, notificationsQueries } from '../lib/queries.js';
 import { StatusPill } from './status-pill.js';
 import { AlertIcon, BellIcon, LogOutIcon } from './icons.js';
@@ -27,6 +28,11 @@ export interface AppBarProps {
 export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   const notifications = useQuery({ ...notificationsQueries.list(), retry: false });
   const edtrList = useQuery({ ...edtrQueries.list(), retry: false });
+
+  // The same bar renders inside the account shell, where /app/* is a role
+  // bounce rather than a destination.
+  const notificationsPath =
+    getCurrentRole() === 'customer' ? '/account/notifications' : '/app/notifications';
 
   const unreadItems = notifications.data?.items;
   const unreadCount = unreadItems ? unreadItems.filter((n) => n.status === 'unread').length : null;
@@ -108,7 +114,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             decoration rather than "you have unread notifications". */}
         {unreadCount !== null && unreadCount > 0 && (
           <Link
-            to="/app/notifications"
+            to={notificationsPath}
             aria-label={`${unreadCount} unread notifications`}
             className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm text-text"
           >
