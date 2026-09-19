@@ -35,16 +35,35 @@ function toInvoiceSummary(row: typeof invoices.$inferSelect): InvoiceSummaryResp
   };
 }
 
-// The only writer of this exact string is edtr.service.ts's approve()
-// (RFC-2 §3 deduction gate). Parsing it back is a documented
-// simplification: a structured reconciliation_id/edtr_id column on
-// invoice_line_items would need a migration (cr-arkilaunch-f9-read-surface.md
-// scope note), and every deposit_deduction line item is written with this
-// exact shape by the one code path that creates them.
+// Legacy fallback only. invoice_line_items.reconciliation_id is now a real
+// FK and is what approve() writes and what this reader prefers; the
+// pattern below is kept for rows written before that column existed and
+// which the backfill could not resolve (audit-db-tenant-isolation.md #3).
+// A text description can be edited or reformatted; a foreign key cannot.
 const EDTR_EVIDENCE_PATTERN =
   /^EDTR reconciliation ([0-9a-fA-F-]{36}) \(sources: ([0-9a-fA-F-]{36}), ([0-9a-fA-F-]{36}|n\/a)\)$/;
 
 async function findEdtrEvidence(tx: Tx, lineItems: (typeof invoiceLineItems.$inferSelect)[]) {
+  // Structured link first.
+  for (const item of lineItems) {
+    if (!item.reconciliationId) continue;
+    const [reconciliation] = await tx
+      .select()
+      .from(edtrReconciliations)
+      .where(eq(edtrReconciliations.id, item.reconciliationId))
+      .limit(1);
+    if (!reconciliation) continue;
+    return {
+      reconciliationId: reconciliation.id,
+      sourceEdtrIds: [reconciliation.edtrId, reconciliation.counterpartEdtrId].filter(
+        (id): id is string => Boolean(id),
+      ),
+      status: reconciliation.status,
+      deltaHours: reconciliation.deltaHours !== null ? Number(reconciliation.deltaHours) : null,
+      tolerance: Number(reconciliation.tolerance),
+    } satisfies EdtrDeductionEvidence;
+  }
+
   for (const item of lineItems) {
     const match = EDTR_EVIDENCE_PATTERN.exec(item.description);
     if (!match) continue;

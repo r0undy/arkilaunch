@@ -1,4 +1,4 @@
-import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants } from './tenancy.js';
 
@@ -23,5 +23,7 @@ export const events = pgTable(
     properties: jsonb('properties').notNull().default({}),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('events_tenant_id_idx').on(table.tenantId),
+  ],
 );

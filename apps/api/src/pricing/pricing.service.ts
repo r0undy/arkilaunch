@@ -2,9 +2,9 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { and, desc, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import {
   auditLogs,
-  dieselPriceReadings,
   pricingParameters,
   rateCards,
+  recordManualDieselReading,
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
@@ -22,29 +22,39 @@ export class PricingService {
   // Platform manual entry (RFC-3 §2/§3 QUOTE-05): used when the scrape
   // breaks or is off. Audit-logged so a hand-entered price is attributable.
   async recordDieselPrice(ctx: RequestContext, input: DieselPriceEntry) {
-    return withTenantTx(ctx, async (tx) => {
-      const [reading] = await tx
-        .insert(dieselPriceReadings)
-        .values({
-          region: input.region,
-          pricePhp: String(input.pricePhp),
-          observedDate: input.observedDate,
-          source: 'platform_manual',
-          sourceUrl: input.sourceUrl,
-          capturedBy: ctx.userId,
-        })
-        .returning();
+    // The insert goes through the SECURITY DEFINER function, because
+    // app_authenticated no longer holds INSERT on this global, un-RLS'd
+    // table (audit-db-tenant-isolation.md #7, migration 0020). It
+    // therefore runs outside the tenant transaction below, which only
+    // writes the audit row.
+    const reading = await recordManualDieselReading({
+      region: input.region,
+      pricePhp: String(input.pricePhp),
+      observedDate: input.observedDate,
+      sourceUrl: input.sourceUrl ?? null,
+      capturedBy: ctx.userId,
+    });
 
+    await withTenantTx(ctx, async (tx) => {
       await tx.insert(auditLogs).values({
         tenantId: ctx.tenantId,
         actorId: ctx.userId,
         action: 'CREATE',
         entity: 'diesel_price_readings',
-        entityId: reading!.id,
+        entityId: reading.id,
       });
-
-      return reading;
     });
+
+    return {
+      id: reading.id,
+      region: reading.region,
+      pricePhp: reading.price_php,
+      observedDate: reading.observed_date,
+      source: reading.source,
+      sourceUrl: reading.source_url,
+      capturedAt: reading.captured_at,
+      capturedBy: reading.captured_by,
+    };
   }
 
   // Tenant diesel override + pricing inputs (RFC-3 §2/§3 QUOTE-05):

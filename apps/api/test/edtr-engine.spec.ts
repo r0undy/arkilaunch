@@ -61,6 +61,17 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     `;
     const ids = staleIds.map((row) => (row as { id: string }).id);
     if (ids.length > 0) {
+      // invoice_line_items.reconciliation_id is a real FK now, and it is
+      // deliberately RESTRICT: a deduction's evidence must not be
+      // deletable out from under it (audit-db-tenant-isolation.md #3). A
+      // prior run's deduction lines therefore have to be cleared before
+      // the reconciliations they cite.
+      await sql`
+        delete from invoice_line_items
+        where reconciliation_id in (
+          select id from edtr_reconciliations
+          where edtr_id = any(${ids}) or counterpart_edtr_id = any(${ids})
+        )`;
       await sql`delete from edtr_reconciliations where edtr_id = any(${ids}) or counterpart_edtr_id = any(${ids})`;
       await sql`delete from edtr_line_items where edtr_id = any(${ids})`;
       await sql`delete from edtr where id = any(${ids})`;

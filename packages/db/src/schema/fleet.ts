@@ -1,4 +1,4 @@
-import { numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, numeric, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants } from './tenancy.js';
 
@@ -19,12 +19,17 @@ export const equipment = pgTable(
       .notNull()
       .references(() => equipmentTypes.id),
     model: text('model').notNull(),
-    serialNo: text('serial_no').notNull(), // UNIQUE (tenant_id, serial_no); see migration
+    serialNo: text('serial_no').notNull(),
     availabilityStatus: text('availability_status').notNull().default('available'),
     runtimeHours: numeric('runtime_hours', { precision: 10, scale: 2 }).notNull().default('0'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [
+    tenantIsolationPolicy(),
+    // Live since migration 0002; declared here so `generate` stops
+    // proposing to drop it (audit-db-tenant-isolation.md #1).
+    unique('equipment_tenant_serial_uq').on(table.tenantId, table.serialNo),
+  ],
 );
 
 export const rateCards = pgTable(
@@ -44,7 +49,9 @@ export const rateCards = pgTable(
     effectiveTo: timestamp('effective_to', { withTimezone: true }), // null = open-ended
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('rate_cards_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 export const maintenanceSchedules = pgTable(
@@ -61,7 +68,9 @@ export const maintenanceSchedules = pgTable(
     nextDue: numeric('next_due', { precision: 10, scale: 2 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('maintenance_schedules_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 export const maintenanceLogs = pgTable(
@@ -78,5 +87,7 @@ export const maintenanceLogs = pgTable(
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('maintenance_logs_tenant_id_idx').on(table.tenantId),
+  ],
 );

@@ -216,14 +216,16 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     );
     const staleDate = new Date();
     staleDate.setDate(staleDate.getDate() - 30);
-    await withTenantTx(ctxA, async (tx) => {
-      const { dieselPriceReadings } = await import('@arkilaunch/db');
-      await tx.insert(dieselPriceReadings).values({
-        region: 'STALE_TEST',
-        pricePhp: '55.0000',
-        observedDate: staleDate.toISOString().slice(0, 10),
-        source: 'doe_scrape',
-      });
+    // Through the scrape function, not a direct INSERT: app_authenticated
+    // no longer holds INSERT on diesel_price_readings (migration 0020,
+    // audit-db-tenant-isolation.md #7), which is the same path the real
+    // cron takes.
+    const { recordScrapeDieselReading } = await import('@arkilaunch/db');
+    await recordScrapeDieselReading({
+      region: 'STALE_TEST',
+      pricePhp: '55.0000',
+      observedDate: staleDate.toISOString().slice(0, 10),
+      sourceUrl: null,
     });
 
     const priced = await withTenantTx(ctxA, (tx) =>

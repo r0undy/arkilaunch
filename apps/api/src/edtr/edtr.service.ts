@@ -553,6 +553,12 @@ export class EdtrService {
       await tx.insert(invoiceLineItems).values({
         tenantId: ctx.tenantId,
         invoiceId: invoice.id,
+        // The evidence link is this column, not the sentence below it. The
+        // description stays because it is what a human reads on an
+        // invoice, but it is no longer load-bearing: it was the only tie
+        // between a deduction and the reconciliation justifying it, parsed
+        // back out with a regex (audit-db-tenant-isolation.md #3).
+        reconciliationId: reconciliation.id,
         description: `EDTR reconciliation ${reconciliation.id} (sources: ${record.id}, ${reconciliation.counterpartEdtrId ?? 'n/a'})`,
         quantity: String(billableHoursActive),
         unitPrice: String(hourlyRate),

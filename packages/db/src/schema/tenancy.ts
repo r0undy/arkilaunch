@@ -1,16 +1,38 @@
-import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { tenantIsolationPolicy } from '../rls.js';
+import { index, jsonb, pgPolicy, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { appAuthenticated, tenantIsolationPolicy } from '../rls.js';
 
 // --- Global tables (not tenant-scoped; SDD §3 lists 7) ---
 
-export const tenants = pgTable('tenants', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  legalName: text('legal_name').notNull(),
-  slug: text('slug').notNull().unique(),
-  status: text('status').notNull().default('onboarding'), // onboarding, active, suspended
-  kycState: text('kyc_state').notNull().default('unverified'), // unverified, submitted, verified
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+// `tenants` is global rather than tenant-owned, so it carries
+// `tenant_self` (keyed on id) instead of the shared tenantIsolationPolicy
+// (keyed on tenant_id). The policy and its FORCE RLS have been live since
+// migration 0016, but were never expressed here -- and the drizzle-kit
+// snapshot is what `generate` diffs against, so the next generate would
+// have emitted DROP POLICY "tenant_self" ON tenants and re-opened
+// cross-tenant read of the whole tenant registry
+// (audit-db-tenant-isolation.md #1). Declared here so schema, snapshot
+// and database agree.
+export const tenants = pgTable(
+  'tenants',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    legalName: text('legal_name').notNull(),
+    slug: text('slug').notNull().unique(),
+    status: text('status').notNull().default('onboarding'), // onboarding, active, suspended
+    kycState: text('kyc_state').notNull().default('unverified'), // unverified, submitted, verified
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [
+    pgPolicy('tenant_self', {
+      as: 'permissive',
+      for: 'all',
+      to: appAuthenticated,
+      using: sql`id = current_setting('app.current_tenant_id', true)::uuid`,
+      withCheck: sql`id = current_setting('app.current_tenant_id', true)::uuid`,
+    }),
+  ],
+).enableRLS();
 
 export const subscriptionPlans = pgTable('subscription_plans', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -56,7 +78,9 @@ export const subscriptions = pgTable(
     currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('subscriptions_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 export const users = pgTable(
@@ -69,13 +93,19 @@ export const users = pgTable(
     roleId: uuid('role_id')
       .notNull()
       .references(() => roles.id),
-    email: text('email').notNull(), // UNIQUE (tenant_id, email); see migration
+    email: text('email').notNull(),
     passwordHash: text('password_hash').notNull(), // argon2id, never logged
     status: text('status').notNull().default('active'), // active, disabled, locked
     totpSecret: text('totp_secret'), // 2FA; encrypted at rest. Not enrolled by this slice.
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [
+    tenantIsolationPolicy(),
+    // Live since migration 0002; declared here so `generate` stops
+    // proposing to drop it (audit-db-tenant-isolation.md #1).
+    unique('users_tenant_email_uq').on(table.tenantId, table.email),
+    index('users_email_idx').on(table.email),
+  ],
 );
 
 // POST /tenants/register (backend-unblock plan workstream 1). Holds the
@@ -105,7 +135,9 @@ export const tenantApplications = pgTable(
     reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('tenant_applications_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 // RFC-1 §3: token-family lineage backing rotation + reuse detection.
@@ -129,7 +161,9 @@ export const refreshTokens = pgTable(
     ip: text('ip'), // INET in the migration; text here to avoid a custom Drizzle type
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('refresh_tokens_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 // Append-only: INSERT + SELECT only for app_authenticated (UPDATE/DELETE
@@ -150,5 +184,7 @@ export const auditLogs = pgTable(
     entityId: uuid('entity_id').notNull(),
     timestamp: timestamp('timestamp', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('audit_logs_tenant_id_idx').on(table.tenantId),
+  ],
 );
