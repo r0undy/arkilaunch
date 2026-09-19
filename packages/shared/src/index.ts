@@ -6,6 +6,7 @@ export * from './pricing.js';
 export * from './document-intelligence-port.js';
 export * from './telemetry-redact.js';
 export * from './edtr.js';
+export * from './edtr-sheet.js';
 export * from './kyc.js';
 export * from './ocr-accuracy.js';
 export * from './fleet.js';

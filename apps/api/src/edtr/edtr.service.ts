@@ -278,7 +278,10 @@ export class EdtrService {
         source: row.source as 'paper_ocr' | 'digital_entry',
         lineItems: lineItems.map((item) => ({
           hoursActive: Number(item.hoursActive),
-          hoursIdle: Number(item.hoursIdle),
+          // Number(null) is 0, which would render "0.0 idle" for a paper
+          // sheet that never recorded idle hours at all -- the same
+          // fabricated reading migration 0017 exists to stop. Stays null.
+          hoursIdle: item.hoursIdle === null ? null : Number(item.hoursIdle),
         })),
         fields,
         // Provenance, so the client cannot render a human transcription's

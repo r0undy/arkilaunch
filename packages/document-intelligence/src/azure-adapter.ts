@@ -3,6 +3,7 @@ import {
   type DocumentExtractionResult,
   type DocumentIntelligencePort,
   type ExtractedField,
+  type ExtractedTable,
 } from '@arkilaunch/shared';
 import { QUERY_FIELD_TO_PORT_KEY, resolveModelRequest, type ModelRequest } from './model-registry.js';
 
@@ -34,12 +35,36 @@ interface AzureAnalyzeField {
   confidence?: number;
 }
 
+interface AzureSpan {
+  offset?: number;
+  length?: number;
+}
+
+interface AzureAnalyzeTable {
+  rowCount?: number;
+  columnCount?: number;
+  cells?: Array<{
+    rowIndex?: number;
+    columnIndex?: number;
+    rowSpan?: number;
+    columnSpan?: number;
+    content?: string;
+    spans?: AzureSpan[];
+  }>;
+}
+
+interface AzureWord {
+  confidence?: number;
+  span?: AzureSpan;
+}
+
 interface AzureAnalyzeOperation {
   status: 'notStarted' | 'running' | 'succeeded' | 'failed';
   error?: { code?: string; message?: string };
   analyzeResult?: {
-    pages?: unknown[];
+    pages?: Array<{ words?: AzureWord[] }>;
     documents?: Array<{ fields?: Record<string, AzureAnalyzeField> }>;
+    tables?: AzureAnalyzeTable[];
   };
 }
 
@@ -98,7 +123,8 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
       );
     }
 
-    return { fields: this.mapFields(request, analyzeResult) };
+    const tables = mapTables(analyzeResult.tables, analyzeResult.pages);
+    return { fields: this.mapFields(request, analyzeResult), ...(tables.length > 0 ? { tables } : {}) };
   }
 
   private async startAnalyze(request: ModelRequest, imageStream: Buffer): Promise<string> {
@@ -192,6 +218,55 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
 
     return fields;
   }
+}
+
+// The lowest word confidence overlapping a cell's spans. Words carry
+// confidence and offsets into the same content string the cell's spans
+// index into, so this is a real measurement rather than a stand-in.
+function cellConfidence(spans: AzureSpan[] | undefined, words: AzureWord[]): number {
+  const ranges = (spans ?? [])
+    .filter((s) => typeof s.offset === 'number' && typeof s.length === 'number')
+    .map((s) => [s.offset!, s.offset! + s.length!] as const);
+  if (ranges.length === 0) return 0;
+
+  let min = Number.POSITIVE_INFINITY;
+  for (const word of words) {
+    const offset = word.span?.offset;
+    const length = word.span?.length;
+    if (typeof offset !== 'number' || typeof length !== 'number') continue;
+    if (!ranges.some(([start, end]) => offset < end && offset + length > start)) continue;
+    const c = word.confidence;
+    // Same flooring rule the field mapper uses: an absent or out-of-range
+    // confidence becomes 0, never 1.
+    min = Math.min(min, typeof c === 'number' && Number.isFinite(c) && c >= 0 && c <= 1 ? c : 0);
+  }
+  return Number.isFinite(min) ? min : 0;
+}
+
+function mapTables(
+  tables: AzureAnalyzeTable[] | undefined,
+  pages: Array<{ words?: AzureWord[] }> | undefined,
+): ExtractedTable[] {
+  const words = (pages ?? []).flatMap((p) => p.words ?? []);
+  return (tables ?? [])
+    .filter((t) => typeof t.rowCount === 'number' && typeof t.columnCount === 'number')
+    .map((t) => ({
+      rowCount: t.rowCount!,
+      columnCount: t.columnCount!,
+      cells: (t.cells ?? [])
+        .filter((c) => typeof c.rowIndex === 'number' && typeof c.columnIndex === 'number')
+        .flatMap((c) => {
+          const content = (c.content ?? '').replace(/\s+/g, ' ').trim();
+          const confidence = cellConfidence(c.spans, words);
+          const out: ExtractedTable['cells'] = [];
+          for (let dr = 0; dr < Math.max(1, c.rowSpan ?? 1); dr++) {
+            for (let dc = 0; dc < Math.max(1, c.columnSpan ?? 1); dc++) {
+              out.push({ rowIndex: c.rowIndex! + dr, columnIndex: c.columnIndex! + dc, content, confidence });
+            }
+          }
+          return out;
+        }),
+    }));
 }
 
 function extractValue(field: AzureAnalyzeField): string | null {

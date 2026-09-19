@@ -53,7 +53,11 @@ export const edtrLineItems = pgTable(
       .notNull()
       .references(() => edtr.id),
     hoursActive: numeric('hours_active', { precision: 6, scale: 2 }).notNull(), // >= 0
-    hoursIdle: numeric('hours_idle', { precision: 6, scale: 2 }).notNull(), // >= 0
+    // NULL means the source never recorded idle time -- the real Almara
+    // paper form has no idle column at all. It is NOT zero: writing 0 would
+    // hand the deduction gate a fabricated reading it cannot distinguish
+    // from a genuinely idle machine (migration 0017).
+    hoursIdle: numeric('hours_idle', { precision: 6, scale: 2 }), // >= 0 when present
     notes: text('notes'),
   },
   (t) => [

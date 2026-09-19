@@ -155,6 +155,32 @@ CREATE INDEX edtr_worker_claim_idx
 }
 ```
 
+> **Addendum, 2026-09-18 (`docs/cr-arkilaunch-edtr-real-form.md`).** The real Almara
+> "EQUIPMENT DAILY TIME REPORT" has now been seen, and the provisional field names above
+> describe a document that does not exist. The form carries **no `hours_active` field and no
+> idle column at all** — it records AM/PM/OVERTIME in-out pairs and a written `TOTAL HOURS`
+> per dated row — and **one sheet covers up to ~22 dated rows**, not one equipment-day.
+>
+> Three parts of this section are superseded:
+>
+> 1. **`model_id`** is now `arkilaunch-edtr-layout-table`, resolving to `prebuilt-layout`
+>    and read from `analyzeResult.tables`, not a trained custom model. The id is renamed
+>    because `model_id` is a provenance field and the old name would claim a neural model
+>    read the sheet.
+> 2. **`hours_idle` is not extracted at all**, because nobody records it. It is written as
+>    SQL `NULL` (migration `0017`), never `0`, and the reconciliation gate skips the idle
+>    dimension and the summed total that contains it rather than reading an absent value as
+>    agreement. The active-hours dimension, which the deduction is priced on, is never
+>    skipped. A new field `hours_computed_from_times` carries the figure re-derived from the
+>    in-out pairs, which is corroboration and never the stored reading.
+> 3. **One capture produces N `edtr` rows**, one per dated line, sharing a `raw_file_uri`.
+>    `report_date` stays a single date and the `(equipment_id, report_date)` pairing in §2 is
+>    unchanged, so the deduction gate below is untouched. A day whose in-out times contradict
+>    its written total is forced to `review` even against a matching counterpart.
+>
+> `edtr_worker_claim_idx` above is **not present in any migration**; the claim scan is a
+> sequential scan today.
+
 ### API Changes
 
 The endpoint signatures are frozen in [SDD §4](sdd-arkilaunch.md). This RFC pins the async transitions, the reconciliation payloads, and the exact gate responses. New/refined shapes only:

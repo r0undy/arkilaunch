@@ -17,6 +17,26 @@ function deltas(over: Partial<HourDeltas> = {}): HourDeltas {
 }
 
 describe('evaluateGate (RFC-2 §3 state machine, pure)', () => {
+  // The real Almara paper form has no idle column, so a paper/digital pair
+  // is the normal case here, not an edge case (migration 0017).
+  it('decides on active hours alone when neither log recorded idle time', () => {
+    const result = evaluateGate(0.95, 0.95, { active: 0.1, idle: null, total: null }, DEFAULT_TOLERANCE_HOURS);
+    expect(result).toEqual({ matched: true, reason: 'auto_accept' });
+  });
+
+  it('still blocks on active hours when the idle dimension is absent', () => {
+    // The dimension the deduction is priced on is never skipped; dropping
+    // idle must not make the gate blind to a real disagreement.
+    const result = evaluateGate(0.95, 0.95, { active: 8, idle: null, total: null }, DEFAULT_TOLERANCE_HOURS);
+    expect(result).toEqual({ matched: false, reason: 'tolerance_exceeded' });
+  });
+
+  it('does not treat an absent idle reading as agreement at zero', () => {
+    // worstDelta must skip null rather than coerce it: a 0 would assert the
+    // two logs agree about idle hours, a claim neither of them made.
+    expect(worstDelta({ active: 0.3, idle: null, total: null })).toBe(0.3);
+  });
+
   it('auto-accepts when both confidences meet the gate and delta is within tolerance', () => {
     const result = evaluateGate(0.95, 0.93, deltas({ active: 0.1, total: 0.1 }), DEFAULT_TOLERANCE_HOURS);
     expect(result).toEqual({ matched: true, reason: 'auto_accept' });

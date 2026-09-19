@@ -11,7 +11,13 @@ web_origin         = "https://arkilaunch-web-24lk.vercel.app"
 anchor_tenant_slug = "almara"
 supabase_url       = "https://ydalnvzyeseycdakofgp.supabase.co" # derived from the project ref in the local .env's DATABASE_URL_POOLED
 
-enable_ocr_pipeline  = false
+# On in dev at the operator's explicit direction
+# (docs/cr-arkilaunch-edtr-real-form.md §7) so the EDTR layout-table path can
+# be exercised. AIA-R7 stays Open (escalated) and CLR gap E1 is NOT cleared:
+# only machine-generated sheets with invented values have been sent. A filled
+# Almara sheet carries an operator name and signature, which are personal data
+# under RA 10173, and sending one is a separate decision. prod stays false.
+enable_ocr_pipeline  = true
 enable_ocr_kyc       = false
 # On in dev only (docs/cr-arkilaunch-open-meteo-free-tier.md): the free
 # tier is keyless, so there is no credential-provisioning step left to gate

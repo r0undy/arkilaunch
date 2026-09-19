@@ -1,16 +1,15 @@
 import { and, eq, lt, sql } from 'drizzle-orm';
 import { edtr, edtrLineItems, events, reconcileEdtr } from '@arkilaunch/db';
 import {
+  CONFIDENCE_GATE,
   OcrPayloadSchema,
   documentIntelligenceAvailability,
+  parseEdtrSheet,
   type DocumentIntelligencePort,
+  type EdtrSheetDay,
   type OcrPayload,
 } from '@arkilaunch/shared';
-import {
-  AzureDocumentIntelligenceAdapter,
-  EDTR_MODEL_ID,
-  EDTR_REQUIRED_FIELDS,
-} from '@arkilaunch/document-intelligence';
+import { AzureDocumentIntelligenceAdapter, EDTR_MODEL_ID } from '@arkilaunch/document-intelligence';
 import { makeJobDb } from './db-client.js';
 import { fetchStorageObject } from './storage.js';
 import { runInstrumentedJob } from './telemetry.js';
@@ -18,11 +17,11 @@ import { runInstrumentedJob } from './telemetry.js';
 // RFC-2 §2/§3 (RFC2-02): claim/lock/retry loop + extraction + reconciliation
 // gate.
 //
-// EDTR_MODEL_ID and EDTR_REQUIRED_FIELDS come from
-// @arkilaunch/document-intelligence's model registry, which is the one place
-// that knows what a logical model id really is and what it returns. Both are
-// still awaiting a training run over labeled Almara sheets -- see the caveats
-// recorded against them there and in cr-arkilaunch-pilot-honesty.md §4.
+// One capture is one SHEET, and the real Almara sheet is a multi-day
+// timesheet (docs/cr-arkilaunch-edtr-real-form.md). The worker therefore
+// fans one claimed row out into one edtr row per dated line, so
+// reconciliation keeps pairing on (equipment_id, report_date) and the
+// deduction gate is untouched.
 const MAX_ATTEMPTS = 5;
 const CLAIM_BATCH_SIZE = 10;
 // A row is 'extracting' only while a worker is mid-flight. A crash, an OOM
@@ -35,42 +34,34 @@ const CLAIM_BATCH_SIZE = 10;
 const STALE_LOCK_MS = 15 * 60 * 1000;
 const API_VERSION = '2024-11-30';
 
-function toOcrPayload(fields: Record<string, { value: string; confidence: number }>): OcrPayload {
-  const parsedFields = Object.entries(fields).map(([name, field]) => {
-    const numeric = Number(field.value);
-    const isNumber = Number.isFinite(numeric) && field.value.trim() !== '';
-    return {
-      name,
-      value: isNumber ? numeric : field.value,
-      value_type: (isNumber ? 'number' : 'string') as 'number' | 'string',
-      confidence: field.confidence,
-    };
-  });
-  const minConfidence = parsedFields.length > 0 ? Math.min(...parsedFields.map((f) => f.confidence)) : 0;
+// One day's reading, as the ocr_payload JSONB contract (RFC-2 §3).
+//
+// hours_idle is absent rather than present-and-zero: the paper form has no
+// idle column, so there is no reading to record. min_field_confidence is
+// the day's own cell confidence, which is what the 0.90 gate grades.
+function toOcrPayload(day: EdtrSheetDay): OcrPayload {
+  const fields = [
+    { name: 'hours_active', value: day.hoursActive, value_type: 'number' as const, confidence: day.confidence },
+  ];
+  // Recorded as a field of its own so a reviewer can see the independent
+  // figure the in/out times produced, not just that the two disagreed.
+  if (day.computedHours !== null) {
+    fields.push({
+      name: 'hours_computed_from_times',
+      value: day.computedHours,
+      value_type: 'number' as const,
+      confidence: day.confidence,
+    });
+  }
 
   return OcrPayloadSchema.parse({
     model_id: EDTR_MODEL_ID,
     api_version: API_VERSION,
     analyzed_at: new Date().toISOString(),
-    fields: parsedFields,
-    min_field_confidence: minConfidence,
+    fields,
+    min_field_confidence: day.confidence,
     pages: 1,
   });
-}
-
-function requireField(values: Map<string, number>, name: string): number {
-  const value = values.get(name);
-  if (value === undefined) {
-    // Lands in the per-row catch: the row retries and eventually routes to
-    // review. It never becomes a persisted reading.
-    throw new Error(`required field ${name} passed validation but is absent`);
-  }
-  return value;
-}
-
-function fieldNumber(payload: OcrPayload, name: string): number | null {
-  const field = payload.fields.find((f) => f.name === name);
-  return field && typeof field.value === 'number' ? field.value : null;
 }
 
 export async function runEdtrOcrWorker(
@@ -191,81 +182,104 @@ export async function runEdtrOcrWorker(
         // per row, risking idle-in-transaction timeouts under load.
         const bytes = await fetchBytes(row.rawFileUri);
         const result = await port.analyze(EDTR_MODEL_ID, bytes);
-        const hasFields = Object.keys(result.fields).length > 0;
 
-        if (!hasFields) {
-          // Unreadable/corrupt input hard-fails to manual entry; never
-          // fabricate a value (RFC-2 §2, AGENTS.md "Never").
+        // The sheet's own dates are ground truth; row.reportDate is only the
+        // anchor that resolves a bare "03/01" to a year.
+        const sheet = parseEdtrSheet(result.tables, row.reportDate);
+        if (!sheet.ok) {
+          // Every refusal reason names what could not be read, so an
+          // operator can tell a bad photo from a form-layout change. None of
+          // them guess: a sheet that cannot be read in full goes to manual
+          // entry rather than being read in part (RFC-2 §2, AGENTS.md
+          // "Never").
           await db
             .update(edtr)
-            .set({ status: 'hard_failed', lockedAt: null, lastError: 'unreadable_or_empty_extraction' })
+            .set({ status: 'hard_failed', lockedAt: null, lastError: sheet.reason })
             .where(eq(edtr.id, row.id));
           continue;
         }
 
-        const ocrPayload = toOcrPayload(result.fields);
-        // One pass builds the values and finds the gaps, so there is no way
-        // for the check and the read to disagree about what was present.
-        const required = new Map<string, number>();
-        const missing: string[] = [];
-        for (const name of EDTR_REQUIRED_FIELDS) {
-          const value = fieldNumber(ocrPayload, name);
-          if (value === null) missing.push(name);
-          else required.set(name, value);
-        }
-
-        if (missing.length > 0) {
-          // A field the model did not return is not zero hours -- writing 0
-          // would be a fabricated reading handed to the deduction gate as
-          // real (RFC-2 §2, AGENTS.md "Never"). Hard-fail to manual entry,
-          // naming the fields so an operator can tell a model-schema drift
-          // apart from a genuinely illegible sheet.
-          await db
-            .update(edtr)
-            .set({
-              status: 'hard_failed',
-              lockedAt: null,
-              lastError: `missing_required_field:${missing.join(',')}`,
-            })
-            .where(eq(edtr.id, row.id));
-          continue;
-        }
-
-        // Unreachable: the missing-field branch above returns for exactly
-        // these names. It throws rather than defaulting because a `?? 0` here
-        // would be the fabricated zero this whole path exists to prevent --
-        // and an unreachable default is still the wrong value to write down
-        // in a file where zero means "the machine idled".
-        const hoursActive = requireField(required, 'hours_active');
-        const hoursIdle = requireField(required, 'hours_idle');
-
+        // One transaction for the whole sheet. A crash partway through must
+        // not leave some days persisted and the rest lost -- the claimed row
+        // would already be out of 'queued', so nothing would ever retry the
+        // missing days.
         await db.transaction(async (tx) => {
-          await tx.update(edtr).set({ status: 'extracted', ocrPayload, lockedAt: null }).where(eq(edtr.id, row.id));
+          for (const [index, day] of sheet.days.entries()) {
+            const ocrPayload = toOcrPayload(day);
 
-          await tx.insert(edtrLineItems).values({
-            tenantId: row.tenantId,
-            edtrId: row.id,
-            hoursActive: String(hoursActive),
-            hoursIdle: String(hoursIdle),
-          });
+            // The claimed row hosts the sheet's first dated line; the rest
+            // become sibling rows sharing its raw file. reportDate is taken
+            // from the sheet rather than from what the operator typed at
+            // capture time, because the paper is the record.
+            let edtrId = row.id;
+            if (index === 0) {
+              await tx
+                .update(edtr)
+                .set({ status: 'extracted', reportDate: day.reportDate, ocrPayload, lockedAt: null, lastError: null })
+                .where(eq(edtr.id, row.id));
+            } else {
+              const [sibling] = await tx
+                .insert(edtr)
+                .values({
+                  tenantId: row.tenantId,
+                  rentalId: row.rentalId,
+                  equipmentId: row.equipmentId,
+                  source: row.source,
+                  reportDate: day.reportDate,
+                  rawFileUri: row.rawFileUri,
+                  ocrPayload,
+                  status: 'extracted',
+                })
+                .returning({ id: edtr.id });
+              edtrId = sibling!.id;
+            }
 
-          for (const field of ocrPayload.fields) {
-            await tx.insert(events).values({
+            await tx.insert(edtrLineItems).values({
               tenantId: row.tenantId,
-              name: 'ocr_field_confidence',
-              properties: {
-                doc_type: 'edtr',
-                field: field.name,
-                confidence: field.confidence,
-                auto_accepted: field.confidence >= 0.9,
-              },
+              edtrId,
+              hoursActive: String(day.hoursActive),
+              // Not zero. The form has no idle column, so nobody recorded
+              // one (migration 0017).
+              hoursIdle: null,
             });
-          }
 
-          // RFC-2 §2 step 5/6: pair with the other independent log and
-          // apply the gate immediately after extraction.
-          await reconcileEdtr(tx, row.tenantId, row.id);
+            for (const field of ocrPayload.fields) {
+              await tx.insert(events).values({
+                tenantId: row.tenantId,
+                name: 'ocr_field_confidence',
+                properties: {
+                  doc_type: 'edtr',
+                  field: field.name,
+                  confidence: field.confidence,
+                  auto_accepted: field.confidence >= CONFIDENCE_GATE,
+                },
+              });
+            }
+
+            // RFC-2 §2 step 5/6: pair with the other independent log and
+            // apply the gate immediately after extraction.
+            await reconcileEdtr(tx, row.tenantId, edtrId);
+
+            if (day.totalMismatch) {
+              // The sheet contradicts itself: the in/out times do not add up
+              // to the total the operator wrote and signed. That is a human
+              // question, so it overrides reconciliation even when a digital
+              // counterpart happens to agree with the written total -- two
+              // readings of this page already disagree.
+              await tx
+                .update(edtr)
+                .set({
+                  status: 'review',
+                  lastError: `total_mismatch:written=${day.hoursActive},computed=${day.computedHours}`,
+                })
+                .where(eq(edtr.id, edtrId));
+            }
+          }
         });
+
+        if (sheet.days.length > 1) {
+          console.log(`edtr-ocr-worker: sheet ${row.id} fanned out into ${sheet.days.length} day rows.`);
+        }
       } catch (err) {
         const attempts = row.attempts + 1;
         const lastError = err instanceof Error ? err.message : String(err);

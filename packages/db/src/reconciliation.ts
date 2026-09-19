@@ -29,14 +29,18 @@ function minFieldConfidence(source: string, ocrPayload: unknown): number {
 
 interface HourSums {
   active: number;
-  idle: number;
+  // null when ANY line item on this side did not record idle hours, which
+  // is the normal case for a paper capture -- the real Almara form has no
+  // idle column (migration 0017). Summing a NULL as 0 would understate the
+  // total and manufacture a disagreement with a log that did record it.
+  idle: number | null;
 }
 
-function sumHours(items: Array<{ hoursActive: string; hoursIdle: string }>): HourSums {
-  return items.reduce(
+function sumHours(items: Array<{ hoursActive: string; hoursIdle: string | null }>): HourSums {
+  return items.reduce<HourSums>(
     (acc, item) => ({
       active: acc.active + Number(item.hoursActive),
-      idle: acc.idle + Number(item.hoursIdle),
+      idle: acc.idle === null || item.hoursIdle === null ? null : acc.idle + Number(item.hoursIdle),
     }),
     { active: 0, idle: 0 },
   );
@@ -49,10 +53,16 @@ function sumHours(items: Array<{ hoursActive: string; hoursIdle: string }>): Hou
 // dimension so the new gate cannot be looser than the summed-total one it
 // replaces.
 function hourDeltas(a: HourSums, b: HourSums): HourDeltas {
+  // Idle is only comparable when BOTH logs recorded it. If either did not,
+  // the idle dimension and the summed total that contains it are dropped
+  // and the gate decides on active hours alone -- which is the figure the
+  // deduction is priced on. See the HourDeltas comment in
+  // packages/shared/src/edtr.ts for why this is not defaulted to zero.
+  const comparableIdle = a.idle !== null && b.idle !== null;
   return {
     active: Math.abs(a.active - b.active),
-    idle: Math.abs(a.idle - b.idle),
-    total: Math.abs(a.active + a.idle - (b.active + b.idle)),
+    idle: comparableIdle ? Math.abs(a.idle! - b.idle!) : null,
+    total: comparableIdle ? Math.abs(a.active + a.idle! - (b.active + b.idle!)) : null,
   };
 }
 

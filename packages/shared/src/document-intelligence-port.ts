@@ -15,8 +15,43 @@ export interface ExtractedField {
   confidence: number;
 }
 
+// A cell of a table prebuilt-layout found on the page, as a plain grid:
+// a merged cell is expanded into every position it covers, so consumers
+// index by (rowIndex, columnIndex) without reasoning about spans.
+//
+// Expanding is safe because Azure reports an explicit rowIndex and
+// columnIndex for every cell -- nothing is positional, so duplicating a
+// span's content across its own covered cells cannot shift a neighbour.
+// The real Almara header depends on this: "AM" spans two columns above its
+// IN/OUT pair and "DATE" spans both header rows, so dropping spanning cells
+// deleted the header outright and the sheet parsed as no table at all.
+export interface ExtractedTableCell {
+  rowIndex: number;
+  columnIndex: number;
+  content: string;
+  // prebuilt-layout reports no confidence on a table cell, but it does
+  // report one per recognised word. This is the lowest confidence among
+  // the words that make up this cell, so the 0.90 gate keeps grading real
+  // OCR certainty rather than a number we picked. A non-empty cell whose
+  // words cannot be located floors to 0 -- below the gate, so it routes to
+  // a human -- exactly as a missing field confidence does.
+  confidence: number;
+}
+
+export interface ExtractedTable {
+  rowCount: number;
+  columnCount: number;
+  cells: ExtractedTableCell[];
+}
+
 export interface DocumentExtractionResult {
   fields: Record<string, ExtractedField>;
+  // Optional so every existing caller (KYC, and the fixture adapters) is
+  // unaffected: they ask a document for scalar fields and get exactly what
+  // they got before. The EDTR path needs the grid instead, because the real
+  // Almara sheet is a 22-row timesheet and not a set of document-level
+  // fields -- see docs/cr-arkilaunch-edtr-real-form.md.
+  tables?: ExtractedTable[];
 }
 
 // Azure AI Document Intelligence is extraction only -- it never decides,
