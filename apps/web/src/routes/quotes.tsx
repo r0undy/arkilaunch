@@ -1,7 +1,7 @@
 import { createRoute } from '@tanstack/react-router';
 import { useEffect, useState, type FormEvent } from 'react';
 import { appLayoutRoute } from './_app.js';
-import { apiPost } from '../lib/api-client.js';
+import { apiPost, apiErrorText } from '../lib/api-client.js';
 import {
   getCustomers,
   getEquipmentTypes,
@@ -18,7 +18,9 @@ import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
 import { PageHeader } from '../components/page-header.js';
 import { GaugeReadout } from '../components/gauge-readout.js';
+import { Modal } from '../components/modal.js';
 import { Table, type TableColumn } from '../components/table.js';
+import { useToast } from '../components/toast.js';
 
 // Wire shape returned by QuotesService.preview/create (apps/api/src/quotes/quotes.service.ts).
 interface QuoteLineItem {
@@ -39,22 +41,15 @@ interface QuoteResult {
   total: number;
 }
 
-const LINE_ITEM_COLUMNS: TableColumn<QuoteLineItem>[] = [
-  { header: 'Equipment type', cell: (row) => row.equipmentTypeId.slice(0, 8) },
-  { header: 'Qty', cell: (row) => String(row.quantity), align: 'right' },
-  { header: 'Hours', cell: (row) => row.estimatedHours.toFixed(2), align: 'right' },
-  { header: 'Rate (PHP/h)', cell: (row) => row.hourlyRate.toFixed(2), align: 'right' },
-  { header: 'Subtotal (PHP)', cell: (row) => row.subtotal.toFixed(2), align: 'right' },
-];
-
 // DESIGN.md §4.1 Quotation builder: rate-card selector + live diesel Gauge
 // Readout (with date + staleness label) + computed line items.
 function QuotesPage() {
+  const toast = useToast();
   const [customers, setCustomers] = useState<CustomerRef[]>([]);
   const [equipmentTypes, setEquipmentTypes] = useState<EquipmentTypeRef[]>([]);
   const [rateCards, setRateCards] = useState<RateCardRef[]>([]);
   const [projectSites, setProjectSites] = useState<ProjectSiteRef[]>([]);
-  const [refError, setRefError] = useState<unknown>(null);
+  const [refFailed, setRefFailed] = useState(false);
 
   const [customerId, setCustomerId] = useState('');
   const [projectSiteId, setProjectSiteId] = useState('');
@@ -66,7 +61,12 @@ function QuotesPage() {
   const [demobilizationKm, setDemobilizationKm] = useState('0');
 
   const [result, setResult] = useState<QuoteResult | null>(null);
-  const [error, setError] = useState<unknown>(null);
+  // The priced figures used to appear inline below the form, so Preview and
+  // Create sat side by side as two blind sibling buttons and the price
+  // scrolled off under a long form. A preview is a decision point, so it
+  // opens over the form and carries Create draft in its own footer.
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [busy, setBusy] = useState<'preview' | 'create' | 'approve' | null>(null);
   const [quoteId, setQuoteId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -81,8 +81,27 @@ function QuotesPage() {
         if (rc[0]) setRateCardId(rc[0].id);
         if (ps[0]) setProjectSiteId(ps[0].id);
       })
-      .catch(setRefError);
+      .catch((err: unknown) => {
+        setRefFailed(true);
+        toast.error('Could not load the quote reference data', apiErrorText(err));
+      });
+    // Pick lists are fetched once on mount; the toast context is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The line-item table printed a UUID slice for the machine being priced,
+  // while its name was already on the page in the equipment-type picker.
+  function equipmentTypeName(id: string): string {
+    return equipmentTypes.find((et) => et.id === id)?.name ?? 'Unknown equipment type';
+  }
+
+  const lineItemColumns: TableColumn<QuoteLineItem>[] = [
+    { header: 'Equipment type', cell: (row) => equipmentTypeName(row.equipmentTypeId) },
+    { header: 'Qty', cell: (row) => String(row.quantity), align: 'right' },
+    { header: 'Hours', cell: (row) => row.estimatedHours.toFixed(2), align: 'right' },
+    { header: 'Rate (PHP/h)', cell: (row) => row.hourlyRate.toFixed(2), align: 'right' },
+    { header: 'Subtotal (PHP)', cell: (row) => row.subtotal.toFixed(2), align: 'right' },
+  ];
 
   function buildBody() {
     return {
@@ -104,39 +123,81 @@ function QuotesPage() {
 
   async function preview(event: FormEvent) {
     event.preventDefault();
-    setError(null);
+    setBusy('preview');
     try {
       const res = await apiPost<QuoteResult>('/quotes/preview', buildBody());
       setResult(res);
+      setPreviewOpen(true);
+      if (res.priceStale) {
+        toast.show({
+          tone: 'info',
+          title: 'Priced against a stale diesel rate',
+          detail: `The newest price on file is from ${res.dieselPriceDate}.`,
+        });
+      }
     } catch (err) {
-      setError(err);
+      toast.error('Could not price that quote', apiErrorText(err));
+    } finally {
+      setBusy(null);
     }
   }
 
-  async function create(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
+  async function create() {
+    setBusy('create');
     try {
       const res = await apiPost<QuoteResult & { id: string }>('/quotes', buildBody());
       setResult(res);
       setQuoteId(res.id);
+      setPreviewOpen(false);
+      toast.success('Draft quote created', `Total ${res.total.toFixed(2)} PHP. Approve it to send.`);
     } catch (err) {
-      setError(err);
+      toast.error('Could not create the draft', apiErrorText(err));
+    } finally {
+      setBusy(null);
     }
   }
 
   async function approve() {
     if (!quoteId) return;
-    setError(null);
+    setBusy('approve');
     try {
       const res = await apiPost<QuoteResult>(`/quotes/${quoteId}/approve`, {});
       setResult(res);
+      toast.success('Quote approved');
     } catch (err) {
-      setError(err);
+      toast.error('Could not approve the quote', apiErrorText(err));
+    } finally {
+      setBusy(null);
     }
   }
 
-  const canSubmit = !customerId || !projectSiteId || !equipmentTypeId || !rateCardId;
+  const incomplete = !customerId || !projectSiteId || !equipmentTypeId || !rateCardId;
+
+  function QuoteFigures({ quote }: { quote: QuoteResult }) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap gap-3">
+          <GaugeReadout
+            label="Diesel price"
+            value={quote.dieselPrice.toFixed(2)}
+            unit="PHP/L"
+            stale={quote.priceStale}
+            staleLabel={`as of ${quote.dieselPriceDate}`}
+          />
+          <GaugeReadout label="Total" value={quote.total.toFixed(2)} unit="PHP" />
+        </div>
+        <Table
+          columns={lineItemColumns}
+          rows={quote.lineItems}
+          rowKey={(row) => row.equipmentTypeId}
+        />
+        <p className="text-sm text-text-muted">
+          Subtotal {quote.subtotal.toFixed(2)} PHP, discount {quote.discount.toFixed(2)} PHP, status{' '}
+          {quote.status}.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -145,14 +206,14 @@ function QuotesPage() {
         title="Quotes"
         description="Price a quote against today's diesel rate."
       />
-      {refError != null && (
-        <p className="mb-4 text-error">
-          Could not load reference data (customers/equipment/rate cards/sites) -- is the API
-          running? See error below.
+      {refFailed && (
+        <p className="text-error" role="alert">
+          Could not load customers, equipment, rate cards or sites. Reload the page once the API is
+          reachable.
         </p>
       )}
-      <Surface radius="md" elevation="sm" className="mb-6 flex max-w-2xl flex-col gap-4 p-6">
-        <form className="flex flex-col gap-4">
+      <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
+        <form className="flex flex-col gap-4" onSubmit={preview}>
           <Select
             id="customerId"
             label="Customer"
@@ -242,50 +303,54 @@ function QuotesPage() {
             onChange={(e) => setDemobilizationKm(e.target.value)}
           />
           <div className="flex flex-wrap gap-3">
-            <Button type="submit" variant="secondary" onClick={preview} disabled={canSubmit}>
-              Preview
-            </Button>
-            <Button type="submit" onClick={create} disabled={canSubmit}>
-              Create draft
-            </Button>
-            <Button type="button" variant="approve" onClick={approve} disabled={!quoteId}>
-              Approve
+            <Button type="submit" disabled={incomplete} loading={busy === 'preview'}>
+              Preview price
             </Button>
           </div>
+          <p className="text-sm text-text-muted">
+            Pricing runs against today&apos;s diesel rate. Nothing is saved until you create the
+            draft.
+          </p>
         </form>
       </Surface>
 
-      {error != null && (
-        <Surface radius="md" elevation="sm" className="mb-6 max-w-2xl border-error p-4">
-          <h2 className="mb-2 font-display text-[18px] font-semibold text-error">Error</h2>
-          <pre className="overflow-x-auto font-mono text-sm text-text">
-            {JSON.stringify(error, null, 2)}
-          </pre>
+      {quoteId && result && (
+        <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
+          <h2 className="font-display text-lg font-semibold text-text">Draft quote</h2>
+          <QuoteFigures quote={result} />
+          <div>
+            <Button
+              type="button"
+              variant="approve"
+              onClick={approve}
+              loading={busy === 'approve'}
+              disabled={result.status === 'approved'}
+            >
+              {result.status === 'approved' ? 'Approved' : 'Approve'}
+            </Button>
+          </div>
         </Surface>
       )}
-      {result != null && (
-        <div className="flex max-w-2xl flex-col gap-4">
-          <div className="flex flex-wrap gap-3">
-            <GaugeReadout
-              label="Diesel price"
-              value={result.dieselPrice.toFixed(2)}
-              unit="PHP/L"
-              stale={result.priceStale}
-              staleLabel={`as of ${result.dieselPriceDate}`}
-            />
-            <GaugeReadout label="Total" value={result.total.toFixed(2)} unit="PHP" />
-          </div>
-          <Table
-            columns={LINE_ITEM_COLUMNS}
-            rows={result.lineItems}
-            rowKey={(row) => row.equipmentTypeId}
-          />
-          <p className="text-sm text-text-muted">
-            Subtotal {result.subtotal.toFixed(2)} PHP, discount {result.discount.toFixed(2)} PHP,
-            status {result.status}.
-          </p>
-        </div>
-      )}
+
+      <Modal
+        open={previewOpen && result != null}
+        onClose={() => setPreviewOpen(false)}
+        title="Quote preview"
+        description="Nothing has been saved yet. Create the draft to keep these figures."
+        size="lg"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setPreviewOpen(false)}>
+              Close
+            </Button>
+            <Button type="button" onClick={create} loading={busy === 'create'}>
+              Create draft
+            </Button>
+          </>
+        }
+      >
+        {result && <QuoteFigures quote={result} />}
+      </Modal>
     </div>
   );
 }
