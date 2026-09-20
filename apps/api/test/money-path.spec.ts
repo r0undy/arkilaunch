@@ -4,13 +4,11 @@ import postgres from 'postgres';
 import { and, eq } from 'drizzle-orm';
 import {
   edtr as edtrTable,
-  equipment as equipmentTable,
   edtrLineItems,
   edtrReconciliations,
   invoices as invoicesTable,
   invoiceLineItems,
   quotations,
-  rateCards,
   reconcileEdtr,
   rentalContracts,
   rentals,
@@ -41,6 +39,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
   // A second rental with NO quotation/rental_contracts chain, so the
   // no-deposit fallback cap has something to be tested against.
   let uncappedRentalId: string;
+  let uncappedEquipmentId: string;
 
   // Own date range, disjoint from every other suite's. Vitest runs spec
   // files in parallel and they all draw the same seeded rental and
@@ -70,6 +69,27 @@ describe('the money path: no deduction without a passing reconciliation', () => 
       select id from users where tenant_id = ${tenantId} and email = 'admin@test-tenant-a.test'
     `;
     const [equipment] = await sql`select id from equipment where tenant_id = ${tenantId} limit 1`;
+
+    // A private equipment type + unit + rate card for the no-deposit cap
+    // test. Its own type, not the shared one: a rate card is keyed on
+    // (tenant, equipment_type), so a card added against the shared type
+    // reprices every other spec's deductions -- which is exactly what a
+    // first attempt at this did to billing-engine. Scoped to 2021 as well
+    // as to its own type, so it cannot reach anything pricing at `now`.
+    const [cappedType] = await sql`
+      insert into equipment_types (name) values (${`Money Path Cap Fixture ${Date.now()}`}) returning id
+    `;
+    const cappedTypeId = (cappedType as { id: string }).id;
+    const [cappedEquipment] = await sql`
+      insert into equipment (tenant_id, equipment_type_id, model, serial_no)
+      values (${tenantId}, ${cappedTypeId}, 'Money Path Cap Unit', ${`test-tenant-a-serial-cap-${Date.now()}`})
+      returning id
+    `;
+    uncappedEquipmentId = (cappedEquipment as { id: string }).id;
+    await sql`
+      insert into rate_cards (tenant_id, equipment_type_id, rate_type, rate_value, currency, effective_from, effective_to)
+      values (${tenantId}, ${cappedTypeId}, 'hourly', 1000.00, 'PHP', '2021-01-01', '2021-12-31')
+    `;
     const [customerRow] = await sql`select id from customers where tenant_id = ${tenantId} limit 1`;
     const [siteRow] = await sql`select id from project_sites where tenant_id = ${tenantId} limit 1`;
 
@@ -164,6 +184,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     hoursActive: number,
     hoursIdle: number,
     forRentalId?: string,
+    forEquipmentId?: string,
   ): Promise<string> {
     return withTenantTx(adminCtx, async (tx) => {
       const [row] = await tx
@@ -171,7 +192,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
         .values({
           tenantId: adminCtx.tenantId,
           rentalId: forRentalId ?? rentalId,
-          equipmentId,
+          equipmentId: forEquipmentId ?? equipmentId,
           source: 'paper_ocr',
           reportDate,
           rawFileUri: 'storage://fixtures/money-path.jpg',
@@ -471,34 +492,17 @@ describe('the money path: no deduction without a passing reconciliation', () => 
   // collects for that case, so a deduction past that must be refused and
   // move no money.
   it('caps a deduction on a rental with no configured deposit', async () => {
-    // Own rate card, so the deduction's size is a property of this test
-    // rather than of whatever the ambient seed happens to hold. Scoped to
-    // 2021 and already expired: the deduction prices against report_date,
-    // while every quote-side assertion prices against `now`, so a card
-    // whose effective_to is years in the past cannot reach them.
-    // 6h x 1000 = 6000, comfortably past the DEFAULT_DEPOSIT_PHP cap.
-    await withTenantTx(adminCtx, async (tx) => {
-      const [equipmentRow] = await tx
-        .select({ equipmentTypeId: equipmentTable.equipmentTypeId })
-        .from(equipmentTable)
-        .where(eq(equipmentTable.id, equipmentId))
-        .limit(1);
-      await tx.insert(rateCards).values({
-        tenantId: adminCtx.tenantId,
-        equipmentTypeId: equipmentRow!.equipmentTypeId,
-        rateType: 'hourly',
-        rateValue: '1000.00',
-        currency: 'PHP',
-        effectiveFrom: new Date('2021-01-01T00:00:00Z'),
-        effectiveTo: new Date('2021-12-31T00:00:00Z'),
-      });
-    });
-
-    await insertTranscribedPaperCounterpart(DATES.uncapped, 6, 1, uncappedRentalId);
+    await insertTranscribedPaperCounterpart(
+      DATES.uncapped,
+      6,
+      1,
+      uncappedRentalId,
+      uncappedEquipmentId,
+    );
     const digital = await edtr.capture(adminCtx, {
       source: 'digital_entry',
       rentalId: uncappedRentalId,
-      equipmentId,
+      equipmentId: uncappedEquipmentId,
       reportDate: DATES.uncapped,
       lineItems: { hoursActive: 6, hoursIdle: 1 },
     });
