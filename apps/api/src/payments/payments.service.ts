@@ -1,6 +1,7 @@
 import { ForbiddenException, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, gte } from 'drizzle-orm';
 import {
+  DEFAULT_DEPOSIT_PHP,
   customers,
   findTenantByInvoiceIdForWebhook,
   invoices,
@@ -20,7 +21,6 @@ import { PAYMENTS_PORT } from './payments.tokens.js';
 // quotation/rental_contracts chain (that only exists for the quote->rental
 // path, RFC-3), so most bookings have no deposit_required to read. Falls
 // back to a fixed placeholder deposit when no rental_contracts row exists.
-const DEFAULT_DEPOSIT_PHP = 5000;
 const CHECKOUT_RATE_WINDOW_MS = 60_000;
 const CHECKOUT_RATE_LIMIT = 20;
 

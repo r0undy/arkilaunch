@@ -16,6 +16,30 @@ import { QUERY_FIELD_TO_PORT_KEY, resolveModelRequest, type ModelRequest } from 
 const API_VERSION = '2024-11-30';
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 60_000;
+// Per-request socket timeout. POLL_TIMEOUT_MS is a poll-LOOP budget,
+// checked only after a response comes back, so it could never fire on a
+// connection that hangs with no response and no RST: `await fetch` simply
+// never settled, the EDTR row stayed 'extracting' and locked, and the
+// worker process was held past its cron interval
+// (audit-ocr-money-path.md #4).
+const REQUEST_TIMEOUT_MS = 30_000;
+
+// A hung socket must fail the request, not the process. AbortSignal
+// rejects with an AbortError, which the caller already treats as an
+// analysis failure, so the row goes to its retry/hard_fail path instead
+// of sitting locked forever.
+async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  } catch (err) {
+    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      throw new DocumentAnalysisError(
+        `Azure DI request timed out after ${REQUEST_TIMEOUT_MS}ms with no response`,
+      );
+    }
+    throw err;
+  }
+}
 
 // Thrown instead of ExtractionUnavailableError: this is not "the service is
 // unreachable", it is "the service answered but the answer cannot be
@@ -134,7 +158,7 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
       query.set('queryFields', request.queryFields.join(','));
     }
 
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${this.baseUrl}/documentintelligence/documentModels/${request.modelId}:analyze?${query.toString()}`,
       {
         method: 'POST',
@@ -171,7 +195,7 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
     const deadline = Date.now() + POLL_TIMEOUT_MS;
 
     for (;;) {
-      const res = await fetch(operationLocation, {
+      const res = await fetchWithTimeout(operationLocation, {
         headers: { 'Ocp-Apim-Subscription-Key': this.apiKey },
       });
       if (!res.ok) {

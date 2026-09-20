@@ -1,7 +1,16 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { ConflictException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
 import postgres from 'postgres';
-import { addresses, edtr as edtrTable, edtrLineItems, projectSites, withTenantTx } from '@arkilaunch/db';
+import {
+  addresses,
+  edtr as edtrTable,
+  edtrLineItems,
+  projectSites,
+  quotations,
+  rentalContracts,
+  rentals,
+  withTenantTx,
+} from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
 import { EdtrService } from '../src/edtr/edtr.service.js';
 import { EventsService } from '../src/events/events.service.js';
@@ -18,6 +27,15 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
   let unassignedRentalId: string;
 
   beforeAll(async () => {
+    // QAD-T39 runtime gate (audit-ocr-money-path.md #8): this spec's
+    // fixtures carry a real model_id, i.e. model-extracted evidence, and
+    // a deduction from model output is refused unless the golden-set
+    // accuracy has been measured and met. These tests are about the
+    // reconciliation/deduction behaviour, not the accuracy gate, so they
+    // attest a passing measurement. money-path.spec.ts covers the
+    // unattested case failing closed.
+    process.env.OCR_MEASURED_ACCURACY = '0.95';
+    process.env.OCR_MEASURED_SAMPLES = '250';
     const url = process.env.DATABASE_URL_DIRECT;
     if (!url) throw new Error('DATABASE_URL_DIRECT is required');
     const sql = postgres(url, { max: 1 });
@@ -77,7 +95,47 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
       await sql`delete from edtr where id = any(${ids})`;
     }
 
+    const [customerRow] = await sql`select id from customers where tenant_id = ${tenantId} limit 1`;
+    const [siteRow] = await sql`select id from project_sites where tenant_id = ${tenantId} limit 1`;
+
     await sql.end();
+
+    // A dedicated rental with its own quotation + rental_contracts chain,
+    // the same isolation billing-engine.spec.ts already uses and for the
+    // same reason: the shared fixture rental is mutated concurrently by
+    // other spec files.
+    //
+    // It needs a REAL configured deposit now. Before
+    // audit-ocr-money-path.md #5 was fixed, a rental with no
+    // rental_contracts chain had no cap at all and deductions here were
+    // unbounded; the fallback now caps at the deposit checkout actually
+    // collects, and eight hours of heavy equipment exceeds that placeholder
+    // many times over. A quote-originated rental -- which is what the pilot
+    // path produces -- carries a real deposit, so that is what this spec
+    // exercises.
+    await withTenantTx(adminCtx, async (tx) => {
+      const [rentalRow] = await tx
+        .insert(rentals)
+        .values({
+          tenantId,
+          customerId: (customerRow as { id: string }).id,
+          projectSiteId: (siteRow as { id: string }).id,
+          status: 'active',
+          startDate: new Date('2020-01-01T00:00:00Z'),
+        })
+        .returning();
+      rentalId = rentalRow!.id;
+
+      const [quotation] = await tx
+        .insert(quotations)
+        .values({ tenantId, customerId: (customerRow as { id: string }).id, rentalId })
+        .returning();
+      await tx.insert(rentalContracts).values({
+        tenantId,
+        quotationId: quotation!.id,
+        depositRequired: '100000000.00',
+      });
+    });
 
     // A second site + rental the seeded timekeeper is NOT assigned to
     // (QAD-T29: site-scope abuse needs an unassigned site to deny against).

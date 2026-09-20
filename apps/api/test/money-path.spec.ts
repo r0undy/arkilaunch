@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ConflictException } from '@nestjs/common';
 import postgres from 'postgres';
 import { and, eq } from 'drizzle-orm';
@@ -47,6 +47,8 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     refused: '2021-06-03',
     match: '2021-06-04',
     noEvidence: '2021-06-05',
+    modelSourced: '2021-06-06',
+    uncapped: '2021-06-07',
   };
 
   beforeAll(async () => {
@@ -89,6 +91,27 @@ describe('the money path: no deduction without a passing reconciliation', () => 
       await sql`delete from edtr_reconciliations where edtr_id = any(${ids}) or counterpart_edtr_id = any(${ids})`;
       await sql`delete from edtr_line_items where edtr_id = any(${ids})`;
       await sql`delete from edtr where id = any(${ids})`;
+    }
+
+    // Reset this rental's deposit ledger.
+    //
+    // The fixture rental has no quotation/rental_contracts chain, so
+    // before audit-ocr-money-path.md #5 was fixed its deductions were
+    // unbounded -- and every prior run of this spec added one, to 250
+    // invoices totalling PHP 711,450 against a deposit that was never
+    // configured. Now that the fallback caps at the deposit checkout
+    // actually collects, that debris exhausts the cap and every approve
+    // here fails with deposit_exhausted. Clearing it makes this spec
+    // deterministic run-to-run instead of quietly depending on an
+    // unbounded ledger.
+    const priorDeductions = await sql`
+      select id from invoices where rental_id = ${rentalId} and invoice_type = 'deposit_deduction'
+    `;
+    const deductionIds = priorDeductions.map((row) => (row as { id: string }).id);
+    if (deductionIds.length > 0) {
+      await sql`delete from invoice_line_items where invoice_id = any(${deductionIds})`;
+      await sql`delete from payments where invoice_id = any(${deductionIds})`;
+      await sql`delete from invoices where id = any(${deductionIds})`;
     }
     await sql.end();
   });
@@ -171,6 +194,47 @@ describe('the money path: no deduction without a passing reconciliation', () => 
   // summed-scalar comparison saw |8 - 8| = 0 and auto-accepted, then priced
   // the approving side's active hours against the deposit. Two independent
   // logs exist precisely to catch this, so it must not match.
+  // Same shape as the transcribed counterpart above, but carrying a real
+  // model_id -- i.e. output the QAD-T39 accuracy gate is actually about.
+  async function insertModelExtractedPaperCounterpart(
+    reportDate: string,
+    hoursActive: number,
+    hoursIdle: number,
+  ): Promise<string> {
+    return withTenantTx(adminCtx, async (tx) => {
+      const [row] = await tx
+        .insert(edtrTable)
+        .values({
+          tenantId: adminCtx.tenantId,
+          rentalId,
+          equipmentId,
+          source: 'paper_ocr',
+          reportDate,
+          rawFileUri: 'storage://fixtures/money-path-model.jpg',
+          status: 'extracted',
+          ocrPayload: {
+            model_id: 'arkilaunch-edtr-neural-v1',
+            api_version: '2024-11-30',
+            analyzed_at: new Date().toISOString(),
+            fields: [
+              { name: 'hours_active', value: hoursActive, value_type: 'number', confidence: 0.99 },
+              { name: 'hours_idle', value: hoursIdle, value_type: 'number', confidence: 0.99 },
+            ],
+            min_field_confidence: 0.99,
+            pages: 1,
+          },
+        })
+        .returning();
+      await tx.insert(edtrLineItems).values({
+        tenantId: adminCtx.tenantId,
+        edtrId: row!.id,
+        hoursActive: String(hoursActive),
+        hoursIdle: String(hoursIdle),
+      });
+      return row!.id;
+    });
+  }
+
   it('QAD-T40: an equal-and-opposite active/idle swap is a discrepancy, not a match', async () => {
     await insertTranscribedPaperCounterpart(DATES.swap, 8, 0);
     const digital = await edtr.capture(adminCtx, {
@@ -325,5 +389,56 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     // disagreement where the truth is that a log has no hours at all.
     expect(polled.reconciliation?.reason).toBe('unreadable');
     expect(polled.reconciliation?.deltaHours).toBeNull();
+  });
+
+  // audit-ocr-money-path.md #8. The 90.06% gate, the corpus floor and
+  // assertAccuracyGate all existed, and nothing on the money path called
+  // them: ENABLE_OCR_PIPELINE alone was enough to turn model output into
+  // a deduction. Unset attestation must fail closed, which is also the
+  // real state of this deployment.
+  it('refuses to deduct from model-extracted evidence with no attested accuracy', async () => {
+    // vi.stubEnv, not delete: vitest reuses a worker process across spec
+    // files, so an unrestored delete would leak into any later file that
+    // approves model evidence. unstubAllEnvs in afterEach puts it back.
+    vi.stubEnv('OCR_MEASURED_ACCURACY', '');
+    vi.stubEnv('OCR_MEASURED_SAMPLES', '');
+    await insertModelExtractedPaperCounterpart(DATES.modelSourced, 6, 1);
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate: DATES.modelSourced,
+      lineItems: { hoursActive: 6, hoursIdle: 1 },
+    });
+
+    const polled = await edtr.get(adminCtx, digital.id);
+    expect(polled.reconciliation?.status).toBe('matched');
+    const reconId = polled.reconciliation!.id;
+
+    // The pair matches cleanly -- it is the unmeasured model, not a
+    // disagreement, that blocks this.
+    await expect(
+      edtr.approve(adminCtx, digital.id, {
+        reconciliationId: reconId,
+        adjustments: { hoursActive: 6, hoursIdle: 1 },
+      }),
+    ).rejects.toThrow(ConflictException);
+    expect(await deductionInvoiceCount(reconId)).toBe(0);
+  });
+
+  // audit-ocr-money-path.md #5's fallback cap (a rental with no configured
+  // deposit now caps at what checkout actually collects) is NOT covered
+  // here, deliberately rather than by oversight. This spec's fixture has
+  // no hourly rate card effective on its report dates, so every deduction
+  // it makes prices at PHP 0 -- the happy-path invoice above is 0.00 --
+  // and a deduction of 0 can never exceed the cap. A test asserting
+  // deposit_exhausted on this fixture would pass for the wrong reason or
+  // not at all. Covering it properly needs a rental with no contract but a
+  // working effective rate card, which is fixture work in its own right.
+  // The configured-deposit half of the same guard is covered by
+  // billing-engine.spec.ts's deposit_exhausted test.
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 });
