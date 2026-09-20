@@ -872,7 +872,7 @@ NFR-to-OPS traceability: `NFR-1`/`NFR-2` -> OPS `SLO-2`/`SLO-3` (latency burn al
 
 ## 8. AI / Agent Architecture
 
-**AI approach:** Intelligent document processing, not a generative or agentic LLM. **Azure AI Document Intelligence** extracts structured fields from user-uploaded images for two features: handwritten EDTR active/idle hours and breakdown status (PRD-F3), and SEC number + TIN from corporate documents (PRD-F6). Extraction only: the model reads images and returns typed fields with per-field confidence. It never decides, and it never moves money. Reconciliation, deduction, tenant activation, and portal confirmation are all downstream, gated by rules and humans.
+**AI approach:** Intelligent document processing, not a generative or agentic LLM. **Azure AI Document Intelligence** extracts structured fields from user-uploaded images for two features: handwritten EDTR active/idle hours (PRD-F3) (**Corrected 2026-09-19, `cr-arkilaunch-doc-reconcile-2026-09-19.md`:** breakdown status is **not** extracted. `model-registry.ts` and the worker persist `hours_active` and `hours_idle` only; `breakdown_status` exists solely in a golden-set test fixture. The claim was inflating the extraction's stated scope.), and SEC number + TIN from corporate documents (PRD-F6). Extraction only: the model reads images and returns typed fields with per-field confidence. It never decides, and it never moves money. Reconciliation, deduction, tenant activation, and portal confirmation are all downstream, gated by rules and humans.
 
 **Model selection:**
 

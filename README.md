@@ -21,6 +21,8 @@ Read this before trusting any other status claim in the repo; [docs/index.md](do
 
 Two Change Records remain open on their own terms: `cr-arkilaunch-pilot-honesty.md` and `cr-arkilaunch-azure-di-provisioning.md`.
 
+- **A full-system audit ran 2026-09-19** ([docs/audit-api-surface.md](docs/audit-api-surface.md), [docs/audit-db-tenant-isolation.md](docs/audit-db-tenant-isolation.md), [docs/audit-ocr-money-path.md](docs/audit-ocr-money-path.md), [docs/audit-docs-drift.md](docs/audit-docs-drift.md)) and raised 17 HIGH findings. Most are now closed in code -- the customer-readable-quote and unguarded-reference authorization holes, the drizzle snapshot drift that would have dropped the `tenants` RLS policy, the complete absence of indexes, the money-path constraints, and the OCR accuracy gate. Each audit document carries its own per-finding disposition. Still open and recorded there: the EDTR equipment-day UNIQUE (blocked on a test-fixture cleanup), composite tenant-scoped FKs, `payments.provider_ref` NOT NULL, and the unbuilt-client backlog.
+
 ## Quick start
 
 PRD, SDD, DSD, QAD, and RFC-1/2/3 are Locked. Read the docs first:
@@ -43,7 +45,7 @@ This repo does not vendor the FMD engine's own tooling (`fmd/scripts/*.py`); doc
 
 ## Documentation
 
-42 documents live in [docs/](docs/); [docs/index.md](docs/index.md) is the manifest and the only complete list. The ones you are most likely to want:
+54 documents live in [docs/](docs/); [docs/index.md](docs/index.md) is the manifest and the only complete list. The ones you are most likely to want:
 
 | Doc | Purpose |
 |-----|---------|

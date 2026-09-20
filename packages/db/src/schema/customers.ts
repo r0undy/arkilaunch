@@ -1,4 +1,4 @@
-import { integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 
@@ -14,7 +14,9 @@ export const customers = pgTable(
     kycStatus: text('kyc_status').notNull().default('pending'), // pending, approved, rejected
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('customers_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 export const customerContacts = pgTable(
@@ -32,7 +34,9 @@ export const customerContacts = pgTable(
     isPrimary: text('is_primary').notNull().default('false'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('customer_contacts_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 export const addresses = pgTable(
@@ -50,7 +54,9 @@ export const addresses = pgTable(
     country: text('country').notNull().default('PH'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('addresses_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 export const customerAddresses = pgTable(
@@ -69,7 +75,9 @@ export const customerAddresses = pgTable(
     addressType: text('address_type').notNull(), // billing, site
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('customer_addresses_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 // Sensitive personal info under RA 10173 (CLR register). Real Azure DI
@@ -100,5 +108,7 @@ export const kycDocuments = pgTable(
     registryStatus: text('registry_status'), // active | suspended | revoked, human-confirmed
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('kyc_documents_tenant_id_idx').on(table.tenantId),
+  ],
 );

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaginationQuerySchema } from './pagination.js';
 
 // RFC-2 §3: the ocr_payload JSONB contract, written verbatim by the
 // edtr-ocr-worker and validated with Zod before use (AI-02: insecure output
@@ -246,7 +247,7 @@ export const EdtrApproveRequestSchema = z.object({
 export type EdtrApproveRequest = z.infer<typeof EdtrApproveRequestSchema>;
 
 // GET /api/v1/edtr?... (S8 review queue, cr-arkilaunch-f9-read-surface.md).
-export const EdtrListQuerySchema = z.object({
+export const EdtrListQuerySchema = PaginationQuerySchema.extend({
   status: z.enum(['queued', 'extracting', 'extracted', 'review', 'reconciled', 'hard_failed']).optional(),
   rentalId: z.string().uuid().optional(),
   equipmentId: z.string().uuid().optional(),
@@ -258,8 +259,6 @@ export const EdtrListQuerySchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
 });
 export type EdtrListQuery = z.infer<typeof EdtrListQuerySchema>;
 

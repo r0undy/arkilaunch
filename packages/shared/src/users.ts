@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ROLE_CODES, type RoleCode } from './permissions.js';
+import { PaginationQuerySchema } from './pagination.js';
 
 // S19 Users & Roles (PRD-F7). A role assignable through this API -- never
 // `owner` (tenant-governance act, belongs to the platform console, S25) or
@@ -15,11 +16,9 @@ export type UserStatus = z.infer<typeof UserStatusSchema>;
 // min(1) validates a submitted credential, not a chosen one.
 export const UserPasswordSchema = z.string().min(12).max(128);
 
-export const UserListQuerySchema = z.object({
+export const UserListQuerySchema = PaginationQuerySchema.extend({
   status: UserStatusSchema.optional(),
   role: z.enum(ROLE_CODES).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
 });
 export type UserListQuery = z.infer<typeof UserListQuerySchema>;
 

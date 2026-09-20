@@ -14,13 +14,21 @@ export interface CatalogEquipmentRow {
   availabilityStatus: string;
 }
 
-export async function listCatalogEquipmentForSlug(slug: string): Promise<CatalogEquipmentRow[]> {
+// Bounded at the database: this is an unauthenticated route, and every
+// storefront page load used to ship the anchor tenant's entire equipment
+// table (audit-api-surface.md #8). LIMIT/OFFSET wrap the SECURITY DEFINER
+// function's result set, so the function itself is unchanged.
+export async function listCatalogEquipmentForSlug(
+  slug: string,
+  limit: number,
+  offset: number,
+): Promise<CatalogEquipmentRow[]> {
   const rows = await db.execute<{
     id: string;
     equipment_type_name: string;
     model: string;
     availability_status: string;
-  }>(sql`select * from catalog_list_equipment(${slug})`);
+  }>(sql`select * from catalog_list_equipment(${slug}) limit ${limit} offset ${offset}`);
   return rows.map((row) => ({
     id: row.id,
     equipmentTypeName: row.equipment_type_name,

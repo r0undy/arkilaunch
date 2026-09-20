@@ -5,6 +5,14 @@ import { db } from './client.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+// The deposit a booking-originated rental actually collects at checkout
+// when there is no quotation/rental_contracts chain to read a configured
+// deposit_required from. Defined here rather than in payments.service.ts
+// so the side that CHARGES it and the side that DEDUCTS against it cannot
+// drift apart: a deduction must never exceed the deposit really held
+// (audit-ocr-money-path.md #5).
+export const DEFAULT_DEPOSIT_PHP = 5000;
+
 export interface DepositDeduction {
   invoiceId: string;
   amount: number;

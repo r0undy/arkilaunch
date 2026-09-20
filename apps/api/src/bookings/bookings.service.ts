@@ -3,8 +3,6 @@ import { desc, eq, inArray } from 'drizzle-orm';
 import {
   addresses,
   auditLogs,
-  customers,
-  db,
   equipment,
   equipmentAssignments,
   invoices,
@@ -16,6 +14,7 @@ import {
 } from '@arkilaunch/db';
 import type {
   BookingCreateRequest,
+  BookingListQuery,
   BookingCreateResponse,
   BookingDetailResponse,
   BookingListResponse,
@@ -23,8 +22,8 @@ import type {
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { findAvailableAlternatives, overlappingAssignments } from '../common/equipment-availability.js';
-
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+import { ownCustomer } from '../common/customer-scope.js';
+import { countRows } from '../common/count-rows.js';
 
 // A booking IS a `rentals` row plus one `equipment_assignments` row per
 // item -- no new table (SDD §3's 35-table catalog already models an order
@@ -32,14 +31,6 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 @Injectable()
 export class BookingsService {
   constructor(private readonly events: EventsService) {}
-
-  // Resolves the caller's OWN customers row for a `customer`-role caller.
-  // Never trusts a client-supplied customerId for that role (mirrors the
-  // timekeeper site-scope check in edtr.service.ts).
-  private async ownCustomer(tx: Tx, ctx: RequestContext) {
-    const [row] = await tx.select().from(customers).where(eq(customers.userId, ctx.userId)).limit(1);
-    return row ?? null;
-  }
 
   // POST /api/v1/bookings (SDD §4, PRD-F8 US-09). Never overbooks: the
   // candidate equipment rows are locked with FOR UPDATE before the overlap
@@ -49,7 +40,7 @@ export class BookingsService {
     return withTenantTx(ctx, async (tx) => {
       let customerId = body.customerId;
       if (ctx.role === 'customer') {
-        const own = await this.ownCustomer(tx, ctx);
+        const own = await ownCustomer(tx, ctx);
         if (!own) throw new ForbiddenException({ error: 'customer_profile_not_found' });
         if (body.customerId && body.customerId !== own.id) {
           await tx.insert(auditLogs).values({
@@ -151,16 +142,25 @@ export class BookingsService {
   // GET /api/v1/bookings (PRD-F8 US-09). A `customer` sees only their own
   // bookings; staff see the whole tenant (RLS is the tenant boundary,
   // matching reference/* and fleet's read posture).
-  async list(ctx: RequestContext): Promise<BookingListResponse> {
+  async list(ctx: RequestContext, query: BookingListQuery): Promise<BookingListResponse> {
     return withTenantTx(ctx, async (tx) => {
-      let rows;
+      // The role branch was always correct; it was the BOUND that was
+      // missing, on both branches (audit-api-surface.md #5).
+      let where;
       if (ctx.role === 'customer') {
-        const own = await this.ownCustomer(tx, ctx);
-        rows = own ? await tx.select().from(rentals).where(eq(rentals.customerId, own.id)) : [];
-      } else {
-        rows = await tx.select().from(rentals);
+        const own = await ownCustomer(tx, ctx);
+        if (!own) return { items: [], total: 0 };
+        where = eq(rentals.customerId, own.id);
       }
-      if (rows.length === 0) return { items: [], total: 0 };
+      const rows = await tx
+        .select()
+        .from(rentals)
+        .where(where)
+        .orderBy(desc(rentals.createdAt))
+        .limit(query.limit)
+        .offset(query.offset);
+      const total = await countRows(tx, rentals, where);
+      if (rows.length === 0) return { items: [], total };
 
       // Human-readable location (a booking is never shown as a bare
       // project_site_id UUID) -- same address-via-site join sites.service.ts
@@ -183,7 +183,7 @@ export class BookingsService {
             siteProvince: site?.province ?? null,
           };
         }),
-        total: rows.length,
+        total,
       };
     });
   }
@@ -197,7 +197,7 @@ export class BookingsService {
       if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
 
       if (ctx.role === 'customer') {
-        const own = await this.ownCustomer(tx, ctx);
+        const own = await ownCustomer(tx, ctx);
         if (!own || rental.customerId !== own.id) throw new NotFoundException({ error: 'booking_not_found' });
       }
 
@@ -271,7 +271,7 @@ export class BookingsService {
       if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
 
       if (ctx.role === 'customer') {
-        const own = await this.ownCustomer(tx, ctx);
+        const own = await ownCustomer(tx, ctx);
         if (!own || rental.customerId !== own.id) throw new NotFoundException({ error: 'booking_not_found' });
       }
       if (rental.status === 'cancelled') {

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
-import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
+import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
 import { SitesService } from './sites.service.js';
 import {
   DeploymentCreateDto,
@@ -23,6 +23,7 @@ export class SitesController {
   constructor(private readonly sites: SitesService) {}
 
   @Get('sites')
+  @RequirePermission(...STAFF_READ)
   list(@Query() query: SiteListQueryDto, @Req() req: CtxRequest) {
     return this.sites.list(req.ctx, query);
   }
@@ -34,6 +35,7 @@ export class SitesController {
   }
 
   @Get('sites/:id')
+  @RequirePermission(...STAFF_READ)
   get(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.sites.get(req.ctx, id);
   }
@@ -61,16 +63,19 @@ export class SitesController {
   }
 
   @Get('sites/:id/weather')
+  @RequirePermission(...STAFF_READ)
   weather(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.sites.weather(req.ctx, id);
   }
 
   @Get('weather/advisories')
+  @RequirePermission(...STAFF_READ)
   advisories(@Req() req: CtxRequest) {
     return this.sites.advisories(req.ctx);
   }
 
   @Get('incidents')
+  @RequirePermission(...STAFF_READ)
   incidents(@Query() query: IncidentListQueryDto, @Req() req: CtxRequest) {
     return this.sites.incidents(req.ctx, query);
   }

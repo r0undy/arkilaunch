@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ConflictException } from '@nestjs/common';
 import postgres from 'postgres';
 import { and, eq } from 'drizzle-orm';
@@ -8,7 +8,10 @@ import {
   edtrReconciliations,
   invoices as invoicesTable,
   invoiceLineItems,
+  quotations,
   reconcileEdtr,
+  rentalContracts,
+  rentals,
   withTenantTx,
 } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
@@ -33,6 +36,10 @@ describe('the money path: no deduction without a passing reconciliation', () => 
   let adminCtx: RequestContext;
   let rentalId: string;
   let equipmentId: string;
+  // A second rental with NO quotation/rental_contracts chain, so the
+  // no-deposit fallback cap has something to be tested against.
+  let uncappedRentalId: string;
+  let uncappedEquipmentId: string;
 
   // Own date range, disjoint from every other suite's. Vitest runs spec
   // files in parallel and they all draw the same seeded rental and
@@ -47,6 +54,8 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     refused: '2021-06-03',
     match: '2021-06-04',
     noEvidence: '2021-06-05',
+    modelSourced: '2021-06-06',
+    uncapped: '2021-06-07',
   };
 
   beforeAll(async () => {
@@ -59,11 +68,32 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     const [admin] = await sql`
       select id from users where tenant_id = ${tenantId} and email = 'admin@test-tenant-a.test'
     `;
-    const [rental] = await sql`select id from rentals where tenant_id = ${tenantId} limit 1`;
     const [equipment] = await sql`select id from equipment where tenant_id = ${tenantId} limit 1`;
 
+    // A private equipment type + unit + rate card for the no-deposit cap
+    // test. Its own type, not the shared one: a rate card is keyed on
+    // (tenant, equipment_type), so a card added against the shared type
+    // reprices every other spec's deductions -- which is exactly what a
+    // first attempt at this did to billing-engine. Scoped to 2021 as well
+    // as to its own type, so it cannot reach anything pricing at `now`.
+    const [cappedType] = await sql`
+      insert into equipment_types (name) values (${`Money Path Cap Fixture ${Date.now()}`}) returning id
+    `;
+    const cappedTypeId = (cappedType as { id: string }).id;
+    const [cappedEquipment] = await sql`
+      insert into equipment (tenant_id, equipment_type_id, model, serial_no)
+      values (${tenantId}, ${cappedTypeId}, 'Money Path Cap Unit', ${`test-tenant-a-serial-cap-${Date.now()}`})
+      returning id
+    `;
+    uncappedEquipmentId = (cappedEquipment as { id: string }).id;
+    await sql`
+      insert into rate_cards (tenant_id, equipment_type_id, rate_type, rate_value, currency, effective_from, effective_to)
+      values (${tenantId}, ${cappedTypeId}, 'hourly', 1000.00, 'PHP', '2021-01-01', '2021-12-31')
+    `;
+    const [customerRow] = await sql`select id from customers where tenant_id = ${tenantId} limit 1`;
+    const [siteRow] = await sql`select id from project_sites where tenant_id = ${tenantId} limit 1`;
+
     adminCtx = { tenantId, userId: (admin as { id: string }).id, role: 'admin' };
-    rentalId = (rental as { id: string }).id;
     equipmentId = (equipment as { id: string }).id;
 
     // Fixed report dates, so a prior run's rows for the same equipment-day
@@ -75,11 +105,73 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     `;
     const ids = staleIds.map((row) => (row as { id: string }).id);
     if (ids.length > 0) {
+      // invoice_line_items.reconciliation_id is a real FK now, and it is
+      // deliberately RESTRICT: a deduction's evidence must not be
+      // deletable out from under it (audit-db-tenant-isolation.md #3). A
+      // prior run's deduction lines therefore have to be cleared before
+      // the reconciliations they cite.
+      await sql`
+        delete from invoice_line_items
+        where reconciliation_id in (
+          select id from edtr_reconciliations
+          where edtr_id = any(${ids}) or counterpart_edtr_id = any(${ids})
+        )`;
       await sql`delete from edtr_reconciliations where edtr_id = any(${ids}) or counterpart_edtr_id = any(${ids})`;
       await sql`delete from edtr_line_items where edtr_id = any(${ids})`;
       await sql`delete from edtr where id = any(${ids})`;
     }
+
     await sql.end();
+
+    // Two dedicated rentals, the same isolation edtr-engine.spec.ts uses:
+    // the shared fixture rental is mutated concurrently by other spec
+    // files, and its deduction ledger accumulates across runs.
+    //
+    // `rentalId` carries a real rental_contracts deposit, which is what a
+    // quote-originated rental -- the pilot path -- actually has. It needs
+    // one now: since audit-ocr-money-path.md #5 was fixed, a rental with
+    // no configured deposit caps at what checkout collects, and six hours
+    // of equipment prices well past that placeholder. Testing the deduct
+    // path against the no-deposit fallback was testing the wrong branch.
+    await withTenantTx(adminCtx, async (tx) => {
+      const [withDeposit] = await tx
+        .insert(rentals)
+        .values({
+          tenantId: adminCtx.tenantId,
+          customerId: (customerRow as { id: string }).id,
+          projectSiteId: (siteRow as { id: string }).id,
+          status: 'active',
+          startDate: new Date('2020-01-01T00:00:00Z'),
+        })
+        .returning();
+      rentalId = withDeposit!.id;
+
+      const [quotation] = await tx
+        .insert(quotations)
+        .values({
+          tenantId: adminCtx.tenantId,
+          customerId: (customerRow as { id: string }).id,
+          rentalId,
+        })
+        .returning();
+      await tx.insert(rentalContracts).values({
+        tenantId: adminCtx.tenantId,
+        quotationId: quotation!.id,
+        depositRequired: '100000000.00',
+      });
+
+      const [noDeposit] = await tx
+        .insert(rentals)
+        .values({
+          tenantId: adminCtx.tenantId,
+          customerId: (customerRow as { id: string }).id,
+          projectSiteId: (siteRow as { id: string }).id,
+          status: 'active',
+          startDate: new Date('2020-01-01T00:00:00Z'),
+        })
+        .returning();
+      uncappedRentalId = noDeposit!.id;
+    });
   });
 
   // An already-extracted paper counterpart carrying a manual-transcription
@@ -91,14 +183,16 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     reportDate: string,
     hoursActive: number,
     hoursIdle: number,
+    forRentalId?: string,
+    forEquipmentId?: string,
   ): Promise<string> {
     return withTenantTx(adminCtx, async (tx) => {
       const [row] = await tx
         .insert(edtrTable)
         .values({
           tenantId: adminCtx.tenantId,
-          rentalId,
-          equipmentId,
+          rentalId: forRentalId ?? rentalId,
+          equipmentId: forEquipmentId ?? equipmentId,
           source: 'paper_ocr',
           reportDate,
           rawFileUri: 'storage://fixtures/money-path.jpg',
@@ -160,6 +254,47 @@ describe('the money path: no deduction without a passing reconciliation', () => 
   // summed-scalar comparison saw |8 - 8| = 0 and auto-accepted, then priced
   // the approving side's active hours against the deposit. Two independent
   // logs exist precisely to catch this, so it must not match.
+  // Same shape as the transcribed counterpart above, but carrying a real
+  // model_id -- i.e. output the QAD-T39 accuracy gate is actually about.
+  async function insertModelExtractedPaperCounterpart(
+    reportDate: string,
+    hoursActive: number,
+    hoursIdle: number,
+  ): Promise<string> {
+    return withTenantTx(adminCtx, async (tx) => {
+      const [row] = await tx
+        .insert(edtrTable)
+        .values({
+          tenantId: adminCtx.tenantId,
+          rentalId,
+          equipmentId,
+          source: 'paper_ocr',
+          reportDate,
+          rawFileUri: 'storage://fixtures/money-path-model.jpg',
+          status: 'extracted',
+          ocrPayload: {
+            model_id: 'arkilaunch-edtr-neural-v1',
+            api_version: '2024-11-30',
+            analyzed_at: new Date().toISOString(),
+            fields: [
+              { name: 'hours_active', value: hoursActive, value_type: 'number', confidence: 0.99 },
+              { name: 'hours_idle', value: hoursIdle, value_type: 'number', confidence: 0.99 },
+            ],
+            min_field_confidence: 0.99,
+            pages: 1,
+          },
+        })
+        .returning();
+      await tx.insert(edtrLineItems).values({
+        tenantId: adminCtx.tenantId,
+        edtrId: row!.id,
+        hoursActive: String(hoursActive),
+        hoursIdle: String(hoursIdle),
+      });
+      return row!.id;
+    });
+  }
+
   it('QAD-T40: an equal-and-opposite active/idle swap is a discrepancy, not a match', async () => {
     await insertTranscribedPaperCounterpart(DATES.swap, 8, 0);
     const digital = await edtr.capture(adminCtx, {
@@ -314,5 +449,80 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     // disagreement where the truth is that a log has no hours at all.
     expect(polled.reconciliation?.reason).toBe('unreadable');
     expect(polled.reconciliation?.deltaHours).toBeNull();
+  });
+
+  // audit-ocr-money-path.md #8. The 90.06% gate, the corpus floor and
+  // assertAccuracyGate all existed, and nothing on the money path called
+  // them: ENABLE_OCR_PIPELINE alone was enough to turn model output into
+  // a deduction. Unset attestation must fail closed, which is also the
+  // real state of this deployment.
+  it('refuses to deduct from model-extracted evidence with no attested accuracy', async () => {
+    // vi.stubEnv, not delete: vitest reuses a worker process across spec
+    // files, so an unrestored delete would leak into any later file that
+    // approves model evidence. unstubAllEnvs in afterEach puts it back.
+    vi.stubEnv('OCR_MEASURED_ACCURACY', '');
+    vi.stubEnv('OCR_MEASURED_SAMPLES', '');
+    await insertModelExtractedPaperCounterpart(DATES.modelSourced, 6, 1);
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate: DATES.modelSourced,
+      lineItems: { hoursActive: 6, hoursIdle: 1 },
+    });
+
+    const polled = await edtr.get(adminCtx, digital.id);
+    expect(polled.reconciliation?.status).toBe('matched');
+    const reconId = polled.reconciliation!.id;
+
+    // The pair matches cleanly -- it is the unmeasured model, not a
+    // disagreement, that blocks this.
+    await expect(
+      edtr.approve(adminCtx, digital.id, {
+        reconciliationId: reconId,
+        adjustments: { hoursActive: 6, hoursIdle: 1 },
+      }),
+    ).rejects.toThrow(ConflictException);
+    expect(await deductionInvoiceCount(reconId)).toBe(0);
+  });
+
+  // audit-ocr-money-path.md #5. A rental with no quotation/rental_contracts
+  // chain used to skip the deposit_exhausted guard entirely and deduct
+  // with no ceiling at all. It now caps at what checkout actually
+  // collects for that case, so a deduction past that must be refused and
+  // move no money.
+  it('caps a deduction on a rental with no configured deposit', async () => {
+    await insertTranscribedPaperCounterpart(
+      DATES.uncapped,
+      6,
+      1,
+      uncappedRentalId,
+      uncappedEquipmentId,
+    );
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId: uncappedRentalId,
+      equipmentId: uncappedEquipmentId,
+      reportDate: DATES.uncapped,
+      lineItems: { hoursActive: 6, hoursIdle: 1 },
+    });
+
+    const polled = await edtr.get(adminCtx, digital.id);
+    expect(polled.reconciliation?.status).toBe('matched');
+    const reconId = polled.reconciliation!.id;
+
+    // The pair matches cleanly; it is the absent deposit, not a
+    // disagreement, that blocks this.
+    await expect(
+      edtr.approve(adminCtx, digital.id, {
+        reconciliationId: reconId,
+        adjustments: { hoursActive: 6, hoursIdle: 1 },
+      }),
+    ).rejects.toThrow(ConflictException);
+    expect(await deductionInvoiceCount(reconId)).toBe(0);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 });

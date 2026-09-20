@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import {
+  DEFAULT_DEPOSIT_PHP,
   auditLogs,
   edtr,
   edtrLineItems,
@@ -15,23 +16,25 @@ import {
   invoiceLineItems,
   invoices,
   rateCards,
-  rentals,
   reconcileEdtr,
+  rentals,
   resolveDepositLedger,
   timekeeperSiteAssignments,
   withTenantTx,
 } from '@arkilaunch/db';
 import {
   CONFIDENCE_GATE,
+  OCR_CORPUS_FLOOR,
+  assertAccuracyGate,
   buildManualTranscriptionPayload,
   isManualTranscription,
-  type HourDeltas,
   type EdtrApproveRequest,
   type EdtrCaptureRequest,
   type EdtrCaptureResponse,
   type EdtrDetailResponse,
   type EdtrListQuery,
   type EdtrRejectRequest,
+  type HourDeltas,
   type OcrPayload,
   type ReconciliationReason,
   type RequestContext,
@@ -45,6 +48,42 @@ import { round2HalfUp } from '../quotes/pricing-engine.service.js';
 // and the Azure region is southeastasia for the same reason); if tenants
 // ever span zones, this belongs on `tenants` and not in a constant here.
 const TENANT_TIME_ZONE = 'Asia/Manila';
+
+// QAD-T39 at runtime.
+//
+// The threshold, the corpus floor and the gate function have existed in
+// packages/shared/src/ocr-accuracy.ts since the money-path pass, but the
+// only things that ever called them were a spec and the fixture puller:
+// nothing on the path that actually moves money consulted the gate, so
+// ENABLE_OCR_PIPELINE=true on its own was enough to route model output
+// into a deposit deduction whether or not the golden set had ever been
+// measured, let alone met (audit-ocr-money-path.md #8).
+//
+// The measurement itself is produced offline by the accuracy harness
+// against the labeled golden set, so the runtime cannot recompute it. It
+// reads the attested result instead, and fails closed when there is
+// none -- which is the correct state today: the EDTR model is untrained
+// and the corpus does not exist, so the pilot's only approvable path is
+// human transcription, exactly as RFC-2 and the pilot-honesty record say.
+// Reuses assertAccuracyGate rather than re-implementing the comparison,
+// so the empty-corpus rule stays in one place.
+function attestedOcrAccuracyFailure(): string | null {
+  const overall = Number(process.env.OCR_MEASURED_ACCURACY);
+  const sampleCount = Number(process.env.OCR_MEASURED_SAMPLES);
+  if (!Number.isFinite(overall) || !Number.isFinite(sampleCount)) {
+    return 'no measured OCR accuracy is attested for this deployment';
+  }
+  if (sampleCount < OCR_CORPUS_FLOOR.edtr) {
+    return `attested corpus of ${sampleCount} samples is below the QAD floor of ${OCR_CORPUS_FLOOR.edtr}`;
+  }
+  const gate = assertAccuracyGate({
+    overall,
+    perField: {},
+    autoAcceptErrorRate: 0,
+    sampleCount,
+  });
+  return gate.passed ? null : gate.reason;
+}
 
 @Injectable()
 export class EdtrService {
@@ -424,9 +463,58 @@ export class EdtrService {
         }
       }
 
+      // A deduction carried by MODEL output may only proceed if the
+      // model's accuracy has actually been measured and met (QAD-T39).
+      //
+      // Both sides, not just the row being approved: approve() is called
+      // on whichever side the reviewer opened, and for the pilot pairing
+      // that is usually the digital_entry row, which has no payload at
+      // all. Checking only `record` would let a model-extracted paper
+      // counterpart carry the deduction untested. Human transcription is
+      // unaffected -- there is no model output for the gate to be about.
+      const pairPayloads: unknown[] = [record.ocrPayload];
+      if (reconciliation.counterpartEdtrId) {
+        const [counterpartRow] = await tx
+          .select({ ocrPayload: edtr.ocrPayload })
+          .from(edtr)
+          .where(eq(edtr.id, reconciliation.counterpartEdtrId))
+          .limit(1);
+        if (counterpartRow) pairPayloads.push(counterpartRow.ocrPayload);
+      }
+      const modelSourced = pairPayloads.some(
+        (payload) => payload !== null && !isManualTranscription(payload as { model_id?: string }),
+      );
+      if (modelSourced) {
+        const failure = attestedOcrAccuracyFailure();
+        if (failure) {
+          throw new ConflictException({ error: 'ocr_accuracy_gate_unmet', reason: failure });
+        }
+      }
+
       const lineItems = await tx.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, edtrId));
       const recordedActive = lineItems.reduce((sum, item) => sum + Number(item.hoursActive), 0);
       const billableHoursActive = body.adjustments?.hoursActive ?? recordedActive;
+
+      // A reviewer's override has to reach the evidence, not just the
+      // price. AdjustmentsSchema requires hoursIdle and approve() used to
+      // read only hoursActive, so correcting 8.0/1.0 to 7.0/2.0 produced
+      // the right deduction and left the edtr_line_items row still saying
+      // 8.0/1.0 -- the row's own evidence permanently contradicting the
+      // figure it was approved at, with idle reporting and the audit trail
+      // reading the stale numbers (audit-ocr-money-path.md #10).
+      //
+      // The machine's original extraction is not lost: it stays in
+      // edtr.ocr_payload, which is what the accuracy harness measures
+      // against. This corrects the human-facing record of hours worked.
+      if (body.adjustments) {
+        await tx
+          .update(edtrLineItems)
+          .set({
+            hoursActive: String(body.adjustments.hoursActive),
+            hoursIdle: String(body.adjustments.hoursIdle),
+          })
+          .where(eq(edtrLineItems.edtrId, edtrId));
+      }
 
       // Deduction amount: billable (revenue-generating) active hours priced
       // at the rate card that was in force on the EDTR's report_date. The
@@ -528,13 +616,26 @@ export class EdtrService {
         }
       } else {
         // No quotation/rental_contracts chain for this rental (e.g. a
-        // booking created directly via bookings.service.ts) -- there is no
-        // configured cap to gate against, so this reports the running
-        // total deducted instead of a balance and never blocks the
-        // approve. Documented simplification, same category as
-        // payments.service.ts's DEFAULT_DEPOSIT_PHP fallback.
-        balanceBefore = round2HalfUp(ledger.totalDeducted);
-        balanceAfter = round2HalfUp(balanceBefore + deductedAmount);
+        // booking created directly via bookings.service.ts, which never
+        // quotes). This used to skip the deposit_exhausted guard entirely
+        // and repurpose the two balances as a running total, so a
+        // booking-originated rental could be deducted against a deposit
+        // that was never configured, repeatedly, with no ceiling
+        // (audit-ocr-money-path.md #5).
+        //
+        // There IS a real cap: checkout charges DEFAULT_DEPOSIT_PHP for
+        // exactly this case, so that is the deposit actually held and the
+        // amount a deduction must not exceed. Both sides now read one
+        // constant so they cannot drift.
+        balanceBefore = round2HalfUp(DEFAULT_DEPOSIT_PHP - ledger.totalDeducted);
+        balanceAfter = round2HalfUp(balanceBefore - deductedAmount);
+        if (balanceAfter < 0) {
+          throw new ConflictException({
+            error: 'deposit_exhausted',
+            balanceBefore,
+            attemptedDeduction: deductedAmount,
+          });
+        }
       }
 
       const [invoice] = await tx
@@ -553,6 +654,12 @@ export class EdtrService {
       await tx.insert(invoiceLineItems).values({
         tenantId: ctx.tenantId,
         invoiceId: invoice.id,
+        // The evidence link is this column, not the sentence below it. The
+        // description stays because it is what a human reads on an
+        // invoice, but it is no longer load-bearing: it was the only tie
+        // between a deduction and the reconciliation justifying it, parsed
+        // back out with a regex (audit-db-tenant-isolation.md #3).
+        reconciliationId: reconciliation.id,
         description: `EDTR reconciliation ${reconciliation.id} (sources: ${record.id}, ${reconciliation.counterpartEdtrId ?? 'n/a'})`,
         quantity: String(billableHoursActive),
         unitPrice: String(hourlyRate),

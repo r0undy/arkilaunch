@@ -41,7 +41,7 @@
 
 | Field | Value |
 |-------|-------|
-| Intended use | Convert handwritten EDTR field images into structured hours (active/idle) + breakdown status to assist billing (PRD-F3), and extract SEC number + TIN from corporate documents to assist KYC onboarding (PRD-F6). Extraction only; a human confirms before any billing or onboarding effect |
+| Intended use | Convert handwritten EDTR field images into structured hours (active/idle) to assist billing (PRD-F3), and extract SEC number + TIN from corporate documents to assist KYC onboarding (PRD-F6). Extraction only; a human confirms before any billing or onboarding effect |
 | Intended users / affected parties | Operators: the tenant Administrator (Rhea) and Field Timekeeper who review extractions. Affected parties: the rental company's clients (whose deposits are billed) and the corporate applicants whose KYC documents are read |
 | Out-of-scope / prohibited uses | No autonomous deduction or onboarding on model output alone; no ML demand forecasting; no biometric identification of individuals; no automated adverse decision without human review; no use of extracted data for any purpose beyond billing/onboarding for that tenant |
 | Human-in-the-loop points | Low-confidence or reconciliation-mismatch EDTRs route to admin review before deduction (RFC-2). KYC extraction always requires a human to confirm SEC/BIR status on the government portals (ORUS CAPTCHA blocks automation) before onboarding; a provisional lock holds the calendar meanwhile |
@@ -50,7 +50,7 @@
 
 | Model / stage | Identifier + version | Role | Source of data it sees |
 |---------------|----------------------|------|------------------------|
-| EDTR extraction | Azure AI Document Intelligence custom neural extraction model (doc-intel 4.x) | Extract handwritten hours + breakdown fields with per-field confidence + bounding regions | Tenant-uploaded EDTR images (untrusted) |
+| EDTR extraction | Azure AI Document Intelligence custom neural extraction model (doc-intel 4.x) | Extract handwritten hours (active/idle) with per-field confidence + bounding regions | Tenant-uploaded EDTR images (untrusted) |
 | KYC extraction | Azure DI `prebuilt-layout` + query fields (doc-intel 4.x) | Extract SEC number + TIN from corporate documents | Tenant-uploaded corporate/ID documents (untrusted, sensitive personal information) |
 
 - **Training / tuning data:** Microsoft-trained base models (Azure DI), plus a small labeled EDTR sample set collected from the anchor tenant with consent for the custom model. Provenance recorded; licensing is the tenant's own operational records. No third-party scraped training data.

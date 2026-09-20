@@ -15,6 +15,7 @@ import { loginRoute } from './routes/login.js';
 import { registerRoute } from './routes/register.js';
 import { registerCompanyRoute } from './routes/register.company.js';
 import { registerPendingRoute } from './routes/register.pending.js';
+import { activateRoute } from './routes/activate.js';
 
 import { accountLayoutRoute } from './routes/_account.js';
 import { accountIndexRoute } from './routes/account.index.js';
@@ -77,7 +78,7 @@ import {
 
 export const routeTree = rootRoute.addChildren([
   publicLayoutRoute.addChildren([indexRoute, equipmentRoute, equipmentDetailRoute, contactRoute, helpRoute, termsRoute, privacyRoute]),
-  authLayoutRoute.addChildren([loginRoute, registerRoute, registerCompanyRoute, registerPendingRoute]),
+  authLayoutRoute.addChildren([loginRoute, registerRoute, registerCompanyRoute, registerPendingRoute, activateRoute]),
   accountLayoutRoute.addChildren([
     accountIndexRoute,
     accountBookingsRoute,

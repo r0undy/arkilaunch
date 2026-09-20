@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { Public } from '../common/decorators/public.decorator.js';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import type { RequestContext } from '@arkilaunch/shared';
 import { TenantsService } from './tenants.service.js';
-import { TenantRegisterDto, TenantSettingsUpdateDto } from './dto.js';
+import { TenantApplicationListQueryDto, TenantRegisterDto, TenantSettingsUpdateDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -45,8 +45,8 @@ export class TenantsController {
   // collide with the ':id/approve' | ':id/reject' POST routes below.
   @Get('applications')
   @RequirePermission('tenant:approve')
-  listApplications() {
-    return this.tenants.listApplications();
+  listApplications(@Query() query: TenantApplicationListQueryDto) {
+    return this.tenants.listApplications(query);
   }
 
   // GET /tenants/me/application (tenant:manage) -- an owner's own pending

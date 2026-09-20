@@ -26,6 +26,7 @@ import {
 import { AuthService } from '../auth/auth.service.js';
 import { RefreshTokenService } from '../auth/refresh-token.service.js';
 import { EventsService } from '../events/events.service.js';
+import { countRows } from '../common/count-rows.js';
 
 type Ctx = RequestContext;
 
@@ -62,7 +63,10 @@ export class UsersService {
         .limit(query.limit)
         .offset(query.offset);
 
-      return { items: rows, total: rows.length };
+      // rows.length is the page, not the total: this list reported "3 of 3"
+      // on page 1 of 120 users (audit-api-surface.md #9).
+      const total = await countRows(tx, users, conditions.length > 0 ? and(...conditions) : undefined);
+      return { items: rows, total };
     });
   }
 

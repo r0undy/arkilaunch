@@ -55,7 +55,7 @@ MoSCoW priorities. IDs are permanent and frozen. Sequencing note (from scrutiny 
 |----|---------|-------------|----------|
 | PRD-F1 | Dynamic Quotation Engine | Diesel-indexed hourly rate plus mobilization/demobilization km, driven by per-equipment rate cards. Produces a printable quote in under one minute. | Must-Have |
 | PRD-F2 | PayMongo Payment Interface | Hosted checkout for rental deposits: cards, GCash, Maya, and bank channels. The platform stores no card or bank-account data. | Should-Have |
-| PRD-F3 | OCR Usage-Based Billing | Scan handwritten EDTRs via Azure AI Document Intelligence; extract active/idle hours and breakdown status; double-entry reconciliation of two independent logs within tolerance before any deposit deduction. The core differentiator and the one thing shipped if only one ships. | Must-Have |
+| PRD-F3 | OCR Usage-Based Billing | Scan handwritten EDTRs via Azure AI Document Intelligence; extract active/idle hours; double-entry reconciliation of two independent logs within tolerance before any deposit deduction. The core differentiator and the one thing shipped if only one ships. | Must-Have |
 | PRD-F4 | Fleet Inventory, Maintenance & Reporting | Inventory and deployment; maintenance timers on runtime thresholds; preventive-maintenance notifications; utilization and financial reports. | Must-Have |
 | PRD-F5 | Weather-Aware Module | Open-Meteo poll per project site (lat/long); risk advisories; auto-logged environmental liability incidents. A cron scheduler drives the polling. | Must-Have |
 | PRD-F6 | OCR-assisted KYC & Registration | Extract SEC number and TIN from corporate documents using Azure DI layout plus query fields (not the prebuilt ID model, which covers only US licenses and passports). Human-in-the-loop admin confirms against SEC and BIR portals; BIR ORUS CAPTCHA blocks full automation. | Must-Have |
@@ -222,7 +222,7 @@ Screen count: **25**. Grouped by area. Every interactive screen defines empty / 
 │   ├── /account/bookings  ├── /account/bookings/:id  └── /account/bookings/:id/extend
 │   ├── /account/applications
 │   ├── /account/cart
-│   ├── /account/checkout  ├── /account/checkout/confirm  └── /account/checkout/success
+│   ├── /account/checkout/:bookingId  └── /account/checkout/success
 │   ├── /account/invoices/:invoiceId
 │   ├── /account/companies/new
 │   ├── /account/negotiation/:quoteId  (chat | call | final)
@@ -365,11 +365,11 @@ Every `BRD-M#` metric has at least one feeding event, wired at feature build tim
 **Selected model:** Azure DI, using Read for handwriting, a custom model for EDTR zonal fields, and layout + query fields for SEC/TIN; *reason: handwriting support, bounded-region extraction, per-field confidence scores, and configurable data residency for PH document images.*
 
 **What the AI does:**
-Extraction only. It reads user-uploaded images and returns structured fields with per-field confidence. It never makes an autonomous decision, and it never moves money. For EDTRs it extracts active hours, idle hours, and breakdown status. For KYC it extracts SEC number and TIN. Reconciliation, deduction, tenant activation, and portal confirmation are all downstream of extraction and gated by rules and humans.
+Extraction only. It reads user-uploaded images and returns structured fields with per-field confidence. It never makes an autonomous decision, and it never moves money. For EDTRs it extracts active hours and idle hours. (**Corrected 2026-09-19, `cr-arkilaunch-doc-reconcile-2026-09-19.md`:** breakdown status is **not** extracted. `model-registry.ts` and the worker persist `hours_active` and `hours_idle` only; `breakdown_status` exists solely in a golden-set test fixture. The claim was inflating the extraction's stated scope.) For KYC it extracts SEC number and TIN. Reconciliation, deduction, tenant activation, and portal confirmation are all downstream of extraction and gated by rules and humans.
 
 **Input to Output contract:**
 - Input: UNTRUSTED user-uploaded images (phone photos of handwritten EDTRs; scans/photos of corporate documents). Treated as untrusted data, never as instructions.
-- Output: structured fields with per-field confidence and bounding regions. EDTR: active_hours, idle_hours, breakdown_status. KYC: sec_number, tin.
+- Output: structured fields with per-field confidence and bounding regions. EDTR: active_hours, idle_hours. KYC: sec_number, tin.
 - Latency expectation: asynchronous, processed by a background worker on the persistent host. Target seconds to about a minute per document; the UI shows a queued/processing state and never blocks.
 
 **Human-in-the-loop points:**

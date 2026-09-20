@@ -1,4 +1,4 @@
-import { boolean, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, boolean, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 import { projectSites } from './rentals.js';
@@ -19,7 +19,9 @@ export const weatherAlerts = pgTable(
     effectiveAt: timestamp('effective_at', { withTimezone: true }).notNull(),
     status: text('status').notNull().default('active'), // active, cleared
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('weather_alerts_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 export const notifications = pgTable(
@@ -37,5 +39,7 @@ export const notifications = pgTable(
     status: text('status').notNull().default('unread'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('notifications_tenant_id_idx').on(table.tenantId),
+  ],
 );

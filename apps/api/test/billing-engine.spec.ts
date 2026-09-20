@@ -33,6 +33,15 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
   const DEPOSIT_REQUIRED = 50000;
 
   beforeAll(async () => {
+    // QAD-T39 runtime gate (audit-ocr-money-path.md #8): this spec's
+    // fixtures carry a real model_id, i.e. model-extracted evidence, and
+    // a deduction from model output is refused unless the golden-set
+    // accuracy has been measured and met. These tests are about the
+    // reconciliation/deduction behaviour, not the accuracy gate, so they
+    // attest a passing measurement. money-path.spec.ts covers the
+    // unattested case failing closed.
+    process.env.OCR_MEASURED_ACCURACY = '0.95';
+    process.env.OCR_MEASURED_SAMPLES = '250';
     const url = process.env.DATABASE_URL_DIRECT;
     if (!url) throw new Error('DATABASE_URL_DIRECT is required');
     const sql = postgres(url, { max: 1 });

@@ -1,5 +1,6 @@
 import {
   check,
+  index,
   integer,
   jsonb,
   numeric,
@@ -31,7 +32,9 @@ export const projectSites = pgTable(
     longitude: numeric('longitude', { precision: 9, scale: 6 }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('project_sites_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 // New table (not in the SDD §3 35-table catalog; added here, Change Record
@@ -52,7 +55,9 @@ export const timekeeperSiteAssignments = pgTable(
       .references(() => projectSites.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [tenantIsolationPolicy(), unique().on(t.tenantId, t.userId, t.projectSiteId)],
+  (t) => [tenantIsolationPolicy(), unique().on(t.tenantId, t.userId, t.projectSiteId),
+    index('timekeeper_site_assignments_tenant_id_idx').on(t.tenantId),
+  ],
 );
 
 export const rentals = pgTable(
@@ -73,7 +78,9 @@ export const rentals = pgTable(
     endDate: timestamp('end_date', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('rentals_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 // RFC-3 §3: revision chain (parentQuotationId), the frozen diesel snapshot
@@ -107,7 +114,9 @@ export const quotations = pgTable(
     printableUrl: text('printable_url'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('quotations_tenant_id_idx').on(table.tenantId),
+  ],
 );
 
 // RFC-3 §3: the 8 pricing-detail columns. The RFC's expand/backfill/contract
@@ -156,6 +165,7 @@ export const quotationItems = pgTable(
     tenantIsolationPolicy(),
     check('hours_positive', sql`${t.estimatedHours} >= 0`),
     check('km_positive', sql`${t.mobilizationKm} >= 0 AND ${t.demobilizationKm} >= 0`),
+    index('quotation_items_tenant_id_idx').on(t.tenantId),
   ],
 );
 
@@ -174,7 +184,13 @@ export const rentalContracts = pgTable(
     status: text('status').notNull().default('draft'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [
+    tenantIsolationPolicy(),
+    index('rental_contracts_tenant_id_idx').on(table.tenantId),
+    // audit-db-tenant-isolation.md #5: the deposit cap is what bounds a
+    // deduction, so a negative one is not a rounding curiosity.
+    check('rental_contracts_deposit_nonneg_chk', sql`${table.depositRequired} >= 0`),
+  ],
 );
 
 export const equipmentAssignments = pgTable(
@@ -194,5 +210,7 @@ export const equipmentAssignments = pgTable(
     end: timestamp('end', { withTimezone: true }),
     status: text('status').notNull().default('scheduled'), // double-book guard enforced at the app layer
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('equipment_assignments_tenant_id_idx').on(table.tenantId),
+  ],
 );

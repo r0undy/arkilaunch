@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { BookingsService } from './bookings.service.js';
-import { BookingCreateDto } from './dto.js';
+import { BookingCreateDto, BookingListQueryDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -23,8 +23,8 @@ export class BookingsController {
 
   @Get()
   @RequirePermission('booking:read')
-  list(@Req() req: CtxRequest) {
-    return this.bookings.list(req.ctx);
+  list(@Query() query: BookingListQueryDto, @Req() req: CtxRequest) {
+    return this.bookings.list(req.ctx, query);
   }
 
   @Get(':id')

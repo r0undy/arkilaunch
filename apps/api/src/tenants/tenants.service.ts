@@ -7,6 +7,7 @@ import {
   DuplicatePendingApplicationError,
   auditLogs,
   decideTenantApplication,
+  countPendingTenantApplications,
   listPendingTenantApplications,
   registerTenant,
   tenantApplications,
@@ -17,6 +18,7 @@ import type {
   RequestContext,
   TenantApplication,
   TenantApplicationDecisionResponse,
+  TenantApplicationListQuery,
   TenantApplicationListResponse,
   TenantRegisterRequest,
   TenantRegisterResponse,
@@ -67,9 +69,12 @@ export class TenantsService {
   // GET /tenants/applications (tenant:approve, platform_admin only). Cross-
   // tenant by nature, same rationale as decideApplication -- see
   // tenants_list_pending_applications() in migrations/0011.
-  async listApplications(): Promise<TenantApplicationListResponse> {
-    const items = await listPendingTenantApplications();
-    return { items, total: items.length };
+  async listApplications(query: TenantApplicationListQuery): Promise<TenantApplicationListResponse> {
+    const [items, total] = await Promise.all([
+      listPendingTenantApplications(query.limit, query.offset),
+      countPendingTenantApplications(),
+    ]);
+    return { items, total };
   }
 
   // GET /tenants/me/application (tenant:manage). An owner's own pending

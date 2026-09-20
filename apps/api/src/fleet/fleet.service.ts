@@ -27,6 +27,7 @@ import type {
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { round2HalfUp } from '../quotes/pricing-engine.service.js';
+import { countRows } from '../common/count-rows.js';
 
 // Documented simplification (same category as the deposit-ledger balance
 // tracking in edtr.service.ts): the utilization denominator is a standard
@@ -79,9 +80,10 @@ export class FleetService {
         .limit(query.limit)
         .offset(query.offset);
       // The unpaged count, so the caller can page: rows.length only ever
-      // described the page it was handed.
-      const all = await tx.select({ id: equipment.id }).from(equipment).where(where);
-      return { items: rows.map(toEquipmentResponse), total: all.length };
+      // described the page it was handed. Counted in Postgres rather than
+      // by pulling every matching row into Node (audit-api-surface.md #9).
+      const total = await countRows(tx, equipment, where);
+      return { items: rows.map(toEquipmentResponse), total };
     });
   }
 

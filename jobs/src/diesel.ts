@@ -1,4 +1,4 @@
-import { dieselPriceReadings, events } from '@arkilaunch/db';
+import { events, recordScrapeDieselReading } from '@arkilaunch/db';
 import { makeJobDb } from './db-client.js';
 import { runInstrumentedJob } from './telemetry.js';
 
@@ -69,11 +69,14 @@ export async function runDieselRefresh(): Promise<void> {
       return;
     }
 
-    await db.insert(dieselPriceReadings).values({
+    // Through the SECURITY DEFINER function: this job runs on the pooled
+    // app_authenticated client like everything else, and that role no
+    // longer holds INSERT on the global diesel_price_readings table
+    // (migration 0020/0021, audit-db-tenant-isolation.md #7).
+    await recordScrapeDieselReading({
       region: REGION,
       pricePhp: String(price),
       observedDate: new Date().toISOString().slice(0, 10),
-      source: 'doe_scrape',
       sourceUrl: url,
     });
     console.log(`diesel-refresh: wrote a new ${REGION} reading of ${price} PHP/L from ${url}.`);

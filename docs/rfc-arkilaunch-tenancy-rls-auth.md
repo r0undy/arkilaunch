@@ -6,7 +6,7 @@
 **Version:** 0.1
 **Author:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** `Locked`
-**Last reconciled:** 2026-09-07 (see docs/index.md §1); §3's global-table addendum added by `docs/cr-arkilaunch-m4-money-path-gates.md` (migration `0016`: `tenants` gains RLS; the two global catalogues become read-only to `app_authenticated`)
+**Last reconciled:** 2026-09-19 (see docs/index.md §1); §3's global-table addendum added by `docs/cr-arkilaunch-m4-money-path-gates.md` (migration `0016`: `tenants` gains RLS; the two global catalogues become read-only to `app_authenticated`); §3's permission-catalog addendum added by `docs/cr-arkilaunch-doc-reconcile-2026-09-19.md` (the frozen catalog never matched `PERMISSION_CODES`; the `owner` grant deviation and the `/app/kyc` to `/app/registration` rename written back)
 **PRD Reference:** [prd-arkilaunch.md](prd-arkilaunch.md) PRD-F7 (§3), US-07 (§4)
 **SDD Reference:** [sdd-arkilaunch.md](sdd-arkilaunch.md) §3 (data architecture, GUC pattern), §5 (security & authorization)
 **RFC ID:** `arkilaunch-rfc-001`
@@ -356,6 +356,17 @@ async function withTenant<T>(ctx: RequestCtx, fn: (tx: Tx) => Promise<T>): Promi
 
 RLS is the coarse tenant/row backstop under all of this; RBAC is the fine-grained per-action gate above it. A caller passes RBAC and still gets zero rows if the row belongs to another tenant, and passes RLS and still gets a 403 if the role lacks the permission.
 
+> **Addendum 2026-09-19 (`cr-arkilaunch-doc-reconcile-2026-09-19.md`).** The catalog above is superseded by the shipped one. It was labelled "frozen when RFC is approved", and froze codes that were never built: `settings:manage`, `users:manage`, `reports:read`, `booking:manage`, `catalog:read`, `platform:tenant:manage`, `platform:subscription:manage` and `fleet:read` do not exist in `packages/shared/src/permissions.ts`. `PermissionCode` is a literal union consumed by `require-permission.decorator.ts`, so a route declaring any of them would not compile. Read the table above as the design intent and `PERMISSION_CODES` as the catalog.
+>
+> The shipped codes are `tenant:manage`, `tenant:approve`, `user:manage`, `quote:create`, `quote:read`, `quote:approve`, `edtr:create`, `edtr:approve`, `kyc:extract`, `kyc:verify`, `diesel:manage`, `pricing:manage`, `fleet:manage`, `site:manage`, `report:read`, `booking:create`, `booking:read`, `payment:checkout`, `billing:read`. Grants are seeded in `packages/db/src/seed/permission-catalog.ts`.
+>
+> Two deviations from the intent above, both deliberate:
+>
+> - **`owner` holds `user:manage` and `tenant:manage`**, contradicting the "explicitly lacks any `*:create` / `*:manage`" cell. US-10 / QAD-T19 is about operational data entry -- EDTRs, equipment, quotes -- not about administering one's own company. Phase 2's self-service signup makes a provisioned tenant's first user an `owner`, and without those two codes that user could not invite anyone or edit tenant settings. The reasoning has been in the seed's own comment since it shipped and is written back here now.
+> - **`timekeeper` is blocked from `/app/registration`, not `/app/kyc`.** The route was renamed in the 2026-08-02 storefront-shell pass; `cr-arkilaunch-figma-ia-alignment.md` corrected PRD §5.2 for the same rename on 2026-09-17 but did not propagate here, where the stale path is load-bearing for an authz rule.
+>
+> Also corrected: `customer` holds `booking:create`, `booking:read`, `payment:checkout` and `quote:read`, not `booking:manage` and `catalog:read`. `customer` is an intra-tenant role, so RLS scopes it to the tenant but never to the customer -- every read of a customer-owned row needs an ownership predicate on top, which `audit-api-surface.md` #1/#2 found missing on `GET /quotes/:id` and the whole `/reference/*` surface.
+
 ---
 
 ## 4. Alternatives Considered
@@ -431,7 +442,7 @@ Not applicable. This feature has no AI/LLM component; identity and tenant isolat
 - **RLS-on-every-table check.** A test enumerates all tenant-owned tables from the schema and asserts each has `relrowsecurity` and `relforcerowsecurity` true and a `tenant_isolation` policy present. A new tenant-owned table shipped without a policy fails CI. This is the check the `tenant-isolation-checker` SAD agent runs.
 - **No-context fail-closed.** A query with no `app.current_tenant_id` set returns zero rows (never all rows). Proves the fail-closed default.
 - **Refresh reuse revocation.** Rotate RT1 to RT2, then replay RT1; assert 401 `token_reuse_detected` and that every row sharing the family is `revoked` and RT2 is dead.
-- **Role escalation abuse.** Owner attempts a `*:create`/`*:manage` route; timekeeper attempts `/app/kyc` and `/app/settings/*`; customer attempts `/app/**`. All 403. A forged JWT with an elevated `role` claim fails signature verification.
+- **Role escalation abuse.** Owner attempts an operational `*:create` route; timekeeper attempts `/app/registration` (renamed from `/app/kyc`, see the §3 addendum) and `/app/settings/*`; customer attempts `/app/**`. All 403. A forged JWT with an elevated `role` claim fails signature verification.
 - **Algorithm-confusion abuse.** Present a token signed `HS256` with the public key as secret, and a token with `alg: none`. Both rejected by the allowlist.
 - **Pooler GUC leakage.** Open two transactions on the same physical connection through the Supavisor pooler; assert the second cannot read the first's `app.current_tenant_id`. Proves `local = true` scoping.
 

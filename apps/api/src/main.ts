@@ -24,6 +24,10 @@ const { NestFactory } = require('@nestjs/core');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { ZodValidationPipe } = require('nestjs-zod');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
+const { UuidParamPipe } = require('./common/uuid-param.pipe.js');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { DbErrorFilter } = require('./common/db-error.filter.js');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { AppModule } = require('./app.module.js');
 
 // A transient pooler-side hiccup on one request's DB connection must not
@@ -68,7 +72,11 @@ async function bootstrap() {
   // request bodies were never actually rejected at the boundary and could
   // reach a raw DB query instead, surfacing as an uncaught 500 rather than
   // a clean 400.
-  app.useGlobalPipes(new ZodValidationPipe());
+  // Route params are ids and were never validated; see UuidParamPipe.
+  app.useGlobalPipes(new ZodValidationPipe(), new UuidParamPipe());
+  // Nothing mapped a non-HttpException to a response, so a malformed id
+  // surfaced as a raw 500 carrying the Postgres message.
+  app.useGlobalFilters(new DbErrorFilter());
   const port = process.env.API_PORT ?? 3000;
   await app.listen(port);
   console.log(`ArkiLaunch API listening on :${port}`);

@@ -14,10 +14,13 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export interface ReconcileResult {
   edtrId: string;
   reconciliationId: string;
-  status: 'pending' | 'matched' | 'discrepancy';
+  // 'approved' and 'rejected' are terminal: reconcileEdtr reports them
+  // back unchanged rather than re-deriving them, so a re-run over an
+  // already-decided pair is a no-op (audit-ocr-money-path.md #6).
+  status: 'pending' | 'matched' | 'discrepancy' | 'approved' | 'rejected';
   counterpartEdtrId: string | null;
   deltaHours: number | null;
-  reason: ReconciliationReason;
+  reason: ReconciliationReason | null;
 }
 
 function minFieldConfidence(source: string, ocrPayload: unknown): number {
@@ -103,6 +106,27 @@ export async function reconcileEdtr(tx: Tx, tenantId: string, edtrId: string): P
     .where(eq(edtrReconciliations.edtrId, edtrId))
     .limit(1);
   const tolerance = existingRecon ? Number(existingRecon.tolerance) : DEFAULT_TOLERANCE_HOURS;
+
+  // A terminal reconciliation is not re-openable by re-running the machine
+  // over it. Both write paths below used an unconditional `.set(values)`,
+  // so any future caller, manual re-reconcile or backfill would reset an
+  // 'approved' row to 'matched'/'pending' -- and approve() would then
+  // deduct a second time against the same equipment-day. No caller does
+  // this today, which is what made it latent rather than live
+  // (audit-ocr-money-path.md #6). approve()'s in-transaction status check
+  // plus FOR UPDATE closes the concurrent-HTTP race; this closes the one
+  // outside that transaction. Guarded here, before either branch, so
+  // neither can drift from the other.
+  if (existingRecon && (existingRecon.status === 'approved' || existingRecon.status === 'rejected')) {
+    return {
+      edtrId: record.id,
+      reconciliationId: existingRecon.id,
+      status: existingRecon.status as ReconcileResult['status'],
+      counterpartEdtrId: existingRecon.counterpartEdtrId,
+      deltaHours: existingRecon.deltaHours === null ? null : Number(existingRecon.deltaHours),
+      reason: (existingRecon.adjustments as { reason?: ReconciliationReason } | null)?.reason ?? null,
+    };
+  }
 
   if (!counterpart) {
     // AwaitingCounterpart in the RFC-2 stateDiagram: only one of the two
