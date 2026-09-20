@@ -40,7 +40,10 @@ export function EquipmentCard({ imageAlt, imageUrl, model, make, availabilitySta
       </div>
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-text">{model}</p>
+          {/* The machine's name is the card's heading. As a <p> the whole
+              catalog was one flat run of text with no way to jump between
+              items. */}
+          <h3 className="text-sm font-medium text-text">{model}</h3>
           <p className="text-xs text-text-muted">{make}</p>
         </div>
         <Button size="default" variant="primary" onClick={onRent}>
