@@ -4,11 +4,16 @@ import postgres from 'postgres';
 import { and, eq } from 'drizzle-orm';
 import {
   edtr as edtrTable,
+  equipment as equipmentTable,
   edtrLineItems,
   edtrReconciliations,
   invoices as invoicesTable,
   invoiceLineItems,
+  quotations,
+  rateCards,
   reconcileEdtr,
+  rentalContracts,
+  rentals,
   withTenantTx,
 } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
@@ -33,6 +38,9 @@ describe('the money path: no deduction without a passing reconciliation', () => 
   let adminCtx: RequestContext;
   let rentalId: string;
   let equipmentId: string;
+  // A second rental with NO quotation/rental_contracts chain, so the
+  // no-deposit fallback cap has something to be tested against.
+  let uncappedRentalId: string;
 
   // Own date range, disjoint from every other suite's. Vitest runs spec
   // files in parallel and they all draw the same seeded rental and
@@ -61,11 +69,11 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     const [admin] = await sql`
       select id from users where tenant_id = ${tenantId} and email = 'admin@test-tenant-a.test'
     `;
-    const [rental] = await sql`select id from rentals where tenant_id = ${tenantId} limit 1`;
     const [equipment] = await sql`select id from equipment where tenant_id = ${tenantId} limit 1`;
+    const [customerRow] = await sql`select id from customers where tenant_id = ${tenantId} limit 1`;
+    const [siteRow] = await sql`select id from project_sites where tenant_id = ${tenantId} limit 1`;
 
     adminCtx = { tenantId, userId: (admin as { id: string }).id, role: 'admin' };
-    rentalId = (rental as { id: string }).id;
     equipmentId = (equipment as { id: string }).id;
 
     // Fixed report dates, so a prior run's rows for the same equipment-day
@@ -93,27 +101,57 @@ describe('the money path: no deduction without a passing reconciliation', () => 
       await sql`delete from edtr where id = any(${ids})`;
     }
 
-    // Reset this rental's deposit ledger.
-    //
-    // The fixture rental has no quotation/rental_contracts chain, so
-    // before audit-ocr-money-path.md #5 was fixed its deductions were
-    // unbounded -- and every prior run of this spec added one, to 250
-    // invoices totalling PHP 711,450 against a deposit that was never
-    // configured. Now that the fallback caps at the deposit checkout
-    // actually collects, that debris exhausts the cap and every approve
-    // here fails with deposit_exhausted. Clearing it makes this spec
-    // deterministic run-to-run instead of quietly depending on an
-    // unbounded ledger.
-    const priorDeductions = await sql`
-      select id from invoices where rental_id = ${rentalId} and invoice_type = 'deposit_deduction'
-    `;
-    const deductionIds = priorDeductions.map((row) => (row as { id: string }).id);
-    if (deductionIds.length > 0) {
-      await sql`delete from invoice_line_items where invoice_id = any(${deductionIds})`;
-      await sql`delete from payments where invoice_id = any(${deductionIds})`;
-      await sql`delete from invoices where id = any(${deductionIds})`;
-    }
     await sql.end();
+
+    // Two dedicated rentals, the same isolation edtr-engine.spec.ts uses:
+    // the shared fixture rental is mutated concurrently by other spec
+    // files, and its deduction ledger accumulates across runs.
+    //
+    // `rentalId` carries a real rental_contracts deposit, which is what a
+    // quote-originated rental -- the pilot path -- actually has. It needs
+    // one now: since audit-ocr-money-path.md #5 was fixed, a rental with
+    // no configured deposit caps at what checkout collects, and six hours
+    // of equipment prices well past that placeholder. Testing the deduct
+    // path against the no-deposit fallback was testing the wrong branch.
+    await withTenantTx(adminCtx, async (tx) => {
+      const [withDeposit] = await tx
+        .insert(rentals)
+        .values({
+          tenantId: adminCtx.tenantId,
+          customerId: (customerRow as { id: string }).id,
+          projectSiteId: (siteRow as { id: string }).id,
+          status: 'active',
+          startDate: new Date('2020-01-01T00:00:00Z'),
+        })
+        .returning();
+      rentalId = withDeposit!.id;
+
+      const [quotation] = await tx
+        .insert(quotations)
+        .values({
+          tenantId: adminCtx.tenantId,
+          customerId: (customerRow as { id: string }).id,
+          rentalId,
+        })
+        .returning();
+      await tx.insert(rentalContracts).values({
+        tenantId: adminCtx.tenantId,
+        quotationId: quotation!.id,
+        depositRequired: '100000000.00',
+      });
+
+      const [noDeposit] = await tx
+        .insert(rentals)
+        .values({
+          tenantId: adminCtx.tenantId,
+          customerId: (customerRow as { id: string }).id,
+          projectSiteId: (siteRow as { id: string }).id,
+          status: 'active',
+          startDate: new Date('2020-01-01T00:00:00Z'),
+        })
+        .returning();
+      uncappedRentalId = noDeposit!.id;
+    });
   });
 
   // An already-extracted paper counterpart carrying a manual-transcription
@@ -125,13 +163,14 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     reportDate: string,
     hoursActive: number,
     hoursIdle: number,
+    forRentalId?: string,
   ): Promise<string> {
     return withTenantTx(adminCtx, async (tx) => {
       const [row] = await tx
         .insert(edtrTable)
         .values({
           tenantId: adminCtx.tenantId,
-          rentalId,
+          rentalId: forRentalId ?? rentalId,
           equipmentId,
           source: 'paper_ocr',
           reportDate,
@@ -426,17 +465,58 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     expect(await deductionInvoiceCount(reconId)).toBe(0);
   });
 
-  // audit-ocr-money-path.md #5's fallback cap (a rental with no configured
-  // deposit now caps at what checkout actually collects) is NOT covered
-  // here, deliberately rather than by oversight. This spec's fixture has
-  // no hourly rate card effective on its report dates, so every deduction
-  // it makes prices at PHP 0 -- the happy-path invoice above is 0.00 --
-  // and a deduction of 0 can never exceed the cap. A test asserting
-  // deposit_exhausted on this fixture would pass for the wrong reason or
-  // not at all. Covering it properly needs a rental with no contract but a
-  // working effective rate card, which is fixture work in its own right.
-  // The configured-deposit half of the same guard is covered by
-  // billing-engine.spec.ts's deposit_exhausted test.
+  // audit-ocr-money-path.md #5. A rental with no quotation/rental_contracts
+  // chain used to skip the deposit_exhausted guard entirely and deduct
+  // with no ceiling at all. It now caps at what checkout actually
+  // collects for that case, so a deduction past that must be refused and
+  // move no money.
+  it('caps a deduction on a rental with no configured deposit', async () => {
+    // Own rate card, so the deduction's size is a property of this test
+    // rather than of whatever the ambient seed happens to hold. Scoped to
+    // 2021 and already expired: the deduction prices against report_date,
+    // while every quote-side assertion prices against `now`, so a card
+    // whose effective_to is years in the past cannot reach them.
+    // 6h x 1000 = 6000, comfortably past the DEFAULT_DEPOSIT_PHP cap.
+    await withTenantTx(adminCtx, async (tx) => {
+      const [equipmentRow] = await tx
+        .select({ equipmentTypeId: equipmentTable.equipmentTypeId })
+        .from(equipmentTable)
+        .where(eq(equipmentTable.id, equipmentId))
+        .limit(1);
+      await tx.insert(rateCards).values({
+        tenantId: adminCtx.tenantId,
+        equipmentTypeId: equipmentRow!.equipmentTypeId,
+        rateType: 'hourly',
+        rateValue: '1000.00',
+        currency: 'PHP',
+        effectiveFrom: new Date('2021-01-01T00:00:00Z'),
+        effectiveTo: new Date('2021-12-31T00:00:00Z'),
+      });
+    });
+
+    await insertTranscribedPaperCounterpart(DATES.uncapped, 6, 1, uncappedRentalId);
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId: uncappedRentalId,
+      equipmentId,
+      reportDate: DATES.uncapped,
+      lineItems: { hoursActive: 6, hoursIdle: 1 },
+    });
+
+    const polled = await edtr.get(adminCtx, digital.id);
+    expect(polled.reconciliation?.status).toBe('matched');
+    const reconId = polled.reconciliation!.id;
+
+    // The pair matches cleanly; it is the absent deposit, not a
+    // disagreement, that blocks this.
+    await expect(
+      edtr.approve(adminCtx, digital.id, {
+        reconciliationId: reconId,
+        adjustments: { hoursActive: 6, hoursIdle: 1 },
+      }),
+    ).rejects.toThrow(ConflictException);
+    expect(await deductionInvoiceCount(reconId)).toBe(0);
+  });
 
   afterEach(() => {
     vi.unstubAllEnvs();
