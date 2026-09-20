@@ -1,5 +1,5 @@
 import { DEFAULT_TOLERANCE_HOURS } from './edtr.js';
-import type { ExtractedTable } from './document-intelligence-port.js';
+import type { BoundingRegion, ExtractedTable } from './document-intelligence-port.js';
 
 // Parses the real Almara "EQUIPMENT DAILY TIME REPORT" sheet
 // (docs/cr-arkilaunch-edtr-real-form.md) out of the table prebuilt-layout
@@ -35,6 +35,11 @@ export interface EdtrSheetDay {
   // day to review via totalMismatch. Feeds min_field_confidence and so the
   // 0.90 gate.
   confidence: number;
+  // Where the written TOTAL HOURS cell sits on the page, so the review
+  // screen can point at the figure that becomes the billed reading rather
+  // than at the sheet in general. Absent when the response carried no
+  // usable polygon for that cell.
+  boundingRegion?: BoundingRegion;
 }
 
 export type EdtrSheetParse =
@@ -56,6 +61,7 @@ function norm(s: string): string {
 interface Grid {
   rows: string[][];
   confidences: number[][];
+  regions: (BoundingRegion | undefined)[][];
   rowCount: number;
   columnCount: number;
 }
@@ -67,6 +73,9 @@ function toGrid(table: ExtractedTable): Grid | null {
   const confidences: number[][] = Array.from({ length: table.rowCount }, () =>
     Array<number>(table.columnCount).fill(0),
   );
+  const regions: (BoundingRegion | undefined)[][] = Array.from({ length: table.rowCount }, () =>
+    Array<BoundingRegion | undefined>(table.columnCount).fill(undefined),
+  );
   for (const cell of table.cells) {
     // A cell outside the declared bounds means the grid we were handed is
     // not the grid Azure described. Refuse rather than read hours off a
@@ -75,8 +84,9 @@ function toGrid(table: ExtractedTable): Grid | null {
     if (cell.rowIndex < 0 || cell.columnIndex < 0) return null;
     rows[cell.rowIndex]![cell.columnIndex] = cell.content;
     confidences[cell.rowIndex]![cell.columnIndex] = cell.confidence;
+    regions[cell.rowIndex]![cell.columnIndex] = cell.boundingRegion;
   }
-  return { rows, confidences, rowCount: table.rowCount, columnCount: table.columnCount };
+  return { rows, confidences, regions, rowCount: table.rowCount, columnCount: table.columnCount };
 }
 
 interface Columns {
@@ -259,6 +269,9 @@ export function parseEdtrSheet(
       computedHours,
       totalMismatch: computedHours !== null && Math.abs(computedHours - hoursActive) > tolerance,
       confidence: Math.min(cellConfidences[columns.date] ?? 0, cellConfidences[columns.total] ?? 0),
+      ...(grid.regions[r]![columns.total]
+        ? { boundingRegion: grid.regions[r]![columns.total]! }
+        : {}),
     });
   }
 

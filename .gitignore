@@ -9,6 +9,10 @@ coverage/
 .env.local
 .env.*.local
 
+# Self-signed dev certificates (pnpm dev:cert). Per-machine, and a private
+# key is never a thing to commit even when it only serves 192.168.x.x.
+apps/web/certs/
+
 .vscode/*
 !.vscode/extensions.json
 .idea/

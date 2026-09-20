@@ -15,6 +15,19 @@ export interface ExtractedField {
   confidence: number;
 }
 
+// Where on the page this reading came from, as a four-point polygon
+// [x1,y1,...,x4,y4] with every coordinate normalised to 0..1 of the page's
+// own width and height.
+//
+// Normalised at the adapter on purpose: Azure reports polygons in the
+// page's `unit`, which is inches for a PDF and pixels for an image. A
+// consumer that drew raw coordinates would silently be right for one input
+// type and wrong for the other, and the reviewer would never know which.
+export interface BoundingRegion {
+  page: number;
+  polygon: number[];
+}
+
 // A cell of a table prebuilt-layout found on the page, as a plain grid:
 // a merged cell is expanded into every position it covers, so consumers
 // index by (rowIndex, columnIndex) without reasoning about spans.
@@ -36,6 +49,10 @@ export interface ExtractedTableCell {
   // words cannot be located floors to 0 -- below the gate, so it routes to
   // a human -- exactly as a missing field confidence does.
   confidence: number;
+  // Absent when the response carried no polygon, or when the page it
+  // belongs to reported no dimensions to normalise against. The review
+  // overlay simply draws no box; it never guesses a position.
+  boundingRegion?: BoundingRegion;
 }
 
 export interface ExtractedTable {

@@ -2,6 +2,7 @@ import { Controller, Get, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
+import { isOcrKycEnabled, isOcrPipelineEnabled } from '../ports/document-intelligence.port.js';
 import { ReferenceService } from './reference.service.js';
 import { ReferenceRateCardQueryDto } from './dto.js';
 
@@ -22,6 +23,17 @@ export class ReferenceController {
   @Get('equipment-types')
   equipmentTypes() {
     return this.reference.equipmentTypes();
+  }
+
+  // Which capture paths the server will actually accept, so the client can
+  // stop offering one the server rejects. With the OCR pipeline on, a
+  // paper_ocr capture carrying transcribed hours is a 422
+  // (line_items_not_accepted); the web app had no way to know that, so it
+  // sent them anyway. Flag state, not tenant data -- any authenticated
+  // caller may read it.
+  @Get('capabilities')
+  capabilities() {
+    return { ocrPipeline: isOcrPipelineEnabled(), ocrKyc: isOcrKycEnabled() };
   }
 
   @Get('equipment')

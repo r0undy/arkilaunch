@@ -37,6 +37,15 @@ export interface ProjectSiteRef {
   province: string | null;
 }
 
+// Which capture paths the server will accept. With the OCR pipeline on, a
+// paper scan must NOT carry transcribed hours (the API answers 422
+// line_items_not_accepted), and the client had no way to know that.
+export interface CapabilitiesRef {
+  ocrPipeline: boolean;
+  ocrKyc: boolean;
+}
+
+export const getCapabilities = () => apiGet<CapabilitiesRef>('/reference/capabilities');
 export const getEquipmentTypes = () => apiGet<EquipmentTypeRef[]>('/reference/equipment-types');
 export const getEquipment = () => apiGet<EquipmentRef[]>('/reference/equipment');
 export const getRateCards = () => apiGet<RateCardRef[]>('/reference/rate-cards');

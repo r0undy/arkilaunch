@@ -12,6 +12,7 @@
     "dev": "concurrently -n api,web -c blue,magenta \"pnpm --filter @arkilaunch/api dev\" \"pnpm --filter @arkilaunch/web dev\"",
     "dev:api": "pnpm --filter @arkilaunch/api dev",
     "dev:web": "pnpm --filter @arkilaunch/web dev",
+    "dev:cert": "node scripts/dev-cert.mjs",
     "build:api": "pnpm --filter @arkilaunch/api build",
     "build:web": "pnpm --filter @arkilaunch/web build",
     "start:api": "pnpm --filter @arkilaunch/api start",

@@ -43,8 +43,13 @@ afterEach(() => {
 });
 
 describe('CaptureField', () => {
-  it('offers taking a photo and choosing a file as two separate actions', () => {
+  // jsdom has no navigator.mediaDevices, which is the same shape as an
+  // insecure origin or a device with no camera: the viewfinder must not be
+  // the only way in. Every test below therefore exercises the fallback,
+  // which is exactly the path that must never regress.
+  it('falls back to the two file inputs when the viewfinder cannot open', () => {
     renderField();
+    expect(screen.queryByTestId('scanFile-viewfinder')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Take photo' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Choose a file' })).toBeInTheDocument();
   });
@@ -81,7 +86,7 @@ describe('CaptureField', () => {
 
   it('shows a preview and releases its object URL when the file is replaced', async () => {
     const { view, props } = renderField({ value: photo() });
-    expect(screen.getByRole('img', { name: 'The sheet you selected' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'The sheet you captured' })).toBeInTheDocument();
 
     view.rerender(<CaptureField {...props} value={null} />);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
@@ -96,14 +101,47 @@ describe('CaptureField', () => {
     expect(screen.getByText(/sec-certificate\.pdf/)).toBeInTheDocument();
   });
 
-  it('clears the selection on Remove', async () => {
+  it('clears the selection on Retake, which is what reopens the viewfinder', async () => {
     const { onChange } = renderField({ value: photo() });
-    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Retake' }));
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
-  it('offers a retake once something is selected', () => {
-    renderField({ value: photo() });
-    expect(screen.getByRole('button', { name: 'Retake photo' })).toBeInTheDocument();
+  it('hands a shutter frame through prepareUpload like any other file', async () => {
+    const prepared = photo('capture.jpg');
+    prepareUpload.mockResolvedValue(prepared);
+    // A camera that opens: the viewfinder replaces the fallback buttons.
+    const track = { stop: vi.fn(), getCapabilities: () => ({}) };
+    const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+    });
+    // jsdom's <video> reports no frame and its canvas cannot encode, so both
+    // are stubbed to the smallest thing the shutter needs.
+    Object.defineProperty(HTMLVideoElement.prototype, 'videoWidth', {
+      configurable: true,
+      value: 1280,
+    });
+    Object.defineProperty(HTMLVideoElement.prototype, 'videoHeight', {
+      configurable: true,
+      value: 960,
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((cb) => {
+      cb(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }));
+    });
+
+    const { onChange } = renderField();
+    const shutter = await screen.findByTestId('scanFile-shutter');
+    await waitFor(() => expect(shutter).not.toBeDisabled());
+    await userEvent.click(shutter);
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(prepared));
+    expect(prepareUpload).toHaveBeenCalledWith(expect.any(File));
+    // The stream is released on capture, not left holding the camera open.
+    expect(track.stop).toHaveBeenCalled();
   });
 });

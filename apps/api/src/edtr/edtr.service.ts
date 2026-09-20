@@ -346,6 +346,24 @@ export class EdtrService {
     });
   }
 
+  // The storage key of the scanned page, for the review overlay. Read
+  // inside withTenantTx so RLS -- not a client-supplied key -- decides
+  // which row is visible; another tenant's id is simply not there, and
+  // reads as 404 rather than 403 (RFC-1: the tenant comes from the
+  // verified JWT, never from the request).
+  async rawFileKey(ctx: RequestContext, id: string): Promise<string> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx
+        .select({ rawFileUri: edtr.rawFileUri })
+        .from(edtr)
+        .where(eq(edtr.id, id))
+        .limit(1);
+      if (!row) throw new NotFoundException({ error: 'edtr_not_found' });
+      if (!row.rawFileUri) throw new NotFoundException({ error: 'edtr_scan_not_found' });
+      return row.rawFileUri;
+    });
+  }
+
   // POST /api/v1/edtr/:id/approve (RFC-2 §3): the ONLY path that deducts.
   // Asserts matched-or-human-resolved before opening the deduction write;
   // there is no override edge (AGENTS.md "Never": deduct without a passing

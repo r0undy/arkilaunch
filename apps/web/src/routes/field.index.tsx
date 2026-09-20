@@ -1,19 +1,9 @@
 import { createRoute, Link } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fieldLayoutRoute } from './_field.js';
 import { sitesQueries, edtrQueries } from '../lib/queries.js';
-import {
-  getCustomers,
-  getEquipment,
-  getProjectSites,
-  getRentals,
-  type CustomerRef,
-  type EquipmentRef,
-  type ProjectSiteRef,
-  type RentalRef,
-} from '../lib/reference-client.js';
-import { siteName } from '../lib/format.js';
+import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { Button } from '../components/button.js';
 import { CaptureModal } from '../components/capture-modal.js';
 import { EmptyState } from '../components/empty-state.js';
@@ -33,48 +23,17 @@ function OperatorDashboardPage() {
   // redirected to this dashboard and had nowhere to go. The server always
   // allowed it: POST /edtr asks for `edtr:create`, which this role holds.
   const [captureOpen, setCaptureOpen] = useState(false);
-  const [equipmentList, setEquipmentList] = useState<EquipmentRef[]>([]);
-  const [rentals, setRentals] = useState<RentalRef[]>([]);
-  const [customers, setCustomers] = useState<CustomerRef[]>([]);
-  const [projectSites, setProjectSites] = useState<ProjectSiteRef[]>([]);
 
   // The pick lists the modal needs. Fetched once the operator has sites,
-  // since with no assignment there is nothing to record against.
+  // since with no assignment there is nothing to record against. A failure
+  // is non-fatal: the dashboard still reads, and the capture button is
+  // disabled below rather than opening a modal with empty pick lists.
   const hasSites = !!sites && sites.total > 0;
-  useEffect(() => {
-    if (!hasSites) return;
-    let cancelled = false;
-    Promise.all([getEquipment(), getRentals(), getCustomers(), getProjectSites()])
-      .then(([e, r, c, s]) => {
-        if (cancelled) return;
-        setEquipmentList(e);
-        setRentals(r);
-        setCustomers(c);
-        setProjectSites(s);
-      })
-      .catch(() => {
-        // Non-fatal: the dashboard still reads, and the capture button is
-        // disabled below rather than opening a modal with empty pick lists.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [hasSites]);
+  const { equipmentList, rentals, rentalLabel } = useScanDeployments(hasSites);
 
   const pendingCount = (edtrList?.items as { status?: string }[] | undefined)?.filter(
     (e) => e.status === 'review' || e.status === 'extracted',
   ).length;
-
-  const rentalLabel = useMemo(
-    () =>
-      (rental: RentalRef): string => {
-        const customer = customers.find((c) => c.id === rental.customerId)?.companyName;
-        const site = projectSites.find((s) => s.id === rental.projectSiteId);
-        const where = site ? siteName(site) : null;
-        return [customer ?? 'Unnamed customer', where].filter(Boolean).join(' - ');
-      },
-    [customers, projectSites],
-  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -107,6 +66,12 @@ function OperatorDashboardPage() {
           <p className="text-sm text-text-muted">
             You are assigned to {pluralize(sites.total, 'site')}.
           </p>
+          <Link
+            to="/field/scan"
+            className="min-h-12 rounded-sm border border-border bg-surface px-4 py-3 text-sm font-medium text-text"
+          >
+            Scan a DTR
+          </Link>
           <Link
             to="/field/deployment"
             className="min-h-12 rounded-sm border border-border bg-surface px-4 py-3 text-sm font-medium text-text"

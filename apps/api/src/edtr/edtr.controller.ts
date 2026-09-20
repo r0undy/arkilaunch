@@ -98,6 +98,18 @@ export class EdtrController {
     return this.edtr.get(req.ctx, id);
   }
 
+  // Signed, short-lived URL for the scanned page, so the review screen can
+  // draw the OCR bounding boxes over the image the model actually read.
+  // Never a public URL (RFC-2 §6); the key is re-derived from the owning
+  // row under RLS, never taken from the caller.
+  @Get(':id/image')
+  @RequirePermission('edtr:create')
+  async image(@Param('id') id: string, @Req() req: CtxRequest) {
+    const key = await this.edtr.rawFileKey(req.ctx, id);
+    const url = await this.storage.createSignedDownloadUrl(EDTR_BUCKET(), key);
+    return { url, expiresInSeconds: 300 };
+  }
+
   // Addressed by reconciliation id: what a reviewer working the queue
   // actually holds. Three segments, so it never collides with ':id/approve'.
   @Post('reconciliations/:reconciliationId/approve')
