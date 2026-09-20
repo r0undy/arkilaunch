@@ -7,6 +7,7 @@ import { Surface } from './surface.js';
 import { Button } from './button.js';
 import { EmptyState } from './empty-state.js';
 import { BellIcon } from './icons.js';
+import { Pagination, PAGE_SIZE } from './pagination.js';
 import { formatRelativeTime } from '../lib/format-time.js';
 import { formatStatus, shortCode } from '../lib/format.js';
 
@@ -97,8 +98,12 @@ function NotificationRow({ notification }: { notification: NotificationResponse 
 // The Figma frames (168:3011, 276:7669, 359:2970) differ only in their
 // surrounding shell, which the layout routes already supply.
 export function NotificationFeed() {
-  const [limit, setLimit] = useState(20);
-  const query = useQuery(notificationQueries.list(limit, 0));
+  // "Load more" grew the page size and re-requested from offset 0, so
+  // reaching the fourth page re-fetched the first three, and there was no
+  // way back up a long feed. Every other list in the console pages through
+  // the same server limit/offset; this one now does too.
+  const [offset, setOffset] = useState(0);
+  const query = useQuery(notificationQueries.list(PAGE_SIZE, offset));
 
   if (query.isPending) return <p className="text-sm text-text-muted">Loading notifications...</p>;
 
@@ -127,7 +132,7 @@ export function NotificationFeed() {
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
         <h2 className="font-display text-base font-semibold text-text">Pending items</h2>
         <p className="text-sm text-text-muted">
-          Showing {query.data.items.length} of {query.data.total}
+          {query.data.total} in total
         </p>
       </div>
       <div>
@@ -135,13 +140,14 @@ export function NotificationFeed() {
           <NotificationRow key={item.id} notification={item} />
         ))}
       </div>
-      {query.data.items.length < query.data.total && (
-        <div className="flex justify-center border-t border-border bg-surface-sunk px-4 py-3">
-          <Button variant="ghost" onClick={() => setLimit((current) => current + 20)}>
-            Load more notifications
-          </Button>
-        </div>
-      )}
+      <Pagination
+        offset={offset}
+        limit={PAGE_SIZE}
+        total={query.data.total}
+        onOffsetChange={setOffset}
+        noun="notifications"
+        busy={query.isFetching}
+      />
     </Surface>
   );
 }

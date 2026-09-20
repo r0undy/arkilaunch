@@ -25,6 +25,12 @@ function LandingPage() {
     });
   }, [data, query, availability]);
 
+  // The landing page is a shop window, not the catalog: it shows a first
+  // handful and sends you to /equipment for the rest, rather than growing
+  // into an unbounded grid as the fleet does.
+  const PREVIEW_COUNT = 6;
+  const preview = equipment.slice(0, PREVIEW_COUNT);
+
   return (
     <div className="flex flex-col gap-16 px-6 py-10 sm:px-10">
       <section className="flex flex-col gap-4">
@@ -53,7 +59,7 @@ function LandingPage() {
           onAvailabilityChange={setAvailability}
         />
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {equipment.map((eq) => {
+          {preview.map((eq) => {
             const imageUrl = equipmentImageUrl(eq.model);
             return (
               <EquipmentCard
@@ -73,6 +79,13 @@ function LandingPage() {
             </p>
           )}
         </div>
+        {equipment.length > PREVIEW_COUNT && (
+          <div>
+            <Button variant="secondary" onClick={() => navigate({ to: '/equipment' })}>
+              See all {equipment.length} machines
+            </Button>
+          </div>
+        )}
       </section>
 
       {testimonialData && testimonialData.items.length > 0 && (

@@ -65,3 +65,23 @@ export async function apiDelete(path: string): Promise<void> {
     throw new ApiError(res.status, payload);
   }
 }
+
+// Quotes, KYC and checkout each dumped `JSON.stringify(error)` into the page
+// -- an API error code in a <pre> block is developer output, not an answer.
+// The codes are snake_case (`rate_card_expired`), which reads as a sentence
+// with the underscores taken out, so this is a formatter rather than a
+// per-screen message table. Screens with a real vocabulary of failures still
+// get their own mapper (lib/booking-error.ts, lib/edtr-error.ts).
+export function apiErrorText(error: unknown): string {
+  if (error instanceof ApiError) {
+    const code = error.message;
+    if (code && !/^request_failed_/.test(code)) {
+      const words = code.replace(/_/g, ' ');
+      return words.charAt(0).toUpperCase() + words.slice(1) + '.';
+    }
+    if (error.status === 401 || error.status === 403) return 'You are not allowed to do that.';
+    if (error.status >= 500) return 'The server could not complete that. Try again in a moment.';
+    return 'That request was rejected. Check the details and try again.';
+  }
+  return 'Something went wrong. Try again in a moment.';
+}
