@@ -2,6 +2,7 @@ import {
   ExtractionUnavailableError,
   type DocumentExtractionResult,
   type DocumentIntelligencePort,
+  type BoundingRegion,
   type ExtractedField,
   type ExtractedTable,
 } from '@arkilaunch/shared';
@@ -74,7 +75,23 @@ interface AzureAnalyzeTable {
     columnSpan?: number;
     content?: string;
     spans?: AzureSpan[];
+    boundingRegions?: AzureBoundingRegion[];
   }>;
+}
+
+interface AzureBoundingRegion {
+  pageNumber?: number;
+  polygon?: number[];
+}
+
+// Azure reports polygons in the page's own `unit` -- inches for a PDF,
+// pixels for an image -- so a page's width and height are what make them
+// comparable. Without both, there is nothing to normalise against.
+interface AzurePage {
+  pageNumber?: number;
+  width?: number;
+  height?: number;
+  words?: AzureWord[];
 }
 
 interface AzureWord {
@@ -86,7 +103,7 @@ interface AzureAnalyzeOperation {
   status: 'notStarted' | 'running' | 'succeeded' | 'failed';
   error?: { code?: string; message?: string };
   analyzeResult?: {
-    pages?: Array<{ words?: AzureWord[] }>;
+    pages?: AzurePage[];
     documents?: Array<{ fields?: Record<string, AzureAnalyzeField> }>;
     tables?: AzureAnalyzeTable[];
   };
@@ -267,11 +284,39 @@ function cellConfidence(spans: AzureSpan[] | undefined, words: AzureWord[]): num
   return Number.isFinite(min) ? min : 0;
 }
 
+// A cell's polygon, scaled into 0..1 of its own page. Returns undefined
+// rather than a guess when the polygon is malformed or the page reported no
+// usable dimensions -- a box drawn in the wrong place over a timesheet is
+// worse than no box, because it tells a reviewer the model read a cell it
+// did not.
+function normaliseRegion(
+  regions: AzureBoundingRegion[] | undefined,
+  pagesByNumber: Map<number, AzurePage>,
+): BoundingRegion | undefined {
+  const region = regions?.[0];
+  const polygon = region?.polygon;
+  if (!polygon || polygon.length < 8 || polygon.length % 2 !== 0) return undefined;
+  const pageNumber = region.pageNumber ?? 1;
+  const page = pagesByNumber.get(pageNumber);
+  const width = page?.width;
+  const height = page?.height;
+  if (!width || !height) return undefined;
+
+  const scaled = polygon.map((coordinate, index) =>
+    index % 2 === 0 ? coordinate / width : coordinate / height,
+  );
+  if (scaled.some((n) => !Number.isFinite(n))) return undefined;
+  return { page: pageNumber, polygon: scaled };
+}
+
 function mapTables(
   tables: AzureAnalyzeTable[] | undefined,
-  pages: Array<{ words?: AzureWord[] }> | undefined,
+  pages: AzurePage[] | undefined,
 ): ExtractedTable[] {
   const words = (pages ?? []).flatMap((p) => p.words ?? []);
+  const pagesByNumber = new Map(
+    (pages ?? []).map((page, index) => [page.pageNumber ?? index + 1, page] as const),
+  );
   return (tables ?? [])
     .filter((t) => typeof t.rowCount === 'number' && typeof t.columnCount === 'number')
     .map((t) => ({
@@ -282,10 +327,20 @@ function mapTables(
         .flatMap((c) => {
           const content = (c.content ?? '').replace(/\s+/g, ' ').trim();
           const confidence = cellConfidence(c.spans, words);
+          // A merged cell's covered positions all carry the merged cell's
+          // own box, which is exactly the area a reviewer should see
+          // highlighted for any of them.
+          const boundingRegion = normaliseRegion(c.boundingRegions, pagesByNumber);
           const out: ExtractedTable['cells'] = [];
           for (let dr = 0; dr < Math.max(1, c.rowSpan ?? 1); dr++) {
             for (let dc = 0; dc < Math.max(1, c.columnSpan ?? 1); dc++) {
-              out.push({ rowIndex: c.rowIndex! + dr, columnIndex: c.columnIndex! + dc, content, confidence });
+              out.push({
+                rowIndex: c.rowIndex! + dr,
+                columnIndex: c.columnIndex! + dc,
+                content,
+                confidence,
+                ...(boundingRegion ? { boundingRegion } : {}),
+              });
             }
           }
           return out;

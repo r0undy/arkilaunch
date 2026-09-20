@@ -1,23 +1,9 @@
-import { createRoute } from '@tanstack/react-router';
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
+import { createRoute, useNavigate } from '@tanstack/react-router';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
 import { apiGet, apiPost } from '../lib/api-client.js';
-import {
-  getCustomers,
-  getEquipment,
-  getProjectSites,
-  getRentals,
-  type CustomerRef,
-  type EquipmentRef,
-  type ProjectSiteRef,
-  type RentalRef,
-} from '../lib/reference-client.js';
+import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { explainEdtrError } from '../lib/edtr-error.js';
 import {
   formatDate,
@@ -25,7 +11,6 @@ import {
   formatLogSource,
   formatStatus,
   shortCode,
-  siteName,
 } from '../lib/format.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
@@ -92,12 +77,14 @@ function statusPill(status: string): { tone: StatusTone; icon: ReactNode } {
 function EdtrPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
-  const [equipmentList, setEquipmentList] = useState<EquipmentRef[]>([]);
-  const [rentals, setRentals] = useState<RentalRef[]>([]);
-  const [customers, setCustomers] = useState<CustomerRef[]>([]);
-  const [sites, setSites] = useState<ProjectSiteRef[]>([]);
-  const [refError, setRefError] = useState<unknown>(null);
+  const {
+    equipmentList,
+    rentals,
+    rentalLabel,
+    error: refError,
+  } = useScanDeployments();
 
   const [captureOpen, setCaptureOpen] = useState(false);
   const [approving, setApproving] = useState<EdtrListItem | null>(null);
@@ -109,17 +96,6 @@ function EdtrPage() {
       apiGet<{ items: EdtrListItem[]; total: number }>(`/edtr?limit=${PAGE_SIZE}&offset=${offset}`),
   });
 
-  useEffect(() => {
-    Promise.all([getEquipment(), getRentals(), getCustomers(), getProjectSites()])
-      .then(([e, r, c, s]) => {
-        setEquipmentList(e);
-        setRentals(r);
-        setCustomers(c);
-        setSites(s);
-      })
-      .catch(setRefError);
-  }, []);
-
   const equipmentById = useMemo(
     () => new Map(equipmentList.map((e) => [e.id, e])),
     [equipmentList],
@@ -128,15 +104,6 @@ function EdtrPage() {
   function machineName(equipmentId: string): string {
     const match = equipmentById.get(equipmentId);
     return match ? match.model : `Machine ${shortCode('equipment', equipmentId)}`;
-  }
-
-  /** A rental named by who it is for and where, not by its id. */
-  function rentalLabel(rental: RentalRef): string {
-    const customer = customers.find((c) => c.id === rental.customerId)?.companyName;
-    const site = sites.find((s) => s.id === rental.projectSiteId);
-    const where = site ? siteName(site) : null;
-    const who = customer ?? 'Unnamed customer';
-    return [who, where].filter(Boolean).join(' - ');
   }
 
   function onCaptured() {
@@ -152,9 +119,14 @@ function EdtrPage() {
         title="Field logs"
         description="Each day's hours, recorded twice and matched before anything is billed."
         actions={
-          <Button variant="primary" onClick={() => setCaptureOpen(true)}>
-            Record a field log
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => void navigate({ to: '/app/ocr/deployments' })}>
+              Scan a DTR
+            </Button>
+            <Button variant="primary" onClick={() => setCaptureOpen(true)}>
+              Record a field log
+            </Button>
+          </div>
         }
       />
 

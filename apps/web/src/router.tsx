@@ -44,6 +44,7 @@ import { appSettingsRoute } from './routes/app.settings.js';
 import { appPlatformApplicationsRoute } from './routes/app.platform-applications.js';
 import { quotesRoute } from './routes/quotes.js';
 import { edtrRoute } from './routes/edtr.js';
+import { appOcrDeploymentsRoute, fieldScanRoute } from './routes/app.ocr.deployments.js';
 import { kycRoute } from './routes/kyc.js';
 import {
   appCompaniesPendingRoute,
@@ -110,6 +111,7 @@ export const routeTree = rootRoute.addChildren([
     appPlatformApplicationsRoute,
     quotesRoute,
     edtrRoute,
+    appOcrDeploymentsRoute,
     kycRoute,
     appRegistrationPendingRoute,
     appRegistrationVerifiedRoute,
@@ -124,6 +126,7 @@ export const routeTree = rootRoute.addChildren([
   ]),
   fieldLayoutRoute.addChildren([
     fieldIndexRoute,
+    fieldScanRoute,
     fieldDeploymentRoute,
     fieldNotificationsRoute,
     fieldProfileRoute,

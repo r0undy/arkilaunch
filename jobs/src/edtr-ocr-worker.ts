@@ -41,7 +41,15 @@ const API_VERSION = '2024-11-30';
 // the day's own cell confidence, which is what the 0.90 gate grades.
 function toOcrPayload(day: EdtrSheetDay): OcrPayload {
   const fields = [
-    { name: 'hours_active', value: day.hoursActive, value_type: 'number' as const, confidence: day.confidence },
+    {
+      name: 'hours_active',
+      value: day.hoursActive,
+      value_type: 'number' as const,
+      confidence: day.confidence,
+      // The TOTAL HOURS cell this reading was taken from, so the reviewer
+      // is shown the figure itself rather than the whole sheet.
+      ...(day.boundingRegion ? { bounding_region: day.boundingRegion } : {}),
+    },
   ];
   // Recorded as a field of its own so a reviewer can see the independent
   // figure the in/out times produced, not just that the two disagreed.
