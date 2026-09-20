@@ -14,10 +14,13 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export interface ReconcileResult {
   edtrId: string;
   reconciliationId: string;
-  status: 'pending' | 'matched' | 'discrepancy';
+  // 'approved' and 'rejected' are terminal: reconcileEdtr reports them
+  // back unchanged rather than re-deriving them, so a re-run over an
+  // already-decided pair is a no-op (audit-ocr-money-path.md #6).
+  status: 'pending' | 'matched' | 'discrepancy' | 'approved' | 'rejected';
   counterpartEdtrId: string | null;
   deltaHours: number | null;
-  reason: ReconciliationReason;
+  reason: ReconciliationReason | null;
 }
 
 function minFieldConfidence(source: string, ocrPayload: unknown): number {
@@ -29,14 +32,18 @@ function minFieldConfidence(source: string, ocrPayload: unknown): number {
 
 interface HourSums {
   active: number;
-  idle: number;
+  // null when ANY line item on this side did not record idle hours, which
+  // is the normal case for a paper capture -- the real Almara form has no
+  // idle column (migration 0017). Summing a NULL as 0 would understate the
+  // total and manufacture a disagreement with a log that did record it.
+  idle: number | null;
 }
 
-function sumHours(items: Array<{ hoursActive: string; hoursIdle: string }>): HourSums {
-  return items.reduce(
+function sumHours(items: Array<{ hoursActive: string; hoursIdle: string | null }>): HourSums {
+  return items.reduce<HourSums>(
     (acc, item) => ({
       active: acc.active + Number(item.hoursActive),
-      idle: acc.idle + Number(item.hoursIdle),
+      idle: acc.idle === null || item.hoursIdle === null ? null : acc.idle + Number(item.hoursIdle),
     }),
     { active: 0, idle: 0 },
   );
@@ -49,10 +56,16 @@ function sumHours(items: Array<{ hoursActive: string; hoursIdle: string }>): Hou
 // dimension so the new gate cannot be looser than the summed-total one it
 // replaces.
 function hourDeltas(a: HourSums, b: HourSums): HourDeltas {
+  // Idle is only comparable when BOTH logs recorded it. If either did not,
+  // the idle dimension and the summed total that contains it are dropped
+  // and the gate decides on active hours alone -- which is the figure the
+  // deduction is priced on. See the HourDeltas comment in
+  // packages/shared/src/edtr.ts for why this is not defaulted to zero.
+  const comparableIdle = a.idle !== null && b.idle !== null;
   return {
     active: Math.abs(a.active - b.active),
-    idle: Math.abs(a.idle - b.idle),
-    total: Math.abs(a.active + a.idle - (b.active + b.idle)),
+    idle: comparableIdle ? Math.abs(a.idle! - b.idle!) : null,
+    total: comparableIdle ? Math.abs(a.active + a.idle! - (b.active + b.idle!)) : null,
   };
 }
 
@@ -93,6 +106,27 @@ export async function reconcileEdtr(tx: Tx, tenantId: string, edtrId: string): P
     .where(eq(edtrReconciliations.edtrId, edtrId))
     .limit(1);
   const tolerance = existingRecon ? Number(existingRecon.tolerance) : DEFAULT_TOLERANCE_HOURS;
+
+  // A terminal reconciliation is not re-openable by re-running the machine
+  // over it. Both write paths below used an unconditional `.set(values)`,
+  // so any future caller, manual re-reconcile or backfill would reset an
+  // 'approved' row to 'matched'/'pending' -- and approve() would then
+  // deduct a second time against the same equipment-day. No caller does
+  // this today, which is what made it latent rather than live
+  // (audit-ocr-money-path.md #6). approve()'s in-transaction status check
+  // plus FOR UPDATE closes the concurrent-HTTP race; this closes the one
+  // outside that transaction. Guarded here, before either branch, so
+  // neither can drift from the other.
+  if (existingRecon && (existingRecon.status === 'approved' || existingRecon.status === 'rejected')) {
+    return {
+      edtrId: record.id,
+      reconciliationId: existingRecon.id,
+      status: existingRecon.status as ReconcileResult['status'],
+      counterpartEdtrId: existingRecon.counterpartEdtrId,
+      deltaHours: existingRecon.deltaHours === null ? null : Number(existingRecon.deltaHours),
+      reason: (existingRecon.adjustments as { reason?: ReconciliationReason } | null)?.reason ?? null,
+    };
+  }
 
   if (!counterpart) {
     // AwaitingCounterpart in the RFC-2 stateDiagram: only one of the two

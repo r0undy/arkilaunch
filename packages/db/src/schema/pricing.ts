@@ -1,4 +1,4 @@
-import { date, numeric, pgTable, text, timestamp, uuid, check } from 'drizzle-orm/pg-core';
+import { index, date, numeric, pgTable, text, timestamp, uuid, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
@@ -55,5 +55,6 @@ export const pricingParameters = pgTable(
   (t) => [
     tenantIsolationPolicy(),
     check('buffer_range', sql`${t.bufferPct} BETWEEN 0 AND 1`),
+    index('pricing_parameters_tenant_id_idx').on(t.tenantId),
   ],
 );

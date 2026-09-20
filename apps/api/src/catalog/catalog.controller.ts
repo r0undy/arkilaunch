@@ -1,7 +1,8 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator.js';
 import { CatalogService } from './catalog.service.js';
+import { CatalogEquipmentListQueryDto } from './dto.js';
 
 // Unauthenticated public storefront catalog. Heavier throttle than the
 // global default (120/min) since this is reachable with no credential.
@@ -12,8 +13,8 @@ export class CatalogController {
 
   @Get('equipment')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  listEquipment() {
-    return this.catalog.listEquipment();
+  listEquipment(@Query() query: CatalogEquipmentListQueryDto) {
+    return this.catalog.listEquipment(query);
   }
 
   @Get('equipment/:id')

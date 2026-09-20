@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { EdtrCaptureResponse, EdtrDetailResponse } from '@arkilaunch/shared';
 import { apiGet, apiPost, apiPostForm } from '../lib/api-client.js';
 import type { EquipmentRef, RentalRef } from '../lib/reference-client.js';
@@ -10,7 +11,8 @@ import { Input } from './input.js';
 import { Select } from './select.js';
 import { Surface } from './surface.js';
 import { Modal } from './modal.js';
-import { ConfidenceChip } from './confidence-chip.js';
+import { ScanReview } from './scan-review.js';
+import { referenceQueries } from '../lib/queries.js';
 import { useToast } from './toast.js';
 
 // Lifted out of routes/edtr.tsx so the timekeeper console can open the same
@@ -25,6 +27,18 @@ import { useToast } from './toast.js';
 // without a human.
 const TERMINAL_STATUSES = new Set(['review', 'reconciled', 'hard_failed']);
 
+// Shown beside the viewfinder. Worth saying because every one of them is a
+// reason a sheet comes back unreadable and the day has to be transcribed by
+// hand instead.
+const SCANNING_TIPS = [
+  {
+    title: 'Good light',
+    detail: 'Light the sheet evenly and keep overhead glare off the glossy parts.',
+  },
+  { title: 'Flat and square', detail: 'Lay the sheet flat and fit its edges inside the frame.' },
+  { title: 'Hold still', detail: 'A steady shot is what keeps the handwritten totals readable.' },
+];
+
 export interface CaptureModalProps {
   open: boolean;
   onClose: () => void;
@@ -33,6 +47,10 @@ export interface CaptureModalProps {
   rentalLabel: (rental: RentalRef) => string;
   onCaptured: () => void;
   toast: ReturnType<typeof useToast>;
+  /** Pre-scope the log to one rental, as "Scan DTR" on a deployment does. */
+  initialRentalId?: string;
+  /** Open straight on the scanner rather than the typed-entry form. */
+  initialSource?: 'digital_entry' | 'paper_ocr';
 }
 
 export function CaptureModal({
@@ -43,9 +61,11 @@ export function CaptureModal({
   rentalLabel,
   onCaptured,
   toast,
+  initialRentalId,
+  initialSource = 'digital_entry',
 }: CaptureModalProps) {
-  const [source, setSource] = useState<'digital_entry' | 'paper_ocr'>('digital_entry');
-  const [rentalId, setRentalId] = useState('');
+  const [source, setSource] = useState<'digital_entry' | 'paper_ocr'>(initialSource);
+  const [rentalId, setRentalId] = useState(initialRentalId ?? '');
   const [equipmentId, setEquipmentId] = useState('');
   const [reportDate, setReportDate] = useState('');
   const [hoursActive, setHoursActive] = useState('8');
@@ -54,9 +74,25 @@ export function CaptureModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
+  // The server decides whether a paper scan may carry typed hours. With the
+  // OCR pipeline on it may not (422 line_items_not_accepted), and until this
+  // was asked the client sent them anyway and every scan failed.
+  const capabilities = useQuery(referenceQueries.capabilities());
+  const ocrPipeline = capabilities.data?.ocrPipeline ?? false;
+
   const [pollUrl, setPollUrl] = useState<string | null>(null);
   const [detail, setDetail] = useState<EdtrDetailResponse | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // A rental chosen on the deployment list wins over the first-in-the-list
+  // default, including when the same modal is reopened for another row.
+  useEffect(() => {
+    if (initialRentalId) setRentalId(initialRentalId);
+  }, [initialRentalId]);
+
+  useEffect(() => {
+    setSource(initialSource);
+  }, [initialSource]);
 
   useEffect(() => {
     if (rentals[0] && !rentalId) setRentalId(rentals[0].id);
@@ -122,7 +158,7 @@ export function CaptureModal({
         // Multipart carries strings only, so transcribed hours travel as a
         // JSON-encoded field the API decodes back into an object.
         const transcribed =
-          hoursActive !== '' && hoursIdle !== ''
+          !ocrPipeline && hoursActive !== '' && hoursIdle !== ''
             ? {
                 lineItems: JSON.stringify({
                   hoursActive: Number(hoursActive),
@@ -153,13 +189,20 @@ export function CaptureModal({
 
   const explained = error != null ? explainEdtrError(error) : null;
 
+  // The session panel names what this scan will be attached to, so a
+  // mis-picked machine is caught before the shutter rather than at review.
+  const equipment = equipmentList.find((eq) => eq.id === equipmentId);
+  const equipmentLabel = equipment ? `${equipment.model} (${equipment.serialNo})` : 'Not set';
+  const rental = rentals.find((r) => r.id === rentalId);
+  const rentalSessionLabel = rental ? rentalLabel(rental) : 'Not set';
+
   return (
     <Modal
       open={open}
       onClose={handleClose}
       title="Record a field log"
       description="One day, one machine. Record it twice from two sources and the hours are matched before billing."
-      size="md"
+      size="lg"
       footer={
         <>
           <Button variant="secondary" onClick={handleClose}>
@@ -247,9 +290,16 @@ export function CaptureModal({
             size="field"
             value={scanFile}
             onChange={setScanFile}
+            tips={SCANNING_TIPS}
+            sessionData={[
+              { label: 'Machine', value: equipmentLabel },
+              { label: 'Rental', value: rentalSessionLabel },
+              { label: 'Day worked', value: reportDate ? formatDate(reportDate) : 'Not set' },
+            ]}
           />
         )}
 
+        {!(source === 'paper_ocr' && ocrPipeline) && (
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
             numeric
@@ -270,10 +320,17 @@ export function CaptureModal({
             onChange={(e) => setHoursIdle(e.target.value)}
           />
         </div>
-        {source === 'paper_ocr' && (
+        )}
+        {source === 'paper_ocr' && !ocrPipeline && (
           <p className="-mt-2 text-sm text-text-muted">
             Type the hours exactly as written on the sheet. The photo is kept either way, so the
             original can always be checked against what was billed.
+          </p>
+        )}
+        {source === 'paper_ocr' && ocrPipeline && (
+          <p className="-mt-2 text-sm text-text-muted">
+            The hours are read off the sheet itself, so there is nothing to type here. Anything read
+            below 90% certainty comes back for a person to check.
           </p>
         )}
 
@@ -292,22 +349,16 @@ export function CaptureModal({
             </p>
             {detail.lineItems[0] && (
               <p className="text-sm text-text-muted">
-                {formatHours(detail.lineItems[0].hoursActive)} working,{' '}
-                {formatHours(detail.lineItems[0].hoursIdle)} idle.
+                {formatHours(detail.lineItems[0].hoursActive)} working
+                {/* A paper sheet has no idle column, so idle is genuinely
+                    unrecorded rather than zero. Saying "0.0 idle" would
+                    report a reading nobody took. */}
+                {detail.lineItems[0].hoursIdle === null
+                  ? '. Idle hours not recorded on this sheet.'
+                  : `, ${formatHours(detail.lineItems[0].hoursIdle)} idle.`}
               </p>
             )}
-            {detail.fields.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {detail.fields.map((field) => (
-                  <ConfidenceChip
-                    key={field.name}
-                    fieldLabel={field.name}
-                    confidence={field.confidence}
-                    tone={field.belowGate ? 'review' : 'match'}
-                  />
-                ))}
-              </div>
-            )}
+            {detail.fields.length > 0 && <ScanReview detail={detail} />}
             {detail.reconciliation?.status === 'single_source' && (
               <p className="text-sm text-text-muted">
                 Waiting for the second record of this machine-day before anything can be billed.

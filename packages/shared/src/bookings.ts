@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaginationQuerySchema } from './pagination.js';
 
 // PRD-F8 (Client Booking Portal), SDD §4 `POST /api/v1/bookings` contract,
 // built as an authenticated `customer`-role surface rather than the PRD's
@@ -46,6 +47,13 @@ export const BookingSummaryResponseSchema = z.object({
   siteProvince: z.string().nullable(),
 });
 export type BookingSummaryResponse = z.infer<typeof BookingSummaryResponseSchema>;
+
+// Paging, same shape as the users/invoices/equipment lists. GET /bookings
+// was the one list module with no query DTO at all, so the ?limit=&offset=
+// the UI already sent was silently discarded and page 2 returned page 1
+// (audit-api-surface.md #5).
+export const BookingListQuerySchema = PaginationQuerySchema;
+export type BookingListQuery = z.infer<typeof BookingListQuerySchema>;
 
 export const BookingListResponseSchema = z.object({
   items: z.array(BookingSummaryResponseSchema),

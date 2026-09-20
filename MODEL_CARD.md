@@ -11,7 +11,7 @@
 
 ## Intended use
 
-ArkiLaunch uses Azure AI Document Intelligence to (1) read handwritten Equipment Daily Time Reports and extract active/idle hours and breakdown status to assist billing (PRD-F3), and (2) extract SEC number and TIN from corporate documents to assist KYC onboarding (PRD-F6). Extraction only. A human confirms every result before any billing or onboarding effect.
+ArkiLaunch uses Azure AI Document Intelligence to (1) read handwritten Equipment Daily Time Reports and extract active/idle hours to assist billing (PRD-F3), and (2) extract SEC number and TIN from corporate documents to assist KYC onboarding (PRD-F6). Extraction only. A human confirms every result before any billing or onboarding effect.
 
 - **Intended users:** the tenant Administrator (**Rhea**) and Field Timekeeper who review extractions.
 - **Affected parties:** the rental company's clients (whose deposits are billed) and the corporate applicants whose KYC documents are read.
@@ -25,7 +25,7 @@ No autonomous deposit deduction or onboarding on model output alone; no machine-
 
 | Stage | Model | Role | Source of data it sees |
 |-------|-------|------|-------------------------|
-| EDTR extraction | Azure AI Document Intelligence custom neural extraction (doc-intel 4.x) | Extract handwritten hours + breakdown with per-field confidence and bounding regions | Tenant-uploaded EDTR images (untrusted) |
+| EDTR extraction | Azure AI Document Intelligence custom neural extraction (doc-intel 4.x) | Extract handwritten hours (active/idle) with per-field confidence and bounding regions | Tenant-uploaded EDTR images (untrusted) |
 | KYC extraction | Azure DI **`prebuilt-layout`** + query fields (doc-intel 4.x) | Extract SEC number + TIN (the prebuilt `idDocument` model does not cover PH corporate identifiers; layout + query fields are used instead, which needs per-layout validation) | Tenant-uploaded corporate/ID documents (untrusted, **sensitive personal information**) |
 
 - **Training data:** Microsoft-trained base models (Azure DI), plus a small labeled EDTR sample set collected from the anchor tenant with consent for the custom model. Provenance recorded; licensing is the tenant's own operational records. **No third-party scraped training data.**

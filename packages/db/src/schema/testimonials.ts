@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants } from './tenancy.js';
 
@@ -18,5 +18,7 @@ export const testimonials = pgTable(
     authorTitle: text('author_title').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [tenantIsolationPolicy(),
+    index('testimonials_tenant_id_idx').on(table.tenantId),
+  ],
 );

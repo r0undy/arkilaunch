@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaginationQuerySchema } from './pagination.js';
 
 // PRD-F4 (Fleet Inventory, Maintenance & Reporting), SDD §4 endpoint
 // contracts for /equipment, /equipment/:id/maintenance,
@@ -10,13 +11,8 @@ export type EquipmentStatus = z.infer<typeof EquipmentStatusSchema>;
 // GET /equipment?status=... query is validated the same as any other
 // external input (AGENTS.md "Always: validate external input at the
 // boundary with Zod"), not passed through as a raw string.
-export const EquipmentListQuerySchema = z.object({
+export const EquipmentListQuerySchema = PaginationQuerySchema.extend({
   status: EquipmentStatusSchema.optional(),
-  // Paging, matching the shape the users/invoices/field-log endpoints
-  // already use: a page of rows plus the unpaged total, so a list can say
-  // how much there is rather than silently truncating at the cap.
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
 });
 export type EquipmentListQuery = z.infer<typeof EquipmentListQuerySchema>;
 
@@ -75,6 +71,12 @@ export const CatalogEquipmentSchema = z.object({
   availabilityStatus: EquipmentStatusSchema,
 });
 export type CatalogEquipment = z.infer<typeof CatalogEquipmentSchema>;
+
+// Unauthenticated and previously unbounded: every storefront page load
+// shipped the anchor tenant's whole equipment table, and the client had no
+// way to ask for less (audit-api-surface.md #8).
+export const CatalogEquipmentListQuerySchema = PaginationQuerySchema;
+export type CatalogEquipmentListQuery = z.infer<typeof CatalogEquipmentListQuerySchema>;
 
 export const CatalogEquipmentListResponseSchema = z.object({
   items: z.array(CatalogEquipmentSchema),

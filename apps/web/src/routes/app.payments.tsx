@@ -8,6 +8,7 @@ import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
+import { Modal } from '../components/modal.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { CheckIcon, AlertIcon, ClockIcon } from '../components/icons.js';
 import {
@@ -46,8 +47,38 @@ const COLUMNS: TableColumn<InvoiceSummaryResponse>[] = [
   { header: 'Amount', cell: (row) => formatPeso(row.amount), align: 'right' },
 ];
 
+// Four columns of a seven-field record, with the id cut to a short code:
+// "which rental is this invoice against?" and "what is its full id?" were
+// unanswerable from this screen, which is awkward for the one table in the
+// console that stands for money already charged.
+function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) {
+  const rows: [string, string][] = [
+    ['Invoice id', invoice.id],
+    ['Rental id', invoice.rentalId],
+    ['Type', formatInvoiceType(invoice.invoiceType)],
+    ['Status', formatStatus(invoice.status)],
+    ['Amount', formatPeso(invoice.amount)],
+    ['Due', formatDate(invoice.dueDate)],
+    ['Raised', formatDate(invoice.createdAt)],
+  ];
+  return (
+    <dl className="flex flex-col">
+      {rows.map(([label, value]) => (
+        <div
+          key={label}
+          className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border py-2 last:border-0"
+        >
+          <dt className="text-sm text-text-muted">{label}</dt>
+          <dd className="font-mono text-sm tabular-nums text-text">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function PaymentsPage() {
   const [offset, setOffset] = useState(0);
+  const [selected, setSelected] = useState<InvoiceSummaryResponse | null>(null);
 
   return (
     <div className="flex flex-col gap-5">
@@ -64,7 +95,13 @@ function PaymentsPage() {
         isEmpty={(data) => data.total === 0}
         render={(data) => (
           <div>
-            <Table columns={COLUMNS} rows={data.items} rowKey={(row) => row.id} />
+            <Table
+              columns={COLUMNS}
+              rows={data.items}
+              rowKey={(row) => row.id}
+              onRowClick={setSelected}
+              rowLabel={(row) => `invoice ${shortCode('invoice', row.id)}`}
+            />
             <Pagination
               offset={offset}
               limit={PAGE_SIZE}
@@ -75,6 +112,15 @@ function PaymentsPage() {
           </div>
         )}
       />
+      <Modal
+        open={selected != null}
+        onClose={() => setSelected(null)}
+        title={selected ? `Invoice ${shortCode('invoice', selected.id)}` : 'Invoice'}
+        description="Read-only. Invoices are raised by a reconciliation, never edited here."
+        size="sm"
+      >
+        {selected && <InvoiceDetail invoice={selected} />}
+      </Modal>
     </div>
   );
 }

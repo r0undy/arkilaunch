@@ -2,7 +2,9 @@ import {
   ExtractionUnavailableError,
   type DocumentExtractionResult,
   type DocumentIntelligencePort,
+  type BoundingRegion,
   type ExtractedField,
+  type ExtractedTable,
 } from '@arkilaunch/shared';
 import { QUERY_FIELD_TO_PORT_KEY, resolveModelRequest, type ModelRequest } from './model-registry.js';
 
@@ -15,6 +17,30 @@ import { QUERY_FIELD_TO_PORT_KEY, resolveModelRequest, type ModelRequest } from 
 const API_VERSION = '2024-11-30';
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 60_000;
+// Per-request socket timeout. POLL_TIMEOUT_MS is a poll-LOOP budget,
+// checked only after a response comes back, so it could never fire on a
+// connection that hangs with no response and no RST: `await fetch` simply
+// never settled, the EDTR row stayed 'extracting' and locked, and the
+// worker process was held past its cron interval
+// (audit-ocr-money-path.md #4).
+const REQUEST_TIMEOUT_MS = 30_000;
+
+// A hung socket must fail the request, not the process. AbortSignal
+// rejects with an AbortError, which the caller already treats as an
+// analysis failure, so the row goes to its retry/hard_fail path instead
+// of sitting locked forever.
+async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  } catch (err) {
+    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      throw new DocumentAnalysisError(
+        `Azure DI request timed out after ${REQUEST_TIMEOUT_MS}ms with no response`,
+      );
+    }
+    throw err;
+  }
+}
 
 // Thrown instead of ExtractionUnavailableError: this is not "the service is
 // unreachable", it is "the service answered but the answer cannot be
@@ -34,12 +60,52 @@ interface AzureAnalyzeField {
   confidence?: number;
 }
 
+interface AzureSpan {
+  offset?: number;
+  length?: number;
+}
+
+interface AzureAnalyzeTable {
+  rowCount?: number;
+  columnCount?: number;
+  cells?: Array<{
+    rowIndex?: number;
+    columnIndex?: number;
+    rowSpan?: number;
+    columnSpan?: number;
+    content?: string;
+    spans?: AzureSpan[];
+    boundingRegions?: AzureBoundingRegion[];
+  }>;
+}
+
+interface AzureBoundingRegion {
+  pageNumber?: number;
+  polygon?: number[];
+}
+
+// Azure reports polygons in the page's own `unit` -- inches for a PDF,
+// pixels for an image -- so a page's width and height are what make them
+// comparable. Without both, there is nothing to normalise against.
+interface AzurePage {
+  pageNumber?: number;
+  width?: number;
+  height?: number;
+  words?: AzureWord[];
+}
+
+interface AzureWord {
+  confidence?: number;
+  span?: AzureSpan;
+}
+
 interface AzureAnalyzeOperation {
   status: 'notStarted' | 'running' | 'succeeded' | 'failed';
   error?: { code?: string; message?: string };
   analyzeResult?: {
-    pages?: unknown[];
+    pages?: AzurePage[];
     documents?: Array<{ fields?: Record<string, AzureAnalyzeField> }>;
+    tables?: AzureAnalyzeTable[];
   };
 }
 
@@ -98,7 +164,8 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
       );
     }
 
-    return { fields: this.mapFields(request, analyzeResult) };
+    const tables = mapTables(analyzeResult.tables, analyzeResult.pages);
+    return { fields: this.mapFields(request, analyzeResult), ...(tables.length > 0 ? { tables } : {}) };
   }
 
   private async startAnalyze(request: ModelRequest, imageStream: Buffer): Promise<string> {
@@ -108,7 +175,7 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
       query.set('queryFields', request.queryFields.join(','));
     }
 
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${this.baseUrl}/documentintelligence/documentModels/${request.modelId}:analyze?${query.toString()}`,
       {
         method: 'POST',
@@ -145,7 +212,7 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
     const deadline = Date.now() + POLL_TIMEOUT_MS;
 
     for (;;) {
-      const res = await fetch(operationLocation, {
+      const res = await fetchWithTimeout(operationLocation, {
         headers: { 'Ocp-Apim-Subscription-Key': this.apiKey },
       });
       if (!res.ok) {
@@ -192,6 +259,93 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
 
     return fields;
   }
+}
+
+// The lowest word confidence overlapping a cell's spans. Words carry
+// confidence and offsets into the same content string the cell's spans
+// index into, so this is a real measurement rather than a stand-in.
+function cellConfidence(spans: AzureSpan[] | undefined, words: AzureWord[]): number {
+  const ranges = (spans ?? [])
+    .filter((s) => typeof s.offset === 'number' && typeof s.length === 'number')
+    .map((s) => [s.offset!, s.offset! + s.length!] as const);
+  if (ranges.length === 0) return 0;
+
+  let min = Number.POSITIVE_INFINITY;
+  for (const word of words) {
+    const offset = word.span?.offset;
+    const length = word.span?.length;
+    if (typeof offset !== 'number' || typeof length !== 'number') continue;
+    if (!ranges.some(([start, end]) => offset < end && offset + length > start)) continue;
+    const c = word.confidence;
+    // Same flooring rule the field mapper uses: an absent or out-of-range
+    // confidence becomes 0, never 1.
+    min = Math.min(min, typeof c === 'number' && Number.isFinite(c) && c >= 0 && c <= 1 ? c : 0);
+  }
+  return Number.isFinite(min) ? min : 0;
+}
+
+// A cell's polygon, scaled into 0..1 of its own page. Returns undefined
+// rather than a guess when the polygon is malformed or the page reported no
+// usable dimensions -- a box drawn in the wrong place over a timesheet is
+// worse than no box, because it tells a reviewer the model read a cell it
+// did not.
+function normaliseRegion(
+  regions: AzureBoundingRegion[] | undefined,
+  pagesByNumber: Map<number, AzurePage>,
+): BoundingRegion | undefined {
+  const region = regions?.[0];
+  const polygon = region?.polygon;
+  if (!polygon || polygon.length < 8 || polygon.length % 2 !== 0) return undefined;
+  const pageNumber = region.pageNumber ?? 1;
+  const page = pagesByNumber.get(pageNumber);
+  const width = page?.width;
+  const height = page?.height;
+  if (!width || !height) return undefined;
+
+  const scaled = polygon.map((coordinate, index) =>
+    index % 2 === 0 ? coordinate / width : coordinate / height,
+  );
+  if (scaled.some((n) => !Number.isFinite(n))) return undefined;
+  return { page: pageNumber, polygon: scaled };
+}
+
+function mapTables(
+  tables: AzureAnalyzeTable[] | undefined,
+  pages: AzurePage[] | undefined,
+): ExtractedTable[] {
+  const words = (pages ?? []).flatMap((p) => p.words ?? []);
+  const pagesByNumber = new Map(
+    (pages ?? []).map((page, index) => [page.pageNumber ?? index + 1, page] as const),
+  );
+  return (tables ?? [])
+    .filter((t) => typeof t.rowCount === 'number' && typeof t.columnCount === 'number')
+    .map((t) => ({
+      rowCount: t.rowCount!,
+      columnCount: t.columnCount!,
+      cells: (t.cells ?? [])
+        .filter((c) => typeof c.rowIndex === 'number' && typeof c.columnIndex === 'number')
+        .flatMap((c) => {
+          const content = (c.content ?? '').replace(/\s+/g, ' ').trim();
+          const confidence = cellConfidence(c.spans, words);
+          // A merged cell's covered positions all carry the merged cell's
+          // own box, which is exactly the area a reviewer should see
+          // highlighted for any of them.
+          const boundingRegion = normaliseRegion(c.boundingRegions, pagesByNumber);
+          const out: ExtractedTable['cells'] = [];
+          for (let dr = 0; dr < Math.max(1, c.rowSpan ?? 1); dr++) {
+            for (let dc = 0; dc < Math.max(1, c.columnSpan ?? 1); dc++) {
+              out.push({
+                rowIndex: c.rowIndex! + dr,
+                columnIndex: c.columnIndex! + dc,
+                content,
+                confidence,
+                ...(boundingRegion ? { boundingRegion } : {}),
+              });
+            }
+          }
+          return out;
+        }),
+    }));
 }
 
 function extractValue(field: AzureAnalyzeField): string | null {

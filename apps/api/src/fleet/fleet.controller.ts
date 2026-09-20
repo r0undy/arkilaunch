@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
-import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
+import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
 import { FleetService } from './fleet.service.js';
 import {
   EquipmentCreateDto,
@@ -22,6 +22,7 @@ export class FleetController {
   constructor(private readonly fleet: FleetService) {}
 
   @Get('equipment')
+  @RequirePermission(...STAFF_READ)
   list(@Query() query: EquipmentListQueryDto, @Req() req: CtxRequest) {
     return this.fleet.list(req.ctx, query);
   }
@@ -39,6 +40,7 @@ export class FleetController {
   }
 
   @Get('equipment/:id/maintenance')
+  @RequirePermission(...STAFF_READ)
   maintenanceDetail(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.fleet.maintenanceDetail(req.ctx, id);
   }

@@ -129,7 +129,7 @@ describe('BookingsService (PRD-F8)', () => {
     });
 
     await expect(bookings.get(adminCtxB, created.id)).rejects.toThrow(NotFoundException);
-    const listB = await bookings.list(adminCtxB);
+    const listB = await bookings.list(adminCtxB, { limit: 50, offset: 0 });
     expect(listB.items.some((item) => item.id === created.id)).toBe(false);
   });
 

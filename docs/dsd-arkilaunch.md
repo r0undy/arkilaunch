@@ -233,7 +233,7 @@ Chosen for small-size legibility on a low-end Android and for provenance: **IBM 
 **The gauge rule (Rule 2, the craft mark):** every operational number, hours (active/idle), km, peso amounts (`₱`), diesel price, confidence values, deposit balance, delta-vs-tolerance, renders in IBM Plex Mono with `font-variant-numeric: tabular-nums` so columns align like an instrument face. Prose never uses mono; data never uses the prose face. This is the deliberate idiosyncrasy an AI default would not choose (§8 compliance).
 
 **Minimum body size:** 16px on all screens (never below; guards outdoor legibility and prevents mobile-Safari zoom). Data captions never below 13px.
-**Font loading:** self-hosted `/fonts/*.woff2`, Latin subset, `font-display: swap`, `<link rel="preload">` on the two most-used cuts (Plex Sans 400, Plex Mono 500). Total font payload budget: <= 90KB over the wire (Console tier; see marketing budget below).
+**Font loading:** self-hosted `/fonts/*.woff2`, Latin subset, `font-display: swap`, `<link rel="preload">` on the two most-used cuts (**Plex Sans variable**, Plex Mono 500). Total font payload budget: <= 90KB over the wire for the Console tier, <= 110KB for Marketing (which carries the display weights §2.2 adds). *Corrected 2026-09-19 (`cr-arkilaunch-doc-reconcile-2026-09-19.md`): this said "Plex Sans 400" and gave a single 90KB budget, contradicting both its own artifact and `apps/web/index.html`, which preloads `ibm-plex-sans-variable.woff2` and `ibm-plex-mono-500.woff2`. The code and the artifact agreed; this file was the stale one.*
 **License / fallback:** IBM Plex is SIL Open Font License 1.1 (free to self-host and embed). Fallback stack: `"IBM Plex Sans", Roboto, system-ui, -apple-system, "Segoe UI", sans-serif`; mono falls back to `"IBM Plex Mono", "Roboto Mono", ui-monospace, monospace`. Roboto is already resident on Android, so the fallback render is legible with zero download.
 
 **Marketing typography (CR: dsd-marketing-tier)**; IBM Plex stays the type system on marketing surfaces too, not Inter; the single addition is an accent face for editorial emphasis, matching BRAND.md's rejection of "Inter everywhere" as the category slop default.
@@ -355,17 +355,19 @@ No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the mo
 
 ### Domain components (Yardboard-specific)
 
-**Status Pill**; compact state marker used across tables and queues. Filled chip, `--radius-sm`, icon + label, mono value where numeric. Draws its color from the weather or reconciliation scale (§2.1). Never color-only; the label carries the meaning. States: `match`, `review`, `discrepancy`, `failed`, `approved` (recon); `available`, `deployed`, `maintenance-due`, `retired` (fleet); weather `clear/yellow/orange/red/stale`.
+> **Implementation status, added 2026-09-19 (`cr-arkilaunch-doc-reconcile-2026-09-19.md`).** The `**Built:**` markers below record which primitives exist in code and where. They were hand-added to the materialized `DESIGN.md` and lived only there for six days, in violation of §9's rule that the artifact is never the source of truth. They describe real shipped state and are therefore written back here rather than stripped out. Keep them accurate in this file; `DESIGN.md` inherits them.
 
-**Confidence Chip**; the OCR per-field marker at reconciliation and KYC. Shows the scale color (`match`/`review`/`failed`) plus the raw confidence in mono (`0.87`). Below-gate chips are visually louder (they demand a human), not quieter.
+**Status Pill**; compact state marker used across tables and queues. Filled chip, `--radius-sm`, icon + label, mono value where numeric. Draws its color from the weather or reconciliation scale (§2.1). Never color-only; the label carries the meaning. States: `match`, `review`, `discrepancy`, `failed`, `approved` (recon); `available`, `deployed`, `maintenance-due`, `retired` (fleet); weather `clear/yellow/orange/red/stale`. **Built:** `apps/web/src/components/status-pill.tsx`.
 
-**Gauge Readout**; the framed mono numeric tile for a single key figure (diesel price, deposit balance, utilization %, recovered billable hours). Bezelled with `--color-border-strong`, big tabular mono, a small overline label, an optional trend/stale marker. This is the interface's signature moment.
+**Confidence Chip**; the OCR per-field marker at reconciliation and KYC. Shows the scale color (`match`/`review`/`failed`) plus the raw confidence in mono (`0.87`). Below-gate chips are visually louder (they demand a human), not quieter. **Built:** `apps/web/src/components/confidence-chip.tsx`.
 
-**Weather Banner**; full-width strip (§4.1) driven by the weather scale; carries site name, condition, timestamp, and a stale marker when cached.
+**Gauge Readout**; the framed mono numeric tile for a single key figure (diesel price, deposit balance, utilization %, recovered billable hours). Bezelled with `--color-border-strong`, big tabular mono, a small overline label, an optional trend/stale marker. This is the interface's signature moment. **Built:** `apps/web/src/components/gauge-readout.tsx`.
 
-**Evidence Split View**; the reconciliation review surface (§4.1); the original handwritten image beside the extracted, editable fields.
+**Weather Banner**; full-width strip (§4.1) driven by the weather scale; carries site name, condition, timestamp, and a stale marker when cached. A cached reading renders as the dedicated `weather-stale` tone rather than keeping its last-known severity color. **Built:** `apps/web/src/components/weather-banner.tsx`.
 
-**Hazard Divider**; a diagonal amber/black stripe rule used only to fence a blocking/danger region (reconciliation discrepancy, stop-work weather, unverified KYC). Never decorative; its presence means "do not proceed until resolved".
+**Evidence Split View**; the reconciliation review surface (§4.1); the original handwritten image beside the extracted, editable fields. **Not yet built** (no consumer screen exists; S7/S8 unbuilt).
+
+**Hazard Divider**; a diagonal amber/black stripe rule used only to fence a blocking/danger region (reconciliation discrepancy, stop-work weather, unverified KYC). Never decorative; its presence means "do not proceed until resolved". **Built:** `apps/web/src/components/hazard-divider.tsx`.
 
 ### Marketing components (CR: dsd-marketing-tier)
 
@@ -510,7 +512,7 @@ Run before handoff/launch:
 | Dimension | Target (0-4) | Gate |
 |---|---|---|
 | Accessibility | >= 3 | AA verified pairings (§6); 44/48px targets; not color-only; keyboard + SR. |
-| Performance | >= 3 | Font budget <= 90KB; no blur/shimmer; compressed uploads; works at 3 to 5 Mbps. |
+| Performance | >= 3 | Font budget <= 90KB (Console) / <= 110KB (Marketing); no blur/shimmer outside the one gated glass nav; compressed uploads; works at 3 to 5 Mbps. |
 | Theming | >= 3 | Three-tier tokens (§2.0); light + night-yard dark; no hard-coded hex in components. |
 | Responsive | >= 3 | 360px baseline; wide tables scroll in-container; no page-level horizontal scroll. |
 | Anti-patterns | >= 3 | No purple gradient, no Inter-only, no glassmorphism, no hover-only actions. |

@@ -12,6 +12,8 @@ test('unauthenticated visitor sees the public storefront at /', async ({ page })
 
 test('unauthenticated visitor is redirected to login from /app', async ({ page }) => {
   await page.goto('/app');
-  await expect(page).toHaveURL(/\/login$/);
+  // The guard preserves where you were headed, so the URL carries
+  // ?redirect=%2Fapp -- anchoring on $ here predates that.
+  await expect(page).toHaveURL(/\/login\?redirect=%2Fapp$/);
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
 });

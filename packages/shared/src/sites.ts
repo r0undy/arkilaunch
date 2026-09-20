@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { WeatherSeveritySchema } from './weather.js';
+import { PaginationQuerySchema } from './pagination.js';
 
 // PRD-F4/F5 read+write surface backing S12/S13/S14 Sites, Weather, and
 // Liability Incidents (cr-arkilaunch-f9-read-surface.md).
@@ -51,22 +52,11 @@ export const DeploymentCreateRequestSchema = z
 export type DeploymentCreateRequest = z.infer<typeof DeploymentCreateRequestSchema>;
 
 // GET /api/v1/incidents?projectSiteId=...
-export const IncidentListQuerySchema = z.object({
+export const IncidentListQuerySchema = PaginationQuerySchema.extend({
   projectSiteId: z.string().uuid().optional(),
-  // Paging, matching the shape the users/invoices/field-log endpoints
-  // already use: a page of rows plus the unpaged total, so a list can say
-  // how much there is rather than silently truncating at the cap.
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
 });
 
-export const SiteListQuerySchema = z.object({
-  // Paging, matching the shape the users/invoices/field-log endpoints
-  // already use: a page of rows plus the unpaged total, so a list can say
-  // how much there is rather than silently truncating at the cap.
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-});
+export const SiteListQuerySchema = PaginationQuerySchema;
 export type SiteListQuery = z.infer<typeof SiteListQuerySchema>;
 export type IncidentListQuery = z.infer<typeof IncidentListQuerySchema>;
 

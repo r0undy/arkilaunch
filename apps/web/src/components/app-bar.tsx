@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { clearTokens } from '../lib/auth-client.js';
+import { getCurrentRole } from '../lib/guards.js';
 import { edtrQueries, notificationsQueries } from '../lib/queries.js';
 import { StatusPill } from './status-pill.js';
-import { AlertIcon, BellIcon, CloudIcon, LogOutIcon } from './icons.js';
+import { AlertIcon, BellIcon, LogOutIcon } from './icons.js';
 
 export interface AppBarProps {
   tenantLabel: string;
@@ -11,7 +12,7 @@ export interface AppBarProps {
 }
 
 // DESIGN.md §4.1 Nav shell (role-aware): tenant mark leads, review-queue
-// count and weather advisories surface here, account menu stays in the same
+// count and unread notifications surface here, account menu stays in the same
 // app-bar position on every authed screen (SC 3.2.6). A failed badge fetch
 // renders no badge rather than a stale or wrong number.
 //
@@ -27,6 +28,11 @@ export interface AppBarProps {
 export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   const notifications = useQuery({ ...notificationsQueries.list(), retry: false });
   const edtrList = useQuery({ ...edtrQueries.list(), retry: false });
+
+  // The same bar renders inside the account shell, where /app/* is a role
+  // bounce rather than a destination.
+  const notificationsPath =
+    getCurrentRole() === 'customer' ? '/account/notifications' : '/app/notifications';
 
   const unreadItems = notifications.data?.items;
   const unreadCount = unreadItems ? unreadItems.filter((n) => n.status === 'unread').length : null;
@@ -104,18 +110,11 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
           </>
         )}
 
-        <Link
-          to="/app/deployment"
-          aria-label="Weather advisories"
-          className="flex min-h-11 min-w-11 items-center justify-center rounded-sm text-text-muted hover:text-text"
-        >
-          <CloudIcon className="h-5 w-5" />
-        </Link>
-
         {/* A bare orange number sat here with no icon, which read as a
             decoration rather than "you have unread notifications". */}
         {unreadCount !== null && unreadCount > 0 && (
-          <span
+          <Link
+            to={notificationsPath}
             aria-label={`${unreadCount} unread notifications`}
             className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm text-text"
           >
@@ -123,7 +122,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             <span className="rounded-full bg-primary px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-text">
               {unreadCount}
             </span>
-          </span>
+          </Link>
         )}
 
         {/* Icon-only on a phone. Under real mobile emulation the layout

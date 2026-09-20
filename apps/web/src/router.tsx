@@ -15,6 +15,7 @@ import { loginRoute } from './routes/login.js';
 import { registerRoute } from './routes/register.js';
 import { registerCompanyRoute } from './routes/register.company.js';
 import { registerPendingRoute } from './routes/register.pending.js';
+import { activateRoute } from './routes/activate.js';
 
 import { accountLayoutRoute } from './routes/_account.js';
 import { accountIndexRoute } from './routes/account.index.js';
@@ -43,6 +44,7 @@ import { appSettingsRoute } from './routes/app.settings.js';
 import { appPlatformApplicationsRoute } from './routes/app.platform-applications.js';
 import { quotesRoute } from './routes/quotes.js';
 import { edtrRoute } from './routes/edtr.js';
+import { appOcrDeploymentsRoute, fieldScanRoute } from './routes/app.ocr.deployments.js';
 import { kycRoute } from './routes/kyc.js';
 import {
   appCompaniesPendingRoute,
@@ -77,7 +79,7 @@ import {
 
 export const routeTree = rootRoute.addChildren([
   publicLayoutRoute.addChildren([indexRoute, equipmentRoute, equipmentDetailRoute, contactRoute, helpRoute, termsRoute, privacyRoute]),
-  authLayoutRoute.addChildren([loginRoute, registerRoute, registerCompanyRoute, registerPendingRoute]),
+  authLayoutRoute.addChildren([loginRoute, registerRoute, registerCompanyRoute, registerPendingRoute, activateRoute]),
   accountLayoutRoute.addChildren([
     accountIndexRoute,
     accountBookingsRoute,
@@ -109,6 +111,7 @@ export const routeTree = rootRoute.addChildren([
     appPlatformApplicationsRoute,
     quotesRoute,
     edtrRoute,
+    appOcrDeploymentsRoute,
     kycRoute,
     appRegistrationPendingRoute,
     appRegistrationVerifiedRoute,
@@ -123,6 +126,7 @@ export const routeTree = rootRoute.addChildren([
   ]),
   fieldLayoutRoute.addChildren([
     fieldIndexRoute,
+    fieldScanRoute,
     fieldDeploymentRoute,
     fieldNotificationsRoute,
     fieldProfileRoute,

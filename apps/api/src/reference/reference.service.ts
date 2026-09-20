@@ -13,12 +13,13 @@ import {
 } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
 
-// Read-only reference lookups for the POC frontend's pick-list dropdowns
-// (avoids requiring a hand-typed UUID for every foreign key). No
-// @RequirePermission on the controller side: any authenticated member of
-// the tenant can see their own tenant's equipment/rentals/customers, and
-// RLS (via withTenantTx) is still the actual isolation boundary -- this is
-// a read-only convenience, not a privileged action.
+// Read-only reference lookups for the staff pick-list dropdowns (avoids
+// requiring a hand-typed UUID for every foreign key). RLS (via
+// withTenantTx) bounds these to the caller's tenant, but tenant scope is
+// NOT the whole boundary here: `customer` is an intra-tenant role, so
+// every tenant-scoped route below carries @RequirePermission on the
+// controller (audit-api-surface.md #2). `equipmentTypes` is global,
+// non-tenant data and is deliberately left open.
 @Injectable()
 export class ReferenceService {
   // Global reference catalog (no tenant_id, no RLS), same category as

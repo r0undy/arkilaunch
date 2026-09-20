@@ -120,6 +120,41 @@
       "when": 1786070984570,
       "tag": "0016_reference_table_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786070984571,
+      "tag": "0017_edtr_hours_idle_nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789817413815,
+      "tag": "0018_audit_db_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789818585377,
+      "tag": "0019_audit_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789818890230,
+      "tag": "0020_diesel_manual_entry_definer",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789819275339,
+      "tag": "0021_diesel_scrape_definer",
+      "breakpoints": true
     }
   ]
 }

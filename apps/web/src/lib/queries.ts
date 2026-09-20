@@ -21,11 +21,13 @@ import {
   getEquipmentTypes,
   getProjectSites,
   getRateCards,
+  getCapabilities,
   getRentals,
   type CustomerRef,
   type EquipmentTypeRef,
   type ProjectSiteRef,
   type RateCardRef,
+  type CapabilitiesRef,
   type RentalRef,
 } from './reference-client.js';
 import { PAGE_SIZE } from '../components/pagination.js';
@@ -131,6 +133,8 @@ export const reportQueries = {
 };
 
 export const referenceQueries = {
+  capabilities: () =>
+    queryOptions({ queryKey: ['reference', 'capabilities'] as const, queryFn: getCapabilities }),
   equipmentTypes: () =>
     queryOptions({
       queryKey: ['reference', 'equipment-types'] as const,
@@ -191,4 +195,4 @@ export function fleetUtilizationPct(report: UtilizationReportResponse | undefine
   return sum / report.fleet.length;
 }
 
-export type { CustomerRef, EquipmentTypeRef, ProjectSiteRef, RateCardRef, RentalRef };
+export type { CapabilitiesRef, CustomerRef, EquipmentTypeRef, ProjectSiteRef, RateCardRef, RentalRef };

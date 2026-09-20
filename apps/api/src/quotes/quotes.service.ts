@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { eq } from 'drizzle-orm';
 import { auditLogs, quotationItems, quotations, withTenantTx } from '@arkilaunch/db';
 import type { QuoteRequest, RequestContext } from '@arkilaunch/shared';
+import { ownCustomer } from '../common/customer-scope.js';
 import { EventsService } from '../events/events.service.js';
 import { PricingEngineService, type PricedQuote } from './pricing-engine.service.js';
 
@@ -230,6 +231,16 @@ export class QuotesService {
     return withTenantTx(ctx, async (tx) => {
       const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
       if (!quotation) throw new NotFoundException({ error: 'quote_not_found' });
+
+      // RLS scopes to the tenant, never to the customer, and `customer`
+      // holds quote:read -- so without this a customer JWT plus any
+      // quotation id returns another customer's rates, discounts and
+      // totals (audit-api-surface.md #1). 404 rather than 403: a 403 would
+      // confirm the id exists.
+      if (ctx.role === 'customer') {
+        const own = await ownCustomer(tx, ctx);
+        if (!own || quotation.customerId !== own.id) throw new NotFoundException({ error: 'quote_not_found' });
+      }
 
       const items = await tx
         .select()

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { publicLayoutRoute } from './_public.js';
 import { EquipmentCard } from '../components/equipment-card.js';
 import { SearchFilterBar, type AvailabilityFilter } from '../components/search-filter-bar.js';
+import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import { catalogQueries } from '../lib/queries.js';
 
@@ -11,6 +12,7 @@ function EquipmentPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [availability, setAvailability] = useState<AvailabilityFilter>('all');
+  const [offset, setOffset] = useState(0);
   const { data } = useQuery(catalogQueries.equipment());
 
   const equipment = useMemo(
@@ -26,6 +28,12 @@ function EquipmentPage() {
     [data, query, availability],
   );
 
+  // Narrowing the filters can leave the offset past the end of the new
+  // result, which would render an empty grid with no controls to escape it
+  // (Pagination hides itself on a single page).
+  const safeOffset = offset < equipment.length ? offset : 0;
+  const page = equipment.slice(safeOffset, safeOffset + PAGE_SIZE);
+
   return (
     <div className="flex flex-col gap-6 px-6 py-10 sm:px-10">
       <h1 className="font-display text-2xl font-semibold text-ink-mk">Equipment for hire</h1>
@@ -36,7 +44,7 @@ function EquipmentPage() {
         onAvailabilityChange={setAvailability}
       />
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {equipment.map((eq) => {
+        {page.map((eq) => {
           const imageUrl = equipmentImageUrl(eq.model);
           return (
             <EquipmentCard
@@ -52,7 +60,19 @@ function EquipmentPage() {
             />
           );
         })}
+        {equipment.length === 0 && (
+          <p className="col-span-full py-12 text-center text-sm text-text-muted">
+            No equipment matches that search.
+          </p>
+        )}
       </div>
+      <Pagination
+        offset={safeOffset}
+        limit={PAGE_SIZE}
+        total={equipment.length}
+        onOffsetChange={setOffset}
+        noun="machines"
+      />
     </div>
   );
 }

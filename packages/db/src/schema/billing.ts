@@ -1,4 +1,16 @@
-import { check, integer, jsonb, numeric, pgTable, text, timestamp, uuid, date } from 'drizzle-orm/pg-core';
+import {
+  check,
+  date,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
@@ -39,6 +51,16 @@ export const edtr = pgTable(
       'edtr_status_chk',
       sql`${t.status} IN ('queued','extracting','extracted','review','reconciled','hard_failed')`,
     ),
+    index('edtr_tenant_equipment_date_idx').on(t.tenantId, t.equipmentId, t.reportDate),
+    index('edtr_status_locked_at_idx').on(t.status, t.lockedAt),
+    // audit-db-tenant-isolation.md #4 (the UNIQUE on
+    // (tenant_id, equipment_id, report_date, source)) is deliberately NOT
+    // declared yet: the dev database holds 389 duplicate rows in the
+    // test-tenant-a fixture, and removing them cascades into 343 line
+    // items, 396 reconciliation references (11 of them approved) and 10
+    // deduction line items. That cleanup is a decision, not a migration
+    // side effect. Until it lands, reconcileEdtr still pairs on the first
+    // arbitrary row of an unordered scan.
   ],
 );
 
@@ -53,12 +75,23 @@ export const edtrLineItems = pgTable(
       .notNull()
       .references(() => edtr.id),
     hoursActive: numeric('hours_active', { precision: 6, scale: 2 }).notNull(), // >= 0
-    hoursIdle: numeric('hours_idle', { precision: 6, scale: 2 }).notNull(), // >= 0
+    // NULL means the source never recorded idle time -- the real Almara
+    // paper form has no idle column at all. It is NOT zero: writing 0 would
+    // hand the deduction gate a fabricated reading it cannot distinguish
+    // from a genuinely idle machine (migration 0017).
+    hoursIdle: numeric('hours_idle', { precision: 6, scale: 2 }), // >= 0 when present
     notes: text('notes'),
   },
   (t) => [
     tenantIsolationPolicy(),
     check('edtr_hours_nonneg_chk', sql`${t.hoursActive} >= 0 AND ${t.hoursIdle} >= 0`),
+    index('edtr_line_items_tenant_id_idx').on(t.tenantId),
+    // Unique, not just indexed: approve() sums ALL line items for an EDTR
+    // (edtr.service.ts), so requeueing an already-extracted row inserted a
+    // second line item and doubled the billable hours. Requeue both sides
+    // and the pair still reconciles cleanly, at 2x
+    // (audit-ocr-money-path.md #7). Verified zero existing duplicates.
+    unique('edtr_line_items_edtr_id_uq').on(t.edtrId),
   ],
 );
 
@@ -92,6 +125,19 @@ export const edtrReconciliations = pgTable(
       'edtr_recon_status_chk',
       sql`${t.status} IN ('pending','matched','discrepancy','approved','rejected')`,
     ),
+    // RFC-2's "two independent logs" was enforced only by the value of a
+    // text column: approve() checks the status, and its counterpart lock
+    // is `if (reconciliation.counterpartEdtrId)`, i.e. optional. A row at
+    // status='matched' with counterpart_edtr_id=NULL -- seeded, demo,
+    // backfilled or hand-written -- therefore passed the gate and inserted
+    // a deposit_deduction with no second log behind it
+    // (audit-ocr-money-path.md #1, already written down in
+    // cr-arkilaunch-m4-money-path-gates.md:99 and still unfixed until now).
+    check(
+      'edtr_recon_matched_needs_counterpart_chk',
+      sql`${t.status} NOT IN ('matched','approved') OR ${t.counterpartEdtrId} IS NOT NULL`,
+    ),
+    index('edtr_reconciliations_tenant_id_idx').on(t.tenantId),
   ],
 );
 
@@ -111,7 +157,12 @@ export const invoices = pgTable(
     dueDate: timestamp('due_date', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [
+    tenantIsolationPolicy(),
+    index('invoices_tenant_id_idx').on(table.tenantId),
+    index('invoices_rental_id_type_idx').on(table.rentalId, table.invoiceType),
+    check('invoices_amount_nonneg_chk', sql`${table.amount} >= 0`),
+  ],
 );
 
 export const invoiceLineItems = pgTable(
@@ -124,12 +175,34 @@ export const invoiceLineItems = pgTable(
     invoiceId: uuid('invoice_id')
       .notNull()
       .references(() => invoices.id),
+    // The deduction's tie to the reconciliation that justifies it. Until
+    // now the only link was the sentence "EDTR reconciliation <uuid>
+    // (sources: <uuid>, <uuid>)" in `description`, a plain text column
+    // parsed back out with a regex: no referential integrity, a trail a
+    // text edit could break or forge, and findEdtrEvidence returning null
+    // on any format change (audit-db-tenant-isolation.md #3). Nullable
+    // because most line items are not deductions.
+    reconciliationId: uuid('reconciliation_id').references(() => edtrReconciliations.id),
     description: text('description').notNull(),
     quantity: numeric('quantity', { precision: 10, scale: 2 }).notNull().default('1'),
     unitPrice: numeric('unit_price', { precision: 14, scale: 2 }).notNull(),
     amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [
+    tenantIsolationPolicy(),
+    index('invoice_line_items_tenant_id_idx').on(table.tenantId),
+    index('invoice_line_items_reconciliation_id_idx').on(table.reconciliationId),
+    // audit-db-tenant-isolation.md #5: the money columns carried NOT NULL
+    // and nothing else, so the database accepted a negative amount. The
+    // non-money tables already had checks (edtr_hours_nonneg_chk,
+    // buffer_range, price_sane); the money path was the one without. A
+    // negative deposit_deduction also *increases* the remaining balance in
+    // resolveDepositLedger.
+    check(
+      'invoice_line_items_nonneg_chk',
+      sql`${table.quantity} >= 0 AND ${table.unitPrice} >= 0 AND ${table.amount} >= 0`,
+    ),
+  ],
 );
 
 // No card/account data stored (PRD-F2). provider_ref stays globally unique
@@ -151,5 +224,9 @@ export const payments = pgTable(
     status: text('status').notNull().default('pending'), // pending, paid, failed, refunded
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  () => [tenantIsolationPolicy()],
+  (table) => [
+    tenantIsolationPolicy(),
+    index('payments_tenant_id_idx').on(table.tenantId),
+    check('payments_amount_nonneg_chk', sql`${table.amount} >= 0`),
+  ],
 );

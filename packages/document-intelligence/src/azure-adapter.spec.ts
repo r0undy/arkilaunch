@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { ExtractionUnavailableError } from '@arkilaunch/shared';
 import { AzureDocumentIntelligenceAdapter, DocumentAnalysisError } from './azure-adapter.js';
+import { EDTR_MODEL_ID, resolveModelRequest } from './model-registry.js';
 
 const ENDPOINT = 'https://di-arkilaunch-dev.cognitiveservices.azure.com';
 const OPERATION_LOCATION = `${ENDPOINT}/documentintelligence/documentModels/prebuilt-layout/analyzeResults/abc123`;
@@ -186,5 +187,205 @@ describe('AzureDocumentIntelligenceAdapter', () => {
     await expect(adapter.analyze('arkilaunch-edtr-neural-v1', Buffer.from('x'))).rejects.toBeInstanceOf(
       DocumentAnalysisError,
     );
+  });
+  // The EDTR path reads the timesheet GRID, not document-level fields. This
+  // is the shape the live di-arkilaunch-dev resource returned for a replica
+  // of the real Almara form (docs/cr-arkilaunch-edtr-real-form.md).
+  it('maps the layout table through, with per-cell confidence from word spans', async () => {
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(
+        new Response(null, { status: 202, headers: { 'Operation-Location': OPERATION_LOCATION } }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          status: 'succeeded',
+          analyzeResult: {
+            pages: [
+              {
+                words: [
+                  { content: '03/01', confidence: 0.93, span: { offset: 0, length: 5 } },
+                  { content: '10.5', confidence: 0.81, span: { offset: 6, length: 4 } },
+                ],
+              },
+            ],
+            tables: [
+              {
+                rowCount: 1,
+                columnCount: 2,
+                cells: [
+                  { rowIndex: 0, columnIndex: 0, content: '03/01', spans: [{ offset: 0, length: 5 }] },
+                  { rowIndex: 0, columnIndex: 1, content: '10.5', spans: [{ offset: 6, length: 4 }] },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+
+    const adapter = new AzureDocumentIntelligenceAdapter({ endpoint: ENDPOINT, apiKey: 'k' });
+    const result = await adapter.analyze(EDTR_MODEL_ID, Buffer.from('x'));
+
+    expect(result.tables).toHaveLength(1);
+    expect(result.tables![0]!.cells).toEqual([
+      { rowIndex: 0, columnIndex: 0, content: '03/01', confidence: 0.93 },
+      { rowIndex: 0, columnIndex: 1, content: '10.5', confidence: 0.81 },
+    ]);
+  });
+
+  it('floors a cell to zero confidence when its words cannot be located', async () => {
+    // Below the 0.90 gate, so the day routes to a human. Defaulting to 1
+    // would sail a cell nobody measured straight through.
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(
+        new Response(null, { status: 202, headers: { 'Operation-Location': OPERATION_LOCATION } }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          status: 'succeeded',
+          analyzeResult: {
+            pages: [{ words: [{ content: 'elsewhere', confidence: 0.99, span: { offset: 900, length: 9 } }] }],
+            tables: [
+              {
+                rowCount: 1,
+                columnCount: 1,
+                cells: [{ rowIndex: 0, columnIndex: 0, content: '8.5', spans: [{ offset: 0, length: 3 }] }],
+              },
+            ],
+          },
+        }),
+      );
+
+    const adapter = new AzureDocumentIntelligenceAdapter({ endpoint: ENDPOINT, apiKey: 'k' });
+    const result = await adapter.analyze(EDTR_MODEL_ID, Buffer.from('x'));
+    expect(result.tables![0]!.cells[0]!.confidence).toBe(0);
+  });
+
+  it('expands a merged header cell across every column it covers', async () => {
+    // The real Almara header merges "AM" across its IN/OUT pair. Dropping
+    // such a cell deleted the header outright and the whole sheet parsed as
+    // no timesheet at all -- which is how this was caught, against the live
+    // resource. Azure reports explicit indices, so expanding cannot shift a
+    // neighbouring column.
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(
+        new Response(null, { status: 202, headers: { 'Operation-Location': OPERATION_LOCATION } }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          status: 'succeeded',
+          analyzeResult: {
+            pages: [{ words: [{ content: 'AM', confidence: 0.99, span: { offset: 0, length: 2 } }] }],
+            tables: [
+              {
+                rowCount: 1,
+                columnCount: 2,
+                cells: [
+                  { rowIndex: 0, columnIndex: 0, content: 'AM', columnSpan: 2, spans: [{ offset: 0, length: 2 }] },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+
+    const adapter = new AzureDocumentIntelligenceAdapter({ endpoint: ENDPOINT, apiKey: 'k' });
+    const result = await adapter.analyze(EDTR_MODEL_ID, Buffer.from('x'));
+    expect(result.tables![0]!.cells).toEqual([
+      { rowIndex: 0, columnIndex: 0, content: 'AM', confidence: 0.99 },
+      { rowIndex: 0, columnIndex: 1, content: 'AM', confidence: 0.99 },
+    ]);
+  });
+
+  it('normalises a cell polygon against its page, so inches and pixels draw alike', async () => {
+    // Azure reports polygons in the page's own unit -- inches for a PDF,
+    // pixels for an image. A review overlay drawing raw coordinates would
+    // be right for one and badly wrong for the other, and would point at a
+    // cell the model never read. Scaled to 0..1 here, once.
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(
+        new Response(null, { status: 202, headers: { 'Operation-Location': OPERATION_LOCATION } }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          status: 'succeeded',
+          analyzeResult: {
+            pages: [
+              {
+                pageNumber: 1,
+                width: 8.5,
+                height: 11,
+                words: [{ content: '10.5', confidence: 0.93, span: { offset: 0, length: 4 } }],
+              },
+            ],
+            tables: [
+              {
+                rowCount: 1,
+                columnCount: 1,
+                cells: [
+                  {
+                    rowIndex: 0,
+                    columnIndex: 0,
+                    content: '10.5',
+                    spans: [{ offset: 0, length: 4 }],
+                    boundingRegions: [
+                      { pageNumber: 1, polygon: [4.25, 5.5, 8.5, 5.5, 8.5, 11, 4.25, 11] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+
+    const adapter = new AzureDocumentIntelligenceAdapter({ endpoint: ENDPOINT, apiKey: 'k' });
+    const result = await adapter.analyze(EDTR_MODEL_ID, Buffer.from('x'));
+    expect(result.tables![0]!.cells[0]!.boundingRegion).toEqual({
+      page: 1,
+      polygon: [0.5, 0.5, 1, 0.5, 1, 1, 0.5, 1],
+    });
+  });
+
+  it('omits the bounding region when the page reports no size to scale against', async () => {
+    // No box at all beats a box in the wrong place: a misplaced highlight
+    // tells a reviewer the model read a cell it did not.
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(
+        new Response(null, { status: 202, headers: { 'Operation-Location': OPERATION_LOCATION } }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          status: 'succeeded',
+          analyzeResult: {
+            pages: [{ pageNumber: 1, words: [] }],
+            tables: [
+              {
+                rowCount: 1,
+                columnCount: 1,
+                cells: [
+                  {
+                    rowIndex: 0,
+                    columnIndex: 0,
+                    content: '10.5',
+                    spans: [{ offset: 0, length: 4 }],
+                    boundingRegions: [{ pageNumber: 1, polygon: [1, 1, 2, 1, 2, 2, 1, 2] }],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+
+    const adapter = new AzureDocumentIntelligenceAdapter({ endpoint: ENDPOINT, apiKey: 'k' });
+    const result = await adapter.analyze(EDTR_MODEL_ID, Buffer.from('x'));
+    expect(result.tables![0]!.cells[0]!.boundingRegion).toBeUndefined();
+  });
+
+  it('sends the EDTR model to prebuilt-layout without queryFields', async () => {
+    // queryFields answers per-document scalars; this sheet's payload is a
+    // table of dated rows. Asked for the same sheet's Operator against the
+    // live resource, queryFields returned the letterhead at 0.883.
+    expect(resolveModelRequest(EDTR_MODEL_ID)).toEqual({ kind: 'model', modelId: 'prebuilt-layout' });
   });
 });

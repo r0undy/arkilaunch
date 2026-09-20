@@ -628,34 +628,69 @@ async function main() {
   ];
   const existingEdtr = await db.select().from(schema.edtr).where(eq(schema.edtr.tenantId, tenant.id));
   if (existingEdtr.length === 0 && seededRentals[0]) {
-    for (const plan of EDTR_PLAN) {
+    // One distinct report_date per plan row. RFC-2 models an EDTR as one
+    // log per equipment-day, so reusing today's date for all seven made
+    // the fixture contradict the model it demonstrates -- and would
+    // violate the (tenant_id, equipment_id, report_date, source) unique
+    // once audit-db-tenant-isolation.md #4 lands.
+    const dayOffset = (n: number) => {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() - n);
+      return d.toISOString().slice(0, 10);
+    };
+
+    const insertEdtr = async (source: string, reportDate: string, status: string, active: string, idle: string) => {
       const [row] = await db
         .insert(schema.edtr)
         .values({
           tenantId: tenant.id,
-          rentalId: seededRentals[0].id,
+          rentalId: seededRentals[0]!.id,
           equipmentId: equipmentRow.id,
-          source: plan.source,
-          reportDate: new Date().toISOString().slice(0, 10),
-          status: plan.status,
+          source,
+          reportDate,
+          status,
         })
         .returning();
-      if (!row) continue;
+      if (!row) return null;
       await db.insert(schema.edtrLineItems).values({
         tenantId: tenant.id,
         edtrId: row.id,
-        hoursActive: plan.hoursActive,
-        hoursIdle: plan.hoursIdle,
+        hoursActive: active,
+        hoursIdle: idle,
       });
-      if (plan.recon) {
-        await db.insert(schema.edtrReconciliations).values({
-          tenantId: tenant.id,
-          edtrId: row.id,
-          deltaHours: plan.recon.delta,
-          tolerance: '0.50',
-          status: plan.recon.status,
-        });
-      }
+      return row;
+    };
+
+    for (const [i, plan] of EDTR_PLAN.entries()) {
+      const reportDate = dayOffset(i);
+      const row = await insertEdtr(plan.source, reportDate, plan.status, plan.hoursActive, plan.hoursIdle);
+      if (!row) continue;
+      if (!plan.recon) continue;
+
+      // A reconciliation is RFC-2's "two independent logs per
+      // equipment-day", so the fixture now seeds the SECOND log and links
+      // it. It used to write matched/approved rows with
+      // counterpart_edtr_id NULL, which approve() would happily deduct
+      // against because its counterpart lock is optional -- the seed was
+      // manufacturing the exact state audit-ocr-money-path.md #1 is about,
+      // and edtr_recon_matched_needs_counterpart_chk now rejects it.
+      const counterpartSource = plan.source === 'paper_ocr' ? 'digital_entry' : 'paper_ocr';
+      const counterpart = await insertEdtr(
+        counterpartSource,
+        reportDate,
+        'reconciled',
+        plan.hoursActive,
+        plan.hoursIdle,
+      );
+
+      await db.insert(schema.edtrReconciliations).values({
+        tenantId: tenant.id,
+        edtrId: row.id,
+        counterpartEdtrId: counterpart?.id ?? null,
+        deltaHours: plan.recon.delta,
+        tolerance: '0.50',
+        status: plan.recon.status,
+      });
     }
   }
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaginationQuerySchema } from './pagination.js';
 
 // RFC-3 §3/§7 QUOTE-05: platform manual diesel-price entry and the tenant
 // diesel override, both audit-logged, both usable with ENABLE_DIESEL_SCRAPE
@@ -63,17 +64,21 @@ export const RateCardSupersedeRequestSchema = z.object({
 });
 export type RateCardSupersedeRequest = z.infer<typeof RateCardSupersedeRequestSchema>;
 
-export const RateCardListQuerySchema = z.object({
+export const RateCardListQuerySchema = PaginationQuerySchema.extend({
   equipmentTypeId: z.string().uuid().optional(),
   rateType: RateTypeSchema.optional(),
   includeSuperseded: z.coerce.boolean().default(false),
-  // Paging, matching the shape the users/invoices/field-log endpoints
-  // already use: a page of rows plus the unpaged total, so a list can say
-  // how much there is rather than silently truncating at the cap.
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
 });
 export type RateCardListQuery = z.infer<typeof RateCardListQuerySchema>;
+
+// GET /reference/rate-cards: the pick-list variant, which takes only the
+// type filter. It was the one @Query in the API with no createZodDto at
+// all, so the global Zod pipe had nothing to validate and a non-uuid went
+// straight into the query (audit-api-surface.md #7).
+export const ReferenceRateCardQuerySchema = z.object({
+  equipmentTypeId: z.string().uuid().optional(),
+});
+export type ReferenceRateCardQuery = z.infer<typeof ReferenceRateCardQuerySchema>;
 
 export const PricingParametersQuerySchema = z.object({ region: z.string().min(1).default('NCR') });
 export type PricingParametersQuery = z.infer<typeof PricingParametersQuerySchema>;
