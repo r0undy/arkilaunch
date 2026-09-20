@@ -96,13 +96,44 @@ user ids so existing EDTRs, rentals and deposit entries still point at a real cr
 pnpm dev                # both apps/api and apps/web, concurrently with [api]/[web] labeled output
 ```
 
-- API: `http://localhost:3000/api/v1` (see `apps/web/.env`'s `VITE_API_BASE_URL`)
+- API: `http://localhost:3000/api/v1`
 - Web: `http://localhost:5173`
+- `apps/web/.env`'s `VITE_API_BASE_URL` is the **relative** `/api/v1`. `vite.config.ts` proxies
+  `/api` to the API, so one value works from a laptop and a phone, over http and https, and the
+  request is same-origin and never reaches the API's CORS allowlist.
 - Health check: `GET /health` — now runs a trivial DB query, so a 200 means both "API is up" and
   "API can reach Postgres"; a 503 with `{"status":"db_unreachable"}` means the pooler connection is
   bad (check `DATABASE_URL_POOLED`).
 
-### 4.1 Running a cron job by hand
+### 4.1 Testing DTR scanning from a phone
+
+The camera is the whole point of this path, and it is the one thing a laptop cannot fully check.
+
+**On a laptop**, nothing extra is needed: `localhost` is a secure context, so `http://localhost:5173`
+opens the live viewfinder against the built-in webcam.
+
+**On a phone**, `http://192.168.x.x:5173` is *not* a secure context, `getUserMedia` does not exist
+there, and the screen quietly falls back to the file input — which looks exactly like the feature
+working. That is the failure mode worth knowing about. Serve https instead:
+
+```
+pnpm dev:cert           # once; writes the gitignored apps/web/certs/, SAN-ed for every LAN address
+pnpm dev
+```
+
+Vite picks the certificate up automatically when it is present and prints `https://` URLs. Open the
+Network one on the phone and accept the self-signed warning once (Advanced -> Proceed); a proceeded-
+past certificate still counts as a secure context, which is all the camera asks for. With no
+certificate present, `pnpm dev` serves plain http exactly as before.
+
+Then: sign in, go to **Field logs -> Scan a DTR** (`/app/ocr/deployments`, or `/field/scan` as a
+timekeeper), pick a deployment, and the viewfinder opens scoped to it. Denying the camera permission
+is worth trying too — it should drop to "Take photo / Choose a file" with a sentence saying why.
+
+Boxes only appear on the review screen for rows extracted by `worker:edtr` **after** bounding regions
+shipped; older rows and any `manual_transcription` row carry no polygon and correctly draw none.
+
+### 4.2 Running a cron job by hand
 
 The four ACA Jobs are separate scheduled processes, not HTTP endpoints. Run one the same way
 production does (`infra/terraform/modules/cron_job` runs `node jobs/dist/<entrypoint>.js`):
