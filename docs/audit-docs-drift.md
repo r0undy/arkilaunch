@@ -5,12 +5,13 @@ Scope: `docs/*.md` (Locked and Draft), the four materialized root artifacts
 (`AGENTS.md`, `BRAND.md`, `DESIGN.md`, `MODEL_CARD.md`), `.claude/agents/*.md`, and the code each
 claim describes.
 
-Read-only. The rules under test: build only against Locked docs; a change to a Locked doc needs a
+Read-only when written; **updated 2026-09-19**: all twelve findings are closed by `cr-arkilaunch-doc-reconcile-2026-09-19.md`, except as noted per item. The rules under test: build only against Locked docs; a change to a Locked doc needs a
 Change Record; materialized artifacts must not diverge from their canonical source.
 
 ## HIGH
 
 ### 1. RFC-1 (Locked) froze a permission catalog that does not exist in code
+**CLOSED.** RFC-1 §3 addendum reconciles the catalog to `PERMISSION_CODES`.
 `docs/rfc-arkilaunch-tenancy-rls-auth.md:347-355` · `packages/shared/src/permissions.ts:4-32`
 
 RFC-1's seed catalog is labelled "illustrative codes; **frozen when RFC is approved**" and lists
@@ -22,6 +23,7 @@ RFC-1's seed catalog is labelled "illustrative codes; **frozen when RFC is appro
 on a catalog the system never used.
 
 ### 2. PRD and SDD (Locked) claim breakdown status is extracted; nothing extracts it
+**CLOSED.** Dropped from PRD §8, SDD §5 and AIA §1.2; `MODEL_CARD.md` re-materialized.
 `docs/prd-arkilaunch.md:58,368` · `docs/sdd-arkilaunch.md:875` ·
 `packages/document-intelligence/src/model-registry.ts:45`
 
@@ -33,6 +35,7 @@ materialized `MODEL_CARD.md` ("hours + breakdown") via `docs/aia-arkilaunch.md:4
 assurance dossier overstates the AI component's scope.
 
 ### 3. DESIGN.md has been hand-edited and now diverges from the Locked DSD
+**CLOSED.** The hand-added content describes real shipped behaviour, so it was written into the DSD and the artifact re-materialized. `index.md` §1's false claim corrected, and a Health Check row added so nothing asserts artifact parity unchecked again.
 `DESIGN.md` vs `docs/dsd-arkilaunch.md` §2-§8 (DSD Locked 2026-08-02)
 
 `docs/dsd-arkilaunch.md:576` states BRAND.md and DESIGN.md are "materialized from this DSD, *never
@@ -52,6 +55,7 @@ other three are current", which is false for DESIGN.md. Because the DSD is Locke
 re-materializing in either direction now needs a Change Record; none exists.
 
 ### 4. Pagination shipped as a wire-contract change with no Change Record
+**CLOSED.** Back-filled as §4.1 of the reconcile record.
 PR #26 — `95a9b33`, `fb1e3ce`, `044189b`, `a6a410c`, `8c58a4e`
 
 `apps/api/src/fleet/fleet.controller.ts:24` now takes `EquipmentListQueryDto`, and the paged
@@ -63,6 +67,7 @@ returns nothing relevant. This is precisely the shipped-surface change the CR ru
 ## MEDIUM
 
 ### 5. RFC-1 says `owner` explicitly lacks `*:manage`; the seed grants it two
+**CLOSED.** The seed's own reasoning written back into RFC-1.
 `docs/rfc-arkilaunch-tenancy-rls-auth.md:352` · `packages/db/src/seed/permission-catalog.ts:86`
 RFC-1: "`owner` | `reports:read`, `quote:read`, `fleet:read` | **Explicitly lacks:** any
 `*:create` / `*:manage` (US-10: cannot data-enter)". Seed:
@@ -71,6 +76,7 @@ The deviation is argued in the seed's own comment (`:80-85`, Phase 2 / S3 self-s
 was never written back into the Locked RFC. `fleet:read` is not a real code either.
 
 ### 6. RFC-1 still names `/app/kyc`; that route was renamed
+**CLOSED.** Corrected in §3 and in the role-escalation abuse case.
 `docs/rfc-arkilaunch-tenancy-rls-auth.md:353,434` · `apps/web/src/routes/kyc.tsx:240-242`
 RFC-1: "`timekeeper` | … blocked from `/app/kyc`, `/app/settings/*`". Actual: `kycRoute` is
 `path: '/app/registration'`. `docs/cr-arkilaunch-figma-ia-alignment.md` corrected PRD §5.2 for
@@ -78,6 +84,7 @@ exactly this rename on 2026-09-17 (`prd-arkilaunch.md:211`) but did not propagat
 is equally Locked and where the stale path is load-bearing for an authz rule.
 
 ### 7. PRD §5.2 IA tree lists two checkout routes that do not exist
+**CLOSED.** Tree corrected to `/account/checkout/:bookingId` and `/account/checkout/success`.
 `docs/prd-arkilaunch.md:225` · `apps/web/src/routes/account.checkout.tsx:220-222`
 PRD lists `/account/checkout`, `/account/checkout/confirm`, `/account/checkout/success`. Only
 `path: '/account/checkout/$bookingId'` is registered; there is no bare `/account/checkout` and no
@@ -85,6 +92,7 @@ PRD lists `/account/checkout`, `/account/checkout/confirm`, `/account/checkout/s
 router, so this survived the 2026-09-17 IA reconciliation CR.
 
 ### 8. RFC-2 describes a two-call Azure DI flow; the worker makes one call
+**CLOSED.** Corrected in the RFC-2 §2 addendum, together with the query-fields-to-tables pivot.
 `docs/rfc-arkilaunch-ocr-edtr-reconciliation.md:55` · `jobs/src/edtr-ocr-worker.ts:160`
 RFC-2: "The worker calls Azure DI: **Read for handwriting plus the labeled custom neural model**
 for the EDTR fields." Code: a single `await port.analyze(EDTR_MODEL_ID, bytes)`.
@@ -92,6 +100,7 @@ for the EDTR fields." Code: a single `await port.analyze(EDTR_MODEL_ID, bytes)`.
 queryFields; no `prebuilt-read` request shape exists in `azure-adapter.ts:77-112`.
 
 ### 9. Locked DSD font-loading spec contradicts both the code and its own artifact
+**CLOSED.** DSD corrected to what ships; the code and artifact were right.
 `docs/dsd-arkilaunch.md:236` · `DESIGN.md:118` · `apps/web/index.html:8-15`
 DSD §2.3 preloads "(Plex Sans 400, Plex Mono 500)"; DESIGN.md says "Plex Sans variable, Plex Mono
 500"; the code preloads `/fonts/ibm-plex-sans-variable.woff2`. Same split on the perf gate: DSD
@@ -99,6 +108,7 @@ DSD §2.3 preloads "(Plex Sans 400, Plex Mono 500)"; DESIGN.md says "Plex Sans v
 follows the artifact; the Locked canonical doc is the stale one.
 
 ### 10. Toast/modal/confirm-dialog primitives and the label rewrite shipped with no CR
+**CLOSED.** Back-filled as §4.2.
 PR #24 — `d027148`, `d8f3548`, `17e05c6`, `1573d2b`, `5074c59`
 `toast.tsx`, `modal.tsx` and `confirm-dialog.tsx` all ship; a confirmation layer was put in front
 of consequential actions and user-facing labels were rewritten across shipped screens (14 files,
@@ -106,6 +116,7 @@ of consequential actions and user-facing labels were rewritten across shipped sc
 `docs/cr-arkilaunch-camera-capture-split.md:54`, incidentally, about `CaptureModal` being moved.
 
 ### 11. Admin dashboard (S4, a Locked-PRD screen) rebuilt with no CR
+**CLOSED.** Back-filled as §4.3.
 `79c432e` · `apps/web/src/routes/app.index.tsx` — "Replace the gauge row + flat link grid on /app
 with the layout the console was meant to have". S4 Dashboard is named in the Locked PRD §5.2
 table. No CR mentions `control-room`; `cr-arkilaunch-figma-ia-alignment.md`, same date range,
@@ -114,6 +125,7 @@ lists routes *added* by its pass and does not cover a rebuild of `/app`.
 ## LOW
 
 ### 12. AGENTS.md carries a self-check row absent from its canonical doc
+**OPEN -- accepted.** A materialization-only concern about link prefixes; left as is rather than adding a line to BUILD that only matters to the artifact.
 `AGENTS.md:302` · `docs/build-arkilaunch.md` (ends line 300). AGENTS.md has an extra final item —
 "All doc links are `docs/`-prefixed and resolve from the project root" — with no counterpart in
 BUILD. Defensible as a materialization-only concern, but it is content living only in the
@@ -121,9 +133,15 @@ artifact. Everything else diffs clean once the `docs/` link-prefix rewrite is no
 
 ## Clean
 
-- **Broken cross-references:** clean. Every relative `.md` link in `docs/*.md` and the four root
-  artifacts resolves; every file in `docs/` is referenced from `docs/index.md` and every
-  `index.md` entry points at an existing file.
+- **Broken cross-references:** links clean, registration **not**. Every relative `.md` link in
+  `docs/*.md` and the four root artifacts resolves, and every `index.md` entry points at an
+  existing file. But the second half of this claim -- "every file in `docs/` is referenced from
+  `docs/index.md`" -- was false when written and falsified by this audit's own commit:
+  `cr-arkilaunch-edtr-real-form.md` had no change-log row, `report-figma-route-alignment.md` was
+  named in prose but never linked, and `daee28f` then added these four audit documents without
+  registering any of them. Six unlisted files in total. Corrected 2026-09-19 by
+  `cr-arkilaunch-doc-reconcile-2026-09-19.md`, which also adds an `index.md` §4 Health Check row
+  so the claim is tracked rather than assumed next time.
 - **`.claude/agents/*.md` vs `docs/sad-arkilaunch.md`:** clean. All five cards materialize
   faithfully — names, `description` from the Spawn trigger, `tools`, and the model map
   (fast→haiku, balanced→sonnet, deep→opus) match SAD §3/§5, with no orphan files and no card

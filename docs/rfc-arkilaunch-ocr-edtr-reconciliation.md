@@ -329,8 +329,14 @@ Notes that keep the diagram honest:
 
 | Task | Model | Why |
 |------|-------|-----|
-| EDTR handwriting extraction | DI Read (handwriting OCR) plus a labeled **custom neural extraction** model | Handwriting support, bounded labeled field regions (the zones), per-field confidence. The modern realization of the thesis zonal mechanism ([SDD §8](sdd-arkilaunch.md)). |
+| EDTR handwriting extraction | **`prebuilt-layout` table extraction** (superseded the labeled custom neural model, see the addendum below) | The real Almara form is a multi-day grid, so the rows and columns Layout already returns *are* the zones; per-cell confidence is derived from the constituent word spans. |
 | KYC SEC/TIN extraction | DI **layout plus query fields** | Named-value extraction on semi-structured corporate docs; the prebuilt `idDocument` model does not cover PH identifiers ([SCRUTINY FC-5](scrutiny-arkilaunch.md)). |
+
+> **Addendum 2026-09-19 (`cr-arkilaunch-doc-reconcile-2026-09-19.md`).** This section described EDTR extraction as DI Read plus a labeled custom neural model, and §2/§7 described it as layout plus query fields. Neither is what ships. `cr-arkilaunch-edtr-real-form.md` records the pivot: against the real Almara timesheet, query fields returned the letterhead at 0.883 confidence rather than the hours, and the form's actual structure is a multi-day grid that the field-per-document schema could not express. The shipped path is `prebuilt-layout` **table** extraction, parsed by `packages/shared/src/edtr-sheet.ts`, which fans one captured sheet out into one row per dated line.
+>
+> `queryFields` is unchanged and still correct for **KYC** (`model-registry.ts` maps the KYC model id to `prebuilt-layout` + `queryFields`, verified against the live resource at 0.995 confidence). This addendum narrows the EDTR claim only; it does not retract the KYC one. The worker also no longer sends `queryFields` for EDTR, which is asserted by a test.
+>
+> The single call this implies also corrects §2's "the worker calls Azure DI: Read for handwriting plus the labeled custom neural model": the worker makes **one** `analyze` call, not two.
 
 **Prompt strategy:** none in the LLM sense. The "instruction" is a fixed, server-defined extraction schema: custom-model field labels for EDTR, query-field definitions for SEC/TIN. Users cannot alter the schema, and there is no free-form prompt for a document to hijack.
 
