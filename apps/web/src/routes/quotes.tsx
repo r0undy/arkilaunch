@@ -86,7 +86,6 @@ function QuotesPage() {
         toast.error('Could not load the quote reference data', apiErrorText(err));
       });
     // Pick lists are fetched once on mount; the toast context is stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // The line-item table printed a UUID slice for the machine being priced,
