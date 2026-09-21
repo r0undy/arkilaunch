@@ -32,7 +32,7 @@ import { EventsService } from '../events/events.service.js';
 import { findAvailableAlternatives, overlappingAssignments } from '../common/equipment-availability.js';
 import { ownCustomers, ownsCustomer } from '../common/customer-scope.js';
 import { countRows } from '../common/count-rows.js';
-import { notifyBookingCustomer } from '../common/notify-customer.js';
+import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -157,6 +157,9 @@ export class BookingsService {
         entityId: rental.id,
       });
       await this.events.emit(ctx, 'booking_created', { rental_id: rental.id, item_count: body.items.length });
+      if (ctx.role === 'customer') {
+        await notifyStaff(tx, ctx.tenantId, 'booking_requested', { rental_id: rental.id, item_count: body.items.length });
+      }
 
       return { id: rental.id, status: rental.status, trackerUrl: `/orders/${rental.id}` };
     });
@@ -371,6 +374,8 @@ export class BookingsService {
         await notifyBookingCustomer(tx, ctx.tenantId, id, 'negotiation_reply', {
           offer_php: body.offerPhp ?? null,
         });
+      } else {
+        await notifyStaff(tx, ctx.tenantId, 'customer_message', { rental_id: id, offer_php: body.offerPhp ?? null });
       }
       await this.events.emit(ctx, 'negotiation_message_posted', {
         rental_id: id,
@@ -380,12 +385,90 @@ export class BookingsService {
     });
   }
 
+  // POST /bookings/:id/deliver (staff, site:manage). The machines on a paid
+  // booking reach the site: its own scheduled assignments go active and
+  // the units flip to deployed. It reuses the booking's reservation rather
+  // than creating a second assignment, which is why the generic deployment
+  // endpoint could never deliver a booked unit (its overlap check collided
+  // with the booking's own hold).
+  async deliver(ctx: RequestContext, id: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const rental = await this.visibleRental(tx, ctx, id);
+      if (rental.status !== 'confirmed') throw new ConflictException({ error: 'booking_not_ready', status: rental.status });
+      const assignments = await tx
+        .select()
+        .from(equipmentAssignments)
+        .where(and(eq(equipmentAssignments.rentalId, id), eq(equipmentAssignments.status, 'scheduled')));
+      if (assignments.length === 0) throw new ConflictException({ error: 'nothing_to_deliver' });
+
+      const units = await tx
+        .select()
+        .from(equipment)
+        .where(inArray(equipment.id, assignments.map((a) => a.equipmentId)))
+        .for('update');
+      const blocked = units.find((unit) => unit.availabilityStatus !== 'available');
+      if (blocked) {
+        throw new ConflictException({ error: 'equipment_unavailable', equipmentId: blocked.id, status: blocked.availabilityStatus });
+      }
+
+      await tx
+        .update(equipmentAssignments)
+        .set({ status: 'active' })
+        .where(inArray(equipmentAssignments.id, assignments.map((a) => a.id)));
+      await tx
+        .update(equipment)
+        .set({ availabilityStatus: 'deployed' })
+        .where(inArray(equipment.id, units.map((u) => u.id)));
+      await tx.update(rentals).set({ status: 'active' }).where(eq(rentals.id, id));
+      await tx.insert(auditLogs).values({ tenantId: ctx.tenantId, actorId: ctx.userId, action: 'UPDATE', entity: 'rentals', entityId: id });
+      await notifyBookingCustomer(tx, ctx.tenantId, id, 'equipment_delivered', { item_count: assignments.length });
+      await this.events.emit(ctx, 'booking_delivered', { rental_id: id, item_count: assignments.length });
+      return { id, status: 'active' };
+    });
+  }
+
+  // POST /bookings/:id/return (staff, site:manage). Every unit is back:
+  // the hire ends now (freeing any unused days), units go available, the
+  // booking completes. The deposit refund stays a manual PayMongo step,
+  // after any field-log deductions are settled.
+  async markReturned(ctx: RequestContext, id: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const rental = await this.visibleRental(tx, ctx, id);
+      if (rental.status !== 'active') throw new ConflictException({ error: 'booking_not_on_site', status: rental.status });
+      const assignments = await tx
+        .select()
+        .from(equipmentAssignments)
+        .where(and(eq(equipmentAssignments.rentalId, id), eq(equipmentAssignments.status, 'active')));
+      const now = new Date();
+      if (assignments.length > 0) {
+        await tx
+          .update(equipmentAssignments)
+          .set({ status: 'completed', end: now })
+          .where(inArray(equipmentAssignments.id, assignments.map((a) => a.id)));
+        await tx
+          .update(equipment)
+          .set({ availabilityStatus: 'available' })
+          .where(inArray(equipment.id, assignments.map((a) => a.equipmentId)));
+      }
+      await tx.update(rentals).set({ status: 'completed', endDate: now }).where(eq(rentals.id, id));
+      await tx.insert(auditLogs).values({ tenantId: ctx.tenantId, actorId: ctx.userId, action: 'UPDATE', entity: 'rentals', entityId: id });
+      await notifyBookingCustomer(tx, ctx.tenantId, id, 'equipment_returned', { item_count: assignments.length });
+      await this.events.emit(ctx, 'booking_returned', { rental_id: id, item_count: assignments.length });
+      return { id, status: 'completed' };
+    });
+  }
+
   // POST /bookings/:id/change-requests (customer). One open request at a
   // time, so staff never resolve two contradicting asks.
   async requestChange(ctx: RequestContext, id: string, body: ChangeRequestCreate) {
     return withTenantTx(ctx, async (tx) => {
       const rental = await this.visibleRental(tx, ctx, id);
-      if (rental.status === 'cancelled') throw new ConflictException({ error: 'booking_cancelled' });
+      if (rental.status === 'cancelled' || rental.status === 'completed') {
+        throw new ConflictException({ error: 'booking_closed', status: rental.status });
+      }
+      if (body.kind === 'cancel' && rental.status === 'active') {
+        throw new ConflictException({ error: 'already_on_site' });
+      }
       const requestedEnd = body.requestedEnd ? new Date(body.requestedEnd) : null;
       if (body.kind === 'extend' && requestedEnd && rental.endDate && requestedEnd <= rental.endDate) {
         throw new ConflictException({ error: 'extend_must_be_later' });
@@ -410,6 +493,7 @@ export class BookingsService {
         .returning();
       if (!row) throw new Error('booking_change_requests insert returned no row');
       await this.events.emit(ctx, 'booking_change_requested', { rental_id: id, kind: body.kind });
+      await notifyStaff(tx, ctx.tenantId, 'change_request_submitted', { rental_id: id, kind: body.kind });
       return { id: row.id, status: row.status };
     });
   }
