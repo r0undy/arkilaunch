@@ -24,6 +24,9 @@ export type QuoteItemInput = z.infer<typeof QuoteItemInputSchema>;
 export const QuoteRequestSchema = z.object({
   customerId: z.string().uuid(),
   projectSiteId: z.string().uuid(),
+  // The booking this quote prices. Optional so a quote can still be drawn
+  // up cold; a customer can only accept one that is tied to a booking.
+  rentalId: z.string().uuid().optional(),
   discount: DiscountSchema,
   items: z.array(QuoteItemInputSchema).min(1),
 });
