@@ -10,7 +10,7 @@ import {
   withTenantTx,
 } from '@arkilaunch/db';
 import { quoteExpiresAt, type QuoteRequest, type RequestContext } from '@arkilaunch/shared';
-import { ownCustomer } from '../common/customer-scope.js';
+import { ownsCustomer } from '../common/customer-scope.js';
 import { notifyBookingCustomer } from '../common/notify-customer.js';
 import { EventsService } from '../events/events.service.js';
 import { PricingEngineService, type PricedQuote } from './pricing-engine.service.js';
@@ -321,8 +321,8 @@ export class QuotesService {
   // rather than accept.
   private async customerQuote(tx: Parameters<Parameters<typeof withTenantTx>[1]>[0], ctx: RequestContext, quotationId: string) {
     const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
-    const own = ctx.role === 'customer' ? await ownCustomer(tx, ctx) : null;
-    if (!quotation || !own || quotation.customerId !== own.id) {
+    const mine = ctx.role === 'customer' && quotation ? await ownsCustomer(tx, ctx, quotation.customerId) : false;
+    if (!quotation || !mine) {
       throw new NotFoundException({ error: 'quote_not_found' });
     }
     return quotation;
@@ -341,8 +341,7 @@ export class QuotesService {
       // totals (audit-api-surface.md #1). 404 rather than 403: a 403 would
       // confirm the id exists.
       if (ctx.role === 'customer') {
-        const own = await ownCustomer(tx, ctx);
-        if (!own || quotation.customerId !== own.id) throw new NotFoundException({ error: 'quote_not_found' });
+        if (!(await ownsCustomer(tx, ctx, quotation.customerId))) throw new NotFoundException({ error: 'quote_not_found' });
       }
 
       const items = await tx

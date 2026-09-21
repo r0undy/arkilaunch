@@ -19,10 +19,10 @@ export const BookingItemRequestSchema = z
   });
 export type BookingItemRequest = z.infer<typeof BookingItemRequestSchema>;
 
-// customerId is accepted only from a staff caller (admin/platform_admin/
-// owner booking on a customer's behalf); a `customer`-role caller's own
-// customerId is derived server-side from customers.user_id and this field
-// is ignored for them (bookings.service.ts), never trusted as given.
+// customerId: for staff, the customer being booked for. For a `customer`
+// caller it picks WHICH of their own companies books (one login may own
+// several); the server checks it is theirs and never trusts it otherwise
+// (bookings.service.ts). Omitted, a customer with one company uses it.
 export const BookingCreateRequestSchema = z.object({
   customerId: z.string().uuid().optional(),
   projectSiteId: z.string().uuid(),

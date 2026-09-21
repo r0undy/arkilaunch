@@ -30,7 +30,7 @@ import type {
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { findAvailableAlternatives, overlappingAssignments } from '../common/equipment-availability.js';
-import { ownCustomer } from '../common/customer-scope.js';
+import { ownCustomers, ownsCustomer } from '../common/customer-scope.js';
 import { countRows } from '../common/count-rows.js';
 import { notifyBookingCustomer } from '../common/notify-customer.js';
 
@@ -55,25 +55,31 @@ export class BookingsService {
     return withTenantTx(ctx, async (tx) => {
       let customerId = body.customerId;
       if (ctx.role === 'customer') {
-        const own = await ownCustomer(tx, ctx);
-        if (!own) throw new ForbiddenException({ error: 'customer_profile_not_found' });
-        if (body.customerId && body.customerId !== own.id) {
+        const own = await ownCustomers(tx, ctx);
+        if (own.length === 0) throw new ForbiddenException({ error: 'customer_profile_not_found' });
+        if (body.customerId && !own.some((row) => row.id === body.customerId)) {
           await tx.insert(auditLogs).values({
             tenantId: ctx.tenantId,
             actorId: ctx.userId,
             action: 'CREATE',
             entity: 'booking_customer_scope_denied',
-            entityId: own.id,
+            entityId: own[0]!.id,
           });
           await this.events.emit(ctx, 'booking_customer_scope_denied', { customer_id: body.customerId });
           throw new ForbiddenException({ error: 'customer_scope_denied' });
         }
-        customerId = own.id;
+        if (!body.customerId && own.length > 1) throw new ConflictException({ error: 'company_required' });
+        customerId = body.customerId ?? own[0]!.id;
       }
       if (!customerId) throw new NotFoundException({ error: 'customer_id_required' });
 
       const [site] = await tx.select().from(projectSites).where(eq(projectSites.id, body.projectSiteId)).limit(1);
       if (!site) throw new NotFoundException({ error: 'project_site_not_found' });
+      // A site a customer added belongs to that company; nobody else books
+      // onto it. The yard's own sites (customer_id null) stay open.
+      if (site.customerId && site.customerId !== customerId) {
+        throw new NotFoundException({ error: 'project_site_not_found' });
+      }
 
       const equipmentIds = body.items.map((item) => item.equipmentId);
       const equipmentRows = await tx
@@ -165,9 +171,9 @@ export class BookingsService {
       // missing, on both branches (audit-api-surface.md #5).
       let where;
       if (ctx.role === 'customer') {
-        const own = await ownCustomer(tx, ctx);
-        if (!own) return { items: [], total: 0 };
-        where = eq(rentals.customerId, own.id);
+        const own = await ownCustomers(tx, ctx);
+        if (own.length === 0) return { items: [], total: 0 };
+        where = inArray(rentals.customerId, own.map((row) => row.id));
       }
       const rows = await tx
         .select()
@@ -503,8 +509,7 @@ export class BookingsService {
     const [rental] = await tx.select().from(rentals).where(eq(rentals.id, id)).limit(1);
     if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
     if (ctx.role === 'customer') {
-      const own = await ownCustomer(tx, ctx);
-      if (!own || rental.customerId !== own.id) throw new NotFoundException({ error: 'booking_not_found' });
+      if (!(await ownsCustomer(tx, ctx, rental.customerId))) throw new NotFoundException({ error: 'booking_not_found' });
     }
     return rental;
   }
