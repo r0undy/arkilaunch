@@ -51,6 +51,12 @@ interface Described {
 
 export function describeNotification(type: string, payload: unknown): Described | null {
   const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+  if (type === 'company_verified' || type === 'company_rejected') {
+    const name = typeof p.company_name === 'string' ? p.company_name : 'Your company';
+    return type === 'company_verified'
+      ? { title: 'Company verified', body: `${name} is verified. You can now pay for its bookings.`, action: { label: 'My bookings', to: '/account/bookings', params: {} } }
+      : { title: 'Company not verified', body: `${name} could not be verified. Contact the rental team to fix it.`, action: { label: 'View company', to: '/account/companies', params: {} } };
+  }
   const rentalId = typeof p.rental_id === 'string' ? p.rental_id : null;
   if (!rentalId) return null;
   const ref = shortCode('booking', rentalId);
