@@ -25,6 +25,7 @@ import { accountSettingsRoute } from './routes/account.settings.js';
 import { accountApplicationsRoute } from './routes/account.applications.js';
 import { accountInvoiceRoute } from './routes/account.invoice.js';
 import { accountCheckoutRoute, accountCheckoutFailedRoute } from './routes/account.checkout.js';
+import { appBookingsRoute, appBookingRoute } from './routes/app.bookings.js';
 import {
   accountBookingRoute,
   accountBookingExtendRoute,
@@ -103,6 +104,8 @@ export const routeTree = rootRoute.addChildren([
   ]),
   appLayoutRoute.addChildren([
     appIndexRoute,
+    appBookingsRoute,
+    appBookingRoute,
     appInventoryRoute,
     appDeploymentRoute,
     appInsightsRoute,
