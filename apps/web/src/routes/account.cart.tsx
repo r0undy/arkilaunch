@@ -12,7 +12,8 @@ import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon } from '../components/icons.js';
 import { apiPost } from '../lib/api-client.js';
 import { explainBookingError } from '../lib/booking-error.js';
-import { referenceQueries } from '../lib/queries.js';
+import { companiesQueries, customerSitesQueries } from '../lib/queries.js';
+import { SiteDialog } from '../components/site-dialog.js';
 import { shortCode } from '../lib/format.js';
 import { getCart, removeFromCart, clearCart, updateCartItem, type CartItem } from '../lib/cart-client.js';
 
@@ -40,12 +41,19 @@ function rentalDays(item: CartItem): number {
 // booking request and the price arrives as a quote to negotiate.
 function CartPage() {
   const [items, setItems] = useState<CartItem[]>(() => getCart());
+  const [chosenCompanyId, setCompanyId] = useState('');
   const [projectSiteId, setProjectSiteId] = useState('');
+  const [siteOpen, setSiteOpen] = useState(false);
   const [siteContact, setSiteContact] = useState('');
   const [siteNotes, setSiteNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [booking, setBooking] = useState<BookingCreateResponse | null>(null);
-  const projectSites = useQuery(referenceQueries.projectSites());
+  const companies = useQuery(companiesQueries.mine());
+  const sites = useQuery(customerSitesQueries.mine());
+  // One company is the common case: pick it without asking.
+  const companyId = chosenCompanyId || (companies.data?.length === 1 ? companies.data[0]!.id : '');
+  const company = companies.data?.find((c) => c.id === companyId);
+  const companySites = (sites.data ?? []).filter((site) => site.customerId === companyId);
 
   function handleRemove(index: number) {
     removeFromCart(index);
@@ -61,6 +69,7 @@ function CartPage() {
   const createBooking = useMutation({
     mutationFn: () =>
       apiPost<BookingCreateResponse>('/bookings', {
+        customerId: companyId,
         projectSiteId,
         ...(siteContact.trim() ? { siteContact: siteContact.trim() } : {}),
         ...(siteNotes.trim() ? { siteNotes: siteNotes.trim() } : {}),
@@ -117,6 +126,23 @@ function CartPage() {
     );
   }
 
+  if (companies.data && companies.data.length === 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="font-display text-2xl font-semibold text-text">Shopping cart</h1>
+        <EmptyState
+          title="Add your company first"
+          description="Your cart is saved. Tell us which company you are renting for, then come back to request a quote."
+          action={
+            <Link to="/account/companies/new">
+              <Button variant="primary">Add a company</Button>
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
   const totalDays = items.reduce((sum, item) => sum + rentalDays(item), 0);
 
   return (
@@ -166,22 +192,51 @@ function CartPage() {
           <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
             <h2 className={heading}>Logistics and delivery</h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Select
-                label="Project site"
-                id="cart-project-site"
-                required
-                value={projectSiteId}
-                onChange={(e) => setProjectSiteId(e.target.value)}
-              >
-                <option value="" disabled>
-                  Select...
-                </option>
-                {(projectSites.data ?? []).map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.city ?? site.province ?? `Site ${site.id.slice(0, 8)}`}
+              {(companies.data?.length ?? 0) > 1 && (
+                <Select
+                  label="Company"
+                  id="cart-company"
+                  required
+                  value={companyId}
+                  onChange={(e) => {
+                    setCompanyId(e.target.value);
+                    setProjectSiteId('');
+                  }}
+                >
+                  <option value="" disabled>
+                    Select...
                   </option>
-                ))}
-              </Select>
+                  {companies.data!.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.companyName}
+                    </option>
+                  ))}
+                </Select>
+              )}
+              <div className="flex flex-col gap-1">
+                <Select
+                  label="Project site"
+                  id="cart-project-site"
+                  required
+                  disabled={!companyId}
+                  value={projectSiteId}
+                  onChange={(e) => setProjectSiteId(e.target.value)}
+                >
+                  <option value="" disabled>
+                    {companySites.length === 0 ? 'No sites yet' : 'Select...'}
+                  </option>
+                  {companySites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      {site.line1}, {site.city}
+                    </option>
+                  ))}
+                </Select>
+                {companyId && (
+                  <button type="button" className="self-start text-sm text-accent underline" onClick={() => setSiteOpen(true)}>
+                    Add a site
+                  </button>
+                )}
+              </div>
               <Input
                 label="Contact on site"
                 placeholder="Name and mobile number"
@@ -202,6 +257,12 @@ function CartPage() {
 
         <Surface radius="md" elevation="sm" className="flex h-fit flex-col gap-4 p-5">
           <h2 className="font-display text-lg font-semibold text-text">Cost summary</h2>
+          {company && company.kycStatus !== 'approved' && (
+            <p className="rounded-md border border-border bg-surface-sunk px-3 py-2 text-sm text-text">
+              {company.companyName} is not verified yet. You can request a quote now; payment unlocks once the rental
+              team verifies the company.
+            </p>
+          )}
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between gap-3">
               <span className="text-text-muted">Machines</span>
@@ -218,7 +279,7 @@ function CartPage() {
           </p>
           <Button
             variant="primary"
-            disabled={!projectSiteId || createBooking.isPending}
+            disabled={!projectSiteId || !companyId || createBooking.isPending}
             loading={createBooking.isPending}
             onClick={() => {
               setError(null);
@@ -234,6 +295,14 @@ function CartPage() {
           )}
         </Surface>
       </div>
+      {companyId && (
+        <SiteDialog
+          open={siteOpen}
+          onClose={() => setSiteOpen(false)}
+          customerId={companyId}
+          onCreated={(site) => setProjectSiteId(site.id)}
+        />
+      )}
     </div>
   );
 }
