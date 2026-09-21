@@ -65,6 +65,7 @@ export type BookingListResponse = z.infer<typeof BookingListResponseSchema>;
 
 export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
   trackerUrl: z.string(),
+  customerId: z.string().uuid(),
   items: z.array(
     z.object({
       equipmentId: z.string().uuid(),

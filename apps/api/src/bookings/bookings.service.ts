@@ -254,6 +254,7 @@ export class BookingsService {
         siteCity: site?.city ?? null,
         siteProvince: site?.province ?? null,
         trackerUrl: `/orders/${rental.id}`,
+        customerId: rental.customerId,
         siteContact: rental.siteContact,
         siteNotes: rental.siteNotes,
         createdAt: rental.createdAt,

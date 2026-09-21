@@ -101,10 +101,25 @@ export class PaymentsService {
           .orderBy(desc(rentalContracts.createdAt))
           .limit(1);
         if (contract) depositAmount = Number(contract.depositRequired);
+        // A deposit already paid on the deposit-only path is already held;
+        // charging it again on the booking invoice would double-take it.
+        const [paidDeposit] = await tx
+          .select()
+          .from(invoices)
+          .where(and(eq(invoices.rentalId, bookingId), eq(invoices.invoiceType, 'deposit'), eq(invoices.status, 'paid')))
+          .limit(1);
+        if (paidDeposit) depositAmount = 0;
       }
       const rentAmount = quotation ? Number(quotation.totalPhp ?? 0) : 0;
       const invoiceType = quotation ? 'booking' : 'deposit';
       const amount = rentAmount + depositAmount;
+
+      const [alreadyPaid] = await tx
+        .select()
+        .from(invoices)
+        .where(and(eq(invoices.rentalId, bookingId), eq(invoices.invoiceType, invoiceType), eq(invoices.status, 'paid')))
+        .limit(1);
+      if (alreadyPaid) throw new ConflictException({ error: 'already_paid', invoiceId: alreadyPaid.id });
 
       let [invoice] = await tx
         .select()
@@ -124,7 +139,7 @@ export class PaymentsService {
           })
           .returning();
         if (invoice && quotation) {
-          await tx.insert(invoiceLineItems).values([
+          const lines = [
             {
               tenantId: ctx.tenantId,
               invoiceId: invoice.id,
@@ -139,7 +154,8 @@ export class PaymentsService {
               unitPrice: String(depositAmount),
               amount: String(depositAmount),
             },
-          ]);
+          ].filter((line) => Number(line.amount) > 0);
+          if (lines.length > 0) await tx.insert(invoiceLineItems).values(lines);
         }
       }
       if (!invoice) throw new Error('invoices insert returned no row');

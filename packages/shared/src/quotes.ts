@@ -31,3 +31,14 @@ export const QuoteRequestSchema = z.object({
   items: z.array(QuoteItemInputSchema).min(1),
 });
 export type QuoteRequest = z.infer<typeof QuoteRequestSchema>;
+
+// How long a customer has to accept an approved quote before its diesel
+// snapshot and rates are too old to honour. Shared so the accept button
+// and the server refuse on the same day.
+// ponytail: measured from the quote's created_at, not approval time; add
+// an approved_at column if drafting and approving drift apart.
+export const QUOTE_VALID_DAYS = 7;
+
+export function quoteExpiresAt(createdAt: Date | string): Date {
+  return new Date(new Date(createdAt).getTime() + QUOTE_VALID_DAYS * 86_400_000);
+}

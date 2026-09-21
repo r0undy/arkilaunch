@@ -9,7 +9,7 @@ import {
   rentals,
   withTenantTx,
 } from '@arkilaunch/db';
-import type { QuoteRequest, RequestContext } from '@arkilaunch/shared';
+import { quoteExpiresAt, type QuoteRequest, type RequestContext } from '@arkilaunch/shared';
 import { ownCustomer } from '../common/customer-scope.js';
 import { notifyBookingCustomer } from '../common/notify-customer.js';
 import { EventsService } from '../events/events.service.js';
@@ -43,16 +43,6 @@ export interface QuoteResponse {
   discount: number;
   total: number;
   printableUrl: string | null;
-}
-
-// How long a customer has to accept an approved quote before the diesel
-// snapshot and rates are too old to honour.
-// ponytail: measured from created_at, not approval time; add an
-// approved_at column if the gap between drafting and approving grows.
-export const QUOTE_VALID_DAYS = 7;
-
-export function quoteExpired(createdAt: Date, now: Date = new Date()): boolean {
-  return now.getTime() - createdAt.getTime() > QUOTE_VALID_DAYS * 86_400_000;
 }
 
 function toLineItems(priced: PricedQuote): QuoteResponse['lineItems'] {
@@ -270,7 +260,7 @@ export class QuotesService {
         throw new ConflictException({ error: 'quote_not_open', status: quotation.status });
       }
       if (!quotation.rentalId) throw new ConflictException({ error: 'quote_not_linked_to_booking' });
-      if (quoteExpired(quotation.createdAt)) throw new ConflictException({ error: 'quote_expired' });
+      if (quoteExpiresAt(quotation.createdAt) < new Date()) throw new ConflictException({ error: 'quote_expired' });
 
       await tx.update(quotations).set({ status: 'accepted' }).where(eq(quotations.id, quotationId));
       await tx.insert(rentalContracts).values({
