@@ -18,6 +18,12 @@ export class NotificationsController {
     return this.notifications.list(req.ctx, query);
   }
 
+  // Declared before ':id/read' so 'read-all' is never taken for an id.
+  @Patch('read-all')
+  markAllRead(@Req() req: CtxRequest) {
+    return this.notifications.markAllRead(req.ctx);
+  }
+
   @Patch(':id/read')
   markRead(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.notifications.markRead(req.ctx, id);

@@ -24,12 +24,19 @@ import { accountCartRoute } from './routes/account.cart.js';
 import { accountSettingsRoute } from './routes/account.settings.js';
 import { accountApplicationsRoute } from './routes/account.applications.js';
 import { accountInvoiceRoute } from './routes/account.invoice.js';
-import { accountCheckoutRoute } from './routes/account.checkout.js';
+import { accountCheckoutRoute, accountCheckoutFailedRoute } from './routes/account.checkout.js';
+import { appBookingsRoute, appBookingRoute } from './routes/app.bookings.js';
 import {
   accountBookingRoute,
   accountBookingExtendRoute,
 } from './routes/account.booking.js';
 import { accountCheckoutSuccessRoute } from './routes/account.checkout.success.js';
+import {
+  accountNegotiationRoute,
+  accountNegotiationChatRoute,
+  accountNegotiationCallRoute,
+  accountNegotiationFinalRoute,
+} from './routes/account.negotiation.js';
 
 import { appLayoutRoute } from './routes/_app.js';
 import { appIndexRoute } from './routes/app.index.js';
@@ -71,10 +78,6 @@ import {
   appSecurityLogsRoute,
   fieldSettingsRoute,
   accountCompanyNewRoute,
-  accountNegotiationRoute,
-  accountNegotiationChatRoute,
-  accountNegotiationCallRoute,
-  accountNegotiationFinalRoute,
 } from './routes/unbacked-screens.js';
 
 export const routeTree = rootRoute.addChildren([
@@ -89,6 +92,7 @@ export const routeTree = rootRoute.addChildren([
     accountInvoiceRoute,
     accountCheckoutRoute,
     accountCheckoutSuccessRoute,
+    accountCheckoutFailedRoute,
     accountNotificationsRoute,
     accountBookingRoute,
     accountBookingExtendRoute,
@@ -100,6 +104,8 @@ export const routeTree = rootRoute.addChildren([
   ]),
   appLayoutRoute.addChildren([
     appIndexRoute,
+    appBookingsRoute,
+    appBookingRoute,
     appInventoryRoute,
     appDeploymentRoute,
     appInsightsRoute,

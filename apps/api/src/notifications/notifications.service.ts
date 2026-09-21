@@ -52,4 +52,16 @@ export class NotificationsService {
       return { id, status: 'read' };
     });
   }
+
+  // PATCH /notifications/read-all (Figma 603:4981 "Mark all as read").
+  async markAllRead(ctx: RequestContext) {
+    return withTenantTx(ctx, async (tx) => {
+      const rows = await tx
+        .update(notifications)
+        .set({ status: 'read' })
+        .where(and(eq(notifications.userId, ctx.userId), eq(notifications.status, 'unread')))
+        .returning({ id: notifications.id });
+      return { updated: rows.length };
+    });
+  }
 }

@@ -24,7 +24,21 @@ export type QuoteItemInput = z.infer<typeof QuoteItemInputSchema>;
 export const QuoteRequestSchema = z.object({
   customerId: z.string().uuid(),
   projectSiteId: z.string().uuid(),
+  // The booking this quote prices. Optional so a quote can still be drawn
+  // up cold; a customer can only accept one that is tied to a booking.
+  rentalId: z.string().uuid().optional(),
   discount: DiscountSchema,
   items: z.array(QuoteItemInputSchema).min(1),
 });
 export type QuoteRequest = z.infer<typeof QuoteRequestSchema>;
+
+// How long a customer has to accept an approved quote before its diesel
+// snapshot and rates are too old to honour. Shared so the accept button
+// and the server refuse on the same day.
+// ponytail: measured from the quote's created_at, not approval time; add
+// an approved_at column if drafting and approving drift apart.
+export const QUOTE_VALID_DAYS = 7;
+
+export function quoteExpiresAt(createdAt: Date | string): Date {
+  return new Date(new Date(createdAt).getTime() + QUOTE_VALID_DAYS * 86_400_000);
+}

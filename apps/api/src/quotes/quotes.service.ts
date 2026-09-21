@@ -1,8 +1,17 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
-import { auditLogs, quotationItems, quotations, withTenantTx } from '@arkilaunch/db';
-import type { QuoteRequest, RequestContext } from '@arkilaunch/shared';
+import { and, desc, eq, inArray } from 'drizzle-orm';
+import {
+  DEFAULT_DEPOSIT_PHP,
+  auditLogs,
+  quotationItems,
+  quotations,
+  rentalContracts,
+  rentals,
+  withTenantTx,
+} from '@arkilaunch/db';
+import { quoteExpiresAt, type QuoteRequest, type RequestContext } from '@arkilaunch/shared';
 import { ownCustomer } from '../common/customer-scope.js';
+import { notifyBookingCustomer } from '../common/notify-customer.js';
 import { EventsService } from '../events/events.service.js';
 import { PricingEngineService, type PricedQuote } from './pricing-engine.service.js';
 
@@ -83,6 +92,34 @@ export class QuotesService {
   async create(ctx: RequestContext, body: QuoteRequest): Promise<QuoteResponse> {
     const startedAt = Date.now();
     const result = await withTenantTx(ctx, async (tx) => {
+      // A booking has one live quote. Quoting it again is a new revision
+      // that supersedes every open one, so an older, cheaper approved quote
+      // can never still be accepted after the price moved.
+      let revision = 1;
+      let parentQuotationId: string | null = null;
+      if (body.rentalId) {
+        const [rental] = await tx.select().from(rentals).where(eq(rentals.id, body.rentalId)).limit(1);
+        if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
+        if (rental.customerId !== body.customerId) {
+          throw new ConflictException({ error: 'quote_customer_mismatch' });
+        }
+        const [latest] = await tx
+          .select()
+          .from(quotations)
+          .where(eq(quotations.rentalId, body.rentalId))
+          .orderBy(desc(quotations.createdAt))
+          .limit(1);
+        if (latest?.status === 'accepted') throw new ConflictException({ error: 'quote_already_accepted' });
+        if (latest) {
+          revision = latest.revision + 1;
+          parentQuotationId = latest.id;
+          await tx
+            .update(quotations)
+            .set({ status: 'superseded' })
+            .where(and(eq(quotations.rentalId, body.rentalId), inArray(quotations.status, ['draft', 'approved', 'rejected'])));
+        }
+      }
+
       const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body.items, body.discount);
 
       const [quotation] = await tx
@@ -90,7 +127,9 @@ export class QuotesService {
         .values({
           tenantId: ctx.tenantId,
           customerId: body.customerId,
-          revision: 1,
+          rentalId: body.rentalId ?? null,
+          revision,
+          parentQuotationId,
           status: 'draft',
           dieselPriceSnapshot: String(priced.diesel.pricePhp),
           priceStale: String(priced.diesel.stale),
@@ -220,9 +259,73 @@ export class QuotesService {
         entity: 'quotations',
         entityId: quotationId,
       });
+      if (quotation.rentalId) {
+        await notifyBookingCustomer(tx, ctx.tenantId, quotation.rentalId, 'quote_ready', {
+          quotation_id: quotationId,
+          revision: quotation.revision,
+          total_php: Number(quotation.totalPhp ?? 0),
+        });
+      }
 
       return { id: quotationId, status: 'approved' };
     });
+  }
+
+  // POST /quotes/:id/accept: the customer takes an approved quote. This is
+  // the only thing that makes rent chargeable at checkout, and it opens the
+  // rental contract whose deposit_required caps every later deduction.
+  async accept(ctx: RequestContext, quotationId: string): Promise<{ id: string; status: string }> {
+    return withTenantTx(ctx, async (tx) => {
+      const quotation = await this.customerQuote(tx, ctx, quotationId);
+      if (quotation.status !== 'approved') {
+        throw new ConflictException({ error: 'quote_not_open', status: quotation.status });
+      }
+      if (!quotation.rentalId) throw new ConflictException({ error: 'quote_not_linked_to_booking' });
+      if (quoteExpiresAt(quotation.createdAt) < new Date()) throw new ConflictException({ error: 'quote_expired' });
+
+      await tx.update(quotations).set({ status: 'accepted' }).where(eq(quotations.id, quotationId));
+      await tx.insert(rentalContracts).values({
+        tenantId: ctx.tenantId,
+        quotationId,
+        depositRequired: String(DEFAULT_DEPOSIT_PHP),
+        status: 'active',
+      });
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'APPROVE',
+        entity: 'quotations',
+        entityId: quotationId,
+      });
+      await this.events.emit(ctx, 'quote_accepted', { quotation_id: quotationId });
+      return { id: quotationId, status: 'accepted' };
+    });
+  }
+
+  // POST /quotes/:id/decline: the customer walks away from this revision.
+  // The booking stays open so staff can revise, or the customer can cancel.
+  async decline(ctx: RequestContext, quotationId: string): Promise<{ id: string; status: string }> {
+    return withTenantTx(ctx, async (tx) => {
+      const quotation = await this.customerQuote(tx, ctx, quotationId);
+      if (quotation.status !== 'approved') {
+        throw new ConflictException({ error: 'quote_not_open', status: quotation.status });
+      }
+      await tx.update(quotations).set({ status: 'rejected' }).where(eq(quotations.id, quotationId));
+      await this.events.emit(ctx, 'quote_declined', { quotation_id: quotationId });
+      return { id: quotationId, status: 'rejected' };
+    });
+  }
+
+  // Accept/decline are the customer's call on their own quote: 404 for
+  // anyone else's (never confirm the id exists) and for staff, who approve
+  // rather than accept.
+  private async customerQuote(tx: Parameters<Parameters<typeof withTenantTx>[1]>[0], ctx: RequestContext, quotationId: string) {
+    const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
+    const own = ctx.role === 'customer' ? await ownCustomer(tx, ctx) : null;
+    if (!quotation || !own || quotation.customerId !== own.id) {
+      throw new NotFoundException({ error: 'quote_not_found' });
+    }
+    return quotation;
   }
 
   // GET /quotes/:id: renders entirely from stored columns (RFC-3 §3), so a

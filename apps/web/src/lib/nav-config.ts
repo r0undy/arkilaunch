@@ -66,6 +66,7 @@ export const APP_NAV: NavGroup[] = [
     title: 'Billing',
     items: [
       { label: 'Field logs', to: '/app/ocr', icon: ClipboardList },
+      { label: 'Bookings', to: '/app/bookings', icon: ShoppingCart },
       { label: 'Quotes', to: '/app/quotes', icon: FileText },
       { label: 'Invoices', to: '/app/payments', icon: Receipt },
       { label: 'Weekly billing', to: '/app/billing/weekly', icon: CalendarRange },

@@ -39,6 +39,18 @@ export class QuotesController {
     return this.quotes.approve(req.ctx, id);
   }
 
+  @Post(':id/accept')
+  @RequirePermission('booking:create')
+  accept(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.quotes.accept(req.ctx, id);
+  }
+
+  @Post(':id/decline')
+  @RequirePermission('booking:create')
+  decline(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.quotes.decline(req.ctx, id);
+  }
+
   @Get(':id')
   @RequirePermission('quote:read')
   get(@Param('id') id: string, @Req() req: CtxRequest) {
