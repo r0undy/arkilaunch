@@ -1,18 +1,26 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
 import {
   addresses,
   auditLogs,
+  bookingChangeRequests,
   equipment,
   equipmentAssignments,
   invoices,
+  negotiationMessages,
   payments,
   projectSites,
   quotations,
   rentals,
+  resolveDepositLedger,
   withTenantTx,
+  type db,
 } from '@arkilaunch/db';
 import type {
+  ChangeRequestCreate,
+  ChangeRequestResolve,
+  NegotiationMessageCreate,
+  NegotiationMessageResponse,
   BookingCreateRequest,
   BookingListQuery,
   BookingCreateResponse,
@@ -24,6 +32,13 @@ import { EventsService } from '../events/events.service.js';
 import { findAvailableAlternatives, overlappingAssignments } from '../common/equipment-availability.js';
 import { ownCustomer } from '../common/customer-scope.js';
 import { countRows } from '../common/count-rows.js';
+import { notifyBookingCustomer } from '../common/notify-customer.js';
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+// Once money has moved the customer asks rather than acts: a paid booking
+// is cancelled or moved only by staff, who also handle the manual refund.
+const CUSTOMER_SELF_CANCEL_STATUSES = ['pending'];
 
 // A booking IS a `rentals` row plus one `equipment_assignments` row per
 // item -- no new table (SDD §3's 35-table catalog already models an order
@@ -108,6 +123,8 @@ export class BookingsService {
           tenantId: ctx.tenantId,
           customerId,
           projectSiteId: body.projectSiteId,
+          siteContact: body.siteContact || null,
+          siteNotes: body.siteNotes || null,
           status: 'pending',
           startDate,
           endDate,
@@ -193,13 +210,7 @@ export class BookingsService {
   // status from `payments`.
   async get(ctx: RequestContext, id: string): Promise<BookingDetailResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const [rental] = await tx.select().from(rentals).where(eq(rentals.id, id)).limit(1);
-      if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
-
-      if (ctx.role === 'customer') {
-        const own = await ownCustomer(tx, ctx);
-        if (!own || rental.customerId !== own.id) throw new NotFoundException({ error: 'booking_not_found' });
-      }
+      const rental = await this.visibleRental(tx, ctx, id);
 
       const assignments = await tx
         .select()
@@ -229,6 +240,12 @@ export class BookingsService {
         .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
         .where(eq(projectSites.id, rental.projectSiteId))
         .limit(1);
+      const ledger = await resolveDepositLedger(tx, id);
+      const changeRows = await tx
+        .select()
+        .from(bookingChangeRequests)
+        .where(eq(bookingChangeRequests.rentalId, id))
+        .orderBy(desc(bookingChangeRequests.createdAt));
 
       return {
         id: rental.id,
@@ -237,6 +254,22 @@ export class BookingsService {
         siteCity: site?.city ?? null,
         siteProvince: site?.province ?? null,
         trackerUrl: `/orders/${rental.id}`,
+        siteContact: rental.siteContact,
+        siteNotes: rental.siteNotes,
+        createdAt: rental.createdAt,
+        deposit: {
+          required: ledger.depositRequired,
+          totalDeducted: ledger.totalDeducted,
+          deductions: ledger.deductions,
+        },
+        changeRequests: changeRows.map((row) => ({
+          id: row.id,
+          kind: row.kind,
+          requestedEnd: row.requestedEnd,
+          reason: row.reason,
+          status: row.status,
+          createdAt: row.createdAt,
+        })),
         items: assignments.map((assignment) => ({
           equipmentId: assignment.equipmentId,
           start: assignment.start,
@@ -244,7 +277,13 @@ export class BookingsService {
           status: assignment.status,
         })),
         quotation: quotation
-          ? { id: quotation.id, status: quotation.status, totalPhp: quotation.totalPhp !== null ? Number(quotation.totalPhp) : null }
+          ? {
+              id: quotation.id,
+              revision: quotation.revision,
+              status: quotation.status,
+              totalPhp: quotation.totalPhp !== null ? Number(quotation.totalPhp) : null,
+              createdAt: quotation.createdAt,
+            }
           : null,
         invoices: invoiceRows.map((invoice) => ({
           id: invoice.id,
@@ -264,33 +303,208 @@ export class BookingsService {
   }
 
   // PATCH /api/v1/bookings/:id/cancel ("modify orders", US-09). Frees the
-  // unit's assignments so a later booking can use the same window.
+  // unit's assignments so a later booking can use the same window. A
+  // customer can only do this before paying; after that it is a change
+  // request (requestChange) that staff resolve.
   async cancel(ctx: RequestContext, id: string) {
     return withTenantTx(ctx, async (tx) => {
-      const [rental] = await tx.select().from(rentals).where(eq(rentals.id, id)).limit(1);
-      if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
-
-      if (ctx.role === 'customer') {
-        const own = await ownCustomer(tx, ctx);
-        if (!own || rental.customerId !== own.id) throw new NotFoundException({ error: 'booking_not_found' });
-      }
+      const rental = await this.visibleRental(tx, ctx, id);
       if (rental.status === 'cancelled') {
         throw new ConflictException({ error: 'already_cancelled' });
       }
+      if (ctx.role === 'customer' && !CUSTOMER_SELF_CANCEL_STATUSES.includes(rental.status)) {
+        throw new ConflictException({ error: 'cancel_needs_request', status: rental.status });
+      }
+      await this.cancelRental(tx, ctx, id);
+      return { id, status: 'cancelled' };
+    });
+  }
 
-      await tx.update(rentals).set({ status: 'cancelled' }).where(eq(rentals.id, id));
-      await tx.update(equipmentAssignments).set({ status: 'cancelled' }).where(eq(equipmentAssignments.rentalId, id));
+  // GET /bookings/:id/messages: the negotiation thread, oldest first.
+  async listMessages(ctx: RequestContext, id: string): Promise<NegotiationMessageResponse[]> {
+    return withTenantTx(ctx, async (tx) => {
+      await this.visibleRental(tx, ctx, id);
+      const rows = await tx
+        .select()
+        .from(negotiationMessages)
+        .where(eq(negotiationMessages.rentalId, id))
+        .orderBy(asc(negotiationMessages.createdAt))
+        .limit(500);
+      return rows.map((row) => ({
+        id: row.id,
+        authorRole: row.authorRole === 'customer' ? 'customer' : 'staff',
+        mine: row.authorUserId === ctx.userId,
+        body: row.body,
+        offerPhp: row.offerPhp !== null ? Number(row.offerPhp) : null,
+        createdAt: row.createdAt,
+      }));
+    });
+  }
 
+  // POST /bookings/:id/messages. authorRole comes from the JWT role, never
+  // from the body.
+  async postMessage(ctx: RequestContext, id: string, body: NegotiationMessageCreate) {
+    return withTenantTx(ctx, async (tx) => {
+      const rental = await this.visibleRental(tx, ctx, id);
+      if (rental.status === 'cancelled') throw new ConflictException({ error: 'booking_cancelled' });
+      const authorRole = ctx.role === 'customer' ? 'customer' : 'staff';
+      const [row] = await tx
+        .insert(negotiationMessages)
+        .values({
+          tenantId: ctx.tenantId,
+          rentalId: id,
+          authorUserId: ctx.userId,
+          authorRole,
+          body: body.body,
+          offerPhp: body.offerPhp !== undefined ? String(body.offerPhp) : null,
+        })
+        .returning();
+      if (!row) throw new Error('negotiation_messages insert returned no row');
+      if (authorRole === 'staff') {
+        await notifyBookingCustomer(tx, ctx.tenantId, id, 'negotiation_reply', {
+          offer_php: body.offerPhp ?? null,
+        });
+      }
+      await this.events.emit(ctx, 'negotiation_message_posted', {
+        rental_id: id,
+        has_offer: body.offerPhp !== undefined,
+      });
+      return { id: row.id };
+    });
+  }
+
+  // POST /bookings/:id/change-requests (customer). One open request at a
+  // time, so staff never resolve two contradicting asks.
+  async requestChange(ctx: RequestContext, id: string, body: ChangeRequestCreate) {
+    return withTenantTx(ctx, async (tx) => {
+      const rental = await this.visibleRental(tx, ctx, id);
+      if (rental.status === 'cancelled') throw new ConflictException({ error: 'booking_cancelled' });
+      const requestedEnd = body.requestedEnd ? new Date(body.requestedEnd) : null;
+      if (body.kind === 'extend' && requestedEnd && rental.endDate && requestedEnd <= rental.endDate) {
+        throw new ConflictException({ error: 'extend_must_be_later' });
+      }
+      const [open] = await tx
+        .select()
+        .from(bookingChangeRequests)
+        .where(and(eq(bookingChangeRequests.rentalId, id), eq(bookingChangeRequests.status, 'pending')))
+        .limit(1);
+      if (open) throw new ConflictException({ error: 'change_request_open', id: open.id });
+
+      const [row] = await tx
+        .insert(bookingChangeRequests)
+        .values({
+          tenantId: ctx.tenantId,
+          rentalId: id,
+          kind: body.kind,
+          requestedEnd,
+          reason: body.reason || null,
+          requestedBy: ctx.userId,
+        })
+        .returning();
+      if (!row) throw new Error('booking_change_requests insert returned no row');
+      await this.events.emit(ctx, 'booking_change_requested', { rental_id: id, kind: body.kind });
+      return { id: row.id, status: row.status };
+    });
+  }
+
+  // PATCH /bookings/:id/change-requests/:requestId (staff). Approving an
+  // extension re-runs the double-booking check on the added days;
+  // approving a cancel frees the units. Refunds stay manual in PayMongo.
+  async resolveChange(ctx: RequestContext, id: string, requestId: string, body: ChangeRequestResolve) {
+    return withTenantTx(ctx, async (tx) => {
+      const [request] = await tx
+        .select()
+        .from(bookingChangeRequests)
+        .where(and(eq(bookingChangeRequests.id, requestId), eq(bookingChangeRequests.rentalId, id)))
+        .limit(1);
+      if (!request) throw new NotFoundException({ error: 'change_request_not_found' });
+      if (request.status !== 'pending') throw new ConflictException({ error: 'change_request_resolved' });
+
+      if (body.decision === 'approved') {
+        if (request.kind === 'cancel') {
+          await this.cancelRental(tx, ctx, id);
+        } else if (request.requestedEnd) {
+          await this.extendRental(tx, id, request.requestedEnd);
+        }
+      }
+
+      await tx
+        .update(bookingChangeRequests)
+        .set({ status: body.decision, resolvedBy: ctx.userId, resolvedAt: new Date() })
+        .where(eq(bookingChangeRequests.id, requestId));
       await tx.insert(auditLogs).values({
         tenantId: ctx.tenantId,
         actorId: ctx.userId,
-        action: 'UPDATE',
-        entity: 'rentals',
-        entityId: id,
+        action: body.decision === 'approved' ? 'APPROVE' : 'REJECT',
+        entity: 'booking_change_requests',
+        entityId: requestId,
       });
-      await this.events.emit(ctx, 'booking_cancelled', { rental_id: id });
-
-      return { id, status: 'cancelled' };
+      await notifyBookingCustomer(tx, ctx.tenantId, id, 'change_request_resolved', {
+        kind: request.kind,
+        decision: body.decision,
+      });
+      return { id: requestId, status: body.decision };
     });
+  }
+
+  private async extendRental(tx: Tx, id: string, newEnd: Date) {
+    const assignments = await tx
+      .select()
+      .from(equipmentAssignments)
+      .where(and(eq(equipmentAssignments.rentalId, id), ne(equipmentAssignments.status, 'cancelled')));
+    // Lock the units first, same as create(), so a concurrent booking of
+    // the added days serializes behind this check.
+    if (assignments.length > 0) {
+      await tx
+        .select()
+        .from(equipment)
+        .where(inArray(equipment.id, assignments.map((assignment) => assignment.equipmentId)))
+        .for('update');
+    }
+    for (const assignment of assignments) {
+      const from = assignment.end ?? assignment.start;
+      if (newEnd <= from) continue;
+      const clash = (
+        await overlappingAssignments(tx, assignment.equipmentId, {
+          start: from.toISOString(),
+          end: newEnd.toISOString(),
+        })
+      ).filter((other) => other.rentalId !== id);
+      if (clash.length > 0) {
+        throw new ConflictException({
+          error: 'equipment_unavailable',
+          reason: 'dates_taken',
+          equipmentId: assignment.equipmentId,
+        });
+      }
+      await tx.update(equipmentAssignments).set({ end: newEnd }).where(eq(equipmentAssignments.id, assignment.id));
+    }
+    await tx.update(rentals).set({ endDate: newEnd }).where(eq(rentals.id, id));
+  }
+
+  private async cancelRental(tx: Tx, ctx: RequestContext, id: string) {
+    await tx.update(rentals).set({ status: 'cancelled' }).where(eq(rentals.id, id));
+    await tx.update(equipmentAssignments).set({ status: 'cancelled' }).where(eq(equipmentAssignments.rentalId, id));
+    await tx.insert(auditLogs).values({
+      tenantId: ctx.tenantId,
+      actorId: ctx.userId,
+      action: 'UPDATE',
+      entity: 'rentals',
+      entityId: id,
+    });
+    await this.events.emit(ctx, 'booking_cancelled', { rental_id: id });
+  }
+
+  // Every per-booking endpoint starts here: RLS bounds the tenant, this
+  // bounds a customer to their own bookings (404, never 403, so an id is
+  // not confirmed to exist).
+  private async visibleRental(tx: Tx, ctx: RequestContext, id: string) {
+    const [rental] = await tx.select().from(rentals).where(eq(rentals.id, id)).limit(1);
+    if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
+    if (ctx.role === 'customer') {
+      const own = await ownCustomer(tx, ctx);
+      if (!own || rental.customerId !== own.id) throw new NotFoundException({ error: 'booking_not_found' });
+    }
+    return rental;
   }
 }
