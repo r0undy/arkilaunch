@@ -2,6 +2,8 @@ import { queryOptions } from '@tanstack/react-query';
 import type {
   BookingDetailResponse,
   NegotiationMessageResponse,
+  CompanyResponse,
+  CustomerSiteResponse,
   BookingListResponse,
   CatalogEquipment,
   CatalogEquipmentListResponse,
@@ -224,3 +226,25 @@ export function fleetUtilizationPct(report: UtilizationReportResponse | undefine
 }
 
 export type { CapabilitiesRef, CustomerRef, EquipmentTypeRef, ProjectSiteRef, RateCardRef, RentalRef };
+
+// Customer prerequisites CR: the caller's own companies and sites.
+export const companiesQueries = {
+  mine: () =>
+    queryOptions({
+      queryKey: ['me', 'companies'] as const,
+      queryFn: () => apiGet<CompanyResponse[]>('/me/companies'),
+    }),
+  review: (kycStatus: 'pending' | 'approved' | 'rejected') =>
+    queryOptions({
+      queryKey: ['customers', 'review', kycStatus] as const,
+      queryFn: () => apiGet<CompanyResponse[]>(`/customers/review?kycStatus=${kycStatus}`),
+    }),
+};
+
+export const customerSitesQueries = {
+  mine: () =>
+    queryOptions({
+      queryKey: ['me', 'sites'] as const,
+      queryFn: () => apiGet<CustomerSiteResponse[]>('/me/sites'),
+    }),
+};

@@ -1,7 +1,6 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { appLayoutRoute } from './_app.js';
-import { accountLayoutRoute } from './_account.js';
 import { fieldLayoutRoute } from './_field.js';
 import { PageHeader } from '../components/page-header.js';
 import { EmptyState } from '../components/empty-state.js';
@@ -98,21 +97,3 @@ export const fieldSettingsRoute = createRoute({
   ),
 });
 
-export const accountCompanyNewRoute = createRoute({
-  getParentRoute: () => accountLayoutRoute,
-  path: '/account/companies/new',
-  component: () => (
-    <GapScreen
-      eyebrow="My account"
-      title="Add a company"
-      description="Register another business against your account."
-      gapTitle="Company registration starts from the sign-up flow"
-      gap="POST /tenants/register is real, but it takes the personal details captured in the first registration step and there is no endpoint that attaches a second company to an account that already exists. Rather than duplicate the form here and submit half of it, this points at the flow that works end to end."
-      action={
-        <Link to="/register/company">
-          <Button variant="primary">Register a company</Button>
-        </Link>
-      }
-    />
-  ),
-});

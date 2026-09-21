@@ -1,0 +1,316 @@
+import { createRoute, Link, useNavigate } from '@tanstack/react-router';
+import { useState, type FormEvent, type ReactElement } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { CompanyResponse } from '@arkilaunch/shared';
+import { accountLayoutRoute } from './_account.js';
+import { apiErrorText, apiPost, apiPostForm } from '../lib/api-client.js';
+import { companiesQueries, customerSitesQueries } from '../lib/queries.js';
+import { formatStatus } from '../lib/format.js';
+import { PageHeader } from '../components/page-header.js';
+import { Surface } from '../components/surface.js';
+import { Button } from '../components/button.js';
+import { Input } from '../components/input.js';
+import { EmptyState } from '../components/empty-state.js';
+import { StatusPill, type StatusTone } from '../components/status-pill.js';
+import { AlertIcon, CheckIcon, ClockIcon } from '../components/icons.js';
+import { CaptureField } from '../components/capture-field.js';
+import { SiteDialog } from '../components/site-dialog.js';
+import { useToast } from '../components/toast.js';
+
+const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
+const DOC_LABELS: Record<string, string> = {
+  government_id: 'Government ID',
+  company_registration: 'Company registration',
+};
+
+export function VerificationPill({ status }: { status: string }) {
+  const meta: Record<string, { tone: StatusTone; label: string; icon: ReactElement }> = {
+    approved: { tone: 'recon-approved', label: 'Verified', icon: <CheckIcon /> },
+    rejected: { tone: 'recon-failed', label: 'Not verified', icon: <AlertIcon /> },
+  };
+  const m = meta[status] ?? { tone: 'recon-review' as StatusTone, label: 'Verification pending', icon: <ClockIcon /> };
+  return <StatusPill tone={m.tone} label={m.label} icon={m.icon} />;
+}
+
+function CompanyCard({ company }: { company: CompanyResponse }) {
+  const sites = useQuery(customerSitesQueries.mine());
+  const [siteOpen, setSiteOpen] = useState(false);
+  const mine = (sites.data ?? []).filter((site) => site.customerId === company.id);
+  const missing = Object.keys(DOC_LABELS).filter((type) => !company.documents.some((doc) => doc.documentType === type));
+
+  return (
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="font-display text-lg font-semibold text-text">{company.companyName}</h2>
+          <p className="text-sm text-text-muted">TIN {company.tin ?? '--'} &middot; {company.billingAddress ?? '--'}</p>
+        </div>
+        <VerificationPill status={company.kycStatus} />
+      </div>
+
+      <div className="flex flex-col gap-1 text-sm">
+        <h3 className={heading}>Documents</h3>
+        {company.documents.map((doc) => (
+          <p key={doc.id} className="text-text">
+            {DOC_LABELS[doc.documentType] ?? formatStatus(doc.documentType)}{' '}
+            <span className="text-text-muted">&middot; {formatStatus(doc.status)}</span>
+          </p>
+        ))}
+        {missing.length > 0 && (
+          <p className="text-text-muted">
+            Still needed: {missing.map((type) => DOC_LABELS[type]).join(', ')}.{' '}
+            <Link to="/account/companies/$companyId/documents" params={{ companyId: company.id }} className="text-accent underline">
+              Upload
+            </Link>
+          </p>
+        )}
+        {company.kycStatus === 'pending' && missing.length === 0 && (
+          <p className="text-text-muted">The rental team is checking your documents. You can already request quotes.</p>
+        )}
+        {company.kycStatus === 'rejected' && (
+          <p className="text-text-muted">
+            Verification was declined. <Link to="/contact" className="underline">Contact the rental team</Link> to fix it.
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 text-sm">
+        <h3 className={heading}>Project sites</h3>
+        {mine.length === 0 && <p className="text-text-muted">No sites yet.</p>}
+        {mine.map((site) => (
+          <p key={site.id} className="text-text">
+            {site.line1}, {site.city}, {site.province}
+          </p>
+        ))}
+        <Button variant="secondary" className="self-start" onClick={() => setSiteOpen(true)}>
+          Add a site
+        </Button>
+      </div>
+      <SiteDialog open={siteOpen} onClose={() => setSiteOpen(false)} customerId={company.id} />
+    </Surface>
+  );
+}
+
+function CompaniesPage() {
+  const companies = useQuery(companiesQueries.mine());
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="My account"
+        title="Companies"
+        description="The businesses you rent for, their verification, and where you deliver."
+        actions={
+          <Link to="/account/companies/new">
+            <Button variant="primary">Add a company</Button>
+          </Link>
+        }
+      />
+      {companies.isPending && <p className="text-sm text-text-muted">Loading...</p>}
+      {companies.isError && <p className="text-sm text-error">{apiErrorText(companies.error)}</p>}
+      {companies.data?.length === 0 && (
+        <EmptyState
+          title="Add your company first"
+          description="We need the company you are renting for before a booking: its TIN, billing address, an ID and its registration."
+          action={
+            <Link to="/account/companies/new">
+              <Button variant="primary">Add a company</Button>
+            </Link>
+          }
+        />
+      )}
+      {companies.data?.map((company) => <CompanyCard key={company.id} company={company} />)}
+    </div>
+  );
+}
+
+// Upload both documents, one request each. Shared by the new-company form
+// and the "upload what is still missing" screen.
+async function uploadDocuments(companyId: string, files: { governmentId: File | null; registration: File | null }) {
+  if (files.governmentId) {
+    await apiPostForm(`/me/companies/${companyId}/documents`, { documentType: 'government_id' }, files.governmentId);
+  }
+  if (files.registration) {
+    await apiPostForm(`/me/companies/${companyId}/documents`, { documentType: 'company_registration' }, files.registration);
+  }
+}
+
+function DocumentFields({
+  governmentId,
+  registration,
+  onGovernmentId,
+  onRegistration,
+}: {
+  governmentId: File | null;
+  registration: File | null;
+  onGovernmentId: (file: File | null) => void;
+  onRegistration: (file: File | null) => void;
+}) {
+  return (
+    <>
+      <CaptureField id="doc-government-id" label="Government ID" accept="image/*,application/pdf" value={governmentId} onChange={onGovernmentId} />
+      <CaptureField
+        id="doc-registration"
+        label="Company registration (SEC or DTI)"
+        accept="image/*,application/pdf"
+        value={registration}
+        onChange={onRegistration}
+      />
+    </>
+  );
+}
+
+// Figma 582:3946 / 168:2442 "Add New Company".
+function NewCompanyPage() {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [companyName, setCompanyName] = useState('');
+  const [tin, setTin] = useState('');
+  const [billingAddress, setBillingAddress] = useState('');
+  const [contactName, setContactName] = useState('');
+  const [contactMobile, setContactMobile] = useState('');
+  const [governmentId, setGovernmentId] = useState<File | null>(null);
+  const [registration, setRegistration] = useState<File | null>(null);
+  const [accepted, setAccepted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    let created: CompanyResponse | null = null;
+    try {
+      created = await apiPost<CompanyResponse>('/me/companies', { companyName, tin, billingAddress, contactName, contactMobile });
+      await uploadDocuments(created.id, { governmentId, registration });
+      await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
+      toast.success('Company added', 'The rental team will verify it. You can request quotes now.');
+      await navigate({ to: '/account/companies' });
+    } catch (err) {
+      // The company exists even if an upload failed; say so, and send the
+      // customer to finish the upload rather than create a duplicate.
+      if (created) {
+        await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
+        toast.error('Company saved, but a document did not upload', apiErrorText(err));
+        await navigate({ to: '/account/companies' });
+        return;
+      }
+      setError(apiErrorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader eyebrow="My account" title="Add a company" description="The business you are renting equipment for." />
+      <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <Input label="Company name" required maxLength={200} value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+          <Input
+            label="TIN"
+            required
+            inputMode="numeric"
+            placeholder="000-000-000-000"
+            pattern="\d{3}-?\d{3}-?\d{3}(-?\d{3})?"
+            hint="9 or 12 digits."
+            value={tin}
+            onChange={(e) => setTin(e.target.value)}
+          />
+          <Input label="Complete billing address" required maxLength={500} value={billingAddress} onChange={(e) => setBillingAddress(e.target.value)} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input label="Contact person" required maxLength={200} value={contactName} onChange={(e) => setContactName(e.target.value)} />
+            <Input label="Contact mobile" type="tel" required maxLength={30} value={contactMobile} onChange={(e) => setContactMobile(e.target.value)} />
+          </div>
+          <DocumentFields governmentId={governmentId} registration={registration} onGovernmentId={setGovernmentId} onRegistration={setRegistration} />
+          <label className="flex items-start gap-2 text-sm text-text">
+            <input
+              type="checkbox"
+              required
+              checked={accepted}
+              onChange={(e) => setAccepted(e.target.checked)}
+              className="mt-1 h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+            />
+            <span>
+              I confirm these documents are genuine and consent to the rental team reviewing them under the{' '}
+              <Link to="/privacy" className="underline">Privacy Policy</Link>.
+            </span>
+          </label>
+          {error && (
+            <p role="alert" className="text-sm text-error">
+              {error}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" variant="primary" loading={busy} disabled={!accepted}>
+              Submit
+            </Button>
+            <Link to="/account/companies">
+              <Button type="button" variant="ghost">
+                Cancel
+              </Button>
+            </Link>
+          </div>
+          <p className="text-xs text-text-muted">You can upload the documents later, but payment opens only once the company is verified.</p>
+        </form>
+      </Surface>
+    </div>
+  );
+}
+
+function CompanyDocumentsPage() {
+  const { companyId } = accountCompanyDocumentsRoute.useParams();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [governmentId, setGovernmentId] = useState<File | null>(null);
+  const [registration, setRegistration] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await uploadDocuments(companyId, { governmentId, registration });
+      await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
+      toast.success('Documents uploaded');
+      await navigate({ to: '/account/companies' });
+    } catch (err) {
+      toast.error('Upload failed', apiErrorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader eyebrow="Companies" title="Upload documents" />
+      <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <DocumentFields governmentId={governmentId} registration={registration} onGovernmentId={setGovernmentId} onRegistration={setRegistration} />
+          <Button type="submit" variant="primary" loading={busy} disabled={!governmentId && !registration}>
+            Upload
+          </Button>
+        </form>
+      </Surface>
+    </div>
+  );
+}
+
+export const accountCompaniesRoute = createRoute({
+  getParentRoute: () => accountLayoutRoute,
+  path: '/account/companies',
+  component: CompaniesPage,
+});
+
+export const accountCompanyNewRoute = createRoute({
+  getParentRoute: () => accountLayoutRoute,
+  path: '/account/companies/new',
+  component: NewCompanyPage,
+});
+
+export const accountCompanyDocumentsRoute = createRoute({
+  getParentRoute: () => accountLayoutRoute,
+  path: '/account/companies/$companyId/documents',
+  component: CompanyDocumentsPage,
+});
