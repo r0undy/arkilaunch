@@ -30,6 +30,23 @@ export function addToCart(item: CartItem): void {
   saveCart([...getCart(), item]);
 }
 
+// Keeps end after start: moving the start past the end drags the end along
+// by a day, since the API refuses an end that is not after the start.
+export function updateCartItem(index: number, patch: Partial<Pick<CartItem, 'start' | 'end'>>): void {
+  saveCart(
+    getCart().map((item, i) => {
+      if (i !== index) return item;
+      const next = { ...item, ...patch };
+      if (new Date(next.end) <= new Date(next.start)) {
+        const end = new Date(next.start);
+        end.setDate(end.getDate() + 1);
+        next.end = end.toISOString();
+      }
+      return next;
+    }),
+  );
+}
+
 export function removeFromCart(index: number): void {
   saveCart(getCart().filter((_, i) => i !== index));
 }
@@ -38,9 +55,8 @@ export function clearCart(): void {
   sessionStorage.removeItem(CART_KEY);
 }
 
-// A 1-day rental starting tomorrow -- a reasonable default the account/cart
-// page lets the customer adjust before submitting; there is no date-picker
-// UI on the equipment detail page itself.
+// A 1-day rental starting tomorrow -- a default the cart's date fields let
+// the customer adjust before submitting.
 export function defaultRentalWindow(): { start: string; end: string } {
   const start = new Date();
   start.setDate(start.getDate() + 1);
