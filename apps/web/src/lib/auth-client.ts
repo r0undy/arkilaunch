@@ -1,4 +1,5 @@
 import type {
+  CustomerSignup,
   AuthTokens,
   LoginRequest,
   RefreshRequest,
@@ -82,6 +83,13 @@ export async function login(request: LoginRequest): Promise<AuthTokens | TwoFaCh
   const response = await postJson<AuthTokens | TwoFaChallenge>('/auth/login', request);
   if (isAuthTokens(response)) storeTokens(response);
   return response;
+}
+
+// POST /auth/register-customer: storefront self-signup, signed straight in.
+export async function registerCustomer(request: CustomerSignup): Promise<AuthTokens> {
+  const tokens = await postJson<AuthTokens>('/auth/register-customer', request);
+  storeTokens(tokens);
+  return tokens;
 }
 
 export async function refresh(request: RefreshRequest): Promise<AuthTokens> {
