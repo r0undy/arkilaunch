@@ -153,10 +153,12 @@ async function main() {
       .from(schema.users)
       .where(and(eq(schema.users.tenantId, tenant.id), eq(schema.users.roleId, customerRoleId)));
     const [customerRowForLink] = await db.select().from(schema.customers).where(eq(schema.customers.tenantId, tenant.id));
-    if (customerUser && customerRowForLink && customerRowForLink.userId !== customerUser.id) {
+    // The fixture customer is a verified company, so checkout (which now
+    // waits for company verification) stays testable.
+    if (customerUser && customerRowForLink) {
       await db
         .update(schema.customers)
-        .set({ userId: customerUser.id })
+        .set({ userId: customerUser.id, kycStatus: 'approved' })
         .where(eq(schema.customers.id, customerRowForLink.id));
     }
 
