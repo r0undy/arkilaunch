@@ -74,6 +74,10 @@ export const rentals = pgTable(
       .notNull()
       .references(() => projectSites.id),
     status: text('status').notNull().default('draft'),
+    // Figma 168:1982 "Logistics & Delivery": who meets the truck and how to
+    // get it on site. Free text the customer types at the cart.
+    siteContact: text('site_contact'),
+    siteNotes: text('site_notes'),
     startDate: timestamp('start_date', { withTimezone: true }).notNull(),
     endDate: timestamp('end_date', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -212,5 +216,70 @@ export const equipmentAssignments = pgTable(
   },
   (table) => [tenantIsolationPolicy(),
     index('equipment_assignments_tenant_id_idx').on(table.tenantId),
+  ],
+);
+
+// Customer journey CR (docs/cr-arkilaunch-customer-journey.md). The
+// negotiation thread behind the Figma "Messenger Chat Nego" frames: plain
+// messages, some carrying a price offer. It is a record of the haggling,
+// not the price itself -- the agreed number still lands as a quotation
+// revision priced by the engine (RFC-3), so nothing here is ever charged.
+export const negotiationMessages = pgTable(
+  'negotiation_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    rentalId: uuid('rental_id')
+      .notNull()
+      .references(() => rentals.id),
+    authorUserId: uuid('author_user_id')
+      .notNull()
+      .references(() => users.id),
+    authorRole: text('author_role').notNull(), // customer | staff
+    body: text('body').notNull(),
+    offerPhp: numeric('offer_php', { precision: 14, scale: 2 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    tenantIsolationPolicy(),
+    index('negotiation_messages_tenant_id_idx').on(t.tenantId),
+    index('negotiation_messages_rental_id_idx').on(t.rentalId),
+    check('negotiation_messages_offer_nonneg_chk', sql`${t.offerPhp} IS NULL OR ${t.offerPhp} >= 0`),
+  ],
+);
+
+// Figma 231:5204 Extend Rental, plus cancel-after-payment. A customer asks,
+// staff resolve; a paid booking is never cancelled or moved by the customer
+// alone because the refund or the new window has to be checked by a person.
+export const bookingChangeRequests = pgTable(
+  'booking_change_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    rentalId: uuid('rental_id')
+      .notNull()
+      .references(() => rentals.id),
+    kind: text('kind').notNull(), // extend | cancel
+    requestedEnd: timestamp('requested_end', { withTimezone: true }),
+    reason: text('reason'),
+    status: text('status').notNull().default('pending'), // pending | approved | rejected
+    requestedBy: uuid('requested_by')
+      .notNull()
+      .references(() => users.id),
+    resolvedBy: uuid('resolved_by').references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (t) => [
+    tenantIsolationPolicy(),
+    index('booking_change_requests_tenant_id_idx').on(t.tenantId),
+    index('booking_change_requests_rental_id_idx').on(t.rentalId),
+    check('booking_change_requests_kind_chk', sql`${t.kind} IN ('extend', 'cancel')`),
+    check('booking_change_requests_status_chk', sql`${t.status} IN ('pending', 'approved', 'rejected')`),
+    check('booking_change_requests_extend_end_chk', sql`${t.kind} <> 'extend' OR ${t.requestedEnd} IS NOT NULL`),
   ],
 );
