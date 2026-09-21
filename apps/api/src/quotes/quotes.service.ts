@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   DEFAULT_DEPOSIT_PHP,
   auditLogs,
@@ -92,11 +92,31 @@ export class QuotesService {
   async create(ctx: RequestContext, body: QuoteRequest): Promise<QuoteResponse> {
     const startedAt = Date.now();
     const result = await withTenantTx(ctx, async (tx) => {
+      // A booking has one live quote. Quoting it again is a new revision
+      // that supersedes every open one, so an older, cheaper approved quote
+      // can never still be accepted after the price moved.
+      let revision = 1;
+      let parentQuotationId: string | null = null;
       if (body.rentalId) {
         const [rental] = await tx.select().from(rentals).where(eq(rentals.id, body.rentalId)).limit(1);
         if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
         if (rental.customerId !== body.customerId) {
           throw new ConflictException({ error: 'quote_customer_mismatch' });
+        }
+        const [latest] = await tx
+          .select()
+          .from(quotations)
+          .where(eq(quotations.rentalId, body.rentalId))
+          .orderBy(desc(quotations.createdAt))
+          .limit(1);
+        if (latest?.status === 'accepted') throw new ConflictException({ error: 'quote_already_accepted' });
+        if (latest) {
+          revision = latest.revision + 1;
+          parentQuotationId = latest.id;
+          await tx
+            .update(quotations)
+            .set({ status: 'superseded' })
+            .where(and(eq(quotations.rentalId, body.rentalId), inArray(quotations.status, ['draft', 'approved', 'rejected'])));
         }
       }
 
@@ -108,7 +128,8 @@ export class QuotesService {
           tenantId: ctx.tenantId,
           customerId: body.customerId,
           rentalId: body.rentalId ?? null,
-          revision: 1,
+          revision,
+          parentQuotationId,
           status: 'draft',
           dieselPriceSnapshot: String(priced.diesel.pricePhp),
           priceStale: String(priced.diesel.stale),
