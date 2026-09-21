@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CHECKOUT_METHODS } from './payments-port.js';
 
 // PayMongo webhook event envelope (PRD-F2), verified 2026-08-02 against
 // docs.paymongo.com/reference/webhook-resource +
@@ -41,3 +42,10 @@ export const PaymongoEventEnvelopeSchema = z.object({
   }),
 });
 export type PaymongoEventEnvelope = z.infer<typeof PaymongoEventEnvelopeSchema>;
+
+// POST /bookings/:id/checkout body. Optional so the old empty-body call
+// keeps working and PayMongo offers every channel.
+export const CheckoutRequestSchema = z.object({
+  method: z.enum(CHECKOUT_METHODS).optional(),
+});
+export type CheckoutRequest = z.infer<typeof CheckoutRequestSchema>;
