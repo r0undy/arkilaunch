@@ -165,7 +165,7 @@ function LoginPage() {
 
         <p className="mt-6 text-center text-sm text-text-muted">
           No account yet?{' '}
-          <Link to="/register" className="font-semibold text-accent hover:underline">
+          <Link to="/signup" className="font-semibold text-accent hover:underline">
             Create an account
           </Link>
         </p>

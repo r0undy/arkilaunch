@@ -154,3 +154,28 @@ function isDuplicatePendingApplication(err: unknown): boolean {
     (err as { message: string }).message.includes('duplicate_pending_application')
   );
 }
+
+export class EmailTakenError extends Error {}
+
+// Pre-tenant-context write for POST /auth/register-customer (migration
+// 0023 customer_register). The slug is the API's ANCHOR_TENANT_SLUG, never
+// a client value.
+export async function registerCustomerUser(
+  tenantSlug: string,
+  email: string,
+  passwordHash: string,
+): Promise<{ tenantId: string; userId: string }> {
+  try {
+    const rows = await db.execute<{ tenant_id: string; user_id: string }>(
+      sql`select * from customer_register(${tenantSlug}, ${email}, ${passwordHash})`,
+    );
+    const row = rows[0];
+    if (!row) throw new Error('customer_register returned no row');
+    return { tenantId: row.tenant_id, userId: row.user_id };
+  } catch (err) {
+    // Drizzle wraps the Postgres error; its RAISE message is on `cause`.
+    const e = err as { message?: unknown; cause?: { message?: unknown } };
+    if (/email_taken/.test(`${String(e?.message)} ${String(e?.cause?.message)}`)) throw new EmailTakenError('email_taken');
+    throw err;
+  }
+}

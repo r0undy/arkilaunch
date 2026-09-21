@@ -48,7 +48,7 @@ export function FloatingNav({ className }: { className?: string }) {
           Sign in
         </Button>
       </Link>
-      <Link to="/register">
+      <Link to="/signup">
         <Button size="default" variant="primary">
           Register
         </Button>

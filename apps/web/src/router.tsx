@@ -12,6 +12,7 @@ import { privacyRoute } from './routes/privacy.js';
 
 import { authLayoutRoute } from './routes/_auth.js';
 import { loginRoute } from './routes/login.js';
+import { signupRoute } from './routes/signup.js';
 import { registerRoute } from './routes/register.js';
 import { registerCompanyRoute } from './routes/register.company.js';
 import { registerPendingRoute } from './routes/register.pending.js';
@@ -77,12 +78,16 @@ import {
   appTicketsRoute,
   appSecurityLogsRoute,
   fieldSettingsRoute,
-  accountCompanyNewRoute,
 } from './routes/unbacked-screens.js';
+import {
+  accountCompaniesRoute,
+  accountCompanyNewRoute,
+  accountCompanyDocumentsRoute,
+} from './routes/account.companies.js';
 
 export const routeTree = rootRoute.addChildren([
   publicLayoutRoute.addChildren([indexRoute, equipmentRoute, equipmentDetailRoute, contactRoute, helpRoute, termsRoute, privacyRoute]),
-  authLayoutRoute.addChildren([loginRoute, registerRoute, registerCompanyRoute, registerPendingRoute, activateRoute]),
+  authLayoutRoute.addChildren([loginRoute, signupRoute, registerRoute, registerCompanyRoute, registerPendingRoute, activateRoute]),
   accountLayoutRoute.addChildren([
     accountIndexRoute,
     accountBookingsRoute,
@@ -96,7 +101,9 @@ export const routeTree = rootRoute.addChildren([
     accountNotificationsRoute,
     accountBookingRoute,
     accountBookingExtendRoute,
+    accountCompaniesRoute,
     accountCompanyNewRoute,
+    accountCompanyDocumentsRoute,
     accountNegotiationRoute,
     accountNegotiationChatRoute,
     accountNegotiationCallRoute,

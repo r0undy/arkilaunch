@@ -20,6 +20,7 @@ import {
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { notifyBookingCustomer } from '../common/notify-customer.js';
+import { ownsCustomer } from '../common/customer-scope.js';
 import { verifyPaymongoSignature } from './signature.js';
 import { PAYMENTS_PORT } from './payments.tokens.js';
 
@@ -56,8 +57,15 @@ export class PaymentsService {
       if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
 
       if (ctx.role === 'customer') {
-        const [own] = await tx.select().from(customers).where(eq(customers.userId, ctx.userId)).limit(1);
-        if (!own || rental.customerId !== own.id) throw new NotFoundException({ error: 'booking_not_found' });
+        if (!(await ownsCustomer(tx, ctx, rental.customerId))) throw new NotFoundException({ error: 'booking_not_found' });
+      }
+
+      // Customer prerequisites CR: a booking can be quoted before its
+      // company is verified, but money moves only once staff have checked
+      // the company's ID and registration.
+      const [company] = await tx.select().from(customers).where(eq(customers.id, rental.customerId)).limit(1);
+      if (company?.kycStatus !== 'approved') {
+        throw new ConflictException({ error: 'company_not_verified', status: company?.kycStatus ?? null });
       }
 
       // QAD-T31 (resource abuse / cost bomb): a rapid repeated burst of

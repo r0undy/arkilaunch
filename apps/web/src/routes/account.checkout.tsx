@@ -1,9 +1,9 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { BookingDetailResponse, CheckoutMethod } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
-import { bookingsQueries } from '../lib/queries.js';
+import { bookingsQueries, companiesQueries } from '../lib/queries.js';
 import { ApiError, apiErrorText, apiPost } from '../lib/api-client.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
@@ -98,6 +98,7 @@ function checkoutError(err: unknown): string {
   if (err instanceof ApiError) {
     const code = err.message;
     if (code === 'quote_not_accepted') return 'Accept the quote on the negotiation page before paying.';
+    if (code === 'company_not_verified') return 'Your company is still being verified. Payment opens once it is.';
     if (code === 'already_paid') return 'This booking is already paid. The receipt is on the booking page.';
     if (code === 'rate_limited') return 'Too many payment attempts just now. Wait a minute and try again.';
   }
@@ -124,6 +125,26 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
       setUnavailable(true);
     },
   });
+
+  const companies = useQuery(companiesQueries.mine());
+  const company = companies.data?.find((c) => c.id === booking.customerId);
+  if (company && company.kycStatus !== 'approved') {
+    return (
+      <EmptyState
+        title={company.kycStatus === 'rejected' ? 'Company not verified' : 'Waiting for verification'}
+        description={
+          company.kycStatus === 'rejected'
+            ? `${company.companyName} could not be verified, so this booking cannot be paid yet. Contact the rental team to sort it out.`
+            : `The rental team is checking ${company.companyName}'s documents. Your quote is safe; you will get a notification when payment opens.`
+        }
+        action={
+          <Link to="/account/companies">
+            <Button variant="primary">View company</Button>
+          </Link>
+        }
+      />
+    );
+  }
 
   if (booking.quotation && booking.quotation.status !== 'accepted') {
     return (

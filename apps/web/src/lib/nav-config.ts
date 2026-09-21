@@ -40,6 +40,7 @@ export const ACCOUNT_NAV: NavGroup[] = [
       { label: 'Home', to: '/account', icon: LayoutDashboard },
       { label: 'Browse equipment', to: '/equipment', icon: Boxes },
       { label: 'My bookings', to: '/account/bookings', icon: ShoppingCart },
+      { label: 'Companies', to: '/account/companies', icon: Store },
       { label: 'Applications', to: '/account/applications', icon: FileText },
       { label: 'Notifications', to: '/account/notifications', icon: Bell },
       { label: 'Settings', to: '/account/settings', icon: Settings },
