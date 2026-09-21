@@ -28,12 +28,16 @@ export const projectSites = pgTable(
     addressId: uuid('address_id')
       .notNull()
       .references(() => addresses.id),
+    // The company this site belongs to when a customer added it; null for
+    // the yard's own sites. Scopes which sites a customer can book onto.
+    customerId: uuid('customer_id').references(() => customers.id),
     latitude: numeric('latitude', { precision: 9, scale: 6 }).notNull(),
     longitude: numeric('longitude', { precision: 9, scale: 6 }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [tenantIsolationPolicy(),
     index('project_sites_tenant_id_idx').on(table.tenantId),
+    index('project_sites_customer_id_idx').on(table.customerId),
   ],
 );
 
