@@ -51,10 +51,13 @@ describe('BookingsService (PRD-F8)', () => {
     // shared unit, which DO have invoices/payments attached (checkout()) --
     // those must clear first or the rentals delete violates the
     // invoices_rental_id_rentals_id_fk constraint (same order
-    // payments-engine.spec.ts's own cleanup already uses).
+    // payments-engine.spec.ts's own cleanup already uses). Capped below
+    // 2032: the customer-journey, onboarding and delivery specs own the
+    // 2032-* windows on this unit and clean their own (they carry invoice
+    // line items and quotes this cleanup does not know about).
     const staleAssignments = await sql`
       select id, rental_id from equipment_assignments
-      where equipment_id = ${(equipmentRow as { id: string }).id} and start >= '2030-01-01'
+      where equipment_id = ${(equipmentRow as { id: string }).id} and start >= '2030-01-01' and start < '2032-01-01'
     `;
     const rentalIds = staleAssignments.map((row) => (row as { rental_id: string }).rental_id);
     if (staleAssignments.length > 0) {

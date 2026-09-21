@@ -45,7 +45,7 @@ describe('PaymentsService (PRD-F2)', () => {
     // this unit from a prior run (same rationale as bookings-engine.spec.ts).
     const staleAssignments = await sql`
       select id, rental_id from equipment_assignments
-      where equipment_id = ${equipmentIdA} and start >= '2031-01-01'
+      where equipment_id = ${equipmentIdA} and start >= '2031-01-01' and start < '2032-01-01'
     `;
     const rentalIds = staleAssignments.map((row) => (row as { rental_id: string }).rental_id);
     if (staleAssignments.length > 0) {
@@ -200,6 +200,15 @@ describe('PaymentsService (PRD-F2)', () => {
         }
       }
       expect(rateLimited).toBe(true);
+
+      // Leave no throttle behind: the window is tenant-wide, so the burst
+      // would 429 whichever checkout spec runs next inside the minute.
+      const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+      await sql`
+        update payments set created_at = now() - interval '5 minutes'
+        where invoice_id in (select id from invoices where rental_id = any(${bookingIds}))
+      `;
+      await sql.end();
     },
     60_000,
   );
