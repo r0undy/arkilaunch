@@ -173,7 +173,9 @@ export async function registerCustomerUser(
     if (!row) throw new Error('customer_register returned no row');
     return { tenantId: row.tenant_id, userId: row.user_id };
   } catch (err) {
-    if (/email_taken/.test(String((err as { message?: unknown })?.message ?? err))) throw new EmailTakenError('email_taken');
+    // Drizzle wraps the Postgres error; its RAISE message is on `cause`.
+    const e = err as { message?: unknown; cause?: { message?: unknown } };
+    if (/email_taken/.test(`${String(e?.message)} ${String(e?.cause?.message)}`)) throw new EmailTakenError('email_taken');
     throw err;
   }
 }

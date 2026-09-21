@@ -1,10 +1,18 @@
-import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { createHash } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
-import { findUserByEmailForAuth, users, withTenantTx } from '@arkilaunch/db';
+import { EmailTakenError, findUserByEmailForAuth, registerCustomerUser, users, withTenantTx } from '@arkilaunch/db';
 import { eq } from 'drizzle-orm';
 import type {
+  CustomerSignup,
   AuthTokens,
   Enroll2faConfirmRequest,
   LoginRequest,
@@ -99,6 +107,25 @@ export class AuthService {
     }
 
     return this.issueTokens(user.tenantId, user.id, user.roleName);
+  }
+
+  // POST /auth/register-customer (customer prerequisites CR): self-signup
+  // on the storefront. The login lands in the storefront tenant named by
+  // ANCHOR_TENANT_SLUG -- server config, never the request -- and is signed
+  // straight in, the same as a login. 'email_taken' does reveal that an
+  // address has an account, which every signup form does; login keeps its
+  // no-enumeration posture.
+  async registerCustomer({ email, password }: CustomerSignup): Promise<AuthTokens> {
+    const slug = process.env.ANCHOR_TENANT_SLUG;
+    if (!slug) throw new ServiceUnavailableException({ error: 'signup_unavailable' });
+    const passwordHash = await hash(password);
+    try {
+      const created = await registerCustomerUser(slug, email.toLowerCase(), passwordHash);
+      return this.issueTokens(created.tenantId, created.userId, 'customer');
+    } catch (err) {
+      if (err instanceof EmailTakenError) throw new ConflictException({ error: 'email_taken' });
+      throw err;
+    }
   }
 
   // POST /auth/2fa/verify: completes the challenge from login() and issues
