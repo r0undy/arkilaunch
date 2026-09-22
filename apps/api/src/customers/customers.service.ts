@@ -21,6 +21,7 @@ import {
   ExtractionUnavailableError,
   SEC_REGEX,
   TIN_REGEX,
+  type CompanyDocumentReadResponse,
   type DocumentIntelligencePort,
   type KycScanResponse,
 } from '@arkilaunch/shared';
@@ -120,7 +121,10 @@ export class CustomersService {
         isPrimary: 'true',
       });
       await this.events.emit(ctx, 'company_created', { customer_id: row.id });
-      await notifyStaff(tx, ctx.tenantId, 'company_submitted', { customer_id: row.id, company_name: row.companyName });
+      await notifyStaff(tx, ctx.tenantId, 'company_submitted', {
+        customer_id: row.id,
+        company_name: row.companyName,
+      });
       return { ...toCompany(row), documents: [] };
     });
   }
@@ -223,8 +227,97 @@ export class CustomersService {
     });
   }
 
-  // Verification is a human decision on the uploaded ID and registration;
-  // nothing here reads or trusts OCR.
+  /**
+   * POST /customers/:id/documents/:documentId/read. A reviewer's "Read
+   * document" click: extracts what it can from the document already in
+   * storage and saves it on the row as evidence.
+   *
+   * It decides nothing. `kyc_status` is untouched, the values land in
+   * `ocr_payload`/`format_valid`/`confidence` for the reviewer to edit, and
+   * approval stays the explicit decide() call (RFC-2's human gate). A value
+   * failing its format check is reported as invalid rather than hidden: a
+   * reviewer told "TIN read as 12-34, format invalid" is better informed
+   * than one shown nothing.
+   */
+  async readDocument(
+    ctx: RequestContext,
+    customerId: string,
+    documentId: string,
+    bytes: Buffer,
+  ): Promise<CompanyDocumentReadResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [doc] = await tx
+        .select()
+        .from(kycDocuments)
+        .where(and(eq(kycDocuments.id, documentId), eq(kycDocuments.customerId, customerId)))
+        .limit(1);
+      if (!doc) throw new NotFoundException({ error: 'document_not_found' });
+
+      let result;
+      try {
+        result = await this.port.analyze(KYC_MODEL_ID, bytes);
+      } catch (error) {
+        if (!(error instanceof ExtractionUnavailableError)) throw error;
+        await this.events.emit(ctx, 'ocr_extraction_unavailable', {
+          doc_type: 'company_document',
+          reason: error.reason,
+        });
+        return {
+          documentId,
+          suggestions: { companyName: null, tin: null, secNumber: null },
+          formatValid: { tin: false, secNumber: false },
+          confidence: null,
+          extractionAvailable: false,
+        };
+      }
+
+      const nameField = result.fields.company_name ?? null;
+      const tinField = result.fields.tin ?? null;
+      const secField = result.fields.sec_number ?? null;
+      const formatValid = {
+        tin: tinField ? TIN_REGEX.test(tinField.value) : false,
+        secNumber: secField ? SEC_REGEX.test(secField.value) : false,
+      };
+      // The lowest confidence of whatever was found: a reviewer should judge
+      // a document by its weakest field, not its strongest.
+      const found = [nameField, tinField, secField].filter((f) => f !== null);
+      const confidence = found.length > 0 ? Math.min(...found.map((f) => f!.confidence)) : null;
+
+      await tx
+        .update(kycDocuments)
+        .set({
+          ocrPayload: {
+            ...(nameField
+              ? { company_name: nameField.value, company_name_confidence: nameField.confidence }
+              : {}),
+            ...(tinField ? { tin: tinField.value, tin_confidence: tinField.confidence } : {}),
+            ...(secField
+              ? { sec_number: secField.value, sec_confidence: secField.confidence }
+              : {}),
+          },
+          formatValid: { tin: formatValid.tin, sec_number: formatValid.secNumber },
+          ...(confidence === null ? {} : { confidence: confidence.toFixed(4) }),
+          status: 'needs_review', // never 'verified': that is decide()'s to set
+        })
+        .where(eq(kycDocuments.id, documentId));
+
+      return {
+        documentId,
+        suggestions: {
+          companyName: nameField?.value ?? null,
+          tin: tinField?.value ?? null,
+          secNumber: secField?.value ?? null,
+        },
+        formatValid,
+        confidence,
+        extractionAvailable: true,
+      };
+    });
+  }
+
+  // Verification is a human decision on the uploaded ID and registration.
+  // OCR never reaches this: a corrected value here was confirmed by the
+  // reviewer with the document in front of them.
   async decide(ctx: RequestContext, customerId: string, body: CompanyDecision) {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
@@ -232,10 +325,46 @@ export class CustomersService {
       if (row.kycStatus === body.decision)
         throw new ConflictException({ error: 'already_decided' });
 
+      // Approving with corrections writes what the reviewer confirmed
+      // against the document, so a verified company carries the registered
+      // name and TIN rather than whatever was typed at signup.
+      const corrections =
+        body.decision === 'approved'
+          ? {
+              ...(body.companyName ? { companyName: body.companyName } : {}),
+              ...(body.tin ? { tin: body.tin } : {}),
+            }
+          : {};
       await tx
         .update(customers)
-        .set({ kycStatus: body.decision })
+        .set({ kycStatus: body.decision, ...corrections })
         .where(eq(customers.id, customerId));
+      // The company has no SEC column; the reviewer-confirmed number is
+      // evidence on the registration document it was read from.
+      if (body.decision === 'approved' && body.secNumber) {
+        const [registration] = await tx
+          .select()
+          .from(kycDocuments)
+          .where(
+            and(
+              eq(kycDocuments.customerId, customerId),
+              eq(kycDocuments.documentType, 'company_registration'),
+            ),
+          )
+          .limit(1);
+        if (registration) {
+          await tx
+            .update(kycDocuments)
+            .set({
+              ocrPayload: {
+                ...(registration.ocrPayload as Record<string, unknown> | null),
+                confirmed_sec_number: body.secNumber,
+                confirmed_by: ctx.userId,
+              },
+            })
+            .where(eq(kycDocuments.id, registration.id));
+        }
+      }
       await tx
         .update(kycDocuments)
         .set({ status: body.decision === 'approved' ? 'verified' : 'rejected' })
