@@ -11,11 +11,17 @@ import { Surface } from '../components/surface.js';
 import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon } from '../components/icons.js';
 import { apiPost } from '../lib/api-client.js';
-import { explainBookingError } from '../lib/booking-error.js';
-import { companiesQueries, customerSitesQueries } from '../lib/queries.js';
+import { bookingAlternatives, explainBookingError } from '../lib/booking-error.js';
+import { catalogQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
 import { SiteDialog } from '../components/site-dialog.js';
 import { shortCode } from '../lib/format.js';
-import { getCart, removeFromCart, clearCart, updateCartItem, type CartItem } from '../lib/cart-client.js';
+import {
+  getCart,
+  removeFromCart,
+  clearCart,
+  updateCartItem,
+  type CartItem,
+} from '../lib/cart-client.js';
 
 const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
 
@@ -32,7 +38,10 @@ function fromDateInput(value: string, hour: number): string {
 }
 
 function rentalDays(item: CartItem): number {
-  return Math.max(1, Math.round((new Date(item.end).getTime() - new Date(item.start).getTime()) / 86_400_000));
+  return Math.max(
+    1,
+    Math.round((new Date(item.end).getTime() - new Date(item.start).getTime()) / 86_400_000),
+  );
 }
 
 // Figma 168:1982 Cart Page / 219:2226 Nego Options. The frame prices the
@@ -47,6 +56,8 @@ function CartPage() {
   const [siteContact, setSiteContact] = useState('');
   const [siteNotes, setSiteNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [swap, setSwap] = useState<ReturnType<typeof bookingAlternatives>>(null);
+  const catalog = useQuery({ ...catalogQueries.equipment(), enabled: swap !== null });
   const [booking, setBooking] = useState<BookingCreateResponse | null>(null);
   const companies = useQuery(companiesQueries.mine());
   const sites = useQuery(customerSitesQueries.mine());
@@ -58,6 +69,15 @@ function CartPage() {
   function handleRemove(index: number) {
     removeFromCart(index);
     setItems(getCart());
+  }
+
+  function handleSwap(equipmentId: string, model: string) {
+    items.forEach((item, index) => {
+      if (item.equipmentId === swap?.equipmentId) updateCartItem(index, { equipmentId, model });
+    });
+    setItems(getCart());
+    setSwap(null);
+    setError(null);
   }
 
   function handleDate(index: number, field: 'start' | 'end', value: string) {
@@ -80,7 +100,10 @@ function CartPage() {
       clearCart();
       setItems([]);
     },
-    onError: (err: unknown) => setError(explainBookingError(err)),
+    onError: (err: unknown) => {
+      setError(explainBookingError(err));
+      setSwap(bookingAlternatives(err));
+    },
   });
 
   if (booking) {
@@ -92,9 +115,9 @@ function CartPage() {
             Booking {shortCode('booking', booking.id)} is in
           </h1>
           <p className="text-sm text-text-muted">
-            Your machines are held for those dates while the rental team prices the job. You will get
-            a notification when the quote is ready; you can ask questions or make a counter-offer in
-            the meantime. Nothing is charged until you accept a quote and pay.
+            Your machines are held for those dates while the rental team prices the job. You will
+            get a notification when the quote is ready; you can ask questions or make a
+            counter-offer in the meantime. Nothing is charged until you accept a quote and pay.
           </p>
           <div className="flex flex-wrap gap-2">
             <Link to="/account/negotiation/$bookingId" params={{ bookingId: booking.id }}>
@@ -159,10 +182,17 @@ function CartPage() {
           <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
             <h2 className={heading}>Selected equipment ({items.length})</h2>
             {items.map((item, index) => (
-              <div key={`${item.equipmentId}-${index}`} className="flex flex-col gap-3 rounded-md border border-border p-3">
+              <div
+                key={`${item.equipmentId}-${index}`}
+                className="flex flex-col gap-3 rounded-md border border-border p-3"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <p className="font-display text-lg font-semibold text-text">{item.model}</p>
-                  <Button variant="ghost" onClick={() => handleRemove(index)} aria-label={`Remove ${item.model}`}>
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleRemove(index)}
+                    aria-label={`Remove ${item.model}`}
+                  >
                     Remove
                   </Button>
                 </div>
@@ -232,7 +262,11 @@ function CartPage() {
                   ))}
                 </Select>
                 {companyId && (
-                  <button type="button" className="self-start text-sm text-accent underline" onClick={() => setSiteOpen(true)}>
+                  <button
+                    type="button"
+                    className="self-start text-sm text-accent underline"
+                    onClick={() => setSiteOpen(true)}
+                  >
                     Add a site
                   </button>
                 )}
@@ -259,8 +293,8 @@ function CartPage() {
           <h2 className="font-display text-lg font-semibold text-text">Cost summary</h2>
           {company && company.kycStatus !== 'approved' && (
             <p className="rounded-md border border-border bg-surface-sunk px-3 py-2 text-sm text-text">
-              {company.companyName} is not verified yet. You can request a quote now; payment unlocks once the rental
-              team verifies the company.
+              {company.companyName} is not verified yet. You can request a quote now; payment
+              unlocks once the rental team verifies the company.
             </p>
           )}
           <div className="flex flex-col gap-2 text-sm">
@@ -274,8 +308,8 @@ function CartPage() {
             </div>
           </div>
           <p className="border-t border-border pt-3 text-sm text-text-muted">
-            Diesel, transport, operator and helper costs depend on your site and dates, so the rental
-            team prices them in a quote. You can negotiate it before anything is charged.
+            Diesel, transport, operator and helper costs depend on your site and dates, so the
+            rental team prices them in a quote. You can negotiate it before anything is charged.
           </p>
           <Button
             variant="primary"
@@ -283,6 +317,7 @@ function CartPage() {
             loading={createBooking.isPending}
             onClick={() => {
               setError(null);
+              setSwap(null);
               createBooking.mutate();
             }}
           >
@@ -292,6 +327,21 @@ function CartPage() {
             <p role="alert" className="text-sm text-error">
               {error}
             </p>
+          )}
+          {swap && (
+            <ul className="flex flex-wrap gap-2" aria-label="Free units for those dates">
+              {swap.alternatives.map((id) => {
+                const unit = catalog.data?.items.find((eq) => eq.id === id);
+                const model = unit?.model ?? shortCode('equipment', id);
+                return (
+                  <li key={id}>
+                    <Button variant="secondary" onClick={() => handleSwap(id, model)}>
+                      Swap to {model}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </Surface>
       </div>
