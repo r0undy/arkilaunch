@@ -6,6 +6,7 @@ import { apiGet } from '../lib/api-client.js';
 import { EmptyState } from '../components/empty-state.js';
 import { Surface } from '../components/surface.js';
 import { LoadError } from '../components/load-error.js';
+import { Skeleton } from '../components/skeleton.js';
 
 function ApplicationsPage() {
   const query = useQuery({
@@ -16,7 +17,7 @@ function ApplicationsPage() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="font-display text-2xl font-semibold text-text">Applications</h1>
-      {query.isPending && <p className="text-sm text-text-muted">Loading...</p>}
+      {query.isPending && <Skeleton label="Loading your application" rows={1} />}
       {query.isError && (
         <LoadError
           message="Could not load your application. Check your connection and try again."

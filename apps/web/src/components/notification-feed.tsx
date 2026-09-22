@@ -11,6 +11,7 @@ import { BellIcon } from './icons.js';
 import { Pagination, PAGE_SIZE } from './pagination.js';
 import { formatRelativeTime } from '../lib/format-time.js';
 import { formatPeso, formatStatus, shortCode } from '../lib/format.js';
+import { Skeleton } from './skeleton.js';
 
 export const notificationQueries = {
   list: (limit = 20, offset = 0) =>
@@ -227,7 +228,7 @@ export function NotificationFeed() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
-  if (query.isPending) return <p className="text-sm text-text-muted">Loading notifications...</p>;
+  if (query.isPending) return <Skeleton label="Loading notifications" />;
 
   if (query.isError)
     return (

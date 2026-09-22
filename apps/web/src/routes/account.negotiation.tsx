@@ -14,6 +14,7 @@ import { CheckIcon, ClockIcon } from '../components/icons.js';
 import { NegotiationThread } from '../components/negotiation-thread.js';
 import { useToast } from '../components/toast.js';
 import { LoadError } from '../components/load-error.js';
+import { Skeleton } from '../components/skeleton.js';
 
 // Figma 219:2226 (Proceed to Negotiation), 225:3084 (Messenger Chat Nego),
 // 225:3085 (Call Nego), 225:3087 (Nego Finalized), 238:2649 (Manage Nego
@@ -171,7 +172,7 @@ function NegotiationPage({ bookingId }: { bookingId: string }) {
           </Link>
         }
       />
-      {booking.isPending && <p className="text-sm text-text-muted">Loading...</p>}
+      {booking.isPending && <Skeleton label="Loading your booking" rows={3} />}
       {booking.isError && <LoadFailed error={booking.error} onRetry={() => booking.refetch()} />}
       {booking.data && (
         <div className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,360px)]">

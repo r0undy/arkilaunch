@@ -16,6 +16,7 @@ import { AlertIcon, CheckIcon, ClockIcon } from '../components/icons.js';
 import { CaptureField } from '../components/capture-field.js';
 import { SiteDialog } from '../components/site-dialog.js';
 import { useToast } from '../components/toast.js';
+import { Skeleton } from '../components/skeleton.js';
 
 const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
 const DOC_LABELS: Record<string, string> = {
@@ -28,7 +29,11 @@ export function VerificationPill({ status }: { status: string }) {
     approved: { tone: 'recon-approved', label: 'Verified', icon: <CheckIcon /> },
     rejected: { tone: 'recon-failed', label: 'Not verified', icon: <AlertIcon /> },
   };
-  const m = meta[status] ?? { tone: 'recon-review' as StatusTone, label: 'Verification pending', icon: <ClockIcon /> };
+  const m = meta[status] ?? {
+    tone: 'recon-review' as StatusTone,
+    label: 'Verification pending',
+    icon: <ClockIcon />,
+  };
   return <StatusPill tone={m.tone} label={m.label} icon={m.icon} />;
 }
 
@@ -36,14 +41,18 @@ function CompanyCard({ company }: { company: CompanyResponse }) {
   const sites = useQuery(customerSitesQueries.mine());
   const [siteOpen, setSiteOpen] = useState(false);
   const mine = (sites.data ?? []).filter((site) => site.customerId === company.id);
-  const missing = Object.keys(DOC_LABELS).filter((type) => !company.documents.some((doc) => doc.documentType === type));
+  const missing = Object.keys(DOC_LABELS).filter(
+    (type) => !company.documents.some((doc) => doc.documentType === type),
+  );
 
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="font-display text-lg font-semibold text-text">{company.companyName}</h2>
-          <p className="text-sm text-text-muted">TIN {company.tin ?? '--'} &middot; {company.billingAddress ?? '--'}</p>
+          <p className="text-sm text-text-muted">
+            TIN {company.tin ?? '--'} &middot; {company.billingAddress ?? '--'}
+          </p>
         </div>
         <VerificationPill status={company.kycStatus} />
       </div>
@@ -59,17 +68,27 @@ function CompanyCard({ company }: { company: CompanyResponse }) {
         {missing.length > 0 && (
           <p className="text-text-muted">
             Still needed: {missing.map((type) => DOC_LABELS[type]).join(', ')}.{' '}
-            <Link to="/account/companies/$companyId/documents" params={{ companyId: company.id }} className="text-accent underline">
+            <Link
+              to="/account/companies/$companyId/documents"
+              params={{ companyId: company.id }}
+              className="text-accent underline"
+            >
               Upload
             </Link>
           </p>
         )}
         {company.kycStatus === 'pending' && missing.length === 0 && (
-          <p className="text-text-muted">The rental team is checking your documents. You can already request quotes.</p>
+          <p className="text-text-muted">
+            The rental team is checking your documents. You can already request quotes.
+          </p>
         )}
         {company.kycStatus === 'rejected' && (
           <p className="text-text-muted">
-            Verification was declined. <Link to="/contact" className="underline">Contact the rental team</Link> to fix it.
+            Verification was declined.{' '}
+            <Link to="/contact" className="underline">
+              Contact the rental team
+            </Link>{' '}
+            to fix it.
           </p>
         )}
       </div>
@@ -105,7 +124,7 @@ function CompaniesPage() {
           </Link>
         }
       />
-      {companies.isPending && <p className="text-sm text-text-muted">Loading...</p>}
+      {companies.isPending && <Skeleton label="Loading your companies" rows={2} />}
       {companies.isError && <p className="text-sm text-error">{apiErrorText(companies.error)}</p>}
       {companies.data?.length === 0 && (
         <EmptyState
@@ -118,19 +137,32 @@ function CompaniesPage() {
           }
         />
       )}
-      {companies.data?.map((company) => <CompanyCard key={company.id} company={company} />)}
+      {companies.data?.map((company) => (
+        <CompanyCard key={company.id} company={company} />
+      ))}
     </div>
   );
 }
 
 // Upload both documents, one request each. Shared by the new-company form
 // and the "upload what is still missing" screen.
-async function uploadDocuments(companyId: string, files: { governmentId: File | null; registration: File | null }) {
+async function uploadDocuments(
+  companyId: string,
+  files: { governmentId: File | null; registration: File | null },
+) {
   if (files.governmentId) {
-    await apiPostForm(`/me/companies/${companyId}/documents`, { documentType: 'government_id' }, files.governmentId);
+    await apiPostForm(
+      `/me/companies/${companyId}/documents`,
+      { documentType: 'government_id' },
+      files.governmentId,
+    );
   }
   if (files.registration) {
-    await apiPostForm(`/me/companies/${companyId}/documents`, { documentType: 'company_registration' }, files.registration);
+    await apiPostForm(
+      `/me/companies/${companyId}/documents`,
+      { documentType: 'company_registration' },
+      files.registration,
+    );
   }
 }
 
@@ -147,7 +179,13 @@ function DocumentFields({
 }) {
   return (
     <>
-      <CaptureField id="doc-government-id" label="Government ID" accept="image/*,application/pdf" value={governmentId} onChange={onGovernmentId} />
+      <CaptureField
+        id="doc-government-id"
+        label="Government ID"
+        accept="image/*,application/pdf"
+        value={governmentId}
+        onChange={onGovernmentId}
+      />
       <CaptureField
         id="doc-registration"
         label="Company registration (SEC or DTI)"
@@ -181,7 +219,13 @@ function NewCompanyPage() {
     setError(null);
     let created: CompanyResponse | null = null;
     try {
-      created = await apiPost<CompanyResponse>('/me/companies', { companyName, tin, billingAddress, contactName, contactMobile });
+      created = await apiPost<CompanyResponse>('/me/companies', {
+        companyName,
+        tin,
+        billingAddress,
+        contactName,
+        contactMobile,
+      });
       await uploadDocuments(created.id, { governmentId, registration });
       await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
       toast.success('Company added', 'The rental team will verify it. You can request quotes now.');
@@ -203,10 +247,20 @@ function NewCompanyPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="My account" title="Add a company" description="The business you are renting equipment for." />
+      <PageHeader
+        eyebrow="My account"
+        title="Add a company"
+        description="The business you are renting equipment for."
+      />
       <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
         <form onSubmit={submit} className="flex flex-col gap-4">
-          <Input label="Company name" required maxLength={200} value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+          <Input
+            label="Company name"
+            required
+            maxLength={200}
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+          />
           <Input
             label="TIN"
             required
@@ -217,12 +271,36 @@ function NewCompanyPage() {
             value={tin}
             onChange={(e) => setTin(e.target.value)}
           />
-          <Input label="Complete billing address" required maxLength={500} value={billingAddress} onChange={(e) => setBillingAddress(e.target.value)} />
+          <Input
+            label="Complete billing address"
+            required
+            maxLength={500}
+            value={billingAddress}
+            onChange={(e) => setBillingAddress(e.target.value)}
+          />
           <div className="grid gap-3 sm:grid-cols-2">
-            <Input label="Contact person" required maxLength={200} value={contactName} onChange={(e) => setContactName(e.target.value)} />
-            <Input label="Contact mobile" type="tel" required maxLength={30} value={contactMobile} onChange={(e) => setContactMobile(e.target.value)} />
+            <Input
+              label="Contact person"
+              required
+              maxLength={200}
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+            />
+            <Input
+              label="Contact mobile"
+              type="tel"
+              required
+              maxLength={30}
+              value={contactMobile}
+              onChange={(e) => setContactMobile(e.target.value)}
+            />
           </div>
-          <DocumentFields governmentId={governmentId} registration={registration} onGovernmentId={setGovernmentId} onRegistration={setRegistration} />
+          <DocumentFields
+            governmentId={governmentId}
+            registration={registration}
+            onGovernmentId={setGovernmentId}
+            onRegistration={setRegistration}
+          />
           <label className="flex items-start gap-2 text-sm text-text">
             <input
               type="checkbox"
@@ -232,8 +310,12 @@ function NewCompanyPage() {
               className="mt-1 h-5 w-5 shrink-0 accent-[var(--color-primary)]"
             />
             <span>
-              I confirm these documents are genuine and consent to the rental team reviewing them under the{' '}
-              <Link to="/privacy" className="underline">Privacy Policy</Link>.
+              I confirm these documents are genuine and consent to the rental team reviewing them
+              under the{' '}
+              <Link to="/privacy" className="underline">
+                Privacy Policy
+              </Link>
+              .
             </span>
           </label>
           {error && (
@@ -251,7 +333,9 @@ function NewCompanyPage() {
               </Button>
             </Link>
           </div>
-          <p className="text-xs text-text-muted">You can upload the documents later, but payment opens only once the company is verified.</p>
+          <p className="text-xs text-text-muted">
+            You can upload the documents later, but payment opens only once the company is verified.
+          </p>
         </form>
       </Surface>
     </div>
@@ -287,8 +371,18 @@ function CompanyDocumentsPage() {
       <PageHeader eyebrow="Companies" title="Upload documents" />
       <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
         <form onSubmit={submit} className="flex flex-col gap-4">
-          <DocumentFields governmentId={governmentId} registration={registration} onGovernmentId={setGovernmentId} onRegistration={setRegistration} />
-          <Button type="submit" variant="primary" loading={busy} disabled={!governmentId && !registration}>
+          <DocumentFields
+            governmentId={governmentId}
+            registration={registration}
+            onGovernmentId={setGovernmentId}
+            onRegistration={setRegistration}
+          />
+          <Button
+            type="submit"
+            variant="primary"
+            loading={busy}
+            disabled={!governmentId && !registration}
+          >
             Upload
           </Button>
         </form>
