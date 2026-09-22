@@ -39,7 +39,9 @@ export default defineConfig({
     host: true,
     port: 5173,
     ...(https ? { https } : {}),
-    proxy: { '/api': { target: 'http://localhost:3000' } },
+    // API_PORT matches apps/api/src/main.ts, so a machine where something
+    // else already holds 3000 needs no edit here.
+    proxy: { '/api': { target: `http://localhost:${process.env.API_PORT ?? 3000}` } },
   },
   test: {
     // Scope vitest to src/ only; e2e/ holds Playwright specs (run via `pnpm e2e`),
