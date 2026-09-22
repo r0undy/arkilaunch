@@ -2,7 +2,13 @@ import { describe, expect, it, beforeAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import postgres from 'postgres';
-import { StubPaymentsAdapter, type RequestContext } from '@arkilaunch/shared';
+import {
+  ExtractionUnavailableError,
+  StubPaymentsAdapter,
+  UnavailableDocumentIntelligenceAdapter,
+  type RequestContext,
+} from '@arkilaunch/shared';
+import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared/testing';
 import { AuthService } from '../src/auth/auth.service.js';
 import { RefreshTokenService } from '../src/auth/refresh-token.service.js';
 import { TotpService } from '../src/auth/totp.service.js';
@@ -24,7 +30,10 @@ function jwtService(): JwtService {
 describe('Customer onboarding', () => {
   const events = new EventsService();
   const auth = new AuthService(jwtService(), new RefreshTokenService(), new TotpService());
-  const companies = new CustomersService(events);
+  const companies = new CustomersService(
+    events,
+    new UnavailableDocumentIntelligenceAdapter('flag_disabled'),
+  );
   const bookings = new BookingsService(events);
   let sessions = 0;
   const adapter = new StubPaymentsAdapter();
@@ -50,16 +59,25 @@ describe('Customer onboarding', () => {
     const [tenantA] = await sql`select id from tenants where slug = 'test-tenant-a'`;
     const [tenantB] = await sql`select id from tenants where slug = 'test-tenant-b'`;
     tenantId = (tenantA as { id: string }).id;
-    const [customerUser] = await sql`select id from users where tenant_id = ${tenantId} and email = 'customer@test-tenant-a.test'`;
-    const [adminUser] = await sql`select id from users where tenant_id = ${tenantId} and id <> ${(customerUser as { id: string }).id} limit 1`;
-    const [userB] = await sql`select id from users where tenant_id = ${(tenantB as { id: string }).id} limit 1`;
-    const [unit] = await sql`select id from equipment where tenant_id = ${tenantId} and serial_no = 'test-tenant-a-serial-booking-001'`;
+    const [customerUser] =
+      await sql`select id from users where tenant_id = ${tenantId} and email = 'customer@test-tenant-a.test'`;
+    const [adminUser] =
+      await sql`select id from users where tenant_id = ${tenantId} and id <> ${(customerUser as { id: string }).id} limit 1`;
+    const [userB] =
+      await sql`select id from users where tenant_id = ${(tenantB as { id: string }).id} limit 1`;
+    const [unit] =
+      await sql`select id from equipment where tenant_id = ${tenantId} and serial_no = 'test-tenant-a-serial-booking-001'`;
     seededCustomerCtx = { tenantId, userId: (customerUser as { id: string }).id, role: 'customer' };
     adminCtx = { tenantId, userId: (adminUser as { id: string }).id, role: 'admin' };
-    otherTenantCtx = { tenantId: (tenantB as { id: string }).id, userId: (userB as { id: string }).id, role: 'admin' };
+    otherTenantCtx = {
+      tenantId: (tenantB as { id: string }).id,
+      userId: (userB as { id: string }).id,
+      role: 'admin',
+    };
     equipmentId = (unit as { id: string }).id;
     // This spec's own 2032-05 bookings from a prior run.
-    const stale = await sql`select distinct rental_id from equipment_assignments where equipment_id = ${equipmentId} and start >= '2032-05-01' and start < '2032-06-01'`;
+    const stale =
+      await sql`select distinct rental_id from equipment_assignments where equipment_id = ${equipmentId} and start >= '2032-05-01' and start < '2032-06-01'`;
     const ids = stale.map((row) => (row as { rental_id: string }).rental_id);
     if (ids.length > 0) {
       await sql`delete from payments where invoice_id in (select id from invoices where rental_id = any(${ids}))`;
@@ -76,7 +94,11 @@ describe('Customer onboarding', () => {
       sub: string;
       role: string;
     };
-    return { tenantId: claims.tenantId, userId: claims.sub, role: claims.role as RequestContext['role'] };
+    return {
+      tenantId: claims.tenantId,
+      userId: claims.sub,
+      role: claims.role as RequestContext['role'],
+    };
   }
 
   const window = (d: number) => ({
@@ -85,19 +107,31 @@ describe('Customer onboarding', () => {
   });
 
   it('signs up, adds two companies and a site, books, and pays only once verified', async () => {
-    const tokens = await auth.registerCustomer({ email, password: 'correct horse battery', acceptedTerms: true });
+    const tokens = await auth.registerCustomer({
+      email,
+      password: 'correct horse battery',
+      acceptedTerms: true,
+    });
     const ctx = decodeCtx(tokens.accessToken);
     expect(ctx).toMatchObject({ tenantId, role: 'customer' });
 
     // The same email cannot sign up twice, in any tenant.
-    await expect(auth.registerCustomer({ email, password: 'another long password', acceptedTerms: true })).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    await expect(
+      auth.registerCustomer({ email, password: 'another long password', acceptedTerms: true }),
+    ).rejects.toBeInstanceOf(ConflictException);
 
-    const details = { tin: '123-456-789', billingAddress: '1248 North Quarry Way, Pasig', contactName: 'Marcus', contactMobile: '09170000000' };
+    const details = {
+      tin: '123-456-789',
+      billingAddress: '1248 North Quarry Way, Pasig',
+      contactName: 'Marcus',
+      contactMobile: '09170000000',
+    };
     const acme = await companies.createCompany(ctx, { companyName: 'Acme Builders', ...details });
     const beta = await companies.createCompany(ctx, { companyName: 'Beta Works', ...details });
-    expect((await companies.listCompanies(ctx)).map((c) => c.companyName).sort()).toEqual(['Acme Builders', 'Beta Works']);
+    expect((await companies.listCompanies(ctx)).map((c) => c.companyName).sort()).toEqual([
+      'Acme Builders',
+      'Beta Works',
+    ]);
 
     await companies.addDocument(ctx, acme.id, 'government_id', `${tenantId}/test/id.jpg`);
     const site = await companies.createSite(ctx, {
@@ -111,19 +145,36 @@ describe('Customer onboarding', () => {
     expect(await companies.listSites(ctx)).toHaveLength(1);
 
     // With two companies the customer must say which one books.
-    await expect(bookings.create(ctx, { projectSiteId: site.id, items: [window(0)].map((w) => ({ equipmentId, ...w })) })).rejects.toMatchObject({
+    await expect(
+      bookings.create(ctx, {
+        projectSiteId: site.id,
+        items: [window(0)].map((w) => ({ equipmentId, ...w })),
+      }),
+    ).rejects.toMatchObject({
       response: { error: 'company_required' },
     });
     // Acme's site cannot carry a Beta booking.
     await expect(
-      bookings.create(ctx, { customerId: beta.id, projectSiteId: site.id, items: [{ equipmentId, ...window(0) }] }),
+      bookings.create(ctx, {
+        customerId: beta.id,
+        projectSiteId: site.id,
+        items: [{ equipmentId, ...window(0) }],
+      }),
     ).rejects.toBeInstanceOf(NotFoundException);
 
-    const booking = await bookings.create(ctx, { customerId: acme.id, projectSiteId: site.id, items: [{ equipmentId, ...window(0) }] });
-    expect((await bookings.list(ctx, { limit: 10, offset: 0 })).items.map((b) => b.id)).toContain(booking.id);
+    const booking = await bookings.create(ctx, {
+      customerId: acme.id,
+      projectSiteId: site.id,
+      items: [{ equipmentId, ...window(0) }],
+    });
+    expect((await bookings.list(ctx, { limit: 10, offset: 0 })).items.map((b) => b.id)).toContain(
+      booking.id,
+    );
 
     // Unverified: no payment. Verified by staff: payment opens.
-    await expect(payments.checkout(ctx, booking.id)).rejects.toMatchObject({ response: { error: 'company_not_verified' } });
+    await expect(payments.checkout(ctx, booking.id)).rejects.toMatchObject({
+      response: { error: 'company_not_verified' },
+    });
     const queue = await companies.listForReview(adminCtx, 'pending');
     expect(queue.find((c) => c.id === acme.id)?.documents).toHaveLength(1);
     await companies.decide(adminCtx, acme.id, { decision: 'approved' });
@@ -149,17 +200,91 @@ describe('Customer onboarding', () => {
     });
 
     // Another customer in the same tenant cannot attach a document or site.
-    await expect(companies.addDocument(seededCustomerCtx, mine.id, 'government_id', 'x')).rejects.toBeInstanceOf(NotFoundException);
     await expect(
-      companies.createSite(seededCustomerCtx, { customerId: mine.id, line1: 'x st', city: 'Cebu', province: 'Cebu', latitude: 10.3, longitude: 123.9 }),
+      companies.addDocument(seededCustomerCtx, mine.id, 'government_id', 'x'),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect((await companies.listCompanies(seededCustomerCtx)).map((c) => c.id)).not.toContain(mine.id);
+    await expect(
+      companies.createSite(seededCustomerCtx, {
+        customerId: mine.id,
+        line1: 'x st',
+        city: 'Cebu',
+        province: 'Cebu',
+        latitude: 10.3,
+        longitude: 123.9,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect((await companies.listCompanies(seededCustomerCtx)).map((c) => c.id)).not.toContain(
+      mine.id,
+    );
 
     // Staff cannot create companies under their own login.
     await expect(companies.listCompanies(adminCtx)).rejects.toBeInstanceOf(ForbiddenException);
 
     // Tenant B's staff see nothing of tenant A's queue.
-    expect((await companies.listForReview(otherTenantCtx, 'pending')).map((c) => c.id)).not.toContain(mine.id);
-    await expect(companies.decide(otherTenantCtx, mine.id, { decision: 'approved' })).rejects.toBeInstanceOf(NotFoundException);
+    expect(
+      (await companies.listForReview(otherTenantCtx, 'pending')).map((c) => c.id),
+    ).not.toContain(mine.id);
+    await expect(
+      companies.decide(otherTenantCtx, mine.id, { decision: 'approved' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  // Scan-first onboarding: the scan only fills the form in. It must not
+  // write a document row or decide anything -- staff still review.
+  describe('company document scan', () => {
+    const scanner = (fields: Record<string, { value: string; confidence: number }>) =>
+      new CustomersService(events, new FixtureDocumentIntelligenceAdapter({ fields }));
+    const bytes = Buffer.from('not-really-an-image');
+
+    it('suggests what it read, for the customer to correct', async () => {
+      const service = scanner({
+        company_name: { value: 'Almara Construction Corporation', confidence: 0.9 },
+        tin: { value: '123-456-789', confidence: 0.93 },
+        sec_number: { value: 'CS202312345', confidence: 0.95 },
+      });
+      const scan = await service.scanDocument(seededCustomerCtx, bytes);
+      expect(scan.suggestions).toEqual({
+        companyName: 'Almara Construction Corporation',
+        tin: '123-456-789',
+        secNumber: 'CS202312345',
+      });
+      expect(scan.extractionAvailable).toBe(true);
+    });
+
+    it('drops a value that fails its format check rather than suggesting it', async () => {
+      const service = scanner({
+        tin: { value: 'not-a-tin', confidence: 0.99 },
+        sec_number: { value: '??', confidence: 0.99 },
+      });
+      const scan = await service.scanDocument(seededCustomerCtx, bytes);
+      expect(scan.suggestions.tin).toBeNull();
+      expect(scan.suggestions.secNumber).toBeNull();
+    });
+
+    it('says so instead of inventing values when no extractor is available', async () => {
+      const scan = await companies.scanDocument(seededCustomerCtx, bytes);
+      expect(scan).toEqual({
+        suggestions: { companyName: null, tin: null, secNumber: null },
+        extractionAvailable: false,
+      });
+    });
+
+    it('writes nothing: no document row, no verification decision', async () => {
+      const service = scanner({ tin: { value: '123-456-789', confidence: 0.93 } });
+      const url = process.env.DATABASE_URL_DIRECT!;
+      const sql = postgres(url, { max: 1 });
+      const before = await sql`select count(*)::int as n from kyc_documents`;
+      await service.scanDocument(seededCustomerCtx, bytes);
+      const after = await sql`select count(*)::int as n from kyc_documents`;
+      await sql.end();
+      expect((after[0] as { n: number }).n).toBe((before[0] as { n: number }).n);
+    });
+
+    it("refuses a staff role: this is the customer's own typing aid", async () => {
+      const service = scanner({ tin: { value: '123-456-789', confidence: 0.93 } });
+      await expect(service.scanDocument(adminCtx, bytes)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
   });
 });

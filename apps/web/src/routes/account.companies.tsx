@@ -1,7 +1,7 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CompanyResponse } from '@arkilaunch/shared';
+import type { CompanyResponse, KycScanResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { apiErrorText, apiPost, apiPostForm } from '../lib/api-client.js';
 import { companiesQueries, customerSitesQueries } from '../lib/queries.js';
@@ -14,9 +14,9 @@ import { EmptyState } from '../components/empty-state.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { AlertIcon, CheckIcon, ClockIcon } from '../components/icons.js';
 import { CaptureField } from '../components/capture-field.js';
+import { Skeleton } from '../components/skeleton.js';
 import { SiteDialog } from '../components/site-dialog.js';
 import { useToast } from '../components/toast.js';
-import { Skeleton } from '../components/skeleton.js';
 
 const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
 const DOC_LABELS: Record<string, string> = {
@@ -166,35 +166,57 @@ async function uploadDocuments(
   }
 }
 
-function DocumentFields({
-  governmentId,
-  registration,
-  onGovernmentId,
-  onRegistration,
+// One document at a time, in order. Both used to sit on the same screen,
+// which asked a customer to frame two different papers at once; the ID is
+// the gate, the registration follows it.
+export type DocStep = 'government_id' | 'company_registration';
+
+export const DOC_STEPS: { type: DocStep; label: string; hint: string }[] = [
+  {
+    type: 'government_id',
+    label: 'Government ID',
+    hint: 'Step 1 of 2. The ID of the person signing for this company.',
+  },
+  {
+    type: 'company_registration',
+    label: 'Company registration (SEC or DTI)',
+    hint: 'Step 2 of 2. The certificate that shows the registered name and number.',
+  },
+];
+
+function DocumentStep({
+  step,
+  value,
+  onChange,
 }: {
-  governmentId: File | null;
-  registration: File | null;
-  onGovernmentId: (file: File | null) => void;
-  onRegistration: (file: File | null) => void;
+  step: (typeof DOC_STEPS)[number];
+  value: File | null;
+  onChange: (file: File | null) => void;
 }) {
   return (
-    <>
+    <div className="flex flex-col gap-2">
+      <p className="text-sm text-text-muted">{step.hint}</p>
       <CaptureField
-        id="doc-government-id"
-        label="Government ID"
+        id={`doc-${step.type}`}
+        label={step.label}
         accept="image/*,application/pdf"
-        value={governmentId}
-        onChange={onGovernmentId}
+        value={value}
+        onChange={onChange}
       />
-      <CaptureField
-        id="doc-registration"
-        label="Company registration (SEC or DTI)"
-        accept="image/*,application/pdf"
-        value={registration}
-        onChange={onRegistration}
-      />
-    </>
+    </div>
   );
+}
+
+// Reads the registration the customer just captured and hands back what it
+// saw, for them to correct on the form. A failed or unavailable scan is not
+// an error the customer has to act on -- the form simply opens empty.
+async function scanForSuggestions(file: File): Promise<KycScanResponse['suggestions'] | null> {
+  try {
+    const scan = await apiPostForm<KycScanResponse>('/me/kyc/scan', {}, file);
+    return scan.extractionAvailable ? scan.suggestions : null;
+  } catch {
+    return null;
+  }
 }
 
 // Figma 582:3946 / 168:2442 "Add New Company".
@@ -212,6 +234,23 @@ function NewCompanyPage() {
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Scan first, type last: the two documents are captured in order, and the
+  // form opens on what the registration scan read, for final edits.
+  const [stage, setStage] = useState<DocStep | 'details'>('government_id');
+  const [scanning, setScanning] = useState(false);
+  const [scanned, setScanned] = useState<boolean | null>(null);
+
+  async function scanThenEdit() {
+    setScanning(true);
+    const suggestions = registration ? await scanForSuggestions(registration) : null;
+    if (suggestions) {
+      if (suggestions.companyName) setCompanyName(suggestions.companyName);
+      if (suggestions.tin) setTin(suggestions.tin);
+    }
+    setScanned(Boolean(suggestions?.companyName || suggestions?.tin));
+    setScanning(false);
+    setStage('details');
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -245,15 +284,64 @@ function NewCompanyPage() {
     }
   }
 
+  if (stage !== 'details') {
+    const step = DOC_STEPS.find((s) => s.type === stage)!;
+    const file = stage === 'government_id' ? governmentId : registration;
+    const setFile = stage === 'government_id' ? setGovernmentId : setRegistration;
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader
+          eyebrow="My account"
+          title="Add a company"
+          description="Scan the documents first; you will check the details at the end."
+        />
+        <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
+          <DocumentStep step={step} value={file} onChange={setFile} />
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="primary"
+              disabled={!file || scanning}
+              loading={scanning}
+              onClick={() =>
+                stage === 'government_id' ? setStage('company_registration') : scanThenEdit()
+              }
+            >
+              {stage === 'government_id' ? 'Next: company registration' : 'Next: check the details'}
+            </Button>
+            {stage === 'company_registration' ? (
+              <Button variant="ghost" onClick={() => setStage('government_id')}>
+                Back
+              </Button>
+            ) : (
+              <Link to="/account/companies">
+                <Button variant="ghost">Cancel</Button>
+              </Link>
+            )}
+          </div>
+          <p className="text-xs text-text-muted">
+            Both documents are needed before the rental team can verify this company.
+          </p>
+        </Surface>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="My account"
         title="Add a company"
-        description="The business you are renting equipment for."
+        description="Check what we read from your documents, and fix anything that is wrong."
       />
       <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
         <form onSubmit={submit} className="flex flex-col gap-4">
+          {scanned !== null && (
+            <p role="status" className="text-sm text-text-muted">
+              {scanned
+                ? 'Filled in from your registration document. Check every field before you submit.'
+                : 'We could not read your registration document, so please fill this in yourself.'}
+            </p>
+          )}
           <Input
             label="Company name"
             required
@@ -295,12 +383,15 @@ function NewCompanyPage() {
               onChange={(e) => setContactMobile(e.target.value)}
             />
           </div>
-          <DocumentFields
-            governmentId={governmentId}
-            registration={registration}
-            onGovernmentId={setGovernmentId}
-            onRegistration={setRegistration}
-          />
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-muted">
+            <span>
+              Scanned: {governmentId ? 'Government ID' : 'no ID'} and{' '}
+              {registration ? 'company registration' : 'no registration'}.
+            </span>
+            <Button type="button" variant="ghost" onClick={() => setStage('government_id')}>
+              Rescan
+            </Button>
+          </div>
           <label className="flex items-start gap-2 text-sm text-text">
             <input
               type="checkbox"
@@ -350,6 +441,13 @@ function CompanyDocumentsPage() {
   const [governmentId, setGovernmentId] = useState<File | null>(null);
   const [registration, setRegistration] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  // Same one-at-a-time order as adding a company. No scan here: the company
+  // already exists, so there is nothing left to prefill.
+  const [stage, setStage] = useState<DocStep>('government_id');
+
+  const step = DOC_STEPS.find((s) => s.type === stage)!;
+  const file = stage === 'government_id' ? governmentId : registration;
+  const setFile = stage === 'government_id' ? setGovernmentId : setRegistration;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -371,20 +469,33 @@ function CompanyDocumentsPage() {
       <PageHeader eyebrow="Companies" title="Upload documents" />
       <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
         <form onSubmit={submit} className="flex flex-col gap-4">
-          <DocumentFields
-            governmentId={governmentId}
-            registration={registration}
-            onGovernmentId={setGovernmentId}
-            onRegistration={setRegistration}
-          />
-          <Button
-            type="submit"
-            variant="primary"
-            loading={busy}
-            disabled={!governmentId && !registration}
-          >
-            Upload
-          </Button>
+          <DocumentStep step={step} value={file} onChange={setFile} />
+          <div className="flex flex-wrap gap-2">
+            {stage === 'government_id' ? (
+              <Button
+                type="button"
+                variant="primary"
+                disabled={!governmentId}
+                onClick={() => setStage('company_registration')}
+              >
+                Next: company registration
+              </Button>
+            ) : (
+              <>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  loading={busy}
+                  disabled={!governmentId && !registration}
+                >
+                  Upload
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setStage('government_id')}>
+                  Back
+                </Button>
+              </>
+            )}
+          </div>
         </form>
       </Surface>
     </div>
