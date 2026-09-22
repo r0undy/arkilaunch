@@ -241,7 +241,10 @@ function NegotiationFinalRoute() {
           </span>
         </div>
       </Surface>
-      <div className="flex w-full flex-wrap gap-2">
+      <div data-print-hide className="flex w-full flex-wrap gap-2">
+        <Button variant="ghost" className="flex-1" onClick={() => window.print()}>
+          Print quote
+        </Button>
         <Link to="/account/checkout/$bookingId" params={{ bookingId }} className="flex-1">
           <Button variant="primary" className="w-full">Proceed to payment</Button>
         </Link>

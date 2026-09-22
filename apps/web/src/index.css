@@ -333,3 +333,17 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Printing an invoice or quote: drop the app chrome and action buttons so
+   the page prints as a statement, not a screenshot. */
+@media print {
+  header,
+  nav,
+  aside,
+  [data-print-hide] {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
+}
