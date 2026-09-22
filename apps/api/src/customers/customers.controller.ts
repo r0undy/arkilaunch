@@ -9,6 +9,7 @@ import {
   Req,
   UploadedFile,
   UseInterceptors,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
@@ -116,6 +117,31 @@ export class CustomersController {
   ) {
     const key = await this.customers.documentKey(req.ctx, id, documentId);
     return { url: await this.storage.createSignedDownloadUrl(kycBucket(), key) };
+  }
+
+  // A reviewer's "Read document" click on a company already in the queue.
+  // Staff-gated and rate-limited: each call is an Azure DI page spend
+  // (QAD-T31), and it is deliberately not automatic on upload, so nothing
+  // is spent on a document nobody reviews.
+  @Post('customers/:id/documents/:documentId/read')
+  @RequirePermission('quote:approve')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async readDocument(
+    @Param('id') id: string,
+    @Param('documentId') documentId: string,
+    @Req() req: CtxRequest,
+  ) {
+    const key = await this.customers.documentKey(req.ctx, id, documentId);
+    const url = await this.storage.createSignedDownloadUrl(kycBucket(), key);
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new ServiceUnavailableException({
+        error: 'document_download_failed',
+        status: res.status,
+      });
+    }
+    const bytes = Buffer.from(await res.arrayBuffer());
+    return this.customers.readDocument(req.ctx, id, documentId, bytes);
   }
 
   @Patch('customers/:id/kyc')

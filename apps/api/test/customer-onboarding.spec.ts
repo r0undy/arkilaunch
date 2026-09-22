@@ -287,4 +287,95 @@ describe('Customer onboarding', () => {
       );
     });
   });
+
+  // Admin-side review: OCR fills the reviewer's form in, the reviewer
+  // corrects it, and approval writes what they confirmed. Nothing here
+  // decides anything on the extraction's own.
+  describe('staff document review', () => {
+    const reviewer = (fields: Record<string, { value: string; confidence: number }>) =>
+      new CustomersService(events, new FixtureDocumentIntelligenceAdapter({ fields }));
+    const bytes = Buffer.from('not-really-an-image');
+
+    async function companyWithRegistration(name: string) {
+      const company = await companies.createCompany(seededCustomerCtx, {
+        companyName: name,
+        tin: '111-222-333',
+        billingAddress: '12 Yard Road, Cebu City',
+        contactName: 'Marcus Thorne',
+        contactMobile: '0917 000 0000',
+      });
+      const doc = await companies.addDocument(
+        seededCustomerCtx,
+        company.id,
+        'company_registration',
+        `storage://fixtures/${randomUUID()}.jpg`,
+      );
+      return { companyId: company.id, documentId: doc.id };
+    }
+
+    it('reads the document onto the row without deciding anything', async () => {
+      const { companyId, documentId } = await companyWithRegistration('Reviewme Corp');
+      const service = reviewer({
+        company_name: { value: 'REVIEWME CORPORATION', confidence: 0.88 },
+        tin: { value: '123-456-789', confidence: 0.93 },
+        sec_number: { value: 'CS202312345', confidence: 0.95 },
+      });
+
+      const read = await service.readDocument(adminCtx, companyId, documentId, bytes);
+      expect(read.suggestions.companyName).toBe('REVIEWME CORPORATION');
+      expect(read.formatValid).toEqual({ tin: true, secNumber: true });
+      // The weakest field, not the strongest.
+      expect(read.confidence).toBeCloseTo(0.88);
+
+      const [company] = await companies
+        .listForReview(adminCtx, 'pending')
+        .then((all) => all.filter((c) => c.id === companyId));
+      expect(company?.kycStatus).toBe('pending'); // unchanged by reading
+      expect(company?.companyName).toBe('Reviewme Corp'); // not overwritten by OCR
+    });
+
+    it('reports a malformed value as invalid instead of hiding it', async () => {
+      const { companyId, documentId } = await companyWithRegistration('Badformat Corp');
+      const service = reviewer({ tin: { value: '12-34', confidence: 0.91 } });
+      const read = await service.readDocument(adminCtx, companyId, documentId, bytes);
+      expect(read.suggestions.tin).toBe('12-34');
+      expect(read.formatValid.tin).toBe(false);
+    });
+
+    it('writes the corrections the reviewer confirmed when approving', async () => {
+      const { companyId } = await companyWithRegistration('Typo Corp');
+      await companies.decide(adminCtx, companyId, {
+        decision: 'approved',
+        companyName: 'Typo Construction Corporation',
+        tin: '123-456-789',
+        secNumber: 'CS202312345',
+      });
+      const approved = (await companies.listForReview(adminCtx, 'approved')).find(
+        (c) => c.id === companyId,
+      );
+      expect(approved?.companyName).toBe('Typo Construction Corporation');
+      expect(approved?.tin).toBe('123-456-789');
+    });
+
+    it('leaves the company alone when the reviewer rejects it', async () => {
+      const { companyId } = await companyWithRegistration('Reject Corp');
+      await companies.decide(adminCtx, companyId, {
+        decision: 'rejected',
+        companyName: 'Should Not Be Written',
+      });
+      const rejected = (await companies.listForReview(adminCtx, 'rejected')).find(
+        (c) => c.id === companyId,
+      );
+      expect(rejected?.companyName).toBe('Reject Corp');
+    });
+
+    it('refuses a document that belongs to another company', async () => {
+      const mine = await companyWithRegistration('Mine Corp');
+      const other = await companyWithRegistration('Other Corp');
+      const service = reviewer({ tin: { value: '123-456-789', confidence: 0.9 } });
+      await expect(
+        service.readDocument(adminCtx, mine.companyId, other.documentId, bytes),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
 });

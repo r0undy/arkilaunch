@@ -35,6 +35,22 @@ export const CompanyDocumentUploadSchema = z.object({
 // POST /me/kyc/scan. Suggestions a customer can edit before they submit
 // the form -- never a verification decision, and never stored as fact: the
 // staff review queue and RFC-2's human gate are untouched by this.
+// POST /customers/:id/documents/:documentId/read. What the reviewer's
+// "Read document" click found, persisted on the document as evidence. Never
+// a decision: staff edit these and approve explicitly.
+export const CompanyDocumentReadResponseSchema = z.object({
+  documentId: z.string().uuid(),
+  suggestions: z.object({
+    companyName: z.string().nullable(),
+    tin: z.string().nullable(),
+    secNumber: z.string().nullable(),
+  }),
+  formatValid: z.object({ tin: z.boolean(), secNumber: z.boolean() }),
+  confidence: z.number().nullable(),
+  extractionAvailable: z.boolean(),
+});
+export type CompanyDocumentReadResponse = z.infer<typeof CompanyDocumentReadResponseSchema>;
+
 export const KycScanResponseSchema = z.object({
   suggestions: z.object({
     companyName: z.string().nullable(),
@@ -89,7 +105,13 @@ export type CustomerSiteResponse = z.infer<typeof CustomerSiteResponseSchema>;
 export const CompanyReviewQuerySchema = z.object({
   kycStatus: z.enum(['pending', 'approved', 'rejected']).default('pending'),
 });
+// A reviewer may correct what the document says before approving. The
+// corrections are the human's, not the OCR's: they are what gets written
+// onto the company, and approval still requires this explicit call.
 export const CompanyDecisionSchema = z.object({
   decision: z.enum(['approved', 'rejected']),
+  companyName: z.string().trim().min(2).max(200).optional(),
+  tin: TinSchema.optional(),
+  secNumber: z.string().trim().max(50).optional(),
 });
 export type CompanyDecision = z.infer<typeof CompanyDecisionSchema>;
