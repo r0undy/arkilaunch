@@ -81,17 +81,24 @@ describe('amountDue', () => {
 });
 
 describe('bookingTimeline', () => {
-  const now = new Date('2026-10-03T00:00:00Z');
-  const done = (b: BookingDetailResponse) => bookingTimeline(b, now).filter((s) => s.done).map((s) => s.label);
+  const done = (b: BookingDetailResponse) => bookingTimeline(b).filter((s) => s.done).map((s) => s.label);
 
   it('only marks a step done when the record behind it exists', () => {
     expect(done(booking())).toEqual(['Requested']);
     expect(done(booking({ quotation: accepted }))).toEqual(['Requested', 'Price agreed']);
   });
 
-  it('follows the hire dates only once paid', () => {
+  it('marks delivery and return only when staff record them, not by the calendar', () => {
     const paid = booking({ quotation: accepted, status: 'confirmed' });
-    expect(done(paid)).toEqual(['Requested', 'Price agreed', 'Paid', 'On site']);
+    expect(done(paid)).toEqual(['Requested', 'Price agreed', 'Paid']);
+    expect(done({ ...paid, status: 'active' })).toEqual(['Requested', 'Price agreed', 'Paid', 'Delivered']);
+    expect(done({ ...paid, status: 'completed' })).toEqual([
+      'Requested',
+      'Price agreed',
+      'Paid',
+      'Delivered',
+      'Returned',
+    ]);
   });
 });
 
