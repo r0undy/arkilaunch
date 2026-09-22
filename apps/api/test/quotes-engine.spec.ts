@@ -33,7 +33,13 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     const [userA] = await sql`select id from users where tenant_id = ${(tenantA as { id: string }).id} limit 1`;
     const [userB] = await sql`select id from users where tenant_id = ${(tenantB as { id: string }).id} limit 1`;
     const [rateCardA] = await sql`select id, equipment_type_id from rate_cards where tenant_id = ${(tenantA as { id: string }).id} limit 1`;
-    const [customerA] = await sql`select id from customers where tenant_id = ${(tenantA as { id: string }).id} limit 1`;
+    // The customer row linked to the fixture customer login -- not "any"
+    // customer, since other specs add companies to this tenant.
+    const [customerA] = await sql`
+      select c.id from customers c join users u on u.id = c.user_id
+      where c.tenant_id = ${(tenantA as { id: string }).id} and u.email = 'customer@test-tenant-a.test'
+      order by c.created_at limit 1
+    `;
 
     ctxA = { tenantId: (tenantA as { id: string }).id, userId: (userA as { id: string }).id, role: 'admin' };
     ctxB = { tenantId: (tenantB as { id: string }).id, userId: (userB as { id: string }).id, role: 'admin' };

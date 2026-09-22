@@ -11,6 +11,10 @@ export const customers = pgTable(
       .references(() => tenants.id, { onDelete: 'restrict' }),
     userId: uuid('user_id').references(() => users.id), // optional; internal-only records
     companyName: text('company_name').notNull(),
+    // Figma 582:3946 "Add New Company". One login may own several companies
+    // (several rows sharing user_id).
+    tin: text('tin'),
+    billingAddress: text('billing_address'),
     kycStatus: text('kyc_status').notNull().default('pending'), // pending, approved, rejected
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

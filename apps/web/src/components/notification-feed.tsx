@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryOptions } from '@tanstack/react-query';
 import type { NotificationListResponse, NotificationResponse } from '@arkilaunch/shared';
@@ -9,7 +10,7 @@ import { EmptyState } from './empty-state.js';
 import { BellIcon } from './icons.js';
 import { Pagination, PAGE_SIZE } from './pagination.js';
 import { formatRelativeTime } from '../lib/format-time.js';
-import { formatStatus, shortCode } from '../lib/format.js';
+import { formatPeso, formatStatus, shortCode } from '../lib/format.js';
 
 export const notificationQueries = {
   list: (limit = 20, offset = 0) =>
@@ -39,10 +40,70 @@ function payloadLines(payload: unknown): string[] {
     });
 }
 
+// The customer-journey events (bookings/quotes/payments services write
+// these) get a sentence and a destination; anything else falls back to the
+// generic type + payload rendering above.
+interface Described {
+  title: string;
+  body: string;
+  action?: { label: string; to: string; params: Record<string, string> };
+}
+
+export function describeNotification(type: string, payload: unknown): Described | null {
+  const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+  if (type === 'company_verified' || type === 'company_rejected') {
+    const name = typeof p.company_name === 'string' ? p.company_name : 'Your company';
+    return type === 'company_verified'
+      ? { title: 'Company verified', body: `${name} is verified. You can now pay for its bookings.`, action: { label: 'My bookings', to: '/account/bookings', params: {} } }
+      : { title: 'Company not verified', body: `${name} could not be verified. Contact the rental team to fix it.`, action: { label: 'View company', to: '/account/companies', params: {} } };
+  }
+  const rentalId = typeof p.rental_id === 'string' ? p.rental_id : null;
+  if (!rentalId) return null;
+  const ref = shortCode('booking', rentalId);
+  const toNegotiation = { to: '/account/negotiation/$bookingId', params: { bookingId: rentalId } };
+  const toBooking = { to: '/account/bookings/$bookingId', params: { bookingId: rentalId } };
+  switch (type) {
+    case 'quote_ready':
+      return {
+        title: 'Quote ready',
+        body: `Your quote for booking ${ref} is ${formatPeso(p.total_php as number)}. Accept it or make a counter-offer.`,
+        action: { label: 'Review quote', ...toNegotiation },
+      };
+    case 'negotiation_reply':
+      return {
+        title: 'Negotiation update',
+        body:
+          typeof p.offer_php === 'number'
+            ? `The rental team replied on booking ${ref} with an offer of ${formatPeso(p.offer_php)}.`
+            : `The rental team replied on booking ${ref}.`,
+        action: { label: 'Open conversation', ...toNegotiation },
+      };
+    case 'payment_received':
+      return { title: 'Payment received', body: `Booking ${ref} is paid and confirmed.`, action: { label: 'View booking', ...toBooking } };
+    case 'payment_failed':
+      return {
+        title: 'Payment failed',
+        body: `The payment for booking ${ref} did not go through. Nothing was charged; you can try again.`,
+        action: { label: 'Try again', to: '/account/checkout/$bookingId', params: { bookingId: rentalId } },
+      };
+    case 'payment_refunded':
+      return { title: 'Refund issued', body: `A refund was issued on booking ${ref}.`, action: { label: 'View booking', ...toBooking } };
+    case 'change_request_resolved':
+      return {
+        title: p.decision === 'approved' ? 'Request approved' : 'Request declined',
+        body: `Your ${p.kind === 'extend' ? 'extension' : 'cancellation'} request on booking ${ref} was ${p.decision === 'approved' ? 'approved' : 'declined'}.`,
+        action: { label: 'View booking', ...toBooking },
+      };
+    default:
+      return null;
+  }
+}
+
 function NotificationRow({ notification }: { notification: NotificationResponse }) {
   const queryClient = useQueryClient();
   const isUnread = notification.status === 'unread';
   const when = formatRelativeTime(new Date(notification.createdAt).toISOString());
+  const described = describeNotification(notification.notificationType, notification.payload);
 
   const markRead = useMutation({
     mutationFn: () => apiPatch(`/notifications/${notification.id}/read`, {}),
@@ -64,18 +125,32 @@ function NotificationRow({ notification }: { notification: NotificationResponse 
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text">
-              {formatStatus(notification.notificationType)}
+              {described?.title ?? formatStatus(notification.notificationType)}
             </span>
             <span aria-hidden="true" className="h-1 w-1 rounded-full bg-border" />
             <span className="font-mono text-xs text-text-muted">
               {shortCode('log', notification.id)}
             </span>
           </p>
-          {payloadLines(notification.payload).map((line) => (
-            <p key={line} className="text-sm text-text-muted">
-              {line}
-            </p>
-          ))}
+          {described ? (
+            <p className="text-sm text-text-muted">{described.body}</p>
+          ) : (
+            payloadLines(notification.payload).map((line) => (
+              <p key={line} className="text-sm text-text-muted">
+                {line}
+              </p>
+            ))
+          )}
+          {described?.action && (
+            <Link
+              to={described.action.to}
+              params={described.action.params}
+              onClick={() => isUnread && markRead.mutate()}
+              className="mt-2 inline-block"
+            >
+              <Button variant="primary">{described.action.label}</Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -85,7 +160,7 @@ function NotificationRow({ notification }: { notification: NotificationResponse 
         </span>
         {isUnread && (
           <Button variant="secondary" loading={markRead.isPending} onClick={() => markRead.mutate()}>
-            Mark read
+            Dismiss
           </Button>
         )}
       </div>
@@ -104,6 +179,11 @@ export function NotificationFeed() {
   // the same server limit/offset; this one now does too.
   const [offset, setOffset] = useState(0);
   const query = useQuery(notificationQueries.list(PAGE_SIZE, offset));
+  const queryClient = useQueryClient();
+  const markAll = useMutation({
+    mutationFn: () => apiPatch('/notifications/read-all', {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
 
   if (query.isPending) return <p className="text-sm text-text-muted">Loading notifications...</p>;
 
@@ -123,7 +203,7 @@ export function NotificationFeed() {
     return (
       <EmptyState
         title="Nothing needs you right now"
-        description="Maintenance alerts, weather advisories and review-queue items land here as they happen."
+        description="Quotes, replies, payments and alerts land here as they happen."
       />
     );
 
@@ -131,9 +211,14 @@ export function NotificationFeed() {
     <Surface radius="md" elevation="sm" className="overflow-hidden p-0">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
         <h2 className="font-display text-base font-semibold text-text">Pending items</h2>
-        <p className="text-sm text-text-muted">
-          {query.data.total} in total
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-text-muted">{query.data.total} in total</p>
+          {query.data.items.some((item) => item.status === 'unread') && (
+            <Button variant="secondary" loading={markAll.isPending} onClick={() => markAll.mutate()}>
+              Mark all as read
+            </Button>
+          )}
+        </div>
       </div>
       <div>
         {query.data.items.map((item) => (

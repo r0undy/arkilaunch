@@ -13,7 +13,7 @@ const FOOTER_COLUMNS = [
   {
     title: 'Explore',
     links: [
-      { label: 'Register', to: '/register' },
+      { label: 'Register', to: '/signup' },
       { label: 'Sign in', to: '/login' },
     ],
   },

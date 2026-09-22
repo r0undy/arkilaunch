@@ -40,6 +40,7 @@ export const ACCOUNT_NAV: NavGroup[] = [
       { label: 'Home', to: '/account', icon: LayoutDashboard },
       { label: 'Browse equipment', to: '/equipment', icon: Boxes },
       { label: 'My bookings', to: '/account/bookings', icon: ShoppingCart },
+      { label: 'Companies', to: '/account/companies', icon: Store },
       { label: 'Applications', to: '/account/applications', icon: FileText },
       { label: 'Notifications', to: '/account/notifications', icon: Bell },
       { label: 'Settings', to: '/account/settings', icon: Settings },
@@ -66,6 +67,7 @@ export const APP_NAV: NavGroup[] = [
     title: 'Billing',
     items: [
       { label: 'Field logs', to: '/app/ocr', icon: ClipboardList },
+      { label: 'Bookings', to: '/app/bookings', icon: ShoppingCart },
       { label: 'Quotes', to: '/app/quotes', icon: FileText },
       { label: 'Invoices', to: '/app/payments', icon: Receipt },
       { label: 'Weekly billing', to: '/app/billing/weekly', icon: CalendarRange },

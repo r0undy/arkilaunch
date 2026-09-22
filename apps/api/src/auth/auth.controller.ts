@@ -3,6 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator.js';
 import { AuthService } from './auth.service.js';
 import { LoginDto, RefreshDto, UserActivateDto, Verify2faDto } from './dto.js';
+import { CustomerSignupDto } from '../customers/dto.js';
 
 // Public: no tenant context yet (RFC-1 §3). 2fa/verify stays here (also
 // public) because at that point the caller holds only a single-purpose
@@ -18,6 +19,14 @@ export class AuthController {
   @Post('login')
   login(@Body() body: LoginDto) {
     return this.auth.login(body);
+  }
+
+  // Customer self-signup (customer prerequisites CR). Throttled hard: it
+  // is an unauthenticated write that spends an argon2 hash.
+  @Post('register-customer')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  registerCustomer(@Body() body: CustomerSignupDto) {
+    return this.auth.registerCustomer(body);
   }
 
   @Post('refresh')

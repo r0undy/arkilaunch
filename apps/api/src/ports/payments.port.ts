@@ -3,7 +3,13 @@
 // convention as document-intelligence.port.ts). The real adapter lives
 // here: it needs `fetch` against a live endpoint and an env-scoped secret,
 // which have no place in a browser-shared package.
-import { StubPaymentsAdapter, type CheckoutSession, type PaymentsPort } from '@arkilaunch/shared';
+import {
+  CHECKOUT_METHODS,
+  StubPaymentsAdapter,
+  type CheckoutOptions,
+  type CheckoutSession,
+  type PaymentsPort,
+} from '@arkilaunch/shared';
 
 export { type CheckoutSession, type PaymentsPort, StubPaymentsAdapter } from '@arkilaunch/shared';
 
@@ -25,7 +31,8 @@ export class PayMongoAdapter implements PaymentsPort {
     private readonly cancelUrl: string,
   ) {}
 
-  async createCheckoutSession(amountPhp: number, invoiceId: string): Promise<CheckoutSession> {
+  async createCheckoutSession(amountPhp: number, invoiceId: string, options: CheckoutOptions = {}): Promise<CheckoutSession> {
+    const label = options.label ?? 'Rental deposit';
     const amountCentavos = Math.round(amountPhp * 100);
     const response = await fetch(`${PAYMONGO_API_BASE}/checkout_sessions`, {
       method: 'POST',
@@ -40,15 +47,16 @@ export class PayMongoAdapter implements PaymentsPort {
               {
                 amount: amountCentavos,
                 currency: 'PHP',
-                description: `Rental deposit (invoice ${invoiceId})`,
-                name: 'Rental deposit',
+                description: `${label} (invoice ${invoiceId})`,
+                name: label,
                 quantity: 1,
               },
             ],
-            payment_method_types: ['card', 'gcash', 'paymaya', 'dob'],
+            // The customer's pick from our method screen, else every channel.
+            payment_method_types: options.methods ?? [...CHECKOUT_METHODS],
             success_url: this.successUrl,
             cancel_url: this.cancelUrl,
-            description: `Rental deposit for invoice ${invoiceId}`,
+            description: `${label} for invoice ${invoiceId}`,
             // Correlates the eventual payment.paid/payment.failed webhook
             // back to our invoice -- PayMongo forwards checkout session
             // metadata onto the payment it creates (standard practice for

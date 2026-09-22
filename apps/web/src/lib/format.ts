@@ -148,6 +148,7 @@ const INVOICE_TYPE_LABELS: Record<string, string> = {
   rental: 'Rental',
   penalty: 'Penalty',
   adjustment: 'Adjustment',
+  booking: 'Rental and deposit',
 };
 
 export function formatInvoiceType(value: string | null | undefined): string {

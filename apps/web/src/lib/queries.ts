@@ -1,6 +1,9 @@
 import { queryOptions } from '@tanstack/react-query';
 import type {
   BookingDetailResponse,
+  NegotiationMessageResponse,
+  CompanyResponse,
+  CustomerSiteResponse,
   BookingListResponse,
   CatalogEquipment,
   CatalogEquipmentListResponse,
@@ -107,6 +110,33 @@ export const bookingsQueries = {
       queryKey: ['booking', bookingId] as const,
       queryFn: () => apiGet<BookingDetailResponse>(`/bookings/${bookingId}`),
     }),
+  // The negotiation thread. Polled, not pushed: there is no socket here,
+  // and a counter-offer landing ten seconds late costs nothing.
+  messages: (bookingId: string) =>
+    queryOptions({
+      queryKey: ['booking', bookingId, 'messages'] as const,
+      queryFn: () => apiGet<NegotiationMessageResponse[]>(`/bookings/${bookingId}/messages`),
+      refetchInterval: 10_000,
+    }),
+};
+
+// Wire shape of QuotesService.get (apps/api/src/quotes/quotes.service.ts).
+export interface QuoteDetail {
+  id: string;
+  revision: number;
+  status: string;
+  lineItems: { equipmentTypeId: string; quantity: number; estimatedHours: number; subtotal: number }[];
+  subtotal: number;
+  discount: number;
+  total: number;
+}
+
+export const quotesQueries = {
+  detail: (quoteId: string) =>
+    queryOptions({
+      queryKey: ['quote', quoteId] as const,
+      queryFn: () => apiGet<QuoteDetail>(`/quotes/${quoteId}`),
+    }),
 };
 
 export interface ReportsSnapshot {
@@ -196,3 +226,25 @@ export function fleetUtilizationPct(report: UtilizationReportResponse | undefine
 }
 
 export type { CapabilitiesRef, CustomerRef, EquipmentTypeRef, ProjectSiteRef, RateCardRef, RentalRef };
+
+// Customer prerequisites CR: the caller's own companies and sites.
+export const companiesQueries = {
+  mine: () =>
+    queryOptions({
+      queryKey: ['me', 'companies'] as const,
+      queryFn: () => apiGet<CompanyResponse[]>('/me/companies'),
+    }),
+  review: (kycStatus: 'pending' | 'approved' | 'rejected') =>
+    queryOptions({
+      queryKey: ['customers', 'review', kycStatus] as const,
+      queryFn: () => apiGet<CompanyResponse[]>(`/customers/review?kycStatus=${kycStatus}`),
+    }),
+};
+
+export const customerSitesQueries = {
+  mine: () =>
+    queryOptions({
+      queryKey: ['me', 'sites'] as const,
+      queryFn: () => apiGet<CustomerSiteResponse[]>('/me/sites'),
+    }),
+};

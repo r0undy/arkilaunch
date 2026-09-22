@@ -1,4 +1,4 @@
-import { createRoute } from '@tanstack/react-router';
+import { createRoute, Link } from '@tanstack/react-router';
 import { useEffect, useState, type FormEvent } from 'react';
 import { appLayoutRoute } from './_app.js';
 import { apiPost, apiErrorText } from '../lib/api-client.js';
@@ -41,10 +41,22 @@ interface QuoteResult {
   total: number;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ?bookingId=&customerId= arrive from a booking's "Quote this booking":
+// the quote is then tied to that booking so the customer can accept it.
+function validateQuoteSearch(search: Record<string, unknown>): { bookingId?: string; customerId?: string } {
+  const out: { bookingId?: string; customerId?: string } = {};
+  if (typeof search.bookingId === 'string' && UUID.test(search.bookingId)) out.bookingId = search.bookingId;
+  if (typeof search.customerId === 'string' && UUID.test(search.customerId)) out.customerId = search.customerId;
+  return out;
+}
+
 // DESIGN.md §4.1 Quotation builder: rate-card selector + live diesel Gauge
 // Readout (with date + staleness label) + computed line items.
 function QuotesPage() {
   const toast = useToast();
+  const { bookingId, customerId: bookingCustomerId } = quotesRoute.useSearch();
   const [customers, setCustomers] = useState<CustomerRef[]>([]);
   const [equipmentTypes, setEquipmentTypes] = useState<EquipmentTypeRef[]>([]);
   const [rateCards, setRateCards] = useState<RateCardRef[]>([]);
@@ -59,6 +71,8 @@ function QuotesPage() {
   const [estimatedHours, setEstimatedHours] = useState('8');
   const [mobilizationKm, setMobilizationKm] = useState('0');
   const [demobilizationKm, setDemobilizationKm] = useState('0');
+  // A fixed peso discount is how staff meet a customer's counter-offer.
+  const [discount, setDiscount] = useState('0');
 
   const [result, setResult] = useState<QuoteResult | null>(null);
   // The priced figures used to appear inline below the form, so Preview and
@@ -76,7 +90,9 @@ function QuotesPage() {
         setEquipmentTypes(et);
         setRateCards(rc);
         setProjectSites(ps);
-        if (c[0]) setCustomerId(c[0].id);
+        const preset = bookingCustomerId && c.find((customer) => customer.id === bookingCustomerId);
+        if (preset) setCustomerId(preset.id);
+        else if (c[0]) setCustomerId(c[0].id);
         if (et[0]) setEquipmentTypeId(et[0].id);
         if (rc[0]) setRateCardId(rc[0].id);
         if (ps[0]) setProjectSiteId(ps[0].id);
@@ -106,7 +122,8 @@ function QuotesPage() {
     return {
       customerId,
       projectSiteId,
-      discount: { type: 'none', value: 0 },
+      ...(bookingId ? { rentalId: bookingId } : {}),
+      discount: Number(discount) > 0 ? { type: 'fixed', value: Number(discount) } : { type: 'none', value: 0 },
       items: [
         {
           equipmentTypeId,
@@ -160,9 +177,10 @@ function QuotesPage() {
     if (!quoteId) return;
     setBusy('approve');
     try {
-      const res = await apiPost<QuoteResult>(`/quotes/${quoteId}/approve`, {});
-      setResult(res);
-      toast.success('Quote approved');
+      // approve answers { id, status } only; keep the priced figures.
+      const res = await apiPost<{ status: string }>(`/quotes/${quoteId}/approve`, {});
+      setResult((prev) => (prev ? { ...prev, status: res.status } : prev));
+      toast.success('Quote approved', bookingId ? 'The customer has been notified.' : undefined);
     } catch (err) {
       toast.error('Could not approve the quote', apiErrorText(err));
     } finally {
@@ -205,6 +223,15 @@ function QuotesPage() {
         title="Quotes"
         description="Price a quote against today's diesel rate."
       />
+      {bookingId && (
+        <p className="text-sm text-text">
+          Quoting booking{' '}
+          <Link to="/app/bookings/$bookingId" params={{ bookingId }} className="font-mono underline">
+            {bookingId.slice(0, 8)}
+          </Link>
+          . Approving it sends it to the customer to accept.
+        </p>
+      )}
       {refFailed && (
         <p className="text-error" role="alert">
           Could not load customers, equipment, rate cards or sites. Reload the page once the API is
@@ -301,6 +328,16 @@ function QuotesPage() {
             value={demobilizationKm}
             onChange={(e) => setDemobilizationKm(e.target.value)}
           />
+          <Input
+            numeric
+            id="discount"
+            label="Discount (PHP, fixed)"
+            type="number"
+            min="0"
+            step="0.01"
+            value={discount}
+            onChange={(e) => setDiscount(e.target.value)}
+          />
           <div className="flex flex-wrap gap-3">
             <Button type="submit" disabled={incomplete} loading={busy === 'preview'}>
               Preview price
@@ -357,5 +394,6 @@ function QuotesPage() {
 export const quotesRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/quotes',
+  validateSearch: validateQuoteSearch,
   component: QuotesPage,
 });

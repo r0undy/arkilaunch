@@ -1,9 +1,10 @@
-import { Controller, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Param, Post, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { PaymentsService } from './payments.service.js';
+import { CheckoutRequestDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -23,7 +24,7 @@ export class PaymentsController {
   @Post(':id/checkout')
   @RequirePermission('payment:checkout')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  checkout(@Param('id') id: string, @Req() req: CtxRequest) {
-    return this.payments.checkout(req.ctx, id);
+  checkout(@Param('id') id: string, @Body() body: CheckoutRequestDto, @Req() req: CtxRequest) {
+    return this.payments.checkout(req.ctx, id, body);
   }
 }

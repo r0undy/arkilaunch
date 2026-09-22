@@ -1,9 +1,10 @@
-import { ForbiddenException, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, gte } from 'drizzle-orm';
 import {
   DEFAULT_DEPOSIT_PHP,
   customers,
   findTenantByInvoiceIdForWebhook,
+  invoiceLineItems,
   invoices,
   payments,
   quotations,
@@ -11,8 +12,15 @@ import {
   rentals,
   withTenantTx,
 } from '@arkilaunch/db';
-import { PaymongoEventEnvelopeSchema, type PaymentsPort, type RequestContext } from '@arkilaunch/shared';
+import {
+  PaymongoEventEnvelopeSchema,
+  type CheckoutRequest,
+  type PaymentsPort,
+  type RequestContext,
+} from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
+import { notifyBookingCustomer } from '../common/notify-customer.js';
+import { ownsCustomer } from '../common/customer-scope.js';
 import { verifyPaymongoSignature } from './signature.js';
 import { PAYMENTS_PORT } from './payments.tokens.js';
 
@@ -43,14 +51,21 @@ export class PaymentsService {
 
   // POST /api/v1/bookings/:id/checkout (SDD §4, PRD-F2 US-08). Stores only
   // provider_ref + status -- never a card/account number.
-  async checkout(ctx: RequestContext, bookingId: string) {
+  async checkout(ctx: RequestContext, bookingId: string, body: CheckoutRequest = {}) {
     return withTenantTx(ctx, async (tx) => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, bookingId)).limit(1);
       if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
 
       if (ctx.role === 'customer') {
-        const [own] = await tx.select().from(customers).where(eq(customers.userId, ctx.userId)).limit(1);
-        if (!own || rental.customerId !== own.id) throw new NotFoundException({ error: 'booking_not_found' });
+        if (!(await ownsCustomer(tx, ctx, rental.customerId))) throw new NotFoundException({ error: 'booking_not_found' });
+      }
+
+      // Customer prerequisites CR: a booking can be quoted before its
+      // company is verified, but money moves only once staff have checked
+      // the company's ID and registration.
+      const [company] = await tx.select().from(customers).where(eq(customers.id, rental.customerId)).limit(1);
+      if (company?.kycStatus !== 'approved') {
+        throw new ConflictException({ error: 'company_not_verified', status: company?.kycStatus ?? null });
       }
 
       // QAD-T31 (resource abuse / cost bomb): a rapid repeated burst of
@@ -68,13 +83,24 @@ export class PaymentsService {
         );
       }
 
-      let depositAmount = DEFAULT_DEPOSIT_PHP;
+      // Two shapes of checkout. A booking whose latest quote the customer
+      // accepted pays rent + deposit in one go, on one 'booking' invoice
+      // itemised as two lines; the rent is the stored, engine-priced quote
+      // total, never a client number. A booking with no quote at all keeps
+      // the original deposit-only checkout. A quote that exists but is not
+      // accepted blocks checkout: paying before the price is agreed is how
+      // a customer ends up charged for a number they never saw.
       const [quotation] = await tx
         .select()
         .from(quotations)
         .where(eq(quotations.rentalId, bookingId))
         .orderBy(desc(quotations.createdAt))
         .limit(1);
+      if (quotation && quotation.status !== 'accepted') {
+        throw new ConflictException({ error: 'quote_not_accepted', status: quotation.status });
+      }
+
+      let depositAmount = DEFAULT_DEPOSIT_PHP;
       if (quotation) {
         const [contract] = await tx
           .select()
@@ -83,12 +109,30 @@ export class PaymentsService {
           .orderBy(desc(rentalContracts.createdAt))
           .limit(1);
         if (contract) depositAmount = Number(contract.depositRequired);
+        // A deposit already paid on the deposit-only path is already held;
+        // charging it again on the booking invoice would double-take it.
+        const [paidDeposit] = await tx
+          .select()
+          .from(invoices)
+          .where(and(eq(invoices.rentalId, bookingId), eq(invoices.invoiceType, 'deposit'), eq(invoices.status, 'paid')))
+          .limit(1);
+        if (paidDeposit) depositAmount = 0;
       }
+      const rentAmount = quotation ? Number(quotation.totalPhp ?? 0) : 0;
+      const invoiceType = quotation ? 'booking' : 'deposit';
+      const amount = rentAmount + depositAmount;
+
+      const [alreadyPaid] = await tx
+        .select()
+        .from(invoices)
+        .where(and(eq(invoices.rentalId, bookingId), eq(invoices.invoiceType, invoiceType), eq(invoices.status, 'paid')))
+        .limit(1);
+      if (alreadyPaid) throw new ConflictException({ error: 'already_paid', invoiceId: alreadyPaid.id });
 
       let [invoice] = await tx
         .select()
         .from(invoices)
-        .where(and(eq(invoices.rentalId, bookingId), eq(invoices.invoiceType, 'deposit'), eq(invoices.status, 'issued')))
+        .where(and(eq(invoices.rentalId, bookingId), eq(invoices.invoiceType, invoiceType), eq(invoices.status, 'issued')))
         .limit(1);
       if (!invoice) {
         [invoice] = await tx
@@ -96,24 +140,49 @@ export class PaymentsService {
           .values({
             tenantId: ctx.tenantId,
             rentalId: bookingId,
-            invoiceType: 'deposit',
-            amount: String(depositAmount),
+            invoiceType,
+            amount: String(amount),
             status: 'issued',
             dueDate: new Date(),
           })
           .returning();
+        if (invoice && quotation) {
+          const lines = [
+            {
+              tenantId: ctx.tenantId,
+              invoiceId: invoice.id,
+              description: `Equipment rental (quote revision ${quotation.revision})`,
+              unitPrice: String(rentAmount),
+              amount: String(rentAmount),
+            },
+            {
+              tenantId: ctx.tenantId,
+              invoiceId: invoice.id,
+              description: 'Refundable security deposit',
+              unitPrice: String(depositAmount),
+              amount: String(depositAmount),
+            },
+          ].filter((line) => Number(line.amount) > 0);
+          if (lines.length > 0) await tx.insert(invoiceLineItems).values(lines);
+        }
       }
       if (!invoice) throw new Error('invoices insert returned no row');
+      // Charge what the invoice says, not what was recomputed: a reused
+      // issued invoice must never be re-priced underneath the customer.
+      const chargeAmount = Number(invoice.amount);
 
-      const session = await this.paymentsPort.createCheckoutSession(depositAmount, invoice.id);
+      const session = await this.paymentsPort.createCheckoutSession(chargeAmount, invoice.id, {
+        label: quotation ? 'Equipment rental and deposit' : 'Rental deposit',
+        ...(body.method ? { methods: [body.method] } : {}),
+      });
 
       const [payment] = await tx
         .insert(payments)
         .values({
           tenantId: ctx.tenantId,
           invoiceId: invoice.id,
-          method: 'checkout',
-          amount: String(depositAmount),
+          method: body.method ?? 'checkout',
+          amount: String(chargeAmount),
           providerRef: session.id,
           status: 'pending',
         })
@@ -186,6 +255,7 @@ export class PaymentsService {
           }
           await tx.update(invoices).set({ status: 'paid' }).where(eq(invoices.id, invoiceId));
           await tx.update(rentals).set({ status: 'confirmed' }).where(eq(rentals.id, lookup.rentalId));
+          await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_received', { invoice_id: invoiceId });
           await this.events.emit(ctx, 'deposit_payment_confirmed', { invoice_id: invoiceId });
           break;
         }
@@ -195,6 +265,7 @@ export class PaymentsService {
           }
           // Booking stays pending/unpaid; status only ever changes from
           // the webhook, never the browser redirect (US-08 AC2, QAD-T20).
+          await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_failed', { invoice_id: invoiceId });
           await this.events.emit(ctx, 'deposit_payment_failed', { invoice_id: invoiceId });
           break;
         }
@@ -212,6 +283,7 @@ export class PaymentsService {
               status: 'refunded',
             });
           }
+          await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_refunded', { invoice_id: invoiceId });
           await this.events.emit(ctx, 'deposit_payment_refunded', { invoice_id: invoiceId });
           break;
         }

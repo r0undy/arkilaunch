@@ -14,8 +14,19 @@ export interface CheckoutSession {
 // data (AGENTS.md); this interface is what a webhook handler verifies
 // against. `amountPhp` is the deposit amount in PHP (not centavos); the
 // adapter converts to PayMongo's integer-centavo `amount` at the boundary.
+// PayMongo checkout channel codes. The customer picks one on our page
+// (Figma 168:2161 / 216:2049) and PayMongo's hosted page does the rest --
+// wallet login, bank login, OTP -- so no credential ever touches us.
+export const CHECKOUT_METHODS = ['gcash', 'paymaya', 'dob', 'card'] as const;
+export type CheckoutMethod = (typeof CHECKOUT_METHODS)[number];
+
+export interface CheckoutOptions {
+  label?: string;
+  methods?: CheckoutMethod[];
+}
+
 export interface PaymentsPort {
-  createCheckoutSession(amountPhp: number, invoiceId: string): Promise<CheckoutSession>;
+  createCheckoutSession(amountPhp: number, invoiceId: string, options?: CheckoutOptions): Promise<CheckoutSession>;
 }
 
 export class StubPaymentsAdapter implements PaymentsPort {
