@@ -44,7 +44,14 @@ function booking(overrides: Partial<BookingDetailResponse> = {}): BookingDetailR
     siteContact: null,
     siteNotes: null,
     createdAt: new Date('2026-09-01T00:00:00Z'),
-    items: [{ equipmentId: '44444444-4444-4444-8444-444444444444', start: new Date('2026-10-01T08:00:00Z'), end: new Date('2026-10-05T17:00:00Z'), status: 'scheduled' }],
+    items: [
+      {
+        equipmentId: '44444444-4444-4444-8444-444444444444',
+        start: new Date('2026-10-01T08:00:00Z'),
+        end: new Date('2026-10-05T17:00:00Z'),
+        status: 'scheduled',
+      },
+    ],
     quotation: null,
     deposit: { required: null, totalDeducted: 0, deductions: [] },
     changeRequests: [],
@@ -54,13 +61,24 @@ function booking(overrides: Partial<BookingDetailResponse> = {}): BookingDetailR
   };
 }
 
-const accepted = { id: '55555555-5555-4555-8555-555555555555', revision: 2, status: 'accepted', totalPhp: 30000, createdAt: new Date('2026-09-02T00:00:00Z') };
+const accepted = {
+  id: '55555555-5555-4555-8555-555555555555',
+  revision: 2,
+  status: 'accepted',
+  totalPhp: 30000,
+  createdAt: new Date('2026-09-02T00:00:00Z'),
+};
 
 // What the checkout screen tells the customer they will pay. It must match
 // the server's rule, above all never showing the deposit twice.
 describe('amountDue', () => {
   it('is the accepted quote plus the contract deposit', () => {
-    const due = amountDue(booking({ quotation: accepted, deposit: { required: 5000, totalDeducted: 0, deductions: [] } }));
+    const due = amountDue(
+      booking({
+        quotation: accepted,
+        deposit: { required: 5000, totalDeducted: 0, deductions: [] },
+      }),
+    );
     expect(due).toEqual({ rent: 30000, deposit: 5000, total: 35000 });
   });
 
@@ -69,7 +87,14 @@ describe('amountDue', () => {
       booking({
         quotation: accepted,
         deposit: { required: 5000, totalDeducted: 0, deductions: [] },
-        invoices: [{ id: '66666666-6666-4666-8666-666666666666', invoiceType: 'deposit', amount: 5000, status: 'paid' }],
+        invoices: [
+          {
+            id: '66666666-6666-4666-8666-666666666666',
+            invoiceType: 'deposit',
+            amount: 5000,
+            status: 'paid',
+          },
+        ],
       }),
     );
     expect(due.total).toBe(30000);
@@ -81,7 +106,10 @@ describe('amountDue', () => {
 });
 
 describe('bookingTimeline', () => {
-  const done = (b: BookingDetailResponse) => bookingTimeline(b).filter((s) => s.done).map((s) => s.label);
+  const done = (b: BookingDetailResponse) =>
+    bookingTimeline(b)
+      .filter((s) => s.done)
+      .map((s) => s.label);
 
   it('only marks a step done when the record behind it exists', () => {
     expect(done(booking())).toEqual(['Requested']);
@@ -91,7 +119,12 @@ describe('bookingTimeline', () => {
   it('marks delivery and return only when staff record them, not by the calendar', () => {
     const paid = booking({ quotation: accepted, status: 'confirmed' });
     expect(done(paid)).toEqual(['Requested', 'Price agreed', 'Paid']);
-    expect(done({ ...paid, status: 'active' })).toEqual(['Requested', 'Price agreed', 'Paid', 'Delivered']);
+    expect(done({ ...paid, status: 'active' })).toEqual([
+      'Requested',
+      'Price agreed',
+      'Paid',
+      'Delivered',
+    ]);
     expect(done({ ...paid, status: 'completed' })).toEqual([
       'Requested',
       'Price agreed',
@@ -104,9 +137,20 @@ describe('bookingTimeline', () => {
 
 describe('describeNotification', () => {
   it('turns a journey event into a sentence with a destination', () => {
-    const described = describeNotification('quote_ready', { rental_id: booking().id, total_php: 30000 });
+    const described = describeNotification('quote_ready', {
+      rental_id: booking().id,
+      total_php: 30000,
+    });
     expect(described?.title).toBe('Quote ready');
     expect(described?.action?.to).toBe('/account/negotiation/$bookingId');
+  });
+
+  it('describes delivery, return and staff cancellation instead of dumping the payload', () => {
+    for (const type of ['equipment_delivered', 'equipment_returned', 'booking_cancelled']) {
+      expect(describeNotification(type, { rental_id: booking().id })?.action?.to).toBe(
+        '/account/bookings/$bookingId',
+      );
+    }
   });
 
   it('falls back for anything it does not know', () => {

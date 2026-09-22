@@ -326,6 +326,8 @@ export class BookingsService {
         throw new ConflictException({ error: 'cancel_needs_request', status: rental.status });
       }
       await this.cancelRental(tx, ctx, id);
+      // The customer knows when they cancelled; tell them when staff did.
+      if (ctx.role !== 'customer') await notifyBookingCustomer(tx, ctx.tenantId, id, 'booking_cancelled');
       return { id, status: 'cancelled' };
     });
   }

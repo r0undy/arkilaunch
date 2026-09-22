@@ -195,5 +195,12 @@ describe('Delivery, return and staff alerts', () => {
     expect(await staffAlerts('customer_message', booking.id)).toBeGreaterThan(0);
     expect(await staffAlerts('change_request_submitted', booking.id)).toBeGreaterThan(0);
     await bookings.cancel(customerCtx, booking.id);
+    expect(await notificationTypes(booking.id)).not.toContain('booking_cancelled');
+  });
+
+  it('tells the customer when staff cancel their booking', async () => {
+    const booking = await book(8);
+    await bookings.cancel(adminCtx, booking.id);
+    expect(await notificationTypes(booking.id)).toContain('booking_cancelled');
   });
 });
