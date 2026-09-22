@@ -18,6 +18,7 @@ import { formatDate, formatPeso, formatStatus, shortCode } from '../lib/format.j
 
 const STATUS_TONES: Record<string, StatusTone> = {
   confirmed: 'recon-approved',
+  active: 'recon-approved',
   completed: 'recon-approved',
   pending: 'recon-review',
   cancelled: 'recon-failed',
@@ -96,22 +97,22 @@ export interface TimelineStep {
 
 /**
  * Where the booking is in the journey, derived from the records that prove
- * each step rather than a status column: an accepted quote, a paid payment,
- * and the hire dates. Staff on site do not yet mark delivery or return, so
- * the last two steps follow the calendar once the booking is paid.
+ * each step: an accepted quote, a paid payment, and the booking status staff
+ * move on site (`active` once delivered, `completed` once returned).
  */
-export function bookingTimeline(booking: BookingDetailResponse, now: Date = new Date()): TimelineStep[] {
+export function bookingTimeline(booking: BookingDetailResponse): TimelineStep[] {
   const first = booking.items[0];
-  const paid = booking.payments.some((payment) => payment.status === 'paid') || booking.status === 'confirmed';
+  const onSite = booking.status === 'active' || booking.status === 'completed';
+  const returned = booking.status === 'completed';
+  const paid =
+    onSite || booking.status === 'confirmed' || booking.payments.some((payment) => payment.status === 'paid');
   const quoted = booking.quotation?.status === 'accepted';
-  const started = Boolean(paid && first && new Date(first.start) <= now);
-  const ended = Boolean(paid && first?.end && new Date(first.end) <= now);
   return [
     { label: 'Requested', done: true, detail: formatDate(booking.createdAt) },
     { label: 'Price agreed', done: quoted || paid, detail: booking.quotation ? formatPeso(booking.quotation.totalPhp) : null },
     { label: 'Paid', done: paid, detail: null },
-    { label: 'On site', done: started, detail: first ? formatDate(first.start) : null },
-    { label: 'Hire ends', done: ended, detail: first?.end ? formatDate(first.end) : null },
+    { label: 'Delivered', done: onSite, detail: first ? formatDate(first.start) : null },
+    { label: 'Returned', done: returned, detail: first?.end ? formatDate(first.end) : null },
   ];
 }
 
@@ -517,7 +518,7 @@ function ExtendRentalPage() {
               <Button variant="ghost">Cancel</Button>
             </Link>
           </div>
-          {request.isError && <p className="text-sm text-error">{apiErrorText(request.error)}</p>}
+          {request.isError && <p role="alert" className="text-sm text-error">{apiErrorText(request.error)}</p>}
         </form>
       </Surface>
     </div>

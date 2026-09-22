@@ -6,7 +6,9 @@
 function payloadOf(error: unknown): Record<string, unknown> | null {
   if (typeof error !== 'object' || error === null) return null;
   const payload = (error as { payload?: unknown }).payload;
-  return typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>) : null;
+  return typeof payload === 'object' && payload !== null
+    ? (payload as Record<string, unknown>)
+    : null;
 }
 
 function str(payload: Record<string, unknown> | null, key: string): string | null {
@@ -18,7 +20,10 @@ export function explainBookingError(error: unknown): string {
   const payload = payloadOf(error);
   const code = str(payload, 'error');
   const alternatives = Array.isArray(payload?.alternatives) ? payload.alternatives.length : 0;
-  const more = alternatives > 0 ? ` ${alternatives} similar unit${alternatives === 1 ? ' is' : 's are'} free for those dates.` : '';
+  const more =
+    alternatives > 0
+      ? ` ${alternatives} similar unit${alternatives === 1 ? ' is' : 's are'} free for those dates.`
+      : '';
 
   switch (code) {
     case 'equipment_unavailable':
@@ -41,4 +46,17 @@ export function explainBookingError(error: unknown): string {
       }
       return 'The booking was not created, and nothing has been charged. Try again in a moment.';
   }
+}
+
+// The unit that clashed and the free units of the same type the API found
+// for the same dates, so the cart can offer a one-click swap (US-09).
+export function bookingAlternatives(
+  error: unknown,
+): { equipmentId: string; alternatives: string[] } | null {
+  const payload = payloadOf(error);
+  const equipmentId = str(payload, 'equipmentId');
+  const alternatives = Array.isArray(payload?.alternatives)
+    ? payload.alternatives.filter((id): id is string => typeof id === 'string')
+    : [];
+  return equipmentId && alternatives.length > 0 ? { equipmentId, alternatives } : null;
 }
