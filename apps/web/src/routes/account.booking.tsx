@@ -518,7 +518,7 @@ function ExtendRentalPage() {
               <Button variant="ghost">Cancel</Button>
             </Link>
           </div>
-          {request.isError && <p className="text-sm text-error">{apiErrorText(request.error)}</p>}
+          {request.isError && <p role="alert" className="text-sm text-error">{apiErrorText(request.error)}</p>}
         </form>
       </Surface>
     </div>

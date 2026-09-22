@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { quoteExpiresAt, type BookingDetailResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, quotesQueries } from '../lib/queries.js';
-import { apiErrorText, apiPost } from '../lib/api-client.js';
+import { ApiError, apiErrorText, apiPost } from '../lib/api-client.js';
 import { formatDate, formatPeso, shortCode } from '../lib/format.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
@@ -13,6 +13,7 @@ import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon, ClockIcon } from '../components/icons.js';
 import { NegotiationThread } from '../components/negotiation-thread.js';
 import { useToast } from '../components/toast.js';
+import { LoadError } from '../components/load-error.js';
 
 // Figma 219:2226 (Proceed to Negotiation), 225:3084 (Messenger Chat Nego),
 // 225:3085 (Call Nego), 225:3087 (Nego Finalized), 238:2649 (Manage Nego
@@ -34,7 +35,10 @@ function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
     onSuccess: async (_data, action) => {
       await queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       if (action === 'accept') {
-        navigate({ to: '/account/negotiation/$bookingId/final', params: { bookingId: booking.id } });
+        navigate({
+          to: '/account/negotiation/$bookingId/final',
+          params: { bookingId: booking.id },
+        });
       } else {
         toast.success('Quote declined', 'The rental team can send you a revised one.');
       }
@@ -63,21 +67,31 @@ function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
     <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5">
       <div className="flex items-center justify-between gap-2">
         <h2 className={heading}>Quote &middot; revision {quote.revision}</h2>
-        {quote.status === 'accepted' && <StatusPill tone="recon-approved" label="Agreed" icon={<CheckIcon />} />}
+        {quote.status === 'accepted' && (
+          <StatusPill tone="recon-approved" label="Agreed" icon={<CheckIcon />} />
+        )}
       </div>
       <p className="font-mono text-3xl font-semibold text-text">{formatPeso(quote.totalPhp)}</p>
 
       {quote.status === 'approved' && !expired && (
         <>
           <p className="text-sm text-text-muted">
-            Valid until {formatDate(expiresAt)}. Accept to lock this price, or send a counter-offer in
-            the conversation and the team will revise it.
+            Valid until {formatDate(expiresAt)}. Accept to lock this price, or send a counter-offer
+            in the conversation and the team will revise it.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" loading={decide.isPending && decide.variables === 'accept'} onClick={() => decide.mutate('accept')}>
+            <Button
+              variant="primary"
+              loading={decide.isPending && decide.variables === 'accept'}
+              onClick={() => decide.mutate('accept')}
+            >
               Accept quote
             </Button>
-            <Button variant="secondary" loading={decide.isPending && decide.variables === 'decline'} onClick={() => decide.mutate('decline')}>
+            <Button
+              variant="secondary"
+              loading={decide.isPending && decide.variables === 'decline'}
+              onClick={() => decide.mutate('decline')}
+            >
               Decline
             </Button>
           </div>
@@ -90,8 +104,8 @@ function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
       )}
       {quote.status === 'rejected' && (
         <p className="text-sm text-text-muted">
-          You declined this revision. The team can send a revised quote, or you can cancel the booking
-          from its page.
+          You declined this revision. The team can send a revised quote, or you can cancel the
+          booking from its page.
         </p>
       )}
       {quote.status === 'accepted' && (
@@ -113,6 +127,19 @@ function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
 
 function useBooking(bookingId: string) {
   return useQuery(bookingsQueries.detail(bookingId));
+}
+
+// Only a 404/403 means the booking is not this customer's; anything else is
+// a failed load they can retry, not "booking not found".
+function LoadFailed({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  if (error instanceof ApiError && (error.status === 404 || error.status === 403))
+    return <NotFound />;
+  return (
+    <LoadError
+      message="This booking could not be loaded just now. Check your connection and try again."
+      onRetry={onRetry}
+    />
+  );
 }
 
 function NotFound() {
@@ -145,7 +172,7 @@ function NegotiationPage({ bookingId }: { bookingId: string }) {
         }
       />
       {booking.isPending && <p className="text-sm text-text-muted">Loading...</p>}
-      {booking.isError && <NotFound />}
+      {booking.isError && <LoadFailed error={booking.error} onRetry={() => booking.refetch()} />}
       {booking.data && (
         <div className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,360px)]">
           <NegotiationThread bookingId={bookingId} disabled={booking.data.status === 'cancelled'} />
@@ -174,15 +201,19 @@ function NegotiationCallRoute() {
   const { bookingId } = accountNegotiationCallRoute.useParams();
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Negotiation" title="Negotiate by phone" description={`Booking ${shortCode('booking', bookingId)}`} />
+      <PageHeader
+        eyebrow="Negotiation"
+        title="Negotiate by phone"
+        description={`Booking ${shortCode('booking', bookingId)}`}
+      />
       <Surface radius="md" elevation="sm" className="flex max-w-xl flex-col gap-3 p-6">
         <p className="text-sm text-text">
           Call the rental team on the number on our contact page and quote your booking reference{' '}
           <span className="font-mono font-semibold">{shortCode('booking', bookingId)}</span>.
         </p>
         <p className="text-sm text-text-muted">
-          Whatever you agree on the call comes back here as a revised quote for you to accept, so the
-          price you pay is always the one written down.
+          Whatever you agree on the call comes back here as a revised quote for you to accept, so
+          the price you pay is always the one written down.
         </p>
         <div className="flex flex-wrap gap-2">
           <Link to="/contact">
@@ -206,7 +237,8 @@ function NegotiationFinalRoute() {
   const accepted = booking.data?.quotation?.status === 'accepted';
   const deposit = booking.data?.deposit.required ?? 0;
 
-  if (booking.isError) return <NotFound />;
+  if (booking.isError)
+    return <LoadFailed error={booking.error} onRetry={() => booking.refetch()} />;
   if (booking.data && !accepted) {
     return (
       <EmptyState
@@ -226,16 +258,22 @@ function NegotiationFinalRoute() {
       <StatusPill tone="recon-approved" label="Agreed" icon={<CheckIcon />} />
       <div className="text-center">
         <h1 className="font-display text-2xl font-semibold text-text">Negotiation finalised</h1>
-        <p className="mt-1 text-sm text-text-muted">These are the terms you accepted. Review them, then pay.</p>
+        <p className="mt-1 text-sm text-text-muted">
+          These are the terms you accepted. Review them, then pay.
+        </p>
       </div>
       <Surface radius="md" elevation="sm" className="flex w-full flex-col gap-3 p-5">
         <h2 className={heading}>Summary &middot; revision {quote.data?.revision ?? '--'}</h2>
         <Row label="Rental subtotal" value={formatPeso(quote.data?.subtotal)} />
-        {Boolean(quote.data?.discount) && <Row label="Negotiated discount" value={`- ${formatPeso(quote.data?.discount)}`} />}
+        {Boolean(quote.data?.discount) && (
+          <Row label="Negotiated discount" value={`- ${formatPeso(quote.data?.discount)}`} />
+        )}
         <Row label="Agreed rental price" value={formatPeso(quote.data?.total)} />
         <Row label="Refundable deposit" value={formatPeso(deposit)} />
         <div className="flex items-end justify-between gap-3 border-t border-border pt-3">
-          <span className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text">Total due</span>
+          <span className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text">
+            Total due
+          </span>
           <span className="font-mono text-2xl font-semibold text-text">
             {quote.data ? formatPeso(quote.data.total + deposit) : '--'}
           </span>
@@ -246,10 +284,14 @@ function NegotiationFinalRoute() {
           Print quote
         </Button>
         <Link to="/account/checkout/$bookingId" params={{ bookingId }} className="flex-1">
-          <Button variant="primary" className="w-full">Proceed to payment</Button>
+          <Button variant="primary" className="w-full">
+            Proceed to payment
+          </Button>
         </Link>
         <Link to="/account/bookings/$bookingId" params={{ bookingId }} className="flex-1">
-          <Button variant="secondary" className="w-full">Booking details</Button>
+          <Button variant="secondary" className="w-full">
+            Booking details
+          </Button>
         </Link>
       </div>
     </div>
