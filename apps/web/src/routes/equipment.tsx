@@ -7,13 +7,15 @@ import { SearchFilterBar, type AvailabilityFilter } from '../components/search-f
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import { catalogQueries } from '../lib/queries.js';
+import { Skeleton } from '../components/skeleton.js';
+import { LoadError } from '../components/load-error.js';
 
 function EquipmentPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [availability, setAvailability] = useState<AvailabilityFilter>('all');
   const [offset, setOffset] = useState(0);
-  const { data } = useQuery(catalogQueries.equipment());
+  const { data, isPending, isError, refetch } = useQuery(catalogQueries.equipment());
 
   const equipment = useMemo(
     () =>
@@ -43,29 +45,38 @@ function EquipmentPage() {
         availability={availability}
         onAvailabilityChange={setAvailability}
       />
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {page.map((eq) => {
-          const imageUrl = equipmentImageUrl(eq.model);
-          return (
-            <EquipmentCard
-              key={eq.id}
-              imageAlt={`${eq.equipmentTypeName} ${eq.model}`}
-              {...(imageUrl ? { imageUrl } : {})}
-              model={eq.model}
-              make={eq.equipmentTypeName}
-              availabilityStatus={eq.availabilityStatus}
-              onRent={() =>
-                navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })
-              }
-            />
-          );
-        })}
-        {equipment.length === 0 && (
-          <p className="col-span-full py-12 text-center text-sm text-text-muted">
-            No equipment matches that search.
-          </p>
-        )}
-      </div>
+      {isPending && <Skeleton label="Loading equipment" rows={3} />}
+      {isError && (
+        <LoadError
+          message="Equipment could not be loaded just now. Check your connection and try again."
+          onRetry={() => refetch()}
+        />
+      )}
+      {data && (
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {page.map((eq) => {
+            const imageUrl = equipmentImageUrl(eq.model);
+            return (
+              <EquipmentCard
+                key={eq.id}
+                imageAlt={`${eq.equipmentTypeName} ${eq.model}`}
+                {...(imageUrl ? { imageUrl } : {})}
+                model={eq.model}
+                make={eq.equipmentTypeName}
+                availabilityStatus={eq.availabilityStatus}
+                onRent={() =>
+                  navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })
+                }
+              />
+            );
+          })}
+          {equipment.length === 0 && (
+            <p className="col-span-full py-12 text-center text-sm text-text-muted">
+              No equipment matches that search.
+            </p>
+          )}
+        </div>
+      )}
       <Pagination
         offset={safeOffset}
         limit={PAGE_SIZE}
