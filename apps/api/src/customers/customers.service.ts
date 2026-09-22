@@ -1,4 +1,10 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   addresses,
@@ -11,6 +17,15 @@ import {
   withTenantTx,
   type db,
 } from '@arkilaunch/db';
+import {
+  ExtractionUnavailableError,
+  SEC_REGEX,
+  TIN_REGEX,
+  type DocumentIntelligencePort,
+  type KycScanResponse,
+} from '@arkilaunch/shared';
+import { KYC_MODEL_ID } from '@arkilaunch/document-intelligence';
+import { DOCUMENT_INTELLIGENCE_PORT } from '../kyc/kyc.tokens.js';
 import type {
   CompanyCreate,
   CompanyDecision,
@@ -31,7 +46,49 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 // bounds a customer to their own companies.
 @Injectable()
 export class CustomersService {
-  constructor(private readonly events: EventsService) {}
+  constructor(
+    private readonly events: EventsService,
+    @Inject(DOCUMENT_INTELLIGENCE_PORT) private readonly port: DocumentIntelligencePort,
+  ) {}
+
+  /**
+   * POST /me/kyc/scan. Reads a corporate document the customer is about to
+   * upload and hands back what it saw, so the form arrives filled in and
+   * they correct it rather than typing everything.
+   *
+   * This is a typing aid and nothing more. It writes no kyc_documents row,
+   * makes no verification decision, and a value that fails its format check
+   * is dropped rather than suggested -- staff still review the uploaded
+   * document under RFC-2's human gate, against what the customer submitted.
+   * When no extraction adapter is available the form simply opens empty.
+   */
+  async scanDocument(ctx: RequestContext, bytes: Buffer): Promise<KycScanResponse> {
+    assertCustomer(ctx);
+    const empty = { companyName: null, tin: null, secNumber: null };
+    let result;
+    try {
+      result = await this.port.analyze(KYC_MODEL_ID, bytes);
+    } catch (error) {
+      if (!(error instanceof ExtractionUnavailableError)) throw error;
+      await this.events.emit(ctx, 'ocr_extraction_unavailable', {
+        doc_type: 'kyc_scan',
+        reason: error.reason,
+      });
+      return { suggestions: empty, extractionAvailable: false };
+    }
+    const valid = (key: string, re: RegExp) => {
+      const field = result.fields[key];
+      return field && re.test(field.value) ? field.value : null;
+    };
+    return {
+      suggestions: {
+        companyName: result.fields.company_name?.value ?? null,
+        tin: valid('tin', TIN_REGEX),
+        secNumber: valid('sec_number', SEC_REGEX),
+      },
+      extractionAvailable: true,
+    };
+  }
 
   async listCompanies(ctx: RequestContext): Promise<CompanyResponse[]> {
     assertCustomer(ctx);
@@ -70,16 +127,27 @@ export class CustomersService {
 
   // The file is already validated and in storage (controller); this only
   // records it against a company the caller owns.
-  async addDocument(ctx: RequestContext, customerId: string, documentType: string, fileUri: string) {
+  async addDocument(
+    ctx: RequestContext,
+    customerId: string,
+    documentType: string,
+    fileUri: string,
+  ) {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
-      if (!(await ownsCustomer(tx, ctx, customerId))) throw new NotFoundException({ error: 'company_not_found' });
+      if (!(await ownsCustomer(tx, ctx, customerId)))
+        throw new NotFoundException({ error: 'company_not_found' });
       const [row] = await tx
         .insert(kycDocuments)
         .values({ tenantId: ctx.tenantId, customerId, documentType, fileUri, status: 'pending' })
         .returning();
       if (!row) throw new Error('kyc_documents insert returned no row');
-      return { id: row.id, documentType: row.documentType, status: row.status, createdAt: row.createdAt };
+      return {
+        id: row.id,
+        documentType: row.documentType,
+        status: row.status,
+        createdAt: row.createdAt,
+      };
     });
   }
 
@@ -101,10 +169,16 @@ export class CustomersService {
   async createSite(ctx: RequestContext, body: CustomerSiteCreate): Promise<CustomerSiteResponse> {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
-      if (!(await ownsCustomer(tx, ctx, body.customerId))) throw new NotFoundException({ error: 'company_not_found' });
+      if (!(await ownsCustomer(tx, ctx, body.customerId)))
+        throw new NotFoundException({ error: 'company_not_found' });
       const [address] = await tx
         .insert(addresses)
-        .values({ tenantId: ctx.tenantId, line1: body.line1, city: body.city, province: body.province })
+        .values({
+          tenantId: ctx.tenantId,
+          line1: body.line1,
+          city: body.city,
+          province: body.province,
+        })
         .returning();
       if (!address) throw new Error('addresses insert returned no row');
       const [site] = await tx
@@ -155,9 +229,13 @@ export class CustomersService {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
       if (!row) throw new NotFoundException({ error: 'company_not_found' });
-      if (row.kycStatus === body.decision) throw new ConflictException({ error: 'already_decided' });
+      if (row.kycStatus === body.decision)
+        throw new ConflictException({ error: 'already_decided' });
 
-      await tx.update(customers).set({ kycStatus: body.decision }).where(eq(customers.id, customerId));
+      await tx
+        .update(customers)
+        .set({ kycStatus: body.decision })
+        .where(eq(customers.id, customerId));
       await tx
         .update(kycDocuments)
         .set({ status: body.decision === 'approved' ? 'verified' : 'rejected' })
@@ -199,22 +277,38 @@ function toCompany(row: typeof customers.$inferSelect): Omit<CompanyResponse, 'd
   };
 }
 
-async function withDocuments(tx: Tx, rows: (typeof customers.$inferSelect)[]): Promise<CompanyResponse[]> {
+async function withDocuments(
+  tx: Tx,
+  rows: (typeof customers.$inferSelect)[],
+): Promise<CompanyResponse[]> {
   if (rows.length === 0) return [];
   const docs = await tx
     .select()
     .from(kycDocuments)
-    .where(inArray(kycDocuments.customerId, rows.map((row) => row.id)))
+    .where(
+      inArray(
+        kycDocuments.customerId,
+        rows.map((row) => row.id),
+      ),
+    )
     .orderBy(desc(kycDocuments.createdAt));
   return rows.map((row) => ({
     ...toCompany(row),
     documents: docs
       .filter((doc) => doc.customerId === row.id)
-      .map((doc) => ({ id: doc.id, documentType: doc.documentType, status: doc.status, createdAt: doc.createdAt })),
+      .map((doc) => ({
+        id: doc.id,
+        documentType: doc.documentType,
+        status: doc.status,
+        createdAt: doc.createdAt,
+      })),
   }));
 }
 
-function toSite(site: typeof projectSites.$inferSelect, address: typeof addresses.$inferSelect): CustomerSiteResponse {
+function toSite(
+  site: typeof projectSites.$inferSelect,
+  address: typeof addresses.$inferSelect,
+): CustomerSiteResponse {
   return {
     id: site.id,
     customerId: site.customerId!,

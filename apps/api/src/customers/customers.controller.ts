@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
@@ -62,6 +73,19 @@ export class CustomersController {
     return this.customers.addDocument(req.ctx, id, body.documentType, key);
   }
 
+  // Scan-first company onboarding: extraction for the customer's own
+  // typing, so no kyc:extract permission and a tighter rate limit than the
+  // staff endpoint (each call is an Azure DI page spend, QAD-T31). The
+  // document itself is still uploaded separately through addDocument.
+  @Post('me/kyc/scan')
+  @RequirePermission('booking:create')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  async scanDocument(@UploadedFile() file: MulterFile | undefined, @Req() req: CtxRequest) {
+    validateUpload(file);
+    return this.customers.scanDocument(req.ctx, file!.buffer);
+  }
+
   @Get('me/sites')
   @RequirePermission('booking:read')
   listSites(@Req() req: CtxRequest) {
@@ -85,7 +109,11 @@ export class CustomersController {
   // taken from the client.
   @Get('customers/:id/documents/:documentId/url')
   @RequirePermission('quote:approve')
-  async documentUrl(@Param('id') id: string, @Param('documentId') documentId: string, @Req() req: CtxRequest) {
+  async documentUrl(
+    @Param('id') id: string,
+    @Param('documentId') documentId: string,
+    @Req() req: CtxRequest,
+  ) {
     const key = await this.customers.documentKey(req.ctx, id, documentId);
     return { url: await this.storage.createSignedDownloadUrl(kycBucket(), key) };
   }
