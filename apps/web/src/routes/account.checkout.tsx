@@ -209,9 +209,9 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
           </Button>
         )}
 
-        {checkout.isError && <p className="text-sm text-error">{checkoutError(checkout.error)}</p>}
+        {checkout.isError && <p role="alert" className="text-sm text-error">{checkoutError(checkout.error)}</p>}
         {unavailable && (
-          <p className="text-sm text-error">
+          <p role="alert" className="text-sm text-error">
             Online payment is not switched on in this environment, so nothing was charged. The booking
             stays {formatStatus(booking.status).toLowerCase()} as {shortCode('booking', booking.id)}.
           </p>

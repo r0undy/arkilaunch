@@ -4,6 +4,7 @@ import { ApiError } from '../lib/api-client.js';
 import { Surface } from './surface.js';
 import { EmptyState } from './empty-state.js';
 import { Button } from './button.js';
+import { Skeleton } from './skeleton.js';
 
 export interface DataPanelProps<T, TQueryKey extends QueryKey = QueryKey> {
   title: string;
@@ -36,9 +37,7 @@ export function DataPanel<T, TQueryKey extends QueryKey = QueryKey>({
           and rendering a second produced the visible duplicate title -- and
           two competing document outlines for a screen reader. `title` is
           still used to word the states below. */}
-      {query.isPending && (
-        <p className="text-sm text-text-muted">Loading {title.toLowerCase()}...</p>
-      )}
+      {query.isPending && <Skeleton label={`Loading ${title.toLowerCase()}`} />}
       {query.isError && (
         <Surface radius="md" elevation="sm" className="flex flex-col gap-3 border-error p-4">
           <p className="text-sm text-error">

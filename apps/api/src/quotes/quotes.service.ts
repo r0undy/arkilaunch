@@ -11,7 +11,7 @@ import {
 } from '@arkilaunch/db';
 import { quoteExpiresAt, type QuoteRequest, type RequestContext } from '@arkilaunch/shared';
 import { ownsCustomer } from '../common/customer-scope.js';
-import { notifyBookingCustomer } from '../common/notify-customer.js';
+import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { EventsService } from '../events/events.service.js';
 import { PricingEngineService, type PricedQuote } from './pricing-engine.service.js';
 
@@ -298,6 +298,7 @@ export class QuotesService {
         entityId: quotationId,
       });
       await this.events.emit(ctx, 'quote_accepted', { quotation_id: quotationId });
+      await notifyStaff(tx, ctx.tenantId, 'quote_accepted', { rental_id: quotation.rentalId, total_php: Number(quotation.totalPhp ?? 0) });
       return { id: quotationId, status: 'accepted' };
     });
   }
@@ -312,6 +313,7 @@ export class QuotesService {
       }
       await tx.update(quotations).set({ status: 'rejected' }).where(eq(quotations.id, quotationId));
       await this.events.emit(ctx, 'quote_declined', { quotation_id: quotationId });
+      if (quotation.rentalId) await notifyStaff(tx, ctx.tenantId, 'quote_declined', { rental_id: quotation.rentalId });
       return { id: quotationId, status: 'rejected' };
     });
   }

@@ -46,6 +46,18 @@ export class BookingsController {
     return this.bookings.cancel(req.ctx, id);
   }
 
+  @Post(':id/deliver')
+  @RequirePermission('site:manage')
+  deliver(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.bookings.deliver(req.ctx, id);
+  }
+
+  @Post(':id/return')
+  @RequirePermission('site:manage')
+  markReturned(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.bookings.markReturned(req.ctx, id);
+  }
+
   @Get(':id/messages')
   @RequirePermission('booking:read')
   listMessages(@Param('id') id: string, @Req() req: CtxRequest) {

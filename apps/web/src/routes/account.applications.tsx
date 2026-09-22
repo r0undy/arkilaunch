@@ -5,6 +5,8 @@ import { accountLayoutRoute } from './_account.js';
 import { apiGet } from '../lib/api-client.js';
 import { EmptyState } from '../components/empty-state.js';
 import { Surface } from '../components/surface.js';
+import { LoadError } from '../components/load-error.js';
+import { Skeleton } from '../components/skeleton.js';
 
 function ApplicationsPage() {
   const query = useQuery({
@@ -15,15 +17,20 @@ function ApplicationsPage() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="font-display text-2xl font-semibold text-text">Applications</h1>
-      {query.isPending && <p className="text-sm text-text-muted">Loading...</p>}
-      {query.isError && <p className="text-sm text-error">Could not load your application.</p>}
+      {query.isPending && <Skeleton label="Loading your application" rows={1} />}
+      {query.isError && (
+        <LoadError
+          message="Could not load your application. Check your connection and try again."
+          onRetry={() => query.refetch()}
+        />
+      )}
       {query.isSuccess &&
         (query.data ? (
           <Surface radius="md" elevation="sm" className="flex flex-col gap-1 p-4">
             <p className="font-medium text-text">{query.data.companyName}</p>
             <p className="text-sm text-text-muted">
-              Submitted by {query.data.contactFirstName} {query.data.contactLastName} ({query.data.contactJobTitle})
-              on {query.data.createdAt.toLocaleDateString()}
+              Submitted by {query.data.contactFirstName} {query.data.contactLastName} (
+              {query.data.contactJobTitle}) on {query.data.createdAt.toLocaleDateString()}
             </p>
             <p className="text-sm text-text-muted">Awaiting platform review.</p>
           </Surface>

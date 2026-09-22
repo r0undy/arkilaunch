@@ -168,13 +168,13 @@ function AccountInvoicePage() {
         description="What was charged, and the evidence behind it."
         actions={
           <>
-            <Link to="/account/bookings">
+            <Link to="/account/bookings" data-print-hide>
               <Button variant="ghost">Back</Button>
             </Link>
             {/* The frame's "Download PDF" / "Print Statement" pair: print is
                 the browser's and needs no endpoint. A generated PDF does, so
                 it is left out rather than offered and broken. */}
-            <Button variant="secondary" onClick={() => window.print()}>
+            <Button variant="secondary" data-print-hide onClick={() => window.print()}>
               Print statement
             </Button>
           </>

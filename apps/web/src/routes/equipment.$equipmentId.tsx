@@ -8,18 +8,45 @@ import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon, TruckIcon, WrenchIcon } from '../components/icons.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import { catalogQueries } from '../lib/queries.js';
+import { ApiError } from '../lib/api-client.js';
+import { Skeleton } from '../components/skeleton.js';
+import { LoadError } from '../components/load-error.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
 
 const AVAILABILITY_PILL = {
   available: { tone: 'fleet-available' as const, label: 'Available', icon: <CheckIcon /> },
   deployed: { tone: 'fleet-deployed' as const, label: 'Deployed', icon: <TruckIcon /> },
-  maintenance: { tone: 'fleet-maintenance' as const, label: 'In maintenance', icon: <WrenchIcon /> },
+  maintenance: {
+    tone: 'fleet-maintenance' as const,
+    label: 'In maintenance',
+    icon: <WrenchIcon />,
+  },
 };
 
 function EquipmentDetailPage() {
   const { equipmentId } = equipmentDetailRoute.useParams();
   const navigate = useNavigate();
-  const { data: equipment } = useQuery(catalogQueries.equipmentDetail(equipmentId));
+  const {
+    data: equipment,
+    isPending,
+    error,
+    refetch,
+  } = useQuery(catalogQueries.equipmentDetail(equipmentId));
+
+  if (isPending) {
+    return <Skeleton label="Loading equipment" rows={2} className="px-6 py-10 sm:px-10" />;
+  }
+
+  if (error && !(error instanceof ApiError && error.status === 404)) {
+    return (
+      <div className="px-6 py-10 sm:px-10">
+        <LoadError
+          message="This listing could not be loaded just now. Check your connection and try again."
+          onRetry={() => refetch()}
+        />
+      </div>
+    );
+  }
 
   if (!equipment) {
     return (
@@ -65,7 +92,11 @@ function EquipmentDetailPage() {
         variant="primary"
         className="w-fit"
         onClick={() => {
-          addToCart({ equipmentId: equipment.id, model: equipment.model, ...defaultRentalWindow() });
+          addToCart({
+            equipmentId: equipment.id,
+            model: equipment.model,
+            ...defaultRentalWindow(),
+          });
           navigate({ to: '/account/cart' });
         }}
       >

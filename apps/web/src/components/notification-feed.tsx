@@ -11,6 +11,7 @@ import { BellIcon } from './icons.js';
 import { Pagination, PAGE_SIZE } from './pagination.js';
 import { formatRelativeTime } from '../lib/format-time.js';
 import { formatPeso, formatStatus, shortCode } from '../lib/format.js';
+import { Skeleton } from './skeleton.js';
 
 export const notificationQueries = {
   list: (limit = 20, offset = 0) =>
@@ -54,8 +55,16 @@ export function describeNotification(type: string, payload: unknown): Described 
   if (type === 'company_verified' || type === 'company_rejected') {
     const name = typeof p.company_name === 'string' ? p.company_name : 'Your company';
     return type === 'company_verified'
-      ? { title: 'Company verified', body: `${name} is verified. You can now pay for its bookings.`, action: { label: 'My bookings', to: '/account/bookings', params: {} } }
-      : { title: 'Company not verified', body: `${name} could not be verified. Contact the rental team to fix it.`, action: { label: 'View company', to: '/account/companies', params: {} } };
+      ? {
+          title: 'Company verified',
+          body: `${name} is verified. You can now pay for its bookings.`,
+          action: { label: 'My bookings', to: '/account/bookings', params: {} },
+        }
+      : {
+          title: 'Company not verified',
+          body: `${name} could not be verified. Contact the rental team to fix it.`,
+          action: { label: 'View company', to: '/account/companies', params: {} },
+        };
   }
   const rentalId = typeof p.rental_id === 'string' ? p.rental_id : null;
   if (!rentalId) return null;
@@ -79,15 +88,45 @@ export function describeNotification(type: string, payload: unknown): Described 
         action: { label: 'Open conversation', ...toNegotiation },
       };
     case 'payment_received':
-      return { title: 'Payment received', body: `Booking ${ref} is paid and confirmed.`, action: { label: 'View booking', ...toBooking } };
+      return {
+        title: 'Payment received',
+        body: `Booking ${ref} is paid and confirmed.`,
+        action: { label: 'View booking', ...toBooking },
+      };
     case 'payment_failed':
       return {
         title: 'Payment failed',
         body: `The payment for booking ${ref} did not go through. Nothing was charged; you can try again.`,
-        action: { label: 'Try again', to: '/account/checkout/$bookingId', params: { bookingId: rentalId } },
+        action: {
+          label: 'Try again',
+          to: '/account/checkout/$bookingId',
+          params: { bookingId: rentalId },
+        },
       };
     case 'payment_refunded':
-      return { title: 'Refund issued', body: `A refund was issued on booking ${ref}.`, action: { label: 'View booking', ...toBooking } };
+      return {
+        title: 'Refund issued',
+        body: `A refund was issued on booking ${ref}.`,
+        action: { label: 'View booking', ...toBooking },
+      };
+    case 'equipment_delivered':
+      return {
+        title: 'Equipment delivered',
+        body: `The equipment for booking ${ref} is on site. Your hire has started.`,
+        action: { label: 'View booking', ...toBooking },
+      };
+    case 'equipment_returned':
+      return {
+        title: 'Equipment returned',
+        body: `The equipment for booking ${ref} is back with the rental team. Your hire is complete.`,
+        action: { label: 'View booking', ...toBooking },
+      };
+    case 'booking_cancelled':
+      return {
+        title: 'Booking cancelled',
+        body: `The rental team cancelled booking ${ref}. Any refund due is handled by the billing team.`,
+        action: { label: 'View booking', ...toBooking },
+      };
     case 'change_request_resolved':
       return {
         title: p.decision === 'approved' ? 'Request approved' : 'Request declined',
@@ -159,7 +198,11 @@ function NotificationRow({ notification }: { notification: NotificationResponse 
           {when?.relative.replace('Reported ', '') ?? '--'}
         </span>
         {isUnread && (
-          <Button variant="secondary" loading={markRead.isPending} onClick={() => markRead.mutate()}>
+          <Button
+            variant="secondary"
+            loading={markRead.isPending}
+            onClick={() => markRead.mutate()}
+          >
             Dismiss
           </Button>
         )}
@@ -185,7 +228,7 @@ export function NotificationFeed() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
-  if (query.isPending) return <p className="text-sm text-text-muted">Loading notifications...</p>;
+  if (query.isPending) return <Skeleton label="Loading notifications" />;
 
   if (query.isError)
     return (
@@ -214,7 +257,11 @@ export function NotificationFeed() {
         <div className="flex items-center gap-3">
           <p className="text-sm text-text-muted">{query.data.total} in total</p>
           {query.data.items.some((item) => item.status === 'unread') && (
-            <Button variant="secondary" loading={markAll.isPending} onClick={() => markAll.mutate()}>
+            <Button
+              variant="secondary"
+              loading={markAll.isPending}
+              onClick={() => markAll.mutate()}
+            >
               Mark all as read
             </Button>
           )}

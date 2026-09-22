@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { accountLayoutRoute } from './_account.js';
 import { usersQueries } from '../lib/queries.js';
 import { Surface } from '../components/surface.js';
+import { LoadError } from '../components/load-error.js';
+import { Skeleton } from '../components/skeleton.js';
 
 function AccountSettingsPage() {
   const query = useQuery(usersQueries.me());
@@ -10,8 +12,13 @@ function AccountSettingsPage() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="font-display text-2xl font-semibold text-text">Settings</h1>
-      {query.isPending && <p className="text-sm text-text-muted">Loading...</p>}
-      {query.isError && <p className="text-sm text-error">Could not load your profile.</p>}
+      {query.isPending && <Skeleton label="Loading your profile" rows={1} />}
+      {query.isError && (
+        <LoadError
+          message="Could not load your profile. Check your connection and try again."
+          onRetry={() => query.refetch()}
+        />
+      )}
       {query.isSuccess && (
         <Surface radius="md" elevation="sm" className="flex flex-col gap-1 p-4">
           <p className="text-sm text-text-muted">Email</p>

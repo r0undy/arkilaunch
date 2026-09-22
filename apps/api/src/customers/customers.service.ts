@@ -21,6 +21,7 @@ import type {
 } from '@arkilaunch/shared';
 import { ownCustomers, ownsCustomer } from '../common/customer-scope.js';
 import { EventsService } from '../events/events.service.js';
+import { notifyStaff } from '../common/notify-customer.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -62,6 +63,7 @@ export class CustomersService {
         isPrimary: 'true',
       });
       await this.events.emit(ctx, 'company_created', { customer_id: row.id });
+      await notifyStaff(tx, ctx.tenantId, 'company_submitted', { customer_id: row.id, company_name: row.companyName });
       return { ...toCompany(row), documents: [] };
     });
   }
