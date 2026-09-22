@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import type { CompanyDocumentReadResponse, CompanyResponse } from '@arkilaunch/shared';
 import { createRoute, Link } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
@@ -6,8 +8,9 @@ import { EmptyState } from '../components/empty-state.js';
 import { Button } from '../components/button.js';
 import { Surface } from '../components/surface.js';
 import { useToast } from '../components/toast.js';
+import { Input } from '../components/input.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
+import { apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 import { companiesQueries } from '../lib/queries.js';
 import { formatDate, formatStatus } from '../lib/format.js';
 
@@ -47,6 +50,173 @@ function RegistrationQueue({
   );
 }
 
+// What a reviewer typed (or confirmed) for one company, keyed by company id
+// so several cards in the queue keep their own edits.
+interface ReviewFields {
+  companyName: string;
+  tin: string;
+  secNumber: string;
+}
+
+// The admin-side counterpart to the customer's scan: "Read document" fills
+// these fields in from the registration certificate, the reviewer corrects
+// whatever is wrong, and Verify writes what they confirmed. The extraction
+// decides nothing on its own -- it is a typing aid for the person who is
+// looking at the document (RFC-2's human gate).
+function CompanyReviewCard({
+  company,
+  decidable,
+  onDecide,
+  deciding,
+  onOpenDocument,
+}: {
+  company: CompanyResponse;
+  decidable: boolean;
+  onDecide: (fields: ReviewFields, decision: 'approved' | 'rejected') => void;
+  deciding: boolean;
+  onOpenDocument: (companyId: string, documentId: string) => void;
+}) {
+  const toast = useToast();
+  const [fields, setFields] = useState<ReviewFields>({
+    companyName: company.companyName,
+    tin: company.tin ?? '',
+    secNumber: '',
+  });
+  const [read, setRead] = useState<CompanyDocumentReadResponse | null>(null);
+
+  const registration = company.documents.find((doc) => doc.documentType === 'company_registration');
+
+  const readDocument = useMutation({
+    mutationFn: (documentId: string) =>
+      apiPost<CompanyDocumentReadResponse>(
+        `/customers/${company.id}/documents/${documentId}/read`,
+        {},
+      ),
+    onSuccess: (result) => {
+      setRead(result);
+      if (!result.extractionAvailable) {
+        toast.error(
+          'Could not read the document',
+          'Document extraction is not switched on in this environment. Key the details in from the document instead.',
+        );
+        return;
+      }
+      setFields((current) => ({
+        companyName: result.suggestions.companyName ?? current.companyName,
+        tin: result.suggestions.tin ?? current.tin,
+        secNumber: result.suggestions.secNumber ?? current.secNumber,
+      }));
+    },
+    onError: (err) => toast.error('Could not read the document', apiErrorText(err)),
+  });
+
+  return (
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
+      <div>
+        <h2 className="font-display text-lg font-semibold text-text">{company.companyName}</h2>
+        <p className="text-sm text-text-muted">
+          TIN {company.tin ?? '--'} &middot; {company.billingAddress ?? '--'} &middot; added{' '}
+          {formatDate(company.createdAt)}
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {company.documents.length === 0 && (
+          <p className="text-sm text-text-muted">No documents uploaded yet.</p>
+        )}
+        {company.documents.map((doc) => (
+          <Button
+            key={doc.id}
+            variant="secondary"
+            onClick={() => onOpenDocument(company.id, doc.id)}
+          >
+            {formatStatus(doc.documentType)}
+          </Button>
+        ))}
+      </div>
+
+      {decidable && (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              disabled={!registration}
+              loading={readDocument.isPending}
+              onClick={() => registration && readDocument.mutate(registration.id)}
+            >
+              Read document
+            </Button>
+            <p className="text-sm text-text-muted">
+              {registration
+                ? 'Fills the fields below in from the registration certificate. Check them against the document.'
+                : 'No registration certificate uploaded yet, so there is nothing to read.'}
+            </p>
+          </div>
+
+          {read?.extractionAvailable && (
+            <p role="status" className="text-sm text-text-muted">
+              Read at{' '}
+              {read.confidence === null ? 'unknown' : `${Math.round(read.confidence * 100)}%`}{' '}
+              confidence.
+              {read.suggestions.tin &&
+                !read.formatValid.tin &&
+                ' The TIN is not a valid 9 or 12 digit number.'}
+              {read.suggestions.secNumber &&
+                !read.formatValid.secNumber &&
+                ' The SEC number does not match the expected format.'}
+            </p>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Input
+              label="Registered name"
+              maxLength={200}
+              value={fields.companyName}
+              onChange={(e) => setFields({ ...fields, companyName: e.target.value })}
+            />
+            <Input
+              label="TIN"
+              inputMode="numeric"
+              placeholder="000-000-000-000"
+              hint="9 or 12 digits."
+              value={fields.tin}
+              onChange={(e) => setFields({ ...fields, tin: e.target.value })}
+            />
+            <Input
+              label="SEC / DTI number"
+              maxLength={50}
+              value={fields.secNumber}
+              onChange={(e) => setFields({ ...fields, secNumber: e.target.value })}
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="approve"
+              loading={deciding}
+              disabled={company.documents.length === 0}
+              onClick={() => onDecide(fields, 'approved')}
+            >
+              Verify
+            </Button>
+            <Button
+              variant="destructive"
+              loading={deciding}
+              onClick={() => onDecide(fields, 'rejected')}
+            >
+              Reject
+            </Button>
+          </div>
+          <p className="text-xs text-text-muted">
+            Verifying saves these fields onto the company. They are your confirmation against the
+            document, not the scan's.
+          </p>
+        </>
+      )}
+    </Surface>
+  );
+}
+
 // Customer prerequisites CR: companies customers registered, with the ID
 // and registration they uploaded. Staff open each document (a 300s signed
 // URL) and decide; the customer is notified, and payment opens on approval.
@@ -56,11 +226,29 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   const query = useQuery(companiesQueries.review(kycStatus));
 
   const decide = useMutation({
-    mutationFn: ({ id, decision }: { id: string; decision: 'approved' | 'rejected' }) =>
-      apiPatch(`/customers/${id}/kyc`, { decision }),
+    mutationFn: ({
+      id,
+      decision,
+      fields,
+    }: {
+      id: string;
+      decision: 'approved' | 'rejected';
+      fields: ReviewFields;
+    }) =>
+      apiPatch(`/customers/${id}/kyc`, {
+        decision,
+        // Only what the reviewer actually filled in; the API keeps whatever
+        // the customer entered for anything left blank.
+        ...(fields.companyName.trim() ? { companyName: fields.companyName.trim() } : {}),
+        ...(fields.tin.trim() ? { tin: fields.tin.trim() } : {}),
+        ...(fields.secNumber.trim() ? { secNumber: fields.secNumber.trim() } : {}),
+      }),
     onSuccess: async (_d, { decision }) => {
       await queryClient.invalidateQueries({ queryKey: ['customers', 'review'] });
-      toast.success(decision === 'approved' ? 'Company verified' : 'Company rejected', 'The customer has been notified.');
+      toast.success(
+        decision === 'approved' ? 'Company verified' : 'Company rejected',
+        'The customer has been notified.',
+      );
     },
     onError: (err) => toast.error('Could not record the decision', apiErrorText(err)),
   });
@@ -71,7 +259,9 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
     const tab = window.open('', '_blank');
     if (tab) tab.opener = null;
     try {
-      const { url } = await apiGet<{ url: string }>(`/customers/${companyId}/documents/${documentId}/url`);
+      const { url } = await apiGet<{ url: string }>(
+        `/customers/${companyId}/documents/${documentId}/url`,
+      );
       if (tab) tab.location.href = url;
       else window.location.assign(url);
     } catch (err) {
@@ -86,7 +276,11 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
     return (
       <EmptyState
         title={kycStatus === 'pending' ? 'Nothing waiting' : 'No verified companies yet'}
-        description={kycStatus === 'pending' ? 'Companies customers add appear here for review.' : 'Companies you approve appear here.'}
+        description={
+          kycStatus === 'pending'
+            ? 'Companies customers add appear here for review.'
+            : 'Companies you approve appear here.'
+        }
       />
     );
   }
@@ -94,37 +288,14 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   return (
     <div className="flex flex-col gap-3">
       {query.data.map((company) => (
-        <Surface key={company.id} radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
-          <div>
-            <h2 className="font-display text-lg font-semibold text-text">{company.companyName}</h2>
-            <p className="text-sm text-text-muted">
-              TIN {company.tin ?? '--'} &middot; {company.billingAddress ?? '--'} &middot; added {formatDate(company.createdAt)}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {company.documents.length === 0 && <p className="text-sm text-text-muted">No documents uploaded yet.</p>}
-            {company.documents.map((doc) => (
-              <Button key={doc.id} variant="secondary" onClick={() => openDocument(company.id, doc.id)}>
-                {formatStatus(doc.documentType)}
-              </Button>
-            ))}
-          </div>
-          {kycStatus === 'pending' && (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="approve"
-                loading={decide.isPending}
-                disabled={company.documents.length === 0}
-                onClick={() => decide.mutate({ id: company.id, decision: 'approved' })}
-              >
-                Verify
-              </Button>
-              <Button variant="destructive" loading={decide.isPending} onClick={() => decide.mutate({ id: company.id, decision: 'rejected' })}>
-                Reject
-              </Button>
-            </div>
-          )}
-        </Surface>
+        <CompanyReviewCard
+          key={company.id}
+          company={company}
+          decidable={kycStatus === 'pending'}
+          deciding={decide.isPending}
+          onDecide={(fields, decision) => decide.mutate({ id: company.id, decision, fields })}
+          onOpenDocument={openDocument}
+        />
       ))}
     </div>
   );
@@ -136,7 +307,11 @@ export const appRegistrationPendingRoute = createRoute({
   beforeLoad: requireRole('admin', 'platform_admin'),
   component: () => (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Registration" title="Registration pending" description="Customer companies waiting on a verification decision." />
+      <PageHeader
+        eyebrow="Registration"
+        title="Registration pending"
+        description="Customer companies waiting on a verification decision."
+      />
       <CompanyQueue kycStatus="pending" />
     </div>
   ),
@@ -148,7 +323,11 @@ export const appRegistrationVerifiedRoute = createRoute({
   beforeLoad: requireRole('admin', 'platform_admin'),
   component: () => (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Registration" title="Registration verified" description="Customer companies cleared to pay." />
+      <PageHeader
+        eyebrow="Registration"
+        title="Registration verified"
+        description="Customer companies cleared to pay."
+      />
       <CompanyQueue kycStatus="approved" />
     </div>
   ),
