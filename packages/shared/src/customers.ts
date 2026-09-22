@@ -32,6 +32,19 @@ export const CompanyDocumentUploadSchema = z.object({
   documentType: z.enum(COMPANY_DOCUMENT_TYPES),
 });
 
+// POST /me/kyc/scan. Suggestions a customer can edit before they submit
+// the form -- never a verification decision, and never stored as fact: the
+// staff review queue and RFC-2's human gate are untouched by this.
+export const KycScanResponseSchema = z.object({
+  suggestions: z.object({
+    companyName: z.string().nullable(),
+    tin: z.string().nullable(),
+    secNumber: z.string().nullable(),
+  }),
+  extractionAvailable: z.boolean(),
+});
+export type KycScanResponse = z.infer<typeof KycScanResponseSchema>;
+
 export const CompanyResponseSchema = z.object({
   id: z.string().uuid(),
   companyName: z.string(),
@@ -39,7 +52,12 @@ export const CompanyResponseSchema = z.object({
   billingAddress: z.string().nullable(),
   kycStatus: z.string(), // pending | approved | rejected
   documents: z.array(
-    z.object({ id: z.string().uuid(), documentType: z.string(), status: z.string(), createdAt: z.coerce.date() }),
+    z.object({
+      id: z.string().uuid(),
+      documentType: z.string(),
+      status: z.string(),
+      createdAt: z.coerce.date(),
+    }),
   ),
   createdAt: z.coerce.date(),
 });
