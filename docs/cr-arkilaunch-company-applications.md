@@ -54,7 +54,7 @@ a customer to read their own uploaded document.
 
 ## 3. What changed
 
-- Migration `0028`: `customers.sec_number`, nullable. `customers` takes its grants at
+- Migration `0029`: `customers.sec_number`, nullable. `customers` takes its grants at
   table level (`0002_force_rls_and_grants.sql`), so the column inherits
   `app_authenticated`'s verbs; `tenantIsolationPolicy()` on the table is untouched.
 - `CompanyCreateSchema.secNumber` (optional, `SEC_REGEX`) and
@@ -113,11 +113,13 @@ this tenant and a staff login of another tenant get `ForbiddenException`.
   database leave the seeded customer owning more than one company, so
   `POST /bookings` answers `company_required`. `seed:test-two-tenant` does not clear
   them. Not introduced here, not fixed here.
-- **Migration numbering.** Cut as `0025` against `dev`; PR #66 merged first and took
-  that number, so this was regenerated as `0028` on rebase. The `0025` applied to the
-  Supabase project during development was the identical single `ALTER TABLE customers
-  ADD COLUMN sec_number text`, so that database already carries the column and will
-  record `0028` as a no-op re-apply.
+- **Migration numbering, twice.** Cut as `0025` against `dev`; PR #66 merged
+  first and took that number, so it became `0028` on rebase; then the
+  catalog-photo migration on `feat/cart-validation` took `0028`, so it is now
+  `0029`. It carries `ADD COLUMN IF NOT EXISTS`, because a database that ran
+  either earlier numbering already has the column and a bare `ADD COLUMN`
+  would fail there. Verified by re-running `pnpm db:migrate` against the
+  Supabase project that had already applied it under the old number.
 - **Admin-side gaps stay open**: `/app/companies/approved` renders empty
   (`tenants_list_pending_applications` returns pending rows only) and the admin
   application detail page re-reads page 0 of the pending list and `.find()`s the id,
