@@ -141,9 +141,9 @@ also assumed the poller was the only caller, which is no longer true.
 | Web unit suite | Pass — 221 tests across 33 files, including 5 new shell regression tests, 6 rail tests, 8 cart-store tests and 7 weather-code tests. |
 | `apps/api/test/customer-onboarding.spec.ts` | Pass — 20 tests, including the forecast ownership, unavailability and caching assertions. |
 | `packages/weather` | Pass — 16 tests, including the malformed, ragged and wrong-unit forecast bodies. |
-| Playwright | **Pass in CI** — 31 tests (21 desktop + 10 Pixel 5), `console-e2e`. |
+| Playwright | **Pass in CI** — 31 tests (21 desktop + 10 Pixel 5), `console-e2e`, green across three consecutive runs after the helper flake below was fixed. |
 | `restraint-guardian` | **PASS**, nothing to cut. Assessed the six constructs most at risk of being over-build and found each load-bearing; flagged `e2e/sidebar.ts` as the thinnest justification (two call sites) and kept it, since it encodes the strict-mode double-match a third spec would otherwise get wrong. |
-| `tenant-isolation-checker` | See §8. |
+| `tenant-isolation-checker` | **PASS.** Confirms the layering: `assertCustomer` refuses staff first, `ownCustomers()` bounds the customer within the tenant, the refusal is NotFound so no site ids are confirmed. Also assessed the coordinate-keyed cache specifically — it holds public weather only, carries no tenant or customer identifier, and is read *after* the ownership check. |
 
 ## 8. Honest gaps
 
@@ -161,6 +161,11 @@ also assumed the poller was the only caller, which is no longer true.
   keeps the order of magnitude the same, but the arithmetic in
   `cr-arkilaunch-open-meteo-free-tier.md` is now stale.
 - Per-page document titles remain absent — every page is titled "ArkiLaunch".
+- **One e2e flake was found and fixed, not retried away.** `openSidebar` asked
+  `isVisible()` the instant it was called, which is a snapshot rather than a wait: on a
+  cold CI boot the app bar had not rendered, the helper concluded there was no drawer, and
+  the spec failed looking for links that were `display:none`. It waits for the shell now,
+  and the job was re-run twice afterwards to confirm rather than assume.
 - The pre-existing failures in `bookings-engine.spec.ts` and `payments-engine.spec.ts`
   still reproduce on clean `dev`; leftover `customers` rows on the shared database leave the
   seeded customer owning several companies. Not introduced here, not fixed here.
