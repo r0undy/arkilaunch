@@ -136,12 +136,12 @@ of existing screens that were never drawn into the implementation.
 
 | Figma frame | Node | Belongs to | Status |
 |---|---|---|---|
-| Cart Page - Nego Options | `219:2226` | `/account/cart` | Buildable. "Proceed to Negotiation" split button offering Phone Call / Messenger. Cart currently offers one undifferentiated "Go to negotiation" link (`account.cart.tsx:132`). |
+| Cart Page - Nego Options | `219:2226` | `/account/cart` | **Built.** The channel choice sits on the request-sent card rather than the cart's cost summary: the frame pairs it with "Proceed to Payment", and there is no price to pay until the team quotes the job. |
 | Rental Page - rent | `209:2977` | `/equipment/$equipmentId` | Buildable. The rent / add-to-cart state of the listing. |
 | Inventory - Deleted | `303:2118` | `/app/inventory` | Buildable. Post-delete confirmation state. |
 | Extend Rental Submitted | `237:1855` | `/account/bookings/$bookingId/extend` | Blocked — no endpoint moves a return date. |
-| Messenger Chat Nego done | `225:3569` | `/account/negotiation/$bookingId/chat` | Blocked — no negotiation backend. |
-| Call Nego done | `225:3872` | `/account/negotiation/$bookingId/call` | Blocked — same. |
+| Messenger Chat Nego done | `225:3569` | `/account/negotiation/$bookingId/chat` | Already covered: an accepted quote turns the thread's action into "Review and pay" (`account.negotiation.tsx:112`). Not a separate screen. |
+| Call Nego done | `225:3872` | `/account/negotiation/$bookingId/call` | Same. |
 | Notification - Dismiss | `603:4981` | `/account/notifications` | Blocked — `PATCH /notifications/:id/read` exists; nothing dismisses. |
 
 ### Not built, deliberately
@@ -205,8 +205,11 @@ invoice, notification-centre and profile screens are real as a result.
 
 - `/app/security-logs` — no audit endpoint exists. Layout only, placeholder rows.
 - `/app/tickets` — no ticket table, no endpoint. Layout only.
-- `/account/negotiation/*` — no negotiation backend, no RBAC model for a negotiating
-  party. Layout only; both "done" states (§4) wait on the same.
+- ~~`/account/negotiation/*` — no negotiation backend.~~ **Stale as of 2026-09-23.**
+  `GET`/`POST /bookings/:id/messages` and `POST /quotes/:id/accept|decline` exist and
+  the screens call them (`queries.ts:115`, `account.negotiation.tsx:35`). The
+  negotiation flow is real; only the RBAC model for a third-party negotiating agent
+  is still absent.
 - `/app/notifications`, `/account/notifications`, `/field/notifications` — the
   notification read endpoint exists but nothing dismisses; the app bar's notification
   affordance (DSD §4.1 Nav shell) is likewise unbuilt.
