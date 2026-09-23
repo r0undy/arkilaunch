@@ -116,6 +116,21 @@ export class CustomersController {
     return { url: await this.storage.createSignedDownloadUrl(kycBucket(), key) };
   }
 
+  // The browse page's weather rail. The two routes on sites.controller.ts
+  // are STAFF_READ, so a customer could not read weather at all; this is the
+  // customer's own surface, bounded by ownCustomers() in the service.
+  //
+  // booking:read, not a new weather:read code: that would be granted to the
+  // same role set, need seeding in two places, and add nothing -- the
+  // isolation here is the ownership check, not the permission. Throttled
+  // because each miss is an upstream call against a metered free tier.
+  @Get('me/sites/:id/forecast')
+  @RequirePermission('booking:read')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  forecast(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.customers.siteForecast(req.ctx, id);
+  }
+
   @Get('customers/review')
   @RequirePermission('quote:approve')
   listForReview(@Query() query: CompanyReviewQueryDto, @Req() req: CtxRequest) {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { WeatherObservation } from './weather-port.js';
+import { FORECAST_DAYS, type WeatherObservation } from './weather-port.js';
 
 // PRD-F5 (Weather-Aware Module), SDD §4 `GET /api/v1/sites/:id/weather`.
 // No dedicated RFC exists for F5 (unlike F1/F3/F7); this file is the one
@@ -95,3 +95,26 @@ export const WeatherAdvisoryListResponseSchema = z.object({
   total: z.number().int(),
 });
 export type WeatherAdvisoryListResponse = z.infer<typeof WeatherAdvisoryListResponseSchema>;
+
+
+// GET /me/sites/:id/forecast (customer's own site). Wire shape for the
+// browse-page rail; the DailyForecast interface itself lives in
+// weather-port.ts, which jobs shares and which stays zod-free.
+export const DailyForecastSchema = z.object({
+  date: z.string(),
+  tempMaxC: z.number(),
+  tempMinC: z.number(),
+  windMaxKph: z.number(),
+  precipMm: z.number(),
+  code: z.number(),
+});
+
+export const SiteForecastResponseSchema = z.object({
+  siteId: z.string().uuid(),
+  days: z.array(DailyForecastSchema).length(FORECAST_DAYS),
+  // So the rail can say "as of HH:MM" rather than implying a live reading.
+  // The response is served from a short-lived cache, and pretending
+  // otherwise is the same class of overclaim as a fabricated all-clear.
+  fetchedAt: z.string().datetime(),
+});
+export type SiteForecastResponse = z.infer<typeof SiteForecastResponseSchema>;
