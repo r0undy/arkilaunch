@@ -7,6 +7,7 @@ import { PageHeader } from '../components/page-header.js';
 import { EmptyState } from '../components/empty-state.js';
 import { Button } from '../components/button.js';
 import { Surface } from '../components/surface.js';
+import { Modal } from '../components/modal.js';
 import { useToast } from '../components/toast.js';
 import { Input } from '../components/input.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -56,6 +57,9 @@ interface ReviewFields {
   companyName: string;
   tin: string;
   secNumber: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
 }
 
 // The admin-side counterpart to the customer's scan: "Read document" fills
@@ -68,23 +72,27 @@ function CompanyReviewCard({
   decidable,
   onDecide,
   deciding,
-  onOpenDocument,
+  onPreviewDocument,
 }: {
   company: CompanyResponse;
   decidable: boolean;
   onDecide: (fields: ReviewFields, decision: 'approved' | 'rejected') => void;
   deciding: boolean;
-  onOpenDocument: (companyId: string, documentId: string) => void;
+  onPreviewDocument: (companyId: string, documentId: string) => void;
 }) {
   const toast = useToast();
   const [fields, setFields] = useState<ReviewFields>({
     companyName: company.companyName,
     tin: company.tin ?? '',
     secNumber: '',
+    firstName: company.firstName ?? '',
+    middleName: company.middleName ?? '',
+    lastName: company.lastName ?? '',
   });
   const [read, setRead] = useState<CompanyDocumentReadResponse | null>(null);
 
   const registration = company.documents.find((doc) => doc.documentType === 'company_registration');
+  const nationalId = company.documents.find((doc) => doc.documentType === 'government_id');
 
   const readDocument = useMutation({
     mutationFn: (documentId: string) =>
@@ -105,6 +113,9 @@ function CompanyReviewCard({
         companyName: result.suggestions.companyName ?? current.companyName,
         tin: result.suggestions.tin ?? current.tin,
         secNumber: result.suggestions.secNumber ?? current.secNumber,
+        firstName: result.suggestions.firstName ?? current.firstName,
+        middleName: result.suggestions.middleName ?? current.middleName,
+        lastName: result.suggestions.lastName ?? current.lastName,
       }));
     },
     onError: (err) => toast.error('Could not read the document', apiErrorText(err)),
@@ -128,7 +139,7 @@ function CompanyReviewCard({
           <Button
             key={doc.id}
             variant="secondary"
-            onClick={() => onOpenDocument(company.id, doc.id)}
+            onClick={() => onPreviewDocument(company.id, doc.id)}
           >
             {formatStatus(doc.documentType)}
           </Button>
@@ -144,12 +155,19 @@ function CompanyReviewCard({
               loading={readDocument.isPending}
               onClick={() => registration && readDocument.mutate(registration.id)}
             >
-              Read document
+              Read registration
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!nationalId}
+              loading={readDocument.isPending}
+              onClick={() => nationalId && readDocument.mutate(nationalId.id)}
+            >
+              Read National ID
             </Button>
             <p className="text-sm text-text-muted">
-              {registration
-                ? 'Fills the fields below in from the registration certificate. Check them against the document.'
-                : 'No registration certificate uploaded yet, so there is nothing to read.'}
+              Fills the fields below in from whichever document you read. Check them against the
+              document before verifying.
             </p>
           </div>
 
@@ -190,6 +208,28 @@ function CompanyReviewCard({
             />
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Input
+              label="First name"
+              maxLength={200}
+              hint="From the National ID. Written onto the customer's account only when you verify."
+              value={fields.firstName}
+              onChange={(e) => setFields({ ...fields, firstName: e.target.value })}
+            />
+            <Input
+              label="Middle name"
+              maxLength={200}
+              value={fields.middleName}
+              onChange={(e) => setFields({ ...fields, middleName: e.target.value })}
+            />
+            <Input
+              label="Last name"
+              maxLength={200}
+              value={fields.lastName}
+              onChange={(e) => setFields({ ...fields, lastName: e.target.value })}
+            />
+          </div>
+
           <div className="flex flex-wrap gap-2">
             <Button
               variant="approve"
@@ -220,10 +260,62 @@ function CompanyReviewCard({
 // Customer prerequisites CR: companies customers registered, with the ID
 // and registration they uploaded. Staff open each document (a 300s signed
 // URL) and decide; the customer is notified, and payment opens on approval.
+function DocumentPreviewModal({
+  companyId,
+  documentId,
+  onClose,
+}: {
+  companyId: string;
+  documentId: string;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const [asImage, setAsImage] = useState(true);
+  const query = useQuery({
+    queryKey: ['customers', companyId, 'documents', documentId, 'url'],
+    queryFn: () => apiGet<{ url: string }>(`/customers/${companyId}/documents/${documentId}/url`),
+  });
+
+  if (query.isError) toast.error('Could not open the document', apiErrorText(query.error));
+
+  return (
+    <Modal open onClose={onClose} title="Document" size="lg">
+      {query.isPending && <p className="text-sm text-text-muted">Loading...</p>}
+      {query.isError && <p className="text-sm text-error">{apiErrorText(query.error)}</p>}
+      {query.data &&
+        (asImage ? (
+          <img
+            src={query.data.url}
+            alt="Uploaded document"
+            className="mx-auto max-h-[70vh] w-auto max-w-full rounded-sm"
+            onError={() => setAsImage(false)}
+          />
+        ) : (
+          <iframe
+            src={query.data.url}
+            title="Uploaded document"
+            className="h-[70vh] w-full rounded-sm border border-border"
+          />
+        ))}
+      {query.data && (
+        <a
+          href={query.data.url}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-block text-sm text-primary underline"
+        >
+          Open in a new tab
+        </a>
+      )}
+    </Modal>
+  );
+}
+
 function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const query = useQuery(companiesQueries.review(kycStatus));
+  const [preview, setPreview] = useState<{ companyId: string; documentId: string } | null>(null);
 
   const decide = useMutation({
     mutationFn: ({
@@ -242,6 +334,9 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
         ...(fields.companyName.trim() ? { companyName: fields.companyName.trim() } : {}),
         ...(fields.tin.trim() ? { tin: fields.tin.trim() } : {}),
         ...(fields.secNumber.trim() ? { secNumber: fields.secNumber.trim() } : {}),
+        ...(fields.firstName.trim() ? { firstName: fields.firstName.trim() } : {}),
+        ...(fields.middleName.trim() ? { middleName: fields.middleName.trim() } : {}),
+        ...(fields.lastName.trim() ? { lastName: fields.lastName.trim() } : {}),
       }),
     onSuccess: async (_d, { decision }) => {
       await queryClient.invalidateQueries({ queryKey: ['customers', 'review'] });
@@ -252,23 +347,6 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
     },
     onError: (err) => toast.error('Could not record the decision', apiErrorText(err)),
   });
-
-  async function openDocument(companyId: string, documentId: string) {
-    // Open the tab synchronously so the popup blocker allows it, then
-    // point it at the signed URL once it arrives.
-    const tab = window.open('', '_blank');
-    if (tab) tab.opener = null;
-    try {
-      const { url } = await apiGet<{ url: string }>(
-        `/customers/${companyId}/documents/${documentId}/url`,
-      );
-      if (tab) tab.location.href = url;
-      else window.location.assign(url);
-    } catch (err) {
-      tab?.close();
-      toast.error('Could not open the document', apiErrorText(err));
-    }
-  }
 
   if (query.isPending) return <p className="text-sm text-text-muted">Loading...</p>;
   if (query.isError) return <p className="text-sm text-error">{apiErrorText(query.error)}</p>;
@@ -294,9 +372,16 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
           decidable={kycStatus === 'pending'}
           deciding={decide.isPending}
           onDecide={(fields, decision) => decide.mutate({ id: company.id, decision, fields })}
-          onOpenDocument={openDocument}
+          onPreviewDocument={(companyId, documentId) => setPreview({ companyId, documentId })}
         />
       ))}
+      {preview && (
+        <DocumentPreviewModal
+          companyId={preview.companyId}
+          documentId={preview.documentId}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   );
 }
