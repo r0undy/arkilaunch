@@ -23,7 +23,13 @@ export function SidebarShell({ navGroups, tenantLabel, children }: SidebarShellP
       <SkipLink />
       <AppBar tenantLabel={tenantLabel} onMenuClick={() => setDrawerOpen((v) => !v)} />
       <div className="flex flex-1">
-        <aside className="hidden w-60 shrink-0 border-r border-border bg-surface-sunk px-3 py-6 lg:block">
+        {/* Named, because the catalog page renders a second complementary
+            landmark (its right rail) and an unnamed pair is ambiguous to a
+            screen reader. */}
+        <aside
+          aria-label="Sidebar"
+          className="hidden w-60 shrink-0 border-r border-border bg-surface-sunk px-3 py-6 lg:block"
+        >
           <NavGroupList groups={navGroups} pathname={pathname} />
         </aside>
 

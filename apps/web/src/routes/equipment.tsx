@@ -15,6 +15,7 @@ import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
+import { EquipmentRail } from '../components/equipment-rail.js';
 import { getAccessToken } from '../lib/auth-client.js';
 
 // <input type="datetime-local"> speaks local "YYYY-MM-DDTHH:mm"; the cart
@@ -156,7 +157,8 @@ function EquipmentPage() {
   const page = equipment.slice(safeOffset, safeOffset + PAGE_SIZE);
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-10 sm:px-10">
+    <div className="grid gap-6 px-6 py-10 sm:px-10 lg:grid-cols-[1fr_320px] lg:items-start">
+      <div className="flex min-w-0 flex-col gap-6">
       <h1 className="font-display text-2xl font-semibold text-ink-mk">Equipment for hire</h1>
       <SearchFilterBar
         query={query}
@@ -204,6 +206,14 @@ function EquipmentPage() {
         onOffsetChange={setOffset}
         noun="machines"
       />
+      </div>
+      {/* Figma 185:1599's right rail. Below lg it would push the catalog off
+          the fold on a phone, so it stacks out of the way -- the cart is
+          still one tap away in the sidebar, which is where a phone user
+          reaches it anyway. */}
+      <aside aria-label="Cart and weather" className="hidden lg:block">
+        <EquipmentRail />
+      </aside>
       {configuring && (
         <ConfigureRentalDialog equipment={configuring} onClose={() => setConfiguring(null)} />
       )}

@@ -3,6 +3,7 @@ import type {
   BookingDetailResponse,
   NegotiationMessageResponse,
   CompanyResponse,
+  SiteForecastResponse,
   CustomerSiteResponse,
   BookingListResponse,
   CatalogEquipment,
@@ -249,6 +250,20 @@ export const companiesQueries = {
     queryOptions({
       queryKey: ['customers', 'review', kycStatus] as const,
       queryFn: () => apiGet<CompanyResponse[]>(`/customers/review?kycStatus=${kycStatus}`),
+    }),
+};
+
+export const forecastQueries = {
+  // The server caches on coordinates for the poller's own cadence, so this
+  // staleTime only stops a remount refetching -- it is not the budget
+  // control. Retry is off: an unavailable forecast is a state the rail
+  // renders, not a transient to hammer through against a metered free tier.
+  site: (siteId: string) =>
+    queryOptions({
+      queryKey: ['me', 'sites', siteId, 'forecast'] as const,
+      queryFn: () => apiGet<SiteForecastResponse>(`/me/sites/${siteId}/forecast`),
+      staleTime: 1_800_000,
+      retry: false,
     }),
 };
 

@@ -59,8 +59,8 @@ describe('/equipment chrome', () => {
     // The sidebar landmark is the tell. Not the link labels: the marketing
     // footer links "My bookings" too, so a name query cannot tell the shells
     // apart -- which is exactly the trap this test exists to catch.
-    await waitFor(() => expect(screen.getByRole('complementary')).toBeInTheDocument());
-    expect(within(screen.getByRole('complementary')).getByRole('link', { name: 'Cart' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('complementary', { name: 'Sidebar' })).toBeInTheDocument());
+    expect(within(screen.getByRole('complementary', { name: 'Sidebar' })).getByRole('link', { name: 'Cart' })).toBeInTheDocument();
     // App bar, not the marketing nav.
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Primary' })).not.toBeInTheDocument();
@@ -78,7 +78,7 @@ describe('/equipment chrome', () => {
     expect(header.getByRole('link', { name: 'Register' })).toBeInTheDocument();
     expect(header.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
     expect(header.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
-    expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+    expect(screen.queryByRole('complementary', { name: 'Sidebar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
     unmount();
   });
@@ -136,7 +136,7 @@ describe('/equipment chrome', () => {
     setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
     stubFetch();
     const { unmount } = await renderRoute(`/equipment/${UNIT_ID}`);
-    await waitFor(() => expect(screen.getByRole('complementary')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('complementary', { name: 'Sidebar' })).toBeInTheDocument());
     unmount();
   });
 });
