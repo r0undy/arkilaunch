@@ -57,5 +57,10 @@ test.describe('cart', () => {
       'aria-current',
       'page',
     );
+    // Exactly one destination is ever marked, and on the cart it is Cart.
+    await expect(page.getByRole('link', { name: 'Cart' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 });

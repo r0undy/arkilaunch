@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   ShoppingCart,
   Store,
+  CalendarCheck,
   TrendingUp,
   UserPlus,
   Users,
@@ -47,10 +48,17 @@ export const ACCOUNT_NAV: NavGroup[] = [
     items: [
       { label: 'Home', to: '/account', icon: LayoutDashboard, exact: true },
       { label: 'Browse equipment', to: '/equipment', icon: Boxes },
+      // The cart had no standing affordance at all: the only way back to it
+      // was adding another machine, even though the items sit in
+      // sessionStorage until the browser tab closes. Figma 168:1982 puts it
+      // in the app bar; the sidebar is where this shell keeps destinations.
+      { label: 'Cart', to: '/account/cart', icon: ShoppingCart },
       {
         label: 'My bookings',
         to: '/account/bookings',
-        icon: ShoppingCart,
+        // Was ShoppingCart, which belongs to the cart. A booking is a
+        // committed date, not a basket.
+        icon: CalendarCheck,
         // Everything that happens to a booking after it exists. None of these
         // has a sidebar entry, and before `owns` they all lit "Home".
         owns: ['/account/checkout', '/account/invoices', '/account/negotiation'],
