@@ -1,5 +1,5 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useState, type FormEvent, type ReactElement } from 'react';
+import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CompanyResponse, KycScanResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
@@ -444,13 +444,34 @@ function CompanyDocumentsPage() {
   // Same one-at-a-time order as adding a company. No scan here: the company
   // already exists, so there is nothing left to prefill.
   const [stage, setStage] = useState<DocStep>('government_id');
+  // "Next" (step 1) and "Upload" (step 2) sit in the same spot in this
+  // button row. A fast double-tap -- or any input lag between the two
+  // taps registering -- lands the second tap on "Upload" the instant it
+  // replaces "Next", submitting with only the government ID and bouncing
+  // the customer out before they ever see the registration step. Guard
+  // submit() against firing within advanceGraceMs of the stage flip that
+  // put "Upload" under the customer's finger.
+  const stageChangedAt = useRef(0);
+  const advanceGraceMs = 400;
 
   const step = DOC_STEPS.find((s) => s.type === stage)!;
   const file = stage === 'government_id' ? governmentId : registration;
   const setFile = stage === 'government_id' ? setGovernmentId : setRegistration;
 
+  function advanceToRegistration() {
+    stageChangedAt.current = Date.now();
+    setStage('company_registration');
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
+    // Both steps share one <form> (the step-1 "Next" button lives here too,
+    // as type="button"). A stray submit event firing while still on step 1
+    // must never upload a partial set and navigate away before the customer
+    // ever sees the registration step -- that reads as the flow being
+    // "stuck" and leaves an orphaned government_id document behind.
+    if (stage !== 'company_registration') return;
+    if (Date.now() - stageChangedAt.current < advanceGraceMs) return;
     setBusy(true);
     try {
       await uploadDocuments(companyId, { governmentId, registration });
@@ -476,7 +497,7 @@ function CompanyDocumentsPage() {
                 type="button"
                 variant="primary"
                 disabled={!governmentId}
-                onClick={() => setStage('company_registration')}
+                onClick={advanceToRegistration}
               >
                 Next: company registration
               </Button>
