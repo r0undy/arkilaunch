@@ -128,12 +128,22 @@ function CartPage() {
             get a notification when the quote is ready; you can ask questions or make a
             counter-offer in the meantime. Nothing is charged until you accept a quote and pay.
           </p>
+          {/* Figma 219:2226 splits "Proceed to Negotiation" into a channel
+              choice -- phone call or messenger. The frame puts it on the cart
+              beside "Proceed to Payment"; there is no price to pay at that
+              point (see the note above the component), so the choice belongs
+              here, where the request has actually gone in. Two buttons rather
+              than the frame's dropdown: it is two options, and the app has no
+              menu primitive worth building one for. */}
           <div className="flex flex-wrap gap-2">
-            <Link to="/account/negotiation/$bookingId" params={{ bookingId: booking.id }}>
-              <Button variant="primary">Go to negotiation</Button>
+            <Link to="/account/negotiation/$bookingId/chat" params={{ bookingId: booking.id }}>
+              <Button variant="primary">Negotiate via messenger</Button>
+            </Link>
+            <Link to="/account/negotiation/$bookingId/call" params={{ bookingId: booking.id }}>
+              <Button variant="secondary">Negotiate by phone</Button>
             </Link>
             <Link to="/account/bookings/$bookingId" params={{ bookingId: booking.id }}>
-              <Button variant="secondary">Booking details</Button>
+              <Button variant="ghost">Booking details</Button>
             </Link>
           </div>
         </Surface>

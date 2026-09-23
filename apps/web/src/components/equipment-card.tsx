@@ -10,6 +10,10 @@ export interface EquipmentCardProps {
   make: string;
   availabilityStatus?: 'available' | 'deployed' | 'maintenance';
   onRent?: () => void;
+  // Rent now opens the configure-rental dialog rather than walking to the
+  // listing, so the model name carries the route to the detail page. Without
+  // it the catalog has no way through to /equipment/$equipmentId at all.
+  onViewDetails?: () => void;
 }
 
 const AVAILABILITY_PILL = {
@@ -20,7 +24,15 @@ const AVAILABILITY_PILL = {
 
 // The Figma "Product Info Card": schematic, model, make, Rent action. The
 // unit of the storefront catalog grid.
-export function EquipmentCard({ imageAlt, imageUrl, model, make, availabilityStatus, onRent }: EquipmentCardProps) {
+export function EquipmentCard({
+  imageAlt,
+  imageUrl,
+  model,
+  make,
+  availabilityStatus,
+  onRent,
+  onViewDetails,
+}: EquipmentCardProps) {
   const pill = availabilityStatus ? AVAILABILITY_PILL[availabilityStatus] : null;
   return (
     <div className="flex flex-col gap-4 rounded-mk-lg bg-surface-mk p-4 shadow-mk-card">
@@ -43,7 +55,19 @@ export function EquipmentCard({ imageAlt, imageUrl, model, make, availabilitySta
           {/* The machine's name is the card's heading. As a <p> the whole
               catalog was one flat run of text with no way to jump between
               items. */}
-          <h3 className="text-sm font-medium text-text">{model}</h3>
+          <h3 className="text-sm font-medium text-text">
+            {onViewDetails ? (
+              <button
+                type="button"
+                onClick={onViewDetails}
+                className="rounded-sm text-left hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+              >
+                {model}
+              </button>
+            ) : (
+              model
+            )}
+          </h3>
           <p className="text-xs text-text-muted">{make}</p>
         </div>
         <Button size="default" variant="primary" onClick={onRent}>
