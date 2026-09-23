@@ -15,6 +15,16 @@ import { bookingAlternatives, explainBookingError } from '../lib/booking-error.j
 import { catalogQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
 import { SiteDialog } from '../components/site-dialog.js';
 import { shortCode } from '../lib/format.js';
+import { equipmentImageUrl } from '../lib/equipment-images.js';
+import {
+  validateCart,
+  hasErrors,
+  isSelectableCompany,
+  companyStatusLabel,
+  MAX_SITE_CONTACT,
+  MAX_SITE_NOTES,
+  type CartFieldErrors,
+} from '../lib/cart-validation.js';
 import {
   getCart,
   removeFromCart,
@@ -62,10 +72,31 @@ function CartPage() {
   const [booking, setBooking] = useState<BookingCreateResponse | null>(null);
   const companies = useQuery(companiesQueries.mine());
   const sites = useQuery(customerSitesQueries.mine());
-  // One company is the common case: pick it without asking.
-  const companyId = chosenCompanyId || (companies.data?.length === 1 ? companies.data[0]!.id : '');
-  const company = companies.data?.find((c) => c.id === companyId);
+  const [submitted, setSubmitted] = useState(false);
+  const allCompanies = companies.data ?? [];
+  // Only a verified company can be booked against, so "the obvious one" is
+  // the only selectable one -- not merely the only one on the account.
+  const selectable = allCompanies.filter(isSelectableCompany);
+  const companyId = chosenCompanyId || (selectable.length === 1 ? selectable[0]!.id : '');
+  const company = allCompanies.find((c) => c.id === companyId);
   const companySites = (sites.data ?? []).filter((site) => site.customerId === companyId);
+  const errors: CartFieldErrors = validateCart({
+    items,
+    companies: allCompanies,
+    companyId,
+    projectSiteId,
+    siteContact,
+    siteNotes,
+  });
+  // Errors stay quiet until the first submit, then follow every keystroke --
+  // a form that reddens fields the customer has not reached yet reads as
+  // broken rather than helpful.
+  // Spread rather than passed as a value: `exactOptionalPropertyTypes` makes
+  // an explicit `error={undefined}` a type error on the primitives.
+  const show = (field: keyof Omit<CartFieldErrors, 'items'>) => {
+    const message = submitted ? errors[field] : undefined;
+    return message ? { error: message } : {};
+  };
 
   // A customer with no company yet has nothing to book against -- send them
   // to registration instead of leaving them to notice the empty state.
@@ -185,6 +216,31 @@ function CartPage() {
     );
   }
 
+  // Every company on the account is pending or rejected. The form would render
+  // with nothing selectable and a submit that always refuses, so say why here
+  // instead and point at the thing that actually unblocks them.
+  if (companies.isSuccess && selectable.length === 0) {
+    const anyPending = allCompanies.some((c) => c.kycStatus === 'pending');
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="font-display text-2xl font-semibold text-text">Shopping cart</h1>
+        <EmptyState
+          title={anyPending ? 'Your company is still being verified' : 'No company can rent yet'}
+          description={
+            anyPending
+              ? 'Your cart is saved. The rental team is checking the documents you uploaded; you can request a quote as soon as a company is verified.'
+              : 'Verification was declined for the companies on your account. Your cart is saved — add another company or contact the rental team.'
+          }
+          action={
+            <Link to="/account/applications">
+              <Button variant="primary">See your applications</Button>
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
   const totalDays = items.reduce((sum, item) => sum + rentalDays(item), 0);
 
   return (
@@ -196,17 +252,65 @@ function CartPage() {
         </Link>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,360px)]">
+      {/* A real <form>: the submit button used to be a bare button whose only
+          feedback was being disabled, so a customer could not find out which
+          field was at fault. noValidate because the messages come from
+          validateCart(), which knows about verification state and stale cart
+          dates -- things no HTML constraint can express. */}
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          setSubmitted(true);
+          setError(null);
+          setSwap(null);
+          if (hasErrors(errors)) {
+            // Put the caret on the first thing that is wrong rather than
+            // leaving the customer to hunt for the red field.
+            const firstInvalid = e.currentTarget.querySelector<HTMLElement>('[aria-invalid="true"]');
+            firstInvalid?.focus();
+            return;
+          }
+          createBooking.mutate();
+        }}
+        className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,360px)]"
+      >
         <div className="flex min-w-0 flex-col gap-4">
           <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
             <h2 className={heading}>Selected equipment ({items.length})</h2>
             {items.map((item, index) => (
               <div
                 key={`${item.equipmentId}-${index}`}
+                role="group"
+                aria-label={item.model}
                 className="flex flex-col gap-3 rounded-md border border-border p-3"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <p className="font-display text-lg font-semibold text-text">{item.model}</p>
+                <div className="flex items-start gap-3">
+                  {(item.photoUri ?? equipmentImageUrl(item.model)) ? (
+                    <img
+                      src={item.photoUri ?? equipmentImageUrl(item.model)}
+                      alt=""
+                      className="h-20 w-28 shrink-0 rounded-sm border border-border object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-20 w-28 shrink-0 items-center justify-center rounded-sm border border-border bg-surface-sunk p-2 text-center text-xs text-text-muted">
+                      No photo
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display text-lg font-semibold text-text">{item.model}</p>
+                    {/* The frame prints the yard's serial here. That column is
+                        deliberately outside the public catalog's allowlist
+                        (migration 0028), so this is the same short display code
+                        the rest of the app uses for a unit. */}
+                    <p className="text-xs uppercase tracking-[0.04em] text-text-muted">
+                      {item.equipmentTypeName ? `${item.equipmentTypeName} · ` : ''}
+                      {shortCode('equipment', item.equipmentId)}
+                    </p>
+                    <p className="mt-1 text-sm text-text-muted">
+                      {rentalDays(item)} rental {rentalDays(item) === 1 ? 'day' : 'days'}
+                    </p>
+                  </div>
                   <Button
                     variant="ghost"
                     onClick={() => handleRemove(index)}
@@ -231,6 +335,11 @@ function CartPage() {
                     onChange={(e) => handleDate(index, 'end', e.target.value)}
                   />
                 </div>
+                {submitted && errors.items[index] && (
+                  <p role="alert" className="text-sm text-error">
+                    {errors.items[index]}
+                  </p>
+                )}
               </div>
             ))}
             <Link to="/equipment" className="self-start">
@@ -241,12 +350,17 @@ function CartPage() {
           <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
             <h2 className={heading}>Logistics and delivery</h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              {(companies.data?.length ?? 0) > 1 && (
+              {/* Shown whenever there is a choice to make OR a company that
+                  cannot be chosen -- hiding the field when the only company is
+                  unverified left the customer with a dead submit and no reason
+                  on screen. */}
+              {(allCompanies.length > 1 || selectable.length === 0) && (
                 <Select
                   label="Company"
                   id="cart-company"
                   required
                   value={companyId}
+                  {...show('companyId')}
                   onChange={(e) => {
                     setCompanyId(e.target.value);
                     setProjectSiteId('');
@@ -255,11 +369,15 @@ function CartPage() {
                   <option value="" disabled>
                     Select...
                   </option>
-                  {companies.data!.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.companyName}
-                    </option>
-                  ))}
+                  {allCompanies.map((c) => {
+                    const status = companyStatusLabel(c);
+                    return (
+                      <option key={c.id} value={c.id} disabled={!isSelectableCompany(c)}>
+                        {c.companyName}
+                        {status ? ` — ${status}` : ''}
+                      </option>
+                    );
+                  })}
                 </Select>
               )}
               <div className="flex flex-col gap-1">
@@ -268,6 +386,7 @@ function CartPage() {
                   id="cart-project-site"
                   required
                   disabled={!companyId}
+                  {...show('projectSiteId')}
                   value={projectSiteId}
                   onChange={(e) => setProjectSiteId(e.target.value)}
                 >
@@ -293,16 +412,19 @@ function CartPage() {
               <Input
                 label="Contact on site"
                 placeholder="Name and mobile number"
-                maxLength={200}
+                maxLength={MAX_SITE_CONTACT}
                 value={siteContact}
+                {...show('siteContact')}
+                hint="Optional. Who the driver asks for on arrival."
                 onChange={(e) => setSiteContact(e.target.value)}
               />
             </div>
             <Input
               label="Site access notes"
               placeholder="Gate hours, road limits, where to unload"
-              maxLength={1000}
+              maxLength={MAX_SITE_NOTES}
               value={siteNotes}
+              {...show('siteNotes')}
               onChange={(e) => setSiteNotes(e.target.value)}
             />
           </Surface>
@@ -330,15 +452,13 @@ function CartPage() {
             Diesel, transport, operator and helper costs depend on your site and dates, so the
             rental team prices them in a quote. You can negotiate it before anything is charged.
           </p>
+          {/* Not disabled on invalid: a dead button explains nothing. It
+              submits, validation runs, and the form says what is wrong. */}
           <Button
+            type="submit"
             variant="primary"
-            disabled={!projectSiteId || !companyId || createBooking.isPending}
+            disabled={createBooking.isPending}
             loading={createBooking.isPending}
-            onClick={() => {
-              setError(null);
-              setSwap(null);
-              createBooking.mutate();
-            }}
           >
             Request a quote
           </Button>
@@ -363,7 +483,7 @@ function CartPage() {
             </ul>
           )}
         </Surface>
-      </div>
+      </form>
       {companyId && (
         <SiteDialog
           open={siteOpen}

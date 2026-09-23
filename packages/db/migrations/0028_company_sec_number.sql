@@ -1,1 +1,0 @@
-ALTER TABLE "customers" ADD COLUMN "sec_number" text;

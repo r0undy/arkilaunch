@@ -18,19 +18,48 @@ export interface NavGroupListProps {
  * up and the indicator stopped meaning "you are here". Taking the longest
  * match instead means the most specific destination wins, and exactly one
  * item is ever active.
+ *
+ * Two refinements on top of that, because the longest match is only the right
+ * answer when some destination genuinely owns the URL:
+ *
+ * - `exact` is for a section root (`/account`, `/app`). It is a prefix of
+ *   every page in its section, so it won every match that had no more
+ *   specific entry -- the cart, the checkout, the invoice and the company
+ *   form all showed "Home" as the active destination.
+ * - `owns` lets a destination claim screens reached from it that have no
+ *   sidebar entry of their own, so "My bookings" stays lit on a checkout
+ *   rather than the blade vanishing.
  */
-export function activeNavTarget(targets: string[], pathname: string): string | null {
+export interface NavTarget {
+  to: string;
+  exact?: boolean;
+  owns?: string[];
+}
+
+function ownsPath(prefix: string, pathname: string): boolean {
+  return pathname === prefix || pathname.startsWith(prefix.endsWith('/') ? prefix : `${prefix}/`);
+}
+
+export function activeNavTarget(targets: (string | NavTarget)[], pathname: string): string | null {
   let best: string | null = null;
-  for (const to of targets) {
-    const isMatch = pathname === to || pathname.startsWith(to.endsWith('/') ? to : `${to}/`);
-    if (isMatch && (best === null || to.length > best.length)) best = to;
+  let bestLength = -1;
+  for (const target of targets) {
+    const item: NavTarget = typeof target === 'string' ? { to: target } : target;
+    const prefixes = item.exact ? [] : [item.to, ...(item.owns ?? [])];
+    const matched = pathname === item.to ? item.to : prefixes.find((p) => ownsPath(p, pathname));
+    // Ranked by how much of the URL the matching prefix accounts for, so a
+    // longer `owns` entry still beats a shorter `to`.
+    if (matched !== undefined && matched.length > bestLength) {
+      best = item.to;
+      bestLength = matched.length;
+    }
   }
   return best;
 }
 
 export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps) {
   const active = activeNavTarget(
-    groups.flatMap((group) => group.items.map((item) => item.to)),
+    groups.flatMap((group) => group.items),
     pathname,
   );
 

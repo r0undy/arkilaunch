@@ -268,6 +268,18 @@ async function main() {
     await db.update(schema.customers).set({ userId: customerUser.id }).where(eq(schema.customers.id, customerRow.id));
   }
 
+  // Verified, not the `pending` the column defaults to. The cart only offers a
+  // verified company (cr-arkilaunch-cart-validation.md §2), so a `pending`
+  // sample customer leaves the seeded environment unable to reach the booking
+  // flow at all -- the cart renders its "still being verified" state and the
+  // whole demo path behind it is dead, including the e2e specs.
+  if (customerRow.kycStatus !== 'approved') {
+    await db
+      .update(schema.customers)
+      .set({ kycStatus: 'approved' })
+      .where(eq(schema.customers.id, customerRow.id));
+  }
+
   const existingAddress = await db.select().from(schema.addresses).where(eq(schema.addresses.tenantId, tenant.id));
   const address =
     existingAddress[0] ??

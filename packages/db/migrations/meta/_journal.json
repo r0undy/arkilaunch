@@ -201,8 +201,15 @@
     {
       "idx": 28,
       "version": "7",
-      "when": 1790177488748,
-      "tag": "0028_company_sec_number",
+      "when": 1790181774064,
+      "tag": "0028_catalog_photo",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790181775064,
+      "tag": "0029_company_sec_number",
       "breakpoints": true
     }
   ]

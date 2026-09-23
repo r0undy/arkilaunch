@@ -32,8 +32,8 @@ export async function signIn(page: Page): Promise<void> {
 }
 
 // The customer-facing shell. The seeded customer login is bound to a real
-// `customers` row (seed/anchor.ts), so /account/applications has something
-// to list rather than rendering its empty state.
+// `customers` row (seed/anchor.ts), so the cart has a company to book against
+// and /account/applications has something to list.
 export async function signInAsCustomer(page: Page): Promise<void> {
   await submit(page, CUSTOMER_EMAIL);
   await expect(

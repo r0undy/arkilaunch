@@ -65,7 +65,7 @@ function EquipmentDetailPage() {
   }
 
   const pill = AVAILABILITY_PILL[equipment.availabilityStatus];
-  const imageUrl = equipmentImageUrl(equipment.model);
+  const imageUrl = equipment.photoUri ?? equipmentImageUrl(equipment.model);
 
   return (
     <div className="flex flex-col gap-6 px-6 py-10 sm:px-10">
@@ -95,6 +95,8 @@ function EquipmentDetailPage() {
           addToCart({
             equipmentId: equipment.id,
             model: equipment.model,
+            equipmentTypeName: equipment.equipmentTypeName,
+            photoUri: equipment.photoUri,
             ...defaultRentalWindow(),
           });
           navigate({ to: '/account/cart' });
