@@ -7,6 +7,12 @@ export interface CartItem {
   model: string;
   start: string; // ISO datetime
   end: string; // ISO datetime
+  // Snapshotted off the catalog row when the machine went in, so the cart
+  // renders its line (Figma 168:1982) without refetching the catalog. Both
+  // optional: a cart saved before this shipped has neither, and the page
+  // falls back rather than breaking.
+  equipmentTypeName?: string;
+  photoUri?: string | null;
 }
 
 const CART_KEY = 'arkilaunch.cart';

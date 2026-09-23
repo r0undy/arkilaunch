@@ -1,4 +1,5 @@
 import { createRoute, useNavigate } from '@tanstack/react-router';
+import type { CatalogEquipment } from '@arkilaunch/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { publicLayoutRoute } from './_public.js';
@@ -37,7 +38,7 @@ function ConfigureRentalDialog({
   equipment,
   onClose,
 }: {
-  equipment: { id: string; model: string };
+  equipment: Pick<CatalogEquipment, 'id' | 'model' | 'equipmentTypeName' | 'photoUri'>;
   onClose: () => void;
 }) {
   const navigate = useNavigate();
@@ -55,6 +56,8 @@ function ConfigureRentalDialog({
     addToCart({
       equipmentId: equipment.id,
       model: equipment.model,
+      equipmentTypeName: equipment.equipmentTypeName,
+      photoUri: equipment.photoUri,
       start: new Date(start).toISOString(),
       end: new Date(end).toISOString(),
     });
@@ -115,7 +118,7 @@ function EquipmentPage() {
   const [query, setQuery] = useState('');
   const [availability, setAvailability] = useState<AvailabilityFilter>('all');
   const [offset, setOffset] = useState(0);
-  const [configuring, setConfiguring] = useState<{ id: string; model: string } | null>(null);
+  const [configuring, setConfiguring] = useState<CatalogEquipment | null>(null);
   const { data, isPending, isError, refetch } = useQuery(catalogQueries.equipment());
 
   const equipment = useMemo(
@@ -156,7 +159,7 @@ function EquipmentPage() {
       {data && (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {page.map((eq) => {
-            const imageUrl = equipmentImageUrl(eq.model);
+            const imageUrl = eq.photoUri ?? equipmentImageUrl(eq.model);
             return (
               <EquipmentCard
                 key={eq.id}
@@ -165,7 +168,7 @@ function EquipmentPage() {
                 model={eq.model}
                 make={eq.equipmentTypeName}
                 availabilityStatus={eq.availabilityStatus}
-                onRent={() => setConfiguring({ id: eq.id, model: eq.model })}
+                onRent={() => setConfiguring(eq)}
                 onViewDetails={() =>
                   navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })
                 }

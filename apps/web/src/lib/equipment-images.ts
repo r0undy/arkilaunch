@@ -1,6 +1,12 @@
 // Documentary photos for the seeded anchor-tenant fleet (see
 // packages/db/src/seed/anchor.ts) -- everything else still falls back to
 // EquipmentSchematic's flat two-colour glyph (equipment-schematic.tsx).
+//
+// This is the FALLBACK, not the source. A machine's real uploaded photo is
+// equipment.photo_uri, served by the catalog since migration 0028; callers
+// read `photoUri ?? equipmentImageUrl(model)`. Until then nothing rendered an
+// uploaded photo anywhere, so the equipment CRUD upload had no visible effect
+// on the storefront.
 const EQUIPMENT_IMAGE_BY_MODEL: Record<string, string> = {
   'Almara Backhoe #1': 'https://tse4.mm.bing.net/th/id/OIP.B5DfVLWIpejgrKceADP-8QHaE8?r=0&rs=1&pid=ImgDetMain&o=7&rm=3',
   'JCB 3CX':
