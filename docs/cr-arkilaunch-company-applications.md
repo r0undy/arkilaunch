@@ -94,7 +94,8 @@ this tenant and a staff login of another tenant get `ForbiddenException`.
 | Web unit suite | Pass — 174 tests, including 4 new ones covering the counters, the status tabs, search over name and registration number, and "no companies match" vs "none registered". |
 | `apps/api/test/customer-onboarding.spec.ts` | Pass — 14 tests, including the ownership assertions in §4. |
 | `migration-rls-guardian` | **PASS.** Expand-only single column; table-level grants cover it; snapshot diff touches no policy. |
-| `tenant-isolation-checker` | See §6. |
+| `tenant-isolation-checker` | **PASS.** Confirms the layering under test: RLS bounds the tenant, `ownsCustomer()` bounds the customer within it, `assertCustomer` refuses staff first. No `service_role` on the request path, no raw SQL. |
+| `restraint-guardian` | **PASS**, no blocking findings. Noted `ownDocumentKey`/`documentKey` differ only by the ownership guard and could share a parameterised helper; left duplicated on purpose, as a predicate-callback abstraction for two call sites reads worse than ten repeated lines. |
 | Playwright `company-applications.spec.ts` | **Written, not run.** See §6. |
 
 ## 6. Honest gaps
