@@ -1,4 +1,4 @@
-import { index, numeric, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { index, integer, numeric, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants } from './tenancy.js';
 
@@ -22,6 +22,26 @@ export const equipment = pgTable(
     serialNo: text('serial_no').notNull(),
     availabilityStatus: text('availability_status').notNull().default('available'),
     runtimeHours: numeric('runtime_hours', { precision: 10, scale: 2 }).notNull().default('0'),
+    // The Figma add/edit spec sheet (292:1344 Basic Information + Technical
+    // Specifications). All nullable: every one of these arrived after the
+    // table had rows, and none of them is required to rent a machine out.
+    // `model` is the equipment's name ("Caterpillar Heavy-Duty Excavator
+    // 320"); modelNumber is the manufacturer's part code ("CAT-320-GH").
+    modelNumber: text('model_number'),
+    yearOfManufacture: integer('year_of_manufacture'),
+    weightCapacityTons: numeric('weight_capacity_tons', { precision: 8, scale: 2 }),
+    engineType: text('engine_type'),
+    fuelType: text('fuel_type'),
+    notes: text('notes'),
+    // The Supabase Storage object key, never a URL -- the public URL is
+    // derived at the egress boundary so the bucket can move without a
+    // backfill. Nothing else in the app stores a rendered URL either.
+    photoUri: text('photo_uri'),
+    // Soft retire. A machine is never deleted: edtr rows cite equipment_id as
+    // the evidence an invoice was computed from (billing.ts), and
+    // equipment_assignments carries its rental history. Migration 0026
+    // REVOKEs DELETE so this is the only way a unit can leave the fleet.
+    retiredAt: timestamp('retired_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
