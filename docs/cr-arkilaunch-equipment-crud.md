@@ -185,6 +185,15 @@ follow-up; not done here to keep this pass to the inventory surface.
   wrote `retired_at`. Items 1, 2, 4 and 5 (RLS intact, expand-only, seeds unaffected,
   `serial_no`/`tenant_id` immutability intentional) passed. Its substantive catch — that
   `update()` accepted the spec fields and silently dropped them — was real and is fixed.
+- `tenant-isolation-checker` on the full diff: **PASS**. Confirmed every new path derives
+  `tenant_id` from the verified JWT, all five service methods run inside `withTenantTx`,
+  the Storage key is built from `ctx.tenantId`, `setPhoto`'s bare `eq(equipment.id, ...)`
+  is covered by RLS, and `0027` narrows rather than widens what the `@Public` catalog
+  functions expose.
+- `restraint-guardian` on the full diff: no findings. It also caught a real defect the
+  test suites could not — the new CI job flattened its throwaway PEM with a no-op `sed`
+  substitution instead of escaping the newlines, so RS256 loading would have failed on
+  the job's first run. Fixed.
 - **Not run in this pass:** an actual upload against a real Supabase bucket (no live
   credentials in this environment), so the photo path is verified by contract and by the
   reused, already-tested validation layer rather than end to end.
