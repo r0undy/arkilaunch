@@ -51,6 +51,13 @@ that the cart explains rather than silently refusing:
 both the dropdown's `disabled` and the submit-time error, so the two can
 never disagree.
 
+**One concrete cost surfaced immediately.** `customers.kyc_status` defaults to
+`pending`, so the seeded sample customer was unverified and a freshly seeded
+environment could not reach the booking flow at all — the cart rendered its
+"still being verified" state and everything behind it was dead. It showed up as
+two failing e2e specs. `seed/anchor.ts` now marks the sample company
+`approved`. Any environment that seeds its own customers has the same trap.
+
 ## 3. What changed
 
 - **`apps/web/src/lib/cart-validation.ts`** — a pure function beside the page:
@@ -126,13 +133,13 @@ Recorded because both failed quietly rather than loudly.
 | `pnpm typecheck`, `pnpm build` | Pass, all packages. |
 | Web unit suite | Pass — 191 tests, including 17 new `validateCart` cases and 4 new `activeNavTarget` cases. |
 | Migration applied and inspected | `pg_get_function_result` confirms the new 5-column signature; ACL compared against untouched siblings. |
-| Playwright `cart.spec.ts` | Written; runs in CI via `console-e2e`. Not runnable locally — see §7. |
+| Playwright `cart.spec.ts` | **Pass in CI** — `console-e2e`, all specs green. Not runnable locally; see §7. |
 | `migration-rls-guardian` | **PASS.** Confirms both filters carried forward from 0027 (no previously hidden row becomes visible), grants restored with no PUBLIC-executable gap, `SECURITY DEFINER SET search_path` preserved, allowlist unchanged. |
 | `restraint-guardian` | **PASS**, nothing to cut. Assessed the three constructs most at risk of being over-build — the separate validation module, both `exact` and `owns`, and the cart-item snapshot — and found each load-bearing. |
 
 ## 7. Honest gaps
 
-- **The e2e spec has not run locally.** `seed/anchor.ts` refuses to write
+- **The e2e spec runs only in CI, where it passes.** `seed/anchor.ts` refuses to write
   development credentials into a non-local database, and `DATABASE_URL_DIRECT`
   here is the live Supabase project, so there is no seeded anchor tenant to
   sign in against. The `console-e2e` job runs `playwright test` unfiltered, so
