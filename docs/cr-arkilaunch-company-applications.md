@@ -96,16 +96,16 @@ this tenant and a staff login of another tenant get `ForbiddenException`.
 | `migration-rls-guardian` | **PASS.** Expand-only single column; table-level grants cover it; snapshot diff touches no policy. |
 | `tenant-isolation-checker` | **PASS.** Confirms the layering under test: RLS bounds the tenant, `ownsCustomer()` bounds the customer within it, `assertCustomer` refuses staff first. No `service_role` on the request path, no raw SQL. |
 | `restraint-guardian` | **PASS**, no blocking findings. Noted `ownDocumentKey`/`documentKey` differ only by the ownership guard and could share a parameterised helper; left duplicated on purpose, as a predicate-callback abstraction for two call sites reads worse than ten repeated lines. |
-| Playwright `company-applications.spec.ts` | **Written, not run locally** — no seedable database here. Runs in CI via the `console-e2e` job. See §6. |
+| Playwright `company-applications.spec.ts` | **Pass in CI** — 12 specs, `console-e2e`. Not runnable locally; see §6. |
 
 ## 6. Honest gaps
 
-- **The e2e spec has not been executed locally.** `seed/anchor.ts` refuses to write
+- **The e2e spec runs only in CI.** `seed/anchor.ts` refuses to write
   development credentials into a non-local database, and `DATABASE_URL_DIRECT` in this
   environment is the live Supabase project, so there is no seeded anchor tenant to
-  sign in against. It *will* run in CI: PR #66 merged the `console-e2e` job while this
-  branch was open, and that job runs `playwright test` unfiltered, so this spec is
-  picked up without a workflow change. Its sign-in comes from the shared
+  sign in against. It does run in CI: PR #66 merged the `console-e2e` job while this
+  branch was open, and that job runs `playwright test` unfiltered, so this spec was
+  picked up without a workflow change and passes there. Its sign-in comes from the shared
   `e2e/sign-in.ts`, extended here with `signInAsCustomer` rather than duplicated —
   the existing helper signs in as admin and expects `/app`.
 - **7 pre-existing failures in `payments-engine.spec.ts`** reproduce on clean `dev`
