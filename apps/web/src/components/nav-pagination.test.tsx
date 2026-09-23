@@ -28,6 +28,35 @@ describe('activeNavTarget', () => {
   it('returns nothing when the URL belongs to no destination', () => {
     expect(activeNavTarget(targets, '/account')).toBeNull();
   });
+
+  // The bug: `/account` is a prefix of every page in the section, so the cart,
+  // the checkout, the invoice and the company form all lit "Home".
+  describe('a section root marked exact', () => {
+    const accountNav = [
+      { to: '/account', exact: true },
+      { to: '/account/bookings', owns: ['/account/checkout', '/account/invoices'] },
+      { to: '/account/companies' },
+    ];
+
+    it('lights only on the root itself', () => {
+      expect(activeNavTarget(accountNav, '/account')).toBe('/account');
+      expect(activeNavTarget(accountNav, '/account/cart')).toBeNull();
+    });
+
+    it('still lets a more specific destination match its children', () => {
+      expect(activeNavTarget(accountNav, '/account/companies/new')).toBe('/account/companies');
+    });
+
+    it('lets a destination own screens with no sidebar entry', () => {
+      expect(activeNavTarget(accountNav, '/account/checkout/abc')).toBe('/account/bookings');
+      expect(activeNavTarget(accountNav, '/account/invoices/abc')).toBe('/account/bookings');
+    });
+
+    it('ranks by the matching prefix, so a longer owns beats a shorter to', () => {
+      const nav = [{ to: '/a' }, { to: '/b', owns: ['/a/deep/branch'] }];
+      expect(activeNavTarget(nav, '/a/deep/branch/x')).toBe('/b');
+    });
+  });
 });
 
 describe('Pagination', () => {

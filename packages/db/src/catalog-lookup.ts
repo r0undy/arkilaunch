@@ -12,6 +12,7 @@ export interface CatalogEquipmentRow {
   equipmentTypeName: string;
   model: string;
   availabilityStatus: string;
+  photoUri: string | null;
 }
 
 // Bounded at the database: this is an unauthenticated route, and every
@@ -28,12 +29,14 @@ export async function listCatalogEquipmentForSlug(
     equipment_type_name: string;
     model: string;
     availability_status: string;
+    photo_uri: string | null;
   }>(sql`select * from catalog_list_equipment(${slug}) limit ${limit} offset ${offset}`);
   return rows.map((row) => ({
     id: row.id,
     equipmentTypeName: row.equipment_type_name,
     model: row.model,
     availabilityStatus: row.availability_status,
+    photoUri: row.photo_uri,
   }));
 }
 
@@ -49,6 +52,7 @@ export async function getCatalogEquipmentForSlug(slug: string, id: string): Prom
     equipment_type_name: string;
     model: string;
     availability_status: string;
+    photo_uri: string | null;
   }>(sql`select * from catalog_get_equipment(${slug}, ${id})`);
   const row = rows[0];
   if (!row) return null;
@@ -57,6 +61,7 @@ export async function getCatalogEquipmentForSlug(slug: string, id: string): Prom
     equipmentTypeName: row.equipment_type_name,
     model: row.model,
     availabilityStatus: row.availability_status,
+    photoUri: row.photo_uri,
   };
 }
 

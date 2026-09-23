@@ -102,6 +102,20 @@ export class CustomersController {
     return this.customers.createSite(req.ctx, body);
   }
 
+  // The customer's own thumbnail for the company card (Figma 251:1945).
+  // Same 300s signed URL as the staff route, but gated on booking:read and
+  // on owning the company -- see ownDocumentKey().
+  @Get('me/companies/:id/documents/:documentId/url')
+  @RequirePermission('booking:read')
+  async ownDocumentUrl(
+    @Param('id') id: string,
+    @Param('documentId') documentId: string,
+    @Req() req: CtxRequest,
+  ) {
+    const key = await this.customers.ownDocumentKey(req.ctx, id, documentId);
+    return { url: await this.storage.createSignedDownloadUrl(kycBucket(), key) };
+  }
+
   @Get('customers/review')
   @RequirePermission('quote:approve')
   listForReview(@Query() query: CompanyReviewQueryDto, @Req() req: CtxRequest) {

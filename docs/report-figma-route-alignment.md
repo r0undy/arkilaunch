@@ -120,7 +120,7 @@ information: `731:1724` / `731:1842` (OCR Tool Review / OCR Tool), `663:2533`
 
 | Figma frame | Node | Route | What is missing |
 |---|---|---|---|
-| Manage Registrations (Company Applications) | `206:2083` | `/account/applications` | The frame is a **list**: Total / Approved / Pending counter tiles, a search field, three filter tabs (All / Pending Approval / Approved), and one card per application with thumbnail, status pill, registration number and a **Manage** action. `account.applications.tsx` renders a single `Surface` from `GET /tenants/me/application` — one application, no counters, no search, no filters, no Manage. **Blocked**: the endpoint is singular; a per-customer list endpoint is needed first. Mobile twin `826:2218`. |
+| Manage Registrations (Company Applications) | `206:2083` | `/account/applications` | The frame is a **list**: Total / Approved / Pending counter tiles, a search field, three filter tabs (All / Pending Approval / Approved), and one card per application with thumbnail, status pill, registration number and a **Manage** action. `account.applications.tsx` renders a single `Surface` from `GET /tenants/me/application` — one application, no counters, no search, no filters, no Manage. ~~**Blocked**: the endpoint is singular; a per-customer list endpoint is needed first.~~ **Closed 2026-09-23.** Nothing was blocked: the screen was reading the wrong entity. `GET /tenants/me/application` is the *tenant onboarding* application and is correctly singular; the companies the frame draws are the `customers` rows already served by `GET /me/companies`. Rebuilt against that, with `/account/companies` absorbed into it — see `cr-arkilaunch-company-applications.md`. Mobile twin `826:2218`. |
 | Help Center | `750:6444` | `/help` | The frame is a complete 2299px-tall Help Center. `help.tsx` is an `EmptyState` reading "Support articles are being written." **Mostly blocked, not content-only** — see below. |
 
 The Help Center frame decomposes into six sections, and only two are backed:
@@ -231,11 +231,21 @@ invoice, notification-centre and profile screens are real as a result.
   avatar or phone number back, so no edit affordance is offered.
 - `/account/bookings/:id/extend` — bookings can be created, listed and read; no
   endpoint moves a return date, so Extend Rental Submitted (§4) cannot ship.
-- `/account/applications` — `GET /tenants/me/application` returns a single
-  application. The §3 list design needs a per-customer list endpoint.
-- `/account/companies/new` — `POST /tenants/register` takes the personal details from
-  the first registration step and nothing attaches a second company to an existing
-  account.
+- ~~`/account/applications` — `GET /tenants/me/application` returns a single
+  application. The §3 list design needs a per-customer list endpoint.~~ **Wrong,
+  corrected 2026-09-23.** No list endpoint was missing; the screen was reading the
+  wrong entity. `GET /tenants/me/application` is the *tenant onboarding*
+  application — a business becoming an ArkiLaunch tenant — and is correctly
+  singular, because `users.tenantId` is a single FK and RLS keys off one tenant per
+  JWT. What `251:1945` draws is the companies a customer registers to rent under,
+  served by `GET /me/companies` since the customer-prerequisites CR. **Closed
+  2026-09-23** by `cr-arkilaunch-company-applications.md`.
+- ~~`/account/companies/new` — `POST /tenants/register` takes the personal details
+  from the first registration step and nothing attaches a second company to an
+  existing account.~~ **Wrong, corrected 2026-09-23.** Checked against the
+  tenant-registration flow. `POST /me/companies` has attached additional companies
+  to an existing login since the customer-prerequisites CR, and the `customers`
+  schema comment cites Figma `582:3946 "Add New Company"` by name.
 - ~~`/app/inventory` — read-only, no equipment write endpoint.~~ **Closed
   2026-09-23** by `cr-arkilaunch-equipment-crud.md`. Add, edit and retire ship as
   modals; `DELETE /equipment/:id` sets `retired_at` rather than deleting, because

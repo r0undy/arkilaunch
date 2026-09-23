@@ -109,6 +109,7 @@ export class CustomersService {
           userId: ctx.userId,
           companyName: body.companyName,
           tin: body.tin,
+          secNumber: body.secNumber ?? null,
           billingAddress: body.billingAddress,
           kycStatus: 'pending',
         })
@@ -357,6 +358,32 @@ export class CustomersService {
     });
   }
 
+  /**
+   * GET /me/companies/:id/documents/:documentId/url. The customer's own
+   * copy of documentKey().
+   *
+   * RLS bounds the tenant and nothing more, and `customer` is an
+   * intra-tenant role -- without ownsCustomer() on top, one customer of a
+   * tenant could read another's registration certificate by guessing a
+   * customer id (audit-api-surface.md #1). Refuses as not-found rather
+   * than forbidden so the check leaks no ids.
+   */
+  async ownDocumentKey(ctx: RequestContext, customerId: string, documentId: string): Promise<string> {
+    assertCustomer(ctx);
+    return withTenantTx(ctx, async (tx) => {
+      if (!(await ownsCustomer(tx, ctx, customerId))) {
+        throw new NotFoundException({ error: 'document_not_found' });
+      }
+      const [doc] = await tx
+        .select()
+        .from(kycDocuments)
+        .where(and(eq(kycDocuments.id, documentId), eq(kycDocuments.customerId, customerId)))
+        .limit(1);
+      if (!doc) throw new NotFoundException({ error: 'document_not_found' });
+      return doc.fileUri;
+    });
+  }
+
   async documentKey(ctx: RequestContext, customerId: string, documentId: string): Promise<string> {
     return withTenantTx(ctx, async (tx) => {
       const [doc] = await tx
@@ -514,6 +541,7 @@ function toCompany(
     id: row.id,
     companyName: row.companyName,
     tin: row.tin,
+    secNumber: row.secNumber,
     billingAddress: row.billingAddress,
     kycStatus: row.kycStatus,
     firstName: name?.firstName ?? null,

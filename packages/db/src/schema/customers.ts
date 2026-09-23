@@ -14,6 +14,10 @@ export const customers = pgTable(
     // Figma 582:3946 "Add New Company". One login may own several companies
     // (several rows sharing user_id).
     tin: text('tin'),
+    // SEC/DTI registration number, shown as "Registration Number" on the
+    // company card (Figma 251:1945). Nullable: companies registered before
+    // this column existed have none, and the OCR scan only suggests it.
+    secNumber: text('sec_number'),
     billingAddress: text('billing_address'),
     kycStatus: text('kyc_status').notNull().default('pending'), // pending, approved, rejected
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
