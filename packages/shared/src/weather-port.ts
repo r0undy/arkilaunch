@@ -21,6 +21,36 @@ export interface WeatherPort {
   getConditions(latitude: number, longitude: number): Promise<WeatherObservation>;
 }
 
+// One day of the outlook. Separate from WeatherObservation on purpose: that
+// is a reading taken now, this is a prediction for a whole day, and the two
+// must never be mistaken for each other in a UI.
+export interface DailyForecast {
+  date: string; // YYYY-MM-DD, site-local (the adapter already asks for Asia/Manila)
+  tempMaxC: number;
+  tempMinC: number;
+  windMaxKph: number;
+  precipMm: number;
+  code: number;
+}
+
+// A SEPARATE interface, not an optional method on WeatherPort: every
+// implementation of that -- jobs/src/weather-poll.ts's consumer and each
+// test double in `@arkilaunch/shared/testing` -- would otherwise have to
+// grow a method it does not use, and every caller an `if (!port.getForecast)`
+// branch guarding a case that cannot happen.
+export interface WeatherForecastPort {
+  /**
+   * Exactly FORECAST_DAYS entries, day 0 = today.
+   *
+   * Throws rather than returning a short array. A four-day week rendered
+   * under a five-day heading is a quiet lie, and the same reasoning as
+   * UnavailableWeatherAdapter applies: no data must look like no data.
+   */
+  getForecast(latitude: number, longitude: number): Promise<DailyForecast[]>;
+}
+
+export const FORECAST_DAYS = 5;
+
 // 'no_credentials' stays in the union for symmetry with
 // ExtractionUnavailableReason's shared vocabulary, but is unreachable in
 // production now that the free tier needs no key -- there is nothing left
@@ -50,10 +80,17 @@ export class WeatherUnavailableError extends Error {
 // Throwing means jobs/src/weather-poll.ts writes no weather_alerts row at
 // all, and sites.service.ts's existing `!latest` branch already reports
 // that honestly as `isStale: true, polledAt: null`.
-export class UnavailableWeatherAdapter implements WeatherPort {
+export class UnavailableWeatherAdapter implements WeatherPort, WeatherForecastPort {
   constructor(private readonly reason: WeatherUnavailableReason = 'no_adapter') {}
 
   async getConditions(_latitude: number, _longitude: number): Promise<WeatherObservation> {
+    throw new WeatherUnavailableError(this.reason);
+  }
+
+  // Same contract as getConditions: throw, never hand back a shape that
+  // reads as a real forecast. An empty array in the rail would render as a
+  // blank week rather than "unavailable".
+  async getForecast(_latitude: number, _longitude: number): Promise<DailyForecast[]> {
     throw new WeatherUnavailableError(this.reason);
   }
 }
