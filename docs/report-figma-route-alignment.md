@@ -92,9 +92,15 @@ Structural notes on the file itself:
 | Operator Profile | `360:4903` | `/field/profile` |
 | Contact Support | `652:9896` | `/contact` |
 
-Inventory add / edit / delete / delete-confirmation (`292:1344`, `293:2668`,
-`293:2913`, `293:3256`) and the Equipments date-picker (`251:3418`) are modal states
-of their parent route, not routes.
+The Equipments date-picker (`251:3418`) is a modal state of its parent route, not a
+route; it is the same dialog as `209:2977` and both are now built.
+
+The Inventory add / edit / delete / delete-confirmation / deleted frames
+(`292:1344`, `293:2668`, `293:2913`, `293:3256`, `303:2118`) were previously listed
+here as modal states of a matched route. **They are not implemented.**
+`/app/inventory` is read-only — the route renders a table and nothing else — and
+there is no `POST`, `PATCH` or `DELETE` endpoint for equipment anywhere in the API.
+See §4.
 
 The `- Home Page` suffixed frames (`582:4003`, `582:4220` Extend Rental,
 `582:4460` Manage Active Rental, `582:4670` Manage Nego Details) are the same screens
@@ -137,8 +143,8 @@ of existing screens that were never drawn into the implementation.
 | Figma frame | Node | Belongs to | Status |
 |---|---|---|---|
 | Cart Page - Nego Options | `219:2226` | `/account/cart` | **Built.** The channel choice sits on the request-sent card rather than the cart's cost summary: the frame pairs it with "Proceed to Payment", and there is no price to pay until the team quotes the job. |
-| Rental Page - rent | `209:2977` | `/equipment/$equipmentId` | Buildable. The rent / add-to-cart state of the listing. |
-| Inventory - Deleted | `303:2118` | `/app/inventory` | Buildable. Post-delete confirmation state. |
+| Rental Page - rent | `209:2977` | `/equipment` | **Built.** Not the listing page, as the 2026-09-17 revision implied — it is the catalog with a Configure Rental dialog over it, opened from a card's Rent button. |
+| Inventory add / edit / delete / delete-confirm / deleted | `292:1344`, `293:2668`, `293:2913`, `293:3256`, `303:2118` | `/app/inventory` | Blocked — the fleet table is read-only and the API has no equipment write endpoint. Five frames, one missing CRUD surface. |
 | Extend Rental Submitted | `237:1855` | `/account/bookings/$bookingId/extend` | Blocked — no endpoint moves a return date. |
 | Messenger Chat Nego done | `225:3569` | `/account/negotiation/$bookingId/chat` | Already covered: an accepted quote turns the thread's action into "Review and pay" (`account.negotiation.tsx:112`). Not a separate screen. |
 | Call Nego done | `225:3872` | `/account/negotiation/$bookingId/call` | Same. |
@@ -222,6 +228,9 @@ invoice, notification-centre and profile screens are real as a result.
 - `/account/companies/new` — `POST /tenants/register` takes the personal details from
   the first registration step and nothing attaches a second company to an existing
   account.
+- `/app/inventory` — read-only. The prototype draws a full CRUD surface over the
+  fleet (add, edit, delete, delete confirmation, deleted) and the API has no
+  equipment write endpoint at all, so none of the five frames can ship.
 - `/app/companies/approved` and the three `/app/registration/*` queues —
   `tenants_list_pending_applications` returns pending rows only, and KYC documents are
   readable one at a time by document id with nothing listing them per tenant or per
