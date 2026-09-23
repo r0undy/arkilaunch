@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import type { NavGroup } from '../lib/nav-config.js';
 import { AppBar } from './app-bar.js';
 import { NavGroupList } from './nav-group.js';
+import { SkipLink } from './skip-link.js';
 
 export interface SidebarShellProps {
   navGroups: NavGroup[];
@@ -19,6 +20,7 @@ export function SidebarShell({ navGroups, tenantLabel, children }: SidebarShellP
 
   return (
     <div className="flex min-h-screen flex-col bg-bg">
+      <SkipLink />
       <AppBar tenantLabel={tenantLabel} onMenuClick={() => setDrawerOpen((v) => !v)} />
       <div className="flex flex-1">
         <aside className="hidden w-60 shrink-0 border-r border-border bg-surface-sunk px-3 py-6 lg:block">
@@ -39,7 +41,7 @@ export function SidebarShell({ navGroups, tenantLabel, children }: SidebarShellP
           </div>
         )}
 
-        <main className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
+        <main id="main" className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );
