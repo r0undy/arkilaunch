@@ -1,19 +1,24 @@
--- Hand-authored. Additive, non-destructive, safe to re-run (CREATE OR REPLACE).
+-- Hand-authored. Additive, non-destructive.
 --
--- The cart and the catalog listing draw a photo per machine (Figma 168:1982,
+-- The cart and the catalog draw a photo per machine (Figma 168:1982,
 -- 185:1599). equipment.photo_uri has existed since the equipment CRUD work but
--- the storefront's two SECURITY DEFINER readers never returned it, so every
--- listing rendered a placeholder.
+-- the storefront's two SECURITY DEFINER readers never returned it, so an
+-- uploaded photo appeared on no screen at all.
 --
--- photo_uri is a pointer into the equipment-photos bucket, which is public-read
--- by the explicit decision recorded in cr-arkilaunch-equipment-crud.md -- so
--- serving it here publishes nothing that was not already reachable.
+-- photo_uri points into the equipment-photos bucket, which is public-read by
+-- the explicit decision in cr-arkilaunch-equipment-crud.md, so serving it here
+-- publishes nothing that was not already reachable.
+--
+-- DROP then CREATE, not CREATE OR REPLACE: adding a column to RETURNS TABLE
+-- changes the function's return type, and Postgres refuses that in place
+-- (42P13 cannot change return type of existing function). Dropping loses the
+-- grants from 0010/0012, so both are re-issued below -- without the REVOKE the
+-- function would come back executable by PUBLIC.
 --
 -- The safe-column allowlist is otherwise unchanged from 0027: still no
--- serial_no, still no runtime_hours. The cart shows a short display code
--- derived from the row id instead, so the yard's real asset identifiers stay
--- off the unauthenticated endpoint.
-CREATE OR REPLACE FUNCTION catalog_list_equipment(p_slug text)
+-- serial_no, still no runtime_hours.
+DROP FUNCTION IF EXISTS catalog_list_equipment(text);--> statement-breakpoint
+CREATE FUNCTION catalog_list_equipment(p_slug text)
 RETURNS TABLE (
   id uuid, equipment_type_name text, model text, availability_status text, photo_uri text
 )
@@ -24,7 +29,10 @@ LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
   JOIN tenants t ON t.id = e.tenant_id
   WHERE t.slug = p_slug AND t.status = 'active' AND e.retired_at IS NULL;
 $$;--> statement-breakpoint
-CREATE OR REPLACE FUNCTION catalog_get_equipment(p_slug text, p_id uuid)
+REVOKE ALL ON FUNCTION catalog_list_equipment(text) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION catalog_list_equipment(text) TO app_authenticated;--> statement-breakpoint
+DROP FUNCTION IF EXISTS catalog_get_equipment(text, uuid);--> statement-breakpoint
+CREATE FUNCTION catalog_get_equipment(p_slug text, p_id uuid)
 RETURNS TABLE (
   id uuid, equipment_type_name text, model text, availability_status text, photo_uri text
 )
@@ -35,4 +43,6 @@ LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
   JOIN tenants t ON t.id = e.tenant_id
   WHERE t.slug = p_slug AND t.status = 'active' AND e.id = p_id
     AND e.retired_at IS NULL;
-$$;
+$$;--> statement-breakpoint
+REVOKE ALL ON FUNCTION catalog_get_equipment(text, uuid) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION catalog_get_equipment(text, uuid) TO app_authenticated;
