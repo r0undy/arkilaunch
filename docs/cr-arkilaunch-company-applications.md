@@ -54,7 +54,7 @@ a customer to read their own uploaded document.
 
 ## 3. What changed
 
-- Migration `0025`: `customers.sec_number`, nullable. `customers` takes its grants at
+- Migration `0028`: `customers.sec_number`, nullable. `customers` takes its grants at
   table level (`0002_force_rls_and_grants.sql`), so the column inherits
   `app_authenticated`'s verbs; `tenantIsolationPolicy()` on the table is untouched.
 - `CompanyCreateSchema.secNumber` (optional, `SEC_REGEX`) and
@@ -96,22 +96,28 @@ this tenant and a staff login of another tenant get `ForbiddenException`.
 | `migration-rls-guardian` | **PASS.** Expand-only single column; table-level grants cover it; snapshot diff touches no policy. |
 | `tenant-isolation-checker` | **PASS.** Confirms the layering under test: RLS bounds the tenant, `ownsCustomer()` bounds the customer within it, `assertCustomer` refuses staff first. No `service_role` on the request path, no raw SQL. |
 | `restraint-guardian` | **PASS**, no blocking findings. Noted `ownDocumentKey`/`documentKey` differ only by the ownership guard and could share a parameterised helper; left duplicated on purpose, as a predicate-callback abstraction for two call sites reads worse than ten repeated lines. |
-| Playwright `company-applications.spec.ts` | **Written, not run.** See §6. |
+| Playwright `company-applications.spec.ts` | **Written, not run locally** — no seedable database here. Runs in CI via the `console-e2e` job. See §6. |
 
 ## 6. Honest gaps
 
-- **The e2e spec has not been executed.** `seed/anchor.ts` refuses to write
+- **The e2e spec has not been executed locally.** `seed/anchor.ts` refuses to write
   development credentials into a non-local database, and `DATABASE_URL_DIRECT` in this
   environment is the live Supabase project, so there is no seeded anchor tenant to
-  sign in against. `dev` also carries no Playwright CI job — the `console-e2e` job in
-  PR #66 is what will run this. Deliberately not duplicated here.
+  sign in against. It *will* run in CI: PR #66 merged the `console-e2e` job while this
+  branch was open, and that job runs `playwright test` unfiltered, so this spec is
+  picked up without a workflow change. Its sign-in comes from the shared
+  `e2e/sign-in.ts`, extended here with `signInAsCustomer` rather than duplicated —
+  the existing helper signs in as admin and expects `/app`.
 - **7 pre-existing failures in `payments-engine.spec.ts`** reproduce on clean `dev`
   with none of this branch's changes: leftover `customers` rows on the shared Supabase
   database leave the seeded customer owning more than one company, so
   `POST /bookings` answers `company_required`. `seed:test-two-tenant` does not clear
   them. Not introduced here, not fixed here.
-- **Migration numbering.** Numbered `0025` as drizzle generated it against `dev`.
-  PR #66 also lands a `0025`; whichever merges second renumbers.
+- **Migration numbering.** Cut as `0025` against `dev`; PR #66 merged first and took
+  that number, so this was regenerated as `0028` on rebase. The `0025` applied to the
+  Supabase project during development was the identical single `ALTER TABLE customers
+  ADD COLUMN sec_number text`, so that database already carries the column and will
+  record `0028` as a no-op re-apply.
 - **Admin-side gaps stay open**: `/app/companies/approved` renders empty
   (`tenants_list_pending_applications` returns pending rows only) and the admin
   application detail page re-reads page 0 of the pending list and `.find()`s the id,

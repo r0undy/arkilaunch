@@ -1,22 +1,11 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { signInAsCustomer as signIn } from './sign-in.js';
 
 // The Figma company list (251:1945) at /account/applications, in a browser.
 // Needs the seeded anchor tenant (`pnpm db:seed`) and the API running.
 //
-// A failed sign-in fails the test rather than skipping it. A skip here
-// reports green while asserting nothing, which is how this suite previously
-// hid a broken sign-in for several passes.
-
-const EMAIL = 'customer@admin.com';
-const PASSWORD = process.env.SEED_PASSWORD ?? 'admin';
-
-async function signIn(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(EMAIL);
-  await page.getByLabel('Password').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL(/\/account/, { timeout: 15_000 });
-}
+// Sign-in comes from the shared helper, which fails rather than skips: a
+// skipped sign-in reports green while asserting nothing.
 
 test.describe('company applications', () => {
   test('lists the companies, counts them, and filters by status', async ({ page }) => {
