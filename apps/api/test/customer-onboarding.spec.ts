@@ -132,7 +132,13 @@ describe('Customer onboarding', () => {
       'Beta Works',
     ]);
 
-    await companies.addDocument(ctx, acme.id, 'government_id', `${tenantId}/test/id.jpg`);
+    await companies.addDocument(
+      ctx,
+      acme.id,
+      'government_id',
+      `${tenantId}/test/id.jpg`,
+      Buffer.from('not-really-an-image'),
+    );
     const site = await companies.createSite(ctx, {
       customerId: acme.id,
       line1: 'Lot 4 Ortigas Ave',
@@ -199,7 +205,13 @@ describe('Customer onboarding', () => {
 
     // Another customer in the same tenant cannot attach a document or site.
     await expect(
-      companies.addDocument(seededCustomerCtx, mine.id, 'government_id', 'x'),
+      companies.addDocument(
+        seededCustomerCtx,
+        mine.id,
+        'government_id',
+        'x',
+        Buffer.from('not-really-an-image'),
+      ),
     ).rejects.toBeInstanceOf(NotFoundException);
     await expect(
       companies.createSite(seededCustomerCtx, {
@@ -293,16 +305,30 @@ describe('Customer onboarding', () => {
     const reviewer = (fields: Record<string, { value: string; confidence: number }>) =>
       new CustomersService(events, new FixtureDocumentIntelligenceAdapter({ fields }));
     const bytes = Buffer.from('not-really-an-image');
+    // Its own customer, never the module-wide seeded one: this block
+    // creates many companies per test run, and bookings.create()'s
+    // implicit-company selection elsewhere (payments-engine.spec.ts et al.)
+    // breaks the instant the shared seeded customer owns more than one.
+    let reviewCtx: RequestContext;
+
+    beforeAll(async () => {
+      const tokens = await auth.registerCustomer({
+        email: `staff-review-${randomUUID().slice(0, 8)}@onboarding.test`,
+        password: 'correct horse battery',
+        acceptedTerms: true,
+      });
+      reviewCtx = decodeCtx(tokens.accessToken);
+    });
 
     async function companyWithRegistration(name: string) {
-      const company = await companies.createCompany(seededCustomerCtx, {
+      const company = await companies.createCompany(reviewCtx, {
         companyName: name,
         tin: '111-222-333',
         billingAddress: '12 Yard Road, Cebu City',
         contactMobile: '0917 000 0000',
       });
       const doc = await companies.addDocument(
-        seededCustomerCtx,
+        reviewCtx,
         company.id,
         'company_registration',
         `storage://fixtures/${randomUUID()}.jpg`,
@@ -382,14 +408,14 @@ describe('Customer onboarding', () => {
         middle_name: { value: 'MERCADO', confidence: 0.93 },
         last_name: { value: 'DELA CRUZ', confidence: 0.96 },
       });
-      const legibleCompany = await legible.createCompany(seededCustomerCtx, {
+      const legibleCompany = await legible.createCompany(reviewCtx, {
         companyName: 'Legible Scan Corp',
         tin: '111-222-333',
         billingAddress: '12 Yard Road, Cebu City',
         contactMobile: '0917 000 0000',
       });
       const legibleDoc = await legible.addDocument(
-        seededCustomerCtx,
+        reviewCtx,
         legibleCompany.id,
         'government_id',
         `storage://fixtures/${randomUUID()}.jpg`,
@@ -400,14 +426,14 @@ describe('Customer onboarding', () => {
       const illegible = reviewer({
         first_name: { value: 'J', confidence: 0.4 },
       });
-      const illegibleCompany = await illegible.createCompany(seededCustomerCtx, {
+      const illegibleCompany = await illegible.createCompany(reviewCtx, {
         companyName: 'Blurry Scan Corp',
         tin: '111-222-333',
         billingAddress: '12 Yard Road, Cebu City',
         contactMobile: '0917 000 0000',
       });
       const illegibleDoc = await illegible.addDocument(
-        seededCustomerCtx,
+        reviewCtx,
         illegibleCompany.id,
         'government_id',
         `storage://fixtures/${randomUUID()}.jpg`,
@@ -436,7 +462,7 @@ describe('Customer onboarding', () => {
         first_name: { value: 'MARIA', confidence: 0.95 },
         last_name: { value: 'SANTOS', confidence: 0.95 },
       });
-      const company = await service.createCompany(seededCustomerCtx, {
+      const company = await service.createCompany(reviewCtx, {
         companyName: 'Named Corp',
         tin: '111-222-333',
         billingAddress: '12 Yard Road, Cebu City',
@@ -445,7 +471,7 @@ describe('Customer onboarding', () => {
 
       const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
       try {
-        const before = await sql`select first_name from users where id = ${seededCustomerCtx.userId}`;
+        const before = await sql`select first_name from users where id = ${reviewCtx.userId}`;
         expect((before[0] as { first_name: string | null }).first_name).toBeNull();
 
         await service.decide(adminCtx, company.id, {
@@ -456,15 +482,13 @@ describe('Customer onboarding', () => {
         });
 
         const after =
-          await sql`select first_name, middle_name, last_name from users where id = ${seededCustomerCtx.userId}`;
+          await sql`select first_name, middle_name, last_name from users where id = ${reviewCtx.userId}`;
         expect(after[0]).toMatchObject({
           first_name: 'Maria',
           middle_name: 'Reyes',
           last_name: 'Santos',
         });
       } finally {
-        // Leave the shared seed fixture as this spec found it.
-        await sql`update users set first_name = null, middle_name = null, last_name = null where id = ${seededCustomerCtx.userId}`;
         await sql.end();
       }
     });
