@@ -63,7 +63,9 @@ test.describe('company applications', () => {
     await card.getByRole('link', { name: 'Manage' }).click();
 
     await expect(page).toHaveURL(/\/account\/companies\/[0-9a-f-]+$/);
-    await expect(page.getByRole('heading', { name: name! })).toBeVisible();
+    // level 1 specifically: the detail page names the company twice, once in
+    // the PageHeader and once on the card below it.
+    await expect(page.getByRole('heading', { level: 1, name: name! })).toBeVisible();
 
     await page.getByRole('link', { name: 'Back to applications' }).click();
     await expect(page).toHaveURL(/\/account\/applications$/);
