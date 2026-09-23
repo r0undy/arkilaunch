@@ -95,12 +95,17 @@ Structural notes on the file itself:
 The Equipments date-picker (`251:3418`) is a modal state of its parent route, not a
 route; it is the same dialog as `209:2977` and both are now built.
 
-The Inventory add / edit / delete / delete-confirmation / deleted frames
-(`292:1344`, `293:2668`, `293:2913`, `293:3256`, `303:2118`) were previously listed
-here as modal states of a matched route. **They are not implemented.**
-`/app/inventory` is read-only — the route renders a table and nothing else — and
-there is no `POST`, `PATCH` or `DELETE` endpoint for equipment anywhere in the API.
-See §4.
+The Inventory add / edit / delete-confirmation frames (`292:1344`, `293:2668`,
+`293:3256`) are **built** as modal states of `/app/inventory`. Two corrections to
+what this report said about them on 2026-09-23:
+
+- "there is no `POST`, `PATCH` or `DELETE` endpoint for equipment anywhere in the
+  API" was **wrong**. It was checked against the `catalog` module; fleet writes live
+  in `apps/api/src/fleet/`. `POST /equipment` and `PATCH /equipment/:id` had existed
+  since `cr-arkilaunch-f4-f5-fleet-weather.md` with no UI calling them. Only `DELETE`
+  was missing, and it now exists as a retire.
+- `293:2913` (delete mode) and `303:2118` (deleted) are **deliberately not built**.
+  See §5 and `cr-arkilaunch-equipment-crud.md` §4.
 
 The `- Home Page` suffixed frames (`582:4003`, `582:4220` Extend Rental,
 `582:4460` Manage Active Rental, `582:4670` Manage Nego Details) are the same screens
@@ -144,7 +149,7 @@ of existing screens that were never drawn into the implementation.
 |---|---|---|---|
 | Cart Page - Nego Options | `219:2226` | `/account/cart` | **Built.** The channel choice sits on the request-sent card rather than the cart's cost summary: the frame pairs it with "Proceed to Payment", and there is no price to pay until the team quotes the job. |
 | Rental Page - rent | `209:2977` | `/equipment` | **Built.** Not the listing page, as the 2026-09-17 revision implied — it is the catalog with a Configure Rental dialog over it, opened from a card's Rent button. |
-| Inventory add / edit / delete / delete-confirm / deleted | `292:1344`, `293:2668`, `293:2913`, `293:3256`, `303:2118` | `/app/inventory` | Blocked — the fleet table is read-only and the API has no equipment write endpoint. Five frames, one missing CRUD surface. |
+| Inventory add / edit / delete-confirm | `292:1344`, `293:2668`, `293:3256` | `/app/inventory` | **Built** as modals. `DELETE /equipment/:id` is a retire: `edtr` cites `equipment_id` as the evidence an invoice was computed from, so migration 0026 REVOKEs DELETE and the confirm copy says the history is kept rather than repeating the frame's promise to destroy it. Rate fields omitted — see `cr-arkilaunch-equipment-crud.md` §4. |
 | Extend Rental Submitted | `237:1855` | `/account/bookings/$bookingId/extend` | Blocked — no endpoint moves a return date. |
 | Messenger Chat Nego done | `225:3569` | `/account/negotiation/$bookingId/chat` | Already covered: an accepted quote turns the thread's action into "Review and pay" (`account.negotiation.tsx:112`). Not a separate screen. |
 | Call Nego done | `225:3872` | `/account/negotiation/$bookingId/call` | Same. |
@@ -158,6 +163,9 @@ of existing screens that were never drawn into the implementation.
 | OTP Verification | `168:3214` | Same. |
 | Payment Authentication - Mobile Number | `793:3136` | Same (mobile twin of the above). |
 | Landing Page-Locked, Locked 2 | `177:2169`, `238:3694` | Dead design iterations. |
+| Inventory delete mode | `293:2913` | A toolbar toggle turning the grid into a selection surface, on top of a per-card delete button. Same capability, a second interaction model to maintain. |
+| Inventory deleted | `303:2118` | The post-delete grid. The toast and query invalidation cover it; not a separate state. |
+| Add Equipment hourly / daily rate | `292:1344` (Operational Details) | `rate_cards` owns pricing and quotes are computed from it with effective-from/to windows. A second, unwindowed price on the equipment row would be a competing source of truth on the money path. |
 
 ## 5. Design-side debt
 
@@ -228,9 +236,11 @@ invoice, notification-centre and profile screens are real as a result.
 - `/account/companies/new` — `POST /tenants/register` takes the personal details from
   the first registration step and nothing attaches a second company to an existing
   account.
-- `/app/inventory` — read-only. The prototype draws a full CRUD surface over the
-  fleet (add, edit, delete, delete confirmation, deleted) and the API has no
-  equipment write endpoint at all, so none of the five frames can ship.
+- ~~`/app/inventory` — read-only, no equipment write endpoint.~~ **Closed
+  2026-09-23** by `cr-arkilaunch-equipment-crud.md`. Add, edit and retire ship as
+  modals; `DELETE /equipment/:id` sets `retired_at` rather than deleting, because
+  `edtr` cites `equipment_id` as the evidence an invoice was computed from. Migration
+  0026 REVOKEs DELETE so a hard delete is impossible at the database.
 - `/app/companies/approved` and the three `/app/registration/*` queues —
   `tenants_list_pending_applications` returns pending rows only, and KYC documents are
   readable one at a time by document id with nothing listing them per tenant or per

@@ -348,3 +348,96 @@ jobs:
           pnpm --filter @arkilaunch/db exec vitest run
           test/rls-enumeration.spec.ts
           test/tenant-isolation.spec.ts
+
+  console-e2e:
+    runs-on: ubuntu-latest
+    # The Playwright suite had no CI job at all. Worse, its sign-in helper
+    # soft-skipped on failure, so the authed console specs reported green on
+    # any machine without a seeded database and a running API -- which was
+    # every machine, since nothing ran them. signIn now throws, and this is
+    # the job that guarantees it has somewhere to run.
+    #
+    # Covers the inventory CRUD round trip (add -> edit -> retire) plus the
+    # console design-pass specs.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Throwaway credentials for an ephemeral container destroyed with the
+      # runner. Never reuse this shape for a real environment.
+      APP_AUTHENTICATED_PASSWORD: ci_throwaway_not_a_secret
+      DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/postgres
+      DATABASE_URL_POOLED: postgresql://app_authenticated:ci_throwaway_not_a_secret@localhost:5432/postgres
+      # seed:anchor creates the five RBAC sign-in accounts the specs use.
+      ANCHOR_TENANT_SLUG: almara
+      SEED_PASSWORD: ci_throwaway_not_a_secret
+      # StorageService reads these in field initializers, so the API cannot
+      # boot without them. Nothing in this suite uploads, so they only have to
+      # exist -- this is the first CI job that starts the real API process,
+      # which is why no other job ever needed them.
+      SUPABASE_URL: http://localhost:54321
+      SUPABASE_SERVICE_ROLE_KEY: ci_throwaway_not_a_secret
+      SUPABASE_STORAGE_BUCKET_EQUIPMENT: equipment-photos
+      # scripts/dev-cert.mjs is not run here, so vite serves plain HTTP and
+      # the config's https:// default would only find ERR_EMPTY_RESPONSE.
+      # This also keeps the page and auth-client.ts's absolute
+      # http://localhost:3000 API base on the same scheme -- over HTTPS the
+      # browser blocks that call as mixed content, and login.tsx's bare catch
+      # reports the blocked request as "Incorrect email or password", which
+      # is a genuinely confusing way to discover a transport problem.
+      PLAYWRIGHT_BASE_URL: http://localhost:5173
+      # Must match the origin vite serves on; the API's CORS default is this
+      # value, set explicitly so a port change here fails loudly.
+      WEB_ORIGIN: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build workspace packages the apps import
+        run: pnpm -r --filter=./packages/* build
+      - name: Generate a throwaway RS256 keypair
+        run: |
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/jwt.key
+          openssl rsa -in /tmp/jwt.key -pubout -out /tmp/jwt.pub
+          echo "JWT_PRIVATE_KEY=$(sed -z 's/\n/\\n/g' /tmp/jwt.key)" >> "$GITHUB_ENV"
+          echo "JWT_PUBLIC_KEY=$(sed -z 's/\n/\\n/g' /tmp/jwt.pub)" >> "$GITHUB_ENV"
+      - name: Apply migrations and set the app_authenticated password
+        run: pnpm --filter @arkilaunch/db migrate
+      - name: Seed the anchor tenant and its sign-in accounts
+        run: pnpm db:seed
+      - name: Build the API
+        run: pnpm --filter @arkilaunch/api build
+      - run: pnpm --filter @arkilaunch/web exec playwright install --with-deps chromium
+      - name: Start the API and wait for it
+        run: |
+          pnpm start:api > /tmp/api.log 2>&1 &
+          # Without this the API dying at boot looks like a 90s timeout with
+          # no cause in the log, which is exactly how long it took to find
+          # the missing SUPABASE_URL the first time.
+          npx --yes wait-on http://localhost:3000/health --timeout 90000 || {
+            echo "::error::The API did not come up. Its output follows."
+            cat /tmp/api.log
+            exit 1
+          }
+      - name: Inventory CRUD and console specs
+        run: pnpm --filter @arkilaunch/web exec playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7

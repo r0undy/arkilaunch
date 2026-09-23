@@ -1,29 +1,15 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { signIn } from './sign-in.js';
 
 // Browser-level cover for the design pass: the dashboard's tabbed panel and
 // advisory modal, the quote preview dialog, and paging a real list. These
-// need the seeded anchor tenant (`pnpm db:seed`) and the API running, which
-// is why they are skipped rather than failed when a sign-in does not take.
-
-const EMAIL = 'admin@admin.com';
-const PASSWORD = process.env.SEED_PASSWORD ?? 'admin';
-
-async function signIn(page: Page): Promise<boolean> {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(EMAIL);
-  await page.getByLabel('Password').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  try {
-    await page.waitForURL(/\/app/, { timeout: 15_000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
+// need the seeded anchor tenant (`pnpm db:seed`) and the API running; signIn
+// throws if it cannot get there, rather than skipping the suite into a
+// green that means nothing.
 
 test.describe('console design pass', () => {
   test('dashboard leads with figures and keeps the rest one tab at a time', async ({ page }) => {
-    test.skip(!(await signIn(page)), 'needs the seeded anchor tenant and a running API');
+    await signIn(page);
 
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
     await expect(page.getByText('Deposit deducted')).toBeVisible();
@@ -40,7 +26,7 @@ test.describe('console design pass', () => {
   });
 
   test('a quote is priced in a dialog before anything is saved', async ({ page }) => {
-    test.skip(!(await signIn(page)), 'needs the seeded anchor tenant and a running API');
+    await signIn(page);
 
     await page.goto('/app/quotes');
     const priceIt = page.getByRole('button', { name: 'Preview price' });
@@ -59,7 +45,7 @@ test.describe('console design pass', () => {
   });
 
   test('the field-log queue pages rather than dumping every row', async ({ page }) => {
-    test.skip(!(await signIn(page)), 'needs the seeded anchor tenant and a running API');
+    await signIn(page);
 
     await page.goto('/app/ocr');
     const range = page.getByText(/Showing \d+-\d+ of \d+ field logs/);

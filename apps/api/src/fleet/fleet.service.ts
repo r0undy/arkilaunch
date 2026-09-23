@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import {
   auditLogs,
   db,
@@ -17,6 +17,7 @@ import type {
   EquipmentListQuery,
   EquipmentListResponse,
   EquipmentResponse,
+  EquipmentRetireResponse,
   EquipmentUpdateRequest,
   FinancialReportResponse,
   MaintenanceDetailResponse,
@@ -39,6 +40,26 @@ const DEFAULT_REPORT_WINDOW_DAYS = 30;
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+// Equipment photos live in their own bucket, deliberately not the KYC one:
+// that holds RA 10173 personal data under its own retention posture, and a
+// machine photo has no business sharing it.
+//
+// This bucket is public-read, which is a narrower exception than it looks.
+// RFC-2 §6 / SDD §7's "never a public URL" is scoped to EDTR and KYC image
+// blobs -- evidence and personal data. A photo of a backhoe is neither, and
+// the same fleet is already served anonymously by GET /catalog/equipment.
+// Keys stay tenant-prefixed and UUID-suffixed so they are not enumerable.
+// Recorded in docs/cr-arkilaunch-equipment-crud.md.
+function publicPhotoUrl(key: string | null): string | null {
+  if (!key) return null;
+  const base = process.env.SUPABASE_URL?.replace(/\/$/, '');
+  const bucket = process.env.SUPABASE_STORAGE_BUCKET_EQUIPMENT ?? 'equipment-photos';
+  // No SUPABASE_URL configured (unit tests, local runs without storage) is
+  // not an error: the row simply has no renderable photo.
+  if (!base) return null;
+  return `${base}/storage/v1/object/public/${bucket}/${key}`;
+}
+
 function toEquipmentResponse(row: typeof equipment.$inferSelect): EquipmentResponse {
   return {
     id: row.id,
@@ -47,6 +68,42 @@ function toEquipmentResponse(row: typeof equipment.$inferSelect): EquipmentRespo
     serialNo: row.serialNo,
     availabilityStatus: row.availabilityStatus,
     runtimeHours: Number(row.runtimeHours),
+    modelNumber: row.modelNumber,
+    yearOfManufacture: row.yearOfManufacture,
+    // numeric comes back from postgres as a string; null must stay null
+    // rather than becoming Number(null) === 0, which would report an
+    // unspecified machine as weighing nothing.
+    weightCapacityTons: row.weightCapacityTons === null ? null : Number(row.weightCapacityTons),
+    engineType: row.engineType,
+    fuelType: row.fuelType,
+    notes: row.notes,
+    photoUrl: publicPhotoUrl(row.photoUri),
+  };
+}
+
+// The spec fields shared by create and update. Spread conditionally so a
+// PATCH that omits a field leaves it alone rather than nulling it.
+type EquipmentSpecFields = {
+  modelNumber?: string | undefined;
+  yearOfManufacture?: number | undefined;
+  weightCapacityTons?: number | undefined;
+  engineType?: string | undefined;
+  fuelType?: string | undefined;
+  notes?: string | undefined;
+};
+
+function specFieldPatch(body: EquipmentSpecFields) {
+  return {
+    ...(body.modelNumber !== undefined ? { modelNumber: body.modelNumber } : {}),
+    ...(body.yearOfManufacture !== undefined
+      ? { yearOfManufacture: body.yearOfManufacture }
+      : {}),
+    ...(body.weightCapacityTons !== undefined
+      ? { weightCapacityTons: String(body.weightCapacityTons) }
+      : {}),
+    ...(body.engineType !== undefined ? { engineType: body.engineType } : {}),
+    ...(body.fuelType !== undefined ? { fuelType: body.fuelType } : {}),
+    ...(body.notes !== undefined ? { notes: body.notes } : {}),
   };
 }
 
@@ -71,7 +128,13 @@ export class FleetService {
   // posture as reference/* (no permission gate on a read).
   async list(ctx: RequestContext, query: EquipmentListQuery): Promise<EquipmentListResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const where = query.status ? eq(equipment.availabilityStatus, query.status) : undefined;
+      // Retired units leave the fleet list. They are never deleted (migration
+      // 0026), so history -- maintenanceDetail, the utilization and financial
+      // reports, every edtr row citing the machine -- stays readable by id.
+      const where = and(
+        isNull(equipment.retiredAt),
+        query.status ? eq(equipment.availabilityStatus, query.status) : undefined,
+      );
       const rows = await tx
         .select()
         .from(equipment)
@@ -107,6 +170,7 @@ export class FleetService {
           model: body.model,
           serialNo: body.serialNo,
           availabilityStatus: body.availabilityStatus,
+          ...specFieldPatch(body),
         })
         .returning();
       if (!created) throw new Error('equipment insert returned no row');
@@ -140,6 +204,11 @@ export class FleetService {
         .where(eq(equipment.id, equipmentId))
         .limit(1);
       if (!existing) throw new NotFoundException({ error: 'equipment_not_found' });
+      // A retired unit is history. Editing one would let a machine that has
+      // left the fleet be silently changed under the DTRs that cite it.
+      if (existing.retiredAt) {
+        throw new ConflictException({ error: 'equipment_retired', equipmentId });
+      }
 
       if (body.availabilityStatus === 'deployed') {
         if (existing.availabilityStatus === 'deployed') {
@@ -158,6 +227,7 @@ export class FleetService {
           ...(body.availabilityStatus !== undefined
             ? { availabilityStatus: body.availabilityStatus }
             : {}),
+          ...specFieldPatch(body),
         })
         .where(eq(equipment.id, equipmentId))
         .returning();
@@ -171,6 +241,64 @@ export class FleetService {
         entityId: equipmentId,
       });
 
+      return toEquipmentResponse(updated);
+    });
+  }
+
+  // DELETE /api/v1/equipment/:id -- a retire, not a delete.
+  //
+  // The Figma confirm (293:3256) promises to "remove all associated
+  // maintenance and deployment logs". That is exactly what must not happen:
+  // edtr rows cite equipment_id as the evidence an invoice was computed from.
+  // Migration 0026 REVOKEs DELETE on the table, so this is the only exit.
+  async retire(ctx: RequestContext, equipmentId: string): Promise<EquipmentRetireResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(equipment)
+        .where(eq(equipment.id, equipmentId))
+        .limit(1);
+      if (!existing) throw new NotFoundException({ error: 'equipment_not_found' });
+      if (existing.retiredAt) {
+        throw new ConflictException({ error: 'equipment_already_retired', equipmentId });
+      }
+      // The refusal that matters. A machine on a site has a crew and a
+      // customer depending on it; retiring it would drop it out of the fleet
+      // list while it is still out there accruing hours.
+      if (existing.availabilityStatus === 'deployed') {
+        throw new ConflictException({ error: 'equipment_deployed', equipmentId });
+      }
+
+      await tx
+        .update(equipment)
+        .set({ retiredAt: new Date() })
+        .where(eq(equipment.id, equipmentId));
+
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        // 'DELETE' rather than 'RETIRE' so the audit trail reads with every
+        // other row; the retire is the implementation of the delete verb.
+        action: 'DELETE',
+        entity: 'equipment',
+        entityId: equipmentId,
+      });
+
+      return { id: equipmentId, retired: true as const };
+    });
+  }
+
+  // Records the Storage object key for an equipment photo. The caller has
+  // already validated and uploaded the bytes; the key is built from the
+  // verified ctx.tenantId, never from request input.
+  async setPhoto(ctx: RequestContext, equipmentId: string, key: string): Promise<EquipmentResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [updated] = await tx
+        .update(equipment)
+        .set({ photoUri: key })
+        .where(and(eq(equipment.id, equipmentId), isNull(equipment.retiredAt)))
+        .returning();
+      if (!updated) throw new NotFoundException({ error: 'equipment_not_found' });
       return toEquipmentResponse(updated);
     });
   }

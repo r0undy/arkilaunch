@@ -204,4 +204,102 @@ describe('FleetService (PRD-F4)', () => {
     const allowedGuard = new PermissionsGuard(reflector);
     expect(await allowedGuard.canActivate(context)).toBe(true);
   });
+
+  // DELETE /equipment/:id is a retire. Migration 0026 REVOKEs DELETE on the
+  // table precisely so the history below cannot be destroyed.
+  describe('retire', () => {
+    async function makeUnit(suffix: string) {
+      return fleet.create(adminCtx, {
+        equipmentTypeId,
+        model: 'Retire Test Unit',
+        serialNo: `fleet-retire-${Date.now()}-${suffix}`,
+        availabilityStatus: 'available',
+      });
+    }
+
+    it('drops the unit from the fleet list but keeps its history readable', async () => {
+      const created = await makeUnit('ok');
+
+      const retired = await fleet.retire(adminCtx, created.id);
+      expect(retired).toEqual({ id: created.id, retired: true });
+
+      const { items } = await fleet.list(adminCtx, { limit: 200, offset: 0 });
+      expect(items.some((item) => item.id === created.id)).toBe(false);
+
+      // The point of a retire: the machine is gone from the fleet, not from
+      // the record. Anything citing it by id must still resolve.
+      const detail = await fleet.maintenanceDetail(adminCtx, created.id);
+      expect(detail.runtimeHours).toBe(0);
+    });
+
+    it('refuses to retire a unit that is out on a site', async () => {
+      const created = await makeUnit('deployed');
+      await fleet.update(adminCtx, created.id, { availabilityStatus: 'deployed' });
+
+      await expect(fleet.retire(adminCtx, created.id)).rejects.toThrow(ConflictException);
+    });
+
+    it('refuses a second retire, and refuses to edit a retired unit', async () => {
+      const created = await makeUnit('twice');
+      await fleet.retire(adminCtx, created.id);
+
+      await expect(fleet.retire(adminCtx, created.id)).rejects.toThrow(ConflictException);
+      await expect(
+        fleet.update(adminCtx, created.id, { model: 'Renamed After Retirement' }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('still refuses a duplicate serial after the original is retired', async () => {
+      const serialNo = `fleet-retire-${Date.now()}-serial`;
+      const created = await fleet.create(adminCtx, {
+        equipmentTypeId,
+        model: 'Serial Holder',
+        serialNo,
+        availabilityStatus: 'available',
+      });
+      await fleet.retire(adminCtx, created.id);
+
+      // The (tenant_id, serial_no) unique index still covers retired rows, so
+      // the create-time check must keep counting them -- otherwise this is a
+      // raw constraint violation instead of a clean 409.
+      await expect(
+        fleet.create(adminCtx, {
+          equipmentTypeId,
+          model: 'Serial Thief',
+          serialNo,
+          availabilityStatus: 'available',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  // Migration 0026 REVOKEd table-wide UPDATE and granted it back per column.
+  // Miss a column there and the owning code path fails with a bare permission
+  // error far from its cause, so the writes are exercised here directly.
+  it('0026 grants: every request-path write to equipment still works', async () => {
+    const created = await fleet.create(adminCtx, {
+      equipmentTypeId,
+      model: 'Grant Probe',
+      serialNo: `fleet-grant-${Date.now()}`,
+      availabilityStatus: 'available',
+      modelNumber: 'GP-100',
+      yearOfManufacture: 2024,
+      weightCapacityTons: 22.5,
+      engineType: 'Diesel C7.1 ACERT',
+      fuelType: 'Diesel',
+      notes: 'Spec sheet fields round-trip.',
+    });
+    expect(created.modelNumber).toBe('GP-100');
+    expect(created.yearOfManufacture).toBe(2024);
+    expect(created.weightCapacityTons).toBe(22.5);
+
+    // availability_status: written by sites and bookings on deploy/return.
+    const deployed = await fleet.update(adminCtx, created.id, { availabilityStatus: 'deployed' });
+    expect(deployed.availabilityStatus).toBe('deployed');
+
+    // The spec columns, which the old named refine used to reject outright.
+    const edited = await fleet.update(adminCtx, created.id, { fuelType: 'Biodiesel' });
+    expect(edited.fuelType).toBe('Biodiesel');
+    expect(edited.model).toBe('Grant Probe');
+  });
 });
