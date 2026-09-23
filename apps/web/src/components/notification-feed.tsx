@@ -52,6 +52,14 @@ interface Described {
 
 export function describeNotification(type: string, payload: unknown): Described | null {
   const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+  if (type === 'company_submitted') {
+    const name = typeof p.company_name === 'string' ? p.company_name : 'A company';
+    return {
+      title: 'New company registration',
+      body: `${name} needs approval.`,
+      action: { label: 'Review', to: '/app/registration/pending', params: {} },
+    };
+  }
   if (type === 'document_resubmit_required') {
     const docLabel = formatStatus(typeof p.document_type === 'string' ? p.document_type : 'document');
     return {

@@ -7,6 +7,7 @@ import { PageHeader } from '../components/page-header.js';
 import { EmptyState } from '../components/empty-state.js';
 import { Button } from '../components/button.js';
 import { Surface } from '../components/surface.js';
+import { Modal } from '../components/modal.js';
 import { useToast } from '../components/toast.js';
 import { Input } from '../components/input.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -71,13 +72,13 @@ function CompanyReviewCard({
   decidable,
   onDecide,
   deciding,
-  onOpenDocument,
+  onPreviewDocument,
 }: {
   company: CompanyResponse;
   decidable: boolean;
   onDecide: (fields: ReviewFields, decision: 'approved' | 'rejected') => void;
   deciding: boolean;
-  onOpenDocument: (companyId: string, documentId: string) => void;
+  onPreviewDocument: (companyId: string, documentId: string) => void;
 }) {
   const toast = useToast();
   const [fields, setFields] = useState<ReviewFields>({
@@ -138,7 +139,7 @@ function CompanyReviewCard({
           <Button
             key={doc.id}
             variant="secondary"
-            onClick={() => onOpenDocument(company.id, doc.id)}
+            onClick={() => onPreviewDocument(company.id, doc.id)}
           >
             {formatStatus(doc.documentType)}
           </Button>
@@ -259,10 +260,62 @@ function CompanyReviewCard({
 // Customer prerequisites CR: companies customers registered, with the ID
 // and registration they uploaded. Staff open each document (a 300s signed
 // URL) and decide; the customer is notified, and payment opens on approval.
+function DocumentPreviewModal({
+  companyId,
+  documentId,
+  onClose,
+}: {
+  companyId: string;
+  documentId: string;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const [asImage, setAsImage] = useState(true);
+  const query = useQuery({
+    queryKey: ['customers', companyId, 'documents', documentId, 'url'],
+    queryFn: () => apiGet<{ url: string }>(`/customers/${companyId}/documents/${documentId}/url`),
+  });
+
+  if (query.isError) toast.error('Could not open the document', apiErrorText(query.error));
+
+  return (
+    <Modal open onClose={onClose} title="Document" size="lg">
+      {query.isPending && <p className="text-sm text-text-muted">Loading...</p>}
+      {query.isError && <p className="text-sm text-error">{apiErrorText(query.error)}</p>}
+      {query.data &&
+        (asImage ? (
+          <img
+            src={query.data.url}
+            alt="Uploaded document"
+            className="mx-auto max-h-[70vh] w-auto max-w-full rounded-sm"
+            onError={() => setAsImage(false)}
+          />
+        ) : (
+          <iframe
+            src={query.data.url}
+            title="Uploaded document"
+            className="h-[70vh] w-full rounded-sm border border-border"
+          />
+        ))}
+      {query.data && (
+        <a
+          href={query.data.url}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-block text-sm text-primary underline"
+        >
+          Open in a new tab
+        </a>
+      )}
+    </Modal>
+  );
+}
+
 function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const query = useQuery(companiesQueries.review(kycStatus));
+  const [preview, setPreview] = useState<{ companyId: string; documentId: string } | null>(null);
 
   const decide = useMutation({
     mutationFn: ({
@@ -295,23 +348,6 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
     onError: (err) => toast.error('Could not record the decision', apiErrorText(err)),
   });
 
-  async function openDocument(companyId: string, documentId: string) {
-    // Open the tab synchronously so the popup blocker allows it, then
-    // point it at the signed URL once it arrives.
-    const tab = window.open('', '_blank');
-    if (tab) tab.opener = null;
-    try {
-      const { url } = await apiGet<{ url: string }>(
-        `/customers/${companyId}/documents/${documentId}/url`,
-      );
-      if (tab) tab.location.href = url;
-      else window.location.assign(url);
-    } catch (err) {
-      tab?.close();
-      toast.error('Could not open the document', apiErrorText(err));
-    }
-  }
-
   if (query.isPending) return <p className="text-sm text-text-muted">Loading...</p>;
   if (query.isError) return <p className="text-sm text-error">{apiErrorText(query.error)}</p>;
   if (query.data.length === 0) {
@@ -336,9 +372,16 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
           decidable={kycStatus === 'pending'}
           deciding={decide.isPending}
           onDecide={(fields, decision) => decide.mutate({ id: company.id, decision, fields })}
-          onOpenDocument={openDocument}
+          onPreviewDocument={(companyId, documentId) => setPreview({ companyId, documentId })}
         />
       ))}
+      {preview && (
+        <DocumentPreviewModal
+          companyId={preview.companyId}
+          documentId={preview.documentId}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   );
 }
