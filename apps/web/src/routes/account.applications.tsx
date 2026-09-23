@@ -31,11 +31,14 @@ const TABS: { value: StatusFilter; label: string }[] = [
   { value: 'approved', label: 'Approved' },
 ];
 
+// A <dl> pair, not two loose paragraphs: the number is meaningless read on
+// its own, and "Approved" also appears as a filter tab, so the count needs
+// to be tied to its label rather than sitting near it.
 function CounterTile({ value, label }: { value: number; label: string }) {
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-1 p-5">
-      <p className="font-display text-3xl font-semibold text-text">{value}</p>
-      <p className="text-sm text-text-muted">{label}</p>
+      <dd className="font-display text-3xl font-semibold text-text">{value}</dd>
+      <dt className="text-sm text-text-muted">{label}</dt>
     </Surface>
   );
 }
@@ -142,11 +145,11 @@ function ApplicationsPage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <dl className="grid gap-4 sm:grid-cols-3">
         <CounterTile value={counts.total} label="Total Applications" />
         <CounterTile value={counts.approved} label="Approved" />
         <CounterTile value={counts.pending} label="Pending Approval" />
-      </div>
+      </dl>
 
       <div className="flex flex-col gap-4">
         <input

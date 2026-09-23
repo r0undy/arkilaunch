@@ -104,6 +104,7 @@ function NewCompanyPage() {
   const queryClient = useQueryClient();
   const [companyName, setCompanyName] = useState('');
   const [tin, setTin] = useState('');
+  const [secNumber, setSecNumber] = useState('');
   const [billingAddress, setBillingAddress] = useState('');
   const [contactMobile, setContactMobile] = useState('');
   const [governmentId, setGovernmentId] = useState<File | null>(null);
@@ -123,8 +124,9 @@ function NewCompanyPage() {
     if (suggestions) {
       if (suggestions.companyName) setCompanyName(suggestions.companyName);
       if (suggestions.tin) setTin(suggestions.tin);
+      if (suggestions.secNumber) setSecNumber(suggestions.secNumber);
     }
-    setScanned(Boolean(suggestions?.companyName || suggestions?.tin));
+    setScanned(Boolean(suggestions?.companyName || suggestions?.tin || suggestions?.secNumber));
     setScanning(false);
     setStage('details');
   }
@@ -138,6 +140,9 @@ function NewCompanyPage() {
       created = await apiPost<CompanyResponse>('/me/companies', {
         companyName,
         tin,
+        // Optional on the contract: a customer may not have the certificate
+        // number to hand, and the scan only suggests it.
+        ...(secNumber.trim() ? { secNumber: secNumber.trim() } : {}),
         billingAddress,
         contactMobile,
       });
@@ -244,6 +249,15 @@ function NewCompanyPage() {
             hint="9 or 12 digits."
             value={tin}
             onChange={(e) => setTin(e.target.value)}
+          />
+          <Input
+            label="Registration number"
+            maxLength={15}
+            placeholder="PH62780901"
+            pattern="[A-Za-z0-9-]{7,15}"
+            hint="SEC or DTI number from the certificate. Optional."
+            value={secNumber}
+            onChange={(e) => setSecNumber(e.target.value)}
           />
           <Input
             label="Complete billing address"
