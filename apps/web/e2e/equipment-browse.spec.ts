@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { signInAsCustomer } from './sign-in.js';
+import { openSidebar, sidebarLink } from './sidebar.js';
 
 // Browsing equipment, in a browser, at both viewports.
 //
@@ -25,13 +26,13 @@ test.describe('equipment browsing', () => {
     await signInAsCustomer(page);
     await page.goto('/equipment');
 
-    // The sidebar landmark is the tell. Below lg it collapses into the
-    // drawer, so on a phone the app bar's menu button stands in for it.
+    // Below lg the sidebar collapses into the drawer, so on a phone the app
+    // bar's menu button stands in for it.
     if (isMobile(page)) {
       await expect(page.getByRole('button', { name: 'Toggle navigation' })).toBeVisible();
-      await page.getByRole('button', { name: 'Toggle navigation' }).click();
     }
-    await expect(page.getByRole('link', { name: 'Cart' })).toBeVisible();
+    await openSidebar(page);
+    await expect(sidebarLink(page, 'Cart')).toBeVisible();
     // Not the marketing chrome.
     await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(0);
   });
@@ -48,11 +49,11 @@ test.describe('equipment browsing', () => {
     await signInAsCustomer(page);
     await addFirstMachine(page);
 
-    if (isMobile(page)) {
-      await page.getByRole('button', { name: 'Toggle navigation' }).click();
-    }
-    // The badge is part of the entry's accessible name.
-    await expect(page.getByLabel(/in cart/)).toBeVisible();
+    await openSidebar(page);
+    // The badge is part of the entry's accessible name. Filtered to the
+    // visible copy: with the drawer open the hidden desktop aside still holds
+    // one too.
+    await expect(page.getByLabel(/in cart/).filter({ visible: true })).toBeVisible();
   });
 
   test('the right rail lists the cart on a wide screen and stays out of the way on a phone', async ({
