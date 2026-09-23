@@ -1,6 +1,6 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { publicLayoutRoute } from './_public.js';
+import { storefrontLayoutRoute } from './_storefront.js';
 import { Button } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { EquipmentSchematic } from '../components/equipment-schematic.js';
@@ -109,7 +109,7 @@ function EquipmentDetailPage() {
 }
 
 export const equipmentDetailRoute = createRoute({
-  getParentRoute: () => publicLayoutRoute,
+  getParentRoute: () => storefrontLayoutRoute,
   path: '/equipment/$equipmentId',
   component: EquipmentDetailPage,
 });

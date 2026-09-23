@@ -2,6 +2,7 @@ import { createRoute, createRouter, redirect } from '@tanstack/react-router';
 import { rootRoute } from './routes/__root.js';
 
 import { publicLayoutRoute } from './routes/_public.js';
+import { storefrontLayoutRoute } from './routes/_storefront.js';
 import { indexRoute } from './routes/index.js';
 import { equipmentRoute } from './routes/equipment.js';
 import { equipmentDetailRoute } from './routes/equipment.$equipmentId.js';
@@ -98,7 +99,9 @@ const accountCompaniesRedirectRoute = createRoute({
 });
 
 export const routeTree = rootRoute.addChildren([
-  publicLayoutRoute.addChildren([indexRoute, equipmentRoute, equipmentDetailRoute, contactRoute, helpRoute, termsRoute, privacyRoute]),
+  publicLayoutRoute.addChildren([indexRoute, contactRoute, helpRoute, termsRoute, privacyRoute]),
+  // Same paths as before -- only the chrome changes, and only by auth state.
+  storefrontLayoutRoute.addChildren([equipmentRoute, equipmentDetailRoute]),
   authLayoutRoute.addChildren([loginRoute, signupRoute, registerRoute, registerCompanyRoute, registerPendingRoute, activateRoute]),
   accountLayoutRoute.addChildren([
     accountIndexRoute,

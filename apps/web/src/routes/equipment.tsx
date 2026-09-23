@@ -2,7 +2,7 @@ import { createRoute, useNavigate } from '@tanstack/react-router';
 import type { CatalogEquipment } from '@arkilaunch/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { publicLayoutRoute } from './_public.js';
+import { storefrontLayoutRoute } from './_storefront.js';
 import { EquipmentCard } from '../components/equipment-card.js';
 import { SearchFilterBar, type AvailabilityFilter } from '../components/search-filter-bar.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
@@ -197,7 +197,7 @@ function EquipmentPage() {
 }
 
 export const equipmentRoute = createRoute({
-  getParentRoute: () => publicLayoutRoute,
+  getParentRoute: () => storefrontLayoutRoute,
   path: '/equipment',
   component: EquipmentPage,
 });
