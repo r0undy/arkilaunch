@@ -40,7 +40,8 @@ export const ACCOUNT_NAV: NavGroup[] = [
       { label: 'Home', to: '/account', icon: LayoutDashboard },
       { label: 'Browse equipment', to: '/equipment', icon: Boxes },
       { label: 'My bookings', to: '/account/bookings', icon: ShoppingCart },
-      { label: 'Companies', to: '/account/companies', icon: Store },
+      // One entry, not two: /account/companies redirected into the Figma
+      // company list at /account/applications (251:1945).
       { label: 'Applications', to: '/account/applications', icon: FileText },
       { label: 'Notifications', to: '/account/notifications', icon: Bell },
       { label: 'Settings', to: '/account/settings', icon: Settings },

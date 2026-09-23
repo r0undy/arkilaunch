@@ -1,153 +1,19 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useRef, useState, type FormEvent, type ReactElement } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CompanyResponse, KycScanResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { apiErrorText, apiPost, apiPostForm } from '../lib/api-client.js';
-import { companiesQueries, customerSitesQueries } from '../lib/queries.js';
-import { formatStatus } from '../lib/format.js';
+import { companiesQueries } from '../lib/queries.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { EmptyState } from '../components/empty-state.js';
-import { StatusPill, type StatusTone } from '../components/status-pill.js';
-import { AlertIcon, CheckIcon, ClockIcon } from '../components/icons.js';
+import { CompanyCard, DOC_LABELS } from '../components/company-card.js';
 import { CaptureField } from '../components/capture-field.js';
 import { Skeleton } from '../components/skeleton.js';
-import { SiteDialog } from '../components/site-dialog.js';
 import { useToast } from '../components/toast.js';
-
-const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
-const DOC_LABELS: Record<string, string> = {
-  government_id: 'Philippine National ID (PhilSys)',
-  company_registration: 'Company registration',
-};
-
-export function VerificationPill({ status }: { status: string }) {
-  const meta: Record<string, { tone: StatusTone; label: string; icon: ReactElement }> = {
-    approved: { tone: 'recon-approved', label: 'Verified', icon: <CheckIcon /> },
-    rejected: { tone: 'recon-failed', label: 'Not verified', icon: <AlertIcon /> },
-  };
-  const m = meta[status] ?? {
-    tone: 'recon-review' as StatusTone,
-    label: 'Verification pending',
-    icon: <ClockIcon />,
-  };
-  return <StatusPill tone={m.tone} label={m.label} icon={m.icon} />;
-}
-
-function CompanyCard({ company }: { company: CompanyResponse }) {
-  const sites = useQuery(customerSitesQueries.mine());
-  const [siteOpen, setSiteOpen] = useState(false);
-  const mine = (sites.data ?? []).filter((site) => site.customerId === company.id);
-  // A document that came back too blurry to read needs the same "upload
-  // it again" prompt as one never uploaded at all.
-  const missing = Object.keys(DOC_LABELS).filter(
-    (type) =>
-      !company.documents.some(
-        (doc) => doc.documentType === type && doc.status !== 'resubmit_required',
-      ),
-  );
-
-  return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="font-display text-lg font-semibold text-text">{company.companyName}</h2>
-          <p className="text-sm text-text-muted">
-            TIN {company.tin ?? '--'} &middot; {company.billingAddress ?? '--'}
-          </p>
-        </div>
-        <VerificationPill status={company.kycStatus} />
-      </div>
-
-      <div className="flex flex-col gap-1 text-sm">
-        <h3 className={heading}>Documents</h3>
-        {company.documents.map((doc) => (
-          <p key={doc.id} className="text-text">
-            {DOC_LABELS[doc.documentType] ?? formatStatus(doc.documentType)}{' '}
-            <span className="text-text-muted">&middot; {formatStatus(doc.status)}</span>
-          </p>
-        ))}
-        {missing.length > 0 && (
-          <p className="text-text-muted">
-            Still needed: {missing.map((type) => DOC_LABELS[type]).join(', ')}.{' '}
-            <Link
-              to="/account/companies/$companyId/documents"
-              params={{ companyId: company.id }}
-              className="text-accent underline"
-            >
-              Upload
-            </Link>
-          </p>
-        )}
-        {company.kycStatus === 'pending' && missing.length === 0 && (
-          <p className="text-text-muted">
-            The rental team is checking your documents. You can already request quotes.
-          </p>
-        )}
-        {company.kycStatus === 'rejected' && (
-          <p className="text-text-muted">
-            Verification was declined.{' '}
-            <Link to="/contact" className="underline">
-              Contact the rental team
-            </Link>{' '}
-            to fix it.
-          </p>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-2 text-sm">
-        <h3 className={heading}>Project sites</h3>
-        {mine.length === 0 && <p className="text-text-muted">No sites yet.</p>}
-        {mine.map((site) => (
-          <p key={site.id} className="text-text">
-            {site.line1}, {site.city}, {site.province}
-          </p>
-        ))}
-        <Button variant="secondary" className="self-start" onClick={() => setSiteOpen(true)}>
-          Add a site
-        </Button>
-      </div>
-      <SiteDialog open={siteOpen} onClose={() => setSiteOpen(false)} customerId={company.id} />
-    </Surface>
-  );
-}
-
-function CompaniesPage() {
-  const companies = useQuery(companiesQueries.mine());
-  return (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        eyebrow="My account"
-        title="Companies"
-        description="The businesses you rent for, their verification, and where you deliver."
-        actions={
-          <Link to="/account/companies/new">
-            <Button variant="primary">Add a company</Button>
-          </Link>
-        }
-      />
-      {companies.isPending && <Skeleton label="Loading your companies" rows={2} />}
-      {companies.isError && <p className="text-sm text-error">{apiErrorText(companies.error)}</p>}
-      {companies.data?.length === 0 && (
-        <EmptyState
-          title="Add your company first"
-          description="We need the company you are renting for before a booking: its TIN, billing address, an ID and its registration."
-          action={
-            <Link to="/account/companies/new">
-              <Button variant="primary">Add a company</Button>
-            </Link>
-          }
-        />
-      )}
-      {companies.data?.map((company) => (
-        <CompanyCard key={company.id} company={company} />
-      ))}
-    </div>
-  );
-}
 
 // Upload both documents, one request each. Shared by the new-company form
 // and the "upload what is still missing" screen.
@@ -288,14 +154,14 @@ function NewCompanyPage() {
           'The rental team will verify it. You can request quotes now.',
         );
       }
-      await navigate({ to: '/account/companies' });
+      await navigate({ to: '/account/applications' });
     } catch (err) {
       // The company exists even if an upload failed; say so, and send the
       // customer to finish the upload rather than create a duplicate.
       if (created) {
         await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
         toast.error('Company saved, but a document did not upload', apiErrorText(err));
-        await navigate({ to: '/account/companies' });
+        await navigate({ to: '/account/applications' });
         return;
       }
       setError(apiErrorText(err));
@@ -495,7 +361,7 @@ function CompanyDocumentsPage() {
       } else {
         toast.success('Documents uploaded');
       }
-      await navigate({ to: '/account/companies' });
+      await navigate({ to: '/account/applications' });
     } catch (err) {
       toast.error('Upload failed', apiErrorText(err));
     } finally {
@@ -541,10 +407,45 @@ function CompanyDocumentsPage() {
   );
 }
 
-export const accountCompaniesRoute = createRoute({
+// What "Manage" on a company card opens (Figma 251:1945). /account/companies
+// itself is gone -- the Figma list lives at /account/applications and
+// router.tsx redirects the old path there.
+function CompanyDetailPage() {
+  const { companyId } = accountCompanyDetailRoute.useParams();
+  const companies = useQuery(companiesQueries.mine());
+  const company = companies.data?.find((row) => row.id === companyId);
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="My account"
+        title={company?.companyName ?? 'Company'}
+        description="Verification, documents and the sites you deliver to."
+        actions={
+          <Link to="/account/applications">
+            <Button variant="secondary">Back to applications</Button>
+          </Link>
+        }
+      />
+      {companies.isPending && <Skeleton label="Loading this company" rows={2} />}
+      {companies.isError && <p className="text-sm text-error">{apiErrorText(companies.error)}</p>}
+      {companies.isSuccess &&
+        (company ? (
+          <CompanyCard company={company} />
+        ) : (
+          <EmptyState
+            title="Company not found"
+            description="It may have been removed, or it belongs to another account."
+          />
+        ))}
+    </div>
+  );
+}
+
+export const accountCompanyDetailRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
-  path: '/account/companies',
-  component: CompaniesPage,
+  path: '/account/companies/$companyId',
+  component: CompanyDetailPage,
 });
 
 export const accountCompanyNewRoute = createRoute({
