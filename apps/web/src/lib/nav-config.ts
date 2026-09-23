@@ -24,6 +24,14 @@ export interface NavItem {
   // Rendered beside the label in the sidebar; a destination is quicker to
   // find by its shape than by reading five words of Condensed caps.
   icon?: LucideIcon;
+  // A section root such as `/account` or `/app` is a prefix of every page in
+  // its section, so prefix-matching lit it on all of them: the cart, the
+  // checkout and the invoice all showed "Home" as the active destination.
+  // `exact` means the blade shows on that URL and nowhere else.
+  exact?: boolean;
+  // Extra path prefixes this destination owns, for screens reached from it
+  // that have no sidebar entry of their own (a detail page, a wizard).
+  owns?: string[];
 }
 
 export interface NavGroup {
@@ -37,9 +45,16 @@ export const ACCOUNT_NAV: NavGroup[] = [
   {
     title: 'My account',
     items: [
-      { label: 'Home', to: '/account', icon: LayoutDashboard },
+      { label: 'Home', to: '/account', icon: LayoutDashboard, exact: true },
       { label: 'Browse equipment', to: '/equipment', icon: Boxes },
-      { label: 'My bookings', to: '/account/bookings', icon: ShoppingCart },
+      {
+        label: 'My bookings',
+        to: '/account/bookings',
+        icon: ShoppingCart,
+        // Everything that happens to a booking after it exists. None of these
+        // has a sidebar entry, and before `owns` they all lit "Home".
+        owns: ['/account/checkout', '/account/invoices', '/account/negotiation'],
+      },
       { label: 'Companies', to: '/account/companies', icon: Store },
       { label: 'Applications', to: '/account/applications', icon: FileText },
       { label: 'Notifications', to: '/account/notifications', icon: Bell },
@@ -55,7 +70,7 @@ export const APP_NAV: NavGroup[] = [
   {
     title: 'Dispatch',
     items: [
-      { label: 'Dashboard', to: '/app', icon: LayoutDashboard },
+      { label: 'Dashboard', to: '/app', icon: LayoutDashboard, exact: true },
       { label: 'Sites and deployment', to: '/app/deployment', icon: MapPin },
     ],
   },
