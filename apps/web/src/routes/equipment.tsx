@@ -9,12 +9,113 @@ import { equipmentImageUrl } from '../lib/equipment-images.js';
 import { catalogQueries } from '../lib/queries.js';
 import { Skeleton } from '../components/skeleton.js';
 import { LoadError } from '../components/load-error.js';
+import { Modal } from '../components/modal.js';
+import { Input } from '../components/input.js';
+import { Button } from '../components/button.js';
+import { useToast } from '../components/toast.js';
+import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
+
+// <input type="datetime-local"> speaks local "YYYY-MM-DDTHH:mm"; the cart
+// stores ISO. The frame draws date and time as two fields per end of the
+// window; one native datetime-local carries both and validates itself.
+export function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Figma 209:2977 "Rental Page- rent": the Rent button on a catalog card opens
+// Configure Rental rather than walking the customer to the listing and leaving
+// them to fix the dates later in the cart.
+//
+// The frame also asks for a pickup point and a drop-off point per machine.
+// Those are not here on purpose: a booking is delivered to one project site,
+// and the cart already chooses that site once for the whole booking
+// (account.cart.tsx, projectSiteId). Asking per line would let a customer
+// build a cart that no single booking can satisfy.
+function ConfigureRentalDialog({
+  equipment,
+  onClose,
+}: {
+  equipment: { id: string; model: string };
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const [initial] = useState(defaultRentalWindow);
+  const [start, setStart] = useState(() => toLocalInput(initial.start));
+  const [end, setEnd] = useState(() => toLocalInput(initial.end));
+
+  // The API refuses an end that is not after the start; say so here rather
+  // than letting the cart's submit be the first time anyone finds out.
+  const invalid = !start || !end || new Date(end) <= new Date(start);
+
+  function commit(thenGoToCart: boolean) {
+    if (invalid) return;
+    addToCart({
+      equipmentId: equipment.id,
+      model: equipment.model,
+      start: new Date(start).toISOString(),
+      end: new Date(end).toISOString(),
+    });
+    onClose();
+    if (thenGoToCart) {
+      void navigate({ to: '/account/cart' });
+    } else {
+      toast.success(`${equipment.model} added to your cart`);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Configure rental"
+      description={equipment.model}
+      size="md"
+      footer={
+        <>
+          <Button variant="secondary" disabled={invalid} onClick={() => commit(false)}>
+            Add to cart
+          </Button>
+          <Button variant="primary" disabled={invalid} onClick={() => commit(true)}>
+            Book now
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4 sm:flex-row">
+        <div className="flex-1">
+          <Input
+            label="Rental start"
+            type="datetime-local"
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+          />
+        </div>
+        <div className="flex-1">
+          <Input
+            label="Rental end"
+            type="datetime-local"
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+            {...(invalid && start && end ? { error: 'The return must be after the pickup.' } : {})}
+          />
+        </div>
+      </div>
+      <p className="mt-4 text-sm text-text-muted">
+        The delivery site is chosen once for the whole booking, in your cart.
+      </p>
+    </Modal>
+  );
+}
 
 function EquipmentPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [availability, setAvailability] = useState<AvailabilityFilter>('all');
   const [offset, setOffset] = useState(0);
+  const [configuring, setConfiguring] = useState<{ id: string; model: string } | null>(null);
   const { data, isPending, isError, refetch } = useQuery(catalogQueries.equipment());
 
   const equipment = useMemo(
@@ -64,7 +165,8 @@ function EquipmentPage() {
                 model={eq.model}
                 make={eq.equipmentTypeName}
                 availabilityStatus={eq.availabilityStatus}
-                onRent={() =>
+                onRent={() => setConfiguring({ id: eq.id, model: eq.model })}
+                onViewDetails={() =>
                   navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })
                 }
               />
@@ -84,6 +186,9 @@ function EquipmentPage() {
         onOffsetChange={setOffset}
         noun="machines"
       />
+      {configuring && (
+        <ConfigureRentalDialog equipment={configuring} onClose={() => setConfiguring(null)} />
+      )}
     </div>
   );
 }
