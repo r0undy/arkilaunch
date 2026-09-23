@@ -29,6 +29,7 @@ import {
 } from '@arkilaunch/shared';
 import { KYC_MODEL_ID, NATIONAL_ID_MODEL_ID } from '@arkilaunch/document-intelligence';
 import { createWeatherAdapter } from '@arkilaunch/weather';
+import { WEATHER_FORECAST_PORT } from './weather.tokens.js';
 import {
   WEATHER_POLL_CADENCE_MINUTES,
   WeatherUnavailableError,
@@ -102,9 +103,11 @@ export class CustomersService {
   constructor(
     private readonly events: EventsService,
     @Inject(DOCUMENT_INTELLIGENCE_PORT) private readonly port: DocumentIntelligencePort,
-    // Defaulted rather than injected through a Nest token, matching
-    // runWeatherPoll(port = createWeatherAdapter()): the adapter is chosen by
-    // env, and a default keeps the spec able to pass a counting stub.
+    // Injected by token, not by type: an interface erases to `Object` in the
+    // DI metadata, so a bare `weather: WeatherForecastPort` makes Nest look
+    // for a provider called Object and refuse to construct this service at
+    // boot. The default keeps the spec able to pass a counting stub.
+    @Inject(WEATHER_FORECAST_PORT)
     private readonly weather: WeatherForecastPort = createWeatherAdapter(),
   ) {}
 
