@@ -9,6 +9,7 @@ import {
   Req,
   UploadedFile,
   UseInterceptors,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
@@ -56,7 +57,9 @@ export class CustomersController {
   }
 
   // Validated (size, magic bytes) before anything reaches storage, same as
-  // POST /kyc/extract.
+  // POST /kyc/extract. The already-uploaded bytes are also screened by OCR
+  // (addDocument) so an illegible scan is bounced back to the customer
+  // immediately rather than waiting in the staff queue.
   @Post('me/companies/:id/documents')
   @RequirePermission('booking:create')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -70,7 +73,7 @@ export class CustomersController {
     const validated = validateUpload(file);
     const key = this.storage.buildObjectKey(req.ctx.tenantId, validated.extension);
     await this.storage.uploadObject(kycBucket(), key, file!.buffer, validated.contentType);
-    return this.customers.addDocument(req.ctx, id, body.documentType, key);
+    return this.customers.addDocument(req.ctx, id, body.documentType, key, file!.buffer);
   }
 
   // Scan-first company onboarding: extraction for the customer's own
@@ -116,6 +119,32 @@ export class CustomersController {
   ) {
     const key = await this.customers.documentKey(req.ctx, id, documentId);
     return { url: await this.storage.createSignedDownloadUrl(kycBucket(), key) };
+  }
+
+  // A reviewer's "Read document" click on a company already in the queue,
+  // for re-running OCR without asking the customer to reupload. The upload
+  // itself already ran this once (addDocument); this is staff-gated and
+  // rate-limited because each call is a separate Azure DI page spend
+  // (QAD-T31).
+  @Post('customers/:id/documents/:documentId/read')
+  @RequirePermission('quote:approve')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async readDocument(
+    @Param('id') id: string,
+    @Param('documentId') documentId: string,
+    @Req() req: CtxRequest,
+  ) {
+    const key = await this.customers.documentKey(req.ctx, id, documentId);
+    const url = await this.storage.createSignedDownloadUrl(kycBucket(), key);
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new ServiceUnavailableException({
+        error: 'document_download_failed',
+        status: res.status,
+      });
+    }
+    const bytes = Buffer.from(await res.arrayBuffer());
+    return this.customers.readDocument(req.ctx, id, documentId, bytes);
   }
 
   @Patch('customers/:id/kyc')

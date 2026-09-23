@@ -14,6 +14,7 @@ import {
   kycDocuments,
   notifications,
   projectSites,
+  users,
   withTenantTx,
   type db,
 } from '@arkilaunch/db';
@@ -21,10 +22,11 @@ import {
   ExtractionUnavailableError,
   SEC_REGEX,
   TIN_REGEX,
+  type CompanyDocumentReadResponse,
   type DocumentIntelligencePort,
   type KycScanResponse,
 } from '@arkilaunch/shared';
-import { KYC_MODEL_ID } from '@arkilaunch/document-intelligence';
+import { KYC_MODEL_ID, NATIONAL_ID_MODEL_ID } from '@arkilaunch/document-intelligence';
 import { DOCUMENT_INTELLIGENCE_PORT } from '../kyc/kyc.tokens.js';
 import type {
   CompanyCreate,
@@ -116,22 +118,133 @@ export class CustomersService {
         tenantId: ctx.tenantId,
         customerId: row.id,
         contactType: 'phone',
-        contactValue: `${body.contactName} ${body.contactMobile}`,
+        contactValue: body.contactMobile,
         isPrimary: 'true',
       });
       await this.events.emit(ctx, 'company_created', { customer_id: row.id });
-      await notifyStaff(tx, ctx.tenantId, 'company_submitted', { customer_id: row.id, company_name: row.companyName });
+      await notifyStaff(tx, ctx.tenantId, 'company_submitted', {
+        customer_id: row.id,
+        company_name: row.companyName,
+      });
       return { ...toCompany(row), documents: [] };
     });
   }
 
-  // The file is already validated and in storage (controller); this only
-  // records it against a company the caller owns.
+  // Which model a document type reads with: the registration cert asks for
+  // company facts, the National ID asks for the holder's name. Shared by
+  // the upload-time read and the reviewer's manual re-read, so there is
+  // exactly one place that decides which model a document type gets.
+  private modelIdFor(documentType: string): string {
+    return documentType === 'government_id' ? NATIONAL_ID_MODEL_ID : KYC_MODEL_ID;
+  }
+
+  // The minimum confidence (matchBand()'s "mismatch" boundary,
+  // packages/shared/src/kyc.ts) a document needs to enter the staff queue
+  // unread, whichever type it is. Below it, the scan is illegible enough
+  // that a human reviewer would bounce it back anyway, so the customer is
+  // asked to reupload immediately instead of waiting in the queue.
+  private static readonly UPLOAD_CONFIDENCE_GATE = 0.85;
+
+  // One OCR pass, whichever fields its model returns. The company model
+  // yields company_name/tin/sec_number, the National ID model yields
+  // first_name/middle_name/last_name -- azure-adapter.ts already maps
+  // Azure's query fields to these port keys, so this only needs to read
+  // whichever of the six keys came back, not branch on documentType itself.
+  private async analyzeDocument(
+    ctx: RequestContext,
+    documentType: string,
+    bytes: Buffer,
+  ): Promise<CompanyDocumentReadResponse & { ocrPayload: Record<string, unknown> }> {
+    let result;
+    try {
+      result = await this.port.analyze(this.modelIdFor(documentType), bytes);
+    } catch (error) {
+      if (!(error instanceof ExtractionUnavailableError)) throw error;
+      await this.events.emit(ctx, 'ocr_extraction_unavailable', {
+        doc_type: 'company_document',
+        reason: error.reason,
+      });
+      return {
+        documentId: '',
+        suggestions: {
+          companyName: null,
+          tin: null,
+          secNumber: null,
+          firstName: null,
+          middleName: null,
+          lastName: null,
+        },
+        formatValid: { tin: false, secNumber: false },
+        confidence: null,
+        extractionAvailable: false,
+        ocrPayload: {},
+      };
+    }
+
+    const nameField = result.fields.company_name ?? null;
+    const tinField = result.fields.tin ?? null;
+    const secField = result.fields.sec_number ?? null;
+    const firstField = result.fields.first_name ?? null;
+    const middleField = result.fields.middle_name ?? null;
+    const lastField = result.fields.last_name ?? null;
+    const formatValid = {
+      tin: tinField ? TIN_REGEX.test(tinField.value) : false,
+      secNumber: secField ? SEC_REGEX.test(secField.value) : false,
+    };
+    // The lowest confidence of whatever was found: a reviewer (or the
+    // upload-time gate) should judge a document by its weakest field, not
+    // its strongest.
+    const found = [nameField, tinField, secField, firstField, middleField, lastField].filter(
+      (f) => f !== null,
+    );
+    const confidence = found.length > 0 ? Math.min(...found.map((f) => f!.confidence)) : null;
+
+    return {
+      documentId: '',
+      suggestions: {
+        companyName: nameField?.value ?? null,
+        tin: tinField?.value ?? null,
+        secNumber: secField?.value ?? null,
+        firstName: firstField?.value ?? null,
+        middleName: middleField?.value ?? null,
+        lastName: lastField?.value ?? null,
+      },
+      formatValid,
+      confidence,
+      extractionAvailable: true,
+      ocrPayload: {
+        ...(nameField
+          ? { company_name: nameField.value, company_name_confidence: nameField.confidence }
+          : {}),
+        ...(tinField ? { tin: tinField.value, tin_confidence: tinField.confidence } : {}),
+        ...(secField ? { sec_number: secField.value, sec_confidence: secField.confidence } : {}),
+        ...(firstField
+          ? { first_name: firstField.value, first_name_confidence: firstField.confidence }
+          : {}),
+        ...(middleField
+          ? { middle_name: middleField.value, middle_name_confidence: middleField.confidence }
+          : {}),
+        ...(lastField
+          ? { last_name: lastField.value, last_name_confidence: lastField.confidence }
+          : {}),
+      },
+    };
+  }
+
+  // The file is already validated and in storage (controller); this
+  // records it against a company the caller owns, then screens it with the
+  // same OCR pass a reviewer would later trigger manually. A legible
+  // document goes straight to 'needs_review' (staff queue); one the model
+  // can't read is bounced back to the customer as 'resubmit_required'
+  // rather than sitting in the queue for a human to reject the same way.
+  // This decides nothing about identity or company facts -- only
+  // legibility; verification stays decide()'s call (RFC-2's human gate).
   async addDocument(
     ctx: RequestContext,
     customerId: string,
     documentType: string,
     fileUri: string,
+    bytes: Buffer,
   ) {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
@@ -142,10 +255,43 @@ export class CustomersService {
         .values({ tenantId: ctx.tenantId, customerId, documentType, fileUri, status: 'pending' })
         .returning();
       if (!row) throw new Error('kyc_documents insert returned no row');
+
+      const read = await this.analyzeDocument(ctx, documentType, bytes);
+      let status = row.status;
+      if (read.extractionAvailable) {
+        const passed =
+          read.confidence === null || read.confidence >= CustomersService.UPLOAD_CONFIDENCE_GATE;
+        status = passed ? 'needs_review' : 'resubmit_required';
+        await tx
+          .update(kycDocuments)
+          .set({
+            ocrPayload: read.ocrPayload,
+            formatValid: { tin: read.formatValid.tin, sec_number: read.formatValid.secNumber },
+            ...(read.confidence === null ? {} : { confidence: read.confidence.toFixed(4) }),
+            status,
+          })
+          .where(eq(kycDocuments.id, row.id));
+        if (!passed) {
+          const [customer] = await tx
+            .select()
+            .from(customers)
+            .where(eq(customers.id, customerId))
+            .limit(1);
+          if (customer?.userId) {
+            await tx.insert(notifications).values({
+              tenantId: ctx.tenantId,
+              userId: customer.userId,
+              notificationType: 'document_resubmit_required',
+              payload: { company_id: customerId, document_type: documentType },
+            });
+          }
+        }
+      }
+
       return {
         id: row.id,
         documentType: row.documentType,
-        status: row.status,
+        status,
         createdAt: row.createdAt,
       };
     });
@@ -223,8 +369,52 @@ export class CustomersService {
     });
   }
 
-  // Verification is a human decision on the uploaded ID and registration;
-  // nothing here reads or trusts OCR.
+  /**
+   * POST /customers/:id/documents/:documentId/read. A reviewer's "Read
+   * document" click: extracts what it can from the document already in
+   * storage and saves it on the row as evidence.
+   *
+   * It decides nothing. `kyc_status` is untouched, the values land in
+   * `ocr_payload`/`format_valid`/`confidence` for the reviewer to edit, and
+   * approval stays the explicit decide() call (RFC-2's human gate). A value
+   * failing its format check is reported as invalid rather than hidden: a
+   * reviewer told "TIN read as 12-34, format invalid" is better informed
+   * than one shown nothing.
+   */
+  async readDocument(
+    ctx: RequestContext,
+    customerId: string,
+    documentId: string,
+    bytes: Buffer,
+  ): Promise<CompanyDocumentReadResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [doc] = await tx
+        .select()
+        .from(kycDocuments)
+        .where(and(eq(kycDocuments.id, documentId), eq(kycDocuments.customerId, customerId)))
+        .limit(1);
+      if (!doc) throw new NotFoundException({ error: 'document_not_found' });
+
+      const read = await this.analyzeDocument(ctx, doc.documentType, bytes);
+      if (read.extractionAvailable) {
+        await tx
+          .update(kycDocuments)
+          .set({
+            ocrPayload: read.ocrPayload,
+            formatValid: { tin: read.formatValid.tin, sec_number: read.formatValid.secNumber },
+            ...(read.confidence === null ? {} : { confidence: read.confidence.toFixed(4) }),
+            status: 'needs_review', // never 'verified': that is decide()'s to set
+          })
+          .where(eq(kycDocuments.id, documentId));
+      }
+
+      return { ...read, documentId };
+    });
+  }
+
+  // Verification is a human decision on the uploaded ID and registration.
+  // OCR never reaches this: a corrected value here was confirmed by the
+  // reviewer with the document in front of them.
   async decide(ctx: RequestContext, customerId: string, body: CompanyDecision) {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
@@ -232,10 +422,60 @@ export class CustomersService {
       if (row.kycStatus === body.decision)
         throw new ConflictException({ error: 'already_decided' });
 
+      // Approving with corrections writes what the reviewer confirmed
+      // against the document, so a verified company carries the registered
+      // name and TIN rather than whatever was typed at signup.
+      const corrections =
+        body.decision === 'approved'
+          ? {
+              ...(body.companyName ? { companyName: body.companyName } : {}),
+              ...(body.tin ? { tin: body.tin } : {}),
+            }
+          : {};
       await tx
         .update(customers)
-        .set({ kycStatus: body.decision })
+        .set({ kycStatus: body.decision, ...corrections })
         .where(eq(customers.id, customerId));
+      // The reviewer-confirmed legal name off the National ID lands on the
+      // customer's own user account, not the company row -- it is the
+      // person's identity, not a fact about this one company (RFC-2's human
+      // gate: only decide() ever writes it, never the OCR read itself).
+      if (body.decision === 'approved' && row.userId && (body.firstName || body.lastName)) {
+        await tx
+          .update(users)
+          .set({
+            ...(body.firstName ? { firstName: body.firstName } : {}),
+            ...(body.middleName ? { middleName: body.middleName } : {}),
+            ...(body.lastName ? { lastName: body.lastName } : {}),
+          })
+          .where(eq(users.id, row.userId));
+      }
+      // The company has no SEC column; the reviewer-confirmed number is
+      // evidence on the registration document it was read from.
+      if (body.decision === 'approved' && body.secNumber) {
+        const [registration] = await tx
+          .select()
+          .from(kycDocuments)
+          .where(
+            and(
+              eq(kycDocuments.customerId, customerId),
+              eq(kycDocuments.documentType, 'company_registration'),
+            ),
+          )
+          .limit(1);
+        if (registration) {
+          await tx
+            .update(kycDocuments)
+            .set({
+              ocrPayload: {
+                ...(registration.ocrPayload as Record<string, unknown> | null),
+                confirmed_sec_number: body.secNumber,
+                confirmed_by: ctx.userId,
+              },
+            })
+            .where(eq(kycDocuments.id, registration.id));
+        }
+      }
       await tx
         .update(kycDocuments)
         .set({ status: body.decision === 'approved' ? 'verified' : 'rejected' })
@@ -266,15 +506,31 @@ function assertCustomer(ctx: RequestContext) {
   if (ctx.role !== 'customer') throw new ForbiddenException({ error: 'customer_only' });
 }
 
-function toCompany(row: typeof customers.$inferSelect): Omit<CompanyResponse, 'documents'> {
+function toCompany(
+  row: typeof customers.$inferSelect,
+  name?: { firstName: string | null; middleName: string | null; lastName: string | null },
+): Omit<CompanyResponse, 'documents'> {
   return {
     id: row.id,
     companyName: row.companyName,
     tin: row.tin,
     billingAddress: row.billingAddress,
     kycStatus: row.kycStatus,
+    firstName: name?.firstName ?? null,
+    middleName: name?.middleName ?? null,
+    lastName: name?.lastName ?? null,
     createdAt: row.createdAt,
   };
+}
+
+// The confirmed legal name lives on the linked user's account (decide()),
+// not on the company row -- one login can register several companies and
+// the name follows the login, not any one of them.
+async function withUserNames(tx: Tx, rows: (typeof customers.$inferSelect)[]) {
+  const userIds = [...new Set(rows.map((row) => row.userId).filter((id): id is string => !!id))];
+  if (userIds.length === 0) return new Map<string, typeof users.$inferSelect>();
+  const rows_ = await tx.select().from(users).where(inArray(users.id, userIds));
+  return new Map(rows_.map((u) => [u.id, u]));
 }
 
 async function withDocuments(
@@ -282,18 +538,21 @@ async function withDocuments(
   rows: (typeof customers.$inferSelect)[],
 ): Promise<CompanyResponse[]> {
   if (rows.length === 0) return [];
-  const docs = await tx
-    .select()
-    .from(kycDocuments)
-    .where(
-      inArray(
-        kycDocuments.customerId,
-        rows.map((row) => row.id),
-      ),
-    )
-    .orderBy(desc(kycDocuments.createdAt));
+  const [docs, names] = await Promise.all([
+    tx
+      .select()
+      .from(kycDocuments)
+      .where(
+        inArray(
+          kycDocuments.customerId,
+          rows.map((row) => row.id),
+        ),
+      )
+      .orderBy(desc(kycDocuments.createdAt)),
+    withUserNames(tx, rows),
+  ]);
   return rows.map((row) => ({
-    ...toCompany(row),
+    ...toCompany(row, row.userId ? names.get(row.userId) : undefined),
     documents: docs
       .filter((doc) => doc.customerId === row.id)
       .map((doc) => ({

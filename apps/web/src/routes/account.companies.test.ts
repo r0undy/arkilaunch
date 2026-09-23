@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { setupSteps } from './account.index.js';
 import { DOC_STEPS } from './account.companies.js';
 import { signupError } from './signup.js';
+import { renderRoute } from '../test/render-route.js';
+import { makeToken, makeValidClaims } from '../test/make-token.js';
+import { setAccessToken } from '../lib/auth-client.js';
 
 // The checklist is what tells a new customer why they cannot pay yet; a
 // step marked done without its record behind it would send them to a
@@ -26,6 +31,94 @@ describe('setupSteps', () => {
       },
     ];
     expect(done(both, 1)).toHaveLength(4);
+  });
+});
+
+// Regression for the "government ID upload gets stuck" bug. Root cause: step
+// 1's "Next" button and step 2's "Upload" button sit in the same spot in the
+// shared <form>. A stray submit while still on step 1, or a second tap that
+// lands on "Upload" the instant it replaces "Next" (a fast double-tap, or
+// any input lag), uploaded a partial document set and navigated the customer
+// away before they ever reached the registration step -- leaving an
+// orphaned government_id document behind each time.
+describe('CompanyDocumentsPage: guards against a premature submit', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  async function setupOnStep1() {
+    const accessToken = makeToken(makeValidClaims({ role: 'customer' }));
+    setAccessToken(accessToken);
+
+    // jsdom has no image decoder or canvas raster -- CaptureField's
+    // prepareUpload() needs both to resolve, exactly as image-compression.test.ts stubs them.
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async () => ({ width: 800, height: 600, close: vi.fn() }) as unknown as ImageBitmap),
+    );
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: () => {},
+    } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((cb) => {
+      cb!(new Blob([new Uint8Array(64)], { type: 'image/jpeg' }));
+    });
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:mock'), revokeObjectURL: vi.fn() });
+
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/documents')) {
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 201 }));
+      }
+      return Promise.resolve(new Response('[]', { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const rendered = await renderRoute('/account/companies/company-1/documents');
+    await waitFor(() => expect(screen.getByText(/Step 1 of 2/i)).toBeInTheDocument());
+
+    const file = new File(['x'], 'id.png', { type: 'image/png' });
+    const fileInput = document.querySelector('#doc-government_id-file') as HTMLInputElement;
+    await userEvent.upload(fileInput, file);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /next: company registration/i })).not.toBeDisabled(),
+    );
+
+    return { ...rendered, fileInput, fetchMock };
+  }
+
+  it('a stray submit while still on step 1 does not upload or navigate away', async () => {
+    const { router, unmount, fileInput, fetchMock } = await setupOnStep1();
+
+    // Simulate the race directly: a submit event reaches the shared <form>
+    // while stage is still 'government_id', bypassing whatever triggered it
+    // in the browser.
+    const form = fileInput.closest('form')!;
+    form.requestSubmit();
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/documents'))).toBe(false);
+    });
+    expect(screen.getByText(/Step 1 of 2/i)).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/account/companies/company-1/documents');
+    unmount();
+  });
+
+  it('a second tap landing on "Upload" right as it replaces "Next" does not upload the government ID alone', async () => {
+    const { unmount, fileInput, fetchMock } = await setupOnStep1();
+
+    await userEvent.click(screen.getByRole('button', { name: /next: company registration/i }));
+    await waitFor(() => expect(screen.getByText(/Step 2 of 2/i)).toBeInTheDocument());
+
+    // The double-tap: "Upload" now occupies the exact spot "Next" was just
+    // tapped from. A tap landing there in the same beat as the transition
+    // must not go through with only the government ID set.
+    const form = fileInput.closest('form')!;
+    form.requestSubmit();
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/documents'))).toBe(false);
+    unmount();
   });
 });
 

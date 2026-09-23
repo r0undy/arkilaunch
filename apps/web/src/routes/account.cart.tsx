@@ -1,5 +1,5 @@
-import { createRoute, Link } from '@tanstack/react-router';
-import { useState } from 'react';
+import { createRoute, Link, useNavigate } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { BookingCreateResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
@@ -49,6 +49,7 @@ function rentalDays(item: CartItem): number {
 // honestly before the site and dates are known, so the cart submits a
 // booking request and the price arrives as a quote to negotiate.
 function CartPage() {
+  const navigate = useNavigate();
   const [items, setItems] = useState<CartItem[]>(() => getCart());
   const [chosenCompanyId, setCompanyId] = useState('');
   const [projectSiteId, setProjectSiteId] = useState('');
@@ -65,6 +66,14 @@ function CartPage() {
   const companyId = chosenCompanyId || (companies.data?.length === 1 ? companies.data[0]!.id : '');
   const company = companies.data?.find((c) => c.id === companyId);
   const companySites = (sites.data ?? []).filter((site) => site.customerId === companyId);
+
+  // A customer with no company yet has nothing to book against -- send them
+  // to registration instead of leaving them to notice the empty state.
+  useEffect(() => {
+    if (companies.data && companies.data.length === 0) {
+      void navigate({ to: '/account/companies/new' });
+    }
+  }, [companies.data, navigate]);
 
   function handleRemove(index: number) {
     removeFromCart(index);

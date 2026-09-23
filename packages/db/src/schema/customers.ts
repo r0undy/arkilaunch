@@ -97,11 +97,11 @@ export const kycDocuments = pgTable(
     customerId: uuid('customer_id')
       .notNull()
       .references(() => customers.id),
-    documentType: text('document_type').notNull(), // SEC cert, BIR form, etc.
+    documentType: text('document_type').notNull(), // company_registration (SEC/DTI), government_id (Philippine National ID / PhilSys only)
     fileUri: text('file_uri').notNull(), // Supabase Storage pointer, signed-URL access only
     ocrPayload: jsonb('ocr_payload'),
     confidence: numeric('confidence', { precision: 5, scale: 4 }),
-    status: text('status').notNull().default('pending'), // pending, needs_review, verified, rejected
+    status: text('status').notNull().default('pending'), // pending, resubmit_required, needs_review, verified, rejected
     // RFC-2 §2: worker claim/lock/retry bookkeeping, same shape as edtr.
     attempts: integer('attempts').notNull().default(0),
     lockedAt: timestamp('locked_at', { withTimezone: true }),
