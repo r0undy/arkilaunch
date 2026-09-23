@@ -110,7 +110,24 @@ information: `731:1724` / `731:1842` (OCR Tool Review / OCR Tool), `663:2533`
 | Figma frame | Node | Route | What is missing |
 |---|---|---|---|
 | Manage Registrations (Company Applications) | `206:2083` | `/account/applications` | The frame is a **list**: Total / Approved / Pending counter tiles, a search field, three filter tabs (All / Pending Approval / Approved), and one card per application with thumbnail, status pill, registration number and a **Manage** action. `account.applications.tsx` renders a single `Surface` from `GET /tenants/me/application` — one application, no counters, no search, no filters, no Manage. **Blocked**: the endpoint is singular; a per-customer list endpoint is needed first. Mobile twin `826:2218`. |
-| Help Center | `750:6444` | `/help` | The frame is a complete 2299px-tall Help Center. `help.tsx` is an `EmptyState` reading "Support articles are being written." Content-only — nothing blocks it. |
+| Help Center | `750:6444` | `/help` | The frame is a complete 2299px-tall Help Center. `help.tsx` is an `EmptyState` reading "Support articles are being written." **Mostly blocked, not content-only** — see below. |
+
+The Help Center frame decomposes into six sections, and only two are backed:
+
+| Section | Node | Backed? |
+|---|---|---|
+| Direct Channels (Messenger, Email) | `750:6520` | Yes — same details as `/contact`. |
+| Contact / legal footer | `750:6577` | Yes — supplied by the `_public` layout already. |
+| Search knowledge base | `750:6452` | No knowledge base exists. |
+| Category cards (Fleet Ops, Billing, Technical Support) | `750:6459`+ | No articles behind them. |
+| Submit Support Ticket form | `750:6484` | No ticket table, no endpoint — the same gap `/app/tickets` names. |
+| Top Articles list | `750:6557` | No articles. |
+| Network status | `750:6548` | No status endpoint. |
+
+Shipping the ticket form or the article lists as they are drawn would fabricate
+content, which `src/routes/unbacked-screens.tsx` explicitly rules out: *"A queue full
+of invented tickets ... is worse than an empty one — it looks finished, it gets
+screenshotted into a report, and nobody can tell which numbers were real."*
 
 ## 4. In the prototype, not in the code — the build list
 
@@ -149,9 +166,16 @@ recorded here.
 - **`168:2442` carries placeholders copied from the signup form**: the COMPANY NAME
   field reads `John Doe` and TIN NUMBER reads `name@company.com`; the layers are
   still named `Full Name` and `Work Email`.
-- **Branding is "Almara" throughout** — consent copy ("Almara's Terms of Service"),
-  footer ("Almara © 2026"), contact address `arkilaunch2026@gmail.com`. `BRAND.md` is
-  the authority; screens are built as ArkiLaunch.
+- **"Almara" branding is correct, not a defect.** Recorded here because it reads like
+  one on first pass. `BRAND.md` §0 ("Make them part of the branding") puts the
+  tenant firm's own name in the app bar and customer portal — "*that yard's* system
+  (Almara's, then the next firm's)". ArkiLaunch is the platform, Almara is the
+  tenant. `_public.tsx:49` already renders the footer this way. Leave it.
+- **`750:6545` (Help Center) reads `ops@fleetcore.io`** — a leftover from whatever
+  template the frame was built from. FleetCore is neither the platform nor the
+  tenant. Genuine defect; the real address is `arkilaunch2026@gmail.com`.
+- **The Help Center's Top Articles are generic SaaS filler** — "API Rate Limits",
+  "Sensor v4 Deployment" belong to a telemetry product, not equipment rental.
 - **`219:2226` has a layout defect**: the "Shopping Cart" heading visually overlaps
   "Continue Browsing".
 - **`876:3551`** is an unresolved designer note on the Security Logs mobile frame
