@@ -406,8 +406,8 @@ jobs:
         run: |
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/jwt.key
           openssl rsa -in /tmp/jwt.key -pubout -out /tmp/jwt.pub
-          echo "JWT_PRIVATE_KEY=$(sed -z 's/\n/\n/g' /tmp/jwt.key)" >> "$GITHUB_ENV"
-          echo "JWT_PUBLIC_KEY=$(sed -z 's/\n/\n/g' /tmp/jwt.pub)" >> "$GITHUB_ENV"
+          echo "JWT_PRIVATE_KEY=$(sed -z 's/\n/\\n/g' /tmp/jwt.key)" >> "$GITHUB_ENV"
+          echo "JWT_PUBLIC_KEY=$(sed -z 's/\n/\\n/g' /tmp/jwt.pub)" >> "$GITHUB_ENV"
       - name: Apply migrations and set the app_authenticated password
         run: pnpm --filter @arkilaunch/db migrate
       - name: Seed the anchor tenant and its sign-in accounts
