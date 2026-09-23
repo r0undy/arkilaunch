@@ -379,6 +379,13 @@ jobs:
       # seed:anchor creates the five RBAC sign-in accounts the specs use.
       ANCHOR_TENANT_SLUG: almara
       SEED_PASSWORD: ci_throwaway_not_a_secret
+      # StorageService reads these in field initializers, so the API cannot
+      # boot without them. Nothing in this suite uploads, so they only have to
+      # exist -- this is the first CI job that starts the real API process,
+      # which is why no other job ever needed them.
+      SUPABASE_URL: http://localhost:54321
+      SUPABASE_SERVICE_ROLE_KEY: ci_throwaway_not_a_secret
+      SUPABASE_STORAGE_BUCKET_EQUIPMENT: equipment-photos
       # scripts/dev-cert.mjs is not run here, so vite serves plain HTTP and
       # the config's https:// default would only find ERR_EMPTY_RESPONSE.
       # This also keeps the page and auth-client.ts's absolute
@@ -417,8 +424,15 @@ jobs:
       - run: pnpm --filter @arkilaunch/web exec playwright install --with-deps chromium
       - name: Start the API and wait for it
         run: |
-          pnpm start:api &
-          npx --yes wait-on http://localhost:3000/health --timeout 90000
+          pnpm start:api > /tmp/api.log 2>&1 &
+          # Without this the API dying at boot looks like a 90s timeout with
+          # no cause in the log, which is exactly how long it took to find
+          # the missing SUPABASE_URL the first time.
+          npx --yes wait-on http://localhost:3000/health --timeout 90000 || {
+            echo "::error::The API did not come up. Its output follows."
+            cat /tmp/api.log
+            exit 1
+          }
       - name: Inventory CRUD and console specs
         run: pnpm --filter @arkilaunch/web exec playwright test
       - uses: actions/upload-artifact@v4
