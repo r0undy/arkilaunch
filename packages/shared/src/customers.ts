@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SEC_REGEX } from './kyc.js';
 
 // Customer prerequisites CR: self-signup, companies (Figma 582:3946 "Add
 // New Company") and customer-owned project sites.
@@ -21,6 +22,9 @@ const TinSchema = z
 export const CompanyCreateSchema = z.object({
   companyName: z.string().trim().min(2).max(200),
   tin: TinSchema,
+  // SEC/DTI registration number. Optional: the OCR scan suggests it and the
+  // customer may not have the certificate to hand when they add a company.
+  secNumber: z.string().trim().regex(SEC_REGEX, 'Registration number is 7-15 letters, digits or dashes').optional(),
   billingAddress: z.string().trim().min(5).max(500),
   // No name field here: the customer's legal name comes only from their
   // National ID scan, read by staff and confirmed on approval (decide()).
@@ -71,6 +75,7 @@ export const CompanyResponseSchema = z.object({
   id: z.string().uuid(),
   companyName: z.string(),
   tin: z.string().nullable(),
+  secNumber: z.string().nullable(),
   billingAddress: z.string().nullable(),
   kycStatus: z.string(), // pending | approved | rejected
   // The staff-confirmed legal name off the National ID, read from the
