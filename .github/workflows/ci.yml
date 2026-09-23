@@ -433,7 +433,7 @@ jobs:
             cat /tmp/api.log
             exit 1
           }
-      - name: Inventory CRUD and console specs
+      - name: Browser specs (console, inventory CRUD, cart)
         run: pnpm --filter @arkilaunch/web exec playwright test
       - uses: actions/upload-artifact@v4
         if: failure()

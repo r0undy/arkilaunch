@@ -13,15 +13,30 @@ import { expect, type Page } from '@playwright/test';
 // the API up. SEED_PASSWORD overrides the seeded default.
 
 const EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'admin@admin.com';
+const CUSTOMER_EMAIL = process.env.SEED_CUSTOMER_EMAIL ?? 'customer@admin.com';
 const PASSWORD = process.env.SEED_PASSWORD ?? 'admin';
 
-export async function signIn(page: Page): Promise<void> {
+async function submit(page: Page, email: string) {
   await page.goto('/login');
-  await page.getByLabel('Email').fill(EMAIL);
+  await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
+}
+
+export async function signIn(page: Page): Promise<void> {
+  await submit(page, EMAIL);
   await expect(
     page,
     `Sign-in as ${EMAIL} did not reach the console. Is the API running and the anchor tenant seeded (pnpm db:seed)?`,
   ).toHaveURL(/\/app/, { timeout: 15_000 });
+}
+
+// The customer-facing shell. The seeded customer login is bound to a real
+// `customers` row (seed/anchor.ts), so the cart has a company to book against.
+export async function signInAsCustomer(page: Page): Promise<void> {
+  await submit(page, CUSTOMER_EMAIL);
+  await expect(
+    page,
+    `Sign-in as ${CUSTOMER_EMAIL} did not reach the account area. Is the API running and the anchor tenant seeded (pnpm db:seed)?`,
+  ).toHaveURL(/\/account/, { timeout: 15_000 });
 }
