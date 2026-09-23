@@ -125,7 +125,16 @@ describe('Customer onboarding', () => {
       billingAddress: '1248 North Quarry Way, Pasig',
       contactMobile: '09170000000',
     };
-    const acme = await companies.createCompany(ctx, { companyName: 'Acme Builders', ...details });
+    const acme = await companies.createCompany(ctx, {
+      companyName: 'Acme Builders',
+      secNumber: 'PH62780901',
+      ...details,
+    });
+    // The card shows this as "Registration Number" (Figma 251:1945).
+    expect(acme.secNumber).toBe('PH62780901');
+    expect((await companies.listCompanies(ctx)).find((c) => c.id === acme.id)?.secNumber).toBe(
+      'PH62780901',
+    );
     const beta = await companies.createCompany(ctx, { companyName: 'Beta Works', ...details });
     expect((await companies.listCompanies(ctx)).map((c) => c.companyName).sort()).toEqual([
       'Acme Builders',
@@ -226,6 +235,34 @@ describe('Customer onboarding', () => {
     expect((await companies.listCompanies(seededCustomerCtx)).map((c) => c.id)).not.toContain(
       mine.id,
     );
+
+    // The company card fetches its own registration certificate through
+    // ownDocumentKey(). RLS bounds the tenant and no further -- without the
+    // ownership predicate on top, this read is one customer of a tenant
+    // pulling another's KYC evidence by guessing a customer id.
+    const myDoc = await companies.addDocument(
+      ctx,
+      mine.id,
+      'company_registration',
+      `${tenantId}/test/gamma-registration.jpg`,
+      Buffer.from('not-really-an-image'),
+    );
+    await expect(companies.ownDocumentKey(ctx, mine.id, myDoc.id)).resolves.toContain(
+      'gamma-registration.jpg',
+    );
+    await expect(
+      companies.ownDocumentKey(seededCustomerCtx, mine.id, myDoc.id),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    // A staff login -- of this tenant or another -- never reaches the
+    // ownership check at all: this route is the customer's own, and
+    // assertCustomer refuses the role first. Staff read the same document
+    // through the quote:approve route, which is audited.
+    await expect(
+      companies.ownDocumentKey(adminCtx, mine.id, myDoc.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      companies.ownDocumentKey(otherTenantCtx, mine.id, myDoc.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
 
     // Staff cannot create companies under their own login.
     await expect(companies.listCompanies(adminCtx)).rejects.toBeInstanceOf(ForbiddenException);
