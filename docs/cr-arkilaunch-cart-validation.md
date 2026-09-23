@@ -127,7 +127,8 @@ Recorded because both failed quietly rather than loudly.
 | Web unit suite | Pass — 191 tests, including 17 new `validateCart` cases and 4 new `activeNavTarget` cases. |
 | Migration applied and inspected | `pg_get_function_result` confirms the new 5-column signature; ACL compared against untouched siblings. |
 | Playwright `cart.spec.ts` | Written; runs in CI via `console-e2e`. Not runnable locally — see §7. |
-| `migration-rls-guardian`, `restraint-guardian` | See §7. |
+| `migration-rls-guardian` | **PASS.** Confirms both filters carried forward from 0027 (no previously hidden row becomes visible), grants restored with no PUBLIC-executable gap, `SECURITY DEFINER SET search_path` preserved, allowlist unchanged. |
+| `restraint-guardian` | **PASS**, nothing to cut. Assessed the three constructs most at risk of being over-build — the separate validation module, both `exact` and `owns`, and the cart-item snapshot — and found each load-bearing. |
 
 ## 7. Honest gaps
 
