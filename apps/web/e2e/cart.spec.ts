@@ -32,23 +32,11 @@ test.describe('cart', () => {
     await expect(page).toHaveURL(/\/account\/cart/);
   });
 
-  test('an unverified company cannot be chosen', async ({ page }) => {
-    await openCartWithAMachine(page);
-
-    const select = page.locator('#cart-company');
-    // Only present when there is a choice to make or a company that cannot be
-    // chosen; a single verified company is picked without asking.
-    if (await select.count()) {
-      for (const option of await select.locator('option').all()) {
-        const label = (await option.textContent()) ?? '';
-        const disabled = await option.isDisabled();
-        // The label carries the reason whenever the option is unusable.
-        if (/awaiting verification|verification declined/.test(label)) {
-          expect(disabled).toBe(true);
-        }
-      }
-    }
-  });
+  // The disabled-option logic is covered exhaustively in
+  // cart-validation.test.ts against every kyc state. There is no browser
+  // assertion worth making here: the seeded account has exactly one verified
+  // company, so the select is not rendered at all, and a spec that walks an
+  // absent element asserts nothing.
 
   test('the line shows what was added, not just a model name', async ({ page }) => {
     await openCartWithAMachine(page);
