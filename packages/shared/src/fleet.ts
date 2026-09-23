@@ -18,7 +18,22 @@ export type EquipmentListQuery = z.infer<typeof EquipmentListQuerySchema>;
 
 // POST /equipment (addition beyond the SDD §4 endpoint list; see
 // AGENTS.md §5.1 Change Record). fleet:manage-gated at the controller.
-export const EquipmentCreateRequestSchema = z.object({
+// The spec sheet from Figma 292:1344 (Add Equipment). Every one of these is
+// optional: they arrived after the table had rows, and none of them is needed
+// to rent a machine out. The frame's HOURLY RATE / DAILY RATE fields are
+// deliberately absent -- rate_cards owns pricing and quotes are computed from
+// it, so a second price on the equipment row would be a competing source of
+// truth on the money path.
+const EquipmentSpecFieldsSchema = z.object({
+  modelNumber: z.string().max(100).optional(),
+  yearOfManufacture: z.number().int().min(1900).max(2100).optional(),
+  weightCapacityTons: z.number().positive().max(100_000).optional(),
+  engineType: z.string().max(100).optional(),
+  fuelType: z.string().max(100).optional(),
+  notes: z.string().max(2000).optional(),
+});
+
+export const EquipmentCreateRequestSchema = EquipmentSpecFieldsSchema.extend({
   equipmentTypeId: z.string().uuid(),
   model: z.string().min(1).max(200),
   serialNo: z.string().min(1).max(200),
@@ -27,16 +42,27 @@ export const EquipmentCreateRequestSchema = z.object({
 export type EquipmentCreateRequest = z.infer<typeof EquipmentCreateRequestSchema>;
 
 // PATCH /equipment/:id. At least one field required -- an empty patch is
-// not a meaningful request.
-export const EquipmentUpdateRequestSchema = z
-  .object({
-    model: z.string().min(1).max(200).optional(),
-    availabilityStatus: EquipmentStatusSchema.optional(),
-  })
-  .refine((data) => data.model !== undefined || data.availabilityStatus !== undefined, {
-    message: 'at least one of model or availabilityStatus is required',
-  });
+// not a meaningful request. Checked generically rather than by naming the
+// fields: the named form silently rejected a patch that changed only one of
+// the spec fields above.
+//
+// serialNo is absent on purpose. Migration 0026 REVOKEs UPDATE on that column,
+// so a machine's identity cannot be rewritten after a DTR has cited it -- the
+// edit form renders it disabled for the same reason.
+export const EquipmentUpdateRequestSchema = EquipmentSpecFieldsSchema.extend({
+  model: z.string().min(1).max(200).optional(),
+  availabilityStatus: EquipmentStatusSchema.optional(),
+}).refine((data) => Object.values(data).some((value) => value !== undefined), {
+  message: 'at least one field is required',
+});
 export type EquipmentUpdateRequest = z.infer<typeof EquipmentUpdateRequestSchema>;
+
+// DELETE /equipment/:id is a retire, not a delete. See migration 0026.
+export const EquipmentRetireResponseSchema = z.object({
+  id: z.string().uuid(),
+  retired: z.literal(true),
+});
+export type EquipmentRetireResponse = z.infer<typeof EquipmentRetireResponseSchema>;
 
 // POST /equipment/:id/maintenance-logs (SDD §4). performedAt is a full
 // timestamptz (not a bare date, unlike edtr.reportDate) since a
@@ -107,6 +133,17 @@ export const EquipmentResponseSchema = z.object({
   serialNo: z.string(),
   availabilityStatus: z.string(),
   runtimeHours: z.number(),
+  modelNumber: z.string().nullable(),
+  yearOfManufacture: z.number().int().nullable(),
+  weightCapacityTons: z.number().nullable(),
+  engineType: z.string().nullable(),
+  fuelType: z.string().nullable(),
+  notes: z.string().nullable(),
+  // The rendered public URL, derived at the egress boundary. The raw Storage
+  // object key (equipment.photo_uri) is never exposed: it encodes the tenant
+  // id and the bucket layout, and keeping it server-side means the bucket can
+  // move without a backfill.
+  photoUrl: z.string().nullable(),
 });
 export type EquipmentResponse = z.infer<typeof EquipmentResponseSchema>;
 
