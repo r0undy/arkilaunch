@@ -26,13 +26,19 @@ export interface AppBarProps {
 // controls. DESIGN.md §6: 44x44px touch targets, never color-only -- every
 // icon-only control keeps a real accessible name.
 export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
-  const notifications = useQuery({ ...notificationsQueries.list(), retry: false });
-  const edtrList = useQuery({ ...edtrQueries.list(), retry: false });
-
+  const role = getCurrentRole();
   // The same bar renders inside the account shell, where /app/* is a role
   // bounce rather than a destination.
-  const notificationsPath =
-    getCurrentRole() === 'customer' ? '/account/notifications' : '/app/notifications';
+  const isCustomer = role === 'customer';
+  const notificationsPath = isCustomer ? '/account/notifications' : '/app/notifications';
+
+  const notifications = useQuery({ ...notificationsQueries.list(), retry: false });
+  // GET /edtr is staff-only, so this fired a guaranteed 403 on every page a
+  // customer loaded -- a console error and a wasted round trip each time,
+  // for a badge they can never see. The bar has rendered in the account
+  // shell since it was written; moving the catalog into that shell just made
+  // it happen on more pages.
+  const edtrList = useQuery({ ...edtrQueries.list(), retry: false, enabled: !isCustomer });
 
   const unreadItems = notifications.data?.items;
   const unreadCount = unreadItems ? unreadItems.filter((n) => n.status === 'unread').length : null;
