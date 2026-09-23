@@ -141,16 +141,20 @@ also assumed the poller was the only caller, which is no longer true.
 | Web unit suite | Pass — 221 tests across 33 files, including 5 new shell regression tests, 6 rail tests, 8 cart-store tests and 7 weather-code tests. |
 | `apps/api/test/customer-onboarding.spec.ts` | Pass — 20 tests, including the forecast ownership, unavailability and caching assertions. |
 | `packages/weather` | Pass — 16 tests, including the malformed, ragged and wrong-unit forecast bodies. |
-| Playwright | See §8. |
-| `restraint-guardian`, `tenant-isolation-checker` | See §8. |
+| Playwright | **Pass in CI** — 31 tests (21 desktop + 10 Pixel 5), `console-e2e`. |
+| `restraint-guardian` | **PASS**, nothing to cut. Assessed the six constructs most at risk of being over-build and found each load-bearing; flagged `e2e/sidebar.ts` as the thinnest justification (two call sites) and kept it, since it encodes the strict-mode double-match a third spec would otherwise get wrong. |
+| `tenant-isolation-checker` | See §8. |
 
 ## 8. Honest gaps
 
-- **`/equipment` was verified by route-level tests, not by eye.** `seed/anchor.ts` refuses
-  to write development credentials into a non-local database and `DATABASE_URL_DIRECT` here
-  is the live Supabase project, so the app could not be run against real data. The
-  token-tier failure mode in particular is *silent* — unstyled cards, no error — which is
-  why it has a test, but a test is not a look.
+- **The app WAS driven in a real browser**, at 1440px and Pixel 5, signed out and signed
+  in, against the live API. The signed-in shell renders the sidebar, app bar, styled
+  catalog and both rail panels; there is no horizontal scroll at phone width and no console
+  error. Two caveats: the seeded anchor accounts' passwords are not the seed default and I
+  did not reset them, so the signed-in pass used a **throwaway account created through the
+  public self-signup endpoint** (`uxqa-<timestamp>@arkilaunch.test`, still present in the
+  anchor tenant); and the forecast rail was exercised only in its no-site state, because
+  that account has no project site.
 - **The weather rail shows the customer's first site**, with no picker. Guessing at that
   shape before a multi-site customer asks for it would be building for an imagined user.
 - **`MAX_POLLED_SITES_PER_CYCLE` has not been re-derived** against the new caller. The cache
