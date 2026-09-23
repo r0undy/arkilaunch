@@ -57,7 +57,9 @@ export class CustomersController {
   }
 
   // Validated (size, magic bytes) before anything reaches storage, same as
-  // POST /kyc/extract.
+  // POST /kyc/extract. The already-uploaded bytes are also screened by OCR
+  // (addDocument) so an illegible scan is bounced back to the customer
+  // immediately rather than waiting in the staff queue.
   @Post('me/companies/:id/documents')
   @RequirePermission('booking:create')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -71,7 +73,7 @@ export class CustomersController {
     const validated = validateUpload(file);
     const key = this.storage.buildObjectKey(req.ctx.tenantId, validated.extension);
     await this.storage.uploadObject(kycBucket(), key, file!.buffer, validated.contentType);
-    return this.customers.addDocument(req.ctx, id, body.documentType, key);
+    return this.customers.addDocument(req.ctx, id, body.documentType, key, file!.buffer);
   }
 
   // Scan-first company onboarding: extraction for the customer's own
@@ -119,10 +121,11 @@ export class CustomersController {
     return { url: await this.storage.createSignedDownloadUrl(kycBucket(), key) };
   }
 
-  // A reviewer's "Read document" click on a company already in the queue.
-  // Staff-gated and rate-limited: each call is an Azure DI page spend
-  // (QAD-T31), and it is deliberately not automatic on upload, so nothing
-  // is spent on a document nobody reviews.
+  // A reviewer's "Read document" click on a company already in the queue,
+  // for re-running OCR without asking the customer to reupload. The upload
+  // itself already ran this once (addDocument); this is staff-gated and
+  // rate-limited because each call is a separate Azure DI page spend
+  // (QAD-T31).
   @Post('customers/:id/documents/:documentId/read')
   @RequirePermission('quote:approve')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

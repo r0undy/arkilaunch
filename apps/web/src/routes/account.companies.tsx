@@ -20,7 +20,7 @@ import { useToast } from '../components/toast.js';
 
 const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
 const DOC_LABELS: Record<string, string> = {
-  government_id: 'Government ID',
+  government_id: 'Philippine National ID (PhilSys)',
   company_registration: 'Company registration',
 };
 
@@ -41,8 +41,13 @@ function CompanyCard({ company }: { company: CompanyResponse }) {
   const sites = useQuery(customerSitesQueries.mine());
   const [siteOpen, setSiteOpen] = useState(false);
   const mine = (sites.data ?? []).filter((site) => site.customerId === company.id);
+  // A document that came back too blurry to read needs the same "upload
+  // it again" prompt as one never uploaded at all.
   const missing = Object.keys(DOC_LABELS).filter(
-    (type) => !company.documents.some((doc) => doc.documentType === type),
+    (type) =>
+      !company.documents.some(
+        (doc) => doc.documentType === type && doc.status !== 'resubmit_required',
+      ),
   );
 
   return (
@@ -149,21 +154,28 @@ function CompaniesPage() {
 async function uploadDocuments(
   companyId: string,
   files: { governmentId: File | null; registration: File | null },
-) {
+): Promise<string[]> {
+  // Each upload is screened by OCR server-side; an illegible scan comes
+  // back 'resubmit_required' instead of 'pending', named here so the
+  // customer is told immediately rather than finding out from the queue.
+  const bounced: string[] = [];
   if (files.governmentId) {
-    await apiPostForm(
+    const doc = await apiPostForm<{ documentType: string; status: string }>(
       `/me/companies/${companyId}/documents`,
       { documentType: 'government_id' },
       files.governmentId,
     );
+    if (doc.status === 'resubmit_required') bounced.push(DOC_LABELS[doc.documentType]!);
   }
   if (files.registration) {
-    await apiPostForm(
+    const doc = await apiPostForm<{ documentType: string; status: string }>(
       `/me/companies/${companyId}/documents`,
       { documentType: 'company_registration' },
       files.registration,
     );
+    if (doc.status === 'resubmit_required') bounced.push(DOC_LABELS[doc.documentType]!);
   }
+  return bounced;
 }
 
 // One document at a time, in order. Both used to sit on the same screen,
@@ -174,8 +186,8 @@ export type DocStep = 'government_id' | 'company_registration';
 export const DOC_STEPS: { type: DocStep; label: string; hint: string }[] = [
   {
     type: 'government_id',
-    label: 'Government ID',
-    hint: 'Step 1 of 2. The ID of the person signing for this company.',
+    label: 'Philippine National ID (PhilSys)',
+    hint: 'Step 1 of 2. Only the PhilSys National ID is accepted -- it is how we read and confirm your legal name.',
   },
   {
     type: 'company_registration',
@@ -227,7 +239,6 @@ function NewCompanyPage() {
   const [companyName, setCompanyName] = useState('');
   const [tin, setTin] = useState('');
   const [billingAddress, setBillingAddress] = useState('');
-  const [contactName, setContactName] = useState('');
   const [contactMobile, setContactMobile] = useState('');
   const [governmentId, setGovernmentId] = useState<File | null>(null);
   const [registration, setRegistration] = useState<File | null>(null);
@@ -262,12 +273,21 @@ function NewCompanyPage() {
         companyName,
         tin,
         billingAddress,
-        contactName,
         contactMobile,
       });
-      await uploadDocuments(created.id, { governmentId, registration });
+      const bounced = await uploadDocuments(created.id, { governmentId, registration });
       await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
-      toast.success('Company added', 'The rental team will verify it. You can request quotes now.');
+      if (bounced.length > 0) {
+        toast.error(
+          'A document was too unclear to read',
+          `${bounced.join(' and ')} could not be read. Upload a clearer copy from the company page.`,
+        );
+      } else {
+        toast.success(
+          'Company added',
+          'The rental team will verify it. You can request quotes now.',
+        );
+      }
       await navigate({ to: '/account/companies' });
     } catch (err) {
       // The company exists even if an upload failed; say so, and send the
@@ -366,26 +386,17 @@ function NewCompanyPage() {
             value={billingAddress}
             onChange={(e) => setBillingAddress(e.target.value)}
           />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Input
-              label="Contact person"
-              required
-              maxLength={200}
-              value={contactName}
-              onChange={(e) => setContactName(e.target.value)}
-            />
-            <Input
-              label="Contact mobile"
-              type="tel"
-              required
-              maxLength={30}
-              value={contactMobile}
-              onChange={(e) => setContactMobile(e.target.value)}
-            />
-          </div>
+          <Input
+            label="Contact mobile"
+            type="tel"
+            required
+            maxLength={30}
+            value={contactMobile}
+            onChange={(e) => setContactMobile(e.target.value)}
+          />
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-muted">
             <span>
-              Scanned: {governmentId ? 'Government ID' : 'no ID'} and{' '}
+              Scanned: {governmentId ? 'National ID' : 'no ID'} and{' '}
               {registration ? 'company registration' : 'no registration'}.
             </span>
             <Button type="button" variant="ghost" onClick={() => setStage('government_id')}>
@@ -474,9 +485,16 @@ function CompanyDocumentsPage() {
     if (Date.now() - stageChangedAt.current < advanceGraceMs) return;
     setBusy(true);
     try {
-      await uploadDocuments(companyId, { governmentId, registration });
+      const bounced = await uploadDocuments(companyId, { governmentId, registration });
       await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
-      toast.success('Documents uploaded');
+      if (bounced.length > 0) {
+        toast.error(
+          'A document was too unclear to read',
+          `${bounced.join(' and ')} could not be read. Upload a clearer copy from the company page.`,
+        );
+      } else {
+        toast.success('Documents uploaded');
+      }
       await navigate({ to: '/account/companies' });
     } catch (err) {
       toast.error('Upload failed', apiErrorText(err));

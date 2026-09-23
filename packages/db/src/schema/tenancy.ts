@@ -97,6 +97,11 @@ export const users = pgTable(
     passwordHash: text('password_hash').notNull(), // argon2id, never logged
     status: text('status').notNull().default('active'), // active, disabled, locked
     totpSecret: text('totp_secret'), // 2FA; encrypted at rest. Not enrolled by this slice.
+    // Legal name read off a customer's National ID (KYC), written only by a
+    // staff decide() approval -- never set directly by the customer.
+    firstName: text('first_name'),
+    middleName: text('middle_name'),
+    lastName: text('last_name'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

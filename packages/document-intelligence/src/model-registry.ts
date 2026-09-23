@@ -17,6 +17,12 @@ export type ModelRequest =
 // azure-adapter.ts, not here.
 const KYC_QUERY_FIELDS = ['SecNumber', 'Tin', 'CompanyName'];
 
+// The Philippine National ID (PhilSys) is a person-identity document, not a
+// corporate one -- same reason as above, prebuilt-idDocument doesn't cover
+// it, so this is queryFields against prebuilt-layout too, just asking for
+// name fields instead of company ones.
+const NATIONAL_ID_QUERY_FIELDS = ['FirstName', 'MiddleName', 'LastName'];
+
 // EDTR extraction is prebuilt-layout's TABLE output, not queryFields and
 // not a custom neural model.
 //
@@ -35,6 +41,8 @@ export const EDTR_MODEL_ID = 'arkilaunch-edtr-layout-table';
 
 export const KYC_MODEL_ID = 'arkilaunch-kyc-layout-query';
 
+export const NATIONAL_ID_MODEL_ID = 'arkilaunch-national-id-layout-query';
+
 // EDTR_REQUIRED_FIELDS is gone. It named hours_active and hours_idle as the
 // document-level fields reconciliation keys on, and the real form has
 // neither: it records AM/PM/OVERTIME in-out pairs and a written TOTAL HOURS
@@ -46,6 +54,13 @@ export const KYC_MODEL_ID = 'arkilaunch-kyc-layout-query';
 export function resolveModelRequest(modelId: string): ModelRequest {
   if (modelId === KYC_MODEL_ID) {
     return { kind: 'query-fields', modelId: 'prebuilt-layout', queryFields: KYC_QUERY_FIELDS };
+  }
+  if (modelId === NATIONAL_ID_MODEL_ID) {
+    return {
+      kind: 'query-fields',
+      modelId: 'prebuilt-layout',
+      queryFields: NATIONAL_ID_QUERY_FIELDS,
+    };
   }
   if (modelId === EDTR_MODEL_ID) {
     // No queryFields: the timesheet grid comes back in analyzeResult.tables
@@ -68,4 +83,7 @@ export const QUERY_FIELD_TO_PORT_KEY: Record<string, string> = {
   SecNumber: 'sec_number',
   Tin: 'tin',
   CompanyName: 'company_name',
+  FirstName: 'first_name',
+  MiddleName: 'middle_name',
+  LastName: 'last_name',
 };

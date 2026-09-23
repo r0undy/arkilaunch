@@ -56,6 +56,9 @@ interface ReviewFields {
   companyName: string;
   tin: string;
   secNumber: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
 }
 
 // The admin-side counterpart to the customer's scan: "Read document" fills
@@ -81,10 +84,14 @@ function CompanyReviewCard({
     companyName: company.companyName,
     tin: company.tin ?? '',
     secNumber: '',
+    firstName: company.firstName ?? '',
+    middleName: company.middleName ?? '',
+    lastName: company.lastName ?? '',
   });
   const [read, setRead] = useState<CompanyDocumentReadResponse | null>(null);
 
   const registration = company.documents.find((doc) => doc.documentType === 'company_registration');
+  const nationalId = company.documents.find((doc) => doc.documentType === 'government_id');
 
   const readDocument = useMutation({
     mutationFn: (documentId: string) =>
@@ -105,6 +112,9 @@ function CompanyReviewCard({
         companyName: result.suggestions.companyName ?? current.companyName,
         tin: result.suggestions.tin ?? current.tin,
         secNumber: result.suggestions.secNumber ?? current.secNumber,
+        firstName: result.suggestions.firstName ?? current.firstName,
+        middleName: result.suggestions.middleName ?? current.middleName,
+        lastName: result.suggestions.lastName ?? current.lastName,
       }));
     },
     onError: (err) => toast.error('Could not read the document', apiErrorText(err)),
@@ -144,12 +154,19 @@ function CompanyReviewCard({
               loading={readDocument.isPending}
               onClick={() => registration && readDocument.mutate(registration.id)}
             >
-              Read document
+              Read registration
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!nationalId}
+              loading={readDocument.isPending}
+              onClick={() => nationalId && readDocument.mutate(nationalId.id)}
+            >
+              Read National ID
             </Button>
             <p className="text-sm text-text-muted">
-              {registration
-                ? 'Fills the fields below in from the registration certificate. Check them against the document.'
-                : 'No registration certificate uploaded yet, so there is nothing to read.'}
+              Fills the fields below in from whichever document you read. Check them against the
+              document before verifying.
             </p>
           </div>
 
@@ -187,6 +204,28 @@ function CompanyReviewCard({
               maxLength={50}
               value={fields.secNumber}
               onChange={(e) => setFields({ ...fields, secNumber: e.target.value })}
+            />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Input
+              label="First name"
+              maxLength={200}
+              hint="From the National ID. Written onto the customer's account only when you verify."
+              value={fields.firstName}
+              onChange={(e) => setFields({ ...fields, firstName: e.target.value })}
+            />
+            <Input
+              label="Middle name"
+              maxLength={200}
+              value={fields.middleName}
+              onChange={(e) => setFields({ ...fields, middleName: e.target.value })}
+            />
+            <Input
+              label="Last name"
+              maxLength={200}
+              value={fields.lastName}
+              onChange={(e) => setFields({ ...fields, lastName: e.target.value })}
             />
           </div>
 
@@ -242,6 +281,9 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
         ...(fields.companyName.trim() ? { companyName: fields.companyName.trim() } : {}),
         ...(fields.tin.trim() ? { tin: fields.tin.trim() } : {}),
         ...(fields.secNumber.trim() ? { secNumber: fields.secNumber.trim() } : {}),
+        ...(fields.firstName.trim() ? { firstName: fields.firstName.trim() } : {}),
+        ...(fields.middleName.trim() ? { middleName: fields.middleName.trim() } : {}),
+        ...(fields.lastName.trim() ? { lastName: fields.lastName.trim() } : {}),
       }),
     onSuccess: async (_d, { decision }) => {
       await queryClient.invalidateQueries({ queryKey: ['customers', 'review'] });
