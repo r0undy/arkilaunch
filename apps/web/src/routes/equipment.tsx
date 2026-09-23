@@ -15,6 +15,7 @@ import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
+import { getAccessToken } from '../lib/auth-client.js';
 
 // <input type="datetime-local"> speaks local "YYYY-MM-DDTHH:mm"; the cart
 // stores ISO. The frame draws date and time as two fields per end of the
@@ -51,6 +52,13 @@ function ConfigureRentalDialog({
   // than letting the cart's submit be the first time anyone finds out.
   const invalid = !start || !end || new Date(end) <= new Date(start);
 
+  // /account/cart is behind requireAuth(), so "Book now" used to hand a
+  // signed-out visitor a silent guard bounce to /login -- which reads as the
+  // button having eaten the click. Send them there deliberately instead, with
+  // the cart as the redirect target: the cart survives in sessionStorage, so
+  // they arrive signed in with the machine already in it.
+  const signedIn = Boolean(getAccessToken());
+
   function commit(thenGoToCart: boolean) {
     if (invalid) return;
     addToCart({
@@ -63,9 +71,16 @@ function ConfigureRentalDialog({
     });
     onClose();
     if (thenGoToCart) {
-      void navigate({ to: '/account/cart' });
+      void navigate(
+        signedIn
+          ? { to: '/account/cart' }
+          : { to: '/login', search: { redirect: '/account/cart' } },
+      );
     } else {
-      toast.success(`${equipment.model} added to your cart`);
+      toast.success(
+        `${equipment.model} added to your cart`,
+        signedIn ? undefined : 'Sign in when you are ready to book.',
+      );
     }
   }
 
@@ -82,7 +97,7 @@ function ConfigureRentalDialog({
             Add to cart
           </Button>
           <Button variant="primary" disabled={invalid} onClick={() => commit(true)}>
-            Book now
+            {signedIn ? 'Book now' : 'Sign in to book'}
           </Button>
         </>
       }

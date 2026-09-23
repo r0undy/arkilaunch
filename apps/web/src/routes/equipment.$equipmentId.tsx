@@ -12,6 +12,7 @@ import { ApiError } from '../lib/api-client.js';
 import { Skeleton } from '../components/skeleton.js';
 import { LoadError } from '../components/load-error.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
+import { getAccessToken } from '../lib/auth-client.js';
 
 const AVAILABILITY_PILL = {
   available: { tone: 'fleet-available' as const, label: 'Available', icon: <CheckIcon /> },
@@ -26,6 +27,7 @@ const AVAILABILITY_PILL = {
 function EquipmentDetailPage() {
   const { equipmentId } = equipmentDetailRoute.useParams();
   const navigate = useNavigate();
+  const signedIn = Boolean(getAccessToken());
   const {
     data: equipment,
     isPending,
@@ -99,10 +101,17 @@ function EquipmentDetailPage() {
             photoUri: equipment.photoUri,
             ...defaultRentalWindow(),
           });
-          navigate({ to: '/account/cart' });
+          // Same rule as the catalog dialog: a signed-out visitor is sent
+          // to login on purpose, with the cart as the redirect, rather than
+          // being bounced there by requireAuth() with no explanation.
+          void navigate(
+            signedIn
+              ? { to: '/account/cart' }
+              : { to: '/login', search: { redirect: '/account/cart' } },
+          );
         }}
       >
-        Rent this unit
+        {signedIn ? 'Rent this unit' : 'Sign in to rent'}
       </Button>
     </div>
   );
