@@ -62,12 +62,30 @@ export const normalizeTin = (value: string) => regroupDigits(value, [[3, 3, 3], 
 export const normalizePcn = (value: string) => regroupDigits(value, [[4, 4, 4, 4]]);
 
 // The public registries an admin checks a parsed number against. None of
-// them take the number in the URL (BIR's ORUS is CAPTCHA-gated by design),
-// so the review card copies the value and opens the page for a human paste.
+// them take a value in the URL, and each searches differently (checked in
+// Chromium, 2026-09): BIR's ORUS splits the TIN into three ### boxes beside
+// a registered-name field behind reCAPTCHA, and DTI's BNRS allows an exact
+// business-name search only. So the review card copies what each one
+// actually accepts as a paste and says how to fill in the rest.
 export const REGISTRY_LINKS = {
-  sec_certificate: { registry: 'SEC', url: 'https://checkwithsec.sec.gov.ph/check-with-sec/index' },
-  bir_cor: { registry: 'BIR', url: 'https://orus.bir.gov.ph/search/tinverification' },
-  dti_certificate: { registry: 'DTI', url: 'https://bnrs.dti.gov.ph/search' },
+  sec_certificate: {
+    registry: 'SEC',
+    url: 'https://checkwithsec.sec.gov.ph/check-with-sec/index',
+    copy: 'number',
+    hint: 'Paste the SEC number into the search.',
+  },
+  bir_cor: {
+    registry: 'BIR',
+    url: 'https://orus.bir.gov.ph/search/tinverification',
+    copy: 'name',
+    hint: 'Pick Non-Individual, type the TIN into the three boxes, then paste the registered name.',
+  },
+  dti_certificate: {
+    registry: 'DTI',
+    url: 'https://bnrs.dti.gov.ph/search',
+    copy: 'name',
+    hint: 'BNRS searches by exact business name only: paste the registered name.',
+  },
 } as const;
 export type RegistryDocumentType = keyof typeof REGISTRY_LINKS;
 export const REGISTRY_DOCUMENT_TYPES = Object.keys(REGISTRY_LINKS) as RegistryDocumentType[];

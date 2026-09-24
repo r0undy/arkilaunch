@@ -157,7 +157,11 @@ function normalizeSex(value: string): string {
 // OCR dates come as printed ("JANUARY 01, 1990", "1990/01/01"); the form's
 // date input needs YYYY-MM-DD. Unparseable text is passed through as read.
 function normalizeDate(value: string): string {
-  const t = Date.parse(value.replace(/\//g, '-'));
+  const v = value.trim().replace(/\//g, '-');
+  // Already ISO: returned as is, since Date.parse reads it as UTC midnight
+  // and the local getters below would shift it a day west of Greenwich.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const t = Date.parse(v);
   if (Number.isNaN(t)) return value.trim();
   const d = new Date(t);
   const pad = (n: number) => String(n).padStart(2, '0');

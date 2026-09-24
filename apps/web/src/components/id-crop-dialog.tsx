@@ -74,7 +74,7 @@ export function IdCropDialog({
       }
     >
       <div className="flex flex-col gap-3">
-        <div className="relative h-[55vh] min-h-64 w-full overflow-hidden rounded-sm bg-black" data-testid="id-cropper">
+        <div className="relative h-[38vh] min-h-56 w-full sm:h-[55vh] overflow-hidden rounded-sm bg-black" data-testid="id-cropper">
           {src && (
             <Cropper
               image={src}

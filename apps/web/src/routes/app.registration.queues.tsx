@@ -94,22 +94,29 @@ function formatError(value: string, re: RegExp, message: string): string | undef
   return value.trim() && !re.test(value.trim()) ? message : undefined;
 }
 
-// The public-registry check for one parsed number: the link copies the
-// value (none of the three sites take it in the URL) and opens the search
-// in a new tab; the tick records that the reviewer actually looked.
+// The public-registry check for one paper: the link copies whatever that
+// registry takes as a paste (REGISTRY_LINKS) and opens its search in a new
+// tab; the tick records that the reviewer actually looked.
 function RegistryCheck({
   document,
-  value,
+  number,
+  companyName,
   checked,
   onCheckedChange,
 }: {
   document: ReviewDocument;
-  value: string;
+  number: string;
+  companyName: string;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
 }) {
   const toast = useToast();
   const link = REGISTRY_LINKS[document.documentType as RegistryDocumentType];
+  const copy = (link.copy === 'name' ? companyName : number).trim();
+  // ORUS takes the TIN as three separate boxes, so show it that way.
+  const tin = normalizeTin(number);
+  const tinGroups =
+    document.documentType === 'bir_cor' && TIN_REGEX.test(tin) ? tin.split('-').slice(0, 3).join(' | ') : null;
   return (
     <div className="flex flex-col gap-1 text-sm">
       <a
@@ -118,16 +125,25 @@ function RegistryCheck({
         rel="noopener noreferrer"
         className="inline-flex min-h-11 items-center gap-1 font-medium text-primary underline"
         onClick={() => {
-          if (!value.trim()) return;
-          navigator.clipboard?.writeText(value.trim()).then(
-            () => toast.success(`Copied ${value.trim()}`, `Paste it into the ${link.registry} search.`),
+          if (!copy) return;
+          navigator.clipboard?.writeText(copy).then(
+            () => toast.success(`Copied ${copy}`, link.hint),
             () => undefined,
           );
         }}
       >
         Check on {link.registry} <span aria-hidden="true">↗</span>
-        <span className="sr-only"> (opens in a new tab)</span>
+        <span className="sr-only"> (opens in a new tab and copies {copy})</span>
       </a>
+      <p className="text-xs text-text-muted">
+        {link.hint}
+        {tinGroups && (
+          <>
+            {' '}
+            TIN boxes: <span className="font-mono text-text">{tinGroups}</span>
+          </>
+        )}
+      </p>
       <label className="flex min-h-11 items-center gap-2 text-text">
         <input
           type="checkbox"
@@ -231,7 +247,13 @@ function CompanyReviewCard({
   );
 
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5">
+    <Surface
+      radius="md"
+      elevation="sm"
+      role="group"
+      aria-label={company.companyName}
+      className="flex flex-col gap-4 p-5"
+    >
       <div>
         <h2 className="font-display text-lg font-semibold text-text">{company.companyName}</h2>
         <p className="text-sm text-text-muted">
@@ -346,7 +368,8 @@ function CompanyReviewCard({
                   {bir && (
                     <RegistryCheck
                       document={bir}
-                      value={fields.tin}
+                      number={fields.tin}
+                      companyName={fields.companyName}
                       checked={checked.has(bir.id)}
                       onCheckedChange={(on) => setCheck(bir.id, on)}
                     />
@@ -366,7 +389,8 @@ function CompanyReviewCard({
                   {sec && (
                     <RegistryCheck
                       document={sec}
-                      value={fields.secNumber}
+                      number={fields.secNumber}
+                      companyName={fields.companyName}
                       checked={checked.has(sec.id)}
                       onCheckedChange={(on) => setCheck(sec.id, on)}
                     />
@@ -385,7 +409,8 @@ function CompanyReviewCard({
                   />
                   <RegistryCheck
                     document={dti}
-                    value={fields.dtiNumber}
+                    number={fields.dtiNumber}
+                    companyName={fields.companyName}
                     checked={checked.has(dti.id)}
                     onCheckedChange={(on) => setCheck(dti.id, on)}
                   />
