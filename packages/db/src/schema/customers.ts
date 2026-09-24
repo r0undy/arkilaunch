@@ -111,7 +111,7 @@ export const kycDocuments = pgTable(
     lockedAt: timestamp('locked_at', { withTimezone: true }),
     lastError: text('last_error'),
     // RFC-2 §3: format check + fuzzy-match + human portal confirmation.
-    formatValid: jsonb('format_valid'), // { sec_number: bool, tin: bool }
+    formatValid: jsonb('format_valid'), // { tin, sec_number, dti_number, id_number: bool }
     portalMatchScore: numeric('portal_match_score', { precision: 5, scale: 4 }),
     registryStatus: text('registry_status'), // active | suspended | revoked, human-confirmed
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

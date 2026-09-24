@@ -188,6 +188,11 @@ const CUSTOMER_KEYS: Record<keyof ConfirmedDocumentFields, string> = {
   dtiNumber: 'customer_dti_number',
 };
 
+// format_valid as stored: snake_case, the keys ocr_payload uses.
+function storedFormat(v: CompanyDocumentReadResponse['formatValid']) {
+  return { tin: v.tin, sec_number: v.secNumber, dti_number: v.dtiNumber, id_number: v.idNumber };
+}
+
 // The keys a person wrote (customer_* at upload, confirmed_* at decide()).
 function humanKeys(payload: unknown): Record<string, unknown> {
   return Object.fromEntries(
@@ -361,7 +366,7 @@ export class CustomersService {
       return {
         documentId: '',
         suggestions,
-        formatValid: { tin: false, secNumber: false },
+        formatValid: { tin: false, secNumber: false, dtiNumber: false, idNumber: false },
         confidence: null,
         extractionAvailable: false,
         ocrPayload: {},
@@ -384,9 +389,18 @@ export class CustomersService {
       ocrPayload[key === 'sec_number' ? 'sec_confidence' : `${key}_confidence`] = read.confidence;
       if (!LEGIBILITY_EXCLUDED.has(field)) confidences.push(read.confidence);
     }
+    // Every number with a known format gets its check recorded, not only
+    // the TIN and SEC number: a DTI number or PCN that fails is as much a
+    // signal to the reviewer.
+    const valid = (field: keyof typeof FIELD_FORMAT) => {
+      const value = suggestions[field];
+      return value ? FIELD_FORMAT[field]!.re.test(value) : false;
+    };
     const formatValid = {
-      tin: suggestions.tin ? TIN_REGEX.test(suggestions.tin) : false,
-      secNumber: suggestions.secNumber ? SEC_REGEX.test(suggestions.secNumber) : false,
+      tin: valid('tin'),
+      secNumber: valid('secNumber'),
+      dtiNumber: valid('dtiNumber'),
+      idNumber: valid('idNumber'),
     };
     // The lowest confidence of whatever was found: a reviewer (or the
     // upload-time gate) should judge a document by its weakest field, not
@@ -446,7 +460,7 @@ export class CustomersService {
           .update(kycDocuments)
           .set({
             ocrPayload: { ...read.ocrPayload, ...customerPayload },
-            formatValid: { tin: read.formatValid.tin, sec_number: read.formatValid.secNumber },
+            formatValid: storedFormat(read.formatValid),
             ...(read.confidence === null ? {} : { confidence: read.confidence.toFixed(4) }),
             status,
           })
@@ -660,7 +674,7 @@ export class CustomersService {
             // A re-read replaces the OCR's keys, never what the customer or
             // a reviewer confirmed.
             ocrPayload: { ...read.ocrPayload, ...humanKeys(doc.ocrPayload) },
-            formatValid: { tin: read.formatValid.tin, sec_number: read.formatValid.secNumber },
+            formatValid: storedFormat(read.formatValid),
             ...(read.confidence === null ? {} : { confidence: read.confidence.toFixed(4) }),
             status: 'needs_review', // never 'verified': that is decide()'s to set
           })

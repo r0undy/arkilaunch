@@ -582,7 +582,7 @@ describe('Customer onboarding', () => {
 
       const read = await service.readDocument(adminCtx, companyId, documentId, bytes);
       expect(read.suggestions.companyName).toBe('REVIEWME CORPORATION');
-      expect(read.formatValid).toEqual({ tin: true, secNumber: true });
+      expect(read.formatValid).toEqual({ tin: true, secNumber: true, dtiNumber: false, idNumber: false });
       // The weakest field, not the strongest.
       expect(read.confidence).toBeCloseTo(0.88);
 
@@ -599,6 +599,35 @@ describe('Customer onboarding', () => {
       const read = await service.readDocument(adminCtx, companyId, documentId, bytes);
       expect(read.suggestions.tin).toBe('12-34');
       expect(read.formatValid.tin).toBe(false);
+    });
+
+    it('records the format check for the DTI number and the PCN as well', async () => {
+      const dti = await companyWithRegistration('Dti Format Corp', 'dti_certificate');
+      const dtiRead = await reviewer({ dti_number: { value: '3456789', confidence: 0.95 } }).readDocument(
+        adminCtx,
+        dti.companyId,
+        dti.documentId,
+        bytes,
+      );
+      expect(dtiRead.formatValid.dtiNumber).toBe(true);
+      const id = await companyWithRegistration('Pcn Format Corp', 'government_id');
+      await reviewer({ id_number: { value: '1234', confidence: 0.95 } }).readDocument(
+        adminCtx,
+        id.companyId,
+        id.documentId,
+        bytes,
+      );
+      const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+      try {
+        const rows = await sql<{ id: string; format_valid: Record<string, boolean> }[]>`
+          select id, format_valid from kyc_documents where id in (${dti.documentId}, ${id.documentId})
+        `;
+        const stored = Object.fromEntries(rows.map((r) => [r.id, r.format_valid]));
+        expect(stored[dti.documentId]).toMatchObject({ dti_number: true });
+        expect(stored[id.documentId]).toMatchObject({ id_number: false });
+      } finally {
+        await sql.end();
+      }
     });
 
     it('writes the corrections the reviewer confirmed when approving', async () => {

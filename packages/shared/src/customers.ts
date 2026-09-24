@@ -122,7 +122,12 @@ export const CompanyDocumentReadResponseSchema = z.object({
     sex: z.string().nullable(),
     address: z.string().nullable(),
   }),
-  formatValid: z.object({ tin: z.boolean(), secNumber: z.boolean() }),
+  formatValid: z.object({
+    tin: z.boolean(),
+    secNumber: z.boolean(),
+    dtiNumber: z.boolean(),
+    idNumber: z.boolean(),
+  }),
   confidence: z.number().nullable(),
   extractionAvailable: z.boolean(),
 });
