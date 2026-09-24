@@ -15,13 +15,33 @@ export type ModelRequest =
 // queryFields recommends camelCase/PascalCase names (max 20 per request);
 // the mapping back to this repo's snake_case field keys happens in
 // azure-adapter.ts, not here.
-const KYC_QUERY_FIELDS = ['SecNumber', 'Tin', 'CompanyName', 'RegisteredAddress', 'RegistrationDate'];
+// BusinessNameNumber is the DTI certificate's "Business Name No."; one model
+// serves all three registration papers, and the caller keeps only the fields
+// the uploaded type carries (SCAN_FIELDS in apps/api customers.service.ts).
+const KYC_QUERY_FIELDS = [
+  'SecNumber',
+  'Tin',
+  'BusinessNameNumber',
+  'CompanyName',
+  'RegisteredAddress',
+  'RegistrationDate',
+];
 
 // The Philippine National ID (PhilSys) is a person-identity document, not a
 // corporate one -- same reason as above, prebuilt-idDocument doesn't cover
 // it, so this is queryFields against prebuilt-layout too, just asking for
-// name fields instead of company ones.
-const NATIONAL_ID_QUERY_FIELDS = ['FirstName', 'MiddleName', 'LastName'];
+// holder fields instead of company ones. PhilSysCardNumber is the 16-digit
+// PCN printed on the card front; the names follow the card's own labels
+// (Apelyido/Last Name, Petsa ng Kapanganakan/Date of Birth, Tirahan/Address).
+const NATIONAL_ID_QUERY_FIELDS = [
+  'FirstName',
+  'MiddleName',
+  'LastName',
+  'PhilSysCardNumber',
+  'DateOfBirth',
+  'Sex',
+  'Address',
+];
 
 // EDTR extraction is prebuilt-layout's TABLE output, not queryFields and
 // not a custom neural model.
@@ -88,4 +108,9 @@ export const QUERY_FIELD_TO_PORT_KEY: Record<string, string> = {
   FirstName: 'first_name',
   MiddleName: 'middle_name',
   LastName: 'last_name',
+  BusinessNameNumber: 'dti_number',
+  PhilSysCardNumber: 'id_number',
+  DateOfBirth: 'birth_date',
+  Sex: 'sex',
+  Address: 'address',
 };

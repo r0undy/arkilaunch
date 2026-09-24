@@ -69,19 +69,29 @@ describe('CompanyDocumentsPage: guards against a premature submit', () => {
       if (String(url).includes('/documents')) {
         return Promise.resolve(new Response(JSON.stringify({}), { status: 201 }));
       }
+      // The ID scan: extraction off, so the customer types the details.
+      if (String(url).includes('/kyc/scan')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ suggestions: {}, confidence: null, extractionAvailable: false }), {
+            status: 200,
+          }),
+        );
+      }
       return Promise.resolve(new Response('[]', { status: 200 }));
     });
     vi.stubGlobal('fetch', fetchMock);
 
     const rendered = await renderRoute('/account/companies/company-1/documents');
-    await waitFor(() => expect(screen.getByText(/Step 1 of 2/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument());
 
     const file = new File(['x'], 'id.png', { type: 'image/png' });
     const fileInput = document.querySelector('#doc-government_id-file') as HTMLInputElement;
     await userEvent.upload(fileInput, file);
+    // An image ID opens the cropper; skipping keeps the photo as taken.
+    await userEvent.click(await screen.findByRole('button', { name: /skip cropping/i }));
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /next: company registration/i })).not.toBeDisabled(),
+      expect(screen.getByRole('button', { name: /next: check your id details/i })).not.toBeDisabled(),
     );
 
     return { ...rendered, fileInput, fetchMock };
@@ -99,21 +109,26 @@ describe('CompanyDocumentsPage: guards against a premature submit', () => {
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/documents'))).toBe(false);
     });
-    expect(screen.getByText(/Step 1 of 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/account/companies/company-1/documents');
     unmount();
   });
 
   it('a second tap landing on "Upload" right as it replaces "Next" does not upload the government ID alone', async () => {
-    const { unmount, fileInput, fetchMock } = await setupOnStep1();
+    const { unmount, fetchMock } = await setupOnStep1();
 
+    await userEvent.click(screen.getByRole('button', { name: /next: check your id details/i }));
+    await waitFor(() => expect(screen.getByText(/Step 2 of 3/i)).toBeInTheDocument());
+    await userEvent.type(screen.getByLabelText(/first name/i), 'Juan');
+    await userEvent.type(screen.getByLabelText(/last name/i), 'Dela Cruz');
+    await userEvent.type(screen.getByLabelText(/PCN/i), '1234-5678-9012-3456');
     await userEvent.click(screen.getByRole('button', { name: /next: company registration/i }));
-    await waitFor(() => expect(screen.getByText(/Step 2 of 2/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Step 3 of 3/i)).toBeInTheDocument());
 
     // The double-tap: "Upload" now occupies the exact spot "Next" was just
     // tapped from. A tap landing there in the same beat as the transition
     // must not go through with only the government ID set.
-    const form = fileInput.closest('form')!;
+    const form = document.querySelector('#doc-company_registration-file')!.closest('form')!;
     form.requestSubmit();
 
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -137,7 +152,8 @@ describe('DOC_STEPS', () => {
   });
 
   it('numbers the steps for the customer', () => {
-    expect(DOC_STEPS[0]?.hint).toMatch(/Step 1 of 2/);
-    expect(DOC_STEPS[1]?.hint).toMatch(/Step 2 of 2/);
+    expect(DOC_STEPS[0]?.hint).toMatch(/Step 1 of 3/);
+    // Step 2 is checking what the ID says (IdReviewStep).
+    expect(DOC_STEPS[1]?.hint).toMatch(/Step 3 of 3/);
   });
 });

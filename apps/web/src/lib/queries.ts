@@ -3,6 +3,7 @@ import type {
   BookingDetailResponse,
   NegotiationMessageResponse,
   CompanyResponse,
+  CompanyReviewResponse,
   SiteForecastResponse,
   CustomerSiteResponse,
   BookingListResponse,
@@ -249,7 +250,7 @@ export const companiesQueries = {
   review: (kycStatus: 'pending' | 'approved' | 'rejected') =>
     queryOptions({
       queryKey: ['customers', 'review', kycStatus] as const,
-      queryFn: () => apiGet<CompanyResponse[]>(`/customers/review?kycStatus=${kycStatus}`),
+      queryFn: () => apiGet<CompanyReviewResponse[]>(`/customers/review?kycStatus=${kycStatus}`),
     }),
 };
 

@@ -2,7 +2,7 @@ import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from 'rea
 
 export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label: string;
-  error?: string;
+  error?: string | undefined;
   numeric?: boolean;
   size?: 'default' | 'field';
   hint?: ReactNode;
@@ -15,6 +15,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   const autoId = useId();
   const inputId = id ?? autoId;
   const errorId = error ? `${inputId}-error` : undefined;
+  const hintId = hint && !error ? `${inputId}-hint` : undefined;
 
   return (
     <div className="flex flex-col gap-1">
@@ -27,7 +28,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         id={inputId}
         required={required}
         aria-invalid={error ? true : undefined}
-        aria-describedby={errorId}
+        aria-describedby={errorId ?? hintId}
         inputMode={numeric ? 'decimal' : inputMode}
         className={[
           'block w-full rounded-sm border bg-surface px-3.5 py-3 text-base text-text',
@@ -51,7 +52,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           {error}
         </p>
       )}
-      {hint && !error && <p className="text-sm text-text-muted">{hint}</p>}
+      {hintId && (
+        <p id={hintId} className="text-sm text-text-muted">
+          {hint}
+        </p>
+      )}
     </div>
   );
 });

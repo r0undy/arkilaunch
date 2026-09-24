@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import postgres from 'postgres';
 import {
-  ExtractionUnavailableError,
   StubPaymentsAdapter,
   UnavailableDocumentIntelligenceAdapter,
   WeatherUnavailableError,
@@ -427,19 +426,60 @@ describe('Customer onboarding', () => {
       new CustomersService(events, new FixtureDocumentIntelligenceAdapter({ fields }));
     const bytes = Buffer.from('not-really-an-image');
 
-    it('suggests what it read, for the customer to correct', async () => {
-      const service = scanner({
-        company_name: { value: 'Almara Construction Corporation', confidence: 0.9 },
-        tin: { value: '123-456-789', confidence: 0.93 },
-        sec_number: { value: 'CS202312345', confidence: 0.95 },
-      });
-      const scan = await service.scanDocument(seededCustomerCtx, bytes);
-      expect(scan.suggestions).toEqual({
+    const companyFields = {
+      company_name: { value: 'Almara Construction Corporation', confidence: 0.9 },
+      tin: { value: '123 456 789', confidence: 0.93 },
+      sec_number: { value: 'CS202312345', confidence: 0.95 },
+      dti_number: { value: '1234567', confidence: 0.94 },
+      registered_address: { value: '12 Yard Road, Cebu City', confidence: 0.6 },
+    };
+
+    it('suggests only what the scanned paper carries, for the customer to correct', async () => {
+      const service = scanner(companyFields);
+      const sec = await service.scanDocument(seededCustomerCtx, 'sec_certificate', bytes);
+      expect(sec.suggestions).toMatchObject({
         companyName: 'Almara Construction Corporation',
-        tin: '123-456-789',
         secNumber: 'CS202312345',
+        address: '12 Yard Road, Cebu City',
+        tin: null,
+        dtiNumber: null,
       });
-      expect(scan.extractionAvailable).toBe(true);
+      // The address is free text and does not drag legibility down.
+      expect(sec.confidence).toBeCloseTo(0.9);
+      expect(sec.extractionAvailable).toBe(true);
+
+      const bir = await service.scanDocument(seededCustomerCtx, 'bir_cor', bytes);
+      // Normalised into the canonical dashed TIN.
+      expect(bir.suggestions).toMatchObject({ tin: '123-456-789', secNumber: null, dtiNumber: null });
+
+      const dti = await service.scanDocument(seededCustomerCtx, 'dti_certificate', bytes);
+      expect(dti.suggestions).toMatchObject({ dtiNumber: '1234567', tin: null, secNumber: null });
+    });
+
+    it('reads every National ID detail, normalised for the form', async () => {
+      const service = scanner({
+        first_name: { value: 'JUAN', confidence: 0.95 },
+        middle_name: { value: 'MERCADO', confidence: 0.93 },
+        last_name: { value: 'DELA CRUZ', confidence: 0.96 },
+        id_number: { value: '1234 5678 9012 3456', confidence: 0.97 },
+        birth_date: { value: 'JANUARY 02, 1990', confidence: 0.92 },
+        sex: { value: 'MALE', confidence: 0.99 },
+        address: { value: '1 Rizal St, Quezon City', confidence: 0.7 },
+        tin: { value: '123-456-789', confidence: 0.99 },
+      });
+      const scan = await service.scanDocument(seededCustomerCtx, 'government_id', bytes);
+      expect(scan.suggestions).toMatchObject({
+        firstName: 'JUAN',
+        middleName: 'MERCADO',
+        lastName: 'DELA CRUZ',
+        idNumber: '1234-5678-9012-3456',
+        birthDate: '1990-01-02',
+        sex: 'M',
+        address: '1 Rizal St, Quezon City',
+        // An ID never suggests a company number, whatever the model said.
+        tin: null,
+      });
+      expect(scan.confidence).toBeCloseTo(0.92);
     });
 
     it('drops a value that fails its format check rather than suggesting it', async () => {
@@ -447,15 +487,29 @@ describe('Customer onboarding', () => {
         tin: { value: 'not-a-tin', confidence: 0.99 },
         sec_number: { value: '??', confidence: 0.99 },
       });
-      const scan = await service.scanDocument(seededCustomerCtx, bytes);
-      expect(scan.suggestions.tin).toBeNull();
-      expect(scan.suggestions.secNumber).toBeNull();
+      expect((await service.scanDocument(seededCustomerCtx, 'bir_cor', bytes)).suggestions.tin).toBeNull();
+      expect(
+        (await service.scanDocument(seededCustomerCtx, 'sec_certificate', bytes)).suggestions.secNumber,
+      ).toBeNull();
     });
 
     it('says so instead of inventing values when no extractor is available', async () => {
-      const scan = await companies.scanDocument(seededCustomerCtx, bytes);
+      const scan = await companies.scanDocument(seededCustomerCtx, 'bir_cor', bytes);
       expect(scan).toEqual({
-        suggestions: { companyName: null, tin: null, secNumber: null },
+        suggestions: {
+      companyName: null,
+      tin: null,
+      secNumber: null,
+      dtiNumber: null,
+      address: null,
+      firstName: null,
+      middleName: null,
+      lastName: null,
+      idNumber: null,
+      birthDate: null,
+      sex: null,
+    },
+        confidence: null,
         extractionAvailable: false,
       });
     });
@@ -465,7 +519,7 @@ describe('Customer onboarding', () => {
       const url = process.env.DATABASE_URL_DIRECT!;
       const sql = postgres(url, { max: 1 });
       const before = await sql`select count(*)::int as n from kyc_documents`;
-      await service.scanDocument(seededCustomerCtx, bytes);
+      await service.scanDocument(seededCustomerCtx, 'bir_cor', bytes);
       const after = await sql`select count(*)::int as n from kyc_documents`;
       await sql.end();
       expect((after[0] as { n: number }).n).toBe((before[0] as { n: number }).n);
@@ -473,7 +527,7 @@ describe('Customer onboarding', () => {
 
     it("refuses a staff role: this is the customer's own typing aid", async () => {
       const service = scanner({ tin: { value: '123-456-789', confidence: 0.93 } });
-      await expect(service.scanDocument(adminCtx, bytes)).rejects.toBeInstanceOf(
+      await expect(service.scanDocument(adminCtx, 'bir_cor', bytes)).rejects.toBeInstanceOf(
         ForbiddenException,
       );
     });
@@ -501,7 +555,7 @@ describe('Customer onboarding', () => {
       reviewCtx = decodeCtx(tokens.accessToken);
     });
 
-    async function companyWithRegistration(name: string) {
+    async function companyWithRegistration(name: string, documentType = 'sec_certificate') {
       const company = await companies.createCompany(reviewCtx, {
         companyName: name,
         tin: '111-222-333',
@@ -511,7 +565,7 @@ describe('Customer onboarding', () => {
       const doc = await companies.addDocument(
         reviewCtx,
         company.id,
-        'sec_certificate',
+        documentType,
         `storage://fixtures/${randomUUID()}.jpg`,
         bytes,
       );
@@ -519,7 +573,7 @@ describe('Customer onboarding', () => {
     }
 
     it('reads the document onto the row without deciding anything', async () => {
-      const { companyId, documentId } = await companyWithRegistration('Reviewme Corp');
+      const { companyId, documentId } = await companyWithRegistration('Reviewme Corp', 'company_registration');
       const service = reviewer({
         company_name: { value: 'REVIEWME CORPORATION', confidence: 0.88 },
         tin: { value: '123-456-789', confidence: 0.93 },
@@ -540,7 +594,7 @@ describe('Customer onboarding', () => {
     });
 
     it('reports a malformed value as invalid instead of hiding it', async () => {
-      const { companyId, documentId } = await companyWithRegistration('Badformat Corp');
+      const { companyId, documentId } = await companyWithRegistration('Badformat Corp', 'bir_cor');
       const service = reviewer({ tin: { value: '12-34', confidence: 0.91 } });
       const read = await service.readDocument(adminCtx, companyId, documentId, bytes);
       expect(read.suggestions.tin).toBe('12-34');
@@ -548,18 +602,79 @@ describe('Customer onboarding', () => {
     });
 
     it('writes the corrections the reviewer confirmed when approving', async () => {
-      const { companyId } = await companyWithRegistration('Typo Corp');
+      const { companyId, documentId } = await companyWithRegistration('Typo Corp');
       await companies.decide(adminCtx, companyId, {
         decision: 'approved',
         companyName: 'Typo Construction Corporation',
         tin: '123-456-789',
         secNumber: 'CS202312345',
+        registryChecked: [documentId],
       });
       const approved = (await companies.listForReview(adminCtx, 'approved')).find(
         (c) => c.id === companyId,
       );
       expect(approved?.companyName).toBe('Typo Construction Corporation');
       expect(approved?.tin).toBe('123-456-789');
+      expect(approved?.secNumber).toBe('CS202312345');
+      expect(approved?.documents[0]?.registryChecked).toBe(true);
+    });
+
+    it('refuses approval until every SEC/BIR/DTI paper is ticked as checked on its registry', async () => {
+      const { companyId, documentId } = await companyWithRegistration('Unchecked Corp');
+      const dti = await companies.addDocument(
+        reviewCtx,
+        companyId,
+        'dti_certificate',
+        `storage://fixtures/${randomUUID()}.jpg`,
+        bytes,
+      );
+      await expect(
+        companies.decide(adminCtx, companyId, { decision: 'approved', registryChecked: [documentId] }),
+      ).rejects.toMatchObject({
+        response: { error: 'registry_check_required', documentTypes: ['dti_certificate'] },
+      });
+      // Rejecting needs no registry check.
+      await companies.decide(adminCtx, companyId, { decision: 'rejected' });
+      const rejected = (await companies.listForReview(adminCtx, 'rejected')).find((c) => c.id === companyId);
+      expect(rejected?.documents.find((d) => d.id === dti.id)?.registryChecked).toBe(false);
+    });
+
+    it('keeps what the customer confirmed beside the OCR, through a staff re-read', async () => {
+      const service = reviewer({
+        first_name: { value: 'JUAN', confidence: 0.95 },
+        last_name: { value: 'DELA CRUZ', confidence: 0.96 },
+        id_number: { value: '1234567890123456', confidence: 0.95 },
+      });
+      const company = await service.createCompany(reviewCtx, {
+        companyName: 'Confirmed Corp',
+        billingAddress: '12 Yard Road, Cebu City',
+        contactMobile: '0917 000 0000',
+      });
+      const doc = await service.addDocument(
+        reviewCtx,
+        company.id,
+        'government_id',
+        `storage://fixtures/${randomUUID()}.jpg`,
+        bytes,
+        { firstName: 'Juan', lastName: 'Dela Cruz', idNumber: '1234-5678-9012-3457', sex: 'M' },
+      );
+      const read = async () =>
+        (await companies.listForReview(adminCtx, 'pending'))
+          .find((c) => c.id === company.id)!
+          .documents.find((d) => d.id === doc.id)!;
+
+      const before = await read();
+      expect(before.ocr).toMatchObject({ first_name: 'JUAN', id_number: '1234-5678-9012-3456' });
+      expect(before.customer).toEqual({
+        first_name: 'Juan',
+        last_name: 'Dela Cruz',
+        id_number: '1234-5678-9012-3457',
+        sex: 'M',
+      });
+      expect(before.confidence).toBeCloseTo(0.95);
+
+      await service.readDocument(adminCtx, company.id, doc.id, bytes);
+      expect((await read()).customer.id_number).toBe('1234-5678-9012-3457');
     });
 
     it('leaves the company alone when the reviewer rejects it', async () => {

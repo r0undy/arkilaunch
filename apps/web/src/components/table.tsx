@@ -26,7 +26,7 @@ export interface TableProps<T> {
 // sorting/pagination/filtering are not part of this pass.
 export function Table<T>({ columns, rows, rowKey, onRowClick, rowLabel }: TableProps<T>) {
   return (
-    <Surface radius="md" elevation="sm" className="overflow-x-auto p-0">
+    <Surface radius="md" elevation="sm" className="relative overflow-x-auto p-0">
       <table className="w-full text-sm text-text">
         <thead>
           <tr className="border-b border-border text-left text-text-muted">
