@@ -7,6 +7,7 @@ import {
   CompanyUpdateSchema,
   CustomerSignupSchema,
   CustomerSiteCreateSchema,
+  KycScanRequestSchema,
 } from '@arkilaunch/shared';
 
 export class CompanyUpdateDto extends createZodDto(CompanyUpdateSchema) {}
@@ -16,3 +17,4 @@ export class CustomerSiteCreateDto extends createZodDto(CustomerSiteCreateSchema
 export class CompanyReviewQueryDto extends createZodDto(CompanyReviewQuerySchema) {}
 export class CompanyDecisionDto extends createZodDto(CompanyDecisionSchema) {}
 export class CustomerSignupDto extends createZodDto(CustomerSignupSchema) {}
+export class KycScanRequestDto extends createZodDto(KycScanRequestSchema) {}
