@@ -31,6 +31,8 @@ const EquipmentSpecFieldsSchema = z.object({
   engineType: z.string().max(100).optional(),
   fuelType: z.string().max(100).optional(),
   notes: z.string().max(2000).optional(),
+  // Free-text category for a machine filed under "Others".
+  categoryNote: z.string().max(200).optional(),
 });
 
 export const EquipmentCreateRequestSchema = EquipmentSpecFieldsSchema.extend({
@@ -67,11 +69,39 @@ export type EquipmentRetireResponse = z.infer<typeof EquipmentRetireResponseSche
 // POST /equipment/:id/maintenance-logs (SDD §4). performedAt is a full
 // timestamptz (not a bare date, unlike edtr.reportDate) since a
 // maintenance action is logged at a point in time, not a calendar day.
+// scheduleId names the task this service resets; omitted = the unit's
+// latest schedule (the pre-0035 behavior).
 export const MaintenanceLogCreateRequestSchema = z.object({
   performedAt: z.string().datetime({ offset: true }),
   notes: z.string().max(2000).optional(),
+  scheduleId: z.string().uuid().optional(),
 });
 export type MaintenanceLogCreateRequest = z.infer<typeof MaintenanceLogCreateRequestSchema>;
+
+// POST /equipment/:id/maintenance-schedules. One schedule per task.
+export const MaintenanceScheduleCreateRequestSchema = z.object({
+  task: z.string().min(1).max(100),
+  hoursInterval: z.number().positive().max(100_000),
+});
+export type MaintenanceScheduleCreateRequest = z.infer<typeof MaintenanceScheduleCreateRequestSchema>;
+
+// Common service intervals, offered as presets in the maintenance UI.
+export const MAINTENANCE_PRESETS: readonly { task: string; hoursInterval: number }[] = [
+  { task: 'Engine oil', hoursInterval: 250 },
+  { task: 'Hydraulic oil', hoursInterval: 1000 },
+  { task: 'Air filter', hoursInterval: 500 },
+  { task: 'Grease', hoursInterval: 10 },
+  { task: 'Fuel filter', hoursInterval: 500 },
+  { task: 'Undercarriage inspection', hoursInterval: 500 },
+];
+
+// PATCH /equipment/:id/runtime. A manual hour-meter correction; the reason
+// is required and lands in audit_logs.reason.
+export const RuntimeCorrectionRequestSchema = z.object({
+  runtimeHours: z.number().min(0).max(1_000_000),
+  reason: z.string().trim().min(3).max(500),
+});
+export type RuntimeCorrectionRequest = z.infer<typeof RuntimeCorrectionRequestSchema>;
 
 // GET /reports/utilization?from=&to= (SDD §4). Both optional; the service
 // defaults to a trailing 30-day window when omitted.
@@ -144,6 +174,7 @@ export const EquipmentResponseSchema = z.object({
   engineType: z.string().nullable(),
   fuelType: z.string().nullable(),
   notes: z.string().nullable(),
+  categoryNote: z.string().nullable(),
   // The rendered public URL, derived at the egress boundary. The raw Storage
   // object key (equipment.photo_uri) is never exposed: it encodes the tenant
   // id and the bucket layout, and keeping it server-side means the bucket can
@@ -166,11 +197,22 @@ export const MaintenanceDetailResponseSchema = z.object({
     })
     .nullable(),
   runtimeHours: z.number(),
+  // Every task schedule. hoursSinceService = runtime - (nextDue - interval).
+  schedules: z.array(
+    z.object({
+      id: z.string().uuid(),
+      task: z.string().nullable(),
+      hoursInterval: z.number(),
+      nextDue: z.number().nullable(),
+      hoursSinceService: z.number().nullable(),
+    }),
+  ),
   logs: z.array(
     z.object({
       id: z.string().uuid(),
       performedAt: z.coerce.date(),
       notes: z.string().nullable(),
+      scheduleId: z.string().uuid().nullable(),
     }),
   ),
 });

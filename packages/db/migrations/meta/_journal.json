@@ -246,6 +246,13 @@
       "when": 1790181780064,
       "tag": "0034_company_review_unlock",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790181781064,
+      "tag": "0035_equipment_maintenance",
+      "breakpoints": true
     }
   ]
 }

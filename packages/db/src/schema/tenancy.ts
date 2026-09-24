@@ -196,6 +196,8 @@ export const auditLogs = pgTable(
     action: text('action').notNull(), // CREATE, UPDATE, DELETE, APPROVE, DEDUCT
     entity: text('entity').notNull(),
     entityId: uuid('entity_id').notNull(),
+    // Why, for actions that must carry one (runtime correction, 0035).
+    reason: text('reason'),
     timestamp: timestamp('timestamp', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [tenantIsolationPolicy(),
