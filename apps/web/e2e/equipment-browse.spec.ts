@@ -79,10 +79,20 @@ test.describe('equipment browsing', () => {
 
   test('the skip link is the first tab stop and becomes visible when focused', async ({ page }) => {
     await page.goto('/equipment');
+    // Wait for the catalog to finish loading BEFORE tabbing. The query
+    // resolving mid-test re-renders the tree and drops focus, so a Tab
+    // pressed while the skeleton is still up lands nowhere -- which is how
+    // this failed once the grid change made the first paint land sooner.
+    await expect(page.getByRole('button', { name: /^rent$/i }).first()).toBeVisible();
+
     await page.keyboard.press('Tab');
 
     const skip = page.getByRole('link', { name: 'Skip to content' });
     await expect(skip).toBeFocused();
     await expect(skip).toBeVisible();
+
+    // And it actually goes somewhere: every shell puts id="main" on its own
+    // <main>, so the link has a target on this page.
+    await expect(page.locator('main#main')).toHaveCount(1);
   });
 });
