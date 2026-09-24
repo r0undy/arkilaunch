@@ -232,6 +232,13 @@
       "when": 1790181778064,
       "tag": "0032_truck_booking",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790181779064,
+      "tag": "0033_tenant_applications_approved",
+      "breakpoints": true
     }
   ]
 }

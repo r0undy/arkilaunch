@@ -1,20 +1,32 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { TenantApplication, TenantApplicationListResponse } from '@arkilaunch/shared';
+import type {
+  ApprovedTenantApplicationListResponse,
+  TenantApplication,
+  TenantApplicationListResponse,
+} from '@arkilaunch/shared';
 import { apiGet, apiPost } from '../lib/api-client.js';
 import { Button } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { useToast } from './toast.js';
 
-// The pending-applications list and its approve/reject pair are needed by
-// three screens now (the platform queue, the company pending queue, and a
-// single application's page), so they live here instead of being copied.
-// `tenants_list_pending_applications` is a SECURITY DEFINER function and
-// returns pending rows only -- there is no approved-companies endpoint.
+// The applications lists and the approve/reject pair are shared by the
+// Applications queue, a single application's page, the Approved companies
+// list and the app bar's count, so they live here instead of being copied.
+// Both lists sit under ['tenants', 'applications'], so the one invalidation
+// after a decision refreshes the pending and the approved list together.
 export const applicationsListQuery = (limit: number, offset: number) => ({
   queryKey: ['tenants', 'applications', limit, offset] as const,
   queryFn: () =>
     apiGet<TenantApplicationListResponse>(`/tenants/applications?limit=${limit}&offset=${offset}`),
+});
+
+export const approvedApplicationsListQuery = (limit: number, offset: number) => ({
+  queryKey: ['tenants', 'applications', 'approved', limit, offset] as const,
+  queryFn: () =>
+    apiGet<ApprovedTenantApplicationListResponse>(
+      `/tenants/applications/approved?limit=${limit}&offset=${offset}`,
+    ),
 });
 
 export function ApplicationActions({ application }: { application: TenantApplication }) {

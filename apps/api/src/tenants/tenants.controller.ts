@@ -49,6 +49,13 @@ export class TenantsController {
     return this.tenants.listApplications(query);
   }
 
+  // GET /tenants/applications/approved (tenant:approve, platform_admin only).
+  @Get('applications/approved')
+  @RequirePermission('tenant:approve')
+  listApprovedApplications(@Query() query: TenantApplicationListQueryDto) {
+    return this.tenants.listApprovedApplications(query);
+  }
+
   // GET /tenants/me/application (tenant:manage) -- an owner's own pending
   // application, if any. No platform-console UI exists yet for the list
   // above, but this unblocks account.applications.tsx immediately.

@@ -67,3 +67,17 @@ export const TenantApplicationListResponseSchema = z.object({
   total: z.number().int(),
 });
 export type TenantApplicationListResponse = z.infer<typeof TenantApplicationListResponseSchema>;
+
+// GET /tenants/applications/approved (tenant:approve, platform_admin only).
+export const ApprovedTenantApplicationSchema = TenantApplicationSchema.extend({
+  reviewedAt: z.coerce.date().nullable(),
+});
+export type ApprovedTenantApplication = z.infer<typeof ApprovedTenantApplicationSchema>;
+
+export const ApprovedTenantApplicationListResponseSchema = z.object({
+  items: z.array(ApprovedTenantApplicationSchema),
+  total: z.number().int(),
+});
+export type ApprovedTenantApplicationListResponse = z.infer<
+  typeof ApprovedTenantApplicationListResponseSchema
+>;
