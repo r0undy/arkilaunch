@@ -8,7 +8,7 @@ import type {
   Verify2faRequest,
 } from '@arkilaunch/shared';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1';
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
 
 const REFRESH_TOKEN_KEY = 'arkilaunch.refreshToken';
 
