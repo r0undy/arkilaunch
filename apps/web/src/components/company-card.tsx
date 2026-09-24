@@ -1,8 +1,17 @@
 import { Link } from '@tanstack/react-router';
 import { useState, type ReactElement } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import type { CompanyResponse } from '@arkilaunch/shared';
-import { customerSitesQueries } from '../lib/queries.js';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  hasRequiredCompanyDocuments,
+  isPrimaryRegistration,
+  normalizeTin,
+  UNLOCKABLE_COMPANY_FIELDS,
+  type CompanyResponse,
+} from '@arkilaunch/shared';
+import { companiesQueries, customerSitesQueries } from '../lib/queries.js';
+import { apiErrorText, apiPatch } from '../lib/api-client.js';
+import { Input } from './input.js';
+import { useToast } from './toast.js';
 import { formatStatus } from '../lib/format.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
@@ -24,6 +33,62 @@ export const DOC_LABELS: Record<string, string> = {
   company_registration: 'Company registration (legacy)',
 };
 
+// The company fields a reviewer can unlock, as the customer reads them.
+export const FIELD_LABELS: Record<string, string> = {
+  tin: 'TIN',
+  secNumber: 'SEC registration number',
+  billingAddress: 'Billing address',
+};
+
+// Submitted and waiting on the rental team: read-only except whatever the
+// reviewer unlocked (customers.service.ts comment()).
+export function isWaitingForReview(company: CompanyResponse): boolean {
+  return company.kycStatus === 'pending' && hasRequiredCompanyDocuments(company.documents);
+}
+
+// The unlocked company fields, and nothing else, for the customer to fix.
+function UnlockedFieldsForm({ company, fields }: { company: CompanyResponse; fields: string[] }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(fields.map((f) => [f, (company[f as keyof CompanyResponse] as string | null) ?? ''])),
+  );
+  const save = useMutation({
+    mutationFn: () =>
+      apiPatch<CompanyResponse>(`/me/companies/${company.id}`, {
+        ...values,
+        ...(values.tin !== undefined ? { tin: normalizeTin(values.tin) } : {}),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: companiesQueries.mine().queryKey });
+      toast.success('Sent to the rental team');
+    },
+    onError: (e) => toast.error('Not saved', apiErrorText(e)),
+  });
+  return (
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate();
+      }}
+    >
+      {fields.map((f) => (
+        <Input
+          key={f}
+          label={FIELD_LABELS[f] ?? f}
+          required
+          value={values[f] ?? ''}
+          onChange={(e) => setValues({ ...values, [f]: e.target.value })}
+        />
+      ))}
+      <Button type="submit" variant="primary" className="self-start" loading={save.isPending}>
+        Save changes
+      </Button>
+    </form>
+  );
+}
+
 export function VerificationPill({ status }: { status: string }) {
   const meta: Record<string, { tone: StatusTone; label: string; icon: ReactElement }> = {
     approved: { tone: 'recon-approved', label: 'Verified', icon: <CheckIcon /> },
@@ -41,13 +106,15 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
   const sites = useQuery(customerSitesQueries.mine());
   const [siteOpen, setSiteOpen] = useState(false);
   const mine = (sites.data ?? []).filter((site) => site.customerId === company.id);
-  // A document that came back too blurry to read needs the same "upload
-  // it again" prompt as one never uploaded at all.
-  const missing = Object.keys(DOC_LABELS).filter(
-    (type) =>
-      !company.documents.some(
-        (doc) => doc.documentType === type && doc.status !== 'resubmit_required',
-      ),
+  const has = (test: (type: string) => boolean) => company.documents.some((d) => test(d.documentType));
+  const missing = [
+    ...(has((t) => t === 'government_id') ? [] : [DOC_LABELS.government_id]),
+    ...(has(isPrimaryRegistration) ? [] : ['BIR Form 2303 or SEC certificate']),
+  ];
+  const waiting = isWaitingForReview(company);
+  const unlockedDocs = company.unlockedFields.filter((f) => f in DOC_LABELS);
+  const unlockedFields = company.unlockedFields.filter((f) =>
+    (UNLOCKABLE_COMPANY_FIELDS as readonly string[]).includes(f),
   );
 
   return (
@@ -70,9 +137,9 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
             <span className="text-text-muted">&middot; {formatStatus(doc.status)}</span>
           </p>
         ))}
-        {missing.length > 0 && (
+        {!waiting && company.kycStatus === 'pending' && missing.length > 0 && (
           <p className="text-text-muted">
-            Still needed: {missing.map((type) => DOC_LABELS[type]).join(', ')}.{' '}
+            Still needed: {missing.join(', ')}.{' '}
             <Link
               to="/account/companies/$companyId/documents"
               params={{ companyId: company.id }}
@@ -82,10 +149,33 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
             </Link>
           </p>
         )}
-        {company.kycStatus === 'pending' && missing.length === 0 && (
-          <p className="text-text-muted">
-            The rental team is checking your documents. You can already request quotes.
-          </p>
+        {waiting && (
+          <div role="status" className="flex flex-col gap-2 rounded-md border border-border px-3 py-2">
+            <p className="font-medium text-text">Waiting for admin review</p>
+            <p className="text-text-muted">
+              The rental team is checking your documents, so they cannot be changed for now. You can
+              already request quotes.
+            </p>
+            {company.reviewComment && (
+              <p className="text-text">
+                <span className="font-medium">Note from the rental team:</span> {company.reviewComment}
+              </p>
+            )}
+            {unlockedDocs.length > 0 && (
+              <p className="text-text-muted">
+                Unlocked for you to upload again:{' '}
+                {unlockedDocs.map((type) => DOC_LABELS[type]).join(', ')}.{' '}
+                <Link
+                  to="/account/companies/$companyId/documents"
+                  params={{ companyId: company.id }}
+                  className="text-accent underline"
+                >
+                  Upload again
+                </Link>
+              </p>
+            )}
+            {unlockedFields.length > 0 && <UnlockedFieldsForm company={company} fields={unlockedFields} />}
+          </div>
         )}
         {company.kycStatus === 'rejected' && (
           <p className="text-text-muted">

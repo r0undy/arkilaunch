@@ -12,6 +12,7 @@ import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { LoadError } from '../components/load-error.js';
 import { Skeleton } from '../components/skeleton.js';
+import { isWaitingForReview } from '../components/company-card.js';
 import { useToast } from '../components/toast.js';
 
 const TABS = ['Profile', 'Company', 'Security', 'Notifications'] as const;
@@ -130,6 +131,11 @@ function CompanyForm({ company }: { company: CompanyResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const verified = company.kycStatus === 'approved';
+  // A submitted company waiting on review takes only what the reviewer
+  // unlocked; otherwise TIN and SEC lock once verified.
+  const waiting = isWaitingForReview(company);
+  const editable = (field: string) =>
+    waiting ? company.unlockedFields.includes(field) : field === 'billingAddress' || !verified;
   const [tin, setTin] = useState(company.tin ?? '');
   const [secNumber, setSecNumber] = useState(company.secNumber ?? '');
   const [billingAddress, setBillingAddress] = useState(company.billingAddress ?? '');
@@ -137,8 +143,9 @@ function CompanyForm({ company }: { company: CompanyResponse }) {
   const save = useMutation({
     mutationFn: () =>
       apiPatch<CompanyResponse>(`/me/companies/${company.id}`, {
-        billingAddress: billingAddress.trim(),
-        ...(verified ? {} : { tin: tin.trim(), ...(secNumber.trim() ? { secNumber: secNumber.trim() } : {}) }),
+        ...(editable('billingAddress') ? { billingAddress: billingAddress.trim() } : {}),
+        ...(editable('tin') ? { tin: tin.trim() } : {}),
+        ...(editable('secNumber') && secNumber.trim() ? { secNumber: secNumber.trim() } : {}),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: companiesQueries.mine().queryKey });
@@ -157,29 +164,38 @@ function CompanyForm({ company }: { company: CompanyResponse }) {
     >
       <div className="sm:col-span-2">
         <p className="font-medium text-text">{company.companyName}</p>
-        <p className="text-sm text-text-muted">{verified ? 'Verified' : companyStatusLabel(company)}</p>
+        <p className="text-sm text-text-muted">
+          {verified ? 'Verified' : waiting ? 'Waiting for admin review' : companyStatusLabel(company)}
+        </p>
       </div>
       <Input
         label="TIN"
         value={tin}
-        disabled={verified}
+        disabled={!editable('tin')}
         onChange={(e) => setTin(e.target.value)}
         {...(verified ? { hint: 'Locked once verified.' } : {})}
       />
       <Input
         label="Registration number (SEC/DTI)"
         value={secNumber}
-        disabled={verified}
+        disabled={!editable('secNumber')}
         onChange={(e) => setSecNumber(e.target.value)}
       />
       <div className="sm:col-span-2">
-        <Input label="Billing address" value={billingAddress} onChange={(e) => setBillingAddress(e.target.value)} />
+        <Input
+          label="Billing address"
+          value={billingAddress}
+          disabled={!editable('billingAddress')}
+          onChange={(e) => setBillingAddress(e.target.value)}
+        />
       </div>
-      <div className="sm:col-span-2">
-        <Button type="submit" variant="secondary" loading={save.isPending}>
-          Save company
-        </Button>
-      </div>
+      {['tin', 'secNumber', 'billingAddress'].some(editable) && (
+        <div className="sm:col-span-2">
+          <Button type="submit" variant="secondary" loading={save.isPending}>
+            Save company
+          </Button>
+        </div>
+      )}
     </form>
   );
 }

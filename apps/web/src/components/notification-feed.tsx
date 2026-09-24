@@ -68,15 +68,20 @@ export function describeNotification(type: string, payload: unknown): Described 
       action: { label: 'Review', to: '/app/registration/pending', params: {} },
     };
   }
-  if (type === 'document_resubmit_required') {
-    const docLabel = formatStatus(typeof p.document_type === 'string' ? p.document_type : 'document');
+  // document_resubmit_required is no longer written; old rows read as the
+  // reviewer's note it has become.
+  if (type === 'company_review_comment' || type === 'document_resubmit_required') {
+    const name = typeof p.company_name === 'string' ? p.company_name : 'your company';
     return {
-      title: 'Document needs to be clearer',
-      body: `Your ${docLabel} could not be read. Upload a clearer copy.`,
+      title: 'Note from the rental team',
+      body:
+        typeof p.comment === 'string'
+          ? `On ${name}: ${p.comment}`
+          : `The rental team asked you to change something on ${name}.`,
       action: {
-        label: 'Upload again',
-        to: '/account/companies/$companyId/documents',
-        params: { companyId: typeof p.company_id === 'string' ? p.company_id : '' },
+        label: 'Open company',
+        to: '/account/companies/$companyId',
+        params: { companyId: String(p.company_id ?? p.customer_id ?? '') },
       },
     };
   }
