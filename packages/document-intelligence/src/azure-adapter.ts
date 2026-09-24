@@ -42,6 +42,20 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Re
   }
 }
 
+// The F0 tier throttles hard: six concurrent analyses drew 429 on three of
+// their polls (measured 2026-09-24), and a throttled call used to fail the
+// whole analysis -- losing a customer's upload over a busy second. A 429 is
+// a "try again shortly", so wait what Azure asks (Retry-After, default 2s)
+// and retry, within the caller's deadline.
+async function fetchThrottled(url: string, init: RequestInit, deadline: number): Promise<Response> {
+  for (;;) {
+    const res = await fetchWithTimeout(url, init);
+    if (res.status !== 429 || Date.now() >= deadline) return res;
+    const wait = Number(res.headers.get('Retry-After')) * 1000 || POLL_INTERVAL_MS;
+    await sleep(Math.min(wait, Math.max(0, deadline - Date.now())));
+  }
+}
+
 // Thrown instead of ExtractionUnavailableError: this is not "the service is
 // unreachable", it is "the service answered but the answer cannot be
 // trusted" -- a distinct failure the caller must not treat the same way
@@ -175,7 +189,7 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
       query.set('queryFields', request.queryFields.join(','));
     }
 
-    const res = await fetchWithTimeout(
+    const res = await fetchThrottled(
       `${this.baseUrl}/documentintelligence/documentModels/${request.modelId}:analyze?${query.toString()}`,
       {
         method: 'POST',
@@ -185,6 +199,7 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
         },
         body: JSON.stringify({ base64Source: imageStream.toString('base64') }),
       },
+      Date.now() + POLL_TIMEOUT_MS,
     );
 
     if (res.status === 401 || res.status === 403) {
@@ -212,9 +227,11 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
     const deadline = Date.now() + POLL_TIMEOUT_MS;
 
     for (;;) {
-      const res = await fetchWithTimeout(operationLocation, {
-        headers: { 'Ocp-Apim-Subscription-Key': this.apiKey },
-      });
+      const res = await fetchThrottled(
+        operationLocation,
+        { headers: { 'Ocp-Apim-Subscription-Key': this.apiKey } },
+        deadline,
+      );
       if (!res.ok) {
         throw new DocumentAnalysisError(`Azure DI poll failed (${res.status})`);
       }
