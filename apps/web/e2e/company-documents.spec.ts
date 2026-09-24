@@ -34,10 +34,12 @@ test.describe('company documents', () => {
     const next = page.getByRole('button', { name: 'Next: check the details' });
     // DTI alone cannot move the application on.
     await page.getByTestId('doc-dti_certificate-file').setInputFiles(file('dti.png'));
+    await page.getByRole('button', { name: 'Skip cropping' }).click();
     await expect(next).toBeDisabled();
 
     await type.selectOption('sec_certificate');
     await page.getByTestId('doc-company_registration-file').setInputFiles(file('sec.png'));
+    await page.getByRole('button', { name: 'Skip cropping' }).click();
     await expect(next).toBeEnabled();
     await next.click();
 

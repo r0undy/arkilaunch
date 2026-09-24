@@ -109,17 +109,23 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     await page.goto('/account/companies/new');
     await expect(page.getByText(/Step 1 of 3/)).toBeVisible();
 
-    // Step 1: the photo opens the cropper, card shape first, square on toggle.
+    // Step 1: the photo opens the cropper, free size first, then the card
+    // shape and square on toggle.
     await page.getByTestId('doc-government_id-file').setInputFiles(file('id.png', idPng));
-    const dialog = page.getByRole('dialog', { name: 'Crop your National ID' });
+    const dialog = page.getByRole('dialog', { name: 'Crop your document' });
     await expect(dialog).toBeVisible();
     const shape = dialog.getByRole('radiogroup', { name: 'Crop shape' });
-    await expect(shape.getByRole('radio', { name: 'ID card' })).toHaveAttribute('aria-checked', 'true');
+    await expect(shape.getByRole('radio', { name: 'Free' })).toHaveAttribute('aria-checked', 'true');
     const cropArea = dialog.locator('[data-testid="cropper"]');
     const ratio = async () => {
       const box = (await cropArea.boundingBox())!;
       return box.width / box.height;
     };
+    // Free starts on the whole photo (1400 x 900) and resizes each side.
+    await expect.poll(ratio).toBeCloseTo(1400 / 900, 1);
+    await dialog.getByLabel('Height').fill('0.5');
+    await expect.poll(ratio).toBeCloseTo(1400 / 450, 1);
+    await shape.getByRole('radio', { name: 'ID card' }).click();
     await expect.poll(ratio).toBeCloseTo(85.6 / 54, 1);
     await shape.getByRole('radio', { name: 'Square' }).click();
     await expect.poll(ratio).toBeCloseTo(1, 1);
@@ -158,8 +164,12 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     // Step 3: SEC as the primary paper, DTI as the secondary.
     await expect(page.getByText(/Step 3 of 3/)).toBeVisible();
     await page.getByLabel('Document type').selectOption('sec_certificate');
+    // Every photo opens the cropper, certificates included.
     await page.getByTestId('doc-company_registration-file').setInputFiles(file('sec.png', secPng));
+    await page.getByRole('dialog', { name: 'Crop your document' }).getByRole('button', { name: 'Use this crop' }).click();
     await page.getByTestId('doc-dti_certificate-file').setInputFiles(file('dti.png', dtiPng));
+    await page.getByRole('dialog', { name: 'Crop your document' }).getByRole('button', { name: 'Use this crop' }).click();
+    await expect(page.getByRole('button', { name: 'Crop again' })).toHaveCount(2);
     await page.getByRole('button', { name: 'Next: check the details' }).click();
 
     // Only the numbers these papers print: no TIN without a 2303.

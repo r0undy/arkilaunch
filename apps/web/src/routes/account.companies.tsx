@@ -110,30 +110,24 @@ const REGISTRATION_OPTIONS: { value: PrimaryRegistrationType; label: string }[] 
   { value: 'sec_certificate', label: 'SEC Certificate of Incorporation' },
 ];
 
-function DocumentStep({
-  step,
+// A capture that opens the cropper for every photo. The photo as taken is
+// kept so "Crop again" starts from the full frame rather than re-cropping a
+// crop. PDFs are never cropped.
+function CroppableCapture({
+  id,
+  label,
   value,
   onChange,
-  registrationType,
-  onRegistrationTypeChange,
-  dti,
-  onDtiChange,
 }: {
-  step: (typeof DOC_STEPS)[number];
+  id: string;
+  label: string;
   value: File | null;
   onChange: (file: File | null) => void;
-  registrationType: PrimaryRegistrationType;
-  onRegistrationTypeChange: (type: PrimaryRegistrationType) => void;
-  dti: File | null;
-  onDtiChange: (file: File | null) => void;
 }) {
-  const isRegistration = step.type === 'company_registration';
-  // The ID photo as taken, kept so "Crop again" starts from the full frame
-  // rather than re-cropping a crop. PDFs are never cropped.
   const [original, setOriginal] = useState<File | null>(null);
   const [cropping, setCropping] = useState(false);
 
-  function onIdChange(file: File | null) {
+  function onPick(file: File | null) {
     const image = file?.type.startsWith('image/') ? file : null;
     setOriginal(image);
     onChange(file);
@@ -141,33 +135,9 @@ function DocumentStep({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm text-text-muted">{step.hint}</p>
-      {isRegistration && (
-        <label className="flex flex-col gap-1 text-sm font-medium text-text">
-          Document type
-          <select
-            id="registration-type"
-            value={registrationType}
-            onChange={(e) => onRegistrationTypeChange(e.target.value as PrimaryRegistrationType)}
-            className="min-h-11 rounded-md border border-border bg-surface px-3 text-text"
-          >
-            {REGISTRATION_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      <CaptureField
-        id={`doc-${step.type}`}
-        label={isRegistration ? DOC_LABELS[registrationType]! : step.label}
-        accept="image/*,application/pdf"
-        value={value}
-        onChange={isRegistration ? onChange : onIdChange}
-      />
-      {!isRegistration && original && value && (
+    <>
+      <CaptureField id={id} label={label} accept="image/*,application/pdf" value={value} onChange={onPick} />
+      {original && value && (
         <div>
           <Button type="button" variant="secondary" onClick={() => setCropping(true)}>
             Crop again
@@ -184,11 +154,66 @@ function DocumentStep({
           }}
         />
       )}
-      {isRegistration && (
-        <CaptureField
+    </>
+  );
+}
+
+function DocumentStep({
+  step,
+  value,
+  onChange,
+  registrationType,
+  onRegistrationTypeChange,
+  dti,
+  onDtiChange,
+  showPrimary = true,
+  showDti = true,
+}: {
+  step: (typeof DOC_STEPS)[number];
+  value: File | null;
+  onChange: (file: File | null) => void;
+  registrationType: PrimaryRegistrationType;
+  onRegistrationTypeChange: (type: PrimaryRegistrationType) => void;
+  dti: File | null;
+  onDtiChange: (file: File | null) => void;
+  // A submitted company re-uploads only what the reviewer unlocked.
+  showPrimary?: boolean;
+  showDti?: boolean;
+}) {
+  const isRegistration = step.type === 'company_registration';
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm text-text-muted">{step.hint}</p>
+      {isRegistration && showPrimary && (
+        <label className="flex flex-col gap-1 text-sm font-medium text-text">
+          Document type
+          <select
+            id="registration-type"
+            value={registrationType}
+            onChange={(e) => onRegistrationTypeChange(e.target.value as PrimaryRegistrationType)}
+            className="min-h-11 rounded-md border border-border bg-surface px-3 text-text"
+          >
+            {REGISTRATION_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {(!isRegistration || showPrimary) && (
+        <CroppableCapture
+          id={`doc-${step.type}`}
+          label={isRegistration ? DOC_LABELS[registrationType]! : step.label}
+          value={value}
+          onChange={onChange}
+        />
+      )}
+      {isRegistration && showDti && (
+        <CroppableCapture
           id="doc-dti_certificate"
           label="DTI Business Name certificate (secondary, optional)"
-          accept="image/*,application/pdf"
           value={dti}
           onChange={onDtiChange}
         />
