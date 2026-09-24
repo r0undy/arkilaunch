@@ -27,7 +27,8 @@ export const TruckEstimateRequestSchema = z.object({ pickup: Place, dropoff: Pla
 export type TruckEstimateRequest = z.infer<typeof TruckEstimateRequestSchema>;
 
 export const TruckRequestCreateSchema = TruckEstimateRequestSchema.extend({
-  scheduledFor: z.coerce.date(),
+  // A pickup in the past can never be run.
+  scheduledFor: z.coerce.date().refine((d) => d.getTime() > Date.now(), { message: 'scheduledFor must be in the future' }),
   notes: z.string().trim().max(1000).optional(),
 }).strict();
 export type TruckRequestCreate = z.infer<typeof TruckRequestCreateSchema>;

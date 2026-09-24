@@ -9,7 +9,9 @@ import {
   invoices,
   maintenanceLogs,
   maintenanceSchedules,
+  maintenanceWindows,
   payments,
+  tenantCalendar,
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
@@ -23,6 +25,10 @@ import type {
   MaintenanceDetailResponse,
   MaintenanceLogCreateRequest,
   MaintenanceScheduleCreateRequest,
+  MaintenanceWindowCreateRequest,
+  AvailabilityQuery,
+  AvailabilityResponse,
+  TenantCalendar,
   RequestContext,
   RuntimeCorrectionRequest,
   UtilizationQuery,
@@ -31,6 +37,7 @@ import type {
 import { EventsService } from '../events/events.service.js';
 import { round2HalfUp } from '../quotes/pricing-engine.service.js';
 import { countRows } from '../common/count-rows.js';
+import { dayAvailability, readCalendar } from '../common/equipment-availability.js';
 
 // Documented simplification (same category as the deposit-ledger balance
 // tracking in edtr.service.ts): the utilization denominator is a standard
@@ -329,6 +336,11 @@ export class FleetService {
         .from(maintenanceLogs)
         .where(eq(maintenanceLogs.equipmentId, equipmentId))
         .orderBy(desc(maintenanceLogs.performedAt));
+      const windows = await tx
+        .select()
+        .from(maintenanceWindows)
+        .where(eq(maintenanceWindows.equipmentId, equipmentId))
+        .orderBy(maintenanceWindows.startsAt);
 
       return {
         schedule: schedule
@@ -354,6 +366,7 @@ export class FleetService {
           notes: log.notes,
           scheduleId: log.scheduleId,
         })),
+        windows: windows.map((w) => ({ id: w.id, startsAt: w.startsAt, endsAt: w.endsAt, notes: w.notes })),
       };
     });
   }
@@ -461,6 +474,85 @@ export class FleetService {
       });
       return { id: created.id, task: created.task, hoursInterval: body.hoursInterval };
     });
+  }
+
+  // POST /equipment/:id/maintenance-windows.
+  async createMaintenanceWindow(ctx: RequestContext, equipmentId: string, body: MaintenanceWindowCreateRequest) {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.select().from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
+      if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
+      const [created] = await tx
+        .insert(maintenanceWindows)
+        .values({
+          tenantId: ctx.tenantId,
+          equipmentId,
+          startsAt: new Date(body.startsAt),
+          endsAt: new Date(body.endsAt),
+          notes: body.notes || null,
+        })
+        .returning();
+      if (!created) throw new Error('maintenance_windows insert returned no row');
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'CREATE',
+        entity: 'maintenance_windows',
+        entityId: created.id,
+      });
+      return { id: created.id };
+    });
+  }
+
+  // DELETE /equipment/:id/maintenance-windows/:windowId.
+  async deleteMaintenanceWindow(ctx: RequestContext, equipmentId: string, windowId: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const [deleted] = await tx
+        .delete(maintenanceWindows)
+        .where(and(eq(maintenanceWindows.id, windowId), eq(maintenanceWindows.equipmentId, equipmentId)))
+        .returning();
+      if (!deleted) throw new NotFoundException({ error: 'maintenance_window_not_found' });
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'DELETE',
+        entity: 'maintenance_windows',
+        entityId: windowId,
+      });
+      return { id: windowId };
+    });
+  }
+
+  // GET /equipment/:id/availability?from&to. Per-day free/taken for the
+  // booking pickers; POST /bookings re-checks at write time.
+  async availability(ctx: RequestContext, equipmentId: string, query: AvailabilityQuery): Promise<AvailabilityResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.select({ id: equipment.id }).from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
+      if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
+      return dayAvailability(tx, equipmentId, query.from, query.to);
+    });
+  }
+
+  // GET/PUT /tenant-calendar: business hours + holidays/blackouts.
+  getCalendar(ctx: RequestContext): Promise<TenantCalendar | null> {
+    return withTenantTx(ctx, (tx) => readCalendar(tx));
+  }
+
+  async saveCalendar(ctx: RequestContext, body: TenantCalendar): Promise<TenantCalendar> {
+    const values = { ...body, updatedAt: new Date() };
+    await withTenantTx(ctx, async (tx) => {
+      await tx
+        .insert(tenantCalendar)
+        .values({ tenantId: ctx.tenantId, ...values })
+        .onConflictDoUpdate({ target: tenantCalendar.tenantId, set: values });
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'tenant_calendar',
+        entityId: ctx.tenantId,
+      });
+    });
+    return body;
   }
 
   // PATCH /api/v1/equipment/:id/runtime. Manual hour-meter correction, the

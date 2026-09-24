@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UploadedFile,
@@ -27,6 +28,9 @@ import {
   MaintenanceScheduleCreateDto,
   RuntimeCorrectionDto,
   UtilizationQueryDto,
+  MaintenanceWindowCreateDto,
+  AvailabilityQueryDto,
+  TenantCalendarDto,
 } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
@@ -113,6 +117,38 @@ export class FleetController {
     @Req() req: CtxRequest,
   ) {
     return this.fleet.createSchedule(req.ctx, id, body);
+  }
+
+  @Post('equipment/:id/maintenance-windows')
+  @RequirePermission('fleet:manage')
+  createMaintenanceWindow(@Param('id') id: string, @Body() body: MaintenanceWindowCreateDto, @Req() req: CtxRequest) {
+    return this.fleet.createMaintenanceWindow(req.ctx, id, body);
+  }
+
+  @Delete('equipment/:id/maintenance-windows/:windowId')
+  @RequirePermission('fleet:manage')
+  deleteMaintenanceWindow(@Param('id') id: string, @Param('windowId') windowId: string, @Req() req: CtxRequest) {
+    return this.fleet.deleteMaintenanceWindow(req.ctx, id, windowId);
+  }
+
+  // Customers read it too (the booking pickers); only free/taken per day
+  // and the business hours go out, never whose booking holds a day.
+  @Get('equipment/:id/availability')
+  @RequirePermission('booking:read', ...STAFF_READ)
+  availability(@Param('id') id: string, @Query() query: AvailabilityQueryDto, @Req() req: CtxRequest) {
+    return this.fleet.availability(req.ctx, id, query);
+  }
+
+  @Get('tenant-calendar')
+  @RequirePermission(...STAFF_READ)
+  calendar(@Req() req: CtxRequest) {
+    return this.fleet.getCalendar(req.ctx);
+  }
+
+  @Put('tenant-calendar')
+  @RequirePermission('fleet:manage')
+  saveCalendar(@Body() body: TenantCalendarDto, @Req() req: CtxRequest) {
+    return this.fleet.saveCalendar(req.ctx, body);
   }
 
   @Patch('equipment/:id/runtime')

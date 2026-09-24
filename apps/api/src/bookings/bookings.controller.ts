@@ -58,6 +58,12 @@ export class BookingsController {
     return this.bookings.markReturned(req.ctx, id);
   }
 
+  @Get(':id/reschedule-suggestion')
+  @RequirePermission('quote:approve')
+  rescheduleSuggestion(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.bookings.rescheduleSuggestion(req.ctx, id);
+  }
+
   @Get(':id/messages')
   @RequirePermission('booking:read')
   listMessages(@Param('id') id: string, @Req() req: CtxRequest) {
