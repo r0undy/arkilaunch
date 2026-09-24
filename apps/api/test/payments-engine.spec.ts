@@ -101,6 +101,7 @@ describe('PaymentsService (PRD-F2)', () => {
   it('QAD-T10: checkout creates a pending payment storing only provider_ref + status, never card data', async () => {
     const bookingId = await createBooking(1);
     const result = await payments_.checkout(customerCtxA, bookingId);
+    if (!('paymentId' in result)) throw new Error('expected a card checkout');
 
     expect(result.checkoutUrl).toContain('about:blank');
     const [paymentRow] = await withTenantTx(customerCtxA, (tx) =>
@@ -114,6 +115,7 @@ describe('PaymentsService (PRD-F2)', () => {
   it('QAD-T20: an unresolved checkout leaves the booking/invoice untouched until the webhook fires', async () => {
     const bookingId = await createBooking(2);
     const result = await payments_.checkout(customerCtxA, bookingId);
+    if (!('paymentId' in result)) throw new Error('expected a card checkout');
 
     const [rental] = await withTenantTx(customerCtxA, (tx) => tx.select().from(rentals).where(eq(rentals.id, bookingId)));
     const [invoice] = await withTenantTx(customerCtxA, (tx) => tx.select().from(invoices).where(eq(invoices.id, result.invoiceId)));
@@ -124,6 +126,7 @@ describe('PaymentsService (PRD-F2)', () => {
   it('QAD-T28: a valid signed webhook confirms payment and moves invoice/rental status', async () => {
     const bookingId = await createBooking(3);
     const result = await payments_.checkout(customerCtxA, bookingId);
+    if (!('paymentId' in result)) throw new Error('expected a card checkout');
 
     const rawBody = buildEvent('payment.paid', result.invoiceId);
     const header = signWebhookHeader(rawBody, webhookSecret);
@@ -139,6 +142,7 @@ describe('PaymentsService (PRD-F2)', () => {
   it('QAD-T28: a replayed webhook is idempotent -- no double credit', async () => {
     const bookingId = await createBooking(4);
     const result = await payments_.checkout(customerCtxA, bookingId);
+    if (!('paymentId' in result)) throw new Error('expected a card checkout');
     const rawBody = buildEvent('payment.paid', result.invoiceId);
     const header = signWebhookHeader(rawBody, webhookSecret);
 
@@ -153,6 +157,7 @@ describe('PaymentsService (PRD-F2)', () => {
   it('QAD-T28: a forged signature is rejected before anything is written', async () => {
     const bookingId = await createBooking(5);
     const result = await payments_.checkout(customerCtxA, bookingId);
+    if (!('paymentId' in result)) throw new Error('expected a card checkout');
     const rawBody = buildEvent('payment.paid', result.invoiceId);
     const forgedHeader = `t=${Math.floor(Date.now() / 1000)},te=deadbeef,li=0000000000000000000000000000000000000000000000000000000000000000`;
 
@@ -165,6 +170,7 @@ describe('PaymentsService (PRD-F2)', () => {
   it('payment.failed leaves the invoice/rental unpaid and marks the payment failed', async () => {
     const bookingId = await createBooking(6);
     const result = await payments_.checkout(customerCtxA, bookingId);
+    if (!('paymentId' in result)) throw new Error('expected a card checkout');
     const rawBody = buildEvent('payment.failed', result.invoiceId);
     const header = signWebhookHeader(rawBody, webhookSecret);
 

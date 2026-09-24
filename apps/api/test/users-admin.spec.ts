@@ -10,6 +10,7 @@ import { AuthService } from '../src/auth/auth.service.js';
 import { RefreshTokenService } from '../src/auth/refresh-token.service.js';
 import { TotpService } from '../src/auth/totp.service.js';
 import { EventsService } from '../src/events/events.service.js';
+import type { StorageService } from '../src/storage/storage.service.js';
 
 function jwtService(): JwtService {
   const publicKey = process.env.JWT_PUBLIC_KEY!.replace(/\\n/g, '\n');
@@ -25,7 +26,7 @@ function freshAuth(): AuthService {
 // two-tenant seed (`pnpm db:seed:test`).
 describe('UsersService (S19)', () => {
   const auth = freshAuth();
-  const usersService = new UsersService(auth, new RefreshTokenService(), new EventsService());
+  const usersService = new UsersService(auth, new RefreshTokenService(), new EventsService(), {} as StorageService);
 
   let adminCtxA: RequestContext;
   let adminCtxB: RequestContext;
