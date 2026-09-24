@@ -8,7 +8,9 @@ test('the landing page previews the fleet and links to the rest', async ({ page 
   await page.goto('/');
 
   const cards = page.getByRole('heading', { level: 3 });
-  await expect(cards.first()).toBeVisible();
+  // The preview waits on the public catalog API; on a cold CI dev server
+  // the first mobile hit can take longer than the 5s default.
+  await expect(cards.first()).toBeVisible({ timeout: 30_000 });
   // A shop window, not the catalog: at most six, then a way through.
   expect(await cards.count()).toBeLessThanOrEqual(6);
 
