@@ -129,10 +129,10 @@ type ReadField = keyof typeof READ_FIELDS;
 // these, so a SEC certificate never prefills a TIN it does not carry.
 const SCAN_FIELDS: Record<string, ReadField[]> = {
   government_id: ['firstName', 'middleName', 'lastName', 'idNumber', 'birthDate', 'sex', 'address'],
-  sec_certificate: ['companyName', 'secNumber', 'registeredAddress'],
+  sec_certificate: ['companyName', 'secNumber', 'registeredAddress', 'registrationDate'],
   bir_cor: ['companyName', 'tin', 'registeredAddress'],
   dti_certificate: ['companyName', 'dtiNumber', 'registeredAddress'],
-  company_registration: ['companyName', 'tin', 'secNumber', 'registeredAddress'],
+  company_registration: ['companyName', 'tin', 'secNumber', 'registeredAddress', 'registrationDate'],
 };
 
 // Format checks per field. A scan suggestion failing its check is dropped;
@@ -372,7 +372,10 @@ export class CustomersService {
     const confidences: number[] = [];
     for (const [field, key] of Object.entries(READ_FIELDS) as [ReadField, string][]) {
       const read = result.fields[key];
-      if (!read) continue;
+      // Only what this paper prints: one model serves all three
+      // certificates, and its low-confidence guess at a TIN on an SEC
+      // certificate is neither evidence nor a legibility signal.
+      if (!read || !(SCAN_FIELDS[documentType]?.includes(field) ?? true)) continue;
       const value = normalizeRead(field, read.value);
       suggestions[field] = value;
       ocrPayload[key] = value;

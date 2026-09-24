@@ -51,7 +51,10 @@ async function render(browser: Browser, html: string, width: number, height: num
   return png;
 }
 
-const companyName = `E2E Specimen Builders ${Date.now()}`;
+// Letters only: a trailing timestamp reads as a separate low-confidence
+// token and bounces the certificate as illegible.
+const runTag = Date.now().toString(36).replace(/\d/g, (d) => 'abcdefghij'[Number(d)]!).toUpperCase();
+const companyName = `E2E Specimen Builders ${runTag}`;
 
 // A fresh customer per run rather than the seeded one: this flow adds a
 // company, and a login that owns several makes other specs pick one.
@@ -176,6 +179,8 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     await page.getByLabel('Contact mobile').fill('+63 917 000 1234');
     await page.getByRole('checkbox').check();
     await page.getByRole('button', { name: 'Submit' }).click();
+    // Every paper uploaded: a failed upload still redirects, with a different toast.
+    await expect(page.getByText('Company added')).toBeVisible({ timeout: 60_000 });
     await expect(page).toHaveURL(/\/account\/applications/, { timeout: 60_000 });
     await expectNoHorizontalScroll(page);
   });

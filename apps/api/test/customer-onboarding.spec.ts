@@ -556,7 +556,7 @@ describe('Customer onboarding', () => {
       reviewCtx = decodeCtx(tokens.accessToken);
     });
 
-    async function companyWithRegistration(name: string) {
+    async function companyWithRegistration(name: string, documentType = 'sec_certificate') {
       const company = await companies.createCompany(reviewCtx, {
         companyName: name,
         tin: '111-222-333',
@@ -566,7 +566,7 @@ describe('Customer onboarding', () => {
       const doc = await companies.addDocument(
         reviewCtx,
         company.id,
-        'sec_certificate',
+        documentType,
         `storage://fixtures/${randomUUID()}.jpg`,
         bytes,
       );
@@ -574,7 +574,7 @@ describe('Customer onboarding', () => {
     }
 
     it('reads the document onto the row without deciding anything', async () => {
-      const { companyId, documentId } = await companyWithRegistration('Reviewme Corp');
+      const { companyId, documentId } = await companyWithRegistration('Reviewme Corp', 'company_registration');
       const service = reviewer({
         company_name: { value: 'REVIEWME CORPORATION', confidence: 0.88 },
         tin: { value: '123-456-789', confidence: 0.93 },
@@ -595,7 +595,7 @@ describe('Customer onboarding', () => {
     });
 
     it('reports a malformed value as invalid instead of hiding it', async () => {
-      const { companyId, documentId } = await companyWithRegistration('Badformat Corp');
+      const { companyId, documentId } = await companyWithRegistration('Badformat Corp', 'bir_cor');
       const service = reviewer({ tin: { value: '12-34', confidence: 0.91 } });
       const read = await service.readDocument(adminCtx, companyId, documentId, bytes);
       expect(read.suggestions.tin).toBe('12-34');
