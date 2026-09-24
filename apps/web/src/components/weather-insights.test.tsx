@@ -48,6 +48,9 @@ function stub({ forecastStatus = 200, sites = [SITE], reason = 'upstream_failed'
           ),
         );
       }
+      if (href.includes('/me/companies')) {
+        return Promise.resolve(new Response('[]', { status: 200 }));
+      }
       if (href.includes('/me/sites')) {
         return Promise.resolve(new Response(JSON.stringify(sites), { status: 200 }));
       }

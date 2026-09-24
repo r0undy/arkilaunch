@@ -4,8 +4,6 @@ import { storefrontLayoutRoute } from './_storefront.js';
 import { Button } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { EquipmentSchematic } from '../components/equipment-schematic.js';
-import { StatusPill } from '../components/status-pill.js';
-import { CheckIcon, TruckIcon, WrenchIcon } from '../components/icons.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import { catalogQueries } from '../lib/queries.js';
 import { ApiError } from '../lib/api-client.js';
@@ -13,16 +11,6 @@ import { Skeleton } from '../components/skeleton.js';
 import { LoadError } from '../components/load-error.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
 import { getAccessToken } from '../lib/auth-client.js';
-
-const AVAILABILITY_PILL = {
-  available: { tone: 'fleet-available' as const, label: 'Available', icon: <CheckIcon /> },
-  deployed: { tone: 'fleet-deployed' as const, label: 'Deployed', icon: <TruckIcon /> },
-  maintenance: {
-    tone: 'fleet-maintenance' as const,
-    label: 'In maintenance',
-    icon: <WrenchIcon />,
-  },
-};
 
 function EquipmentDetailPage() {
   const { equipmentId } = equipmentDetailRoute.useParams();
@@ -66,7 +54,7 @@ function EquipmentDetailPage() {
     );
   }
 
-  const pill = AVAILABILITY_PILL[equipment.availabilityStatus];
+  const unavailable = equipment.availabilityStatus !== 'available';
   const imageUrl = equipment.photoUri ?? equipmentImageUrl(equipment.model);
 
   return (
@@ -83,16 +71,14 @@ function EquipmentDetailPage() {
           className="max-h-full"
         />
       </div>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-semibold text-ink-mk">{equipment.model}</h1>
-          <p className="text-sm text-text-muted">{equipment.equipmentTypeName}</p>
-        </div>
-        <StatusPill tone={pill.tone} label={pill.label} icon={pill.icon} />
+      <div>
+        <h1 className="font-display text-2xl font-semibold text-ink-mk">{equipment.model}</h1>
+        <p className="text-sm text-text-muted">{equipment.equipmentTypeName}</p>
       </div>
       <Button
         variant="primary"
         className="w-fit"
+        disabled={unavailable}
         onClick={() => {
           addToCart({
             equipmentId: equipment.id,
