@@ -50,7 +50,6 @@ describe('navigation targets resolve to registered routes', () => {
       '/app/billing/weekly',
       '/app/companies/pending',
       '/app/companies/$applicationId',
-      '/app/registration/review',
       '/app/security-logs',
       '/field/profile',
     ]) {

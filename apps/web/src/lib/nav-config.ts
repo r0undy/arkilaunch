@@ -15,7 +15,6 @@ import {
   Store,
   CalendarCheck,
   TrendingUp,
-  UserPlus,
   Users,
   Truck,
 } from 'lucide-react';
@@ -78,7 +77,7 @@ export const ACCOUNT_NAV: NavGroup[] = [
 ];
 
 // Grouped by work area, not by which API resource backs the screen --
-// "Field logs" and "Onboarding" read the way Rhea talks about her day,
+// "Field logs" reads the way Rhea talks about her day,
 // not the way the system is built ("OCR Tool", "Registration").
 export const APP_NAV: NavGroup[] = [
   {
@@ -114,7 +113,6 @@ export const APP_NAV: NavGroup[] = [
       { label: 'Security logs', to: '/app/security-logs', icon: ShieldAlert },
       { label: 'Rate cards', to: '/app/settings', icon: Settings },
       { label: 'Truck service', to: '/app/trucks', icon: Truck },
-      { label: 'Onboarding', to: '/app/registration', icon: UserPlus },
       { label: 'Registration pending', to: '/app/registration/pending', icon: ClipboardList },
       { label: 'Registration verified', to: '/app/registration/verified', icon: ShieldAlert },
     ],
