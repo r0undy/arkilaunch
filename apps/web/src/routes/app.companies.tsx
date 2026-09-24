@@ -1,7 +1,7 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { TenantApplication } from '@arkilaunch/shared';
+import type { ApprovedTenantApplication, TenantApplication } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { DataPanel } from '../components/data-panel.js';
@@ -11,18 +11,22 @@ import { Surface } from '../components/surface.js';
 import { Button } from '../components/button.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
-import { ApplicationActions, applicationsListQuery } from '../components/application-actions.js';
+import {
+  ApplicationActions,
+  applicationsListQuery,
+  approvedApplicationsListQuery,
+} from '../components/application-actions.js';
 import { formatDate, shortCode } from '../lib/format.js';
 
 // Figma splits company approval across four frames: Pending Company Approval
 // (621:8341), Approved Companies (621:8533), Manage Company Application
-// (369:1589) and Registration Review (349:942). The API backs exactly one of
-// them: GET /tenants/applications, which is a SECURITY DEFINER function
-// returning PENDING rows only. There is no approved-companies query, no
-// per-application query, and no KYC list. Rather than fabricate rows to fill
-// the other frames, the screens that have no endpoint say so plainly --
-// the same choice cr-arkilaunch-frontend-storefront-shell.md made for the
-// screens it could not wire.
+// (369:1589) and Registration Review (349:942). The API backs the first two:
+// GET /tenants/applications (pending) and GET /tenants/applications/approved,
+// both SECURITY DEFINER reads. There is no per-application query and no KYC
+// list, so the detail page reads from the pending list and says plainly what
+// it cannot show -- the same choice cr-arkilaunch-frontend-storefront-shell.md
+// made for the screens it could not wire. This pending queue is the platform
+// admin's home (the old /app/platform-applications duplicate is gone).
 
 function CompanyLink({ application }: { application: TenantApplication }) {
   return (
@@ -57,12 +61,12 @@ function CompaniesPendingPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Registration"
-        title="Pending company approval"
+        eyebrow="Companies"
+        title="Applications"
         description="Businesses waiting on a decision before they get a workspace."
       />
       <DataPanel
-        title="Pending companies"
+        title="Pending applications"
         options={applicationsListQuery(PAGE_SIZE, offset)}
         emptyTitle="No companies waiting"
         emptyDescription="New company registrations appear here for review."
@@ -84,22 +88,49 @@ function CompaniesPendingPage() {
   );
 }
 
+const APPROVED_COLUMNS: TableColumn<ApprovedTenantApplication>[] = [
+  { header: 'Company', cell: (row) => <span className="font-semibold">{row.companyName}</span> },
+  {
+    header: 'Representative',
+    cell: (row) => (
+      <span className="flex flex-col">
+        <span>{`${row.contactFirstName} ${row.contactLastName}`}</span>
+        <span className="text-xs text-text-muted">{row.contactJobTitle}</span>
+      </span>
+    ),
+  },
+  { header: 'Applied', cell: (row) => formatDate(row.createdAt) },
+  { header: 'Approved', cell: (row) => (row.reviewedAt ? formatDate(row.reviewedAt) : '-') },
+];
+
 function CompaniesApprovedPage() {
+  const [offset, setOffset] = useState(0);
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Registration"
+        eyebrow="Companies"
         title="Approved companies"
-        description="Businesses already granted a workspace."
+        description="Businesses already granted a workspace, newest first."
       />
-      <EmptyState
-        title="Approved companies are not listed yet"
-        description="The platform can approve a company, but nothing reads the approved list back: tenants_list_pending_applications returns pending rows only and no endpoint replaces it. Until that query exists this screen would have to invent its rows, so it shows none."
-        action={
-          <Link to="/app/companies/pending">
-            <Button variant="primary">Review pending companies</Button>
-          </Link>
-        }
+      <DataPanel
+        title="Approved companies"
+        options={approvedApplicationsListQuery(PAGE_SIZE, offset)}
+        emptyTitle="No approved companies yet"
+        emptyDescription="Companies appear here once you approve their application."
+        isEmpty={(data) => data.total === 0}
+        render={(data) => (
+          <div>
+            <Table columns={APPROVED_COLUMNS} rows={data.items} rowKey={(row) => row.applicationId} />
+            <Pagination
+              offset={offset}
+              limit={PAGE_SIZE}
+              total={data.total}
+              onOffsetChange={setOffset}
+              noun="companies"
+            />
+          </div>
+        )}
       />
     </div>
   );
@@ -124,7 +155,7 @@ function CompanyApplicationPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Registration"
+        eyebrow="Companies"
         title={application?.companyName ?? 'Company application'}
         description="Who applied, and what they told us."
         actions={

@@ -60,8 +60,9 @@ export function homeRouteForRole(role: RoleCode | null): string {
       return '/app/insights';
     case 'timekeeper':
       return '/field';
-    case 'admin':
     case 'platform_admin':
+      return '/app/companies/pending';
+    case 'admin':
       return '/app';
     default:
       return '/login';

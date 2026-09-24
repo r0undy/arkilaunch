@@ -7,7 +7,9 @@ import {
   DuplicatePendingApplicationError,
   auditLogs,
   decideTenantApplication,
+  countApprovedTenantApplications,
   countPendingTenantApplications,
+  listApprovedTenantApplications,
   listPendingTenantApplications,
   registerTenant,
   tenantApplications,
@@ -15,6 +17,7 @@ import {
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
+  ApprovedTenantApplicationListResponse,
   RequestContext,
   TenantApplication,
   TenantApplicationDecisionResponse,
@@ -73,6 +76,19 @@ export class TenantsService {
     const [items, total] = await Promise.all([
       listPendingTenantApplications(query.limit, query.offset),
       countPendingTenantApplications(),
+    ]);
+    return { items, total };
+  }
+
+  // GET /tenants/applications/approved (tenant:approve, platform_admin
+  // only). Same cross-tenant SECURITY DEFINER path as listApplications --
+  // tenants_list_approved_applications() in migrations/0033.
+  async listApprovedApplications(
+    query: TenantApplicationListQuery,
+  ): Promise<ApprovedTenantApplicationListResponse> {
+    const [items, total] = await Promise.all([
+      listApprovedTenantApplications(query.limit, query.offset),
+      countApprovedTenantApplications(),
     ]);
     return { items, total };
   }

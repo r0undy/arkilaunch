@@ -9,6 +9,7 @@ import { useCart } from '../lib/cart-client.js';
 import { getCurrentRole } from '../lib/guards.js';
 import { edtrQueries, notificationsQueries } from '../lib/queries.js';
 import { StatusPill } from './status-pill.js';
+import { applicationsListQuery } from './application-actions.js';
 import { AlertIcon, BellIcon, LogOutIcon } from './icons.js';
 
 export interface AppBarProps {
@@ -139,7 +140,19 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   // for a badge they can never see. The bar has rendered in the account
   // shell since it was written; moving the catalog into that shell just made
   // it happen on more pages.
-  const edtrList = useQuery({ ...edtrQueries.list(), retry: false, enabled: !isCustomer });
+  // The platform admin runs no tenant's field logs; its queue is the company
+  // applications waiting on a decision, so the pill counts those instead.
+  const isPlatformAdmin = role === 'platform_admin';
+  const edtrList = useQuery({
+    ...edtrQueries.list(),
+    retry: false,
+    enabled: !isCustomer && !isPlatformAdmin,
+  });
+  const applications = useQuery({
+    ...applicationsListQuery(1, 0),
+    retry: false,
+    enabled: isPlatformAdmin,
+  });
   // The cart sits in the bar beside Sign out (Figma 185:1599 puts it in the
   // top bar, not the sidebar). Customer-only: staff have no cart, and the bar
   // is shared with the admin shell.
@@ -148,9 +161,12 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   const unreadItems = notifications.data?.items;
   const unreadCount = unreadItems ? unreadItems.filter((n) => n.status === 'unread').length : null;
   const reviewItems = edtrList.data?.items as { status?: string }[] | undefined;
-  const reviewQueueCount = reviewItems
-    ? reviewItems.filter((e) => e.status === 'review').length
-    : null;
+  const reviewQueueCount = isPlatformAdmin
+    ? (applications.data?.total ?? null)
+    : reviewItems
+      ? reviewItems.filter((e) => e.status === 'review').length
+      : null;
+  const reviewQueueLabel = isPlatformAdmin ? 'Applications' : 'Review queue';
 
   return (
     <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2 sm:gap-4 sm:px-4">
@@ -192,7 +208,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
                 form borrows it and keeps icon + number + name so it is never
                 colour-only. */}
             <span
-              aria-label={`Review queue: ${reviewQueueCount}`}
+              aria-label={`${reviewQueueLabel}: ${reviewQueueCount}`}
               className="flex min-h-11 items-center sm:hidden"
             >
               <span className="flex items-center gap-1 rounded-sm bg-recon-review px-1.5 py-1 text-text">
@@ -212,7 +228,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             <span className="hidden sm:block">
               <StatusPill
                 tone="recon-review"
-                label="Review queue"
+                label={reviewQueueLabel}
                 icon={<AlertIcon />}
                 value={String(reviewQueueCount)}
                 className="whitespace-nowrap"

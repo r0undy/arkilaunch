@@ -206,7 +206,7 @@ Screen count: **25**. Grouped by area. Every interactive screen defines empty / 
 | Field | Field | S21 | `/field` | Yes (timekeeper, 2FA) | PRD-F3 |
 | Catalog | Browse equipment | S22 | `/equipment` | No (public) | PRD-F8 |
 | Checkout | Checkout | S23 / S24 | `/account/cart`, `/account/checkout/*` | Yes (customer) | PRD-F2, PRD-F8 |
-| Platform | Company applications | S25 | `/app/platform-applications` | Yes (platform admin) | PRD-F6, PRD-F7 |
+| Platform | Company applications | S25 | `/app/companies/pending` (+ `/app/companies/approved`) | Yes (platform admin) | PRD-F6, PRD-F7 |
 
 > **Amended 2026-09-17 (`docs/cr-arkilaunch-figma-ia-alignment.md`).** The table and tree below now state the routes that actually shipped. They had described `/app/fleet`, `/app/edtr`, `/app/sites`, `/app/reports`, `/app/billing`, `/app/kyc` and `/app/bookings` since 2026-07-25; the storefront-shell pass renamed or moved every one of them on 2026-08-02 and this doc was never updated, so §5.2 named routes that returned 404 for six weeks. The frozen `S1`-`S25` IDs in §5.1 are unchanged and are **not** renumbered; screens the Figma prototype adds beyond that inventory are catalogued in [report-figma-route-alignment.md](report-figma-route-alignment.md), not spliced in here. `/account/*` is now a named branch rather than recorded drift. `/t/:tenantSlug` never shipped: the catalog is single-tenant at `/equipment`, per `cr-arkilaunch-frontend-storefront-shell.md`. **Checkout hands off to PayMongo hosted checkout**; the prototype's in-app GCash-authentication and OTP screens are rejected, not deferred, under DSD §4.1's "Don't: collect card data in-app".
 
@@ -238,7 +238,7 @@ Screen count: **25**. Grouped by area. Every interactive screen defines empty / 
 │   ├── /app/insights
 │   ├── /app/registration  ├── /app/registration/pending  ├── /app/registration/verified  └── /app/registration/review
 │   ├── /app/companies/pending  ├── /app/companies/approved  └── /app/companies/:applicationId
-│   ├── /app/platform-applications   (platform admin)
+│   ├── /app/companies/*             (platform admin)
 │   ├── /app/tickets  /app/security-logs  /app/notifications  /app/profile
 │   └── /app/users   /app/settings
 └── /field               (timekeeper console, 2FA)
@@ -248,7 +248,7 @@ Screen count: **25**. Grouped by area. Every interactive screen defines empty / 
 
 **Persistent / global elements:** Top app bar with tenant name, active-tenant badge, notifications (PM alerts, weather advisories, review-queue count), and account menu on every authed screen. Sidebar hidden during onboarding and on the timekeeper console.
 
-**Auth boundaries:** Public: `/`, `/login`, `/register/*`, `/equipment/*`, `/contact`, `/help`, `/terms`, `/privacy`. Authed customer: `/account/*`. Authed tenant: `/app/*` and `/field/*`, scoped to the JWT tenant_id with row-level isolation. Platform admin: `/app/platform-applications`. RBAC gates admin-only routes (`/app/registration`, `/app/companies/*`, `/app/users`, `/app/settings`) from owner and timekeeper roles.
+**Auth boundaries:** Public: `/`, `/login`, `/register/*`, `/equipment/*`, `/contact`, `/help`, `/terms`, `/privacy`. Authed customer: `/account/*`. Authed tenant: `/app/*` and `/field/*`, scoped to the JWT tenant_id with row-level isolation. Platform admin: `/app/companies/pending`. RBAC gates admin-only routes (`/app/registration`, `/app/companies/*`, `/app/users`, `/app/settings`) from owner and timekeeper roles.
 
 **Deep-link / external entry points:** PayMongo hosted-checkout return to `/account/checkout/success`; emailed quote link to a printable quote; push notification to a weather advisory or a review-queue item; platform invite link to `/register`.
 
