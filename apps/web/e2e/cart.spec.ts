@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { signInAsCustomer } from './sign-in.js';
+import { openSidebar, sidebarLink } from './sidebar.js';
 
 // The cart's validation and the sidebar blade, in a browser. Needs the seeded
 // anchor tenant (`pnpm db:seed`) and the API running; sign-in fails rather
@@ -50,17 +51,16 @@ test.describe('cart', () => {
   test('the sidebar does not mark Home active on the cart', async ({ page }) => {
     await signInAsCustomer(page);
     await page.goto('/account');
-    await expect(page.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+    await openSidebar(page);
+    await expect(sidebarLink(page, 'Home')).toHaveAttribute('aria-current', 'page');
 
     await page.goto('/account/cart');
-    await expect(page.getByRole('link', { name: 'Home' })).not.toHaveAttribute(
-      'aria-current',
-      'page',
-    );
-    // Exactly one destination is ever marked, and on the cart it is Cart.
-    await expect(page.getByRole('link', { name: 'Cart' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+    await openSidebar(page);
+    await expect(sidebarLink(page, 'Home')).not.toHaveAttribute('aria-current', 'page');
+    // The cart has no sidebar entry any more -- it is in the app bar beside
+    // Sign out. "My bookings" owns its URL so the blade still points
+    // somewhere true rather than nowhere.
+    await expect(sidebarLink(page, 'My bookings')).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('link', { name: /^cart,/i })).toBeVisible();
   });
 });

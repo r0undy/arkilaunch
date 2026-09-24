@@ -48,20 +48,15 @@ export const ACCOUNT_NAV: NavGroup[] = [
     items: [
       { label: 'Home', to: '/account', icon: LayoutDashboard, exact: true },
       { label: 'Browse equipment', to: '/equipment', icon: Boxes },
-      // The cart had no standing affordance at all: the only way back to it
-      // was adding another machine, even though the items sit in
-      // sessionStorage until the browser tab closes. Figma 168:1982 puts it
-      // in the app bar; the sidebar is where this shell keeps destinations.
-      { label: 'Cart', to: '/account/cart', icon: ShoppingCart },
       {
         label: 'My bookings',
         to: '/account/bookings',
-        // Was ShoppingCart, which belongs to the cart. A booking is a
-        // committed date, not a basket.
+        // Not ShoppingCart: a booking is a committed date, not a basket, and
+        // the cart now lives in the app bar (Figma 185:1599) rather than here.
         icon: CalendarCheck,
-        // Everything that happens to a booking after it exists. None of these
-        // has a sidebar entry, and before `owns` they all lit "Home".
-        owns: ['/account/checkout', '/account/invoices', '/account/negotiation'],
+        // The cart has no sidebar entry any more, so nothing would own its
+        // URL -- and an unowned /account/* lights nothing at all.
+        owns: ['/account/cart', '/account/checkout', '/account/invoices', '/account/negotiation'],
       },
       // One entry, not two: /account/companies redirected into the Figma
       // company list at /account/applications (251:1945).

@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import type { WeatherObservation, WeatherPort } from '@arkilaunch/shared';
+import {
+  FORECAST_DAYS,
+  type DailyForecast,
+  type WeatherForecastPort,
+  type WeatherObservation,
+  type WeatherPort,
+} from '@arkilaunch/shared';
 
 // Native fetch, not a vendor SDK -- same "own the small wire contract
 // directly" precedent as packages/document-intelligence/src/azure-adapter.ts
@@ -24,6 +30,11 @@ const REQUEST_TIMEOUT_MS = 10_000;
 // on the unit it claims to have honoured is the cheapest defence against
 // that.
 const CURRENT_FIELDS = 'temperature_2m,wind_speed_10m,precipitation,weather_code';
+// Same endpoint, same free-tier terms -- the daily block is what the customer
+// forecast rail reads. Units are pinned and checked for exactly the reason
+// the current block pins them (see the comment above CURRENT_FIELDS).
+const DAILY_FIELDS =
+  'temperature_2m_max,temperature_2m_min,wind_speed_10m_max,precipitation_sum,weather_code';
 
 export type WeatherObservationErrorKind = 'http_error' | 'rate_limited' | 'malformed_response' | 'timeout';
 
@@ -70,16 +81,47 @@ const OpenMeteoResponseSchema = z.object({
   current: CurrentSchema,
 });
 
-export class OpenMeteoAdapter implements WeatherPort {
-  async getConditions(latitude: number, longitude: number): Promise<WeatherObservation> {
+const DailyUnitsSchema = z.object({
+  temperature_2m_max: z.literal('°C'),
+  temperature_2m_min: z.literal('°C'),
+  wind_speed_10m_max: z.literal('km/h'),
+  precipitation_sum: z.literal('mm'),
+});
+
+// Open-Meteo returns the daily block as parallel arrays, one entry per day.
+const DailySchema = z.object({
+  time: z.array(z.string()),
+  temperature_2m_max: z.array(z.number()),
+  temperature_2m_min: z.array(z.number()),
+  wind_speed_10m_max: z.array(z.number()),
+  precipitation_sum: z.array(z.number()),
+  weather_code: z.array(z.number()),
+});
+
+const OpenMeteoForecastResponseSchema = z.object({
+  daily_units: DailyUnitsSchema,
+  daily: DailySchema,
+});
+
+export class OpenMeteoAdapter implements WeatherPort, WeatherForecastPort {
+  // One wire path for both reads: the fetch, the 429, the non-2xx, the JSON
+  // and the schema check are identical whichever block is being asked for,
+  // and duplicating ~45 lines of them is how two subtly different error
+  // behaviours get born.
+  private async request<T>(
+    latitude: number,
+    longitude: number,
+    params: Record<string, string>,
+    schema: z.ZodType<T>,
+  ): Promise<T> {
     const url = new URL(BASE_URL);
     url.searchParams.set('latitude', String(latitude));
     url.searchParams.set('longitude', String(longitude));
-    url.searchParams.set('current', CURRENT_FIELDS);
     url.searchParams.set('temperature_unit', 'celsius');
     url.searchParams.set('wind_speed_unit', 'kmh');
     url.searchParams.set('precipitation_unit', 'mm');
     url.searchParams.set('timezone', 'Asia/Manila');
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
 
     let response: Response;
     try {
@@ -114,17 +156,70 @@ export class OpenMeteoAdapter implements WeatherPort {
     // Fail loud on a malformed/partial body or an unexpected unit rather
     // than let a missing field fall through as undefined -> NaN, or a
     // mis-scaled one fall through as a plausible-looking wrong number.
-    const parsed = OpenMeteoResponseSchema.safeParse(body);
+    const parsed = schema.safeParse(body);
     if (!parsed.success) {
       throw new WeatherObservationError('malformed_response', `open-meteo response failed validation: ${parsed.error.message}`);
     }
+    return parsed.data;
+  }
 
-    const { temperature_2m, wind_speed_10m, precipitation, weather_code } = parsed.data.current;
+  async getConditions(latitude: number, longitude: number): Promise<WeatherObservation> {
+    const data = await this.request(
+      latitude,
+      longitude,
+      { current: CURRENT_FIELDS },
+      OpenMeteoResponseSchema,
+    );
+    const { temperature_2m, wind_speed_10m, precipitation, weather_code } = data.current;
     return {
       tempC: temperature_2m,
       windKph: wind_speed_10m,
       precipMm: precipitation,
       code: weather_code,
     };
+  }
+
+  async getForecast(latitude: number, longitude: number): Promise<DailyForecast[]> {
+    const { daily } = await this.request(
+      latitude,
+      longitude,
+      { daily: DAILY_FIELDS, forecast_days: String(FORECAST_DAYS) },
+      OpenMeteoForecastResponseSchema,
+    );
+
+    // Every column has to be present for every day. A short or ragged block
+    // is malformed, never padded and never truncated into a shorter week:
+    // the caller's contract says FORECAST_DAYS entries, and four days under
+    // a five-day heading is the same class of quiet lie as an all-zero
+    // observation reading as "no advisory in effect".
+    const columns = [
+      daily.time,
+      daily.temperature_2m_max,
+      daily.temperature_2m_min,
+      daily.wind_speed_10m_max,
+      daily.precipitation_sum,
+      daily.weather_code,
+    ];
+    if (columns.some((column) => column.length !== daily.time.length)) {
+      throw new WeatherObservationError(
+        'malformed_response',
+        'open-meteo daily block had columns of differing lengths',
+      );
+    }
+    if (daily.time.length < FORECAST_DAYS) {
+      throw new WeatherObservationError(
+        'malformed_response',
+        `open-meteo returned ${daily.time.length} forecast days, expected ${FORECAST_DAYS}`,
+      );
+    }
+
+    return daily.time.slice(0, FORECAST_DAYS).map((date, i) => ({
+      date,
+      tempMaxC: daily.temperature_2m_max[i]!,
+      tempMinC: daily.temperature_2m_min[i]!,
+      windMaxKph: daily.wind_speed_10m_max[i]!,
+      precipMm: daily.precipitation_sum[i]!,
+      code: daily.weather_code[i]!,
+    }));
   }
 }

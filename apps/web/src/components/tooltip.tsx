@@ -26,7 +26,7 @@ export function Tooltip({ content, children, className = '' }: TooltipProps) {
         if (e.key === 'Escape') setOpen(false);
       }}
     >
-      <span aria-describedby={open ? id : undefined} tabIndex={0} className="inline-flex cursor-help outline-none">
+      <span aria-describedby={open ? id : undefined} tabIndex={0} className="inline-flex cursor-help">
         {children}
       </span>
       {open && (

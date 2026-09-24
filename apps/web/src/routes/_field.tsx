@@ -25,7 +25,7 @@ function FieldLayout() {
           Sign out
         </button>
       </header>
-      <main className="flex-1 p-4">
+      <main id="main" className="flex-1 p-4">
         <Outlet />
       </main>
       <nav className="fixed bottom-0 left-0 right-0 flex border-t border-border bg-surface">
