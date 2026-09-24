@@ -77,7 +77,7 @@ export function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) 
             className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border py-2 last:border-0"
           >
             <dt className="text-sm text-text-muted">{label}</dt>
-            <dd className="font-mono text-sm tabular-nums text-text">{value}</dd>
+            <dd className="min-w-0 break-all font-mono text-sm tabular-nums text-text">{value}</dd>
           </div>
         ))}
       </dl>
