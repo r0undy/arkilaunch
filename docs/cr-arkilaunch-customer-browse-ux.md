@@ -85,6 +85,18 @@ Recorded because each was pre-existing and none was the reported symptom.
   `isSafeInternalRedirect`, and the buttons say "Sign in to book".
 - **The rail's "Add a site" pointed at the cart**, where a site can only be added once a
   booking is in progress. It points at the company list, where `SiteDialog` actually lives.
+- **The catalog grid sized itself from the viewport.** `sm:grid-cols-2 lg:grid-cols-3`
+  cannot know the sidebar has taken 240px and the rail another 320, so at 1075px the
+  catalog had ~440px and put three cards in it at 201px each, names wrapping onto two
+  lines. It is `auto-fill` against a 280px minimum now — the width at which a machine name
+  still fits beside the Rent button — and the rail waits for `xl` rather than crowding the
+  catalog at `lg`. Measured from 360 to 1920: no overflow, no wrapped titles, cards between
+  296 and 376px.
+- **The forecast offered a Retry that could never work.** Every failure rendered the same
+  "unavailable" message with a retry, including `ENABLE_WEATHER_POLL` being unset — which
+  is a configuration answer, not a transient one. The 503's `reason` now decides: a
+  disabled adapter says the feature is switched off and offers nothing to press; a genuine
+  upstream failure keeps the retry.
 
 ## 5. The forecast, and the licence
 
