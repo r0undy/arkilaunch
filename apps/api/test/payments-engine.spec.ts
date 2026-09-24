@@ -72,6 +72,10 @@ describe('PaymentsService (PRD-F2)', () => {
       projectSiteId: siteIdA,
       items: [{ equipmentId: equipmentIdA, start, end }],
     });
+    // Staff's confirming call (checkout's call_not_confirmed gate).
+    await withTenantTx(customerCtxA, (tx) =>
+      tx.update(rentals).set({ callConfirmedAt: new Date() }).where(eq(rentals.id, created.id)),
+    );
     return created.id;
   }
 

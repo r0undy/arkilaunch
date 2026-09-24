@@ -20,7 +20,7 @@ import {
   type RequestContext,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
-import { notifyBookingCustomer } from '../common/notify-customer.js';
+import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { ownsCustomer } from '../common/customer-scope.js';
 import { verifyPaymongoSignature } from './signature.js';
 import { PAYMENTS_PORT } from './payments.tokens.js';
@@ -70,6 +70,8 @@ export class PaymentsService {
       if (company?.kycStatus !== 'approved') {
         throw new ConflictException({ error: 'company_not_verified', status: company?.kycStatus ?? null });
       }
+      // Callback before payment: staff confirm the booking by phone first.
+      if (!rental.callConfirmedAt) throw new ConflictException({ error: 'call_not_confirmed' });
 
       // QAD-T31 (resource abuse / cost bomb): a rapid repeated burst of
       // checkout-session creation is throttled per tenant. Postgres-backed
@@ -247,6 +249,18 @@ export class PaymentsService {
       if (request.status !== 'agreed' || request.agreedPricePhp === null) {
         throw new ConflictException({ error: 'price_not_agreed', status: request.status });
       }
+      // Same gates as a booking: a verified company and a confirming call.
+      // A truck request has no customer_id, so the requester's companies
+      // are checked; any one approved is enough.
+      const companies = await tx.select().from(customers).where(eq(customers.userId, request.requestedBy));
+      if (!companies.some((c) => c.kycStatus === 'approved')) {
+        throw new ConflictException({ error: 'company_not_verified', status: companies[0]?.kycStatus ?? null });
+      }
+      if (!request.callConfirmedAt) throw new ConflictException({ error: 'call_not_confirmed' });
+      // Never above the locked cap without the customer's OK (approve-price).
+      if (request.capPhp !== null && Number(request.agreedPricePhp) > Number(request.capPhp)) {
+        throw new ConflictException({ error: 'over_cap', capPhp: Number(request.capPhp) });
+      }
 
       let [invoice] = await tx
         .select()
@@ -387,6 +401,7 @@ export class PaymentsService {
             await tx.update(payments).set({ status: 'paid' }).where(eq(payments.id, existingPayment.id));
           }
           await this.settleInvoice(tx, lookup.tenantId, invoiceId);
+          await notifyStaff(tx, lookup.tenantId, 'payment_paid', { invoice_id: invoiceId });
           await this.events.emit(ctx, 'deposit_payment_confirmed', { invoice_id: invoiceId });
           break;
         }
@@ -399,6 +414,7 @@ export class PaymentsService {
           if (lookup.rentalId) {
             await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_failed', { invoice_id: invoiceId });
           }
+          await notifyStaff(tx, lookup.tenantId, 'payment_failed', { invoice_id: invoiceId });
           await this.events.emit(ctx, 'deposit_payment_failed', { invoice_id: invoiceId });
           break;
         }
@@ -424,6 +440,7 @@ export class PaymentsService {
         }
         case 'dispute.created': {
           await tx.update(invoices).set({ status: 'disputed' }).where(eq(invoices.id, invoiceId));
+          await notifyStaff(tx, lookup.tenantId, 'payment_disputed', { invoice_id: invoiceId });
           await this.events.emit(ctx, 'deposit_payment_disputed', { invoice_id: invoiceId });
           break;
         }

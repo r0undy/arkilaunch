@@ -285,6 +285,8 @@ export class BookingsService {
         customerId: rental.customerId,
         siteContact: rental.siteContact,
         siteNotes: rental.siteNotes,
+        callRequestedAt: rental.callRequestedAt,
+        callConfirmedAt: rental.callConfirmedAt,
         createdAt: rental.createdAt,
         deposit: {
           required: ledger.depositRequired,
@@ -348,6 +350,28 @@ export class BookingsService {
       // The customer knows when they cancelled; tell them when staff did.
       if (ctx.role !== 'customer') await notifyBookingCustomer(tx, ctx.tenantId, id, 'booking_cancelled');
       return { id, status: 'cancelled' };
+    });
+  }
+
+  // Callback before payment: the customer asks for a call, staff call and
+  // mark it confirmed; checkout refuses until then.
+  async requestCall(ctx: RequestContext, id: string) {
+    return withTenantTx(ctx, async (tx) => {
+      await this.visibleRental(tx, ctx, id);
+      const callRequestedAt = new Date();
+      await tx.update(rentals).set({ callRequestedAt }).where(eq(rentals.id, id));
+      await notifyStaff(tx, ctx.tenantId, 'call_requested', { rental_id: id });
+      return { id, callRequestedAt };
+    });
+  }
+
+  async confirmCall(ctx: RequestContext, id: string) {
+    return withTenantTx(ctx, async (tx) => {
+      await this.visibleRental(tx, ctx, id);
+      const callConfirmedAt = new Date();
+      await tx.update(rentals).set({ callConfirmedAt, callConfirmedBy: ctx.userId }).where(eq(rentals.id, id));
+      await notifyBookingCustomer(tx, ctx.tenantId, id, 'call_confirmed');
+      return { id, callConfirmedAt };
     });
   }
 

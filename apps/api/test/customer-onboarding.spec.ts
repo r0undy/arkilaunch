@@ -192,6 +192,12 @@ describe('Customer onboarding', () => {
     const queue = await companies.listForReview(adminCtx, 'pending');
     expect(queue.find((c) => c.id === acme.id)?.documents).toHaveLength(1);
     await companies.decide(adminCtx, acme.id, { decision: 'approved' });
+    // Verified but not yet called back: still no payment.
+    await expect(payments.checkout(ctx, booking.id)).rejects.toMatchObject({
+      response: { error: 'call_not_confirmed' },
+    });
+    await bookings.requestCall(ctx, booking.id);
+    await bookings.confirmCall(adminCtx, booking.id);
     const checkout = await payments.checkout(ctx, booking.id);
     expect(checkout.checkoutUrl).toContain('about:blank');
 

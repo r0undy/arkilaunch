@@ -64,6 +64,20 @@ export class BookingsController {
     return this.bookings.rescheduleSuggestion(req.ctx, id);
   }
 
+  @Post(':id/request-call')
+  @RequirePermission('booking:create')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  requestCall(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.bookings.requestCall(req.ctx, id);
+  }
+
+  // Staff only, after phoning the customer.
+  @Post(':id/call-confirmed')
+  @RequirePermission('quote:approve')
+  confirmCall(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.bookings.confirmCall(req.ctx, id);
+  }
+
   @Get(':id/messages')
   @RequirePermission('booking:read')
   listMessages(@Param('id') id: string, @Req() req: CtxRequest) {

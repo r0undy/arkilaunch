@@ -36,9 +36,13 @@ async function geocode(place: string): Promise<{ lat: number; lon: number }> {
   return { lat, lon };
 }
 
-export async function roadDistanceKm(pickup: string, dropoff: string): Promise<number> {
-  const a = await geocode(pickup);
-  const b = await geocode(dropoff);
+type Pin = { lat: number; lon: number };
+
+// A map pin is routed as-is; only a missing pin falls back to geocoding
+// the typed place name.
+export async function roadDistanceKm(pickup: string, dropoff: string, pins: { a?: Pin; b?: Pin } = {}): Promise<number> {
+  const a = pins.a ?? (await geocode(pickup));
+  const b = pins.b ?? (await geocode(dropoff));
   const body = (await getJson(
     new URL(`${OSRM}/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`),
   )) as { code?: string; routes?: { distance?: number }[] };
