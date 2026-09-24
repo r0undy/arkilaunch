@@ -253,6 +253,13 @@
       "when": 1790181781064,
       "tag": "0035_equipment_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790181782064,
+      "tag": "0036_booking_availability",
+      "breakpoints": true
     }
   ]
 }

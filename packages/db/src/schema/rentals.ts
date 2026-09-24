@@ -218,10 +218,30 @@ export const equipmentAssignments = pgTable(
     start: timestamp('start', { withTimezone: true }).notNull(),
     end: timestamp('end', { withTimezone: true }),
     status: text('status').notNull().default('scheduled'), // double-book guard enforced at the app layer
+    // Operator sent with the unit (migration 0036); same app-layer overlap guard.
+    operatorUserId: uuid('operator_user_id').references(() => users.id),
   },
   (table) => [tenantIsolationPolicy(),
     index('equipment_assignments_tenant_id_idx').on(table.tenantId),
+    index('equipment_assignments_operator_user_id_idx').on(table.operatorUserId),
   ],
+);
+
+// Business hours + holidays/blackouts, one row per tenant (migration 0036).
+// No row = always open. Read by common/equipment-availability.ts.
+export const tenantCalendar = pgTable(
+  'tenant_calendar',
+  {
+    tenantId: uuid('tenant_id')
+      .primaryKey()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    openTime: text('open_time').notNull().default('07:00'),
+    closeTime: text('close_time').notNull().default('17:00'),
+    openDays: integer('open_days').array().notNull().default(sql`'{1,2,3,4,5,6}'`),
+    blackouts: jsonb('blackouts').$type<{ date: string; label?: string | undefined }[]>().notNull().default([]),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [tenantIsolationPolicy()],
 );
 
 // Customer journey CR (docs/cr-arkilaunch-customer-journey.md). The

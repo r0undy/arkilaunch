@@ -85,6 +85,19 @@ export const MaintenanceScheduleCreateRequestSchema = z.object({
 });
 export type MaintenanceScheduleCreateRequest = z.infer<typeof MaintenanceScheduleCreateRequestSchema>;
 
+// POST /equipment/:id/maintenance-windows. Dates the unit is out for
+// maintenance; bookings cannot land on them.
+export const MaintenanceWindowCreateRequestSchema = z
+  .object({
+    startsAt: z.string().datetime({ offset: true }),
+    endsAt: z.string().datetime({ offset: true }),
+    notes: z.string().trim().max(500).optional(),
+  })
+  .refine((w) => new Date(w.endsAt).getTime() > new Date(w.startsAt).getTime(), {
+    message: 'endsAt must be after startsAt',
+  });
+export type MaintenanceWindowCreateRequest = z.infer<typeof MaintenanceWindowCreateRequestSchema>;
+
 // Common service intervals, offered as presets in the maintenance UI.
 export const MAINTENANCE_PRESETS: readonly { task: string; hoursInterval: number }[] = [
   { task: 'Engine oil', hoursInterval: 250 },
@@ -213,6 +226,14 @@ export const MaintenanceDetailResponseSchema = z.object({
       performedAt: z.coerce.date(),
       notes: z.string().nullable(),
       scheduleId: z.string().uuid().nullable(),
+    }),
+  ),
+  windows: z.array(
+    z.object({
+      id: z.string().uuid(),
+      startsAt: z.coerce.date(),
+      endsAt: z.coerce.date(),
+      notes: z.string().nullable(),
     }),
   ),
 });
