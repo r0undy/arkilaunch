@@ -1,9 +1,9 @@
 import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, gte } from 'drizzle-orm';
 import {
-  DEFAULT_DEPOSIT_PHP,
   customers,
   findTenantByInvoiceIdForWebhook,
+  getBillingSettings,
   invoiceLineItems,
   invoices,
   payments,
@@ -105,7 +105,7 @@ export class PaymentsService {
         throw new ConflictException({ error: 'quote_not_accepted', status: quotation.status });
       }
 
-      let depositAmount = DEFAULT_DEPOSIT_PHP;
+      let depositAmount = (await getBillingSettings(tx, ctx.tenantId)).minDepositPhp;
       if (quotation) {
         const [contract] = await tx
           .select()
@@ -226,7 +226,11 @@ export class PaymentsService {
       .where(eq(invoices.id, invoiceId))
       .returning();
     if (invoice?.rentalId) {
-      await tx.update(rentals).set({ status: 'confirmed' }).where(eq(rentals.id, invoice.rentalId));
+      // Only the booking's own invoice confirms it; a weekly invoice is
+      // paid on a rental already under way.
+      if (invoice.invoiceType === 'booking' || invoice.invoiceType === 'deposit') {
+        await tx.update(rentals).set({ status: 'confirmed' }).where(eq(rentals.id, invoice.rentalId));
+      }
       await notifyBookingCustomer(tx, tenantId, invoice.rentalId, 'payment_received', { invoice_id: invoiceId });
     }
     if (invoice?.truckRequestId) {
@@ -300,6 +304,39 @@ export class PaymentsService {
         invoiceId: invoice.id,
         method: body.method ?? 'checkout',
         amount: String(chargeAmount),
+        providerRef: session.id,
+        status: 'pending',
+      });
+      await this.events.emit(ctx, 'checkout_session_created', { invoice_id: invoice.id });
+      return { checkoutUrl: session.checkoutUrl, invoiceId: invoice.id };
+    });
+  }
+
+  // POST /me/invoices/:id/checkout: the customer pays a weekly invoice
+  // (reconciled hours past the deposit, jobs/src/weekly-billing.ts) by
+  // PayMongo or cash, same as a booking. The amount is the invoice's.
+  async checkoutInvoice(ctx: RequestContext, invoiceId: string, body: CheckoutRequest = {}) {
+    return withTenantTx(ctx, async (tx) => {
+      const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+      const [rental] = invoice?.rentalId
+        ? await tx.select().from(rentals).where(eq(rentals.id, invoice.rentalId)).limit(1)
+        : [];
+      if (!invoice || invoice.invoiceType !== 'weekly' || !rental || !(await ownsCustomer(tx, ctx, rental.customerId))) {
+        throw new NotFoundException({ error: 'invoice_not_found' });
+      }
+      if (invoice.status !== 'issued') throw new ConflictException({ error: 'invoice_not_payable', status: invoice.status });
+      const amount = Number(invoice.amount);
+      if (body.cash) return this.issueCash(tx, ctx, invoice.id, amount);
+
+      const session = await this.paymentsPort.createCheckoutSession(amount, invoice.id, {
+        label: 'Weekly equipment usage',
+        ...(body.method ? { methods: [body.method] } : {}),
+      });
+      await tx.insert(payments).values({
+        tenantId: ctx.tenantId,
+        invoiceId: invoice.id,
+        method: body.method ?? 'checkout',
+        amount: String(amount),
         providerRef: session.id,
         status: 'pending',
       });

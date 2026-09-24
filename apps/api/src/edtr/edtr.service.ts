@@ -7,8 +7,10 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, gte, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import {
-  DEFAULT_DEPOSIT_PHP,
   auditLogs,
+  crossesLowBalance,
+  depositAccruals,
+  getBillingSettings,
   edtr,
   edtrLineItems,
   edtrReconciliations,
@@ -19,6 +21,7 @@ import {
   reconcileEdtr,
   rentals,
   resolveDepositLedger,
+  splitDeduction,
   timekeeperSiteAssignments,
   withTenantTx,
 } from '@arkilaunch/db';
@@ -40,6 +43,7 @@ import {
   type RequestContext,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
+import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { isOcrPipelineEnabled } from '../ports/document-intelligence.port.js';
 import { round2HalfUp } from '../quotes/pricing-engine.service.js';
 
@@ -615,76 +619,72 @@ export class EdtrService {
       const hourlyRate = rateCard ? Number(rateCard.rateValue) : 0;
       const deductedAmount = round2HalfUp(billableHoursActive * hourlyRate);
 
-      // Deposit ledger: resolves the rental's configured deposit_required
-      // (rentals -> quotations -> rental_contracts) and every prior
-      // deposit_deduction invoice, shared with billing.service.ts's ledger
-      // read via resolveDepositLedger() so the two never disagree
-      // (cr-arkilaunch-f9-read-surface.md fix: balance now measures against
-      // the actual deposit cap instead of only ever growing).
-      const ledger = await resolveDepositLedger(tx, record.rentalId);
-      let balanceBefore: number;
-      let balanceAfter: number;
-      if (ledger.depositRequired !== null) {
-        balanceBefore = round2HalfUp(ledger.depositRequired - ledger.totalDeducted);
-        balanceAfter = round2HalfUp(balanceBefore - deductedAmount);
-        if (balanceAfter < 0) {
-          throw new ConflictException({
-            error: 'deposit_exhausted',
-            balanceBefore,
-            attemptedDeduction: deductedAmount,
-          });
-        }
-      } else {
-        // No quotation/rental_contracts chain for this rental (e.g. a
-        // booking created directly via bookings.service.ts, which never
-        // quotes). This used to skip the deposit_exhausted guard entirely
-        // and repurpose the two balances as a running total, so a
-        // booking-originated rental could be deducted against a deposit
-        // that was never configured, repeatedly, with no ceiling
-        // (audit-ocr-money-path.md #5).
-        //
-        // There IS a real cap: checkout charges DEFAULT_DEPOSIT_PHP for
-        // exactly this case, so that is the deposit actually held and the
-        // amount a deduction must not exceed. Both sides now read one
-        // constant so they cannot drift.
-        balanceBefore = round2HalfUp(DEFAULT_DEPOSIT_PHP - ledger.totalDeducted);
-        balanceAfter = round2HalfUp(balanceBefore - deductedAmount);
-        if (balanceAfter < 0) {
-          throw new ConflictException({
-            error: 'deposit_exhausted',
-            balanceBefore,
-            attemptedDeduction: deductedAmount,
-          });
-        }
-      }
+      // Deposit ledger: the rental's contract deposit_required, else the
+      // tenant's minimum deposit, less every prior deposit_deduction --
+      // shared with billing.service.ts via resolveDepositLedger() so the
+      // two never disagree (audit-ocr-money-path.md #5).
+      //
+      // Rollover: a charge past the balance no longer fails with
+      // deposit_exhausted. The part the deposit covers is deducted; the
+      // rest becomes an unbilled accrual that jobs/src/weekly-billing.ts
+      // invoices weekly. Reaching this line already required a reconciled
+      // or human-approved pair (RFC-2), so both halves carry that gate.
+      const ledger = await resolveDepositLedger(tx, record.rentalId, ctx.tenantId);
+      const balanceBefore = round2HalfUp(Math.max(0, ledger.depositRequired - ledger.totalDeducted));
+      const split = splitDeduction(balanceBefore, deductedAmount);
+      const balanceAfter = split.balanceAfter;
+      // Hours split in the same ratio, so hours-used adds up across both.
+      const deductedHours =
+        deductedAmount > 0 ? round2HalfUp((billableHoursActive * split.deducted) / deductedAmount) : billableHoursActive;
 
-      const [invoice] = await tx
-        .insert(invoices)
-        .values({
+      let invoice: { id: string } | null = null;
+      if (split.deducted > 0 || split.accrued === 0) {
+        const [inserted] = await tx
+          .insert(invoices)
+          .values({
+            tenantId: ctx.tenantId,
+            rentalId: record.rentalId,
+            invoiceType: 'deposit_deduction',
+            amount: String(split.deducted),
+            status: 'issued',
+            dueDate: new Date(),
+          })
+          .returning();
+        if (!inserted) throw new Error('invoice insert returned no row');
+        invoice = inserted;
+
+        await tx.insert(invoiceLineItems).values({
+          tenantId: ctx.tenantId,
+          invoiceId: inserted.id,
+          // The evidence link is this column, not the sentence below it. The
+          // description stays because it is what a human reads on an
+          // invoice, but it is no longer load-bearing: it was the only tie
+          // between a deduction and the reconciliation justifying it, parsed
+          // back out with a regex (audit-db-tenant-isolation.md #3).
+          reconciliationId: reconciliation.id,
+          description: `EDTR reconciliation ${reconciliation.id} (sources: ${record.id}, ${reconciliation.counterpartEdtrId ?? 'n/a'})`,
+          quantity: String(deductedHours),
+          unitPrice: String(hourlyRate),
+          amount: String(split.deducted),
+        });
+      }
+      if (split.accrued > 0) {
+        await tx.insert(depositAccruals).values({
           tenantId: ctx.tenantId,
           rentalId: record.rentalId,
-          invoiceType: 'deposit_deduction',
-          amount: String(deductedAmount),
-          status: 'issued',
-          dueDate: new Date(),
-        })
-        .returning();
-      if (!invoice) throw new Error('invoice insert returned no row');
+          reconciliationId: reconciliation.id,
+          hours: String(round2HalfUp(billableHoursActive - deductedHours)),
+          unitPrice: String(hourlyRate),
+          amount: String(split.accrued),
+        });
+      }
 
-      await tx.insert(invoiceLineItems).values({
-        tenantId: ctx.tenantId,
-        invoiceId: invoice.id,
-        // The evidence link is this column, not the sentence below it. The
-        // description stays because it is what a human reads on an
-        // invoice, but it is no longer load-bearing: it was the only tie
-        // between a deduction and the reconciliation justifying it, parsed
-        // back out with a regex (audit-db-tenant-isolation.md #3).
-        reconciliationId: reconciliation.id,
-        description: `EDTR reconciliation ${reconciliation.id} (sources: ${record.id}, ${reconciliation.counterpartEdtrId ?? 'n/a'})`,
-        quantity: String(billableHoursActive),
-        unitPrice: String(hourlyRate),
-        amount: String(deductedAmount),
-      });
+      const { lowBalancePct } = await getBillingSettings(tx, ctx.tenantId);
+      if (crossesLowBalance(ledger.depositRequired, balanceBefore, balanceAfter, lowBalancePct)) {
+        const payload = { rental_id: record.rentalId, balance_php: balanceAfter, deposit_php: ledger.depositRequired };
+        await notifyBookingCustomer(tx, ctx.tenantId, record.rentalId, 'deposit_low', payload);
+        await notifyStaff(tx, ctx.tenantId, 'deposit_low', payload);
+      }
 
       // A pair is approved ONCE, not once per side: both reconciliation
       // rows for this matched pair transition together, so the counterpart
@@ -732,12 +732,13 @@ export class EdtrService {
         tenantId: ctx.tenantId,
         actorId: ctx.userId,
         action: 'DEDUCT',
-        entity: 'invoices',
-        entityId: invoice.id,
+        entity: invoice ? 'invoices' : 'edtr_reconciliations',
+        entityId: invoice?.id ?? reconciliation.id,
       });
 
       await this.events.emit(ctx, 'deposit_deduction_committed', {
-        invoice_id: invoice.id,
+        invoice_id: invoice?.id ?? null,
+        accrued_php: split.accrued,
         hours: billableHoursActive,
         gate_passed: true,
       });
@@ -755,11 +756,11 @@ export class EdtrService {
           tolerance: Number(reconciliation.tolerance),
         },
         invoiceLine: {
-          invoiceId: invoice.id,
+          invoiceId: invoice?.id ?? null,
           hours: billableHoursActive,
           sourceLogs: [record.id, reconciliation.counterpartEdtrId],
         },
-        deposit: { balanceBefore, deducted: deductedAmount, balanceAfter },
+        deposit: { balanceBefore, deducted: split.deducted, accrued: split.accrued, balanceAfter },
       };
     });
   }

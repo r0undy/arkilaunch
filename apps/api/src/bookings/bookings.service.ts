@@ -269,7 +269,7 @@ export class BookingsService {
         .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
         .where(eq(projectSites.id, rental.projectSiteId))
         .limit(1);
-      const ledger = await resolveDepositLedger(tx, id);
+      const ledger = await resolveDepositLedger(tx, id, ctx.tenantId);
       const changeRows = await tx
         .select()
         .from(bookingChangeRequests)

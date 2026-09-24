@@ -3,9 +3,11 @@ import { ConflictException } from '@nestjs/common';
 import postgres from 'postgres';
 import { and, eq } from 'drizzle-orm';
 import {
+  depositAccruals,
   edtr as edtrTable,
   edtrLineItems,
   edtrReconciliations,
+  getBillingSettings,
   invoices as invoicesTable,
   invoiceLineItems,
   quotations,
@@ -487,11 +489,11 @@ describe('the money path: no deduction without a passing reconciliation', () => 
   });
 
   // audit-ocr-money-path.md #5. A rental with no quotation/rental_contracts
-  // chain used to skip the deposit_exhausted guard entirely and deduct
-  // with no ceiling at all. It now caps at what checkout actually
-  // collects for that case, so a deduction past that must be refused and
-  // move no money.
-  it('caps a deduction on a rental with no configured deposit', async () => {
+  // chain used to deduct with no ceiling at all. It is capped at the
+  // tenant's minimum deposit (what checkout collects for that case); since
+  // phase 7 the part past it becomes an unbilled accrual for the weekly
+  // invoice rather than a refusal, so the deposit itself never goes below 0.
+  it('caps a deduction on a rental with no configured deposit, accruing the rest', async () => {
     await insertTranscribedPaperCounterpart(
       DATES.uncapped,
       6,
@@ -511,15 +513,19 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     expect(polled.reconciliation?.status).toBe('matched');
     const reconId = polled.reconciliation!.id;
 
-    // The pair matches cleanly; it is the absent deposit, not a
-    // disagreement, that blocks this.
-    await expect(
-      edtr.approve(adminCtx, digital.id, {
-        reconciliationId: reconId,
-        adjustments: { hoursActive: 6, hoursIdle: 1 },
-      }),
-    ).rejects.toThrow(ConflictException);
-    expect(await deductionInvoiceCount(reconId)).toBe(0);
+    const approved = await edtr.approve(adminCtx, digital.id, {
+      reconciliationId: reconId,
+      adjustments: { hoursActive: 6, hoursIdle: 1 },
+    });
+    const { minDepositPhp } = await withTenantTx(adminCtx, (tx) => getBillingSettings(tx, adminCtx.tenantId));
+    expect(approved.deposit.deducted).toBe(minDepositPhp);
+    expect(approved.deposit.balanceAfter).toBe(0);
+    expect(approved.deposit.accrued).toBeGreaterThan(0);
+    const [accrual] = await withTenantTx(adminCtx, (tx) =>
+      tx.select().from(depositAccruals).where(eq(depositAccruals.reconciliationId, reconId)),
+    );
+    expect(Number(accrual!.amount)).toBe(approved.deposit.accrued);
+    expect(accrual!.invoiceId).toBeNull();
   });
 
   afterEach(() => {
