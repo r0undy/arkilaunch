@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken, clearTokens } from '../lib/auth-client.js';
@@ -33,7 +33,7 @@ const FORECAST = {
   ],
 };
 
-function stub({ forecastStatus = 200, sites = [SITE] } = {}) {
+function stub({ forecastStatus = 200, sites = [SITE], reason = 'upstream_failed' } = {}) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
@@ -42,7 +42,7 @@ function stub({ forecastStatus = 200, sites = [SITE] } = {}) {
         return Promise.resolve(
           new Response(
             JSON.stringify(
-              forecastStatus === 200 ? FORECAST : { error: 'weather_unavailable' },
+              forecastStatus === 200 ? FORECAST : { error: 'weather_unavailable', reason },
             ),
             { status: forecastStatus },
           ),
@@ -117,8 +117,23 @@ describe('EquipmentRail', () => {
     const { unmount } = await renderRoute('/equipment');
 
     const rail = await screen.findByRole('complementary', { name: 'Cart and weather' });
-    await waitFor(() => expect(rail).toHaveTextContent(/forecast is unavailable/i));
+    await waitFor(() => expect(rail).toHaveTextContent(/could not be fetched/i));
+    // A transient failure DOES get a retry.
+    expect(within(rail).getByRole('button', { name: /retry/i })).toBeInTheDocument();
     expect(rail).not.toHaveTextContent('0° / 0°');
+    unmount();
+  });
+
+  // A weather adapter switched off by configuration will never succeed, so a
+  // Retry button there is one that cannot work.
+  it('says weather is switched off rather than offering a retry that cannot work', async () => {
+    setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
+    stub({ forecastStatus: 503, reason: 'flag_disabled' });
+    const { unmount } = await renderRoute('/equipment');
+
+    const rail = await screen.findByRole('complementary', { name: 'Cart and weather' });
+    await waitFor(() => expect(rail).toHaveTextContent(/switched off/i));
+    expect(within(rail).queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
     unmount();
   });
 

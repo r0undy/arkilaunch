@@ -7,6 +7,7 @@ import { Skeleton } from './skeleton.js';
 import { LoadError } from './load-error.js';
 import { useCart, type CartItem } from '../lib/cart-client.js';
 import { getAccessToken } from '../lib/auth-client.js';
+import { ApiError } from '../lib/api-client.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import { customerSitesQueries, forecastQueries } from '../lib/queries.js';
 import { describeWeatherCode, weekdayLabel } from '../lib/weather-code.js';
@@ -89,14 +90,36 @@ function CartRail() {
   );
 }
 
+// The API answers 503 { error: 'weather_unavailable', reason } when it cannot
+// get a forecast, and the reason decides what the rail should say. A weather
+// adapter switched off by configuration will never succeed, so offering
+// "Retry" there is a button that cannot work -- which is exactly what this
+// looked like the first time it was seen in the wild.
+function unavailableReason(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  const payload = error.payload;
+  if (typeof payload !== 'object' || payload === null || !('reason' in payload)) return null;
+  return String((payload as { reason: unknown }).reason);
+}
+
 function ForecastRows({ siteId }: { siteId: string }) {
   const forecast = useQuery(forecastQueries.site(siteId));
 
   if (forecast.isPending) return <Skeleton label="Loading the forecast" rows={2} />;
   if (forecast.isError) {
+    const reason = unavailableReason(forecast.error);
+    // Configuration, not a hiccup: say so plainly and offer no retry.
+    if (reason === 'flag_disabled' || reason === 'no_adapter') {
+      return (
+        <p className="text-sm text-text-muted">
+          Forecasts are switched off in this environment, so there is nothing to show here
+          yet.
+        </p>
+      );
+    }
     return (
       <LoadError
-        message="The forecast is unavailable right now."
+        message="The forecast could not be fetched just now."
         onRetry={() => forecast.refetch()}
       />
     );
