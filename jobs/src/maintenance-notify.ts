@@ -18,6 +18,9 @@ import { runInstrumentedJob } from './telemetry.js';
 // recordMaintenanceLog) is the only path that advances the countdown --
 // this job only ever writes a `notifications` row.
 const NOTIFICATION_TYPE = 'maintenance_due';
+// An early heads-up once a unit has run 90% of a task's interval.
+const WARNING_TYPE = 'maintenance_warning';
+const WARNING_REMAINDER = 0.1; // warn with 10% of the interval left
 const RECIPIENT_PERMISSION = 'fleet:manage';
 
 export async function runMaintenanceNotify(): Promise<void> {
@@ -30,14 +33,28 @@ export async function runMaintenanceNotify(): Promise<void> {
         tenantId: equipment.tenantId,
         runtimeHours: equipment.runtimeHours,
         nextDue: maintenanceSchedules.nextDue,
+        scheduleId: maintenanceSchedules.id,
+        task: maintenanceSchedules.task,
+        hoursInterval: maintenanceSchedules.hoursInterval,
       })
       .from(equipment)
       .innerJoin(maintenanceSchedules, eq(maintenanceSchedules.equipmentId, equipment.id))
-      .where(and(isNotNull(maintenanceSchedules.nextDue), gte(equipment.runtimeHours, maintenanceSchedules.nextDue)));
+      .where(
+        and(
+          isNotNull(maintenanceSchedules.nextDue),
+          // The interval started at next_due - interval; 90% of the way there.
+          gte(
+            equipment.runtimeHours,
+            sql`${maintenanceSchedules.nextDue} - ${maintenanceSchedules.hoursInterval} * ${WARNING_REMAINDER}`,
+          ),
+        ),
+      );
 
-    console.log(`maintenance-notify: ${due.length} unit(s) at or past their maintenance threshold.`);
+    console.log(`maintenance-notify: ${due.length} schedule(s) at or past 90% of their interval.`);
 
     for (const item of due) {
+      const type =
+        Number(item.runtimeHours) >= Number(item.nextDue) ? NOTIFICATION_TYPE : WARNING_TYPE;
       // Dedup on (equipment, threshold value): once a maintenance log
       // resets next_due, the threshold value changes and a fresh
       // notification can fire again for the next interval, but the SAME
@@ -48,8 +65,9 @@ export async function runMaintenanceNotify(): Promise<void> {
         .where(
           and(
             eq(notifications.tenantId, item.tenantId),
-            eq(notifications.notificationType, NOTIFICATION_TYPE),
+            eq(notifications.notificationType, type),
             sql`${notifications.payload} ->> 'equipment_id' = ${item.equipmentId}`,
+            sql`${notifications.payload} ->> 'schedule_id' = ${item.scheduleId}`,
             sql`${notifications.payload} ->> 'threshold' = ${item.nextDue}`,
           ),
         )
@@ -89,8 +107,14 @@ export async function runMaintenanceNotify(): Promise<void> {
         await db.insert(notifications).values({
           tenantId: item.tenantId,
           userId: recipient.id,
-          notificationType: NOTIFICATION_TYPE,
-          payload: { equipment_id: item.equipmentId, threshold: item.nextDue, runtime_hours: item.runtimeHours },
+          notificationType: type,
+          payload: {
+            equipment_id: item.equipmentId,
+            schedule_id: item.scheduleId,
+            task: item.task,
+            threshold: item.nextDue,
+            runtime_hours: item.runtimeHours,
+          },
         });
       }
     }

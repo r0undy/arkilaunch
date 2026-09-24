@@ -4,6 +4,8 @@ import {
   EquipmentListQuerySchema,
   EquipmentUpdateRequestSchema,
   MaintenanceLogCreateRequestSchema,
+  MaintenanceScheduleCreateRequestSchema,
+  RuntimeCorrectionRequestSchema,
   UtilizationQuerySchema,
 } from '@arkilaunch/shared';
 
@@ -16,3 +18,5 @@ export class EquipmentCreateDto extends createZodDto(EquipmentCreateRequestSchem
 export class EquipmentUpdateDto extends createZodDto(EquipmentUpdateRequestSchema) {}
 export class MaintenanceLogCreateDto extends createZodDto(MaintenanceLogCreateRequestSchema) {}
 export class UtilizationQueryDto extends createZodDto(UtilizationQuerySchema) {}
+export class MaintenanceScheduleCreateDto extends createZodDto(MaintenanceScheduleCreateRequestSchema) {}
+export class RuntimeCorrectionDto extends createZodDto(RuntimeCorrectionRequestSchema) {}

@@ -24,6 +24,8 @@ import {
   EquipmentListQueryDto,
   EquipmentUpdateDto,
   MaintenanceLogCreateDto,
+  MaintenanceScheduleCreateDto,
+  RuntimeCorrectionDto,
   UtilizationQueryDto,
 } from './dto.js';
 
@@ -101,6 +103,22 @@ export class FleetController {
   @RequirePermission('fleet:manage')
   recordMaintenanceLog(@Param('id') id: string, @Body() body: MaintenanceLogCreateDto, @Req() req: CtxRequest) {
     return this.fleet.recordMaintenanceLog(req.ctx, id, body);
+  }
+
+  @Post('equipment/:id/maintenance-schedules')
+  @RequirePermission('fleet:manage')
+  createSchedule(
+    @Param('id') id: string,
+    @Body() body: MaintenanceScheduleCreateDto,
+    @Req() req: CtxRequest,
+  ) {
+    return this.fleet.createSchedule(req.ctx, id, body);
+  }
+
+  @Patch('equipment/:id/runtime')
+  @RequirePermission('fleet:manage')
+  correctRuntime(@Param('id') id: string, @Body() body: RuntimeCorrectionDto, @Req() req: CtxRequest) {
+    return this.fleet.correctRuntime(req.ctx, id, body);
   }
 
   @Get('reports/utilization')
