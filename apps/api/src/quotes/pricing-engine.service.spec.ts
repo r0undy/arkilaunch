@@ -39,4 +39,21 @@ describe('PricingEngineService: rounding and discount math', () => {
     expect(result.discountPhp).toBe(0);
     expect(result.totalPhp).toBe(42.5);
   });
+
+  it('priceItem converts a daily card to hourly with the tenant daily hours, and honours an agreed price', async () => {
+    const engine = new PricingEngineService();
+    const card = { id: 'rc', rateType: 'daily', rateValue: '8000', effectiveFrom: new Date(0), effectiveTo: null, equipmentId: null };
+    const tx = { select: () => ({ from: () => ({ where: () => ({ limit: async () => [card] }) }) }) } as never;
+    const diesel = {
+      pricePhp: 0, operatorHourlyPhp: 0, maintenanceHourlyPhp: 0, bufferPct: 0,
+      fuelLPerHour: 0, fuelLPerKm: 0, transportPhpPerKm: 0,
+    } as never;
+    const input = { equipmentTypeId: 't', rateCardId: 'rc', quantity: 1, estimatedHours: 10, mobilizationKm: 0, demobilizationKm: 0 };
+    const priced = await engine.priceItem(tx, 'tenant', diesel, input, 8);
+    expect(priced.hourlyRatePhp).toBe(1000); // 8000 / 8, not 8000
+    expect(priced.subtotalPhp).toBe(10000);
+    const agreed = await engine.priceItem(tx, 'tenant', diesel, { ...input, agreedSubtotalPhp: 9000 }, 8);
+    expect(agreed.subtotalPhp).toBe(9000);
+    expect(agreed.pricingInputs).toMatchObject({ agreed_subtotal_php: 9000, computed_subtotal_php: 10000 });
+  });
 });

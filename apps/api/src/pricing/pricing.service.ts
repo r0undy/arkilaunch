@@ -2,12 +2,16 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { and, desc, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import {
   auditLogs,
+  billingSettings,
+  equipment,
+  getBillingSettings,
   pricingParameters,
   rateCards,
   recordManualDieselReading,
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
+  BillingSettingsInput,
   DieselPriceEntry,
   PricingParametersInput,
   RateCardCreateRequest,
@@ -166,12 +170,22 @@ export class PricingService {
       const effectiveFrom = input.effectiveFrom ? new Date(input.effectiveFrom) : new Date();
       const effectiveTo = input.effectiveTo ? new Date(input.effectiveTo) : null;
 
+      // A unit card must name this tenant's unit of this type. The FK alone
+      // would accept another tenant's id (FK checks bypass RLS).
+      if (input.equipmentId) {
+        const [unit] = await tx.select().from(equipment).where(eq(equipment.id, input.equipmentId)).limit(1);
+        if (!unit || unit.equipmentTypeId !== input.equipmentTypeId) {
+          throw new NotFoundException({ error: 'equipment_not_found' });
+        }
+      }
+
       const overlapping = await tx
         .select()
         .from(rateCards)
         .where(
           and(
             eq(rateCards.equipmentTypeId, input.equipmentTypeId),
+            input.equipmentId ? eq(rateCards.equipmentId, input.equipmentId) : isNull(rateCards.equipmentId),
             eq(rateCards.rateType, input.rateType),
             lte(rateCards.effectiveFrom, effectiveTo ?? new Date('9999-12-31')),
             or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, effectiveFrom)),
@@ -187,6 +201,7 @@ export class PricingService {
         .values({
           tenantId: ctx.tenantId,
           equipmentTypeId: input.equipmentTypeId,
+          equipmentId: input.equipmentId ?? null,
           rateType: input.rateType,
           rateValue: String(input.rateValue),
           currency: input.currency,
@@ -225,6 +240,7 @@ export class PricingService {
         .values({
           tenantId: ctx.tenantId,
           equipmentTypeId: existing.equipmentTypeId,
+          equipmentId: existing.equipmentId,
           rateType: existing.rateType,
           rateValue: String(input.rateValue),
           currency: existing.currency,
@@ -263,6 +279,34 @@ export class PricingService {
       });
 
       return { id, retired: true };
+    });
+  }
+
+  // GET/PUT /pricing/billing-settings.
+  async getBillingSettings(ctx: RequestContext) {
+    return withTenantTx(ctx, (tx) => getBillingSettings(tx, ctx.tenantId));
+  }
+
+  async setBillingSettings(ctx: RequestContext, input: BillingSettingsInput) {
+    return withTenantTx(ctx, async (tx) => {
+      const values = {
+        dailyHours: String(input.dailyHours),
+        minDepositPhp: String(input.minDepositPhp),
+        lowBalancePct: String(input.lowBalancePct),
+        updatedAt: new Date(),
+      };
+      await tx
+        .insert(billingSettings)
+        .values({ tenantId: ctx.tenantId, ...values })
+        .onConflictDoUpdate({ target: billingSettings.tenantId, set: values });
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'billing_settings',
+        entityId: ctx.tenantId,
+      });
+      return input;
     });
   }
 }

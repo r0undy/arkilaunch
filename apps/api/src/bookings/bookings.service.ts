@@ -37,7 +37,7 @@ import {
   nearestFreeWindow,
   overlappingAssignments,
 } from '../common/equipment-availability.js';
-import { ownCustomers, ownsCustomer } from '../common/customer-scope.js';
+import { ownCustomers, ownsCustomer, requireVerifiedCompany } from '../common/customer-scope.js';
 import { countRows } from '../common/count-rows.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 
@@ -97,6 +97,7 @@ export class BookingsService {
       if (site.customerId && site.customerId !== customerId) {
         throw new NotFoundException({ error: 'project_site_not_found' });
       }
+      await requireVerifiedCompany(tx, customerId);
 
       const equipmentIds = body.items.map((item) => item.equipmentId);
       const equipmentRows = await tx

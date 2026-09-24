@@ -57,6 +57,7 @@ export class ReferenceService {
         .select({
           id: rateCards.id,
           equipmentTypeId: rateCards.equipmentTypeId,
+          equipmentId: rateCards.equipmentId,
           rateType: rateCards.rateType,
           rateValue: rateCards.rateValue,
           currency: rateCards.currency,

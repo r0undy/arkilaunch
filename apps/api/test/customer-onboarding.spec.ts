@@ -15,6 +15,8 @@ import { TotpService } from '../src/auth/totp.service.js';
 import { BookingsService } from '../src/bookings/bookings.service.js';
 import { CustomersService, __clearForecastCache } from '../src/customers/customers.service.js';
 import { PaymentsService } from '../src/payments/payments.service.js';
+import { QuotesService } from '../src/quotes/quotes.service.js';
+import { PricingEngineService } from '../src/quotes/pricing-engine.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { JwtService } from '@nestjs/jwt';
 
@@ -35,6 +37,7 @@ describe('Customer onboarding', () => {
     new UnavailableDocumentIntelligenceAdapter('flag_disabled'),
   );
   const bookings = new BookingsService(events);
+  const quotes = new QuotesService(new PricingEngineService(), events);
   let sessions = 0;
   const adapter = new StubPaymentsAdapter();
   adapter.createCheckoutSession = async (amountPhp: number, invoiceId: string) => ({
@@ -176,6 +179,23 @@ describe('Customer onboarding', () => {
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
 
+    // Unverified: no booking at all. Verified by staff: booking opens.
+    await expect(
+      bookings.create(ctx, { customerId: acme.id, projectSiteId: site.id, items: [{ equipmentId, ...window(0) }] }),
+    ).rejects.toMatchObject({ response: { error: 'company_not_verified' } });
+    // Nor can staff quote it.
+    await expect(
+      quotes.create(adminCtx, {
+        customerId: acme.id,
+        projectSiteId: site.id,
+        discount: { type: 'none', value: 0 },
+        items: [{ equipmentTypeId: randomUUID(), rateCardId: randomUUID(), quantity: 1, estimatedHours: 1, mobilizationKm: 0, demobilizationKm: 0 }],
+      }),
+    ).rejects.toMatchObject({ response: { error: 'company_not_verified' } });
+    const queue = await companies.listForReview(adminCtx, 'pending');
+    expect(queue.find((c) => c.id === acme.id)?.documents).toHaveLength(1);
+    await companies.decide(adminCtx, acme.id, { decision: 'approved' });
+
     const booking = await bookings.create(ctx, {
       customerId: acme.id,
       projectSiteId: site.id,
@@ -185,13 +205,6 @@ describe('Customer onboarding', () => {
       booking.id,
     );
 
-    // Unverified: no payment. Verified by staff: payment opens.
-    await expect(payments.checkout(ctx, booking.id)).rejects.toMatchObject({
-      response: { error: 'company_not_verified' },
-    });
-    const queue = await companies.listForReview(adminCtx, 'pending');
-    expect(queue.find((c) => c.id === acme.id)?.documents).toHaveLength(1);
-    await companies.decide(adminCtx, acme.id, { decision: 'approved' });
     // Verified but not yet called back: still no payment.
     await expect(payments.checkout(ctx, booking.id)).rejects.toMatchObject({
       response: { error: 'call_not_confirmed' },

@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import {
   DEFAULT_DEPOSIT_PHP,
   auditLogs,
@@ -572,12 +572,14 @@ export class EdtrService {
               and(
                 eq(rateCards.tenantId, ctx.tenantId),
                 eq(rateCards.equipmentTypeId, equipmentRow.equipmentTypeId),
+                // A unit's own card overrides its type's (0038).
+                or(eq(rateCards.equipmentId, record.equipmentId), isNull(rateCards.equipmentId)),
                 eq(rateCards.rateType, 'hourly'),
                 sql`(${rateCards.effectiveFrom} at time zone ${TENANT_TIME_ZONE})::date <= ${record.reportDate}::date`,
                 sql`(${rateCards.effectiveTo} is null or (${rateCards.effectiveTo} at time zone ${TENANT_TIME_ZONE})::date > ${record.reportDate}::date)`,
               ),
             )
-            .orderBy(desc(rateCards.effectiveFrom))
+            .orderBy(sql`${rateCards.equipmentId} is null`, desc(rateCards.effectiveFrom))
             .limit(1)
         : [];
       // Adding the effectiveness filter above introduces a case that could
