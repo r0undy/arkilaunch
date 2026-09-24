@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import postgres from 'postgres';
 import {
-  ExtractionUnavailableError,
   StubPaymentsAdapter,
   UnavailableDocumentIntelligenceAdapter,
   WeatherUnavailableError,

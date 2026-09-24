@@ -16,6 +16,13 @@ test.describe('company documents', () => {
 
     // Step 1: the applicant's ID.
     await page.getByTestId('doc-government_id-file').setInputFiles(file('id.png'));
+    await page.getByRole('button', { name: 'Skip cropping' }).click();
+    await page.getByRole('button', { name: 'Next: check your ID details' }).click();
+
+    // Step 2: the customer confirms what the ID says.
+    await page.getByLabel('First name').fill('Juan');
+    await page.getByLabel('Last name').fill('Dela Cruz');
+    await page.getByLabel(/PCN/).fill('1234-5678-9012-3456');
     await page.getByRole('button', { name: 'Next: company registration' }).click();
 
     // Step 2: the dropdown offers exactly BIR and SEC; DTI is never primary.
@@ -36,7 +43,9 @@ test.describe('company documents', () => {
 
     const name = `E2E Docs Corp ${Date.now()}`;
     await page.getByLabel('Company name').fill(name);
-    await page.getByLabel('TIN').fill('123-456-789-000');
+    // An SEC certificate carries an SEC number, not a TIN.
+    await expect(page.getByLabel('TIN')).toHaveCount(0);
+    await page.getByLabel('SEC registration number').fill('CS201912345');
     await page.getByLabel('Complete billing address').fill('1 Ayala Ave, Makati');
     await page.getByLabel('Contact mobile').fill('+63 917 000 1234');
     await page.getByRole('checkbox').check();
