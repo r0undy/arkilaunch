@@ -135,13 +135,13 @@ function TrucksPage() {
             onChange={(e) => setDropoffDetail(e.target.value)}
           />
         </div>
-        <Input label="Pickup date and time" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+        <Input label="Pickup date and time" type="datetime-local" value={when} min={toLocalInput(new Date().toISOString())} onChange={(e) => setWhen(e.target.value)} {...(when && new Date(when) <= new Date() ? { error: 'Pick a time in the future.' } : {})} />
         <Input label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
         <div className="flex flex-wrap gap-3 sm:col-span-2">
           <Button variant="secondary" disabled={!ready} loading={estimate.isPending} onClick={() => estimate.mutate()}>
             Get estimate
           </Button>
-          <Button disabled={!ready || !when} loading={submit.isPending} onClick={() => submit.mutate()}>
+          <Button disabled={!ready || !when || new Date(when) <= new Date()} loading={submit.isPending} onClick={() => submit.mutate()}>
             Request truck
           </Button>
         </div>

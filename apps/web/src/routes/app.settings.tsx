@@ -3,7 +3,8 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
-import { apiDelete, apiGet, apiPost } from '../lib/api-client.js';
+import { apiDelete, apiErrorText, apiGet, apiPost, apiPut } from '../lib/api-client.js';
+import type { TenantCalendar } from '@arkilaunch/shared';
 import { referenceQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { Table, type TableColumn } from '../components/table.js';
@@ -168,6 +169,107 @@ function RetireAction({ id, label }: { id: string; label: string }) {
   );
 }
 
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DEFAULT_CALENDAR: TenantCalendar = { openTime: '07:00', closeTime: '17:00', openDays: [1, 2, 3, 4, 5, 6], blackouts: [] };
+
+// Business hours + holidays/blackouts. Bookings must start and end inside
+// them; the customer's date pickers grey the closed days.
+function BusinessCalendarForm() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const saved = useQuery({ queryKey: ['tenant-calendar'], queryFn: async () => {
+      // No row: Nest sends an empty 200, which apiGet reads as {}.
+      const data = await apiGet<Partial<TenantCalendar> | null>('/tenant-calendar');
+      return data && data.openTime ? (data as TenantCalendar) : null;
+    },
+  });
+  const [draft, setDraft] = useState<TenantCalendar | null>(null);
+  const [newDate, setNewDate] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const cal = draft ?? saved.data ?? DEFAULT_CALENDAR;
+  const edit = (patch: Partial<TenantCalendar>) => setDraft({ ...cal, ...patch });
+
+  const save = useMutation({
+    mutationFn: () => apiPut('/tenant-calendar', cal),
+    onSuccess: () => {
+      setDraft(null);
+      void queryClient.invalidateQueries({ queryKey: ['tenant-calendar'] });
+      toast.success('Business hours saved');
+    },
+    onError: (e) => toast.error('Could not save business hours', apiErrorText(e)),
+  });
+
+  return (
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Business hours">
+      <h2 className="font-display text-base font-semibold text-text">Business hours and holidays</h2>
+      {saved.data === null && !draft && (
+        <p className="text-sm text-text-muted">Not set: bookings are accepted any day, any time.</p>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Input label="Opens" type="time" value={cal.openTime} onChange={(e) => edit({ openTime: e.target.value })} />
+        <Input label="Closes" type="time" value={cal.closeTime} onChange={(e) => edit({ closeTime: e.target.value })} />
+      </div>
+      <fieldset className="flex flex-wrap gap-3">
+        <legend className="mb-1 text-sm font-medium text-text">Open days</legend>
+        {DAY_NAMES.map((name, day) => (
+          <label key={name} className="flex items-center gap-1 text-sm text-text">
+            <input
+              type="checkbox"
+              checked={cal.openDays.includes(day)}
+              onChange={(e) =>
+                edit({ openDays: e.target.checked ? [...cal.openDays, day].sort() : cal.openDays.filter((d) => d !== day) })
+              }
+            />
+            {name}
+          </label>
+        ))}
+      </fieldset>
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium text-text">Holidays and blackout dates</p>
+        {cal.blackouts.length === 0 && <p className="text-sm text-text-muted">None.</p>}
+        <ul className="flex flex-col gap-1">
+          {cal.blackouts.map((b) => (
+            <li key={b.date} className="flex items-center justify-between gap-2 text-sm text-text">
+              <span>
+                {b.date}
+                {b.label ? ` · ${b.label}` : ''}
+              </span>
+              <Button variant="secondary" onClick={() => edit({ blackouts: cal.blackouts.filter((x) => x.date !== b.date) })}>
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+        <div className="grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
+          <Input label="Date" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+          <Input label="Label (optional)" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
+          <Button
+            variant="secondary"
+            disabled={!newDate || cal.blackouts.some((b) => b.date === newDate)}
+            onClick={() => {
+              edit({ blackouts: [...cal.blackouts, { date: newDate, ...(newLabel.trim() ? { label: newLabel.trim() } : {}) }].sort((a, b) => a.date.localeCompare(b.date)) });
+              setNewDate('');
+              setNewLabel('');
+            }}
+          >
+            Add date
+          </Button>
+        </div>
+      </div>
+      <div>
+        <Button
+          variant="primary"
+          loading={save.isPending}
+          disabled={cal.closeTime <= cal.openTime}
+          onClick={() => save.mutate()}
+        >
+          Save business hours
+        </Button>
+      </div>
+    </Surface>
+  );
+}
+
 function SettingsPage() {
   const [offset, setOffset] = useState(0);
   // The table showed a UUID stub where the form's own dropdown already had
@@ -200,6 +302,7 @@ function SettingsPage() {
         title="Rate cards"
         description="What each kind of machine is charged at, and from when."
       />
+      <BusinessCalendarForm />
       <RateCardForm />
       <DataPanel
         title="Rate cards"

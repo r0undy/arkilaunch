@@ -1,10 +1,10 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BookingDetailResponse, BookingSummaryResponse } from '@arkilaunch/shared';
+import type { BookingDetailResponse, BookingSummaryResponse, RescheduleSuggestion } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { bookingsQueries } from '../lib/queries.js';
-import { apiErrorText, apiPatch } from '../lib/api-client.js';
+import { apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
@@ -110,6 +110,40 @@ function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
+// When a confirmed booking must move: the nearest free same-length window on
+// each unit, then other free units of the same type. Advice only; staff
+// agree the move with the customer in the thread.
+function RescheduleCard({ bookingId }: { bookingId: string }) {
+  const suggest = useMutation({
+    mutationFn: () => apiGet<RescheduleSuggestion>(`/bookings/${bookingId}/reschedule-suggestion`),
+  });
+  return (
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5 text-sm">
+      <h2 className={heading}>Reschedule</h2>
+      <div>
+        <Button variant="secondary" loading={suggest.isPending} onClick={() => suggest.mutate()}>
+          Suggest a new slot
+        </Button>
+      </div>
+      {suggest.isError && <p className="text-error">{apiErrorText(suggest.error)}</p>}
+      {suggest.data?.items.map((item) => (
+        <div key={item.equipmentId} className="flex flex-col gap-1">
+          <p className="text-text">
+            {shortCode('equipment', item.equipmentId)}:{' '}
+            {item.sameUnit
+              ? `${new Date(item.sameUnit.start).toLocaleString()} - ${new Date(item.sameUnit.end).toLocaleString()}`
+              : 'no free window within 60 days'}
+          </p>
+          <p className="text-text-muted">
+            Other free units:{' '}
+            {item.alternatives.length ? item.alternatives.map((id) => shortCode('equipment', id)).join(', ') : 'none'}
+          </p>
+        </div>
+      ))}
+    </Surface>
+  );
+}
+
 function BookingSide({ booking }: { booking: BookingDetailResponse }) {
   const quote = booking.quotation;
   return (
@@ -142,6 +176,7 @@ function BookingSide({ booking }: { booking: BookingDetailResponse }) {
         ))}
       </Surface>
       <PendingRequests booking={booking} />
+      {booking.status === 'confirmed' && <RescheduleCard bookingId={booking.id} />}
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { Input } from './input.js';
 import { Select } from './select.js';
 import { Button } from './button.js';
 import { useToast } from './toast.js';
-import { apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
+import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 
 // The maintenance view of one machine: per-task schedules, logging a service
 // (which resets that task's next_due), and a manual hour-meter correction.
@@ -35,6 +35,33 @@ export function MaintenanceModal({
   const [interval, setHoursInterval] = useState(String(MAINTENANCE_PRESETS[0]!.hoursInterval));
   const [runtime, setRuntime] = useState('');
   const [reason, setReason] = useState('');
+  const [winStart, setWinStart] = useState('');
+  const [winEnd, setWinEnd] = useState('');
+  const [winNotes, setWinNotes] = useState('');
+  const winInvalid = !winStart || !winEnd || new Date(winEnd) <= new Date(winStart);
+
+  // Maintenance date windows: bookings cannot land on them.
+  const addWindow = useMutation({
+    mutationFn: () =>
+      apiPost(`/equipment/${equipment.id}/maintenance-windows`, {
+        startsAt: new Date(winStart).toISOString(),
+        endsAt: new Date(winEnd).toISOString(),
+        ...(winNotes.trim() ? { notes: winNotes.trim() } : {}),
+      }),
+    onSuccess: () => {
+      refresh();
+      setWinStart('');
+      setWinEnd('');
+      setWinNotes('');
+      toast.success('Maintenance dates blocked', 'Bookings cannot use those dates.');
+    },
+    onError: (error) => toast.error('Could not block those dates', apiErrorText(error)),
+  });
+  const removeWindow = useMutation({
+    mutationFn: (windowId: string) => apiDelete(`/equipment/${equipment.id}/maintenance-windows/${windowId}`),
+    onSuccess: () => refresh(),
+    onError: (error) => toast.error('Could not remove those dates', apiErrorText(error)),
+  });
 
   const addSchedule = useMutation({
     mutationFn: () =>
@@ -172,6 +199,45 @@ export function MaintenanceModal({
               disabled={!task.trim() || !(Number(interval) > 0)}
             >
               Add schedule
+            </Button>
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-3" aria-label="Maintenance dates">
+          <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+            Maintenance dates
+          </h3>
+          {data && data.windows.length === 0 && (
+            <p className="text-sm text-text-muted">No dates blocked.</p>
+          )}
+          <ul className="flex flex-col gap-2">
+            {data?.windows.map((w) => (
+              <li
+                key={w.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border p-3 text-sm text-text"
+              >
+                <span>
+                  {new Date(w.startsAt).toLocaleString()} to {new Date(w.endsAt).toLocaleString()}
+                  {w.notes ? ` · ${w.notes}` : ''}
+                </span>
+                <Button
+                  variant="secondary"
+                  onClick={() => removeWindow.mutate(w.id)}
+                  loading={removeWindow.isPending && removeWindow.variables === w.id}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Input label="From" type="datetime-local" value={winStart} onChange={(e) => setWinStart(e.target.value)} />
+            <Input label="Until" type="datetime-local" value={winEnd} onChange={(e) => setWinEnd(e.target.value)} />
+            <Input label="Note (optional)" value={winNotes} onChange={(e) => setWinNotes(e.target.value)} />
+          </div>
+          <div>
+            <Button variant="secondary" onClick={() => addWindow.mutate()} loading={addWindow.isPending} disabled={winInvalid}>
+              Block dates
             </Button>
           </div>
         </section>
