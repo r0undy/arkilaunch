@@ -40,6 +40,7 @@ import {
 import { DOCUMENT_INTELLIGENCE_PORT } from '../kyc/kyc.tokens.js';
 import type {
   CompanyCreate,
+  CompanyUpdate,
   CompanyDecision,
   CompanyResponse,
   CustomerSiteCreate,
@@ -186,6 +187,24 @@ export class CustomersService {
         company_name: row.companyName,
       });
       return { ...toCompany(row), documents: [] };
+    });
+  }
+
+  // PATCH /me/companies/:id. The billing address is always the customer's to
+  // keep current. TIN and SEC number are what staff verified, so they are
+  // frozen once the company is approved -- editing them would silently void
+  // the check.
+  async updateCompany(ctx: RequestContext, id: string, body: CompanyUpdate): Promise<CompanyResponse> {
+    assertCustomer(ctx);
+    return withTenantTx(ctx, async (tx) => {
+      if (!(await ownsCustomer(tx, ctx, id))) throw new NotFoundException({ error: 'company_not_found' });
+      const [current] = await tx.select().from(customers).where(eq(customers.id, id)).limit(1);
+      if (!current) throw new NotFoundException({ error: 'company_not_found' });
+      if (current.kycStatus === 'approved' && (body.tin !== undefined || body.secNumber !== undefined))
+        throw new ConflictException({ error: 'company_verified_fields_locked' });
+      if (Object.keys(body).length > 0) await tx.update(customers).set(body).where(eq(customers.id, id));
+      const [row] = await tx.select().from(customers).where(eq(customers.id, id)).limit(1);
+      return (await withDocuments(tx, [row!]))[0]!;
     });
   }
 

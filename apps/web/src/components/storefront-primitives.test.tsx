@@ -42,12 +42,20 @@ describe('EquipmentCard', () => {
 });
 
 describe('SearchFilterBar', () => {
-  it('marks the active availability filter', () => {
+  it('offers search and no availability labels', () => {
+    const html = renderToStaticMarkup(<SearchFilterBar query="" onQueryChange={vi.fn()} />);
+    expect(html).toContain('Search equipment');
+    expect(html).not.toMatch(/Deployed|maintenance/i);
+  });
+});
+
+describe('EquipmentCard unavailable', () => {
+  it('disables Rent and shows no status label', () => {
     const html = renderToStaticMarkup(
-      <SearchFilterBar query="" onQueryChange={vi.fn()} availability="available" onAvailabilityChange={vi.fn()} />,
+      <EquipmentCard imageAlt="x" model="Back Hoe" make="CAT" unavailable onRent={() => {}} />,
     );
-    expect(html).toContain('Available');
-    expect(html).toMatch(/aria-pressed="true"[^>]*>Available|Available[^<]*<\/button>/);
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Rent/);
+    expect(html).not.toMatch(/Deployed|maintenance|Available/i);
   });
 });
 

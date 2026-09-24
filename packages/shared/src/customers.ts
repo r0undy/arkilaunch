@@ -32,6 +32,18 @@ export const CompanyCreateSchema = z.object({
 });
 export type CompanyCreate = z.infer<typeof CompanyCreateSchema>;
 
+// PATCH /me/companies/:id. The name is not editable (it is what was
+// registered and verified); TIN and SEC are refused by the service once the
+// company is approved.
+export const CompanyUpdateSchema = CompanyCreateSchema.pick({
+  tin: true,
+  secNumber: true,
+  billingAddress: true,
+})
+  .partial()
+  .strict();
+export type CompanyUpdate = z.infer<typeof CompanyUpdateSchema>;
+
 export const COMPANY_DOCUMENT_TYPES = ['government_id', 'company_registration'] as const;
 export const CompanyDocumentUploadSchema = z.object({
   documentType: z.enum(COMPANY_DOCUMENT_TYPES),

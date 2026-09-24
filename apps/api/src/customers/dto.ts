@@ -4,10 +4,12 @@ import {
   CompanyDecisionSchema,
   CompanyDocumentUploadSchema,
   CompanyReviewQuerySchema,
+  CompanyUpdateSchema,
   CustomerSignupSchema,
   CustomerSiteCreateSchema,
 } from '@arkilaunch/shared';
 
+export class CompanyUpdateDto extends createZodDto(CompanyUpdateSchema) {}
 export class CompanyCreateDto extends createZodDto(CompanyCreateSchema) {}
 export class CompanyDocumentUploadDto extends createZodDto(CompanyDocumentUploadSchema) {}
 export class CustomerSiteCreateDto extends createZodDto(CustomerSiteCreateSchema) {}

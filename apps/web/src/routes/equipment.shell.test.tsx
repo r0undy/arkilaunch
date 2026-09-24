@@ -35,6 +35,8 @@ function stubFetch() {
       // action to click.
       const body = href.includes('/users/me')
         ? { tenantName: 'Almara' }
+        : href.includes('/me/companies')
+          ? [{ id: 'c1', kycStatus: 'approved' }]
         : href.includes(`/catalog/equipment/${UNIT_ID}`)
           ? UNIT
           : { items: [UNIT] };

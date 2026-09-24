@@ -47,9 +47,13 @@ export async function apiGet<T>(path: string): Promise<T> {
   return payload as T;
 }
 
-export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
+export function apiPut<T>(path: string, body: unknown): Promise<T> {
+  return apiPatch<T>(path, body, 'PUT');
+}
+
+export async function apiPatch<T>(path: string, body: unknown, method: 'PATCH' | 'PUT' = 'PATCH'): Promise<T> {
   const res = await authorizedFetch(path, {
-    method: 'PATCH',
+    method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });

@@ -17,6 +17,7 @@ import {
   TrendingUp,
   UserPlus,
   Users,
+  Truck,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -69,6 +70,7 @@ export const ACCOUNT_NAV: NavGroup[] = [
         // entry of their own, so without this they would light nothing.
         owns: ['/account/companies'],
       },
+      { label: 'Self-loading truck', to: '/account/trucks', icon: Truck },
       { label: 'Notifications', to: '/account/notifications', icon: Bell },
       { label: 'Settings', to: '/account/settings', icon: Settings },
     ],
@@ -111,6 +113,7 @@ export const APP_NAV: NavGroup[] = [
       { label: 'Tickets', to: '/app/tickets', icon: ClipboardList },
       { label: 'Security logs', to: '/app/security-logs', icon: ShieldAlert },
       { label: 'Rate cards', to: '/app/settings', icon: Settings },
+      { label: 'Truck service', to: '/app/trucks', icon: Truck },
       { label: 'Onboarding', to: '/app/registration', icon: UserPlus },
       { label: 'Registration pending', to: '/app/registration/pending', icon: ClipboardList },
       { label: 'Registration verified', to: '/app/registration/verified', icon: ShieldAlert },
