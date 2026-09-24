@@ -24,6 +24,7 @@ import { accountIndexRoute } from './routes/account.index.js';
 import { accountBookingsRoute } from './routes/account.bookings.js';
 import { accountCartRoute } from './routes/account.cart.js';
 import { accountSettingsRoute } from './routes/account.settings.js';
+import { accountTrucksRoute } from './routes/account.trucks.js';
 import { accountApplicationsRoute } from './routes/account.applications.js';
 import { accountInvoiceRoute } from './routes/account.invoice.js';
 import { accountCheckoutRoute, accountCheckoutFailedRoute } from './routes/account.checkout.js';
@@ -50,6 +51,7 @@ import { appPaymentsRoute } from './routes/app.payments.js';
 import { appBillingWeeklyRoute } from './routes/app.billing.weekly.js';
 import { appUsersRoute } from './routes/app.users.js';
 import { appSettingsRoute } from './routes/app.settings.js';
+import { appTrucksRoute } from './routes/app.trucks.js';
 import { appPlatformApplicationsRoute } from './routes/app.platform-applications.js';
 import { quotesRoute } from './routes/quotes.js';
 import { edtrRoute } from './routes/edtr.js';
@@ -108,6 +110,7 @@ export const routeTree = rootRoute.addChildren([
     accountBookingsRoute,
     accountCartRoute,
     accountSettingsRoute,
+    accountTrucksRoute,
     accountApplicationsRoute,
     accountInvoiceRoute,
     accountCheckoutRoute,
@@ -137,6 +140,7 @@ export const routeTree = rootRoute.addChildren([
     appBillingWeeklyRoute,
     appUsersRoute,
     appSettingsRoute,
+    appTrucksRoute,
     appPlatformApplicationsRoute,
     quotesRoute,
     edtrRoute,
