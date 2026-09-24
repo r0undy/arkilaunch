@@ -86,11 +86,6 @@ export function MaintenanceModal({
       title="Maintenance"
       description={`${equipment.model} (${equipment.serialNo})`}
       size="lg"
-      footer={
-        <Button variant="ghost" onClick={onClose}>
-          Close
-        </Button>
-      }
     >
       <div className="flex flex-col gap-6">
         <p className="text-sm text-text">
