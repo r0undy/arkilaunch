@@ -20,6 +20,12 @@ test.describe('platform console', () => {
     await page.goto('/app/companies/approved');
     await expect(page.getByRole('heading', { name: 'Approved companies', level: 1 })).toBeVisible();
     await expect(page.getByText(/are not listed yet/i)).toHaveCount(0);
+    // The list loaded: either rows or its own empty state, never the error
+    // panel a missing endpoint or function renders.
+    const loaded = page
+      .getByRole('table')
+      .or(page.getByText('No approved companies yet'));
+    await expect(loaded.first()).toBeVisible();
   });
 
   for (const path of ['/app', '/app/inventory', '/field', '/account']) {
