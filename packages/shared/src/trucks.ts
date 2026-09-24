@@ -24,7 +24,7 @@ export const TruckSettingsSchema = z
     extras: z.array(TruckExtraSchema).max(20),
     // Null/absent = DEFAULT_TRUCK_FORMULA.
     formula: z.string().trim().max(500).nullish(),
-    // The estimate is shown as total ± rangePct; the high end is the cap.
+    // The estimate is shown as total Â± rangePct; the high end is the cap.
     rangePct: z.number().min(0).max(100).default(10),
     // The diesel price / pricing_parameters region the tenant prices in.
     region: z.string().trim().min(1).max(40).default('NCR'),
@@ -80,7 +80,7 @@ export interface TruckPrice {
   km: number;
   lines: TruckPriceLine[];
   totalPhp: number;
-  // total ± the tenant's rangePct; highPhp is the cap a request locks.
+  // total Â± the tenant's rangePct; highPhp is the cap a request locks.
   lowPhp?: number;
   highPhp?: number;
 }

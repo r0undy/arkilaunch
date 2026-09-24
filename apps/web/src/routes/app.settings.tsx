@@ -259,7 +259,7 @@ function BusinessCalendarForm() {
             <li key={b.date} className="flex items-center justify-between gap-2 text-sm text-text">
               <span>
                 {b.date}
-                {b.label ? ` · ${b.label}` : ''}
+                {b.label ? ` Â· ${b.label}` : ''}
               </span>
               <Button variant="secondary" onClick={() => edit({ blackouts: cal.blackouts.filter((x) => x.date !== b.date) })}>
                 Remove

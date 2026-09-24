@@ -218,7 +218,7 @@ export function MaintenanceModal({
               >
                 <span>
                   {new Date(w.startsAt).toLocaleString()} to {new Date(w.endsAt).toLocaleString()}
-                  {w.notes ? ` · ${w.notes}` : ''}
+                  {w.notes ? ` Â· ${w.notes}` : ''}
                 </span>
                 <Button
                   variant="secondary"
