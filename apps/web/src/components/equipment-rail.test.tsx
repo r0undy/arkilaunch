@@ -94,6 +94,21 @@ describe('EquipmentRail', () => {
     unmount();
   });
 
+  // Deliberately not Figma's order: the cart is the panel with something to
+  // act on, so it sits nearest the catalog. Pinned because a reorder is the
+  // kind of thing that drifts back without anyone noticing.
+  it('puts the cart above the weather', async () => {
+    setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
+    stub();
+    const { unmount } = await renderRoute('/equipment');
+
+    const rail = await screen.findByRole('complementary', { name: 'Cart and weather' });
+    await waitFor(() => expect(rail).toHaveTextContent('Weather insights'));
+    const text = rail.textContent ?? '';
+    expect(text.indexOf('Cart')).toBeLessThan(text.indexOf('Weather insights'));
+    unmount();
+  });
+
   it('shows the forecast for the customer site, named', async () => {
     setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
     stub();

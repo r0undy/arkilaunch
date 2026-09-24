@@ -211,10 +211,15 @@ export function EquipmentRail() {
   // a visitor can fill a cart and sign in at the end.
   const signedIn = Boolean(getAccessToken());
 
+  // Cart first, weather under it. Figma 185:1599 has the order the other way
+  // round, and this is a deliberate departure: the cart is the panel with
+  // something to act on, so it takes the position nearest the catalog the
+  // customer is reading. Weather is context for that decision, not the
+  // decision.
   return (
     <div className="flex flex-col gap-4">
-      {signedIn && <WeatherRail />}
       <CartRail />
+      {signedIn && <WeatherRail />}
     </div>
   );
 }
