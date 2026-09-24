@@ -1,100 +1,26 @@
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
 import { EmptyState } from './empty-state.js';
 import { Skeleton } from './skeleton.js';
 import { LoadError } from './load-error.js';
-import { useCart, type CartItem } from '../lib/cart-client.js';
 import { getAccessToken } from '../lib/auth-client.js';
 import { ApiError } from '../lib/api-client.js';
-import { equipmentImageUrl } from '../lib/equipment-images.js';
 import { customerSitesQueries, forecastQueries } from '../lib/queries.js';
 import { describeWeatherCode, weekdayLabel } from '../lib/weather-code.js';
-import { shortCode } from '../lib/format.js';
 
-// The right rail from Figma 185:1599: what is in the cart, and what the
-// weather is doing at the site it is going to. Both answer questions a
-// customer has while choosing a machine, which is why they live here rather
-// than one click away.
+// The weather at the site a customer is renting for, beside the catalog they
+// are choosing from (Figma 185:1599). The cart panel that used to sit here is
+// gone: the cart is one affordance in the app bar, next to Sign out, rather
+// than the same thing drawn twice.
 
 const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
 
-function cartDates(item: CartItem): string {
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  return `${fmt(item.start)} – ${fmt(item.end)}`;
-}
-
-function CartRail() {
-  const items = useCart();
-  const navigate = useNavigate();
-  const signedIn = Boolean(getAccessToken());
-
-  return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
-      <h2 className={heading}>Cart ({items.length})</h2>
-      {items.length === 0 ? (
-        <EmptyState
-          title="Nothing in your cart"
-          description="Pick a machine and set its dates to start a booking."
-        />
-      ) : (
-        <>
-          <ul className="flex flex-col gap-3">
-            {items.map((item, index) => {
-              const image = item.photoUri ?? equipmentImageUrl(item.model);
-              return (
-                <li
-                  key={`${item.equipmentId}-${index}`}
-                  className="flex items-center gap-3 rounded-sm border border-border p-2"
-                >
-                  {image ? (
-                    <img
-                      src={image}
-                      alt=""
-                      className="h-12 w-16 shrink-0 rounded-sm object-cover"
-                    />
-                  ) : (
-                    <div className="h-12 w-16 shrink-0 rounded-sm bg-surface-sunk" aria-hidden="true" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-text">{item.model}</p>
-                    <p className="truncate text-xs text-text-muted">
-                      {item.equipmentTypeName ?? shortCode('equipment', item.equipmentId)}
-                    </p>
-                    <p className="text-xs text-text-muted">{cartDates(item)}</p>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-          {/* Same rule as the rent buttons: a visitor is sent to login on
-              purpose with the cart as the destination, rather than being
-              bounced there by requireAuth() with nothing to explain it. */}
-          <Button
-            variant="primary"
-            onClick={() =>
-              void navigate(
-                signedIn
-                  ? { to: '/account/cart' }
-                  : { to: '/login', search: { redirect: '/account/cart' } },
-              )
-            }
-          >
-            View details
-          </Button>
-        </>
-      )}
-    </Surface>
-  );
-}
-
 // The API answers 503 { error: 'weather_unavailable', reason } when it cannot
-// get a forecast, and the reason decides what the rail should say. A weather
-// adapter switched off by configuration will never succeed, so offering
-// "Retry" there is a button that cannot work -- which is exactly what this
-// looked like the first time it was seen in the wild.
+// get a forecast, and the reason decides what to say. An adapter switched off
+// by configuration will never succeed, so offering "Retry" there is a button
+// that cannot work.
 function unavailableReason(error: unknown): string | null {
   if (!(error instanceof ApiError)) return null;
   const payload = error.payload;
@@ -205,21 +131,13 @@ function WeatherRail() {
   );
 }
 
-export function EquipmentRail() {
-  // The forecast is a customer's own data; a signed-out visitor has no site
-  // to forecast and no endpoint to read. The cart rail shows for everyone --
-  // a visitor can fill a cart and sign in at the end.
-  const signedIn = Boolean(getAccessToken());
+// The forecast is a customer's own data: a signed-out visitor has no project
+// site and no endpoint to read, so there is nothing to render for them. The
+// page checks the same thing before reserving a column for it.
+export function weatherInsightsVisible(): boolean {
+  return Boolean(getAccessToken());
+}
 
-  // Cart first, weather under it. Figma 185:1599 has the order the other way
-  // round, and this is a deliberate departure: the cart is the panel with
-  // something to act on, so it takes the position nearest the catalog the
-  // customer is reading. Weather is context for that decision, not the
-  // decision.
-  return (
-    <div className="flex flex-col gap-4">
-      <CartRail />
-      {signedIn && <WeatherRail />}
-    </div>
-  );
+export function WeatherInsights() {
+  return <WeatherRail />;
 }

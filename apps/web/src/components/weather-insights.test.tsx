@@ -3,13 +3,13 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken, clearTokens } from '../lib/auth-client.js';
-import { addToCart, clearCart, defaultRentalWindow } from '../lib/cart-client.js';
+import { clearCart } from '../lib/cart-client.js';
 
-// Figma 185:1599's right rail, driven through the real catalog route.
+// The weather panel beside the catalog, driven through the real route.
 //
-// The weather half is the one that needs watching: an unavailable forecast
-// must read as unavailable. A blank week or a row of zeros renders as five
-// calm days, which is the failure mode weather-port.spec.ts exists to stop.
+// The thing that needs watching: an unavailable forecast must READ as
+// unavailable. A blank week or a row of zeros renders as five calm days,
+// which is the failure mode weather-port.spec.ts exists to stop.
 
 const SITE = {
   id: '22222222-2222-2222-2222-222222222222',
@@ -59,7 +59,7 @@ function stub({ forecastStatus = 200, sites = [SITE], reason = 'upstream_failed'
   );
 }
 
-describe('EquipmentRail', () => {
+describe('WeatherInsights', () => {
   beforeEach(() => {
     clearCart();
   });
@@ -70,51 +70,12 @@ describe('EquipmentRail', () => {
     clearCart();
   });
 
-  it('says the cart is empty rather than showing a bare zero', async () => {
-    stub();
-    const { unmount } = await renderRoute('/equipment');
-    expect(await screen.findByText(/nothing in your cart/i)).toBeInTheDocument();
-    unmount();
-  });
-
-  it('lists what is in the cart, with its dates', async () => {
-    addToCart({
-      equipmentId: '44444444-4444-4444-4444-444444444444',
-      model: 'JCB 3CX',
-      equipmentTypeName: 'Backhoe loader',
-      ...defaultRentalWindow(),
-    });
-    stub();
-    const { unmount } = await renderRoute('/equipment');
-
-    const rail = await screen.findByRole('complementary', { name: 'Cart and weather' });
-    expect(rail).toHaveTextContent('JCB 3CX');
-    expect(rail).toHaveTextContent('Backhoe loader');
-    expect(rail).toHaveTextContent('Cart (1)');
-    unmount();
-  });
-
-  // Deliberately not Figma's order: the cart is the panel with something to
-  // act on, so it sits nearest the catalog. Pinned because a reorder is the
-  // kind of thing that drifts back without anyone noticing.
-  it('puts the cart above the weather', async () => {
-    setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
-    stub();
-    const { unmount } = await renderRoute('/equipment');
-
-    const rail = await screen.findByRole('complementary', { name: 'Cart and weather' });
-    await waitFor(() => expect(rail).toHaveTextContent('Weather insights'));
-    const text = rail.textContent ?? '';
-    expect(text.indexOf('Cart')).toBeLessThan(text.indexOf('Weather insights'));
-    unmount();
-  });
-
   it('shows the forecast for the customer site, named', async () => {
     setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
     stub();
     const { unmount } = await renderRoute('/equipment');
 
-    const rail = await screen.findByRole('complementary', { name: 'Cart and weather' });
+    const rail = await screen.findByRole('complementary', { name: 'Weather insights' });
     await waitFor(() => expect(rail).toHaveTextContent('Weather insights'));
     await waitFor(() => expect(rail).toHaveTextContent('Thunderstorms'));
     expect(rail).toHaveTextContent('Rain');
@@ -131,7 +92,7 @@ describe('EquipmentRail', () => {
     stub({ forecastStatus: 503 });
     const { unmount } = await renderRoute('/equipment');
 
-    const rail = await screen.findByRole('complementary', { name: 'Cart and weather' });
+    const rail = await screen.findByRole('complementary', { name: 'Weather insights' });
     await waitFor(() => expect(rail).toHaveTextContent(/could not be fetched/i));
     // A transient failure DOES get a retry.
     expect(within(rail).getByRole('button', { name: /retry/i })).toBeInTheDocument();
@@ -146,7 +107,7 @@ describe('EquipmentRail', () => {
     stub({ forecastStatus: 503, reason: 'flag_disabled' });
     const { unmount } = await renderRoute('/equipment');
 
-    const rail = await screen.findByRole('complementary', { name: 'Cart and weather' });
+    const rail = await screen.findByRole('complementary', { name: 'Weather insights' });
     await waitFor(() => expect(rail).toHaveTextContent(/switched off/i));
     expect(within(rail).queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
     unmount();
@@ -157,21 +118,20 @@ describe('EquipmentRail', () => {
     stub({ sites: [] });
     const { unmount } = await renderRoute('/equipment');
 
-    const rail = await screen.findByRole('complementary', { name: 'Cart and weather' });
+    const rail = await screen.findByRole('complementary', { name: 'Weather insights' });
     await waitFor(() => expect(rail).toHaveTextContent(/no project site yet/i));
     unmount();
   });
 
-  // A visitor has no site and no endpoint to read; the weather panel would be
-  // a permanent error box. The cart half still shows -- they can fill it and
-  // sign in at the end.
-  it('hides the weather panel from a signed-out visitor but keeps the cart', async () => {
+  // A visitor has no project site and no endpoint to read, so the panel would
+  // be a permanent error box. The column is not reserved for it either -- an
+  // empty 320px gap beside the catalog is worse than no column.
+  it('renders nothing at all for a signed-out visitor', async () => {
     stub();
     const { unmount } = await renderRoute('/equipment');
 
-    const rail = await screen.findByRole('complementary', { name: 'Cart and weather' });
-    expect(rail).not.toHaveTextContent('Weather insights');
-    expect(rail).toHaveTextContent(/cart/i);
+    await screen.findByRole('heading', { name: /equipment for hire/i });
+    expect(screen.queryByRole('complementary', { name: 'Weather insights' })).not.toBeInTheDocument();
     unmount();
   });
 });

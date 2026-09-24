@@ -57,7 +57,10 @@ test.describe('cart', () => {
     await page.goto('/account/cart');
     await openSidebar(page);
     await expect(sidebarLink(page, 'Home')).not.toHaveAttribute('aria-current', 'page');
-    // Exactly one destination is ever marked, and on the cart it is Cart.
-    await expect(sidebarLink(page, 'Cart')).toHaveAttribute('aria-current', 'page');
+    // The cart has no sidebar entry any more -- it is in the app bar beside
+    // Sign out. "My bookings" owns its URL so the blade still points
+    // somewhere true rather than nowhere.
+    await expect(sidebarLink(page, 'My bookings')).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('link', { name: /^cart,/i })).toBeVisible();
   });
 });

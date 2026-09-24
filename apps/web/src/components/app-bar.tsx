@@ -1,6 +1,8 @@
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
+import { ShoppingCart } from 'lucide-react';
 import { clearTokens } from '../lib/auth-client.js';
+import { useCart } from '../lib/cart-client.js';
 import { getCurrentRole } from '../lib/guards.js';
 import { edtrQueries, notificationsQueries } from '../lib/queries.js';
 import { StatusPill } from './status-pill.js';
@@ -39,6 +41,10 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   // shell since it was written; moving the catalog into that shell just made
   // it happen on more pages.
   const edtrList = useQuery({ ...edtrQueries.list(), retry: false, enabled: !isCustomer });
+  // The cart sits in the bar beside Sign out (Figma 185:1599 puts it in the
+  // top bar, not the sidebar). Customer-only: staff have no cart, and the bar
+  // is shared with the admin shell.
+  const cartCount = useCart().length;
 
   const unreadItems = notifications.data?.items;
   const unreadCount = unreadItems ? unreadItems.filter((n) => n.status === 'unread').length : null;
@@ -128,6 +134,25 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             <span className="rounded-full bg-primary px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-text">
               {unreadCount}
             </span>
+          </Link>
+        )}
+
+        {isCustomer && (
+          <Link
+            to="/account/cart"
+            // The count belongs in the accessible name, not only the pill:
+            // "Cart, 3 items" read aloud beats a bare "3", and the empty cart
+            // still needs a name to be reachable at all.
+            aria-label={cartCount > 0 ? `Cart, ${cartCount} items` : 'Cart, empty'}
+            className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm px-2 text-sm font-medium text-text-muted hover:text-text sm:gap-2 sm:px-3"
+          >
+            <ShoppingCart aria-hidden="true" className="h-5 w-5" />
+            <span className="hidden sm:inline">Cart</span>
+            {cartCount > 0 && (
+              <span className="rounded-full bg-primary px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-text">
+                {cartCount}
+              </span>
+            )}
           </Link>
         )}
 

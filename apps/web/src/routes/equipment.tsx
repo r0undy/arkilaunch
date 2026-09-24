@@ -15,7 +15,7 @@ import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
-import { EquipmentRail } from '../components/equipment-rail.js';
+import { WeatherInsights, weatherInsightsVisible } from '../components/weather-insights.js';
 import { getAccessToken } from '../lib/auth-client.js';
 
 // <input type="datetime-local"> speaks local "YYYY-MM-DDTHH:mm"; the cart
@@ -156,11 +156,22 @@ function EquipmentPage() {
   const safeOffset = offset < equipment.length ? offset : 0;
   const page = equipment.slice(safeOffset, safeOffset + PAGE_SIZE);
 
-  // The rail waits for xl. At lg it took 320px out of a viewport that had
-  // already given 240px to the account sidebar, leaving the catalog ~440px and
-  // three columns squeezed to 201px with the machine names wrapping.
+  // Weather sits top-right, level with the heading, and only when there is
+  // something to show: a signed-out visitor has no site to forecast, and
+  // reserving 320px for a panel that renders nothing would leave a hole.
+  //
+  // The column waits for xl. Below that it took 320px out of a viewport that
+  // had already given 240px to the account sidebar, leaving the catalog ~440px
+  // and three cards squeezed to 201px with the machine names wrapping -- so it
+  // stacks under the catalog there rather than crowding it or vanishing.
+  const showWeather = weatherInsightsVisible();
   return (
-    <div className="grid gap-6 px-6 py-10 sm:px-10 xl:grid-cols-[1fr_320px] xl:items-start">
+    <div
+      className={[
+        'grid gap-6 px-6 py-10 sm:px-10',
+        showWeather ? 'xl:grid-cols-[1fr_320px] xl:items-start' : '',
+      ].join(' ')}
+    >
       <div className="flex min-w-0 flex-col gap-6">
       <h1 className="font-display text-2xl font-semibold text-ink-mk">Equipment for hire</h1>
       <SearchFilterBar
@@ -217,12 +228,11 @@ function EquipmentPage() {
         noun="machines"
       />
       </div>
-      {/* Figma 185:1599's right rail. Below xl it would crowd the catalog
-          rather than sit beside it, so it stays out of the way -- the cart is
-          still one tap away in the sidebar, with its count on the entry. */}
-      <aside aria-label="Cart and weather" className="hidden xl:block">
-        <EquipmentRail />
-      </aside>
+      {showWeather && (
+        <aside aria-label="Weather insights">
+          <WeatherInsights />
+        </aside>
+      )}
       {configuring && (
         <ConfigureRentalDialog equipment={configuring} onClose={() => setConfiguring(null)} />
       )}

@@ -1,6 +1,5 @@
 import { Link } from '@tanstack/react-router';
 import type { NavGroup } from '../lib/nav-config.js';
-import { useCart } from '../lib/cart-client.js';
 
 export interface NavGroupListProps {
   groups: NavGroup[];
@@ -59,10 +58,6 @@ export function activeNavTarget(targets: (string | NavTarget)[], pathname: strin
 }
 
 export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps) {
-  // ponytail: one hardcoded path, because ACCOUNT_NAV is a static module
-  // constant and cannot carry a live count. Generalise into NavItem only if a
-  // second destination ever needs a badge.
-  const cartCount = useCart().length;
   const active = activeNavTarget(
     groups.flatMap((group) => group.items),
     pathname,
@@ -99,16 +94,6 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
                 >
                   {item.icon && <item.icon aria-hidden="true" className="h-4 w-4 shrink-0" />}
                   {item.label}
-                  {item.to === '/account/cart' && cartCount > 0 && (
-                    <span
-                      // The count is in the accessible name, not only the
-                      // pill: "Cart 3" read aloud beats a bare "3".
-                      aria-label={`${cartCount} in cart`}
-                      className="ml-auto min-w-5 rounded-pill bg-primary px-1.5 py-0.5 text-center text-xs font-semibold text-text"
-                    >
-                      {cartCount}
-                    </span>
-                  )}
                 </Link>
               );
             })}

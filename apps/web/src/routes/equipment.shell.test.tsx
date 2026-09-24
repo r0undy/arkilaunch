@@ -1,9 +1,9 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken, clearTokens } from '../lib/auth-client.js';
-import { clearCart, getCart } from '../lib/cart-client.js';
+import { addToCart, clearCart, defaultRentalWindow, getCart } from '../lib/cart-client.js';
 import userEvent from '@testing-library/user-event';
 
 // THE BUG THIS PINS: /equipment lived under the marketing layout, but the
@@ -60,9 +60,15 @@ describe('/equipment chrome', () => {
     // footer links "My bookings" too, so a name query cannot tell the shells
     // apart -- which is exactly the trap this test exists to catch.
     await waitFor(() => expect(screen.getByRole('complementary', { name: 'Sidebar' })).toBeInTheDocument());
-    expect(within(screen.getByRole('complementary', { name: 'Sidebar' })).getByRole('link', { name: 'Cart' })).toBeInTheDocument();
-    // App bar, not the marketing nav.
+    expect(
+      within(screen.getByRole('complementary', { name: 'Sidebar' })).getByRole('link', {
+        name: 'My bookings',
+      }),
+    ).toBeInTheDocument();
+    // App bar, not the marketing nav -- and the cart lives there now, beside
+    // Sign out, rather than in the sidebar.
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^cart,/i })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Primary' })).not.toBeInTheDocument();
     unmount();
   });
@@ -103,6 +109,38 @@ describe('/equipment chrome', () => {
     const { router, unmount } = await renderRoute('/equipment');
     expect(router.state.location.pathname).toBe('/equipment');
     unmount();
+  });
+
+  // The cart moved out of the sidebar and into the app bar beside Sign out
+  // (Figma 185:1599 draws it there). It is one affordance, not a panel
+  // repeated in the page body.
+  describe('the cart in the app bar', () => {
+    it('counts what is in it, in the accessible name', async () => {
+      setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
+      stubFetch();
+      const { unmount } = await renderRoute('/equipment');
+
+      const cart = await screen.findByRole('link', { name: 'Cart, empty' });
+      expect(cart).toBeInTheDocument();
+
+      await act(async () => {
+        addToCart({ equipmentId: UNIT_ID, model: 'JCB 3CX', ...defaultRentalWindow() });
+      });
+      // Live, with no reload: the bar subscribes to the same store the cart
+      // page writes to.
+      expect(await screen.findByRole('link', { name: 'Cart, 1 items' })).toBeInTheDocument();
+      unmount();
+    });
+
+    it('is not offered to staff, who have no cart', async () => {
+      setAccessToken(makeToken(makeValidClaims({ role: 'admin' })));
+      stubFetch();
+      const { unmount } = await renderRoute('/equipment');
+
+      await screen.findByRole('button', { name: 'Sign out' });
+      expect(screen.queryByRole('link', { name: /^cart,/i })).not.toBeInTheDocument();
+      unmount();
+    });
   });
 
   // /account/cart is behind requireAuth(). Before this, "Book now" as a

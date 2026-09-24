@@ -36,7 +36,7 @@ test.describe('equipment browsing', () => {
       await expect(page.getByRole('button', { name: 'Toggle navigation' })).toBeVisible();
     }
     await openSidebar(page);
-    await expect(sidebarLink(page, 'Cart')).toBeVisible();
+    await expect(sidebarLink(page, 'My bookings')).toBeVisible();
     // Not the marketing chrome.
     await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(0);
   });
@@ -49,31 +49,38 @@ test.describe('equipment browsing', () => {
     await expect(page.getByRole('complementary', { name: 'Sidebar' })).toHaveCount(0);
   });
 
-  test('the cart count follows an add, with no reload', async ({ page }) => {
+  test('the app bar cart counts what was added, with no reload', async ({ page }) => {
     await signInAsCustomer(page);
-    await addFirstMachine(page);
+    await page.goto('/equipment');
+    // Empty before, counted after -- the bar subscribes to the same store the
+    // cart page writes to, so nothing reloads in between.
+    await expect(page.getByRole('link', { name: 'Cart, empty' })).toBeVisible();
 
-    await openSidebar(page);
-    // The badge is part of the entry's accessible name. Filtered to the
-    // visible copy: with the drawer open the hidden desktop aside still holds
-    // one too.
-    await expect(page.getByLabel(/in cart/).filter({ visible: true })).toBeVisible();
+    await addFirstMachine(page);
+    await expect(page.getByRole('link', { name: /^Cart, \d+ items$/ })).toBeVisible();
   });
 
-  test('the right rail lists the cart on a wide screen and stays out of the way when there is no room', async ({
+  test('weather sits beside the catalog when there is room, and under it when there is not', async ({
     page,
   }) => {
     await signInAsCustomer(page);
-    await addFirstMachine(page);
+    await page.goto('/equipment');
 
-    const rail = page.getByRole('complementary', { name: 'Cart and weather' });
-    if (!hasRail(page)) {
-      await expect(rail).toBeHidden();
+    // Present either way -- the point of stacking rather than hiding is that
+    // a narrow screen still gets the forecast.
+    const panel = page.getByRole('complementary', { name: 'Weather insights' });
+    await expect(panel).toBeVisible();
+
+    const heading = page.getByRole('heading', { name: /equipment for hire/i });
+    // Visible above, so both boxes exist.
+    const panelBox = (await panel.boundingBox())!;
+    const headingBox = (await heading.boundingBox())!;
+    if (hasRail(page)) {
+      // Top right: to the right of the heading and level with it, not below.
+      expect(panelBox.x).toBeGreaterThan(headingBox.x);
+      expect(panelBox.y).toBeLessThan(headingBox.y + 120);
     } else {
-      await expect(rail).toBeVisible();
-      await expect(rail).toContainText('Cart (1)');
-      await rail.getByRole('button', { name: 'View details' }).click();
-      await expect(page).toHaveURL(/\/account\/cart$/);
+      expect(panelBox.y).toBeGreaterThan(headingBox.y);
     }
   });
 
