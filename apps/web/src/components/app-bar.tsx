@@ -1,5 +1,8 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
+import { describeNotification, notificationQueries } from './notification-feed.js';
+import { formatStatus } from '../lib/format.js';
 import { ShoppingCart } from 'lucide-react';
 import { clearTokens } from '../lib/auth-client.js';
 import { useCart } from '../lib/cart-client.js';
@@ -27,6 +30,102 @@ export interface AppBarProps {
 // tenant name (which truncates) absorbs the squeeze instead of the
 // controls. DESIGN.md §6: 44x44px touch targets, never color-only -- every
 // icon-only control keeps a real accessible name.
+// Always present, right of the cart. A disclosure button, not <details>:
+// <details> carries an implicit `group` role, and the card lists (and their
+// specs) find cards by that role. Closes on an outside click or Escape. The
+// panel is the feed's own first page of five, fetched on open.
+function NotificationBell({
+  unreadCount,
+  seeMorePath,
+}: {
+  unreadCount: number | null;
+  seeMorePath: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const latest = useQuery({ ...notificationQueries.list(5, 0), enabled: open, retry: false });
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (
+        e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)
+      )
+        setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [open]);
+
+  const closePanel = () => setOpen(false);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+        className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm text-text-muted hover:text-text"
+      >
+        <BellIcon aria-hidden="true" className="h-5 w-5" />
+        {unreadCount !== null && unreadCount > 0 && (
+          <span className="rounded-full bg-primary px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-text">
+            {unreadCount}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div
+          role="region"
+          aria-label="Latest notifications"
+          className="fixed inset-x-3 top-14 z-50 overflow-hidden rounded-md border border-border bg-surface shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80"
+        >
+          {latest.isPending && <p className="px-4 py-3 text-sm text-text-muted">Loading…</p>}
+          {latest.isError && (
+            <p className="px-4 py-3 text-sm text-error">Notifications could not be loaded.</p>
+          )}
+          {latest.data?.items.length === 0 && (
+            <p className="px-4 py-3 text-sm text-text-muted">Nothing needs you right now.</p>
+          )}
+          <ul>
+            {latest.data?.items.map((n) => {
+              const described = describeNotification(n.notificationType, n.payload);
+              return (
+                <li key={n.id} className="border-b border-border px-4 py-3 last:border-b-0">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-text">
+                    {n.status === 'unread' && (
+                      <span
+                        aria-label="Unread"
+                        className="h-2 w-2 shrink-0 rounded-full bg-primary"
+                      />
+                    )}
+                    {described?.title ?? formatStatus(n.notificationType)}
+                  </p>
+                  {described && (
+                    <p className="line-clamp-2 text-xs text-text-muted">{described.body}</p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          <Link
+            to={seeMorePath}
+            onClick={closePanel}
+            className="block border-t border-border px-4 py-3 text-center text-sm font-medium text-text hover:bg-surface-sunk"
+          >
+            See more
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   const role = getCurrentRole();
   // The same bar renders inside the account shell, where /app/* is a role
@@ -122,21 +221,6 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
           </>
         )}
 
-        {/* A bare orange number sat here with no icon, which read as a
-            decoration rather than "you have unread notifications". */}
-        {unreadCount !== null && unreadCount > 0 && (
-          <Link
-            to={notificationsPath}
-            aria-label={`${unreadCount} unread notifications`}
-            className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm text-text"
-          >
-            <BellIcon aria-hidden="true" className="h-5 w-5" />
-            <span className="rounded-full bg-primary px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-text">
-              {unreadCount}
-            </span>
-          </Link>
-        )}
-
         {isCustomer && (
           <Link
             to="/account/cart"
@@ -155,6 +239,8 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             )}
           </Link>
         )}
+
+        <NotificationBell unreadCount={unreadCount} seeMorePath={notificationsPath} />
 
         {/* Icon-only on a phone. Under real mobile emulation the layout
             viewport is 320px, not the 360px a desktop-sized window reports,
