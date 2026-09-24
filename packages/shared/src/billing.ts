@@ -83,6 +83,11 @@ export const DepositLedgerResponseSchema = z.object({
   depositRequired: z.number().nullable(),
   totalDeducted: z.number(),
   balanceRemaining: z.number().nullable(),
+  // Rollover (phase 7): reconciled work past the balance awaiting the
+  // weekly invoice, and billed hours vs the quote's hours.
+  unbilledAccrued: z.number(),
+  hoursUsed: z.number(),
+  hoursOrdered: z.number().nullable(),
   deductions: z.array(
     z.object({
       invoiceId: z.string().uuid(),
