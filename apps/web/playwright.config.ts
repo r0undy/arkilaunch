@@ -29,7 +29,16 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop',
-      use: { ...devices['Desktop Chrome'], baseURL, ignoreHTTPSErrors: true },
+      // An explicit 1440 rather than Desktop Chrome's 1280: the catalog's
+      // right rail appears at xl, which IS 1280, so the default viewport sat
+      // exactly on the breakpoint and the rail assertions were one rounding
+      // decision away from flaking.
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1440, height: 900 },
+        baseURL,
+        ignoreHTTPSErrors: true,
+      },
     },
     {
       name: 'mobile',

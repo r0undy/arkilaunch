@@ -50,8 +50,10 @@ export function EquipmentCard({
           </div>
         )}
       </div>
-      <div className="flex items-center justify-between">
-        <div>
+      {/* min-w-0 so the name can shrink instead of forcing the row wider, and
+          the action never gives up its width to a long machine name. */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
           {/* The machine's name is the card's heading. As a <p> the whole
               catalog was one flat run of text with no way to jump between
               items. */}
@@ -70,7 +72,7 @@ export function EquipmentCard({
           </h3>
           <p className="text-xs text-text-muted">{make}</p>
         </div>
-        <Button size="default" variant="primary" onClick={onRent}>
+        <Button size="default" variant="primary" className="shrink-0" onClick={onRent}>
           Rent
         </Button>
       </div>

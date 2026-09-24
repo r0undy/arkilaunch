@@ -156,8 +156,11 @@ function EquipmentPage() {
   const safeOffset = offset < equipment.length ? offset : 0;
   const page = equipment.slice(safeOffset, safeOffset + PAGE_SIZE);
 
+  // The rail waits for xl. At lg it took 320px out of a viewport that had
+  // already given 240px to the account sidebar, leaving the catalog ~440px and
+  // three columns squeezed to 201px with the machine names wrapping.
   return (
-    <div className="grid gap-6 px-6 py-10 sm:px-10 lg:grid-cols-[1fr_320px] lg:items-start">
+    <div className="grid gap-6 px-6 py-10 sm:px-10 xl:grid-cols-[1fr_320px] xl:items-start">
       <div className="flex min-w-0 flex-col gap-6">
       <h1 className="font-display text-2xl font-semibold text-ink-mk">Equipment for hire</h1>
       <SearchFilterBar
@@ -174,7 +177,14 @@ function EquipmentPage() {
         />
       )}
       {data && (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        // auto-fill against a minimum card width, not viewport breakpoints. The
+        // same viewport means different content widths here depending on whether
+        // the sidebar and the rail are present, so a breakpoint cannot know how
+        // many cards fit -- the grid measures itself instead.
+        //
+        // 280px is where a machine name still fits on one line beside the Rent
+        // button: at 240 the name had ~155px and "Almara Backhoe #1" wrapped.
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
           {page.map((eq) => {
             const imageUrl = eq.photoUri ?? equipmentImageUrl(eq.model);
             return (
@@ -207,11 +217,10 @@ function EquipmentPage() {
         noun="machines"
       />
       </div>
-      {/* Figma 185:1599's right rail. Below lg it would push the catalog off
-          the fold on a phone, so it stacks out of the way -- the cart is
-          still one tap away in the sidebar, which is where a phone user
-          reaches it anyway. */}
-      <aside aria-label="Cart and weather" className="hidden lg:block">
+      {/* Figma 185:1599's right rail. Below xl it would crowd the catalog
+          rather than sit beside it, so it stays out of the way -- the cart is
+          still one tap away in the sidebar, with its count on the entry. */}
+      <aside aria-label="Cart and weather" className="hidden xl:block">
         <EquipmentRail />
       </aside>
       {configuring && (

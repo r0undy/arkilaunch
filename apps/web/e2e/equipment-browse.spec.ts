@@ -10,7 +10,11 @@ import { openSidebar, sidebarLink } from './sidebar.js';
 // tenant (`pnpm db:seed`) and the API running; sign-in fails rather
 // than skips.
 
-const isMobile = (page: Page) => (page.viewportSize()?.width ?? 1280) < 1024;
+// The rail appears at xl (1280); the sidebar collapses into a drawer below lg
+// (1024). Two different thresholds, so the specs name them separately rather
+// than sharing one "is this a phone" flag.
+const isNarrow = (page: Page) => (page.viewportSize()?.width ?? 1440) < 1024;
+const hasRail = (page: Page) => (page.viewportSize()?.width ?? 1440) >= 1280;
 
 async function addFirstMachine(page: Page) {
   await page.goto('/equipment');
@@ -28,7 +32,7 @@ test.describe('equipment browsing', () => {
 
     // Below lg the sidebar collapses into the drawer, so on a phone the app
     // bar's menu button stands in for it.
-    if (isMobile(page)) {
+    if (isNarrow(page)) {
       await expect(page.getByRole('button', { name: 'Toggle navigation' })).toBeVisible();
     }
     await openSidebar(page);
@@ -56,14 +60,14 @@ test.describe('equipment browsing', () => {
     await expect(page.getByLabel(/in cart/).filter({ visible: true })).toBeVisible();
   });
 
-  test('the right rail lists the cart on a wide screen and stays out of the way on a phone', async ({
+  test('the right rail lists the cart on a wide screen and stays out of the way when there is no room', async ({
     page,
   }) => {
     await signInAsCustomer(page);
     await addFirstMachine(page);
 
     const rail = page.getByRole('complementary', { name: 'Cart and weather' });
-    if (isMobile(page)) {
+    if (!hasRail(page)) {
       await expect(rail).toBeHidden();
     } else {
       await expect(rail).toBeVisible();
