@@ -18,6 +18,8 @@ describe('evaluateFormula', () => {
 
   it.each([
     'process.exit(1)',
+    'process.exit()',
+    'km;1',
     'constructor',
     '__proto__',
     'km; drop table x',

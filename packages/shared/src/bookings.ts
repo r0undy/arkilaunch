@@ -76,6 +76,9 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
   ),
   siteContact: z.string().nullable(),
   siteNotes: z.string().nullable(),
+  // Callback before payment: checkout waits for callConfirmedAt.
+  callRequestedAt: z.coerce.date().nullable(),
+  callConfirmedAt: z.coerce.date().nullable(),
   createdAt: z.coerce.date(),
   quotation: z
     .object({
