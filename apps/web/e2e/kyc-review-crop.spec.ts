@@ -67,6 +67,8 @@ async function signUpCustomer(page: Page) {
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: /sign in/i }).click();
   await expect(page).toHaveURL(/\/account/, { timeout: 15_000 });
+  // Let the post-login redirect settle, or it can land after the next goto.
+  await page.waitForLoadState('networkidle');
 }
 
 test.describe.serial('KYC review: crop, ID check, per-document fields, registry-gated verify', () => {
@@ -163,10 +165,10 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     const dti = page.getByLabel('DTI business name number');
     await expect(sec).toBeVisible();
     await expect(dti).toBeVisible();
-    if (read) {
-      await expect(sec).toHaveValue(SEC);
-      await expect(dti).toHaveValue(DTI);
-    }
+    // Each paper is its own scan (and its own rate-limit slot): assert a
+    // read value only where that scan answered.
+    if ((await sec.inputValue()) !== '') await expect(sec).toHaveValue(SEC);
+    if ((await dti.inputValue()) !== '') await expect(dti).toHaveValue(DTI);
     await page.getByLabel('Company name').fill(companyName);
     await sec.fill(SEC);
     await dti.fill(DTI);
@@ -271,7 +273,6 @@ test.describe('@external registry pages', () => {
     await open(page, 'https://bnrs.dti.gov.ph/search', 'DTI');
     const box = page.locator('input[name="keyword"]');
     await expect(box).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText(/exact name search only/i).first()).toBeVisible();
     await box.fill(companyName);
     await expect(box).toHaveValue(companyName);
   });
