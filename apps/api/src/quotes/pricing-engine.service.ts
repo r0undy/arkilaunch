@@ -1,6 +1,6 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { and, desc, eq, gte, isNull, lte, or } from 'drizzle-orm';
-import { db, dieselPriceReadings, pricingParameters, rateCards } from '@arkilaunch/db';
+import { db, dieselPriceReadings, getBillingSettings, pricingParameters, rateCards } from '@arkilaunch/db';
 import type { Discount, QuoteItemInput } from '@arkilaunch/shared';
 
 const FORMULA_VERSION = '1.0';
@@ -138,7 +138,15 @@ export class PricingEngineService {
   }
 
   // Loads the rate card and prices one line item per the RFC-3 §3 formula.
-  async priceItem(tx: Tx, tenantId: string, diesel: DieselResolution, input: QuoteItemInput): Promise<PricedItem> {
+  // `dailyHours` converts a daily card to the hourly figure the formula
+  // needs (tenant billing_settings.daily_hours).
+  async priceItem(
+    tx: Tx,
+    tenantId: string,
+    diesel: DieselResolution,
+    input: QuoteItemInput,
+    dailyHours = 8,
+  ): Promise<PricedItem> {
     const now = new Date();
     const [rateCard] = await tx
       .select()
@@ -166,8 +174,11 @@ export class PricingEngineService {
     }
 
     const rateCardValuePhp = Number(rateCard.rateValue);
+    // A daily card used to be added in as if it were per hour (an 8x
+    // overcharge at 8 hours/day). The formula is hourly, so convert.
+    const rateCardHourlyPhp = rateCard.rateType === 'daily' ? rateCardValuePhp / dailyHours : rateCardValuePhp;
     const fuelPerHourCost = diesel.fuelLPerHour * diesel.pricePhp;
-    const hourlyRate = rateCardValuePhp + diesel.operatorHourlyPhp + diesel.maintenanceHourlyPhp + fuelPerHourCost;
+    const hourlyRate = rateCardHourlyPhp + diesel.operatorHourlyPhp + diesel.maintenanceHourlyPhp + fuelPerHourCost;
     const operatingCost = hourlyRate * input.estimatedHours * input.quantity;
 
     const transportRatePerKm = diesel.transportPhpPerKm + diesel.fuelLPerKm * diesel.pricePhp;
@@ -176,7 +187,12 @@ export class PricingEngineService {
 
     const itemBase = operatingCost + mobilizationCost + demobilizationCost;
     const buffer = itemBase * diesel.bufferPct;
-    const subtotal = round2HalfUp(itemBase + buffer);
+    const computedSubtotal = round2HalfUp(itemBase + buffer);
+    // Negotiation: staff may set an agreed price for this line. It replaces
+    // the line subtotal on this quote only; the computed figure is kept
+    // beside it in pricing_inputs so the snapshot shows both.
+    const agreed = input.agreedSubtotalPhp;
+    const subtotal = agreed !== undefined ? round2HalfUp(agreed) : computedSubtotal;
 
     return {
       equipmentTypeId: input.equipmentTypeId,
@@ -197,6 +213,11 @@ export class PricingEngineService {
         diesel_price_source: diesel.source,
         rate_card_id: rateCard.id,
         rate_card_value_php: rateCardValuePhp,
+        rate_card_rate_type: rateCard.rateType,
+        rate_card_equipment_id: rateCard.equipmentId,
+        rate_card_hourly_php: rateCardHourlyPhp,
+        daily_hours: rateCard.rateType === 'daily' ? dailyHours : null,
+        ...(agreed !== undefined ? { agreed_subtotal_php: subtotal, computed_subtotal_php: computedSubtotal } : {}),
         rate_card_effective_from: rateCard.effectiveFrom,
         rate_card_effective_to: rateCard.effectiveTo,
         operator_hourly_php: diesel.operatorHourlyPhp,
@@ -227,9 +248,10 @@ export class PricingEngineService {
     region = 'NCR',
   ): Promise<PricedQuote> {
     const diesel = await this.resolveDieselAndParams(tx, tenantId, region);
+    const { dailyHours } = await getBillingSettings(tx, tenantId);
     const pricedItems: PricedItem[] = [];
     for (const item of items) {
-      pricedItems.push(await this.priceItem(tx, tenantId, diesel, item));
+      pricedItems.push(await this.priceItem(tx, tenantId, diesel, item, dailyHours));
     }
     const totals = this.applyDiscount(pricedItems, discount);
     return { items: pricedItems, diesel, ...totals };

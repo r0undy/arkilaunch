@@ -8,6 +8,7 @@ import {
   events,
   projectSites,
   rentals,
+  users,
   weatherAlerts,
   withTenantTx,
 } from '@arkilaunch/db';
@@ -31,8 +32,8 @@ import {
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import {
+  availabilityBlockers,
   findAvailableAlternatives,
-  overlappingAssignments,
 } from '../common/equipment-availability.js';
 import { countRows } from '../common/count-rows.js';
 
@@ -310,8 +311,23 @@ export class SitesService {
           alternatives,
         });
       }
-      const overlapping = await overlappingAssignments(tx, body.equipmentId, body);
-      if (overlapping.length > 0) {
+      // The FK alone would accept another tenant's user id; the operator
+      // must be a member of this tenant (explicit, not just RLS).
+      if (body.operatorUserId) {
+        const [operator] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.id, body.operatorUserId), eq(users.tenantId, ctx.tenantId)))
+          .limit(1);
+        if (!operator) throw new NotFoundException({ error: 'operator_not_found' });
+      }
+      const blockers = await availabilityBlockers(tx, body.equipmentId, body, {
+        operatorUserId: body.operatorUserId,
+      });
+      if (blockers.includes('operator')) {
+        throw new ConflictException({ error: 'operator_unavailable', operatorUserId: body.operatorUserId });
+      }
+      if (blockers.length > 0) {
         const alternatives = await findAvailableAlternatives(
           tx,
           equipmentRow.equipmentTypeId,
@@ -334,6 +350,7 @@ export class SitesService {
           start: new Date(body.start),
           end: new Date(body.end),
           status: 'scheduled',
+          operatorUserId: body.operatorUserId ?? null,
         })
         .returning();
       if (!assignment) throw new Error('equipment_assignments insert returned no row');

@@ -1,8 +1,11 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, desc, eq } from 'drizzle-orm';
-import { negotiationMessages, truckRequests, truckSettings, withTenantTx } from '@arkilaunch/db';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { negotiationMessages, tollRates, truckRequests, truckSettings, withTenantTx } from '@arkilaunch/db';
 import {
   priceTruckTrip,
+  type TollRateCreate,
+  type TollRateResponse,
+  type TruckPriceLine,
   type NegotiationMessageCreate,
   type NegotiationMessageResponse,
   type RequestContext,
@@ -14,10 +17,21 @@ import {
   type TruckSettings,
 } from '@arkilaunch/shared';
 import { PricingEngineService } from '../quotes/pricing-engine.service.js';
+import { notifyStaff } from '../common/notify-customer.js';
 import { roadDistanceKm } from './route-distance.js';
 
 type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
-const DEFAULT_SETTINGS: TruckSettings = { baseFeePhp: 0, driverFeePhp: 0, extras: [] };
+const DEFAULT_SETTINGS: TruckSettings = { baseFeePhp: 0, driverFeePhp: 0, extras: [], formula: null, rangePct: 10, region: 'NCR' };
+
+const peso = (n: number) => Math.round(n * 100) / 100;
+const num = (v: string | null) => (v === null ? null : Number(v));
+
+function pins(body: TruckEstimateRequest) {
+  return {
+    ...(body.pickupLat !== undefined && body.pickupLng !== undefined ? { a: { lat: body.pickupLat, lon: body.pickupLng } } : {}),
+    ...(body.dropoffLat !== undefined && body.dropoffLng !== undefined ? { b: { lat: body.dropoffLat, lon: body.dropoffLng } } : {}),
+  };
+}
 
 function toResponse(row: typeof truckRequests.$inferSelect): TruckRequestResponse {
   return {
@@ -31,6 +45,9 @@ function toResponse(row: typeof truckRequests.$inferSelect): TruckRequestRespons
     status: row.status as TruckRequestStatus,
     price: row.price,
     agreedPricePhp: row.agreedPricePhp === null ? null : Number(row.agreedPricePhp),
+    capPhp: num(row.capPhp),
+    callRequestedAt: row.callRequestedAt?.toISOString() ?? null,
+    callConfirmedAt: row.callConfirmedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -42,20 +59,56 @@ export class TrucksService {
   private async readSettings(tx: Tx, tenantId: string): Promise<TruckSettings> {
     const [row] = await tx.select().from(truckSettings).where(eq(truckSettings.tenantId, tenantId)).limit(1);
     return row
-      ? { baseFeePhp: Number(row.baseFeePhp), driverFeePhp: Number(row.driverFeePhp), extras: row.extras }
+      ? {
+          baseFeePhp: Number(row.baseFeePhp),
+          driverFeePhp: Number(row.driverFeePhp),
+          extras: row.extras,
+          formula: row.formula,
+          rangePct: Number(row.rangePct),
+          region: row.region,
+        }
       : DEFAULT_SETTINGS;
   }
 
   // Per-km and fuel are the tenant's pricing parameters and today's resolved
-  // diesel price -- the same inputs as every equipment quote.
-  private async price(tx: Tx, tenantId: string, km: number): Promise<TruckPrice> {
-    const diesel = await this.engine.resolveDieselAndParams(tx, tenantId);
-    return priceTruckTrip({
+  // diesel price for the tenant's region -- the same inputs as every
+  // equipment quote. low/high are the total +/- the tenant's band.
+  private async price(tx: Tx, tenantId: string, km: number, tolls: TruckPriceLine[] = []): Promise<TruckPrice> {
+    const settings = await this.readSettings(tx, tenantId);
+    const diesel = await this.engine.resolveDieselAndParams(tx, tenantId, settings.region);
+    const price = priceTruckTrip({
       km,
-      settings: await this.readSettings(tx, tenantId),
+      settings,
       perKmPhp: diesel.transportPhpPerKm,
       fuelLPerKm: diesel.fuelLPerKm,
       dieselPhp: diesel.pricePhp,
+      tolls,
+    });
+    const band = settings.rangePct / 100;
+    return { ...price, lowPhp: peso(price.totalPhp * (1 - band)), highPhp: peso(price.totalPhp * (1 + band)) };
+  }
+
+  listTolls(ctx: RequestContext): Promise<TollRateResponse[]> {
+    return withTenantTx(ctx, async (tx) => {
+      const rows = await tx.select().from(tollRates).orderBy(asc(tollRates.name)).limit(200);
+      return rows.map((t) => ({ id: t.id, name: t.name, feePhp: Number(t.feePhp) }));
+    });
+  }
+
+  addToll(ctx: RequestContext, body: TollRateCreate): Promise<TollRateResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [t] = await tx
+        .insert(tollRates)
+        .values({ tenantId: ctx.tenantId, name: body.name, feePhp: String(body.feePhp) })
+        .returning();
+      return { id: t!.id, name: t!.name, feePhp: Number(t!.feePhp) };
+    });
+  }
+
+  removeToll(ctx: RequestContext, id: string) {
+    return withTenantTx(ctx, async (tx) => {
+      await tx.delete(tollRates).where(eq(tollRates.id, id));
+      return { id };
     });
   }
 
@@ -68,6 +121,9 @@ export class TrucksService {
       baseFeePhp: String(body.baseFeePhp),
       driverFeePhp: String(body.driverFeePhp),
       extras: body.extras,
+      formula: body.formula || null,
+      rangePct: String(body.rangePct),
+      region: body.region,
       updatedAt: new Date(),
     };
     await withTenantTx(ctx, (tx) =>
@@ -82,13 +138,14 @@ export class TrucksService {
   // Routing runs outside any transaction: two slow network calls should not
   // hold a DB connection.
   async estimate(ctx: RequestContext, body: TruckEstimateRequest): Promise<TruckPrice> {
-    const km = await roadDistanceKm(body.pickup, body.dropoff);
+    const km = await roadDistanceKm(body.pickup, body.dropoff, pins(body));
     return withTenantTx(ctx, (tx) => this.price(tx, ctx.tenantId, km));
   }
 
   async create(ctx: RequestContext, body: TruckRequestCreate): Promise<TruckRequestResponse> {
-    const km = await roadDistanceKm(body.pickup, body.dropoff);
+    const km = await roadDistanceKm(body.pickup, body.dropoff, pins(body));
     return withTenantTx(ctx, async (tx) => {
+      const price = await this.price(tx, ctx.tenantId, km);
       const [row] = await tx
         .insert(truckRequests)
         .values({
@@ -99,9 +156,17 @@ export class TrucksService {
           scheduledFor: body.scheduledFor,
           notes: body.notes ?? null,
           estimatedKm: String(km),
-          price: await this.price(tx, ctx.tenantId, km),
+          price,
+          // The high end of the estimate is locked as the most the customer
+          // can be charged without re-approving.
+          capPhp: String(price.highPhp ?? price.totalPhp),
+          pickupLat: body.pickupLat !== undefined ? String(body.pickupLat) : null,
+          pickupLng: body.pickupLng !== undefined ? String(body.pickupLng) : null,
+          dropoffLat: body.dropoffLat !== undefined ? String(body.dropoffLat) : null,
+          dropoffLng: body.dropoffLng !== undefined ? String(body.dropoffLng) : null,
         })
         .returning();
+      await notifyStaff(tx, ctx.tenantId, 'truck_requested', { truck_request_id: row!.id });
       return toResponse(row!);
     });
   }
@@ -121,8 +186,14 @@ export class TrucksService {
 
   // The admin's km is final: the price is recomputed on it, with today's
   // inputs, and that is the figure the customer is charged.
-  async confirmKm(ctx: RequestContext, id: string, km: number): Promise<TruckRequestResponse> {
+  async confirmKm(ctx: RequestContext, id: string, km: number, tollRateIds: string[] = []): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
+      const tolls = tollRateIds.length
+        ? (await tx.select().from(tollRates).where(inArray(tollRates.id, tollRateIds))).map((t) => ({
+            label: t.name,
+            amountPhp: Number(t.feePhp),
+          }))
+        : [];
       const [row] = await tx.select().from(truckRequests).where(eq(truckRequests.id, id)).limit(1);
       if (!row) throw new NotFoundException({ error: 'truck_request_not_found' });
       if (row.status === 'cancelled') throw new ConflictException({ error: 'truck_request_cancelled' });
@@ -133,7 +204,7 @@ export class TrucksService {
         .set({
           confirmedKm: String(km),
           status: row.status === 'estimated' ? 'km_confirmed' : row.status,
-          price: await this.price(tx, ctx.tenantId, km),
+          price: await this.price(tx, ctx.tenantId, km, tolls),
         })
         .where(eq(truckRequests.id, id))
         .returning();
@@ -214,6 +285,55 @@ export class TrucksService {
       const [updated] = await tx
         .update(truckRequests)
         .set({ agreedPricePhp: String(pricePhp), status: 'agreed' })
+        .where(eq(truckRequests.id, id))
+        .returning();
+      return toResponse(updated!);
+    });
+  }
+
+  // Callback before payment: the customer asks, staff call and confirm.
+  // Checkout refuses until call_confirmed_at is set.
+  async requestCall(ctx: RequestContext, id: string): Promise<TruckRequestResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [updated] = await tx
+        .update(truckRequests)
+        .set({ callRequestedAt: new Date() })
+        .where(and(eq(truckRequests.id, id), eq(truckRequests.requestedBy, ctx.userId)))
+        .returning();
+      if (!updated) throw new NotFoundException({ error: 'truck_request_not_found' });
+      await notifyStaff(tx, ctx.tenantId, 'call_requested', { truck_request_id: id });
+      return toResponse(updated);
+    });
+  }
+
+  async confirmCall(ctx: RequestContext, id: string): Promise<TruckRequestResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [updated] = await tx
+        .update(truckRequests)
+        .set({ callConfirmedAt: new Date(), callConfirmedBy: ctx.userId })
+        .where(eq(truckRequests.id, id))
+        .returning();
+      if (!updated) throw new NotFoundException({ error: 'truck_request_not_found' });
+      return toResponse(updated);
+    });
+  }
+
+  // Staff agreed a price above the locked cap: only the customer's OK
+  // lifts the cap to that price.
+  async approveOverCap(ctx: RequestContext, id: string): Promise<TruckRequestResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(truckRequests)
+        .where(and(eq(truckRequests.id, id), eq(truckRequests.requestedBy, ctx.userId)))
+        .limit(1);
+      if (!row) throw new NotFoundException({ error: 'truck_request_not_found' });
+      if (row.status !== 'agreed' || row.agreedPricePhp === null) {
+        throw new ConflictException({ error: 'price_not_agreed', status: row.status });
+      }
+      const [updated] = await tx
+        .update(truckRequests)
+        .set({ capPhp: row.agreedPricePhp })
         .where(eq(truckRequests.id, id))
         .returning();
       return toResponse(updated!);

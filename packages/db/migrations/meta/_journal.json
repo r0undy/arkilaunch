@@ -239,6 +239,48 @@
       "when": 1790181779064,
       "tag": "0033_tenant_applications_approved",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790181780064,
+      "tag": "0034_company_review_unlock",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790181781064,
+      "tag": "0035_equipment_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790181782064,
+      "tag": "0036_booking_availability",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790181783064,
+      "tag": "0037_truck_pricing_callback",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790181784064,
+      "tag": "0038_unit_rates_billing_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1790181785064,
+      "tag": "0039_deposit_accruals",
+      "breakpoints": true
     }
   ]
 }

@@ -302,4 +302,33 @@ describe('FleetService (PRD-F4)', () => {
     expect(edited.fuelType).toBe('Biodiesel');
     expect(edited.model).toBe('Grant Probe');
   });
+
+  it('corrects the hour meter with a reason, and logging a task resets its hours since service', async () => {
+    const unit = await fleet.create(adminCtx, {
+      equipmentTypeId,
+      model: 'Runtime Test Unit',
+      serialNo: `fleet-test-${Date.now()}-runtime`,
+      availabilityStatus: 'available',
+    });
+    const schedule = await fleet.createSchedule(adminCtx, unit.id, { task: 'Engine oil', hoursInterval: 250 });
+
+    await expect(
+      fleet.correctRuntime(adminCtx, unit.id, { runtimeHours: 240, reason: 'meter replaced' }),
+    ).resolves.toMatchObject({ runtimeHours: 240 });
+    let detail = await fleet.maintenanceDetail(adminCtx, unit.id);
+    expect(detail.schedules.find((s) => s.id === schedule.id)).toMatchObject({ hoursSinceService: 240, nextDue: 250 });
+
+    await fleet.recordMaintenanceLog(adminCtx, unit.id, {
+      performedAt: new Date().toISOString(),
+      scheduleId: schedule.id,
+    });
+    detail = await fleet.maintenanceDetail(adminCtx, unit.id);
+    expect(detail.schedules.find((s) => s.id === schedule.id)).toMatchObject({ hoursSinceService: 0, nextDue: 490 });
+
+    const url = process.env.DATABASE_URL_DIRECT!;
+    const sql = postgres(url, { max: 1 });
+    const [audit] = await sql`select reason from audit_logs where entity = 'equipment_runtime' and entity_id = ${unit.id}`;
+    await sql.end();
+    expect((audit as { reason: string }).reason).toContain('meter replaced');
+  });
 });

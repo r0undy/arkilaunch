@@ -1,8 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
-  DEFAULT_DEPOSIT_PHP,
   auditLogs,
+  getBillingSettings,
   quotationItems,
   quotations,
   rentalContracts,
@@ -10,7 +10,7 @@ import {
   withTenantTx,
 } from '@arkilaunch/db';
 import { quoteExpiresAt, type QuoteRequest, type RequestContext } from '@arkilaunch/shared';
-import { ownsCustomer } from '../common/customer-scope.js';
+import { ownsCustomer, requireVerifiedCompany } from '../common/customer-scope.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { EventsService } from '../events/events.service.js';
 import { PricingEngineService, type PricedQuote } from './pricing-engine.service.js';
@@ -95,6 +95,7 @@ export class QuotesService {
       // A booking has one live quote. Quoting it again is a new revision
       // that supersedes every open one, so an older, cheaper approved quote
       // can never still be accepted after the price moved.
+      await requireVerifiedCompany(tx, body.customerId);
       let revision = 1;
       let parentQuotationId: string | null = null;
       if (body.rentalId) {
@@ -165,6 +166,7 @@ export class QuotesService {
         })),
       );
 
+      await this.auditAgreedPrices(tx, ctx, quotation.id, body);
       const printableUrl = `/app/quotes/${quotation.id}/print`;
       await tx.update(quotations).set({ printableUrl }).where(eq(quotations.id, quotation.id));
 
@@ -186,6 +188,7 @@ export class QuotesService {
     return withTenantTx(ctx, async (tx) => {
       const [parent] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
       if (!parent) throw new NotFoundException({ error: 'quote_not_found' });
+      await requireVerifiedCompany(tx, body.customerId);
 
       const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body.items, body.discount);
 
@@ -232,6 +235,7 @@ export class QuotesService {
         })),
       );
 
+      await this.auditAgreedPrices(tx, ctx, revised.id, body);
       const printableUrl = `/app/quotes/${revised.id}/print`;
       await tx.update(quotations).set({ printableUrl }).where(eq(quotations.id, revised.id));
 
@@ -287,7 +291,7 @@ export class QuotesService {
       await tx.insert(rentalContracts).values({
         tenantId: ctx.tenantId,
         quotationId,
-        depositRequired: String(DEFAULT_DEPOSIT_PHP),
+        depositRequired: String((await getBillingSettings(tx, ctx.tenantId)).minDepositPhp),
         status: 'active',
       });
       await tx.insert(auditLogs).values({
@@ -315,6 +319,26 @@ export class QuotesService {
       await this.events.emit(ctx, 'quote_declined', { quotation_id: quotationId });
       if (quotation.rentalId) await notifyStaff(tx, ctx.tenantId, 'quote_declined', { rental_id: quotation.rentalId });
       return { id: quotationId, status: 'rejected' };
+    });
+  }
+
+  // A staff-agreed line price is a manual override of the engine, so it is
+  // audit-logged against the quote it lives on.
+  private async auditAgreedPrices(
+    tx: Parameters<Parameters<typeof withTenantTx>[1]>[0],
+    ctx: RequestContext,
+    quotationId: string,
+    body: QuoteRequest,
+  ) {
+    const agreed = body.items.filter((item) => item.agreedSubtotalPhp !== undefined);
+    if (agreed.length === 0) return;
+    await tx.insert(auditLogs).values({
+      tenantId: ctx.tenantId,
+      actorId: ctx.userId,
+      action: 'UPDATE',
+      entity: 'quotations',
+      entityId: quotationId,
+      reason: `agreed price on ${agreed.length} line(s): ${agreed.map((item) => `${item.equipmentTypeId}=${item.agreedSubtotalPhp}`).join(', ')}`,
     });
   }
 

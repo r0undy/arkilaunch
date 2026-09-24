@@ -37,6 +37,8 @@ export type RateType = z.infer<typeof RateTypeSchema>;
 export const RateCardCreateRequestSchema = z
   .object({
     equipmentTypeId: z.string().uuid(),
+    // One unit's own rate, overriding its type's card. Omit for type-wide.
+    equipmentId: z.string().uuid().optional(),
     rateType: RateTypeSchema,
     rateValue: z.number().finite().positive().max(99_999_999.99),
     // Every money path (PayMongo, the pricing engine, round2HalfUp) is
@@ -82,3 +84,12 @@ export type ReferenceRateCardQuery = z.infer<typeof ReferenceRateCardQuerySchema
 
 export const PricingParametersQuerySchema = z.object({ region: z.string().min(1).default('NCR') });
 export type PricingParametersQuery = z.infer<typeof PricingParametersQuerySchema>;
+
+// GET/PUT /pricing/billing-settings: hours in a rental day (daily card ->
+// hourly), the minimum deposit, and the low-balance warning threshold.
+export const BillingSettingsSchema = z.object({
+  dailyHours: z.number().finite().positive().max(24),
+  minDepositPhp: z.number().finite().min(0).max(99_999_999.99),
+  lowBalancePct: z.number().finite().min(0).max(100),
+});
+export type BillingSettingsInput = z.infer<typeof BillingSettingsSchema>;

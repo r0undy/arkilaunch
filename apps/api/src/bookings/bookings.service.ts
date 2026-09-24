@@ -26,11 +26,18 @@ import type {
   BookingCreateResponse,
   BookingDetailResponse,
   BookingListResponse,
+  AvailabilityBlocker,
   RequestContext,
+  RescheduleSuggestion,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
-import { findAvailableAlternatives, overlappingAssignments } from '../common/equipment-availability.js';
-import { ownCustomers, ownsCustomer } from '../common/customer-scope.js';
+import {
+  availabilityBlockers,
+  findAvailableAlternatives,
+  nearestFreeWindow,
+  overlappingAssignments,
+} from '../common/equipment-availability.js';
+import { ownCustomers, ownsCustomer, requireVerifiedCompany } from '../common/customer-scope.js';
 import { countRows } from '../common/count-rows.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 
@@ -39,6 +46,16 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 // Once money has moved the customer asks rather than acts: a paid booking
 // is cancelled or moved only by staff, who also handle the manual refund.
 const CUSTOMER_SELF_CANCEL_STATUSES = ['pending'];
+
+// The refusal `reason` per availability blocker. 'dates_taken' predates the
+// others and stays the name for another booking's hold.
+const BLOCKER_REASON: Record<AvailabilityBlocker, string> = {
+  assignment: 'dates_taken',
+  maintenance: 'maintenance_window',
+  closed: 'outside_business_hours',
+  holiday: 'holiday',
+  operator: 'operator_busy',
+};
 
 // A booking IS a `rentals` row plus one `equipment_assignments` row per
 // item -- no new table (SDD §3's 35-table catalog already models an order
@@ -80,6 +97,7 @@ export class BookingsService {
       if (site.customerId && site.customerId !== customerId) {
         throw new NotFoundException({ error: 'project_site_not_found' });
       }
+      await requireVerifiedCompany(tx, customerId);
 
       const equipmentIds = body.items.map((item) => item.equipmentId);
       const equipmentRows = await tx
@@ -96,8 +114,10 @@ export class BookingsService {
         // Both refusals below are 'equipment_unavailable', which left the
         // customer unable to tell "this machine is off the road" from "those
         // particular dates are taken" -- the second is fixed by picking other
-        // dates, the first is not. `reason` separates them.
-        if (equipmentRow.availabilityStatus !== 'available') {
+        // dates, the first is not. `reason` separates them. A unit that is
+        // merely deployed today is NOT off the road: a later window that
+        // does not overlap its current job is bookable.
+        if (equipmentRow.availabilityStatus === 'maintenance' || equipmentRow.retiredAt) {
           const alternatives = await findAvailableAlternatives(tx, equipmentRow.equipmentTypeId, item, equipmentIds);
           throw new ConflictException({
             error: 'equipment_unavailable',
@@ -108,12 +128,12 @@ export class BookingsService {
           });
         }
 
-        const overlapping = await overlappingAssignments(tx, item.equipmentId, item);
-        if (overlapping.length > 0) {
+        const blockers = await availabilityBlockers(tx, item.equipmentId, item);
+        if (blockers.length > 0) {
           const alternatives = await findAvailableAlternatives(tx, equipmentRow.equipmentTypeId, item, equipmentIds);
           throw new ConflictException({
             error: 'equipment_unavailable',
-            reason: 'dates_taken',
+            reason: BLOCKER_REASON[blockers[0]!],
             equipmentId: item.equipmentId,
             alternatives,
           });
@@ -249,7 +269,7 @@ export class BookingsService {
         .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
         .where(eq(projectSites.id, rental.projectSiteId))
         .limit(1);
-      const ledger = await resolveDepositLedger(tx, id);
+      const ledger = await resolveDepositLedger(tx, id, ctx.tenantId);
       const changeRows = await tx
         .select()
         .from(bookingChangeRequests)
@@ -266,6 +286,8 @@ export class BookingsService {
         customerId: rental.customerId,
         siteContact: rental.siteContact,
         siteNotes: rental.siteNotes,
+        callRequestedAt: rental.callRequestedAt,
+        callConfirmedAt: rental.callConfirmedAt,
         createdAt: rental.createdAt,
         deposit: {
           required: ledger.depositRequired,
@@ -329,6 +351,28 @@ export class BookingsService {
       // The customer knows when they cancelled; tell them when staff did.
       if (ctx.role !== 'customer') await notifyBookingCustomer(tx, ctx.tenantId, id, 'booking_cancelled');
       return { id, status: 'cancelled' };
+    });
+  }
+
+  // Callback before payment: the customer asks for a call, staff call and
+  // mark it confirmed; checkout refuses until then.
+  async requestCall(ctx: RequestContext, id: string) {
+    return withTenantTx(ctx, async (tx) => {
+      await this.visibleRental(tx, ctx, id);
+      const callRequestedAt = new Date();
+      await tx.update(rentals).set({ callRequestedAt }).where(eq(rentals.id, id));
+      await notifyStaff(tx, ctx.tenantId, 'call_requested', { rental_id: id });
+      return { id, callRequestedAt };
+    });
+  }
+
+  async confirmCall(ctx: RequestContext, id: string) {
+    return withTenantTx(ctx, async (tx) => {
+      await this.visibleRental(tx, ctx, id);
+      const callConfirmedAt = new Date();
+      await tx.update(rentals).set({ callConfirmedAt, callConfirmedBy: ctx.userId }).where(eq(rentals.id, id));
+      await notifyBookingCustomer(tx, ctx.tenantId, id, 'call_confirmed');
+      return { id, callConfirmedAt };
     });
   }
 
@@ -537,6 +581,30 @@ export class BookingsService {
         decision: body.decision,
       });
       return { id: requestId, status: body.decision };
+    });
+  }
+
+  // GET /bookings/:id/reschedule-suggestion (staff). When a confirmed
+  // booking must move: the nearest free same-length window on each unit,
+  // then other free units of the same type for the original window.
+  async rescheduleSuggestion(ctx: RequestContext, id: string): Promise<RescheduleSuggestion> {
+    return withTenantTx(ctx, async (tx) => {
+      await this.visibleRental(tx, ctx, id);
+      const assignments = await tx
+        .select()
+        .from(equipmentAssignments)
+        .where(and(eq(equipmentAssignments.rentalId, id), inArray(equipmentAssignments.status, ['scheduled', 'active'])));
+      const items: RescheduleSuggestion['items'] = [];
+      for (const a of assignments) {
+        const [unit] = await tx.select().from(equipment).where(eq(equipment.id, a.equipmentId)).limit(1);
+        const window = { start: a.start.toISOString(), end: (a.end ?? a.start).toISOString() };
+        items.push({
+          equipmentId: a.equipmentId,
+          sameUnit: await nearestFreeWindow(tx, a.equipmentId, window, id),
+          alternatives: unit ? await findAvailableAlternatives(tx, unit.equipmentTypeId, window, [a.equipmentId]) : [],
+        });
+      }
+      return { items };
     });
   }
 

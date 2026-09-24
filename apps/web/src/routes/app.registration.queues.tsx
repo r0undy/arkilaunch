@@ -7,8 +7,9 @@ import {
   REGISTRY_LINKS,
   SEC_REGEX,
   TIN_REGEX,
+  UNLOCKABLE_COMPANY_FIELDS,
 } from '@arkilaunch/shared';
-import { createRoute, Link } from '@tanstack/react-router';
+import { createRoute } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { PageHeader } from '../components/page-header.js';
@@ -22,43 +23,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 import { companiesQueries } from '../lib/queries.js';
 import { formatDate, formatStatus } from '../lib/format.js';
-import { DOC_LABELS } from '../components/company-card.js';
-
-// Figma models registration as three admin queues -- Registration Pendings
-// (282:7320), Registration Verified (282:7784) and Registration Review
-// (349:942) -- on top of the submission flow at /app/registration.
-//
-// None of the three has a query behind it. The KYC API is
-// POST /kyc/extract, GET /kyc/:id and POST /kyc/:id/confirm: a document is
-// readable only by its own id, and nothing lists documents by tenant or by
-// state. A queue screen with no list endpoint can only show invented rows,
-// so these three name the gap instead and point at the flow that does work.
-// Wiring them needs a KYC list endpoint and its own Change Record; the gap
-// is recorded in docs/report-figma-route-alignment.md §5.
-function RegistrationQueue({
-  title,
-  description,
-  gap,
-}: {
-  title: string;
-  description: string;
-  gap: string;
-}) {
-  return (
-    <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Registration" title={title} description={description} />
-      <EmptyState
-        title="This queue has no list endpoint yet"
-        description={gap}
-        action={
-          <Link to="/app/registration">
-            <Button variant="primary">Open the registration flow</Button>
-          </Link>
-        }
-      />
-    </div>
-  );
-}
+import { DOC_LABELS, FIELD_LABELS } from '../components/company-card.js';
 
 // What a reviewer typed (or confirmed) for one company, keyed by company id
 // so several cards in the queue keep their own edits.
@@ -82,6 +47,32 @@ const ID_DETAILS: { key: string; label: string }[] = [
 ];
 
 const sameText = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+// Looser, for "did the customer change it": a scan and a typed value differ
+// in case, spaces and dashes without saying anything different.
+const sameValue = (a: string, b: string) =>
+  a.replace(/[^a-z0-9]/gi, '').toLowerCase() === b.replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+// The port keys on this paper where what the customer entered (confirmed at
+// upload, or the TIN / SEC number on the company) differs from the scan.
+// For those the scan's read % says nothing about the value in front of the
+// reviewer, so it is replaced by an "Edited by customer" tag.
+function editedKeys(company: CompanyReviewResponse, doc: ReviewDocument): string[] {
+  const entered: Record<string, string> = {
+    ...(company.tin ? { tin: company.tin } : {}),
+    ...(company.secNumber ? { sec_number: company.secNumber } : {}),
+    ...doc.customer,
+  };
+  return Object.keys(entered).filter((key) => doc.ocr[key] && !sameValue(entered[key]!, doc.ocr[key]!));
+}
+
+function EditedTag({ scanned }: { scanned?: string | undefined }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1 text-xs">
+      <span className="rounded-sm border border-warning px-1.5 text-text">Edited by customer</span>
+      {scanned !== undefined && <span className="text-text-muted">scan read "{scanned}"</span>}
+    </span>
+  );
+}
 
 // Under each field: what the upload-time scan read, so a reviewer sees at a
 // glance whether the customer's value matches the paper.
@@ -185,6 +176,12 @@ function CompanyReviewCard({
   const dti = byType('dti_certificate');
   const legacy = byType('company_registration');
   const idValue = (key: string) => nationalId?.customer[key] ?? nationalId?.ocr[key] ?? '';
+  const fieldHint = (doc: ReviewDocument | undefined, key: string, current: string) =>
+    doc && editedKeys(company, doc).includes(key) ? (
+      <EditedTag scanned={doc.ocr[key]} />
+    ) : (
+      scanHint(doc?.ocr[key], current)
+    );
 
   const [fields, setFields] = useState<ReviewFields>({
     companyName: company.companyName,
@@ -240,7 +237,7 @@ function CompanyReviewCard({
     <Input
       label={label}
       maxLength={200}
-      hint={scanHint(nationalId?.ocr[ocrKey], fields[key])}
+      hint={fieldHint(nationalId, ocrKey, fields[key])}
       value={fields[key]}
       onChange={(e) => setFields({ ...fields, [key]: e.target.value })}
     />
@@ -272,10 +269,17 @@ function CompanyReviewCard({
             onClick={() => onPreviewDocument(company.id, doc.id)}
           >
             {DOC_LABELS[doc.documentType] ?? formatStatus(doc.documentType)}
-            {doc.confidence !== null && (
-              <span className={doc.confidence < 0.85 ? 'text-error' : 'text-text-muted'}>
-                &nbsp;&middot; {Math.round(doc.confidence * 100)}%
-              </span>
+            {editedKeys(company, doc).length > 0 ? (
+              <>
+                &nbsp;&middot;&nbsp;
+                <EditedTag />
+              </>
+            ) : (
+              doc.confidence !== null && (
+                <span className={doc.confidence < 0.85 ? 'text-error' : 'text-text-muted'}>
+                  &nbsp;&middot; {Math.round(doc.confidence * 100)}%
+                </span>
+              )
             )}
           </Button>
         ))}
@@ -309,17 +313,13 @@ function CompanyReviewCard({
                 {ID_DETAILS.map(({ key, label }) => {
                   const customer = nationalId.customer[key];
                   const scanned = nationalId.ocr[key];
-                  const edited = customer && scanned && !sameText(customer, scanned);
+                  const edited = editedKeys(company, nationalId).includes(key);
                   return (
                     <Fragment key={key}>
                       <dt className="text-text-muted">{label}</dt>
-                      <dd className="break-words text-text">
+                      <dd className="flex flex-wrap items-center gap-2 break-words text-text">
                         {customer ?? scanned ?? 'Not read'}
-                        {edited && (
-                          <span className="ml-2 inline-block rounded-sm border border-warning px-1.5 text-xs text-text">
-                            customer edited, scan read "{scanned}"
-                          </span>
-                        )}
+                        {edited && <EditedTag scanned={scanned} />}
                       </dd>
                     </Fragment>
                   );
@@ -360,7 +360,7 @@ function CompanyReviewCard({
                     label="TIN"
                     inputMode="numeric"
                     placeholder="000-000-000-000"
-                    hint={scanHint((bir ?? legacy)?.ocr.tin, fields.tin)}
+                    hint={fieldHint(bir ?? legacy, 'tin', fields.tin)}
                     error={formatError(normalizeTin(fields.tin), TIN_REGEX, 'Not a 9 or 12 digit TIN.')}
                     value={fields.tin}
                     onChange={(e) => setFields({ ...fields, tin: e.target.value })}
@@ -381,7 +381,7 @@ function CompanyReviewCard({
                   <Input
                     label="SEC registration number"
                     maxLength={50}
-                    hint={scanHint((sec ?? legacy)?.ocr.sec_number, fields.secNumber)}
+                    hint={fieldHint(sec ?? legacy, 'sec_number', fields.secNumber)}
                     error={formatError(fields.secNumber, SEC_REGEX, 'Not an SEC registration number format.')}
                     value={fields.secNumber}
                     onChange={(e) => setFields({ ...fields, secNumber: e.target.value })}
@@ -402,7 +402,7 @@ function CompanyReviewCard({
                   <Input
                     label="DTI business name number"
                     maxLength={50}
-                    hint={scanHint(dti.ocr.dti_number, fields.dtiNumber)}
+                    hint={fieldHint(dti, 'dti_number', fields.dtiNumber)}
                     error={formatError(fields.dtiNumber, DTI_REGEX, 'Not a DTI business name number format.')}
                     value={fields.dtiNumber}
                     onChange={(e) => setFields({ ...fields, dtiNumber: e.target.value })}
@@ -426,6 +426,8 @@ function CompanyReviewCard({
               </dl>
             )}
           </section>
+
+          <ReviewComment company={company} />
 
           <div className="flex flex-wrap gap-2">
             <Button
@@ -452,6 +454,85 @@ function CompanyReviewCard({
         </>
       )}
     </Surface>
+  );
+}
+
+// The reviewer's way back to the customer short of rejecting: a note, and
+// the fields and documents it unlocks for them. The company stays pending
+// and the customer can change only what is ticked here.
+function ReviewComment({ company }: { company: CompanyReviewResponse }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [comment, setComment] = useState(company.reviewComment ?? '');
+  const [unlock, setUnlock] = useState<Set<string>>(() => new Set(company.unlockedFields));
+  const options = [
+    ...UNLOCKABLE_COMPANY_FIELDS.map((f) => ({ value: f as string, label: FIELD_LABELS[f]! })),
+    ...[...new Set(company.documents.map((d) => d.documentType))].map((t) => ({
+      value: t,
+      label: DOC_LABELS[t] ?? formatStatus(t),
+    })),
+  ];
+  const send = useMutation({
+    mutationFn: () =>
+      apiPatch(`/customers/${company.id}/review`, { comment: comment.trim(), unlock: [...unlock] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['customers', 'review'] });
+      toast.success('Comment sent', 'The customer has been notified.');
+    },
+    onError: (err) => toast.error('Could not send the comment', apiErrorText(err)),
+  });
+  const id = `comment-${company.id}`;
+  return (
+    <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-3">
+      <h3 id={`${id}-heading`} className="font-medium text-text">
+        Ask the customer to fix something
+      </h3>
+      <div className="flex flex-col gap-1">
+        <label htmlFor={id} className="text-sm font-medium text-text">
+          Comment to the customer
+        </label>
+        <textarea
+          id={id}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          maxLength={1000}
+          rows={2}
+          className="rounded-md border border-border bg-surface px-3 py-2 text-text"
+        />
+      </div>
+      <fieldset className="flex flex-col gap-1">
+        <legend className="text-sm font-medium text-text">Unlock for the customer to change</legend>
+        <div className="flex flex-wrap gap-x-4">
+          {options.map((option) => (
+            <label key={option.value} className="flex min-h-11 items-center gap-2 text-sm text-text">
+              <input
+                type="checkbox"
+                checked={unlock.has(option.value)}
+                onChange={(e) =>
+                  setUnlock((current) => {
+                    const next = new Set(current);
+                    if (e.target.checked) next.add(option.value);
+                    else next.delete(option.value);
+                    return next;
+                  })
+                }
+                className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <Button
+        variant="secondary"
+        className="self-start"
+        loading={send.isPending}
+        disabled={!comment.trim()}
+        onClick={() => send.mutate()}
+      >
+        Send to customer
+      </Button>
+    </section>
   );
 }
 
@@ -619,18 +700,5 @@ export const appRegistrationVerifiedRoute = createRoute({
       />
       <CompanyQueue kycStatus="approved" />
     </div>
-  ),
-});
-
-export const appRegistrationReviewRoute = createRoute({
-  getParentRoute: () => appLayoutRoute,
-  path: '/app/registration/review',
-  beforeLoad: requireRole('admin', 'platform_admin'),
-  component: () => (
-    <RegistrationQueue
-      title="Registration review"
-      description="Extracted SEC and TIN values checked against the registry."
-      gap="The review screen needs a document to review and there is no queue to pick one from. Submitting a document and stepping through extraction and confirmation already works on the registration flow, which is where a reviewer can do this today."
-    />
   ),
 });

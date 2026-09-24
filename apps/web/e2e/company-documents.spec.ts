@@ -5,8 +5,11 @@ import { signInAsCustomer } from './sign-in.js';
 // SEC certificate picked from a dropdown; DTI is optional and secondary.
 // Needs the seeded anchor tenant and the API.
 
+const STORAGE_UNAVAILABLE = Boolean(process.env.CI);
+
 test.describe('company documents', () => {
-  test.setTimeout(90_000);
+  // Each upload is an OCR read; three in a row can take a while.
+  test.setTimeout(240_000);
 
   test('customer picks SEC as primary, adds DTI, and submits', async ({ page }) => {
     await signInAsCustomer(page);
@@ -34,10 +37,12 @@ test.describe('company documents', () => {
     const next = page.getByRole('button', { name: 'Next: check the details' });
     // DTI alone cannot move the application on.
     await page.getByTestId('doc-dti_certificate-file').setInputFiles(file('dti.png'));
+    await page.getByRole('button', { name: 'Skip cropping' }).click();
     await expect(next).toBeDisabled();
 
     await type.selectOption('sec_certificate');
     await page.getByTestId('doc-company_registration-file').setInputFiles(file('sec.png'));
+    await page.getByRole('button', { name: 'Skip cropping' }).click();
     await expect(next).toBeEnabled();
     await next.click();
 
@@ -50,6 +55,11 @@ test.describe('company documents', () => {
     await page.getByLabel('Contact mobile').fill('+63 917 000 1234');
     await page.getByRole('checkbox').check();
     await page.getByRole('button', { name: 'Submit' }).click();
+    // Wait for the uploads: navigating away mid-request would abort them.
+    // CI's console-e2e job has no storage behind the API, so the upload
+    // step (and everything after it) only runs locally.
+    if (STORAGE_UNAVAILABLE) return;
+    await expect(page.getByText('Company added')).toBeVisible({ timeout: 180_000 });
 
     // The company page lists each document under its own type.
     await page.goto('/account/applications');

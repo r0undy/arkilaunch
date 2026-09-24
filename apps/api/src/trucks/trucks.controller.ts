@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { createZodDto } from 'nestjs-zod';
 import type { Request } from 'express';
 import {
   NegotiationMessageCreateSchema,
+  TollRateCreateSchema,
   TruckAgreeSchema,
   TruckEstimateRequestSchema,
   TruckKmConfirmSchema,
@@ -22,6 +23,7 @@ class TruckKmConfirmDto extends createZodDto(TruckKmConfirmSchema) {}
 class TruckAgreeDto extends createZodDto(TruckAgreeSchema) {}
 class TruckMessageDto extends createZodDto(NegotiationMessageCreateSchema) {}
 class TruckSettingsDto extends createZodDto(TruckSettingsSchema) {}
+class TollRateDto extends createZodDto(TollRateCreateSchema) {}
 
 // /me/truck-requests is the customer's own; /truck-requests and
 // /truck-settings are the tenant admin's. Tenant comes from the JWT (RLS);
@@ -97,7 +99,44 @@ export class TrucksController {
   @Patch('truck-requests/:id/km')
   @RequirePermission('pricing:manage')
   confirmKm(@Param('id') id: string, @Body() body: TruckKmConfirmDto, @Req() req: CtxRequest) {
-    return this.trucks.confirmKm(req.ctx, id, body.km);
+    return this.trucks.confirmKm(req.ctx, id, body.km, body.tollRateIds);
+  }
+
+  @Post('me/truck-requests/:id/request-call')
+  @RequirePermission('booking:create')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  requestCall(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.trucks.requestCall(req.ctx, id);
+  }
+
+  @Post('me/truck-requests/:id/approve-price')
+  @RequirePermission('booking:create')
+  approvePrice(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.trucks.approveOverCap(req.ctx, id);
+  }
+
+  @Post('truck-requests/:id/call-confirmed')
+  @RequirePermission('quote:approve')
+  confirmCall(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.trucks.confirmCall(req.ctx, id);
+  }
+
+  @Get('toll-rates')
+  @RequirePermission('pricing:manage')
+  tolls(@Req() req: CtxRequest) {
+    return this.trucks.listTolls(req.ctx);
+  }
+
+  @Post('toll-rates')
+  @RequirePermission('pricing:manage')
+  addToll(@Body() body: TollRateDto, @Req() req: CtxRequest) {
+    return this.trucks.addToll(req.ctx, body);
+  }
+
+  @Delete('toll-rates/:id')
+  @RequirePermission('pricing:manage')
+  removeToll(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.trucks.removeToll(req.ctx, id);
   }
 
   @Get('truck-settings')

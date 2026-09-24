@@ -188,12 +188,15 @@ export class BillingService {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, rentalId)).limit(1);
       if (!rental) throw new NotFoundException({ error: 'rental_not_found' });
 
-      const ledger = await resolveDepositLedger(tx, rentalId);
+      const ledger = await resolveDepositLedger(tx, rentalId, ctx.tenantId);
       return {
         rentalId,
         depositRequired: ledger.depositRequired,
         totalDeducted: ledger.totalDeducted,
-        balanceRemaining: ledger.depositRequired !== null ? ledger.depositRequired - ledger.totalDeducted : null,
+        balanceRemaining: Math.max(0, ledger.depositRequired - ledger.totalDeducted),
+        unbilledAccrued: ledger.unbilledAccrued,
+        hoursUsed: ledger.hoursUsed,
+        hoursOrdered: ledger.hoursOrdered,
         deductions: ledger.deductions,
       };
     });

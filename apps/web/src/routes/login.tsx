@@ -1,7 +1,7 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
 import { authLayoutRoute } from './_auth.js';
-import { login, verify2fa } from '../lib/auth-client.js';
+import { login, requestPasswordReset, verify2fa } from '../lib/auth-client.js';
 import { getCurrentRole, homeRouteForRole } from '../lib/guards.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
@@ -31,6 +31,8 @@ function LoginPage() {
   // step (POST /auth/2fa/verify), which is a live, tested backend endpoint.
   const [twoFaToken, setTwoFaToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
+  // 'form' shows the forgot-password email box; 'sent' its confirmation.
+  const [forgot, setForgot] = useState<'off' | 'form' | 'sent'>('off');
 
   async function goHome() {
     await navigate({ to: redirectTo ?? homeRouteForRole(getCurrentRole()) });
@@ -67,6 +69,67 @@ function LoginPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function onForgot(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await requestPasswordReset(email);
+      setForgot('sent');
+    } catch {
+      setError('Could not send the request. Try again in a minute.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (forgot !== 'off') {
+    const back = () => {
+      setForgot('off');
+      setError(null);
+    };
+    return (
+      <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
+        <h1 id="forgot-heading" className="mb-1 font-display text-xl font-semibold text-text">
+          Reset your password
+        </h1>
+        {forgot === 'sent' ? (
+          <p role="status" className="mb-6 text-sm text-text-muted">
+            If that email has an account, the rental team has been told. They will send you a link to
+            set a new password.
+          </p>
+        ) : (
+          <form onSubmit={onForgot} aria-labelledby="forgot-heading">
+            <p className="mb-6 text-sm text-text-muted">
+              Enter your account email. The rental team will send you a link to set a new password.
+            </p>
+            <Input
+              label="Email address"
+              id="forgot-email"
+              name="email"
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              {...(error ? { error } : {})}
+            />
+            <Button type="submit" loading={submitting} disabled={submitting} className="mt-4 w-full">
+              Request a reset
+            </Button>
+          </form>
+        )}
+        <button
+          type="button"
+          onClick={back}
+          className="mt-4 w-full text-center text-sm text-text-muted underline decoration-dotted"
+        >
+          Back to sign in
+        </button>
+      </Surface>
+    );
   }
 
   if (twoFaToken) {
@@ -152,9 +215,11 @@ function LoginPage() {
         />
         <button
           type="button"
-          disabled
-          title="Password reset is admin-initiated for now; contact your administrator"
-          className="mt-1 text-sm text-text-muted underline decoration-dotted disabled:cursor-not-allowed"
+          onClick={() => {
+            setForgot('form');
+            setError(null);
+          }}
+          className="mt-1 text-sm text-text-muted underline decoration-dotted"
         >
           Forgot password?
         </button>

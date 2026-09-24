@@ -1,5 +1,5 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { BookingCreateResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
@@ -25,6 +25,7 @@ import {
   MAX_SITE_NOTES,
   type CartFieldErrors,
 } from '../lib/cart-validation.js';
+import { AvailabilityDays, availabilityProblem, localDate, useAvailability } from '../components/availability-days.js';
 import {
   getCart,
   removeFromCart,
@@ -51,6 +52,55 @@ function rentalDays(item: CartItem): number {
   return Math.max(
     1,
     Math.round((new Date(item.end).getTime() - new Date(item.start).getTime()) / 86_400_000),
+  );
+}
+
+// One cart line's date fields plus its availability grid. Taken days are
+// disabled; a window that touches one is flagged and blocks submit.
+function CartItemDates({
+  item,
+  onDate,
+  onProblem,
+}: {
+  item: CartItem;
+  onDate: (field: 'start' | 'end', value: string, hour: number) => void;
+  onProblem: (problem: string | null) => void;
+}) {
+  const availability = useAvailability(item.equipmentId);
+  const hours = availability.data?.hours;
+  const openHour = hours ? Number(hours.openTime.slice(0, 2)) + (hours.openTime.slice(3) === '00' ? 0 : 1) : 8;
+  const closeHour = hours ? Number(hours.closeTime.slice(0, 2)) : 17;
+  const problem = availabilityProblem(availability.data, item.start, item.end);
+  useEffect(() => onProblem(problem), [problem, onProblem]);
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input
+          label="Rental start"
+          type="date"
+          value={toDateInput(item.start)}
+          min={toDateInput(new Date().toISOString())}
+          onChange={(e) => onDate('start', e.target.value, openHour)}
+        />
+        <Input
+          label="Rental end"
+          type="date"
+          value={toDateInput(item.end)}
+          min={toDateInput(item.start)}
+          onChange={(e) => onDate('end', e.target.value, closeHour)}
+          {...(problem ? { error: problem } : {})}
+        />
+      </div>
+      <AvailabilityDays
+        data={availability.data}
+        start={item.start}
+        end={item.end}
+        onPick={(date) => {
+          onDate('start', date, openHour);
+          if (date > localDate(new Date(item.end))) onDate('end', date, closeHour);
+        }}
+      />
+    </>
   );
 }
 
@@ -120,11 +170,19 @@ function CartPage() {
     setError(null);
   }
 
-  function handleDate(index: number, field: 'start' | 'end', value: string) {
+  function handleDate(index: number, field: 'start' | 'end', value: string, hour: number) {
     if (!value) return;
-    updateCartItem(index, { [field]: fromDateInput(value, field === 'start' ? 8 : 17) });
+    updateCartItem(index, { [field]: fromDateInput(value, hour) });
     setItems(getCart());
   }
+  // Availability problems per cart line; any one blocks submit.
+  const [problems, setProblems] = useState<Record<number, string | null>>({});
+  const reportProblem = useCallback(
+    (index: number, problem: string | null) =>
+      setProblems((prev) => (prev[index] === problem ? prev : { ...prev, [index]: problem })),
+    [],
+  );
+  const unavailable = items.some((_, index) => problems[index]);
 
   const createBooking = useMutation({
     mutationFn: () =>
@@ -264,7 +322,7 @@ function CartPage() {
           setSubmitted(true);
           setError(null);
           setSwap(null);
-          if (hasErrors(errors)) {
+          if (hasErrors(errors) || unavailable) {
             // Put the caret on the first thing that is wrong rather than
             // leaving the customer to hunt for the red field.
             const firstInvalid = e.currentTarget.querySelector<HTMLElement>('[aria-invalid="true"]');
@@ -319,22 +377,11 @@ function CartPage() {
                     Remove
                   </Button>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Input
-                    label="Rental start"
-                    type="date"
-                    value={toDateInput(item.start)}
-                    min={toDateInput(new Date().toISOString())}
-                    onChange={(e) => handleDate(index, 'start', e.target.value)}
-                  />
-                  <Input
-                    label="Rental end"
-                    type="date"
-                    value={toDateInput(item.end)}
-                    min={toDateInput(item.start)}
-                    onChange={(e) => handleDate(index, 'end', e.target.value)}
-                  />
-                </div>
+                <CartItemDates
+                  item={item}
+                  onDate={(field, value, hour) => handleDate(index, field, value, hour)}
+                  onProblem={(problem) => reportProblem(index, problem)}
+                />
                 {submitted && errors.items[index] && (
                   <p role="alert" className="text-sm text-error">
                     {errors.items[index]}
@@ -457,7 +504,7 @@ function CartPage() {
           <Button
             type="submit"
             variant="primary"
-            disabled={createBooking.isPending}
+            disabled={createBooking.isPending || unavailable}
             loading={createBooking.isPending}
           >
             Request a quote

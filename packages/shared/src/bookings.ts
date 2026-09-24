@@ -76,6 +76,9 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
   ),
   siteContact: z.string().nullable(),
   siteNotes: z.string().nullable(),
+  // Callback before payment: checkout waits for callConfirmedAt.
+  callRequestedAt: z.coerce.date().nullable(),
+  callConfirmedAt: z.coerce.date().nullable(),
   createdAt: z.coerce.date(),
   quotation: z
     .object({
@@ -158,3 +161,53 @@ export const ChangeRequestResolveSchema = z.object({
   decision: z.enum(['approved', 'rejected']),
 });
 export type ChangeRequestResolve = z.infer<typeof ChangeRequestResolveSchema>;
+
+// --- Booking availability (feedback phase 3). ---
+
+// Business hours are Asia/Manila wall-clock "HH:MM"; openDays are
+// 0 = Sunday .. 6 = Saturday; blackouts are Manila calendar dates.
+const HhMm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+export const TenantCalendarSchema = z
+  .object({
+    openTime: HhMm,
+    closeTime: HhMm,
+    openDays: z.array(z.number().int().min(0).max(6)).max(7),
+    blackouts: z
+      .array(
+        z.object({
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          label: z.string().trim().max(100).optional(),
+        }),
+      )
+      .max(366),
+  })
+  .refine((c) => c.closeTime > c.openTime, { message: 'closeTime must be after openTime' });
+export type TenantCalendar = z.infer<typeof TenantCalendarSchema>;
+
+// GET /equipment/:id/availability?from&to (dates, YYYY-MM-DD, Manila).
+export const AvailabilityQuerySchema = z
+  .object({
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  })
+  .refine((q) => q.to >= q.from, { message: 'to must not be before from' });
+export type AvailabilityQuery = z.infer<typeof AvailabilityQuerySchema>;
+
+export type AvailabilityBlocker = 'assignment' | 'maintenance' | 'closed' | 'holiday' | 'operator';
+
+export interface AvailabilityResponse {
+  // null = the tenant set no calendar: any time of any day.
+  hours: { openTime: string; closeTime: string; openDays: number[] } | null;
+  days: { date: string; available: boolean; reason: AvailabilityBlocker | null }[];
+}
+
+// GET /bookings/:id/reschedule-suggestion (staff).
+export interface RescheduleSuggestion {
+  items: {
+    equipmentId: string;
+    // Nearest free window of the same length on the same unit, or null.
+    sameUnit: { start: string; end: string } | null;
+    // Other units of the same type free for the original window.
+    alternatives: string[];
+  }[];
+}

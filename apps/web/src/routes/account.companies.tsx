@@ -2,6 +2,7 @@ import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useRef, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  isPrimaryRegistration,
   normalizePcn,
   normalizeTin,
   type CompanyResponse,
@@ -65,11 +66,7 @@ async function uploadDocuments(
     dti: File | null;
     dtiNumber?: string;
   },
-): Promise<string[]> {
-  // Each upload is screened by OCR server-side; an illegible scan comes
-  // back 'resubmit_required' instead of 'pending', named here so the
-  // customer is told immediately rather than finding out from the queue.
-  const bounced: string[] = [];
+): Promise<void> {
   const uploads: [string, File | null, Record<string, string>][] = [
     ['government_id', files.governmentId, filled({ ...files.idDetails })],
     [files.registrationType, files.registration, {}],
@@ -77,14 +74,8 @@ async function uploadDocuments(
   ];
   for (const [documentType, file, confirmed] of uploads) {
     if (!file) continue;
-    const doc = await apiPostForm<{ documentType: string; status: string }>(
-      `/me/companies/${companyId}/documents`,
-      { documentType, ...confirmed },
-      file,
-    );
-    if (doc.status === 'resubmit_required') bounced.push(DOC_LABELS[doc.documentType]!);
+    await apiPostForm(`/me/companies/${companyId}/documents`, { documentType, ...confirmed }, file);
   }
-  return bounced;
 }
 
 // One document at a time, in order. Both used to sit on the same screen,
@@ -110,30 +101,24 @@ const REGISTRATION_OPTIONS: { value: PrimaryRegistrationType; label: string }[] 
   { value: 'sec_certificate', label: 'SEC Certificate of Incorporation' },
 ];
 
-function DocumentStep({
-  step,
+// A capture that opens the cropper for every photo. The photo as taken is
+// kept so "Crop again" starts from the full frame rather than re-cropping a
+// crop. PDFs are never cropped.
+function CroppableCapture({
+  id,
+  label,
   value,
   onChange,
-  registrationType,
-  onRegistrationTypeChange,
-  dti,
-  onDtiChange,
 }: {
-  step: (typeof DOC_STEPS)[number];
+  id: string;
+  label: string;
   value: File | null;
   onChange: (file: File | null) => void;
-  registrationType: PrimaryRegistrationType;
-  onRegistrationTypeChange: (type: PrimaryRegistrationType) => void;
-  dti: File | null;
-  onDtiChange: (file: File | null) => void;
 }) {
-  const isRegistration = step.type === 'company_registration';
-  // The ID photo as taken, kept so "Crop again" starts from the full frame
-  // rather than re-cropping a crop. PDFs are never cropped.
   const [original, setOriginal] = useState<File | null>(null);
   const [cropping, setCropping] = useState(false);
 
-  function onIdChange(file: File | null) {
+  function onPick(file: File | null) {
     const image = file?.type.startsWith('image/') ? file : null;
     setOriginal(image);
     onChange(file);
@@ -141,33 +126,9 @@ function DocumentStep({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm text-text-muted">{step.hint}</p>
-      {isRegistration && (
-        <label className="flex flex-col gap-1 text-sm font-medium text-text">
-          Document type
-          <select
-            id="registration-type"
-            value={registrationType}
-            onChange={(e) => onRegistrationTypeChange(e.target.value as PrimaryRegistrationType)}
-            className="min-h-11 rounded-md border border-border bg-surface px-3 text-text"
-          >
-            {REGISTRATION_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      <CaptureField
-        id={`doc-${step.type}`}
-        label={isRegistration ? DOC_LABELS[registrationType]! : step.label}
-        accept="image/*,application/pdf"
-        value={value}
-        onChange={isRegistration ? onChange : onIdChange}
-      />
-      {!isRegistration && original && value && (
+    <>
+      <CaptureField id={id} label={label} accept="image/*,application/pdf" value={value} onChange={onPick} />
+      {original && value && (
         <div>
           <Button type="button" variant="secondary" onClick={() => setCropping(true)}>
             Crop again
@@ -184,11 +145,66 @@ function DocumentStep({
           }}
         />
       )}
-      {isRegistration && (
-        <CaptureField
+    </>
+  );
+}
+
+function DocumentStep({
+  step,
+  value,
+  onChange,
+  registrationType,
+  onRegistrationTypeChange,
+  dti,
+  onDtiChange,
+  showPrimary = true,
+  showDti = true,
+}: {
+  step: (typeof DOC_STEPS)[number];
+  value: File | null;
+  onChange: (file: File | null) => void;
+  registrationType: PrimaryRegistrationType;
+  onRegistrationTypeChange: (type: PrimaryRegistrationType) => void;
+  dti: File | null;
+  onDtiChange: (file: File | null) => void;
+  // A submitted company re-uploads only what the reviewer unlocked.
+  showPrimary?: boolean;
+  showDti?: boolean;
+}) {
+  const isRegistration = step.type === 'company_registration';
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm text-text-muted">{step.hint}</p>
+      {isRegistration && showPrimary && (
+        <label className="flex flex-col gap-1 text-sm font-medium text-text">
+          Document type
+          <select
+            id="registration-type"
+            value={registrationType}
+            onChange={(e) => onRegistrationTypeChange(e.target.value as PrimaryRegistrationType)}
+            className="min-h-11 rounded-md border border-border bg-surface px-3 text-text"
+          >
+            {REGISTRATION_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {(!isRegistration || showPrimary) && (
+        <CroppableCapture
+          id={`doc-${step.type}`}
+          label={isRegistration ? DOC_LABELS[registrationType]! : step.label}
+          value={value}
+          onChange={onChange}
+        />
+      )}
+      {isRegistration && showDti && (
+        <CroppableCapture
           id="doc-dti_certificate"
           label="DTI Business Name certificate (secondary, optional)"
-          accept="image/*,application/pdf"
           value={dti}
           onChange={onDtiChange}
         />
@@ -433,7 +449,7 @@ function NewCompanyPage() {
         contactMobile,
         ...filled({ tin: showTin ? normalizeTin(tin) : '', secNumber: showSec ? secNumber : '' }),
       });
-      const bounced = await uploadDocuments(created.id, {
+      await uploadDocuments(created.id, {
         governmentId,
         idDetails,
         registration,
@@ -442,17 +458,7 @@ function NewCompanyPage() {
         dtiNumber: showDti ? dtiNumber : '',
       });
       await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
-      if (bounced.length > 0) {
-        toast.error(
-          'A document was too unclear to read',
-          `${bounced.join(' and ')} could not be read. Upload a clearer copy from the company page.`,
-        );
-      } else {
-        toast.success(
-          'Company added',
-          'The rental team will verify it. You can request quotes now.',
-        );
-      }
+      toast.success('Company added', 'The rental team will verify it. You can request quotes now.');
       await navigate({ to: '/account/applications' });
     } catch (err) {
       // The company exists even if an upload failed; say so, and send the
@@ -664,6 +670,16 @@ function NewCompanyPage() {
 
 function CompanyDocumentsPage() {
   const { companyId } = accountCompanyDocumentsRoute.useParams();
+  const company = useQuery(companiesQueries.mine()).data?.find((row) => row.id === companyId);
+  // A document already on file is replaced only when the reviewer unlocked
+  // it; one never uploaded can always be added.
+  const mayUpload = (test: (type: string) => boolean) => {
+    const onFile = company?.documents.filter((d) => test(d.documentType)) ?? [];
+    return onFile.length === 0 || onFile.some((d) => company!.unlockedFields.includes(d.documentType));
+  };
+  const idOpen = mayUpload((t) => t === 'government_id');
+  const primaryOpen = mayUpload(isPrimaryRegistration);
+  const dtiOpen = mayUpload((t) => t === 'dti_certificate');
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -678,7 +694,9 @@ function CompanyDocumentsPage() {
   // Same one-at-a-time order as adding a company, ID check included. The
   // registration is not scanned here: the company already exists, so there
   // is no company form left to prefill.
-  const [stage, setStage] = useState<DocStep | 'id_details'>('government_id');
+  const [chosenStage, setStage] = useState<DocStep | 'id_details'>('government_id');
+  // With the ID locked there is no ID step: straight to the registration.
+  const stage = !idOpen && chosenStage !== 'company_registration' ? 'company_registration' : chosenStage;
   // "Next: company registration" (the ID check) and "Upload" sit in the
   // same spot. A fast double-tap -- or any input lag between the two taps
   // registering -- lands the second tap on "Upload" the instant it replaces
@@ -718,7 +736,7 @@ function CompanyDocumentsPage() {
     if (Date.now() - stageChangedAt.current < advanceGraceMs) return;
     setBusy(true);
     try {
-      const bounced = await uploadDocuments(companyId, {
+      await uploadDocuments(companyId, {
         governmentId,
         idDetails,
         registration,
@@ -726,14 +744,7 @@ function CompanyDocumentsPage() {
         dti,
       });
       await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
-      if (bounced.length > 0) {
-        toast.error(
-          'A document was too unclear to read',
-          `${bounced.join(' and ')} could not be read. Upload a clearer copy from the company page.`,
-        );
-      } else {
-        toast.success('Documents uploaded');
-      }
+      toast.success('Documents uploaded');
       await navigate({ to: '/account/applications' });
     } catch (err) {
       toast.error('Upload failed', apiErrorText(err));
@@ -746,7 +757,17 @@ function CompanyDocumentsPage() {
     <div className="flex flex-col gap-5">
       <PageHeader eyebrow="Companies" title="Upload documents" />
       <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
-        {stage === 'id_details' && idScan ? (
+        {!idOpen && !primaryOpen && !dtiOpen ? (
+          <div role="status" className="flex flex-col gap-2">
+            <p className="font-medium text-text">Waiting for admin review</p>
+            <p className="text-sm text-text-muted">
+              Your documents are with the rental team and cannot be changed unless they ask you to.
+            </p>
+            <Link to="/account/companies/$companyId" params={{ companyId }}>
+              <Button variant="secondary">Back to the company</Button>
+            </Link>
+          </div>
+        ) : stage === 'id_details' && idScan ? (
           <IdReviewStep
             scan={idScan}
             value={idDetails}
@@ -765,6 +786,8 @@ function CompanyDocumentsPage() {
                 onRegistrationTypeChange={setRegistrationType}
                 dti={dti}
                 onDtiChange={setDti}
+                showPrimary={primaryOpen}
+                showDti={dtiOpen}
               />
             )}
             <div className="flex flex-wrap gap-2">
@@ -784,13 +807,15 @@ function CompanyDocumentsPage() {
                     type="submit"
                     variant="primary"
                     loading={busy}
-                    disabled={!governmentId && !registration}
+                    disabled={!governmentId && !registration && !dti}
                   >
                     Upload
                   </Button>
-                  <Button type="button" variant="ghost" onClick={() => setStage('id_details')}>
-                    Back
-                  </Button>
+                  {idOpen && (
+                    <Button type="button" variant="ghost" onClick={() => setStage('id_details')}>
+                      Back
+                    </Button>
+                  )}
                 </>
               )}
             </div>

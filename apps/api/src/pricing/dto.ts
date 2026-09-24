@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  BillingSettingsSchema,
   DieselPriceEntrySchema,
   PricingParametersInputSchema,
   PricingParametersQuerySchema,
@@ -14,3 +15,4 @@ export class PricingParametersQueryDto extends createZodDto(PricingParametersQue
 export class RateCardCreateDto extends createZodDto(RateCardCreateRequestSchema) {}
 export class RateCardSupersedeDto extends createZodDto(RateCardSupersedeRequestSchema) {}
 export class RateCardListQueryDto extends createZodDto(RateCardListQuerySchema) {}
+export class BillingSettingsDto extends createZodDto(BillingSettingsSchema) {}

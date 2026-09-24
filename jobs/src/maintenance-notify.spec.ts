@@ -48,6 +48,36 @@ describe('maintenance-notify (PRD-F4)', () => {
     return unit!.id;
   }
 
+  it('warns (not due) once a unit reaches 90% of the interval', async () => {
+    const { db, client } = makeJobDb();
+    const [unit] = await db
+      .insert(equipment)
+      .values({
+        tenantId,
+        equipmentTypeId,
+        model: 'Notify Test Unit',
+        serialNo: `notify-test-${Date.now()}-w`,
+        runtimeHours: '230.00',
+      })
+      .returning();
+    // Interval 250 from 0: 230h is 92%, below the 250h due point.
+    await db.insert(maintenanceSchedules).values({
+      tenantId,
+      equipmentId: unit!.id,
+      task: 'Engine oil',
+      hoursInterval: '250.00',
+      nextDue: '250.00',
+    });
+    await runMaintenanceNotify();
+    const rows = await db
+      .select()
+      .from(notifications)
+      .where(and(eq(notifications.tenantId, tenantId), eq(notifications.userId, adminUserId)));
+    await client.end();
+    const forUnit = rows.filter((row) => (row.payload as Record<string, unknown>).equipment_id === unit!.id);
+    expect(forUnit.map((row) => row.notificationType)).toEqual(['maintenance_warning']);
+  });
+
   it('notifies every active fleet:manage user for a unit at or past its threshold', async () => {
     const equipmentId = await createDueUnit(tenantId, 'a');
     await runMaintenanceNotify();

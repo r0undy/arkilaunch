@@ -18,6 +18,9 @@ export const QuoteItemInputSchema = z.object({
   estimatedHours: z.number().finite().min(0),
   mobilizationKm: z.number().finite().min(0),
   demobilizationKm: z.number().finite().min(0),
+  // Negotiation: staff-agreed price for this line, replacing the computed
+  // subtotal on this quote only (stored in pricing_inputs, audit-logged).
+  agreedSubtotalPhp: z.number().finite().min(0).max(99_999_999.99).optional(),
 });
 export type QuoteItemInput = z.infer<typeof QuoteItemInputSchema>;
 

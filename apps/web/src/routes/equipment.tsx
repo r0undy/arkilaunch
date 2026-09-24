@@ -18,6 +18,7 @@ import { useToast } from '../components/toast.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
 import { WeatherInsights, weatherInsightsVisible } from '../components/weather-insights.js';
 import { getAccessToken } from '../lib/auth-client.js';
+import { AvailabilityDays, availabilityProblem, useAvailability } from '../components/availability-days.js';
 
 // <input type="datetime-local"> speaks local "YYYY-MM-DDTHH:mm"; the cart
 // stores ISO. The frame draws date and time as two fields per end of the
@@ -52,7 +53,20 @@ function ConfigureRentalDialog({
 
   // The API refuses an end that is not after the start; say so here rather
   // than letting the cart's submit be the first time anyone finds out.
-  const invalid = !start || !end || new Date(end) <= new Date(start);
+  const order = !start || !end || new Date(end) <= new Date(start);
+  // Taken days and closed hours, from the same check the server runs.
+  const availability = useAvailability(equipment.id);
+  const problem = order ? null : availabilityProblem(availability.data, start, end);
+  const invalid = order || problem !== null;
+
+  function pickDay(date: string) {
+    const time = start.slice(11) || (availability.data?.hours?.openTime ?? '08:00');
+    const nextStart = `${date}T${time}`;
+    setStart(nextStart);
+    if (!end || new Date(end) <= new Date(nextStart)) {
+      setEnd(`${date}T${availability.data?.hours?.closeTime ?? '17:00'}`);
+    }
+  }
 
   // /account/cart is behind requireAuth(), so "Book now" used to hand a
   // signed-out visitor a silent guard bounce to /login -- which reads as the
@@ -119,9 +133,16 @@ function ConfigureRentalDialog({
             type="datetime-local"
             value={end}
             onChange={(e) => setEnd(e.target.value)}
-            {...(invalid && start && end ? { error: 'The return must be after the pickup.' } : {})}
+            {...(order && start && end
+              ? { error: 'The return must be after the pickup.' }
+              : problem
+                ? { error: problem }
+                : {})}
           />
         </div>
+      </div>
+      <div className="mt-4">
+        <AvailabilityDays data={availability.data} start={start} end={end} onPick={pickDay} />
       </div>
       <p className="mt-4 text-sm text-text-muted">
         The delivery site is chosen once for the whole booking, in your cart.
@@ -147,7 +168,9 @@ function EquipmentPage() {
     () =>
       (data?.items ?? []).filter(
         (eq) =>
-          eq.availabilityStatus === 'available' &&
+          // A deployed unit is still bookable for later dates; the
+          // availability grid shows which.
+          eq.availabilityStatus !== 'maintenance' &&
           `${eq.model} ${eq.equipmentTypeName}`.toLowerCase().includes(query.toLowerCase()),
       ),
     [data, query],

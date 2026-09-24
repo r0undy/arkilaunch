@@ -1,10 +1,10 @@
 import { createRoute } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import type { TruckExtra, TruckRequestResponse, TruckSettings } from '@arkilaunch/shared';
+import { DEFAULT_TRUCK_FORMULA, FORMULA_BASE_VARS, formulaVarName, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
-import { apiErrorText, apiGet, apiPatch, apiPut } from '../lib/api-client.js';
+import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
 import { formatPeso, formatStatus } from '../lib/format.js';
 import { PriceBreakdown } from './account.trucks.js';
 import { Surface } from '../components/surface.js';
@@ -17,6 +17,10 @@ const settingsQuery = {
   queryKey: ['truck-settings'] as const,
   queryFn: () => apiGet<TruckSettings>('/truck-settings'),
 };
+const tollsQuery = {
+  queryKey: ['toll-rates'] as const,
+  queryFn: () => apiGet<TollRateResponse[]>('/toll-rates'),
+};
 const requestsQuery = {
   queryKey: ['truck-requests'] as const,
   queryFn: () => apiGet<TruckRequestResponse[]>('/truck-requests'),
@@ -28,10 +32,20 @@ function SettingsEditor({ initial }: { initial: TruckSettings }) {
   const [base, setBase] = useState(String(initial.baseFeePhp));
   const [driver, setDriver] = useState(String(initial.driverFeePhp));
   const [extras, setExtras] = useState<TruckExtra[]>(initial.extras);
+  const [formula, setFormula] = useState(initial.formula || DEFAULT_TRUCK_FORMULA);
+  const [rangePct, setRangePct] = useState(String(initial.rangePct));
+  const [region, setRegion] = useState(initial.region);
 
   const save = useMutation({
     mutationFn: () =>
-      apiPut('/truck-settings', { baseFeePhp: Number(base), driverFeePhp: Number(driver), extras }),
+      apiPut('/truck-settings', {
+        baseFeePhp: Number(base),
+        driverFeePhp: Number(driver),
+        extras,
+        formula: formula.trim() === DEFAULT_TRUCK_FORMULA ? null : formula.trim(),
+        rangePct: Number(rangePct),
+        region: region.trim(),
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: settingsQuery.queryKey });
       toast.success('Truck pricing saved');
@@ -54,6 +68,15 @@ function SettingsEditor({ initial }: { initial: TruckSettings }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <Input label="Base fee (₱ per trip)" type="number" min={0} numeric value={base} onChange={(e) => setBase(e.target.value)} />
         <Input label="Driver's fee (₱ per trip)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
+        <Input label="Estimate range (± %)" type="number" min={0} max={100} numeric value={rangePct} onChange={(e) => setRangePct(e.target.value)} />
+        <Input label="Diesel price region" value={region} onChange={(e) => setRegion(e.target.value)} />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Input label="Price formula" value={formula} onChange={(e) => setFormula(e.target.value)} />
+        <p className="text-xs text-text-muted">
+          Numbers, + − × ÷ and brackets. Variables: {[...FORMULA_BASE_VARS, ...extras.map((x) => formulaVarName(x.label)).filter(Boolean)].join(', ')}.
+          The high end of the range is the most a customer can be charged without approving.
+        </p>
       </div>
       <fieldset className="flex flex-col gap-3">
         <legend className="mb-2 text-sm font-medium text-text">Extra charges</legend>
@@ -94,13 +117,71 @@ function SettingsEditor({ initial }: { initial: TruckSettings }) {
   );
 }
 
+function TollsEditor() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const tolls = useQuery(tollsQuery);
+  const [name, setName] = useState('');
+  const [fee, setFee] = useState('');
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: tollsQuery.queryKey });
+  const add = useMutation({
+    mutationFn: () => apiPost('/toll-rates', { name: name.trim(), feePhp: Number(fee) }),
+    onSuccess: () => {
+      setName('');
+      setFee('');
+      refresh();
+    },
+    onError: (e) => toast.error('Toll not added', apiErrorText(e)),
+  });
+  const remove = useMutation({ mutationFn: (id: string) => apiDelete(`/toll-rates/${id}`), onSuccess: refresh });
+  return (
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4 sm:p-6">
+      <div>
+        <h2 className="font-display text-lg font-semibold text-text">Toll rates</h2>
+        <p className="text-sm text-text-muted">Pick the tolls a trip passes when you confirm its km.</p>
+      </div>
+      {tolls.data?.map((t) => (
+        <div key={t.id} className="flex items-center justify-between gap-2 text-sm">
+          <span className="min-w-0 text-text">{t.name}</span>
+          <span className="flex items-center gap-2">
+            <span className="font-mono tabular-nums">{formatPeso(t.feePhp)}</span>
+            <Button variant="secondary" onClick={() => remove.mutate(t.id)}>
+              Remove
+            </Button>
+          </span>
+        </div>
+      ))}
+      <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_140px_auto]">
+        <div className="col-span-2 sm:col-span-1">
+          <Input label="Toll name" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <Input label="Toll fee (₱)" type="number" min={0} numeric value={fee} onChange={(e) => setFee(e.target.value)} />
+        <Button variant="secondary" loading={add.isPending} disabled={!name.trim() || fee === ''} onClick={() => add.mutate()}>
+          Add toll
+        </Button>
+      </div>
+    </Surface>
+  );
+}
+
 function RequestRow({ r }: { r: TruckRequestResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const tolls = useQuery(tollsQuery);
+  const [tollIds, setTollIds] = useState<string[]>([]);
   const [km, setKm] = useState(String(r.confirmedKm ?? r.estimatedKm));
   useEffect(() => setKm(String(r.confirmedKm ?? r.estimatedKm)), [r.confirmedKm, r.estimatedKm]);
+  const callConfirm = useMutation({
+    mutationFn: () => apiPost<TruckRequestResponse>(`/truck-requests/${r.id}/call-confirmed`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: requestsQuery.queryKey });
+      toast.success('Confirmed by phone');
+    },
+    onError: (e) => toast.error('Not saved', apiErrorText(e)),
+  });
   const confirm = useMutation({
-    mutationFn: () => apiPatch<TruckRequestResponse>(`/truck-requests/${r.id}/km`, { km: Number(km) }),
+    mutationFn: () =>
+      apiPatch<TruckRequestResponse>(`/truck-requests/${r.id}/km`, { km: Number(km), tollRateIds: tollIds }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: requestsQuery.queryKey });
       toast.success('Distance confirmed');
@@ -130,6 +211,34 @@ function RequestRow({ r }: { r: TruckRequestResponse }) {
           {new Date(r.scheduledFor).toLocaleString()} · {formatStatus(r.status)} · routed estimate {r.estimatedKm} km
         </p>
         {r.notes && <p className="text-sm text-text-muted">{r.notes}</p>}
+        {r.capPhp !== null && <p className="text-xs text-text-muted">Customer cap {formatPeso(r.capPhp)}</p>}
+        {open && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-text-muted">
+              {r.callConfirmedAt ? 'Confirmed by phone' : r.callRequestedAt ? 'Customer asked for a call' : 'Not yet called'}
+            </span>
+            {!r.callConfirmedAt && (
+              <Button variant="secondary" loading={callConfirm.isPending} onClick={() => callConfirm.mutate()}>
+                Confirmed by phone
+              </Button>
+            )}
+          </div>
+        )}
+        {r.status !== 'cancelled' && (tolls.data?.length ?? 0) > 0 && (
+          <fieldset className="flex flex-wrap gap-3 text-sm">
+            <legend className="mb-1 text-xs text-text-muted">Tolls on this route</legend>
+            {tolls.data!.map((t) => (
+              <label key={t.id} className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={tollIds.includes(t.id)}
+                  onChange={(e) => setTollIds((ids) => (e.target.checked ? [...ids, t.id] : ids.filter((x) => x !== t.id)))}
+                />
+                {t.name} ({formatPeso(t.feePhp)})
+              </label>
+            ))}
+          </fieldset>
+        )}
         {r.status !== 'cancelled' && (
           <div className="flex flex-wrap items-end gap-2">
             <div className="w-32">
@@ -182,6 +291,7 @@ function TruckAdminPage() {
     <div className="flex flex-col gap-6 px-4 py-6 sm:px-6">
       <h1 className="font-display text-2xl font-semibold text-text">Self-loading truck</h1>
       {settings.data && <SettingsEditor initial={settings.data} />}
+      <TollsEditor />
       {settings.isError && <p className="text-sm text-error">{apiErrorText(settings.error)}</p>}
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-lg font-semibold text-text">Requests</h2>

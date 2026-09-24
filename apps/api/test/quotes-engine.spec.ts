@@ -73,6 +73,8 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
       `;
       otherCustomerIdA = (inserted as { id: string }).id;
     }
+    // Quotes now require a verified company (company_not_verified).
+    await sql`update customers set kyc_status = 'approved' where id = ${otherCustomerIdA}`;
 
     await sql.end();
   });

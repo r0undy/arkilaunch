@@ -1,5 +1,7 @@
 import { createRoute, Link } from '@tanstack/react-router';
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
+import { apiErrorText, apiPost } from '../lib/api-client.js';
+import { useToast } from '../components/toast.js';
 import type { InvoiceDetailResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { invoicesQueries } from '../lib/queries.js';
@@ -39,6 +41,35 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 // accent fill. That accent is the prototype's teal; Yardboard's structural
 // equivalent is --color-success, already used for a table header band on the
 // dashboard, so the layout carries over without importing the palette.
+// A weekly invoice (hours past the deposit) is paid the same two ways as a
+// booking: PayMongo, or cash at the office which staff then record.
+function PayWeekly({ invoiceId }: { invoiceId: string }) {
+  const toast = useToast();
+  const [pending, setPending] = useState<'online' | 'cash' | null>(null);
+  async function pay(cash: boolean) {
+    setPending(cash ? 'cash' : 'online');
+    try {
+      const res = await apiPost<{ checkoutUrl: string | null }>(`/me/invoices/${invoiceId}/checkout`, cash ? { cash: true } : {});
+      if (res.checkoutUrl) window.location.assign(res.checkoutUrl);
+      else toast.success('Pay at the office', 'Staff will mark this invoice paid when they receive the cash.');
+    } catch (err) {
+      toast.error('Could not start the payment', apiErrorText(err));
+    } finally {
+      setPending(null);
+    }
+  }
+  return (
+    <div className="flex flex-wrap gap-2" data-print-hide>
+      <Button variant="primary" loading={pending === 'online'} disabled={pending !== null} onClick={() => void pay(false)}>
+        Pay now
+      </Button>
+      <Button variant="secondary" loading={pending === 'cash'} disabled={pending !== null} onClick={() => void pay(true)}>
+        Pay in cash
+      </Button>
+    </div>
+  );
+}
+
 function InvoiceDetail({ invoice }: { invoice: InvoiceDetailResponse }) {
   const meta = STATUS_META[invoice.status] ?? STATUS_META['draft']!;
   const subtotal = invoice.lineItems.reduce((sum, line) => sum + line.amount, 0);
@@ -66,6 +97,7 @@ function InvoiceDetail({ invoice }: { invoice: InvoiceDetailResponse }) {
             )}
             <SummaryRow label="Due" value={formatDate(invoice.dueDate)} />
           </div>
+          {invoice.invoiceType === 'weekly' && invoice.status === 'issued' && <PayWeekly invoiceId={invoice.id} />}
         </Surface>
 
         {/* The prototype's billing/shipping address pair has no counterpart in

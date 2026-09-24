@@ -6,6 +6,7 @@ import { EmptyState } from '../components/empty-state.js';
 import { EquipmentSchematic } from '../components/equipment-schematic.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import { catalogQueries } from '../lib/queries.js';
+import { formatPeso } from '../lib/format.js';
 import { ApiError } from '../lib/api-client.js';
 import { Skeleton } from '../components/skeleton.js';
 import { LoadError } from '../components/load-error.js';
@@ -74,6 +75,12 @@ function EquipmentDetailPage() {
       <div>
         <h1 className="font-display text-2xl font-semibold text-ink-mk">{equipment.model}</h1>
         <p className="text-sm text-text-muted">{equipment.equipmentTypeName}</p>
+        {equipment.rateValue != null && (
+          <p className="mt-2 font-display text-lg font-semibold text-text" data-testid="equipment-price">
+            {formatPeso(equipment.rateValue)}
+            <span className="text-sm font-normal text-text-muted"> / {equipment.rateType === 'daily' ? 'day' : 'hour'}</span>
+          </p>
+        )}
       </div>
       <Button
         variant="primary"

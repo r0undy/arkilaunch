@@ -52,6 +52,14 @@ interface Described {
 
 export function describeNotification(type: string, payload: unknown): Described | null {
   const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+  if (type === 'password_reset_requested') {
+    const email = typeof p.email === 'string' ? p.email : 'A user';
+    return {
+      title: 'Password reset requested',
+      body: `${email} asked to reset their password. Reset it from People and send them the link.`,
+      action: { label: 'Open People', to: '/app/users', params: {} },
+    };
+  }
   if (type === 'company_submitted') {
     const name = typeof p.company_name === 'string' ? p.company_name : 'A company';
     return {
@@ -60,15 +68,20 @@ export function describeNotification(type: string, payload: unknown): Described 
       action: { label: 'Review', to: '/app/registration/pending', params: {} },
     };
   }
-  if (type === 'document_resubmit_required') {
-    const docLabel = formatStatus(typeof p.document_type === 'string' ? p.document_type : 'document');
+  // document_resubmit_required is no longer written; old rows read as the
+  // reviewer's note it has become.
+  if (type === 'company_review_comment' || type === 'document_resubmit_required') {
+    const name = typeof p.company_name === 'string' ? p.company_name : 'your company';
     return {
-      title: 'Document needs to be clearer',
-      body: `Your ${docLabel} could not be read. Upload a clearer copy.`,
+      title: 'Note from the rental team',
+      body:
+        typeof p.comment === 'string'
+          ? `On ${name}: ${p.comment}`
+          : `The rental team asked you to change something on ${name}.`,
       action: {
-        label: 'Upload again',
-        to: '/account/companies/$companyId/documents',
-        params: { companyId: typeof p.company_id === 'string' ? p.company_id : '' },
+        label: 'Open company',
+        to: '/account/companies/$companyId',
+        params: { companyId: String(p.company_id ?? p.customer_id ?? '') },
       },
     };
   }
@@ -85,6 +98,21 @@ export function describeNotification(type: string, payload: unknown): Described 
           body: `${name} could not be verified. Contact the rental team to fix it.`,
           action: { label: 'View company', to: '/account/companies', params: {} },
         };
+  }
+  if (type === 'truck_requested' || (type === 'call_requested' && typeof p.truck_request_id === 'string')) {
+    return {
+      title: type === 'truck_requested' ? 'New truck request' : 'Call requested',
+      body: type === 'truck_requested' ? 'A customer requested a self-loading truck.' : 'A customer asked for a call about their truck request.',
+      action: { label: 'Open trucks', to: '/app/trucks', params: {} },
+    };
+  }
+  if ((type === 'payment_paid' || type === 'payment_failed' || type === 'payment_disputed') && typeof p.rental_id !== 'string') {
+    const what = type === 'payment_paid' ? 'was paid' : type === 'payment_failed' ? 'failed' : 'is disputed';
+    return {
+      title: `Payment ${type.slice('payment_'.length)}`,
+      body: `An online payment ${what}.`,
+      action: { label: 'Open payments', to: '/app/payments', params: {} },
+    };
   }
   const rentalId = typeof p.rental_id === 'string' ? p.rental_id : null;
   if (!rentalId) return null;
@@ -141,11 +169,35 @@ export function describeNotification(type: string, payload: unknown): Described 
         body: `The equipment for booking ${ref} is back with the rental team. Your hire is complete.`,
         action: { label: 'View booking', ...toBooking },
       };
+    case 'call_requested':
+      return {
+        title: 'Call requested',
+        body: `The customer on booking ${ref} asked for a call before paying.`,
+        action: { label: 'Open booking', to: '/app/bookings/$bookingId', params: { bookingId: rentalId } },
+      };
+    case 'call_confirmed':
+      return {
+        title: 'Booking confirmed by phone',
+        body: `Booking ${ref} is confirmed. You can pay for it now.`,
+        action: { label: 'Pay now', to: '/account/checkout/$bookingId', params: { bookingId: rentalId } },
+      };
     case 'booking_cancelled':
       return {
         title: 'Booking cancelled',
         body: `The rental team cancelled booking ${ref}. Any refund due is handled by the billing team.`,
         action: { label: 'View booking', ...toBooking },
+      };
+    case 'deposit_low':
+      return {
+        title: 'Deposit running low',
+        body: `Booking ${ref} has ${formatPeso(p.balance_php as number)} left of its ${formatPeso(p.deposit_php as number)} deposit. Hours past it are billed weekly.`,
+        action: { label: 'View booking', ...toBooking },
+      };
+    case 'weekly_invoice':
+      return {
+        title: 'Weekly invoice',
+        body: `Booking ${ref} used hours past its deposit: ${formatPeso(p.amount_php as number)} is due.`,
+        action: { label: 'View invoice', to: '/account/invoices/$invoiceId', params: { invoiceId: String(p.invoice_id) } },
       };
     case 'change_request_resolved':
       return {

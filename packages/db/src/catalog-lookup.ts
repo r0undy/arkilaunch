@@ -15,6 +15,12 @@ export interface CatalogEquipmentRow {
   photoUri: string | null;
 }
 
+// Detail adds the upfront public price (0038): unit card, else type card.
+export interface CatalogEquipmentDetailRow extends CatalogEquipmentRow {
+  rateType: string | null;
+  rateValue: number | null;
+}
+
 // Bounded at the database: this is an unauthenticated route, and every
 // storefront page load used to ship the anchor tenant's entire equipment
 // table (audit-api-surface.md #8). LIMIT/OFFSET wrap the SECURITY DEFINER
@@ -46,13 +52,15 @@ export async function listCatalogEquipmentForSlug(
 // tenant -- the caller cannot distinguish those cases, same as the RLS
 // posture elsewhere (a 404, never a 403, since there is no tenant context
 // to leak).
-export async function getCatalogEquipmentForSlug(slug: string, id: string): Promise<CatalogEquipmentRow | null> {
+export async function getCatalogEquipmentForSlug(slug: string, id: string): Promise<CatalogEquipmentDetailRow | null> {
   const rows = await db.execute<{
     id: string;
     equipment_type_name: string;
     model: string;
     availability_status: string;
     photo_uri: string | null;
+    rate_type: string | null;
+    rate_value: string | null;
   }>(sql`select * from catalog_get_equipment(${slug}, ${id})`);
   const row = rows[0];
   if (!row) return null;
@@ -62,6 +70,8 @@ export async function getCatalogEquipmentForSlug(slug: string, id: string): Prom
     model: row.model,
     availabilityStatus: row.availability_status,
     photoUri: row.photo_uri,
+    rateType: row.rate_type,
+    rateValue: row.rate_value !== null ? Number(row.rate_value) : null,
   };
 }
 
