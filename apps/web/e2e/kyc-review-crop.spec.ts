@@ -245,7 +245,8 @@ async function expectNoHorizontalScroll(page: Page) {
 // check, by design, and none of these is ours to automate. A bot check or an
 // unreachable site skips with the reason rather than failing the suite.
 test.describe('@external registry pages', () => {
-  test.beforeEach((_fixtures, testInfo) => {
+  test.beforeEach(({ page }, testInfo) => {
+    void page;
     test.skip(testInfo.project.name !== 'desktop');
     test.setTimeout(120_000);
   });
