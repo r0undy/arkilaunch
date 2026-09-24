@@ -11,6 +11,7 @@ import { Surface } from '../components/surface.js';
 import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
+import { TruckThread } from '../components/truck-thread.js';
 
 const settingsQuery = {
   queryKey: ['truck-settings'] as const,
@@ -106,6 +107,18 @@ function RequestRow({ r }: { r: TruckRequestResponse }) {
     },
     onError: (e) => toast.error('Not confirmed', apiErrorText(e)),
   });
+  const [price, setPrice] = useState(String(r.agreedPricePhp ?? r.price.totalPhp));
+  const agree = useMutation({
+    mutationFn: () =>
+      apiPatch<TruckRequestResponse>(`/truck-requests/${r.id}/agree`, { pricePhp: Number(price) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: requestsQuery.queryKey });
+      toast.success('Price accepted', 'The customer can now pay online or in cash.');
+    },
+    onError: (e) => toast.error('Not accepted', apiErrorText(e)),
+  });
+  const [threadOpen, setThreadOpen] = useState(false);
+  const open = r.status !== 'cancelled' && r.status !== 'paid';
 
   return (
     <Surface radius="md" elevation="sm" className="grid gap-4 p-4 lg:grid-cols-[1fr_320px]">
@@ -123,10 +136,34 @@ function RequestRow({ r }: { r: TruckRequestResponse }) {
               <Input label="Confirmed km" type="number" min={0.1} step={0.1} numeric value={km} onChange={(e) => setKm(e.target.value)} />
             </div>
             <Button loading={confirm.isPending} disabled={!(Number(km) > 0)} onClick={() => confirm.mutate()}>
-              {r.status === 'km_confirmed' ? 'Update km' : 'Confirm km'}
+              {r.confirmedKm !== null ? 'Update km' : 'Confirm km'}
             </Button>
           </div>
         )}
+        {open && (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-40">
+              <Input
+                label="Agreed price (PHP)"
+                type="number"
+                min={1}
+                numeric
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+              />
+            </div>
+            <Button variant="approve" loading={agree.isPending} disabled={!(Number(price) > 0)} onClick={() => agree.mutate()}>
+              {r.status === 'agreed' ? 'Update agreed price' : 'Accept price'}
+            </Button>
+            <Button variant="secondary" onClick={() => setThreadOpen((v) => !v)} aria-expanded={threadOpen}>
+              {threadOpen ? 'Hide negotiation' : 'Negotiation'}
+            </Button>
+          </div>
+        )}
+        {r.agreedPricePhp !== null && (
+          <p className="text-sm font-medium text-text">Agreed: {formatPeso(r.agreedPricePhp)}</p>
+        )}
+        {threadOpen && <TruckThread base={`/truck-requests/${r.id}`} />}
       </div>
       <div>
         <p className="mb-1 text-xs font-medium uppercase text-text-muted">

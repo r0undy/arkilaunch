@@ -10,6 +10,7 @@ import {
   quotations,
   rentalContracts,
   rentals,
+  truckRequests,
   withTenantTx,
 } from '@arkilaunch/db';
 import {
@@ -40,6 +41,8 @@ const CHECKOUT_RATE_LIMIT = 20;
 // cr-arkilaunch-f2-f8-bookings-payments.md); this ctx exists only to carry
 // the resolved tenant_id into withTenantTx's GUCs, which RLS reads. userId
 // participates in no policy or query here.
+type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
+
 const WEBHOOK_SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
 
 @Injectable()
@@ -171,6 +174,8 @@ export class PaymentsService {
       // issued invoice must never be re-priced underneath the customer.
       const chargeAmount = Number(invoice.amount);
 
+      if (body.cash) return this.issueCash(tx, ctx, invoice.id, chargeAmount);
+
       const session = await this.paymentsPort.createCheckoutSession(chargeAmount, invoice.id, {
         label: quotation ? 'Equipment rental and deposit' : 'Rental deposit',
         ...(body.method ? { methods: [body.method] } : {}),
@@ -192,6 +197,134 @@ export class PaymentsService {
       await this.events.emit(ctx, 'checkout_session_created', { invoice_id: invoice.id, payment_id: payment.id });
 
       return { checkoutUrl: session.checkoutUrl, invoiceId: invoice.id, paymentId: payment.id };
+    });
+  }
+
+  // Cash: the invoice stays 'issued' and a pending cash payment marks the
+  // customer's choice. Nothing is settled until staff record the receipt
+  // (recordCash) -- a customer can never mark their own invoice paid.
+  private async issueCash(tx: Tx, ctx: RequestContext, invoiceId: string, amount: number) {
+    await tx.insert(payments).values({
+      tenantId: ctx.tenantId,
+      invoiceId,
+      method: 'cash',
+      amount: String(amount),
+      status: 'pending',
+    });
+    await this.events.emit(ctx, 'cash_payment_chosen', { invoice_id: invoiceId });
+    return { checkoutUrl: null, invoiceId, cash: true };
+  }
+
+  // What a paid invoice unlocks, whichever way it was paid (PayMongo
+  // webhook or a staff-recorded cash receipt).
+  private async settleInvoice(tx: Tx, tenantId: string, invoiceId: string) {
+    const [invoice] = await tx
+      .update(invoices)
+      .set({ status: 'paid' })
+      .where(eq(invoices.id, invoiceId))
+      .returning();
+    if (invoice?.rentalId) {
+      await tx.update(rentals).set({ status: 'confirmed' }).where(eq(rentals.id, invoice.rentalId));
+      await notifyBookingCustomer(tx, tenantId, invoice.rentalId, 'payment_received', { invoice_id: invoiceId });
+    }
+    if (invoice?.truckRequestId) {
+      await tx.update(truckRequests).set({ status: 'paid' }).where(eq(truckRequests.id, invoice.truckRequestId));
+    }
+  }
+
+  // POST /truck-requests/:id/checkout (the customer's own). Same money rules
+  // as a rental: the amount is the staff-accepted price stored on the row,
+  // never a client number, and an issued invoice is reused, never re-priced.
+  async checkoutTruck(ctx: RequestContext, truckRequestId: string, body: CheckoutRequest = {}) {
+    return withTenantTx(ctx, async (tx) => {
+      const [request] = await tx
+        .select()
+        .from(truckRequests)
+        .where(and(eq(truckRequests.id, truckRequestId), eq(truckRequests.requestedBy, ctx.userId)))
+        .limit(1);
+      if (!request) throw new NotFoundException({ error: 'truck_request_not_found' });
+      if (request.status === 'paid') throw new ConflictException({ error: 'already_paid' });
+      if (request.status !== 'agreed' || request.agreedPricePhp === null) {
+        throw new ConflictException({ error: 'price_not_agreed', status: request.status });
+      }
+
+      let [invoice] = await tx
+        .select()
+        .from(invoices)
+        .where(and(eq(invoices.truckRequestId, truckRequestId), eq(invoices.status, 'issued')))
+        .limit(1);
+      if (!invoice) {
+        [invoice] = await tx
+          .insert(invoices)
+          .values({
+            tenantId: ctx.tenantId,
+            truckRequestId,
+            invoiceType: 'truck',
+            amount: request.agreedPricePhp,
+            status: 'issued',
+            dueDate: request.scheduledFor,
+          })
+          .returning();
+        if (!invoice) throw new Error('invoices insert returned no row');
+        await tx.insert(invoiceLineItems).values({
+          tenantId: ctx.tenantId,
+          invoiceId: invoice.id,
+          description: `Self-loading truck: ${request.pickup} to ${request.dropoff}`,
+          unitPrice: request.agreedPricePhp,
+          amount: request.agreedPricePhp,
+        });
+      }
+      const chargeAmount = Number(invoice.amount);
+      if (body.cash) return this.issueCash(tx, ctx, invoice.id, chargeAmount);
+
+      const session = await this.paymentsPort.createCheckoutSession(chargeAmount, invoice.id, {
+        label: 'Self-loading truck',
+        ...(body.method ? { methods: [body.method] } : {}),
+      });
+      await tx.insert(payments).values({
+        tenantId: ctx.tenantId,
+        invoiceId: invoice.id,
+        method: body.method ?? 'checkout',
+        amount: String(chargeAmount),
+        providerRef: session.id,
+        status: 'pending',
+      });
+      await this.events.emit(ctx, 'checkout_session_created', { invoice_id: invoice.id });
+      return { checkoutUrl: session.checkoutUrl, invoiceId: invoice.id };
+    });
+  }
+
+  // POST /invoices/:id/cash-payment (staff). The only way cash becomes
+  // 'paid': a person with the money in hand records it, and is named on
+  // the payment row.
+  async recordCash(ctx: RequestContext, invoiceId: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+      if (!invoice) throw new NotFoundException({ error: 'invoice_not_found' });
+      if (invoice.status !== 'issued') throw new ConflictException({ error: 'invoice_not_payable', status: invoice.status });
+      const [pendingCash] = await tx
+        .select()
+        .from(payments)
+        .where(and(eq(payments.invoiceId, invoiceId), eq(payments.method, 'cash'), eq(payments.status, 'pending')))
+        .limit(1);
+      if (pendingCash) {
+        await tx
+          .update(payments)
+          .set({ status: 'paid', recordedByUserId: ctx.userId })
+          .where(eq(payments.id, pendingCash.id));
+      } else {
+        await tx.insert(payments).values({
+          tenantId: ctx.tenantId,
+          invoiceId,
+          method: 'cash',
+          amount: invoice.amount,
+          status: 'paid',
+          recordedByUserId: ctx.userId,
+        });
+      }
+      await this.settleInvoice(tx, ctx.tenantId, invoiceId);
+      await this.events.emit(ctx, 'cash_payment_recorded', { invoice_id: invoiceId });
+      return { invoiceId, status: 'paid' };
     });
   }
 
@@ -253,9 +386,7 @@ export class PaymentsService {
           if (existingPayment) {
             await tx.update(payments).set({ status: 'paid' }).where(eq(payments.id, existingPayment.id));
           }
-          await tx.update(invoices).set({ status: 'paid' }).where(eq(invoices.id, invoiceId));
-          await tx.update(rentals).set({ status: 'confirmed' }).where(eq(rentals.id, lookup.rentalId));
-          await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_received', { invoice_id: invoiceId });
+          await this.settleInvoice(tx, lookup.tenantId, invoiceId);
           await this.events.emit(ctx, 'deposit_payment_confirmed', { invoice_id: invoiceId });
           break;
         }
@@ -265,7 +396,9 @@ export class PaymentsService {
           }
           // Booking stays pending/unpaid; status only ever changes from
           // the webhook, never the browser redirect (US-08 AC2, QAD-T20).
-          await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_failed', { invoice_id: invoiceId });
+          if (lookup.rentalId) {
+            await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_failed', { invoice_id: invoiceId });
+          }
           await this.events.emit(ctx, 'deposit_payment_failed', { invoice_id: invoiceId });
           break;
         }
@@ -283,7 +416,9 @@ export class PaymentsService {
               status: 'refunded',
             });
           }
-          await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_refunded', { invoice_id: invoiceId });
+          if (lookup.rentalId) {
+            await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_refunded', { invoice_id: invoiceId });
+          }
           await this.events.emit(ctx, 'deposit_payment_refunded', { invoice_id: invoiceId });
           break;
         }

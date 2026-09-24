@@ -32,6 +32,9 @@ export const TruckRequestCreateSchema = TruckEstimateRequestSchema.extend({
 }).strict();
 export type TruckRequestCreate = z.infer<typeof TruckRequestCreateSchema>;
 
+export const TruckAgreeSchema = z.object({ pricePhp: z.number().positive().max(100_000_000) }).strict();
+export type TruckAgree = z.infer<typeof TruckAgreeSchema>;
+
 export const TruckKmConfirmSchema = z.object({ km: z.number().positive().max(5000) }).strict();
 export type TruckKmConfirm = z.infer<typeof TruckKmConfirmSchema>;
 
@@ -72,7 +75,7 @@ export function priceTruckTrip({ km, settings, perKmPhp, fuelLPerKm, dieselPhp }
   return { km, lines, totalPhp: peso(lines.reduce((sum, l) => sum + l.amountPhp, 0)) };
 }
 
-export const TRUCK_REQUEST_STATUSES = ['estimated', 'km_confirmed', 'cancelled'] as const;
+export const TRUCK_REQUEST_STATUSES = ['estimated', 'km_confirmed', 'agreed', 'paid', 'cancelled'] as const;
 export type TruckRequestStatus = (typeof TRUCK_REQUEST_STATUSES)[number];
 
 export interface TruckRequestResponse {
@@ -85,5 +88,8 @@ export interface TruckRequestResponse {
   confirmedKm: number | null;
   status: TruckRequestStatus;
   price: TruckPrice;
+  // The negotiated price staff accepted; what the invoice charges. Null
+  // until agreed.
+  agreedPricePhp: number | null;
   createdAt: string;
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { CompanyDocumentReadResponse, CompanyResponse } from '@arkilaunch/shared';
+import { isPrimaryRegistration } from '@arkilaunch/shared';
 import { createRoute, Link } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
@@ -91,7 +92,7 @@ function CompanyReviewCard({
   });
   const [read, setRead] = useState<CompanyDocumentReadResponse | null>(null);
 
-  const registration = company.documents.find((doc) => doc.documentType === 'company_registration');
+  const registration = company.documents.find((doc) => isPrimaryRegistration(doc.documentType));
   const nationalId = company.documents.find((doc) => doc.documentType === 'government_id');
 
   const readDocument = useMutation({
@@ -183,6 +184,14 @@ function CompanyReviewCard({
                 !read.formatValid.secNumber &&
                 ' The SEC number does not match the expected format.'}
             </p>
+          )}
+          {(read?.suggestions.registeredAddress || read?.suggestions.registrationDate) && (
+            <dl className="grid gap-1 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-4">
+              <dt className="text-text-muted">Registered address</dt>
+              <dd className="text-text">{read.suggestions.registeredAddress ?? 'Not read'}</dd>
+              <dt className="text-text-muted">Registration date</dt>
+              <dd className="text-text">{read.suggestions.registrationDate ?? 'Not read'}</dd>
+            </dl>
           )}
 
           <div className="grid gap-3 sm:grid-cols-3">

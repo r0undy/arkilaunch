@@ -29,8 +29,8 @@ const METHODS: { id: PaymentMethod; title: string; description: string }[] = [
   { id: 'card', title: 'Credit or debit card', description: 'Visa or Mastercard, entered on the payment provider’s page, not ours.' },
   {
     id: 'manual',
-    title: 'Bank deposit or company cheque',
-    description: 'Settle offline. The booking stays pending until our billing team confirms the funds.',
+    title: 'Cash, bank deposit or company cheque',
+    description: 'Get an invoice now and pay at our office. The booking stays pending until our billing team records the payment.',
   },
 ];
 
@@ -111,9 +111,17 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
   const [unavailable, setUnavailable] = useState(false);
 
   const checkout = useMutation({
-    mutationFn: (chosen: CheckoutMethod) =>
-      apiPost<{ checkoutUrl: string }>(`/bookings/${booking.id}/checkout`, { method: chosen }),
+    mutationFn: (chosen: PaymentMethod) =>
+      apiPost<{ checkoutUrl: string | null; invoiceId: string }>(
+        `/bookings/${booking.id}/checkout`,
+        chosen === 'manual' ? { cash: true } : { method: chosen },
+      ),
     onSuccess: (data) => {
+      // Offline: a real issued invoice to pay against, no PayMongo session.
+      if (data.checkoutUrl === null) {
+        void navigate({ to: '/account/invoices/$invoiceId', params: { invoiceId: data.invoiceId } });
+        return;
+      }
       // With no payment provider configured the API answers with the stub
       // adapter's placeholder ("about:blank?amount=..."), a successful
       // response carrying a URL that is not a payment page. Check the
@@ -200,8 +208,8 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
         <OrderSummary booking={booking} />
 
         {method === 'manual' ? (
-          <Button variant="secondary" onClick={() => navigate({ to: '/account/checkout/success' })}>
-            Confirm and settle offline
+          <Button variant="secondary" loading={checkout.isPending} onClick={() => checkout.mutate('manual')}>
+            Get invoice and pay offline
           </Button>
         ) : (
           <Button variant="primary" loading={checkout.isPending} onClick={() => checkout.mutate(method)}>

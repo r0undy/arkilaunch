@@ -44,7 +44,34 @@ export const CompanyUpdateSchema = CompanyCreateSchema.pick({
   .strict();
 export type CompanyUpdate = z.infer<typeof CompanyUpdateSchema>;
 
-export const COMPANY_DOCUMENT_TYPES = ['government_id', 'company_registration'] as const;
+// Primary proof of registration is the BIR Certificate of Registration
+// (Form 2303) or the SEC certificate; DTI business-name registration is a
+// secondary, optional paper (sole proprietors). 'company_registration' is
+// the pre-split generic upload, still readable on old rows, never offered.
+// docs/cr-arkilaunch-truck-booking-and-kyc-docs.md.
+export const PRIMARY_REGISTRATION_TYPES = ['bir_cor', 'sec_certificate'] as const;
+export const COMPANY_DOCUMENT_TYPES = [
+  'government_id',
+  ...PRIMARY_REGISTRATION_TYPES,
+  'dti_certificate',
+] as const;
+export type PrimaryRegistrationType = (typeof PRIMARY_REGISTRATION_TYPES)[number];
+
+export function isPrimaryRegistration(documentType: string): boolean {
+  return (
+    (PRIMARY_REGISTRATION_TYPES as readonly string[]).includes(documentType) ||
+    documentType === 'company_registration'
+  );
+}
+
+// Complete = the applicant's ID plus one primary registration. DTI never
+// counts toward it.
+export function hasRequiredCompanyDocuments(documents: { documentType: string }[]): boolean {
+  return (
+    documents.some((d) => d.documentType === 'government_id') &&
+    documents.some((d) => isPrimaryRegistration(d.documentType))
+  );
+}
 export const CompanyDocumentUploadSchema = z.object({
   documentType: z.enum(COMPANY_DOCUMENT_TYPES),
 });
@@ -61,6 +88,8 @@ export const CompanyDocumentReadResponseSchema = z.object({
     companyName: z.string().nullable(),
     tin: z.string().nullable(),
     secNumber: z.string().nullable(),
+    registeredAddress: z.string().nullable(),
+    registrationDate: z.string().nullable(),
     // Populated instead of the company fields above when the document read
     // is the National ID, not the registration certificate.
     firstName: z.string().nullable(),

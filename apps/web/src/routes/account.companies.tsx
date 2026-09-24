@@ -1,7 +1,7 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useRef, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CompanyResponse, KycScanResponse } from '@arkilaunch/shared';
+import type { CompanyResponse, KycScanResponse, PrimaryRegistrationType } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { apiErrorText, apiPost, apiPostForm } from '../lib/api-client.js';
 import { companiesQueries } from '../lib/queries.js';
@@ -19,7 +19,12 @@ import { useToast } from '../components/toast.js';
 // and the "upload what is still missing" screen.
 async function uploadDocuments(
   companyId: string,
-  files: { governmentId: File | null; registration: File | null },
+  files: {
+    governmentId: File | null;
+    registration: File | null;
+    registrationType: PrimaryRegistrationType;
+    dti: File | null;
+  },
 ): Promise<string[]> {
   // Each upload is screened by OCR server-side; an illegible scan comes
   // back 'resubmit_required' instead of 'pending', named here so the
@@ -33,11 +38,15 @@ async function uploadDocuments(
     );
     if (doc.status === 'resubmit_required') bounced.push(DOC_LABELS[doc.documentType]!);
   }
-  if (files.registration) {
+  for (const [documentType, file] of [
+    [files.registrationType, files.registration],
+    ['dti_certificate', files.dti],
+  ] as const) {
+    if (!file) continue;
     const doc = await apiPostForm<{ documentType: string; status: string }>(
       `/me/companies/${companyId}/documents`,
-      { documentType: 'company_registration' },
-      files.registration,
+      { documentType },
+      file,
     );
     if (doc.status === 'resubmit_required') bounced.push(DOC_LABELS[doc.documentType]!);
   }
@@ -57,30 +66,70 @@ export const DOC_STEPS: { type: DocStep; label: string; hint: string }[] = [
   },
   {
     type: 'company_registration',
-    label: 'Company registration (SEC or DTI)',
-    hint: 'Step 2 of 2. The certificate that shows the registered name and number.',
+    label: 'Primary registration',
+    hint: 'Step 2 of 2. Your BIR Certificate of Registration (Form 2303) or SEC certificate. A DTI business name certificate can be added as a secondary document.',
   },
+];
+
+const REGISTRATION_OPTIONS: { value: PrimaryRegistrationType; label: string }[] = [
+  { value: 'bir_cor', label: 'BIR Certificate of Registration (Form 2303)' },
+  { value: 'sec_certificate', label: 'SEC Certificate of Incorporation' },
 ];
 
 function DocumentStep({
   step,
   value,
   onChange,
+  registrationType,
+  onRegistrationTypeChange,
+  dti,
+  onDtiChange,
 }: {
   step: (typeof DOC_STEPS)[number];
   value: File | null;
   onChange: (file: File | null) => void;
+  registrationType: PrimaryRegistrationType;
+  onRegistrationTypeChange: (type: PrimaryRegistrationType) => void;
+  dti: File | null;
+  onDtiChange: (file: File | null) => void;
 }) {
+  const isRegistration = step.type === 'company_registration';
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm text-text-muted">{step.hint}</p>
+      {isRegistration && (
+        <label className="flex flex-col gap-1 text-sm font-medium text-text">
+          Document type
+          <select
+            id="registration-type"
+            value={registrationType}
+            onChange={(e) => onRegistrationTypeChange(e.target.value as PrimaryRegistrationType)}
+            className="min-h-11 rounded-md border border-border bg-surface px-3 text-text"
+          >
+            {REGISTRATION_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <CaptureField
         id={`doc-${step.type}`}
-        label={step.label}
+        label={isRegistration ? DOC_LABELS[registrationType]! : step.label}
         accept="image/*,application/pdf"
         value={value}
         onChange={onChange}
       />
+      {isRegistration && (
+        <CaptureField
+          id="doc-dti_certificate"
+          label="DTI Business Name certificate (secondary, optional)"
+          accept="image/*,application/pdf"
+          value={dti}
+          onChange={onDtiChange}
+        />
+      )}
     </div>
   );
 }
@@ -109,6 +158,8 @@ function NewCompanyPage() {
   const [contactMobile, setContactMobile] = useState('');
   const [governmentId, setGovernmentId] = useState<File | null>(null);
   const [registration, setRegistration] = useState<File | null>(null);
+  const [registrationType, setRegistrationType] = useState<PrimaryRegistrationType>('bir_cor');
+  const [dti, setDti] = useState<File | null>(null);
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -146,7 +197,7 @@ function NewCompanyPage() {
         billingAddress,
         contactMobile,
       });
-      const bounced = await uploadDocuments(created.id, { governmentId, registration });
+      const bounced = await uploadDocuments(created.id, { governmentId, registration, registrationType, dti });
       await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
       if (bounced.length > 0) {
         toast.error(
@@ -187,7 +238,15 @@ function NewCompanyPage() {
           description="Scan the documents first; you will check the details at the end."
         />
         <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
-          <DocumentStep step={step} value={file} onChange={setFile} />
+          <DocumentStep
+            step={step}
+            value={file}
+            onChange={setFile}
+            registrationType={registrationType}
+            onRegistrationTypeChange={setRegistrationType}
+            dti={dti}
+            onDtiChange={setDti}
+          />
           <div className="flex flex-wrap gap-2">
             <Button
               variant="primary"
@@ -331,6 +390,8 @@ function CompanyDocumentsPage() {
   const queryClient = useQueryClient();
   const [governmentId, setGovernmentId] = useState<File | null>(null);
   const [registration, setRegistration] = useState<File | null>(null);
+  const [registrationType, setRegistrationType] = useState<PrimaryRegistrationType>('bir_cor');
+  const [dti, setDti] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   // Same one-at-a-time order as adding a company. No scan here: the company
   // already exists, so there is nothing left to prefill.
@@ -365,7 +426,7 @@ function CompanyDocumentsPage() {
     if (Date.now() - stageChangedAt.current < advanceGraceMs) return;
     setBusy(true);
     try {
-      const bounced = await uploadDocuments(companyId, { governmentId, registration });
+      const bounced = await uploadDocuments(companyId, { governmentId, registration, registrationType, dti });
       await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
       if (bounced.length > 0) {
         toast.error(
@@ -388,7 +449,15 @@ function CompanyDocumentsPage() {
       <PageHeader eyebrow="Companies" title="Upload documents" />
       <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
         <form onSubmit={submit} className="flex flex-col gap-4">
-          <DocumentStep step={step} value={file} onChange={setFile} />
+          <DocumentStep
+            step={step}
+            value={file}
+            onChange={setFile}
+            registrationType={registrationType}
+            onRegistrationTypeChange={setRegistrationType}
+            dti={dti}
+            onDtiChange={setDti}
+          />
           <div className="flex flex-wrap gap-2">
             {stage === 'government_id' ? (
               <Button

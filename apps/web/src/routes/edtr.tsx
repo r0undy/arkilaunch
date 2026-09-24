@@ -11,6 +11,7 @@ import {
   formatLogSource,
   formatStatus,
   shortCode,
+  weekStart,
 } from '../lib/format.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
@@ -78,6 +79,7 @@ function EdtrPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const search = edtrRoute.useSearch();
 
   const {
     equipmentList,
@@ -110,7 +112,15 @@ function EdtrPage() {
     void queryClient.invalidateQueries({ queryKey: ['edtr'] });
   }
 
-  const items = queue.data?.items ?? [];
+  // Deep links from the dashboard's "Needs you" rows: one machine-week.
+  // ponytail: filters the loaded page only; move to API params if the
+  // queue routinely spans more than one page.
+  const items = (queue.data?.items ?? []).filter(
+    (row) =>
+      (!search.equipment || row.equipmentId === search.equipment) &&
+      (!search.week || weekStart(row.reportDate) === search.week),
+  );
+  const filtered = Boolean(search.equipment || search.week);
 
   return (
     <div className="flex flex-col gap-5">
@@ -137,6 +147,19 @@ function EdtrPage() {
             right now.
           </p>
         </Surface>
+      )}
+
+      {filtered && (
+        <p className="text-sm text-text-muted">
+          Showing one machine for the week of {formatDate(search.week)}.{' '}
+          <button
+            type="button"
+            className="font-medium text-accent hover:underline"
+            onClick={() => void navigate({ to: '/app/ocr', search: {} })}
+          >
+            Show all field logs
+          </button>
+        </p>
       )}
 
       {queue.isPending && <p className="text-sm text-text-muted">Loading field logs...</p>}
@@ -430,5 +453,9 @@ function ApproveModal({ item, machine, onClose, onApproved, toast }: ApproveModa
 export const edtrRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/ocr',
+  validateSearch: (search: Record<string, unknown>): { equipment?: string; week?: string } => ({
+    ...(typeof search.equipment === 'string' ? { equipment: search.equipment } : {}),
+    ...(typeof search.week === 'string' ? { week: search.week } : {}),
+  }),
   component: EdtrPage,
 });

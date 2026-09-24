@@ -18,7 +18,10 @@ import { SiteDialog } from './site-dialog.js';
 const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
 export const DOC_LABELS: Record<string, string> = {
   government_id: 'Philippine National ID (PhilSys)',
-  company_registration: 'Company registration',
+  bir_cor: 'BIR Certificate of Registration (Form 2303)',
+  sec_certificate: 'SEC Certificate of Incorporation',
+  dti_certificate: 'DTI Business Name (secondary)',
+  company_registration: 'Company registration (legacy)',
 };
 
 export function VerificationPill({ status }: { status: string }) {

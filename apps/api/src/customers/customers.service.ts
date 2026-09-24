@@ -38,6 +38,7 @@ import {
   type WeatherForecastPort,
 } from '@arkilaunch/shared';
 import { DOCUMENT_INTELLIGENCE_PORT } from '../kyc/kyc.tokens.js';
+import { PRIMARY_REGISTRATION_TYPES } from '@arkilaunch/shared';
 import type {
   CompanyCreate,
   CompanyUpdate,
@@ -248,6 +249,8 @@ export class CustomersService {
           companyName: null,
           tin: null,
           secNumber: null,
+          registeredAddress: null,
+          registrationDate: null,
           firstName: null,
           middleName: null,
           lastName: null,
@@ -262,6 +265,8 @@ export class CustomersService {
     const nameField = result.fields.company_name ?? null;
     const tinField = result.fields.tin ?? null;
     const secField = result.fields.sec_number ?? null;
+    const addressField = result.fields.registered_address ?? null;
+    const dateField = result.fields.registration_date ?? null;
     const firstField = result.fields.first_name ?? null;
     const middleField = result.fields.middle_name ?? null;
     const lastField = result.fields.last_name ?? null;
@@ -272,7 +277,7 @@ export class CustomersService {
     // The lowest confidence of whatever was found: a reviewer (or the
     // upload-time gate) should judge a document by its weakest field, not
     // its strongest.
-    const found = [nameField, tinField, secField, firstField, middleField, lastField].filter(
+    const found = [nameField, tinField, secField, addressField, dateField, firstField, middleField, lastField].filter(
       (f) => f !== null,
     );
     const confidence = found.length > 0 ? Math.min(...found.map((f) => f!.confidence)) : null;
@@ -283,6 +288,8 @@ export class CustomersService {
         companyName: nameField?.value ?? null,
         tin: tinField?.value ?? null,
         secNumber: secField?.value ?? null,
+        registeredAddress: addressField?.value ?? null,
+        registrationDate: dateField?.value ?? null,
         firstName: firstField?.value ?? null,
         middleName: middleField?.value ?? null,
         lastName: lastField?.value ?? null,
@@ -296,6 +303,12 @@ export class CustomersService {
           : {}),
         ...(tinField ? { tin: tinField.value, tin_confidence: tinField.confidence } : {}),
         ...(secField ? { sec_number: secField.value, sec_confidence: secField.confidence } : {}),
+        ...(addressField
+          ? { registered_address: addressField.value, registered_address_confidence: addressField.confidence }
+          : {}),
+        ...(dateField
+          ? { registration_date: dateField.value, registration_date_confidence: dateField.confidence }
+          : {}),
         ...(firstField
           ? { first_name: firstField.value, first_name_confidence: firstField.confidence }
           : {}),
@@ -611,7 +624,10 @@ export class CustomersService {
           .where(
             and(
               eq(kycDocuments.customerId, customerId),
-              eq(kycDocuments.documentType, 'company_registration'),
+              inArray(kycDocuments.documentType, [
+                ...PRIMARY_REGISTRATION_TYPES,
+                'company_registration',
+              ]),
             ),
           )
           .limit(1);

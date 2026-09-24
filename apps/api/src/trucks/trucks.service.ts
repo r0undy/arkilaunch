@@ -1,8 +1,10 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
-import { truckRequests, truckSettings, withTenantTx } from '@arkilaunch/db';
+import { and, asc, desc, eq } from 'drizzle-orm';
+import { negotiationMessages, truckRequests, truckSettings, withTenantTx } from '@arkilaunch/db';
 import {
   priceTruckTrip,
+  type NegotiationMessageCreate,
+  type NegotiationMessageResponse,
   type RequestContext,
   type TruckEstimateRequest,
   type TruckPrice,
@@ -28,6 +30,7 @@ function toResponse(row: typeof truckRequests.$inferSelect): TruckRequestRespons
     confirmedKm: row.confirmedKm === null ? null : Number(row.confirmedKm),
     status: row.status as TruckRequestStatus,
     price: row.price,
+    agreedPricePhp: row.agreedPricePhp === null ? null : Number(row.agreedPricePhp),
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -125,7 +128,92 @@ export class TrucksService {
       if (row.status === 'cancelled') throw new ConflictException({ error: 'truck_request_cancelled' });
       const [updated] = await tx
         .update(truckRequests)
-        .set({ confirmedKm: String(km), status: 'km_confirmed', price: await this.price(tx, ctx.tenantId, km) })
+        // An agreed or paid request keeps its status: the km refines the
+        // cost breakdown, the agreed price is what was charged.
+        .set({
+          confirmedKm: String(km),
+          status: row.status === 'estimated' ? 'km_confirmed' : row.status,
+          price: await this.price(tx, ctx.tenantId, km),
+        })
+        .where(eq(truckRequests.id, id))
+        .returning();
+      return toResponse(updated!);
+    });
+  }
+
+  // A customer reaches only their own request; staff reach any in the
+  // tenant (RLS scopes both to the JWT's tenant).
+  private async visibleRequest(tx: Tx, ctx: RequestContext, id: string) {
+    const [row] = await tx
+      .select()
+      .from(truckRequests)
+      .where(
+        ctx.role === 'customer'
+          ? and(eq(truckRequests.id, id), eq(truckRequests.requestedBy, ctx.userId))
+          : eq(truckRequests.id, id),
+      )
+      .limit(1);
+    if (!row) throw new NotFoundException({ error: 'truck_request_not_found' });
+    return row;
+  }
+
+  // The same negotiation thread rentals use (negotiation_messages), keyed
+  // on the truck request. An offer is a message, never a charge.
+  listMessages(ctx: RequestContext, id: string): Promise<NegotiationMessageResponse[]> {
+    return withTenantTx(ctx, async (tx) => {
+      await this.visibleRequest(tx, ctx, id);
+      const rows = await tx
+        .select()
+        .from(negotiationMessages)
+        .where(eq(negotiationMessages.truckRequestId, id))
+        .orderBy(asc(negotiationMessages.createdAt))
+        .limit(500);
+      return rows.map((row) => ({
+        id: row.id,
+        authorRole: row.authorRole === 'customer' ? ('customer' as const) : ('staff' as const),
+        mine: row.authorUserId === ctx.userId,
+        body: row.body,
+        offerPhp: row.offerPhp !== null ? Number(row.offerPhp) : null,
+        createdAt: row.createdAt,
+      }));
+    });
+  }
+
+  // ponytail: no notification on a truck message; both sides see the thread
+  // on refresh. Add notifyStaff/customer pings if replies get missed.
+  postMessage(ctx: RequestContext, id: string, body: NegotiationMessageCreate) {
+    return withTenantTx(ctx, async (tx) => {
+      const request = await this.visibleRequest(tx, ctx, id);
+      if (request.status === 'cancelled' || request.status === 'paid') {
+        throw new ConflictException({ error: 'truck_request_closed', status: request.status });
+      }
+      const [row] = await tx
+        .insert(negotiationMessages)
+        .values({
+          tenantId: ctx.tenantId,
+          truckRequestId: id,
+          authorUserId: ctx.userId,
+          authorRole: ctx.role === 'customer' ? 'customer' : 'staff',
+          body: body.body,
+          offerPhp: body.offerPhp !== undefined ? String(body.offerPhp) : null,
+        })
+        .returning();
+      if (!row) throw new Error('negotiation_messages insert returned no row');
+      return { id: row.id };
+    });
+  }
+
+  // Staff accept a price, which the truck invoice then charges. Re-agreeing
+  // is allowed until the request is paid.
+  async agree(ctx: RequestContext, id: string, pricePhp: number): Promise<TruckRequestResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const request = await this.visibleRequest(tx, ctx, id);
+      if (request.status === 'cancelled' || request.status === 'paid') {
+        throw new ConflictException({ error: 'truck_request_closed', status: request.status });
+      }
+      const [updated] = await tx
+        .update(truckRequests)
+        .set({ agreedPricePhp: String(pricePhp), status: 'agreed' })
         .where(eq(truckRequests.id, id))
         .returning();
       return toResponse(updated!);
