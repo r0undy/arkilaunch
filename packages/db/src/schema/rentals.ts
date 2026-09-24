@@ -85,6 +85,11 @@ export const rentals = pgTable(
     siteNotes: text('site_notes'),
     startDate: timestamp('start_date', { withTimezone: true }).notNull(),
     endDate: timestamp('end_date', { withTimezone: true }),
+    // Callback before payment (0037): checkout waits for staff to confirm
+    // the booking by phone.
+    callRequestedAt: timestamp('call_requested_at', { withTimezone: true }),
+    callConfirmedAt: timestamp('call_confirmed_at', { withTimezone: true }),
+    callConfirmedBy: uuid('call_confirmed_by').references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [tenantIsolationPolicy(),
