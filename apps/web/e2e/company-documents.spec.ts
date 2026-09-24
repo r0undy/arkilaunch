@@ -6,7 +6,8 @@ import { signInAsCustomer } from './sign-in.js';
 // Needs the seeded anchor tenant and the API.
 
 test.describe('company documents', () => {
-  test.setTimeout(90_000);
+  // Each upload is an OCR read; three in a row can take a while.
+  test.setTimeout(240_000);
 
   test('customer picks SEC as primary, adds DTI, and submits', async ({ page }) => {
     await signInAsCustomer(page);
@@ -52,6 +53,8 @@ test.describe('company documents', () => {
     await page.getByLabel('Contact mobile').fill('+63 917 000 1234');
     await page.getByRole('checkbox').check();
     await page.getByRole('button', { name: 'Submit' }).click();
+    // Wait for the uploads: navigating away mid-request would abort them.
+    await expect(page.getByText('Company added')).toBeVisible({ timeout: 180_000 });
 
     // The company page lists each document under its own type.
     await page.goto('/account/applications');

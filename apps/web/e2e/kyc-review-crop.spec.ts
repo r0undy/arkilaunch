@@ -59,13 +59,23 @@ const companyName = `E2E Specimen Builders ${runTag}`;
 
 // A fresh customer per run rather than the seeded one: this flow adds a
 // company, and a login that owns several makes other specs pick one.
+// Shared by the serial tests below: the customer comes back after the
+// reviewer's comment, and the admin checks the tag the edit leaves.
+const customerEmail = `kyc-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.test`;
+const customerPassword = 'correct horse battery staple';
+let idRead = false;
+
 async function signUpCustomer(page: Page) {
-  const email = `kyc-e2e-${Date.now()}@example.test`;
-  const password = 'correct horse battery staple';
   const res = await page.request.post('/api/v1/auth/register-customer', {
-    data: { email, password, acceptedTerms: true },
+    data: { email: customerEmail, password: customerPassword, acceptedTerms: true },
   });
   expect(res.ok(), `register-customer answered ${res.status()}`).toBe(true);
+  await logInCustomer(page);
+}
+
+async function logInCustomer(page: Page) {
+  const email = customerEmail;
+  const password = customerPassword;
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
@@ -142,6 +152,7 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     const first = page.getByLabel('First name');
     const last = page.getByLabel('Last name');
     const read = (await pcn.inputValue()) !== '';
+    idRead = read;
     test.info().annotations.push({ type: 'ocr', description: read ? 'ID read by OCR' : 'ID typed (OCR off or unread)' });
     if (read) {
       await expect(pcn).toHaveValue(PCN);
@@ -196,9 +207,18 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     if (!STORAGE_UNAVAILABLE) await expect(page.getByText('Company added')).toBeVisible({ timeout: 60_000 });
     await expect(page).toHaveURL(/\/account\/applications/, { timeout: 60_000 });
     await expectNoHorizontalScroll(page);
+
+    // Submitted: the company is read-only while the rental team reviews it.
+    if (STORAGE_UNAVAILABLE) return;
+    await page.getByRole('group', { name: companyName }).getByRole('link', { name: /manage/i }).click();
+    await expect(page.getByText('Waiting for admin review')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('link', { name: /upload/i })).toHaveCount(0);
+    await page.goto(page.url() + '/documents');
+    await expect(page.getByText('Waiting for admin review')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Upload' })).toHaveCount(0);
   });
 
-  test('admin sees the reads without clicking, and cannot verify until each registry is checked', async ({
+  test('admin sees the reads without clicking, tags customer edits, and sends a comment that unlocks a field', async ({
     page,
     context,
   }, testInfo) => {
@@ -214,10 +234,20 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     await expect(card.getByLabel('First name')).toHaveValue('Juan');
     await expect(card.getByLabel('Last name')).toHaveValue('Dela Cruz');
     await expect(card.getByText('1234-5678-9012-3457')).toBeVisible();
-    await expect(card.getByLabel('SEC registration number')).toHaveValue(SEC);
-    await expect(card.getByLabel('DTI business name number')).toHaveValue(DTI);
-    await expect(card.getByLabel('TIN')).toHaveCount(0);
+    // Textboxes by role: the comment form's unlock ticks share these names.
+    await expect(card.getByRole('textbox', { name: 'SEC registration number' })).toHaveValue(SEC);
+    await expect(card.getByRole('textbox', { name: 'DTI business name number' })).toHaveValue(DTI);
+    await expect(card.getByRole('textbox', { name: 'TIN' })).toHaveCount(0);
     await expect(card.getByRole('button', { name: 'Re-read National ID' })).toBeVisible();
+
+    // The PCN was typed one digit off the card: where the scan read it, the
+    // card shows the edit and the scan's value instead of a read %.
+    if (idRead) {
+      const idButton = card.getByRole('button', { name: /Philippine National ID/ });
+      await expect(idButton).toContainText('Edited by customer');
+      await expect(idButton).not.toContainText('%');
+      await expect(card.getByText('scan read "1234-5678-9012-3456"')).toBeVisible();
+    }
 
     // The registry link copies the number and opens the search.
     const verify = card.getByRole('button', { name: 'Verify' });
@@ -235,6 +265,47 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
       expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(value);
     }
 
+    // Short of rejecting: a note, and the one field it unlocks.
+    await card.getByLabel('Comment to the customer').fill('The SEC number is one digit off.');
+    await card.getByRole('checkbox', { name: 'SEC registration number' }).check();
+    await card.getByRole('button', { name: 'Send to customer' }).click();
+    await expect(page.getByText('Comment sent')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('group', { name: companyName })).toBeVisible();
+  });
+
+  test('customer sees the note and can change only the unlocked field', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop', 'follows the desktop-only admin step');
+    test.skip(STORAGE_UNAVAILABLE, 'needs the uploaded documents; CI has no storage behind the API');
+    await logInCustomer(page);
+    await page.goto('/account/notifications');
+    await expect(page.getByText('Note from the rental team').first()).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('link', { name: 'Open company' }).first().click();
+    await expect(page.getByText('Waiting for admin review')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('The SEC number is one digit off.')).toBeVisible();
+    await expect(page.getByLabel('TIN')).toHaveCount(0);
+    await page.getByLabel('SEC registration number').fill('CS201912346');
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.getByText('Sent to the rental team')).toBeVisible({ timeout: 30_000 });
+    // Handed back, locked again.
+    await expect(page.getByLabel('SEC registration number')).toHaveCount(0);
+  });
+
+  test('admin sees the edited field tagged, still pending, and verifies once each registry is checked', async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop', 'admin console is a desktop workflow');
+    test.skip(STORAGE_UNAVAILABLE, 'needs the uploaded documents; CI has no storage behind the API');
+    await signIn(page);
+    await page.goto('/app/registration/pending');
+    const card = page.getByRole('group', { name: companyName });
+    await expect(card.getByRole('textbox', { name: 'SEC registration number' })).toHaveValue('CS201912346', {
+      timeout: 30_000,
+    });
+    // Where the scan read the SEC number, the change is tagged with the original.
+    if ((await card.getByText(`scan read "${SEC}"`).count()) > 0) {
+      await expect(card.getByText('Edited by customer').first()).toBeVisible();
+    }
+    const verify = card.getByRole('button', { name: 'Verify' });
     await card.getByLabel('I checked this on the SEC registry').check();
     await expect(verify).toBeDisabled();
     await card.getByLabel('I checked this on the DTI registry').check();
