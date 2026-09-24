@@ -2,7 +2,7 @@ import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator.js';
 import { AuthService } from './auth.service.js';
-import { LoginDto, RefreshDto, UserActivateDto, Verify2faDto } from './dto.js';
+import { ForgotPasswordDto, LoginDto, RefreshDto, UserActivateDto, Verify2faDto } from './dto.js';
 import { CustomerSignupDto } from '../customers/dto.js';
 
 // Public: no tenant context yet (RFC-1 §3). 2fa/verify stays here (also
@@ -27,6 +27,15 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   registerCustomer(@Body() body: CustomerSignupDto) {
     return this.auth.registerCustomer(body);
+  }
+
+  // Always 200 whether or not the email has an account (no enumeration).
+  // Throttled: each call can drop a row into every admin's feed.
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  forgotPassword(@Body() body: ForgotPasswordDto) {
+    return this.auth.forgotPassword(body);
   }
 
   @Post('refresh')

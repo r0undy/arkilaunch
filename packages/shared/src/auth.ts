@@ -9,6 +9,11 @@ export const LoginRequestSchema = z.object({
 });
 export type LoginRequest = z.infer<typeof LoginRequestSchema>;
 
+// POST /auth/forgot-password. No email provider exists (BUILD §3), so this
+// only alerts the tenant's admins, who reset the password by hand.
+export const ForgotPasswordRequestSchema = LoginRequestSchema.pick({ email: true });
+export type ForgotPasswordRequest = z.infer<typeof ForgotPasswordRequestSchema>;
+
 export const RefreshRequestSchema = z.object({
   refreshToken: z.string().min(1),
 });

@@ -114,6 +114,13 @@ export async function activateAccount(request: UserActivateRequest): Promise<voi
   await postJson<void>('/auth/activate', request);
 }
 
+// POST /auth/forgot-password: always answers 200, whether or not the email
+// has an account. There is no email provider; the tenant's admins are told
+// and send the reset link themselves.
+export async function requestPasswordReset(email: string): Promise<void> {
+  await postJson<{ ok: true }>('/auth/forgot-password', { email });
+}
+
 // Single-flight refresh: apps/api/test/refresh-rotation.spec.ts proves a
 // refresh token replayed after rotation revokes the ENTIRE token family, so
 // two concurrent refresh calls with the same stored refresh token would not

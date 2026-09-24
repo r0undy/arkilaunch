@@ -52,6 +52,14 @@ interface Described {
 
 export function describeNotification(type: string, payload: unknown): Described | null {
   const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+  if (type === 'password_reset_requested') {
+    const email = typeof p.email === 'string' ? p.email : 'A user';
+    return {
+      title: 'Password reset requested',
+      body: `${email} asked to reset their password. Reset it from People and send them the link.`,
+      action: { label: 'Open People', to: '/app/users', params: {} },
+    };
+  }
   if (type === 'company_submitted') {
     const name = typeof p.company_name === 'string' ? p.company_name : 'A company';
     return {
