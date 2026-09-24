@@ -187,6 +187,18 @@ export function describeNotification(type: string, payload: unknown): Described 
         body: `The rental team cancelled booking ${ref}. Any refund due is handled by the billing team.`,
         action: { label: 'View booking', ...toBooking },
       };
+    case 'deposit_low':
+      return {
+        title: 'Deposit running low',
+        body: `Booking ${ref} has ${formatPeso(p.balance_php as number)} left of its ${formatPeso(p.deposit_php as number)} deposit. Hours past it are billed weekly.`,
+        action: { label: 'View booking', ...toBooking },
+      };
+    case 'weekly_invoice':
+      return {
+        title: 'Weekly invoice',
+        body: `Booking ${ref} used hours past its deposit: ${formatPeso(p.amount_php as number)} is due.`,
+        action: { label: 'View invoice', to: '/account/invoices/$invoiceId', params: { invoiceId: String(p.invoice_id) } },
+      };
     case 'change_request_resolved':
       return {
         title: p.decision === 'approved' ? 'Request approved' : 'Request declined',
