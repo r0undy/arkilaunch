@@ -23,7 +23,18 @@ function stubFetch(loginResponse: unknown, status = 200, verify2faResponse?: unk
       if (String(url).includes('/auth/2fa/verify')) {
         return Promise.resolve(new Response(JSON.stringify(verify2faResponse ?? {}), { status: 200 }));
       }
-      return Promise.resolve(new Response('[]', { status: 200 }));
+      // The destination page's own data fetch. It used to answer `[]` for
+      // every endpoint, which is not the shape a paginated list returns:
+      // /app/inventory's isEmpty() reads data.items and threw on undefined,
+      // crashing the route into its error boundary mid-assertion. That was
+      // stderr noise for a long time and an intermittent failure once the
+      // shell grew another subscriber and the timing shifted.
+      const listShape = /\/(equipment|bookings|quotes|invoices|payments|users|incidents)/.test(
+        String(url),
+      );
+      return Promise.resolve(
+        new Response(JSON.stringify(listShape ? { items: [], total: 0 } : []), { status: 200 }),
+      );
     }),
   );
 }
