@@ -96,6 +96,7 @@ describe('Delivery, return and staff alerts', () => {
       siteContact: 'Marcus Thorne 0917 000 0000',
       items: [{ equipmentId, start: day(offset, 8), end: day(offset + days - 1, 17) }],
     });
+    await bookings.confirmCall(adminCtx, created.id);
     const detail = await bookings.get(customerCtx, created.id);
     return { id: created.id, customerId: detail.customerId };
   }

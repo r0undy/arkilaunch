@@ -9,6 +9,7 @@ import {
   formatDate,
   formatHours,
   formatLogSource,
+  formatPeso,
   formatStatus,
   shortCode,
   weekStart,
@@ -24,7 +25,7 @@ import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { AlertIcon, CheckIcon, ClockIcon, XCircleIcon } from '../components/icons.js';
 import { EmptyState } from '../components/empty-state.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
-import { Table } from '../components/table.js';
+import { Table, type TableColumn } from '../components/table.js';
 import { useToast } from '../components/toast.js';
 
 // The day's work, as the office sees it: a queue of field logs with the ones
@@ -122,6 +123,68 @@ function EdtrPage() {
   );
   const filtered = Boolean(search.equipment || search.week);
 
+  function rentalName(rentalId: string): string {
+    const rental = rentals.find((r) => r.id === rentalId);
+    return rental ? rentalLabel(rental) : `Rental ${shortCode('rental', rentalId)}`;
+  }
+
+  const columns: TableColumn<EdtrListItem>[] = [
+              {
+                header: 'Machine',
+                cell: (row) => (
+                  <div className="flex flex-col">
+                    <span className="text-text">{machineName(row.equipmentId)}</span>
+                    <span className="font-mono text-xs text-text-muted">
+                      {shortCode('log', row.id)}
+                    </span>
+                  </div>
+                ),
+              },
+              { header: 'Day worked', cell: (row) => formatDate(row.reportDate) },
+              { header: 'Recorded', cell: (row) => formatLogSource(row.source) },
+              {
+                header: 'Status',
+                cell: (row) => {
+                  const pill = statusPill(row.status);
+                  return (
+                    <StatusPill
+                      tone={pill.tone}
+                      icon={pill.icon}
+                      label={formatStatus(row.status)}
+                    />
+                  );
+                },
+              },
+              {
+                header: 'Match',
+                cell: (row) => {
+                  if (!row.reconciliation) return <span className="text-text-muted">--</span>;
+                  const { status, deltaHours } = row.reconciliation;
+                  if (status === 'approved') return <span className="text-text-muted">Billed</span>;
+                  if (deltaHours === null) return matchLabel(status);
+                  return (
+                    <span
+                      className={
+                        deltaHours > row.reconciliation.tolerance ? 'text-error' : 'text-text'
+                      }
+                    >
+                      {matchLabel(status)} ({formatHours(deltaHours)} apart)
+                    </span>
+                  );
+                },
+              },
+              {
+                header: '',
+                align: 'right',
+                cell: (row) =>
+                  row.reconciliation && APPROVABLE.has(row.reconciliation.status) ? (
+                    <Button variant="approve" size="field" onClick={() => setApproving(row)}>
+                      Review and bill
+                    </Button>
+                  ) : null,
+              },
+  ];
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -185,66 +248,17 @@ function EdtrPage() {
             }
           />
         ) : (
-          <Table
-            rows={items}
-            rowKey={(row) => row.id}
-            columns={[
-              {
-                header: 'Machine',
-                cell: (row) => (
-                  <div className="flex flex-col">
-                    <span className="text-text">{machineName(row.equipmentId)}</span>
-                    <span className="font-mono text-xs text-text-muted">
-                      {shortCode('log', row.id)}
-                    </span>
-                  </div>
-                ),
-              },
-              { header: 'Day worked', cell: (row) => formatDate(row.reportDate) },
-              { header: 'Recorded', cell: (row) => formatLogSource(row.source) },
-              {
-                header: 'Status',
-                cell: (row) => {
-                  const pill = statusPill(row.status);
-                  return (
-                    <StatusPill
-                      tone={pill.tone}
-                      icon={pill.icon}
-                      label={formatStatus(row.status)}
-                    />
-                  );
-                },
-              },
-              {
-                header: 'Match',
-                cell: (row) => {
-                  if (!row.reconciliation) return <span className="text-text-muted">--</span>;
-                  const { status, deltaHours } = row.reconciliation;
-                  if (status === 'approved') return <span className="text-text-muted">Billed</span>;
-                  if (deltaHours === null) return matchLabel(status);
-                  return (
-                    <span
-                      className={
-                        deltaHours > row.reconciliation.tolerance ? 'text-error' : 'text-text'
-                      }
-                    >
-                      {matchLabel(status)} ({formatHours(deltaHours)} apart)
-                    </span>
-                  );
-                },
-              },
-              {
-                header: '',
-                align: 'right',
-                cell: (row) =>
-                  row.reconciliation && APPROVABLE.has(row.reconciliation.status) ? (
-                    <Button variant="approve" size="field" onClick={() => setApproving(row)}>
-                      Review and bill
-                    </Button>
-                  ) : null,
-              },
-            ]}
-          />
+          <div className="flex flex-col gap-3">
+            {groupByRental(items).map(([rentalId, rows]) => (
+              <RentalGroup
+                key={rentalId}
+                rentalId={rentalId}
+                label={rentalName(rentalId)}
+                rows={rows}
+                columns={columns}
+              />
+            ))}
+          </div>
         ))}
 
       {queue.isSuccess && items.length > 0 && (
@@ -284,6 +298,66 @@ function EdtrPage() {
   );
 }
 
+// Logs grouped by the rental (order) they bill against, in first-seen order.
+function groupByRental(items: EdtrListItem[]): [string, EdtrListItem[]][] {
+  const groups = new Map<string, EdtrListItem[]>();
+  for (const item of items) groups.set(item.rentalId, [...(groups.get(item.rentalId) ?? []), item]);
+  return [...groups];
+}
+
+interface DepositSummary {
+  depositRequired: number | null;
+  balanceRemaining: number | null;
+  unbilledAccrued: number;
+  hoursUsed: number;
+  hoursOrdered: number | null;
+}
+
+// One rental: hours billed vs hours ordered and what is left on the
+// deposit, with its logs underneath. Native <details> is the collapse.
+function RentalGroup({
+  rentalId,
+  label,
+  rows,
+  columns,
+}: {
+  rentalId: string;
+  label: string;
+  rows: EdtrListItem[];
+  columns: TableColumn<EdtrListItem>[];
+}) {
+  const ledger = useQuery({
+    queryKey: ['edtr', 'deposit', rentalId] as const,
+    queryFn: () => apiGet<DepositSummary>(`/rentals/${rentalId}/deposit`),
+  });
+  const d = ledger.data;
+  return (
+    <details open className="rounded-md border border-border" data-testid="rental-group">
+      <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3">
+        <span className="font-semibold text-text">{label}</span>
+        <span className="flex flex-wrap gap-4 text-sm text-text-muted">
+          <span>
+            {rows.length} log{rows.length === 1 ? '' : 's'}
+          </span>
+          {d && (
+            <>
+              <span data-testid="rental-hours">
+                {formatHours(d.hoursUsed)} used
+                {d.hoursOrdered != null ? ` of ${formatHours(d.hoursOrdered)} ordered` : ''}
+              </span>
+              <span data-testid="rental-deposit">Deposit left {formatPeso(d.balanceRemaining)}</span>
+              {d.unbilledAccrued > 0 && (
+                <span className="text-error">{formatPeso(d.unbilledAccrued)} on the next weekly invoice</span>
+              )}
+            </>
+          )}
+        </span>
+      </summary>
+      <Table rows={rows} rowKey={(row) => row.id} columns={columns} />
+    </details>
+  );
+}
+
 // ------------------------------------------------------------------- approve
 
 interface ApproveModalProps {
@@ -295,7 +369,7 @@ interface ApproveModalProps {
 }
 
 interface ApproveResult {
-  deposit?: { balanceBefore: number; deducted: number; balanceAfter: number };
+  deposit?: { balanceBefore: number; deducted: number; accrued?: number; balanceAfter: number };
 }
 
 function ApproveModal({ item, machine, onClose, onApproved, toast }: ApproveModalProps) {
@@ -326,7 +400,9 @@ function ApproveModal({ item, machine, onClose, onApproved, toast }: ApproveModa
           ? `${machine}, ${formatDate(item.reportDate)} - ${new Intl.NumberFormat('en-PH', {
               style: 'currency',
               currency: 'PHP',
-            }).format(deducted)} deducted.`
+            }).format(deducted)} deducted.${
+              res.deposit?.accrued ? ` ${formatPeso(res.deposit.accrued)} past the deposit goes on the weekly invoice.` : ''
+            }`
           : undefined,
       );
       setConfirming(false);

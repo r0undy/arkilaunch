@@ -16,6 +16,10 @@ export const truckSettings = pgTable(
     baseFeePhp: numeric('base_fee_php', { precision: 12, scale: 2 }).notNull().default('0'),
     driverFeePhp: numeric('driver_fee_php', { precision: 12, scale: 2 }).notNull().default('0'),
     extras: jsonb('extras').$type<TruckExtra[]>().notNull().default([]),
+    // 0037: null formula = the built-in default (DEFAULT_TRUCK_FORMULA).
+    formula: text('formula'),
+    rangePct: numeric('range_pct', { precision: 5, scale: 2 }).notNull().default('10'),
+    region: text('region').notNull().default('NCR'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   () => [tenantIsolationPolicy()],
@@ -42,6 +46,16 @@ export const truckRequests = pgTable(
     status: text('status').notNull().default('estimated'),
     agreedPricePhp: numeric('agreed_price_php', { precision: 14, scale: 2 }),
     price: jsonb('price').$type<TruckPrice>().notNull(),
+    // 0037: exact map pins (null = routed from the typed place names), the
+    // cap locked at request time, and the callback before payment.
+    pickupLat: numeric('pickup_lat', { precision: 9, scale: 6 }),
+    pickupLng: numeric('pickup_lng', { precision: 9, scale: 6 }),
+    dropoffLat: numeric('dropoff_lat', { precision: 9, scale: 6 }),
+    dropoffLng: numeric('dropoff_lng', { precision: 9, scale: 6 }),
+    capPhp: numeric('cap_php', { precision: 14, scale: 2 }),
+    callRequestedAt: timestamp('call_requested_at', { withTimezone: true }),
+    callConfirmedAt: timestamp('call_confirmed_at', { withTimezone: true }),
+    callConfirmedBy: uuid('call_confirmed_by').references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -49,5 +63,24 @@ export const truckRequests = pgTable(
     check('truck_requests_status_valid', sql`${t.status} IN ('estimated','km_confirmed','agreed','paid','cancelled')`),
     index('truck_requests_tenant_id_idx').on(t.tenantId),
     index('truck_requests_requested_by_idx').on(t.requestedBy),
+  ],
+);
+
+// 0037: named tolls the admin picks from when confirming a trip's km.
+export const tollRates = pgTable(
+  'toll_rates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    name: text('name').notNull(),
+    feePhp: numeric('fee_php', { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    tenantIsolationPolicy(),
+    check('toll_rates_fee_nonnegative', sql`${t.feePhp} >= 0`),
+    index('toll_rates_tenant_id_idx').on(t.tenantId),
   ],
 );

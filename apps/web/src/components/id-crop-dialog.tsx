@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import Cropper, { type Area } from 'react-easy-crop';
+import Cropper, { type Area, type MediaSize } from 'react-easy-crop';
 import { Modal } from './modal.js';
 import { Button } from './button.js';
 
 // A PhilSys card is ID-1 size, 85.6 x 54 mm. Square is offered for a
-// photo taken too close to fit the card's shape.
+// photo taken too close to fit the card's shape. Free is the default: it
+// starts on the whole photo and its width and height are set separately,
+// which suits an A4 certificate as well as a card.
 export const ID_CARD_ASPECT = 85.6 / 54;
+type Shape = 'free' | number;
 
 // Cuts the chosen area out of the photo at full resolution, JPEG 0.95 like
 // the viewfinder's own capture (capture-field.tsx).
@@ -34,7 +37,12 @@ export function IdCropDialog({
   const [src, setSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [aspect, setAspect] = useState(ID_CARD_ASPECT);
+  const [aspect, setAspect] = useState<Shape>('free');
+  // Free crop: react-easy-crop has no draggable edges, so the frame's size
+  // is two sliders, each a share of the photo as displayed.
+  const [media, setMedia] = useState<MediaSize | null>(null);
+  const [freeSize, setFreeSize] = useState({ width: 1, height: 1 });
+  const free = aspect === 'free';
   const [area, setArea] = useState<Area | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -59,8 +67,8 @@ export function IdCropDialog({
       open
       onClose={onCancel}
       dismissOnScrim={false}
-      title="Crop your National ID"
-      description="Drag and zoom so the card fills the frame edge to edge."
+      title="Crop your document"
+      description="Drag, zoom and resize so the document fills the frame edge to edge."
       size="lg"
       footer={
         <div className="flex flex-wrap justify-end gap-2">
@@ -80,7 +88,12 @@ export function IdCropDialog({
               image={src}
               crop={crop}
               zoom={zoom}
-              aspect={aspect}
+              {...(free
+                ? media
+                  ? { cropSize: { width: media.width * freeSize.width, height: media.height * freeSize.height } }
+                  : {}
+                : { aspect })}
+              onMediaLoaded={setMedia}
               onCropChange={setCrop}
               onZoomChange={setZoom}
               onCropComplete={(_, pixels) => setArea(pixels)}
@@ -90,6 +103,7 @@ export function IdCropDialog({
         <div className="flex flex-wrap items-center gap-3">
           <div role="radiogroup" aria-label="Crop shape" className="flex gap-2">
             {[
+              { label: 'Free', value: 'free' as Shape },
               { label: 'ID card', value: ID_CARD_ASPECT },
               { label: 'Square', value: 1 },
             ].map((option) => (
@@ -104,6 +118,21 @@ export function IdCropDialog({
               </Button>
             ))}
           </div>
+          {free &&
+            (['width', 'height'] as const).map((side) => (
+              <label key={side} className="flex min-w-48 flex-1 items-center gap-2 text-sm text-text">
+                {side === 'width' ? 'Width' : 'Height'}
+                <input
+                  type="range"
+                  min={0.2}
+                  max={1}
+                  step={0.01}
+                  value={freeSize[side]}
+                  onChange={(e) => setFreeSize({ ...freeSize, [side]: Number(e.target.value) })}
+                  className="min-h-11 flex-1 accent-[var(--color-primary)]"
+                />
+              </label>
+            ))}
           <label className="flex min-w-48 flex-1 items-center gap-2 text-sm text-text">
             Zoom
             <input

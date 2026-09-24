@@ -42,6 +42,13 @@ export class TruckPaymentsController {
     return this.payments.checkoutTruck(req.ctx, id, body);
   }
 
+  @Post('me/invoices/:id/checkout')
+  @RequirePermission('payment:checkout')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  checkoutInvoice(@Param('id') id: string, @Body() body: CheckoutRequestDto, @Req() req: CtxRequest) {
+    return this.payments.checkoutInvoice(req.ctx, id, body);
+  }
+
   // quote:approve: the staff who agree prices are the ones who take cash.
   @Post('invoices/:id/cash-payment')
   @RequirePermission('quote:approve')

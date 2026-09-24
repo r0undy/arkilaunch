@@ -181,28 +181,6 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     expect(after.balanceRemaining).toBeLessThan(before.balanceRemaining!);
   });
 
-  it('cr-arkilaunch-f9-read-surface.md fix: an approve that would exceed the deposit is rejected 409 deposit_exhausted, deducting nothing', async () => {
-    const reportDate = '2021-05-02';
-    // 4000 hours * 850/hr far exceeds the remaining balance of a 5000 cap.
-    await insertExtractedPaperCounterpart(reportDate, 4000, 0);
-    const digital = await edtr.capture(adminCtxA, {
-      source: 'digital_entry',
-      rentalId: depositRentalId,
-      equipmentId: equipmentIdA,
-      reportDate,
-      lineItems: { hoursActive: 4000, hoursIdle: 0 },
-    });
-    const polled = await edtr.get(adminCtxA, digital.id);
-    expect(polled.reconciliation?.status).toBe('matched');
-
-    const before = await billing.depositLedger(adminCtxA, depositRentalId);
-    await expect(edtr.approve(adminCtxA, digital.id, { reconciliationId: polled.reconciliation!.id })).rejects.toMatchObject({
-      response: { error: 'deposit_exhausted' },
-    });
-    const after = await billing.depositLedger(adminCtxA, depositRentalId);
-    expect(after.totalDeducted).toBe(before.totalDeducted);
-  });
-
   it('rejects an approve where no rate card was in force on the report date, instead of deducting at zero', async () => {
     // 2019 is before the seeded card's effective_from (2020-01-01) and long
     // before the 999999 card quotes-engine.spec.ts leaves at effective_from
@@ -246,7 +224,7 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     const polled = await edtr.get(adminCtxA, digital.id);
     const approved = await edtr.approve(adminCtxA, digital.id, { reconciliationId: polled.reconciliation!.id });
 
-    const invoice = await billing.getInvoice(adminCtxA, approved.invoiceLine.invoiceId);
+    const invoice = await billing.getInvoice(adminCtxA, approved.invoiceLine.invoiceId!);
     expect(invoice.invoiceType).toBe('deposit_deduction');
     expect(invoice.edtrEvidence).not.toBeNull();
     expect(invoice.edtrEvidence!.sourceEdtrIds).toEqual(expect.arrayContaining([digital.id, paperId]));
@@ -272,5 +250,33 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     const { items } = await billing.listInvoices(adminCtxA, { rentalId: depositRentalId, limit: 50, offset: 0 });
     const invoiceId = items[0]!.id;
     await expect(billing.getInvoice(adminCtxB, invoiceId)).rejects.toThrow(NotFoundException);
+  });
+  // Phase 7 rollover: last in the file, because it takes this rental's
+  // deposit to zero. The part past the balance becomes an unbilled accrual
+  // for the weekly invoice instead of failing deposit_exhausted.
+  it('an approve past the deposit deducts what is left and accrues the rest', async () => {
+    const reportDate = '2021-05-02';
+    // 4000 hours * 850/hr far exceeds the remaining balance.
+    await insertExtractedPaperCounterpart(reportDate, 4000, 0);
+    const digital = await edtr.capture(adminCtxA, {
+      source: 'digital_entry',
+      rentalId: depositRentalId,
+      equipmentId: equipmentIdA,
+      reportDate,
+      lineItems: { hoursActive: 4000, hoursIdle: 0 },
+    });
+    const polled = await edtr.get(adminCtxA, digital.id);
+    expect(polled.reconciliation?.status).toBe('matched');
+
+    const before = await billing.depositLedger(adminCtxA, depositRentalId);
+    const approved = await edtr.approve(adminCtxA, digital.id, { reconciliationId: polled.reconciliation!.id });
+    expect(approved.deposit.deducted).toBe(before.balanceRemaining);
+    expect(approved.deposit.accrued).toBe(4000 * 850 - before.balanceRemaining!);
+    expect(approved.deposit.balanceAfter).toBe(0);
+
+    const after = await billing.depositLedger(adminCtxA, depositRentalId);
+    expect(after.balanceRemaining).toBe(0);
+    expect(after.unbilledAccrued).toBe(approved.deposit.accrued);
+    expect(after.hoursUsed - before.hoursUsed).toBeCloseTo(4000, 1);
   });
 });

@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { PricingService } from './pricing.service.js';
-import { DieselPriceEntryDto, PricingParametersInputDto, PricingParametersQueryDto } from './dto.js';
+import { BillingSettingsDto, DieselPriceEntryDto, PricingParametersInputDto, PricingParametersQueryDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -33,5 +33,18 @@ export class PricingController {
   @RequirePermission('pricing:manage')
   getPricingParameters(@Query() query: PricingParametersQueryDto, @Req() req: CtxRequest) {
     return this.pricing.getPricingParameters(req.ctx, query.region);
+  }
+
+  // Hours per rental day, minimum deposit, low-balance threshold.
+  @Get('billing-settings')
+  @RequirePermission('pricing:manage')
+  getBillingSettings(@Req() req: CtxRequest) {
+    return this.pricing.getBillingSettings(req.ctx);
+  }
+
+  @Put('billing-settings')
+  @RequirePermission('pricing:manage')
+  setBillingSettings(@Body() body: BillingSettingsDto, @Req() req: CtxRequest) {
+    return this.pricing.setBillingSettings(req.ctx, body);
   }
 }

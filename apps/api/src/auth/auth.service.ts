@@ -11,9 +11,11 @@ import { createHash } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import { EmailTakenError, findUserByEmailForAuth, registerCustomerUser, users, withTenantTx } from '@arkilaunch/db';
 import { eq } from 'drizzle-orm';
+import { notifyStaff } from '../common/notify-customer.js';
 import type {
   CustomerSignup,
   AuthTokens,
+  ForgotPasswordRequest,
   Enroll2faConfirmRequest,
   LoginRequest,
   RefreshRequest,
@@ -126,6 +128,22 @@ export class AuthService {
       if (err instanceof EmailTakenError) throw new ConflictException({ error: 'email_taken' });
       throw err;
     }
+  }
+
+  // POST /auth/forgot-password (@Public). There is no email provider, so a
+  // request only tells the account's tenant admins, who reset it from
+  // /app/users (UsersService.resetPassword) and hand over the /activate
+  // link. The answer is the same for every email, known or not, so it
+  // reveals nothing about which addresses have an account.
+  async forgotPassword({ email }: ForgotPasswordRequest): Promise<{ ok: true }> {
+    const normalizedEmail = email.toLowerCase();
+    const user = await findUserByEmailForAuth(normalizedEmail);
+    if (user && user.status === 'active') {
+      await withTenantTx({ tenantId: user.tenantId, userId: user.id, role: BOOTSTRAP_ROLE }, (tx) =>
+        notifyStaff(tx, user.tenantId, 'password_reset_requested', { email: normalizedEmail, user_id: user.id }),
+      );
+    }
+    return { ok: true };
   }
 
   // POST /auth/2fa/verify: completes the challenge from login() and issues

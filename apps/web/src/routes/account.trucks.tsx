@@ -1,5 +1,6 @@
 import { createRoute, useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { PinMap, type LatLng } from '../components/pin-map.js';
 import { useState } from 'react';
 import type { TruckPrice, TruckRequestResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
@@ -22,6 +23,22 @@ export const myTruckRequestsQuery = {
   queryKey: ['me', 'truck-requests'] as const,
   queryFn: () => apiGet<TruckRequestResponse[]>('/me/truck-requests'),
 };
+
+// low-high band and the cap note shown with every estimate.
+export function EstimateRange({ price, capPhp }: { price: TruckPrice; capPhp?: number | null }) {
+  if (price.lowPhp === undefined || price.highPhp === undefined) return null;
+  const cap = capPhp ?? price.highPhp;
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="font-mono text-base font-semibold tabular-nums text-text">
+        {formatPeso(price.lowPhp)} – {formatPeso(price.highPhp)}
+      </p>
+      <p className="text-xs text-text-muted">
+        Near-point estimate; tolls and route may change the final price, never above {formatPeso(cap)} without your OK.
+      </p>
+    </div>
+  );
+}
 
 export function PriceBreakdown({ price }: { price: TruckPrice }) {
   return (
@@ -55,6 +72,13 @@ function TrucksPage() {
   const [dropoffAt, setDropoffAt] = useState<PhLocation>(EMPTY_LOCATION);
   const [pickupDetail, setPickupDetail] = useState('');
   const [dropoffDetail, setDropoffDetail] = useState('');
+  const [pickupPin, setPickupPin] = useState<LatLng | null>(null);
+  const [dropoffPin, setDropoffPin] = useState<LatLng | null>(null);
+  // Exact pins go straight to the router; without them the city is geocoded.
+  const pinBody = {
+    ...(pickupPin ? { pickupLat: pickupPin.lat, pickupLng: pickupPin.lng } : {}),
+    ...(dropoffPin ? { dropoffLat: dropoffPin.lat, dropoffLng: dropoffPin.lng } : {}),
+  };
   const pickup = locationLabel(pickupAt);
   const dropoff = locationLabel(dropoffAt);
   // Street/landmark ride along in the notes: the estimate routes between
@@ -71,13 +95,14 @@ function TrucksPage() {
 
   const ready = pickup !== '' && dropoff !== '';
   const estimate = useMutation({
-    mutationFn: () => apiPost<TruckPrice>('/me/truck-requests/estimate', { pickup, dropoff }),
+    mutationFn: () => apiPost<TruckPrice>('/me/truck-requests/estimate', { pickup, dropoff, ...pinBody }),
   });
   const submit = useMutation({
     mutationFn: () =>
       apiPost<TruckRequestResponse>('/me/truck-requests', {
         pickup,
         dropoff,
+        ...pinBody,
         scheduledFor: new Date(when).toISOString(),
         ...(fullNotes ? { notes: fullNotes } : {}),
       }),
@@ -87,6 +112,8 @@ function TrucksPage() {
       setDropoffAt(EMPTY_LOCATION);
       setPickupDetail('');
       setDropoffDetail('');
+      setPickupPin(null);
+      setDropoffPin(null);
       setNotes('');
       estimate.reset();
       void queryClient.invalidateQueries({ queryKey: myTruckRequestsQuery.queryKey });
@@ -119,6 +146,14 @@ function TrucksPage() {
             value={pickupDetail}
             onChange={(e) => setPickupDetail(e.target.value)}
           />
+          <PinMap
+            label="Pickup pin"
+            value={pickupPin}
+            onChange={(next) => {
+              setPickupPin(next);
+              estimate.reset();
+            }}
+          />
         </div>
         <div className="flex flex-col gap-2">
           <LocationPicker
@@ -134,14 +169,22 @@ function TrucksPage() {
             value={dropoffDetail}
             onChange={(e) => setDropoffDetail(e.target.value)}
           />
+          <PinMap
+            label="Drop-off pin"
+            value={dropoffPin}
+            onChange={(next) => {
+              setDropoffPin(next);
+              estimate.reset();
+            }}
+          />
         </div>
-        <Input label="Pickup date and time" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+        <Input label="Pickup date and time" type="datetime-local" value={when} min={toLocalInput(new Date().toISOString())} onChange={(e) => setWhen(e.target.value)} {...(when && new Date(when) <= new Date() ? { error: 'Pick a time in the future.' } : {})} />
         <Input label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
         <div className="flex flex-wrap gap-3 sm:col-span-2">
           <Button variant="secondary" disabled={!ready} loading={estimate.isPending} onClick={() => estimate.mutate()}>
             Get estimate
           </Button>
-          <Button disabled={!ready || !when} loading={submit.isPending} onClick={() => submit.mutate()}>
+          <Button disabled={!ready || !when || new Date(when) <= new Date()} loading={submit.isPending} onClick={() => submit.mutate()}>
             Request truck
           </Button>
         </div>
@@ -155,7 +198,11 @@ function TrucksPage() {
             <p className="mb-2 text-sm font-medium text-text">
               Estimate for about {estimate.data.km} km by road
             </p>
-            <PriceBreakdown price={estimate.data} />
+            <EstimateRange price={estimate.data} />
+            <details className="mt-2">
+              <summary className="cursor-pointer text-sm text-text-muted">Breakdown</summary>
+              <PriceBreakdown price={estimate.data} />
+            </details>
           </div>
         )}
       </Surface>
@@ -175,7 +222,12 @@ function TrucksPage() {
 // negotiation thread, and payment once the rental team accepts a price.
 export function TruckRequestCard({ request: r }: { request: TruckRequestResponse }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: myTruckRequestsQuery.queryKey });
+  const call = useMutation({ mutationFn: () => apiPost(`/me/truck-requests/${r.id}/request-call`, {}), onSuccess: refresh });
+  const approve = useMutation({ mutationFn: () => apiPost(`/me/truck-requests/${r.id}/approve-price`, {}), onSuccess: refresh });
+  const overCap = r.agreedPricePhp !== null && r.capPhp !== null && r.agreedPricePhp > r.capPhp;
   const pay = useMutation({
     mutationFn: (cash: boolean) =>
       apiPost<{ checkoutUrl: string | null; invoiceId: string }>(
@@ -219,13 +271,33 @@ export function TruckRequestCard({ request: r }: { request: TruckRequestResponse
           {r.confirmedKm === null && <span className="font-sans font-normal text-text-muted"> estimated</span>}
         </p>
       )}
+      {r.agreedPricePhp === null && <EstimateRange price={r.price} capPhp={r.capPhp} />}
+      {!closed && (
+        <p className="text-xs text-text-muted">
+          {r.callConfirmedAt
+            ? 'Confirmed by phone.'
+            : r.callRequestedAt
+              ? 'Call requested. The rental team will ring you to confirm before payment.'
+              : 'The rental team confirms every truck by phone before you pay.'}
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         {!closed && (
           <Button variant="secondary" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
             {open ? 'Hide negotiation' : 'Negotiate price'}
           </Button>
         )}
-        {r.status === 'agreed' && (
+        {!closed && !r.callConfirmedAt && (
+          <Button variant="secondary" loading={call.isPending} onClick={() => call.mutate()}>
+            {r.callRequestedAt ? 'Request call again' : 'Request call'}
+          </Button>
+        )}
+        {r.status === 'agreed' && overCap && (
+          <Button loading={approve.isPending} onClick={() => approve.mutate()}>
+            Approve {formatPeso(r.agreedPricePhp!)}
+          </Button>
+        )}
+        {r.status === 'agreed' && r.callConfirmedAt && !overCap && (
           <>
             <Button loading={pay.isPending && pay.variables === false} onClick={() => pay.mutate(false)}>
               Pay online
@@ -241,6 +313,16 @@ export function TruckRequestCard({ request: r }: { request: TruckRequestResponse
           </>
         )}
       </div>
+      {r.status === 'agreed' && overCap && (
+        <p className="text-sm text-text-muted">
+          The agreed price is above the {formatPeso(r.capPhp!)} cap from your estimate. Approve it to pay.
+        </p>
+      )}
+      {(call.isError || approve.isError) && (
+        <p role="alert" className="text-sm text-error">
+          {apiErrorText(call.error ?? approve.error)}
+        </p>
+      )}
       {pay.isError && (
         <p role="alert" className="text-sm text-error">
           {apiErrorText(pay.error)}

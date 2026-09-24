@@ -43,6 +43,9 @@ export const DeploymentCreateRequestSchema = z
   .object({
     equipmentId: z.string().uuid(),
     rentalId: z.string().uuid(),
+    // The operator sent with the unit, when the job needs one; refused if
+    // they are already on another job in that window.
+    operatorUserId: z.string().uuid().optional(),
     start: z.string().datetime({ offset: true }),
     end: z.string().datetime({ offset: true }),
   })

@@ -122,7 +122,12 @@ export const CompanyDocumentReadResponseSchema = z.object({
     sex: z.string().nullable(),
     address: z.string().nullable(),
   }),
-  formatValid: z.object({ tin: z.boolean(), secNumber: z.boolean() }),
+  formatValid: z.object({
+    tin: z.boolean(),
+    secNumber: z.boolean(),
+    dtiNumber: z.boolean(),
+    idNumber: z.boolean(),
+  }),
   confidence: z.number().nullable(),
   extractionAvailable: z.boolean(),
 });
@@ -165,6 +170,11 @@ export const CompanyResponseSchema = z.object({
   firstName: z.string().nullable(),
   middleName: z.string().nullable(),
   lastName: z.string().nullable(),
+  // A reviewer's note on a pending company, and what it unlocked for the
+  // customer to fix (UNLOCKABLE_FIELDS). Nothing else is editable once the
+  // documents are in.
+  reviewComment: z.string().nullable(),
+  unlockedFields: z.array(z.string()),
   documents: z.array(
     z.object({
       id: z.string().uuid(),
@@ -223,6 +233,19 @@ export type CustomerSiteResponse = z.infer<typeof CustomerSiteResponseSchema>;
 export const CompanyReviewQuerySchema = z.object({
   kycStatus: z.enum(['pending', 'approved', 'rejected']).default('pending'),
 });
+// What a reviewer can hand back to the customer on a pending company: the
+// company fields PATCH /me/companies/:id takes, and each document type.
+export const UNLOCKABLE_COMPANY_FIELDS = ['tin', 'secNumber', 'billingAddress'] as const;
+export const UNLOCKABLE_FIELDS = [...UNLOCKABLE_COMPANY_FIELDS, ...COMPANY_DOCUMENT_TYPES] as const;
+
+// PATCH /customers/:id/review. A comment to the customer, and what it
+// unlocks. The status stays pending; only decide() moves it.
+export const CompanyReviewCommentSchema = z.object({
+  comment: z.string().trim().min(1).max(1000),
+  unlock: z.array(z.enum(UNLOCKABLE_FIELDS)).max(UNLOCKABLE_FIELDS.length).default([]),
+});
+export type CompanyReviewComment = z.infer<typeof CompanyReviewCommentSchema>;
+
 // A reviewer may correct what the document says before approving. The
 // corrections are the human's, not the OCR's: they are what gets written
 // onto the company, and approval still requires this explicit call.

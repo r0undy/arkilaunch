@@ -15,7 +15,6 @@ import {
   Store,
   CalendarCheck,
   TrendingUp,
-  UserPlus,
   Users,
   Truck,
 } from 'lucide-react';
@@ -78,45 +77,51 @@ export const ACCOUNT_NAV: NavGroup[] = [
 ];
 
 // Grouped by work area, not by which API resource backs the screen --
-// "Field logs" and "Onboarding" read the way Rhea talks about her day,
+// "Field logs" reads the way Rhea talks about her day,
 // not the way the system is built ("OCR Tool", "Registration").
 export const APP_NAV: NavGroup[] = [
   {
     title: 'Dispatch',
     items: [
       { label: 'Dashboard', to: '/app', icon: LayoutDashboard, exact: true },
+      { label: 'Bookings', to: '/app/bookings', icon: ShoppingCart },
+      { label: 'Quotes', to: '/app/quotes', icon: FileText },
+      { label: 'Truck service', to: '/app/trucks', icon: Truck },
+      { label: 'Field logs', to: '/app/ocr', icon: ClipboardList },
       { label: 'Sites and deployment', to: '/app/deployment', icon: MapPin },
     ],
   },
   {
-    title: 'Fleet',
-    items: [{ label: 'Equipment', to: '/app/inventory', icon: Boxes }],
-  },
-  {
     title: 'Billing',
     items: [
-      { label: 'Field logs', to: '/app/ocr', icon: ClipboardList },
-      { label: 'Bookings', to: '/app/bookings', icon: ShoppingCart },
-      { label: 'Quotes', to: '/app/quotes', icon: FileText },
       { label: 'Invoices', to: '/app/payments', icon: Receipt },
       { label: 'Weekly billing', to: '/app/billing/weekly', icon: CalendarRange },
       { label: 'Reports', to: '/app/insights', icon: TrendingUp },
+    ],
+  },
+  {
+    title: 'Fleet',
+    items: [
+      { label: 'Equipment and maintenance', to: '/app/inventory', icon: Boxes },
       { label: 'Incident log', to: '/app/incidents', icon: ShieldAlert },
+    ],
+  },
+  {
+    title: 'Customers',
+    items: [
+      { label: 'Registration pending', to: '/app/registration/pending', icon: ClipboardList },
+      { label: 'Registration verified', to: '/app/registration/verified', icon: ShieldAlert },
     ],
   },
   {
     title: 'Administration',
     items: [
+      { label: 'Rate cards', to: '/app/settings', icon: Settings },
+      { label: 'People', to: '/app/users', icon: Users },
       { label: 'Notifications', to: '/app/notifications', icon: Bell },
       { label: 'My profile', to: '/app/profile', icon: UserCircle },
-      { label: 'People', to: '/app/users', icon: Users },
       { label: 'Tickets', to: '/app/tickets', icon: ClipboardList },
       { label: 'Security logs', to: '/app/security-logs', icon: ShieldAlert },
-      { label: 'Rate cards', to: '/app/settings', icon: Settings },
-      { label: 'Truck service', to: '/app/trucks', icon: Truck },
-      { label: 'Onboarding', to: '/app/registration', icon: UserPlus },
-      { label: 'Registration pending', to: '/app/registration/pending', icon: ClipboardList },
-      { label: 'Registration verified', to: '/app/registration/verified', icon: ShieldAlert },
     ],
   },
 ];

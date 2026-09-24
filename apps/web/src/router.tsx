@@ -55,7 +55,6 @@ import { appTrucksRoute } from './routes/app.trucks.js';
 import { quotesRoute } from './routes/quotes.js';
 import { edtrRoute } from './routes/edtr.js';
 import { appOcrDeploymentsRoute, fieldScanRoute } from './routes/app.ocr.deployments.js';
-import { kycRoute } from './routes/kyc.js';
 import {
   appCompaniesPendingRoute,
   appCompaniesApprovedRoute,
@@ -64,7 +63,6 @@ import {
 import {
   appRegistrationPendingRoute,
   appRegistrationVerifiedRoute,
-  appRegistrationReviewRoute,
 } from './routes/app.registration.queues.js';
 
 import { fieldLayoutRoute } from './routes/_field.js';
@@ -143,10 +141,8 @@ export const routeTree = rootRoute.addChildren([
     quotesRoute,
     edtrRoute,
     appOcrDeploymentsRoute,
-    kycRoute,
     appRegistrationPendingRoute,
     appRegistrationVerifiedRoute,
-    appRegistrationReviewRoute,
     appCompaniesPendingRoute,
     appCompaniesApprovedRoute,
     appCompanyApplicationRoute,

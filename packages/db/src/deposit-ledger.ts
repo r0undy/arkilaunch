@@ -1,17 +1,33 @@
-import { and, desc, eq } from 'drizzle-orm';
-import { invoices } from './schema/billing.js';
-import { quotations, rentalContracts } from './schema/rentals.js';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { billingSettings, depositAccruals, invoiceLineItems, invoices } from './schema/billing.js';
+import { quotationItems, quotations, rentalContracts } from './schema/rentals.js';
 import { db } from './client.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-// The deposit a booking-originated rental actually collects at checkout
-// when there is no quotation/rental_contracts chain to read a configured
-// deposit_required from. Defined here rather than in payments.service.ts
-// so the side that CHARGES it and the side that DEDUCTS against it cannot
-// drift apart: a deduction must never exceed the deposit really held
-// (audit-ocr-money-path.md #5).
+// Default for billing_settings.min_deposit_php when a tenant never set one.
+// The tenant setting (getBillingSettings) is what checkout charges and what
+// a deduction measures against when a rental has no contract; both sides
+// read it through here so they cannot drift (audit-ocr-money-path.md #5).
+// ponytail: a no-contract rental reads the CURRENT setting, not the amount
+// charged at its checkout; store it on the rental if tenants change it often.
 export const DEFAULT_DEPOSIT_PHP = 5000;
+
+export interface BillingSettings {
+  dailyHours: number;
+  minDepositPhp: number;
+  lowBalancePct: number;
+}
+
+// The tenant's billing knobs; the 0038 column defaults when never set.
+export async function getBillingSettings(tx: Tx, tenantId: string): Promise<BillingSettings> {
+  const [row] = await tx.select().from(billingSettings).where(eq(billingSettings.tenantId, tenantId)).limit(1);
+  return {
+    dailyHours: row ? Number(row.dailyHours) : 8,
+    minDepositPhp: row ? Number(row.minDepositPhp) : DEFAULT_DEPOSIT_PHP,
+    lowBalancePct: row ? Number(row.lowBalancePct) : 20,
+  };
+}
 
 export interface DepositDeduction {
   invoiceId: string;
@@ -20,22 +36,43 @@ export interface DepositDeduction {
 }
 
 export interface DepositLedger {
-  // null when this rental has no quotation/rental_contracts chain (e.g. a
-  // booking created directly via bookings.service.ts, which never quotes) --
-  // there is no configured cap to measure a balance against, not a zero
-  // deposit. See payments.service.ts's DEFAULT_DEPOSIT_PHP for the same gap
-  // on the checkout side.
-  depositRequired: number | null;
+  // The rental's contract deposit_required, else the tenant's minimum
+  // deposit (what checkout charged when there was no quote chain).
+  depositRequired: number;
   deductions: DepositDeduction[];
   totalDeducted: number;
+  // Reconciled work billed past the balance (deposit_accruals).
+  totalAccrued: number;
+  unbilledAccrued: number;
+  // Billed hours (deduction lines + accruals) vs the quote's hours.
+  hoursUsed: number;
+  hoursOrdered: number | null;
 }
 
-// Resolves a rental's configured deposit (rentals -> quotations ->
-// rental_contracts, latest of each) and its deposit_deduction invoice
-// history. Shared by edtr.service.ts's approve gate and billing.service.ts's
-// ledger read so the two can never compute a different "remaining deposit"
-// for the same rental.
-export async function resolveDepositLedger(tx: Tx, rentalId: string): Promise<DepositLedger> {
+const cents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+// Rollover: what an approved charge takes from the deposit, and what
+// overflows into an unbilled accrual for the weekly invoice. Never throws:
+// the gate that matters (reconciled or human-approved, RFC-2) ran before.
+export function splitDeduction(balanceBefore: number, amount: number) {
+  const available = Math.max(0, cents(balanceBefore));
+  const deducted = Math.min(available, cents(amount));
+  return { deducted, accrued: cents(amount - deducted), balanceAfter: cents(available - deducted) };
+}
+
+// True only on the charge that takes the balance to or under pct% of the
+// deposit, so each rental warns once, not on every later log.
+export function crossesLowBalance(depositRequired: number, before: number, after: number, pct: number): boolean {
+  const threshold = (depositRequired * pct) / 100;
+  return depositRequired > 0 && before > threshold && after <= threshold;
+}
+
+// Resolves a rental's deposit (rentals -> quotations -> rental_contracts,
+// latest of each; else the tenant minimum), its deposit_deduction history
+// and its accruals. Shared by edtr.service.ts's approve and
+// billing.service.ts's ledger read so the two can never compute a
+// different "remaining deposit" for the same rental.
+export async function resolveDepositLedger(tx: Tx, rentalId: string, tenantId: string): Promise<DepositLedger> {
   const [quotation] = await tx
     .select()
     .from(quotations)
@@ -44,6 +81,7 @@ export async function resolveDepositLedger(tx: Tx, rentalId: string): Promise<De
     .limit(1);
 
   let depositRequired: number | null = null;
+  let hoursOrdered: number | null = null;
   if (quotation) {
     const [contract] = await tx
       .select()
@@ -52,7 +90,13 @@ export async function resolveDepositLedger(tx: Tx, rentalId: string): Promise<De
       .orderBy(desc(rentalContracts.createdAt))
       .limit(1);
     if (contract) depositRequired = Number(contract.depositRequired);
+    const [ordered] = await tx
+      .select({ hours: sql<string | null>`sum(${quotationItems.estimatedHours} * ${quotationItems.quantity})` })
+      .from(quotationItems)
+      .where(eq(quotationItems.quotationId, quotation.id));
+    hoursOrdered = ordered?.hours != null ? Number(ordered.hours) : null;
   }
+  if (depositRequired === null) depositRequired = (await getBillingSettings(tx, tenantId)).minDepositPhp;
 
   const deductionRows = await tx
     .select()
@@ -67,5 +111,18 @@ export async function resolveDepositLedger(tx: Tx, rentalId: string): Promise<De
   }));
   const totalDeducted = deductions.reduce((sum, deduction) => sum + deduction.amount, 0);
 
-  return { depositRequired, deductions, totalDeducted };
+  const deductionHours = deductionRows.length
+    ? await tx
+        .select({ hours: sql<string | null>`sum(${invoiceLineItems.quantity})` })
+        .from(invoiceLineItems)
+        .where(inArray(invoiceLineItems.invoiceId, deductionRows.map((row) => row.id)))
+    : [];
+  const accruals = await tx.select().from(depositAccruals).where(eq(depositAccruals.rentalId, rentalId));
+  const totalAccrued = cents(accruals.reduce((sum, row) => sum + Number(row.amount), 0));
+  const unbilledAccrued = cents(accruals.filter((row) => !row.invoiceId).reduce((sum, row) => sum + Number(row.amount), 0));
+  const hoursUsed = cents(
+    Number(deductionHours[0]?.hours ?? 0) + accruals.reduce((sum, row) => sum + Number(row.hours), 0),
+  );
+
+  return { depositRequired, deductions, totalDeducted, totalAccrued, unbilledAccrued, hoursUsed, hoursOrdered };
 }

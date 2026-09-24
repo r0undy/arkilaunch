@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { customers, db } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
@@ -20,4 +21,13 @@ export async function ownCustomers(tx: Tx, ctx: RequestContext) {
 export async function ownsCustomer(tx: Tx, ctx: RequestContext, customerId: string | null): Promise<boolean> {
   if (!customerId) return false;
   return (await ownCustomers(tx, ctx)).some((row) => row.id === customerId);
+}
+
+// Only an approved company can book or be quoted, not just check out.
+// Same 409 body as PaymentsService.checkout().
+export async function requireVerifiedCompany(tx: Tx, customerId: string): Promise<void> {
+  const [company] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
+  if (company?.kycStatus !== 'approved') {
+    throw new ConflictException({ error: 'company_not_verified', status: company?.kycStatus ?? null });
+  }
 }

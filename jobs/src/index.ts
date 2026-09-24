@@ -5,3 +5,4 @@ export { runEdtrOcrWorker } from './edtr-ocr-worker.js';
 export { runWeatherPoll } from './weather-poll.js';
 export { runMaintenanceNotify } from './maintenance-notify.js';
 
+export { runWeeklyBilling } from './weekly-billing.js';

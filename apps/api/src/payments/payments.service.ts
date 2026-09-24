@@ -1,9 +1,9 @@
 import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, gte } from 'drizzle-orm';
 import {
-  DEFAULT_DEPOSIT_PHP,
   customers,
   findTenantByInvoiceIdForWebhook,
+  getBillingSettings,
   invoiceLineItems,
   invoices,
   payments,
@@ -20,7 +20,7 @@ import {
   type RequestContext,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
-import { notifyBookingCustomer } from '../common/notify-customer.js';
+import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { ownsCustomer } from '../common/customer-scope.js';
 import { verifyPaymongoSignature } from './signature.js';
 import { PAYMENTS_PORT } from './payments.tokens.js';
@@ -70,6 +70,8 @@ export class PaymentsService {
       if (company?.kycStatus !== 'approved') {
         throw new ConflictException({ error: 'company_not_verified', status: company?.kycStatus ?? null });
       }
+      // Callback before payment: staff confirm the booking by phone first.
+      if (!rental.callConfirmedAt) throw new ConflictException({ error: 'call_not_confirmed' });
 
       // QAD-T31 (resource abuse / cost bomb): a rapid repeated burst of
       // checkout-session creation is throttled per tenant. Postgres-backed
@@ -103,7 +105,7 @@ export class PaymentsService {
         throw new ConflictException({ error: 'quote_not_accepted', status: quotation.status });
       }
 
-      let depositAmount = DEFAULT_DEPOSIT_PHP;
+      let depositAmount = (await getBillingSettings(tx, ctx.tenantId)).minDepositPhp;
       if (quotation) {
         const [contract] = await tx
           .select()
@@ -224,7 +226,11 @@ export class PaymentsService {
       .where(eq(invoices.id, invoiceId))
       .returning();
     if (invoice?.rentalId) {
-      await tx.update(rentals).set({ status: 'confirmed' }).where(eq(rentals.id, invoice.rentalId));
+      // Only the booking's own invoice confirms it; a weekly invoice is
+      // paid on a rental already under way.
+      if (invoice.invoiceType === 'booking' || invoice.invoiceType === 'deposit') {
+        await tx.update(rentals).set({ status: 'confirmed' }).where(eq(rentals.id, invoice.rentalId));
+      }
       await notifyBookingCustomer(tx, tenantId, invoice.rentalId, 'payment_received', { invoice_id: invoiceId });
     }
     if (invoice?.truckRequestId) {
@@ -246,6 +252,18 @@ export class PaymentsService {
       if (request.status === 'paid') throw new ConflictException({ error: 'already_paid' });
       if (request.status !== 'agreed' || request.agreedPricePhp === null) {
         throw new ConflictException({ error: 'price_not_agreed', status: request.status });
+      }
+      // Same gates as a booking: a verified company and a confirming call.
+      // A truck request has no customer_id, so the requester's companies
+      // are checked; any one approved is enough.
+      const companies = await tx.select().from(customers).where(eq(customers.userId, request.requestedBy));
+      if (!companies.some((c) => c.kycStatus === 'approved')) {
+        throw new ConflictException({ error: 'company_not_verified', status: companies[0]?.kycStatus ?? null });
+      }
+      if (!request.callConfirmedAt) throw new ConflictException({ error: 'call_not_confirmed' });
+      // Never above the locked cap without the customer's OK (approve-price).
+      if (request.capPhp !== null && Number(request.agreedPricePhp) > Number(request.capPhp)) {
+        throw new ConflictException({ error: 'over_cap', capPhp: Number(request.capPhp) });
       }
 
       let [invoice] = await tx
@@ -286,6 +304,39 @@ export class PaymentsService {
         invoiceId: invoice.id,
         method: body.method ?? 'checkout',
         amount: String(chargeAmount),
+        providerRef: session.id,
+        status: 'pending',
+      });
+      await this.events.emit(ctx, 'checkout_session_created', { invoice_id: invoice.id });
+      return { checkoutUrl: session.checkoutUrl, invoiceId: invoice.id };
+    });
+  }
+
+  // POST /me/invoices/:id/checkout: the customer pays a weekly invoice
+  // (reconciled hours past the deposit, jobs/src/weekly-billing.ts) by
+  // PayMongo or cash, same as a booking. The amount is the invoice's.
+  async checkoutInvoice(ctx: RequestContext, invoiceId: string, body: CheckoutRequest = {}) {
+    return withTenantTx(ctx, async (tx) => {
+      const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+      const [rental] = invoice?.rentalId
+        ? await tx.select().from(rentals).where(eq(rentals.id, invoice.rentalId)).limit(1)
+        : [];
+      if (!invoice || invoice.invoiceType !== 'weekly' || !rental || !(await ownsCustomer(tx, ctx, rental.customerId))) {
+        throw new NotFoundException({ error: 'invoice_not_found' });
+      }
+      if (invoice.status !== 'issued') throw new ConflictException({ error: 'invoice_not_payable', status: invoice.status });
+      const amount = Number(invoice.amount);
+      if (body.cash) return this.issueCash(tx, ctx, invoice.id, amount);
+
+      const session = await this.paymentsPort.createCheckoutSession(amount, invoice.id, {
+        label: 'Weekly equipment usage',
+        ...(body.method ? { methods: [body.method] } : {}),
+      });
+      await tx.insert(payments).values({
+        tenantId: ctx.tenantId,
+        invoiceId: invoice.id,
+        method: body.method ?? 'checkout',
+        amount: String(amount),
         providerRef: session.id,
         status: 'pending',
       });
@@ -387,6 +438,7 @@ export class PaymentsService {
             await tx.update(payments).set({ status: 'paid' }).where(eq(payments.id, existingPayment.id));
           }
           await this.settleInvoice(tx, lookup.tenantId, invoiceId);
+          await notifyStaff(tx, lookup.tenantId, 'payment_paid', { invoice_id: invoiceId });
           await this.events.emit(ctx, 'deposit_payment_confirmed', { invoice_id: invoiceId });
           break;
         }
@@ -399,6 +451,7 @@ export class PaymentsService {
           if (lookup.rentalId) {
             await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_failed', { invoice_id: invoiceId });
           }
+          await notifyStaff(tx, lookup.tenantId, 'payment_failed', { invoice_id: invoiceId });
           await this.events.emit(ctx, 'deposit_payment_failed', { invoice_id: invoiceId });
           break;
         }
@@ -424,6 +477,7 @@ export class PaymentsService {
         }
         case 'dispute.created': {
           await tx.update(invoices).set({ status: 'disputed' }).where(eq(invoices.id, invoiceId));
+          await notifyStaff(tx, lookup.tenantId, 'payment_disputed', { invoice_id: invoiceId });
           await this.events.emit(ctx, 'deposit_payment_disputed', { invoice_id: invoiceId });
           break;
         }

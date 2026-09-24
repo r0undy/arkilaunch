@@ -9,7 +9,9 @@ import {
   invoices,
   maintenanceLogs,
   maintenanceSchedules,
+  maintenanceWindows,
   payments,
+  tenantCalendar,
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
@@ -22,13 +24,20 @@ import type {
   FinancialReportResponse,
   MaintenanceDetailResponse,
   MaintenanceLogCreateRequest,
+  MaintenanceScheduleCreateRequest,
+  MaintenanceWindowCreateRequest,
+  AvailabilityQuery,
+  AvailabilityResponse,
+  TenantCalendar,
   RequestContext,
+  RuntimeCorrectionRequest,
   UtilizationQuery,
   UtilizationReportResponse,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { round2HalfUp } from '../quotes/pricing-engine.service.js';
 import { countRows } from '../common/count-rows.js';
+import { dayAvailability, readCalendar } from '../common/equipment-availability.js';
 
 // Documented simplification (same category as the deposit-ledger balance
 // tracking in edtr.service.ts): the utilization denominator is a standard
@@ -77,6 +86,7 @@ function toEquipmentResponse(row: typeof equipment.$inferSelect): EquipmentRespo
     engineType: row.engineType,
     fuelType: row.fuelType,
     notes: row.notes,
+    categoryNote: row.categoryNote,
     photoUrl: publicPhotoUrl(row.photoUri),
   };
 }
@@ -90,6 +100,7 @@ type EquipmentSpecFields = {
   engineType?: string | undefined;
   fuelType?: string | undefined;
   notes?: string | undefined;
+  categoryNote?: string | undefined;
 };
 
 function specFieldPatch(body: EquipmentSpecFields) {
@@ -104,6 +115,7 @@ function specFieldPatch(body: EquipmentSpecFields) {
     ...(body.engineType !== undefined ? { engineType: body.engineType } : {}),
     ...(body.fuelType !== undefined ? { fuelType: body.fuelType } : {}),
     ...(body.notes !== undefined ? { notes: body.notes } : {}),
+    ...(body.categoryNote !== undefined ? { categoryNote: body.categoryNote } : {}),
   };
 }
 
@@ -313,11 +325,22 @@ export class FleetService {
       if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
 
       const schedule = await this.currentSchedule(tx, equipmentId);
+      const schedules = await tx
+        .select()
+        .from(maintenanceSchedules)
+        .where(eq(maintenanceSchedules.equipmentId, equipmentId))
+        .orderBy(maintenanceSchedules.createdAt);
+      const runtime = Number(row.runtimeHours);
       const logs = await tx
         .select()
         .from(maintenanceLogs)
         .where(eq(maintenanceLogs.equipmentId, equipmentId))
         .orderBy(desc(maintenanceLogs.performedAt));
+      const windows = await tx
+        .select()
+        .from(maintenanceWindows)
+        .where(eq(maintenanceWindows.equipmentId, equipmentId))
+        .orderBy(maintenanceWindows.startsAt);
 
       return {
         schedule: schedule
@@ -326,8 +349,24 @@ export class FleetService {
               nextDue: schedule.nextDue !== null ? Number(schedule.nextDue) : null,
             }
           : null,
-        runtimeHours: Number(row.runtimeHours),
-        logs: logs.map((log) => ({ id: log.id, performedAt: log.performedAt, notes: log.notes })),
+        runtimeHours: runtime,
+        schedules: schedules.map((s) => ({
+          id: s.id,
+          task: s.task,
+          hoursInterval: Number(s.hoursInterval),
+          nextDue: s.nextDue !== null ? Number(s.nextDue) : null,
+          hoursSinceService:
+            s.nextDue !== null
+              ? round2HalfUp(runtime - (Number(s.nextDue) - Number(s.hoursInterval)))
+              : null,
+        })),
+        logs: logs.map((log) => ({
+          id: log.id,
+          performedAt: log.performedAt,
+          notes: log.notes,
+          scheduleId: log.scheduleId,
+        })),
+        windows: windows.map((w) => ({ id: w.id, startsAt: w.startsAt, endsAt: w.endsAt, notes: w.notes })),
       };
     });
   }
@@ -348,18 +387,37 @@ export class FleetService {
       const [row] = await tx.select().from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
       if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
 
+      // A named schedule must belong to this unit; RLS already scopes tenant.
+      const schedule = body.scheduleId
+        ? ((
+            await tx
+              .select()
+              .from(maintenanceSchedules)
+              .where(
+                and(
+                  eq(maintenanceSchedules.id, body.scheduleId),
+                  eq(maintenanceSchedules.equipmentId, equipmentId),
+                ),
+              )
+              .limit(1)
+          )[0] ?? null)
+        : await this.currentSchedule(tx, equipmentId);
+      if (body.scheduleId && !schedule) {
+        throw new NotFoundException({ error: 'maintenance_schedule_not_found' });
+      }
+
       const [created] = await tx
         .insert(maintenanceLogs)
         .values({
           tenantId: ctx.tenantId,
           equipmentId,
+          scheduleId: schedule?.id ?? null,
           performedAt: new Date(body.performedAt),
           notes: body.notes ?? null,
         })
         .returning();
       if (!created) throw new Error('maintenance_logs insert returned no row');
 
-      const schedule = await this.currentSchedule(tx, equipmentId);
       if (schedule) {
         const nextDue = round2HalfUp(Number(row.runtimeHours) + Number(schedule.hoursInterval));
         await tx
@@ -381,6 +439,153 @@ export class FleetService {
       });
 
       return { id: created.id, equipmentId, performedAt: created.performedAt };
+    });
+  }
+
+  // POST /api/v1/equipment/:id/maintenance-schedules. The first due point is
+  // one interval from the unit's current meter reading.
+  async createSchedule(
+    ctx: RequestContext,
+    equipmentId: string,
+    body: MaintenanceScheduleCreateRequest,
+  ) {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.select().from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
+      if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
+
+      const [created] = await tx
+        .insert(maintenanceSchedules)
+        .values({
+          tenantId: ctx.tenantId,
+          equipmentId,
+          task: body.task,
+          hoursInterval: String(body.hoursInterval),
+          nextDue: String(round2HalfUp(Number(row.runtimeHours) + body.hoursInterval)),
+        })
+        .returning();
+      if (!created) throw new Error('maintenance_schedules insert returned no row');
+
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'CREATE',
+        entity: 'maintenance_schedules',
+        entityId: created.id,
+      });
+      return { id: created.id, task: created.task, hoursInterval: body.hoursInterval };
+    });
+  }
+
+  // POST /equipment/:id/maintenance-windows.
+  async createMaintenanceWindow(ctx: RequestContext, equipmentId: string, body: MaintenanceWindowCreateRequest) {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.select().from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
+      if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
+      const [created] = await tx
+        .insert(maintenanceWindows)
+        .values({
+          tenantId: ctx.tenantId,
+          equipmentId,
+          startsAt: new Date(body.startsAt),
+          endsAt: new Date(body.endsAt),
+          notes: body.notes || null,
+        })
+        .returning();
+      if (!created) throw new Error('maintenance_windows insert returned no row');
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'CREATE',
+        entity: 'maintenance_windows',
+        entityId: created.id,
+      });
+      return { id: created.id };
+    });
+  }
+
+  // DELETE /equipment/:id/maintenance-windows/:windowId.
+  async deleteMaintenanceWindow(ctx: RequestContext, equipmentId: string, windowId: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const [deleted] = await tx
+        .delete(maintenanceWindows)
+        .where(and(eq(maintenanceWindows.id, windowId), eq(maintenanceWindows.equipmentId, equipmentId)))
+        .returning();
+      if (!deleted) throw new NotFoundException({ error: 'maintenance_window_not_found' });
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'DELETE',
+        entity: 'maintenance_windows',
+        entityId: windowId,
+      });
+      return { id: windowId };
+    });
+  }
+
+  // GET /equipment/:id/availability?from&to. Per-day free/taken for the
+  // booking pickers; POST /bookings re-checks at write time.
+  async availability(ctx: RequestContext, equipmentId: string, query: AvailabilityQuery): Promise<AvailabilityResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.select({ id: equipment.id }).from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
+      if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
+      return dayAvailability(tx, equipmentId, query.from, query.to);
+    });
+  }
+
+  // GET/PUT /tenant-calendar: business hours + holidays/blackouts.
+  getCalendar(ctx: RequestContext): Promise<TenantCalendar | null> {
+    return withTenantTx(ctx, (tx) => readCalendar(tx));
+  }
+
+  async saveCalendar(ctx: RequestContext, body: TenantCalendar): Promise<TenantCalendar> {
+    const values = { ...body, updatedAt: new Date() };
+    await withTenantTx(ctx, async (tx) => {
+      await tx
+        .insert(tenantCalendar)
+        .values({ tenantId: ctx.tenantId, ...values })
+        .onConflictDoUpdate({ target: tenantCalendar.tenantId, set: values });
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'tenant_calendar',
+        entityId: ctx.tenantId,
+      });
+    });
+    return body;
+  }
+
+  // PATCH /api/v1/equipment/:id/runtime. Manual hour-meter correction, the
+  // second hour source beside approved field logs. The reason is kept on the
+  // append-only audit row.
+  async correctRuntime(ctx: RequestContext, equipmentId: string, body: RuntimeCorrectionRequest) {
+    return withTenantTx(ctx, async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(equipment)
+        .where(eq(equipment.id, equipmentId))
+        .limit(1);
+      if (!existing) throw new NotFoundException({ error: 'equipment_not_found' });
+      if (existing.retiredAt) {
+        throw new ConflictException({ error: 'equipment_retired', equipmentId });
+      }
+
+      const [updated] = await tx
+        .update(equipment)
+        .set({ runtimeHours: String(round2HalfUp(body.runtimeHours)) })
+        .where(eq(equipment.id, equipmentId))
+        .returning();
+      if (!updated) throw new Error('equipment update returned no row');
+
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'equipment_runtime',
+        entityId: equipmentId,
+        reason: `${Number(existing.runtimeHours)} -> ${body.runtimeHours}: ${body.reason}`,
+      });
+      return toEquipmentResponse(updated);
     });
   }
 
@@ -409,12 +614,15 @@ export class FleetService {
           and(eq(edtr.status, 'reconciled'), gte(edtr.reportDate, from), lte(edtr.reportDate, to)),
         );
 
-      const scheduleByEquipment = new Map<string, (typeof scheduleRows)[number]>();
-      for (const schedule of scheduleRows) {
-        const current = scheduleByEquipment.get(schedule.equipmentId);
-        if (!current || schedule.createdAt > current.createdAt)
-          scheduleByEquipment.set(schedule.equipmentId, schedule);
-      }
+      const runtimeById = new Map(equipmentRows.map((row) => [row.id, Number(row.runtimeHours)]));
+      // Due when ANY task schedule is crossed, not just the newest one.
+      const dueEquipment = new Set(
+        scheduleRows
+          .filter(
+            (s) => s.nextDue !== null && (runtimeById.get(s.equipmentId) ?? 0) >= Number(s.nextDue),
+          )
+          .map((s) => s.equipmentId),
+      );
 
       const activeHoursByEquipment = new Map<string, number>();
       for (const row of hoursRows) {
@@ -428,9 +636,7 @@ export class FleetService {
 
       const fleet = equipmentRows.map((row) => {
         const periodActiveHours = activeHoursByEquipment.get(row.id) ?? 0;
-        const schedule = scheduleByEquipment.get(row.id);
-        const maintenanceDue =
-          schedule?.nextDue != null ? Number(row.runtimeHours) >= Number(schedule.nextDue) : false;
+        const maintenanceDue = dueEquipment.has(row.id);
         return {
           equipmentId: row.id,
           runtimeHours: round2HalfUp(Number(row.runtimeHours)),
@@ -510,8 +716,11 @@ export class FleetService {
     equipmentId: string,
     runtimeHours: string,
   ): Promise<boolean> {
-    const schedule = await this.currentSchedule(tx, equipmentId);
-    if (!schedule || schedule.nextDue === null) return false;
-    return Number(runtimeHours) >= Number(schedule.nextDue);
+    // Any task past due blocks deployment, not just the newest schedule.
+    const schedules = await tx
+      .select({ nextDue: maintenanceSchedules.nextDue })
+      .from(maintenanceSchedules)
+      .where(eq(maintenanceSchedules.equipmentId, equipmentId));
+    return schedules.some((s) => s.nextDue !== null && Number(runtimeHours) >= Number(s.nextDue));
   }
 }
