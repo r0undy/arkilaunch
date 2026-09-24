@@ -43,6 +43,8 @@ function booking(overrides: Partial<BookingDetailResponse> = {}): BookingDetailR
     customerId: '33333333-3333-4333-8333-333333333333',
     siteContact: null,
     siteNotes: null,
+    callRequestedAt: null,
+    callConfirmedAt: null,
     createdAt: new Date('2026-09-01T00:00:00Z'),
     items: [
       {

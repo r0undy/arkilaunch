@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BookingDetailResponse, BookingSummaryResponse, RescheduleSuggestion } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { bookingsQueries } from '../lib/queries.js';
-import { apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
+import { apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
@@ -144,10 +144,42 @@ function RescheduleCard({ bookingId }: { bookingId: string }) {
   );
 }
 
+// Checkout stays closed until staff have phoned the customer.
+function CallCard({ booking }: { booking: BookingDetailResponse }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const confirm = useMutation({
+    mutationFn: () => apiPost(`/bookings/${booking.id}/call-confirmed`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: bookingsQueries.detail(booking.id).queryKey });
+      toast.success('Confirmed by phone', 'The customer can now pay.');
+    },
+    onError: (e) => toast.error('Not saved', apiErrorText(e)),
+  });
+  return (
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
+      <h2 className={heading}>Phone confirmation</h2>
+      <p className="text-sm text-text-muted">
+        {booking.callConfirmedAt
+          ? `Confirmed ${formatDate(booking.callConfirmedAt)}.`
+          : booking.callRequestedAt
+            ? 'The customer asked for a call.'
+            : 'Call the customer before they pay.'}
+      </p>
+      {!booking.callConfirmedAt && booking.status !== 'cancelled' && (
+        <Button variant="secondary" loading={confirm.isPending} onClick={() => confirm.mutate()}>
+          Confirmed by phone
+        </Button>
+      )}
+    </Surface>
+  );
+}
+
 function BookingSide({ booking }: { booking: BookingDetailResponse }) {
   const quote = booking.quotation;
   return (
     <div className="flex min-w-0 flex-col gap-4">
+      <CallCard booking={booking} />
       <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
         <h2 className={heading}>Quote</h2>
         {quote ? (

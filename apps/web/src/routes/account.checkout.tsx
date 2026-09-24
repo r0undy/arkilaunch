@@ -1,6 +1,6 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BookingDetailResponse, CheckoutMethod } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, companiesQueries } from '../lib/queries.js';
@@ -100,6 +100,7 @@ function checkoutError(err: unknown): string {
     if (code === 'quote_not_accepted') return 'Accept the quote on the negotiation page before paying.';
     if (code === 'company_not_verified') return 'Your company is still being verified. Payment opens once it is.';
     if (code === 'already_paid') return 'This booking is already paid. The receipt is on the booking page.';
+    if (code === 'call_not_confirmed') return 'The rental team confirms every booking by phone first. Request a call above.';
     if (code === 'rate_limited') return 'Too many payment attempts just now. Wait a minute and try again.';
   }
   return apiErrorText(err);
@@ -134,6 +135,12 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
     },
   });
 
+  const queryClient = useQueryClient();
+  const requestCall = useMutation({
+    mutationFn: () => apiPost(`/bookings/${booking.id}/request-call`, {}),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: bookingsQueries.detail(booking.id).queryKey }),
+  });
+
   const companies = useQuery(companiesQueries.mine());
   const company = companies.data?.find((c) => c.id === booking.customerId);
   if (company && company.kycStatus !== 'approved') {
@@ -163,6 +170,24 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
           <Link to="/account/negotiation/$bookingId" params={{ bookingId: booking.id }}>
             <Button variant="primary">Go to negotiation</Button>
           </Link>
+        }
+      />
+    );
+  }
+
+  if (!booking.callConfirmedAt) {
+    return (
+      <EmptyState
+        title={booking.callRequestedAt ? 'Call requested' : 'Confirm by phone first'}
+        description={
+          booking.callRequestedAt
+            ? 'The rental team will ring you to confirm this booking. Payment opens once they have.'
+            : 'The rental team confirms every booking by phone before you pay. Ask them to call you.'
+        }
+        action={
+          <Button variant="primary" loading={requestCall.isPending} onClick={() => requestCall.mutate()}>
+            {booking.callRequestedAt ? 'Request call again' : 'Request call'}
+          </Button>
         }
       />
     );

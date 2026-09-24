@@ -57,7 +57,7 @@ describe('Truck checkout gates', () => {
     const staffFeed = await withTenantTx(adminCtx, (tx) =>
       tx.select().from(notifications).where(eq(notifications.userId, adminCtx.userId)),
     );
-    expect(staffFeed.some((n) => n.notificationType === 'call_requested' && n.payload.truck_request_id === id)).toBe(true);
+    expect(staffFeed.some((n) => n.notificationType === 'call_requested' && (n.payload as { truck_request_id?: string }).truck_request_id === id)).toBe(true);
     await trucks.confirmCall(adminCtx, id);
 
     await expect(payments.checkoutTruck(customerCtx, id, { cash: true })).rejects.toMatchObject({

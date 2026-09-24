@@ -99,6 +99,21 @@ export function describeNotification(type: string, payload: unknown): Described 
           action: { label: 'View company', to: '/account/companies', params: {} },
         };
   }
+  if (type === 'truck_requested' || (type === 'call_requested' && typeof p.truck_request_id === 'string')) {
+    return {
+      title: type === 'truck_requested' ? 'New truck request' : 'Call requested',
+      body: type === 'truck_requested' ? 'A customer requested a self-loading truck.' : 'A customer asked for a call about their truck request.',
+      action: { label: 'Open trucks', to: '/app/trucks', params: {} },
+    };
+  }
+  if ((type === 'payment_paid' || type === 'payment_failed' || type === 'payment_disputed') && typeof p.rental_id !== 'string') {
+    const what = type === 'payment_paid' ? 'was paid' : type === 'payment_failed' ? 'failed' : 'is disputed';
+    return {
+      title: `Payment ${type.slice('payment_'.length)}`,
+      body: `An online payment ${what}.`,
+      action: { label: 'Open payments', to: '/app/payments', params: {} },
+    };
+  }
   const rentalId = typeof p.rental_id === 'string' ? p.rental_id : null;
   if (!rentalId) return null;
   const ref = shortCode('booking', rentalId);
@@ -153,6 +168,18 @@ export function describeNotification(type: string, payload: unknown): Described 
         title: 'Equipment returned',
         body: `The equipment for booking ${ref} is back with the rental team. Your hire is complete.`,
         action: { label: 'View booking', ...toBooking },
+      };
+    case 'call_requested':
+      return {
+        title: 'Call requested',
+        body: `The customer on booking ${ref} asked for a call before paying.`,
+        action: { label: 'Open booking', to: '/app/bookings/$bookingId', params: { bookingId: rentalId } },
+      };
+    case 'call_confirmed':
+      return {
+        title: 'Booking confirmed by phone',
+        body: `Booking ${ref} is confirmed. You can pay for it now.`,
+        action: { label: 'Pay now', to: '/account/checkout/$bookingId', params: { bookingId: rentalId } },
       };
     case 'booking_cancelled':
       return {
