@@ -35,7 +35,42 @@ export type KycConfirmRequest = z.infer<typeof KycConfirmRequestSchema>;
 // CLR-level confirmation against current SEC issuance conventions) --
 // flagged rather than asserted as authoritative.
 export const TIN_REGEX = /^\d{3}-\d{3}-\d{3}(-\d{3})?$/;
-export const SEC_REGEX = /^[A-Za-z0-9-]{7,15}$/;
+// SEC registration numbers as issued over the years: a letter prefix
+// (A, AS, CS, CN, PG, ...) plus digits, optionally with a dash after the
+// year digits (AS094-008814), or the eSPARC-era all-digit number with an
+// optional -00 suffix (2021060012345-00).
+// ponytail: prefix list is not exhaustive; widen only on a real rejected cert.
+export const SEC_REGEX = /^(?:[A-Z]{1,3}\d{3}-?\d{4,9}|\d{10,13}(?:-\d{2})?)$/i;
+// DTI Business Name registration number (BNRS certificate "Business Name
+// No."), 6-10 digits, sometimes printed with a BN prefix.
+// ponytail: checked against the BNRS sample layout only; tighten on real certs.
+export const DTI_REGEX = /^(?:BN-?)?\d{6,10}$/i;
+// PhilSys Card Number (PCN), the 16 digits printed on the National ID.
+export const PHILSYS_PCN_REGEX = /^\d{4}-\d{4}-\d{4}-\d{4}$/;
+
+// OCR and people both type these with spaces, no dashes or stray dashes.
+// When the digit count matches, re-dash into the canonical groups; otherwise
+// return the trimmed input untouched so the format check reports it.
+function regroupDigits(value: string, groupings: number[][]): string {
+  const digits = value.replace(/\D/g, '');
+  const groups = groupings.find((g) => g.reduce((a, b) => a + b, 0) === digits.length);
+  if (!groups) return value.trim();
+  let at = 0;
+  return groups.map((n) => digits.slice(at, (at += n))).join('-');
+}
+export const normalizeTin = (value: string) => regroupDigits(value, [[3, 3, 3], [3, 3, 3, 3]]);
+export const normalizePcn = (value: string) => regroupDigits(value, [[4, 4, 4, 4]]);
+
+// The public registries an admin checks a parsed number against. None of
+// them take the number in the URL (BIR's ORUS is CAPTCHA-gated by design),
+// so the review card copies the value and opens the page for a human paste.
+export const REGISTRY_LINKS = {
+  sec_certificate: { registry: 'SEC', url: 'https://checkwithsec.sec.gov.ph/check-with-sec/index' },
+  bir_cor: { registry: 'BIR', url: 'https://orus.bir.gov.ph/search/tinverification' },
+  dti_certificate: { registry: 'DTI', url: 'https://bnrs.dti.gov.ph/search' },
+} as const;
+export type RegistryDocumentType = keyof typeof REGISTRY_LINKS;
+export const REGISTRY_DOCUMENT_TYPES = Object.keys(REGISTRY_LINKS) as RegistryDocumentType[];
 
 export type MatchBand = 'mismatch' | 'confirm_manually' | 'strong';
 
