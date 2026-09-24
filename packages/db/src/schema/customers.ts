@@ -20,6 +20,11 @@ export const customers = pgTable(
     secNumber: text('sec_number'),
     billingAddress: text('billing_address'),
     kycStatus: text('kyc_status').notNull().default('pending'), // pending, approved, rejected
+    // A reviewer's note to the customer on a pending company, and the fields
+    // and document types it unlocks for them to fix. Everything else stays
+    // read-only while the company waits for review.
+    reviewComment: text('review_comment'),
+    unlockedFields: jsonb('unlocked_fields').$type<string[]>().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [tenantIsolationPolicy(),
@@ -105,7 +110,7 @@ export const kycDocuments = pgTable(
     fileUri: text('file_uri').notNull(), // Supabase Storage pointer, signed-URL access only
     ocrPayload: jsonb('ocr_payload'),
     confidence: numeric('confidence', { precision: 5, scale: 4 }),
-    status: text('status').notNull().default('pending'), // pending, resubmit_required, needs_review, verified, rejected
+    status: text('status').notNull().default('pending'), // pending, needs_review, verified, rejected, superseded (replaced by a re-upload); legacy resubmit_required reads as pending
     // RFC-2 §2: worker claim/lock/retry bookkeeping, same shape as edtr.
     attempts: integer('attempts').notNull().default(0),
     lockedAt: timestamp('locked_at', { withTimezone: true }),

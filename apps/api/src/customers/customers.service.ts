@@ -6,7 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import {
   addresses,
   auditLogs,
@@ -22,6 +22,7 @@ import {
 import {
   DTI_REGEX,
   ExtractionUnavailableError,
+  hasRequiredCompanyDocuments,
   normalizePcn,
   normalizeTin,
   PHILSYS_PCN_REGEX,
@@ -30,6 +31,7 @@ import {
   TIN_REGEX,
   type CompanyDocumentReadResponse,
   type CompanyDocumentUpload,
+  type CompanyReviewComment,
   type CompanyReviewResponse,
   type DocumentIntelligencePort,
   type KycScanResponse,
@@ -308,10 +310,11 @@ export class CustomersService {
     });
   }
 
-  // PATCH /me/companies/:id. The billing address is always the customer's to
-  // keep current. TIN and SEC number are what staff verified, so they are
-  // frozen once the company is approved -- editing them would silently void
-  // the check.
+  // PATCH /me/companies/:id. TIN and SEC number are what staff verified, so
+  // they are frozen once the company is approved -- editing them would
+  // silently void the check. While a submitted company waits for review it
+  // is read-only except what the reviewer unlocked (comment()); saving an
+  // unlocked field hands it back, locked again.
   async updateCompany(ctx: RequestContext, id: string, body: CompanyUpdate): Promise<CompanyResponse> {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
@@ -320,7 +323,16 @@ export class CustomersService {
       if (!current) throw new NotFoundException({ error: 'company_not_found' });
       if (current.kycStatus === 'approved' && (body.tin !== undefined || body.secNumber !== undefined))
         throw new ConflictException({ error: 'company_verified_fields_locked' });
-      if (Object.keys(body).length > 0) await tx.update(customers).set(body).where(eq(customers.id, id));
+      const keys = Object.keys(body);
+      if (current.kycStatus === 'pending' && hasRequiredCompanyDocuments(await liveDocuments(tx, id))) {
+        const locked = keys.filter((key) => !current.unlockedFields.includes(key));
+        if (locked.length > 0) throw new ConflictException({ error: 'company_locked', fields: locked });
+      }
+      if (keys.length > 0)
+        await tx
+          .update(customers)
+          .set({ ...body, unlockedFields: current.unlockedFields.filter((f) => !keys.includes(f)) })
+          .where(eq(customers.id, id));
       const [row] = await tx.select().from(customers).where(eq(customers.id, id)).limit(1);
       return (await withDocuments(tx, [row!]))[0]!;
     });
@@ -333,13 +345,6 @@ export class CustomersService {
   private modelIdFor(documentType: string): string {
     return documentType === 'government_id' ? NATIONAL_ID_MODEL_ID : KYC_MODEL_ID;
   }
-
-  // The minimum confidence (matchBand()'s "mismatch" boundary,
-  // packages/shared/src/kyc.ts) a document needs to enter the staff queue
-  // unread, whichever type it is. Below it, the scan is illegible enough
-  // that a human reviewer would bounce it back anyway, so the customer is
-  // asked to reupload immediately instead of waiting in the queue.
-  private static readonly UPLOAD_CONFIDENCE_GATE = 0.85;
 
   // One OCR pass, whichever fields its model returns. The company model
   // yields company_name/tin/sec_number/dti_number, the National ID model the
@@ -411,13 +416,13 @@ export class CustomersService {
   }
 
   // The file is already validated and in storage (controller); this
-  // records it against a company the caller owns, then screens it with the
-  // same OCR pass a reviewer would later trigger manually. A legible
-  // document goes straight to 'needs_review' (staff queue); one the model
-  // can't read is bounced back to the customer as 'resubmit_required'
-  // rather than sitting in the queue for a human to reject the same way.
-  // This decides nothing about identity or company facts -- only
-  // legibility; verification stays decide()'s call (RFC-2's human gate).
+  // records it against a company the caller owns, then reads it with the
+  // same OCR pass a reviewer would later trigger manually, and it goes to
+  // the staff queue ('needs_review') however well it read. Nothing is
+  // bounced back automatically: a reviewer who cannot use it says so with
+  // comment(), which unlocks that document for a re-upload. A document type
+  // already on file is replaced only when unlocked; the old row is kept as
+  // 'superseded' evidence. Verification stays decide()'s call (RFC-2).
   async addDocument(
     ctx: RequestContext,
     customerId: string,
@@ -437,6 +442,26 @@ export class CustomersService {
     return withTenantTx(ctx, async (tx) => {
       if (!(await ownsCustomer(tx, ctx, customerId)))
         throw new NotFoundException({ error: 'company_not_found' });
+      const onFile = (await liveDocuments(tx, customerId)).some((d) => d.documentType === documentType);
+      if (onFile) {
+        const [company] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
+        if (!company?.unlockedFields.includes(documentType))
+          throw new ConflictException({ error: 'document_locked' });
+        await tx
+          .update(kycDocuments)
+          .set({ status: 'superseded' })
+          .where(
+            and(
+              eq(kycDocuments.customerId, customerId),
+              eq(kycDocuments.documentType, documentType),
+              ne(kycDocuments.status, 'superseded'),
+            ),
+          );
+        await tx
+          .update(customers)
+          .set({ unlockedFields: company.unlockedFields.filter((f) => f !== documentType) })
+          .where(eq(customers.id, customerId));
+      }
       const [row] = await tx
         .insert(kycDocuments)
         .values({
@@ -453,9 +478,7 @@ export class CustomersService {
       const read = await this.analyzeDocument(ctx, documentType, bytes);
       let status = row.status;
       if (read.extractionAvailable) {
-        const passed =
-          read.confidence === null || read.confidence >= CustomersService.UPLOAD_CONFIDENCE_GATE;
-        status = passed ? 'needs_review' : 'resubmit_required';
+        status = 'needs_review';
         await tx
           .update(kycDocuments)
           .set({
@@ -465,21 +488,6 @@ export class CustomersService {
             status,
           })
           .where(eq(kycDocuments.id, row.id));
-        if (!passed) {
-          const [customer] = await tx
-            .select()
-            .from(customers)
-            .where(eq(customers.id, customerId))
-            .limit(1);
-          if (customer?.userId) {
-            await tx.insert(notifications).values({
-              tenantId: ctx.tenantId,
-              userId: customer.userId,
-              notificationType: 'document_resubmit_required',
-              payload: { company_id: customerId, document_type: documentType },
-            });
-          }
-        }
       }
 
       return {
@@ -685,6 +693,39 @@ export class CustomersService {
     });
   }
 
+  // PATCH /customers/:id/review. The reviewer's note to the customer on a
+  // pending company, unlocking just the fields and documents it names. The
+  // status stays pending (only decide() moves it); the customer is told in
+  // their feed.
+  async comment(ctx: RequestContext, customerId: string, body: CompanyReviewComment) {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
+      if (!row) throw new NotFoundException({ error: 'company_not_found' });
+      if (row.kycStatus !== 'pending') throw new ConflictException({ error: 'already_decided' });
+      const unlockedFields = [...new Set(body.unlock)];
+      await tx
+        .update(customers)
+        .set({ reviewComment: body.comment, unlockedFields })
+        .where(eq(customers.id, customerId));
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'customers',
+        entityId: customerId,
+      });
+      if (row.userId) {
+        await tx.insert(notifications).values({
+          tenantId: ctx.tenantId,
+          userId: row.userId,
+          notificationType: 'company_review_comment',
+          payload: { company_id: customerId, company_name: row.companyName, comment: body.comment },
+        });
+      }
+      return { id: customerId, kycStatus: row.kycStatus, reviewComment: body.comment, unlockedFields };
+    });
+  }
+
   // Verification is a human decision on the uploaded ID and registration.
   // OCR never reaches this: a corrected value here was confirmed by the
   // reviewer with the document in front of them.
@@ -695,7 +736,7 @@ export class CustomersService {
       if (row.kycStatus === body.decision)
         throw new ConflictException({ error: 'already_decided' });
 
-      const docs = await tx.select().from(kycDocuments).where(eq(kycDocuments.customerId, customerId));
+      const docs = await liveDocuments(tx, customerId);
       // Every SEC, 2303 and DTI paper is checked on its public registry by a
       // human before approval: the reviewer ticks each one, and a missed
       // tick refuses the approval rather than silently verifying.
@@ -724,7 +765,7 @@ export class CustomersService {
           : {};
       await tx
         .update(customers)
-        .set({ kycStatus: body.decision, ...corrections })
+        .set({ kycStatus: body.decision, reviewComment: null, unlockedFields: [], ...corrections })
         .where(eq(customers.id, customerId));
       // The reviewer-confirmed legal name off the National ID lands on the
       // customer's own user account, not the company row -- it is the
@@ -765,7 +806,7 @@ export class CustomersService {
       await tx
         .update(kycDocuments)
         .set({ status: body.decision === 'approved' ? 'verified' : 'rejected' })
-        .where(eq(kycDocuments.customerId, customerId));
+        .where(and(eq(kycDocuments.customerId, customerId), ne(kycDocuments.status, 'superseded')));
       await tx.insert(auditLogs).values({
         tenantId: ctx.tenantId,
         actorId: ctx.userId,
@@ -803,6 +844,8 @@ function toCompany(
     secNumber: row.secNumber,
     billingAddress: row.billingAddress,
     kycStatus: row.kycStatus,
+    reviewComment: row.reviewComment,
+    unlockedFields: row.unlockedFields,
     firstName: name?.firstName ?? null,
     middleName: name?.middleName ?? null,
     lastName: name?.lastName ?? null,
@@ -837,9 +880,12 @@ async function withDocuments(
       .select()
       .from(kycDocuments)
       .where(
-        inArray(
-          kycDocuments.customerId,
-          rows.map((row) => row.id),
+        and(
+          inArray(
+            kycDocuments.customerId,
+            rows.map((row) => row.id),
+          ),
+          ne(kycDocuments.status, 'superseded'),
         ),
       )
       .orderBy(desc(kycDocuments.createdAt)),
@@ -852,11 +898,22 @@ async function withDocuments(
       .map((doc) => ({
         id: doc.id,
         documentType: doc.documentType,
-        status: doc.status,
+        // Documents are no longer bounced back; an old row still carrying
+        // that status reads as waiting like any other.
+        status: doc.status === 'resubmit_required' ? 'pending' : doc.status,
         createdAt: doc.createdAt,
         ...(withReads ? documentReads(doc) : {}),
       })),
   }));
+}
+
+// A company's current documents: a re-upload leaves the one it replaced
+// behind as 'superseded' evidence, which no longer counts.
+function liveDocuments(tx: Tx, customerId: string) {
+  return tx
+    .select()
+    .from(kycDocuments)
+    .where(and(eq(kycDocuments.customerId, customerId), ne(kycDocuments.status, 'superseded')));
 }
 
 // ocr_payload split for the reviewer: the OCR's own string values, and the

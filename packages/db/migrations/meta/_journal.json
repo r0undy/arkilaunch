@@ -239,6 +239,13 @@
       "when": 1790181779064,
       "tag": "0033_tenant_applications_approved",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790181780064,
+      "tag": "0034_company_review_unlock",
+      "breakpoints": true
     }
   ]
 }

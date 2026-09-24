@@ -727,59 +727,82 @@ describe('Customer onboarding', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('screens a National ID at upload time: legible reaches the queue, illegible is bounced back', async () => {
-      const legible = reviewer({
-        first_name: { value: 'JUAN', confidence: 0.95 },
-        middle_name: { value: 'MERCADO', confidence: 0.93 },
-        last_name: { value: 'DELA CRUZ', confidence: 0.96 },
-      });
-      const legibleCompany = await legible.createCompany(reviewCtx, {
-        companyName: 'Legible Scan Corp',
-        tin: '111-222-333',
-        billingAddress: '12 Yard Road, Cebu City',
-        contactMobile: '0917 000 0000',
-      });
-      const legibleDoc = await legible.addDocument(
-        reviewCtx,
-        legibleCompany.id,
-        'government_id',
-        `storage://fixtures/${randomUUID()}.jpg`,
-        bytes,
-      );
-      expect(legibleDoc.status).toBe('needs_review');
-
-      const illegible = reviewer({
-        first_name: { value: 'J', confidence: 0.4 },
-      });
-      const illegibleCompany = await illegible.createCompany(reviewCtx, {
+    it('queues every upload for review, however well it read: nothing is bounced back', async () => {
+      const illegible = reviewer({ first_name: { value: 'J', confidence: 0.4 } });
+      const company = await illegible.createCompany(reviewCtx, {
         companyName: 'Blurry Scan Corp',
         tin: '111-222-333',
         billingAddress: '12 Yard Road, Cebu City',
         contactMobile: '0917 000 0000',
       });
-      const illegibleDoc = await illegible.addDocument(
+      const doc = await illegible.addDocument(
         reviewCtx,
-        illegibleCompany.id,
+        company.id,
         'government_id',
         `storage://fixtures/${randomUUID()}.jpg`,
         bytes,
       );
-      expect(illegibleDoc.status).toBe('resubmit_required');
+      expect(doc.status).toBe('needs_review');
+    });
+
+    it('locks a submitted company until the reviewer unlocks a field, and keeps it pending', async () => {
+      const service = reviewer({ tin: { value: '111-222-333', confidence: 0.95 } });
+      const company = await service.createCompany(reviewCtx, {
+        companyName: 'Locked Corp',
+        tin: '111-222-333',
+        billingAddress: '12 Yard Road, Cebu City',
+        contactMobile: '0917 000 0000',
+      });
+      const upload = (type: string) =>
+        service.addDocument(reviewCtx, company.id, type, `storage://fixtures/${randomUUID()}.jpg`, bytes);
+      await upload('government_id');
+      await upload('bir_cor');
+
+      // Submitted: nothing is editable and nothing can be replaced.
+      await expect(service.updateCompany(reviewCtx, company.id, { tin: '111-222-444' })).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      await expect(upload('bir_cor')).rejects.toBeInstanceOf(ConflictException);
+
+      const commented = await service.comment(adminCtx, company.id, {
+        comment: 'The TIN is one digit off, and the 2303 is cut off.',
+        unlock: ['tin', 'bir_cor'],
+      });
+      expect(commented.kycStatus).toBe('pending');
+
+      // Only what was unlocked, once each.
+      await expect(
+        service.updateCompany(reviewCtx, company.id, { billingAddress: '1 Other St, Cebu City' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      const fixed = await service.updateCompany(reviewCtx, company.id, { tin: '111-222-444' });
+      expect(fixed.tin).toBe('111-222-444');
+      expect(fixed.kycStatus).toBe('pending');
+      expect(fixed.unlockedFields).toEqual(['bir_cor']);
+      await upload('bir_cor');
+      await expect(upload('bir_cor')).rejects.toBeInstanceOf(ConflictException);
+
+      // The replaced 2303 no longer counts; the queue shows one of each.
+      const [queued] = (await service.listForReview(adminCtx, 'pending')).filter((c) => c.id === company.id);
+      expect(queued?.documents.map((d) => d.documentType).sort()).toEqual(['bir_cor', 'government_id']);
+      expect(queued?.reviewComment).toBe('The TIN is one digit off, and the 2303 is cut off.');
+      expect(queued?.unlockedFields).toEqual([]);
 
       const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
       try {
         const [note] = await sql`
           select payload from notifications
-          where notification_type = 'document_resubmit_required'
-            and (payload->>'company_id') = ${illegibleCompany.id}
+          where notification_type = 'company_review_comment' and (payload->>'company_id') = ${company.id}
         `;
         expect(note).toBeDefined();
-        expect((note as { payload: { document_type: string } }).payload.document_type).toBe(
-          'government_id',
-        );
       } finally {
         await sql.end();
       }
+
+      // Approval only needs the live 2303 ticked, not the superseded one.
+      await service.decide(adminCtx, company.id, {
+        decision: 'approved',
+        registryChecked: queued!.documents.filter((d) => d.documentType === 'bir_cor').map((d) => d.id),
+      });
     });
 
     it('writes the reviewer-confirmed name onto the customer account only on approval', async () => {
