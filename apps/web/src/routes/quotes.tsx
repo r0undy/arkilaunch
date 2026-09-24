@@ -71,6 +71,7 @@ function QuotesPage() {
   const [estimatedHours, setEstimatedHours] = useState('8');
   const [mobilizationKm, setMobilizationKm] = useState('0');
   const [demobilizationKm, setDemobilizationKm] = useState('0');
+  const [agreedPrice, setAgreedPrice] = useState('');
   // A fixed peso discount is how staff meet a customer's counter-offer.
   const [discount, setDiscount] = useState('0');
 
@@ -132,6 +133,7 @@ function QuotesPage() {
           estimatedHours: Number(estimatedHours),
           mobilizationKm: Number(mobilizationKm),
           demobilizationKm: Number(demobilizationKm),
+          ...(agreedPrice ? { agreedSubtotalPhp: Number(agreedPrice) } : {}),
         },
       ],
     };
@@ -327,6 +329,16 @@ function QuotesPage() {
             type="number"
             value={demobilizationKm}
             onChange={(e) => setDemobilizationKm(e.target.value)}
+          />
+          <Input
+            numeric
+            id="agreedPrice"
+            label="Agreed line price (PHP, optional)"
+            type="number"
+            min="0"
+            step="0.01"
+            value={agreedPrice}
+            onChange={(e) => setAgreedPrice(e.target.value)}
           />
           <Input
             numeric
