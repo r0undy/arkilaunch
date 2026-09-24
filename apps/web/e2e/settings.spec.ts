@@ -19,11 +19,14 @@ test.describe('customer settings', () => {
     await page.reload();
     await expect(page.getByLabel('Mobile number')).toHaveValue('+63 917 000 1234');
 
-    // Picture: a real PNG, cut from the page itself.
-    const png = await page.screenshot({ clip: { x: 0, y: 0, width: 64, height: 64 } });
-    await page.locator('input[type=file]').setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: png });
-    await expect(page.getByText('Profile picture updated')).toBeVisible();
-    await expect(page.getByRole('img', { name: 'Your profile picture' })).toBeVisible();
+    // Picture: a real PNG, cut from the page itself. CI's console-e2e job has
+    // no storage behind the API (ci.yml), so the upload is checked locally only.
+    if (!process.env.CI) {
+      const png = await page.screenshot({ clip: { x: 0, y: 0, width: 64, height: 64 } });
+      await page.locator('input[type=file]').setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: png });
+      await expect(page.getByText('Profile picture updated')).toBeVisible();
+      await expect(page.getByRole('img', { name: 'Your profile picture' })).toBeVisible();
+    }
 
     await page.getByRole('tab', { name: 'Company' }).click();
     await expect(page.getByLabel('Billing address').first()).toBeVisible();
