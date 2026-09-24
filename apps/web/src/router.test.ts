@@ -62,7 +62,7 @@ describe('navigation targets resolve to registered routes', () => {
 // bolted on the end. It now gets its own short list, and _app.tsx sends it
 // home from any /app page that list does not reach.
 describe('platform admin console', () => {
-  const tenantOps = APP_NAV.filter((group) => ['Dispatch', 'Fleet', 'Billing'].includes(group.title))
+  const tenantOps = APP_NAV.filter((group) => ['Dispatch', 'Fleet', 'Billing', 'Customers'].includes(group.title))
     .flatMap((group) => group.items)
     .map((item) => item.to);
   const platformTargets = PLATFORM_ADMIN_NAV.flatMap((group) => group.items).map((item) => item.to);

@@ -15,6 +15,7 @@ import { CheckIcon, TruckIcon, WrenchIcon } from '../components/icons.js';
 import { Button } from '../components/button.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { EquipmentFormModal } from '../components/equipment-form-modal.js';
+import { MaintenanceModal } from '../components/maintenance-modal.js';
 import { useToast } from '../components/toast.js';
 import { apiDelete, apiErrorText } from '../lib/api-client.js';
 import { getCurrentRole } from '../lib/guards.js';
@@ -91,6 +92,7 @@ function InventoryPage() {
   const [offset, setOffset] = useState(0);
   // null = closed. 'create' = the add modal. An object = editing that unit.
   const [editing, setEditing] = useState<'create' | EquipmentResponse | null>(null);
+  const [servicing, setServicing] = useState<EquipmentResponse | null>(null);
   const manageable = canManageFleet();
 
   return (
@@ -154,6 +156,9 @@ function InventoryPage() {
                         <Button variant="secondary" onClick={() => setEditing(eq)}>
                           Edit
                         </Button>
+                        <Button variant="secondary" onClick={() => setServicing(eq)}>
+                          Maintenance
+                        </Button>
                         <RetireAction equipment={eq} />
                       </div>
                     )}
@@ -176,6 +181,9 @@ function InventoryPage() {
           {...(editing === 'create' ? {} : { equipment: editing })}
           onClose={() => setEditing(null)}
         />
+      )}
+      {servicing && (
+        <MaintenanceModal equipment={servicing} onClose={() => setServicing(null)} />
       )}
     </div>
   );

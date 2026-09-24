@@ -73,8 +73,12 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
   const [fuelType, setFuelType] = useState(equipment?.fuelType ?? '');
   const [status, setStatus] = useState(equipment?.availabilityStatus ?? 'available');
   const [notes, setNotes] = useState(equipment?.notes ?? '');
+  const [categoryNote, setCategoryNote] = useState(equipment?.categoryNote ?? '');
   const [photo, setPhoto] = useState<File | null>(null);
   const [serialError, setSerialError] = useState<string | null>(null);
+
+  // "Others" carries a free-text category instead of a standard one.
+  const isOthers = types.data?.find((type) => type.id === equipmentTypeId)?.name === 'Others';
 
   const save = useMutation({
     mutationFn: async () => {
@@ -89,6 +93,9 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
         ...(textOrUndefined(engineType) ? { engineType: textOrUndefined(engineType) } : {}),
         ...(textOrUndefined(fuelType) ? { fuelType: textOrUndefined(fuelType) } : {}),
         ...(textOrUndefined(notes) ? { notes: textOrUndefined(notes) } : {}),
+        ...(isOthers && textOrUndefined(categoryNote)
+          ? { categoryNote: textOrUndefined(categoryNote) }
+          : {}),
       };
 
       // serialNo is absent from the edit request on purpose: migration 0026
@@ -134,7 +141,10 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
     },
   });
 
-  const canSubmit = model.trim() !== '' && (isEdit || (serialNo.trim() !== '' && equipmentTypeId));
+  const canSubmit =
+    model.trim() !== '' &&
+    (!isOthers || categoryNote.trim() !== '') &&
+    (isEdit || (serialNo.trim() !== '' && equipmentTypeId));
 
   return (
     <Modal
@@ -204,6 +214,16 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
               placeholder="CAT-320-GH"
             />
           </div>
+          {isOthers && (
+            <Input
+              label="Describe the category"
+              value={categoryNote}
+              onChange={(e) => setCategoryNote(e.target.value)}
+              placeholder="Asphalt paver"
+              maxLength={200}
+              required
+            />
+          )}
           <Input
             label="Serial / ID number"
             value={serialNo}
