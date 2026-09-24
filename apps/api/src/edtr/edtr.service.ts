@@ -629,6 +629,9 @@ export class EdtrService {
       // rest becomes an unbilled accrual that jobs/src/weekly-billing.ts
       // invoices weekly. Reaching this line already required a reconciled
       // or human-approved pair (RFC-2), so both halves carry that gate.
+      // Lock the rental so two pairs approved at once can't both read the
+      // same balance and over-draw the deposit.
+      await tx.select({ id: rentals.id }).from(rentals).where(eq(rentals.id, record.rentalId)).for('update');
       const ledger = await resolveDepositLedger(tx, record.rentalId, ctx.tenantId);
       const balanceBefore = round2HalfUp(Math.max(0, ledger.depositRequired - ledger.totalDeducted));
       const split = splitDeduction(balanceBefore, deductedAmount);
