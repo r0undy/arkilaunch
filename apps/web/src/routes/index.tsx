@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { publicLayoutRoute } from './_public.js';
 import { Button } from '../components/button.js';
 import { EquipmentCard } from '../components/equipment-card.js';
-import { SearchFilterBar, type AvailabilityFilter } from '../components/search-filter-bar.js';
+import { SearchFilterBar } from '../components/search-filter-bar.js';
 import { TestimonialCard } from '../components/testimonial-card.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import { catalogQueries } from '../lib/queries.js';
@@ -12,18 +12,15 @@ import { catalogQueries } from '../lib/queries.js';
 function LandingPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
-  const [availability, setAvailability] = useState<AvailabilityFilter>('all');
   const { data } = useQuery(catalogQueries.equipment());
   const { data: testimonialData } = useQuery(catalogQueries.testimonials());
 
   const equipment = useMemo(() => {
     const items = data?.items ?? [];
-    return items.filter((eq) => {
-      const matchesQuery = `${eq.model} ${eq.equipmentTypeName}`.toLowerCase().includes(query.toLowerCase());
-      const matchesAvailability = availability === 'all' || eq.availabilityStatus === availability;
-      return matchesQuery && matchesAvailability;
-    });
-  }, [data, query, availability]);
+    return items.filter((eq) =>
+      `${eq.model} ${eq.equipmentTypeName}`.toLowerCase().includes(query.toLowerCase()),
+    );
+  }, [data, query]);
 
   // The landing page is a shop window, not the catalog: it shows a first
   // handful and sends you to /equipment for the rest, rather than growing
@@ -52,12 +49,7 @@ function LandingPage() {
       </section>
 
       <section className="flex flex-col gap-6">
-        <SearchFilterBar
-          query={query}
-          onQueryChange={setQuery}
-          availability={availability}
-          onAvailabilityChange={setAvailability}
-        />
+        <SearchFilterBar query={query} onQueryChange={setQuery} />
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {preview.map((eq) => {
             const imageUrl = equipmentImageUrl(eq.model);
@@ -68,7 +60,7 @@ function LandingPage() {
                 {...(imageUrl ? { imageUrl } : {})}
                 model={eq.model}
                 make={eq.equipmentTypeName}
-                availabilityStatus={eq.availabilityStatus}
+                unavailable={eq.availabilityStatus !== 'available'}
                 onRent={() => navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })}
               />
             );

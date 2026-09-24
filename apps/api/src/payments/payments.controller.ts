@@ -28,3 +28,24 @@ export class PaymentsController {
     return this.payments.checkout(req.ctx, id, body);
   }
 }
+
+// The self-loading truck's checkout (same rules as a booking's) and the
+// staff-recorded cash receipt, which settles either kind of invoice.
+@Controller()
+export class TruckPaymentsController {
+  constructor(private readonly payments: PaymentsService) {}
+
+  @Post('me/truck-requests/:id/checkout')
+  @RequirePermission('payment:checkout')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  checkoutTruck(@Param('id') id: string, @Body() body: CheckoutRequestDto, @Req() req: CtxRequest) {
+    return this.payments.checkoutTruck(req.ctx, id, body);
+  }
+
+  // quote:approve: the staff who agree prices are the ones who take cash.
+  @Post('invoices/:id/cash-payment')
+  @RequirePermission('quote:approve')
+  recordCash(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.payments.recordCash(req.ctx, id);
+  }
+}

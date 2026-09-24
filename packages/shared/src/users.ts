@@ -68,8 +68,45 @@ export const UserSelfResponseSchema = z.object({
   createdAt: z.coerce.date(),
   tenantName: z.string(),
   tenantSlug: z.string(),
+  // Self-service profile. Names are KYC-owned and read-only here.
+  firstName: z.string().nullable().optional(),
+  middleName: z.string().nullable().optional(),
+  lastName: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  // A short-lived signed URL, or null when no picture is set.
+  avatarUrl: z.string().nullable().optional(),
+  notificationPrefs: z
+    .object({ email: z.boolean(), sms: z.boolean(), inApp: z.boolean() })
+    .optional(),
 });
 export type UserSelfResponse = z.infer<typeof UserSelfResponseSchema>;
+
+export const NotificationPrefsSchema = z.object({
+  email: z.boolean(),
+  sms: z.boolean(),
+  inApp: z.boolean(),
+});
+
+// PATCH /users/me. Only what the user owns: never email, role or names.
+export const UserSelfUpdateSchema = z
+  .object({
+    phone: z.string().trim().max(32).regex(/^[+\d][\d\s-]*$/).nullable(),
+    address: z.string().trim().max(500).nullable(),
+    notificationPrefs: NotificationPrefsSchema,
+  })
+  .partial()
+  .strict();
+export type UserSelfUpdate = z.infer<typeof UserSelfUpdateSchema>;
+
+// POST /users/me/password. Same length rule as customer registration.
+export const UserPasswordChangeSchema = z
+  .object({
+    currentPassword: z.string().min(1),
+    newPassword: z.string().min(10).max(200),
+  })
+  .strict();
+export type UserPasswordChange = z.infer<typeof UserPasswordChangeSchema>;
 
 // A role any actor may grant through this API. `platform_admin` is absent
 // from every value here -- there is no key that can ever produce it, not

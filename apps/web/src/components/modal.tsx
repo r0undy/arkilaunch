@@ -104,7 +104,7 @@ export function Modal({
         {...(description ? { 'aria-describedby': descriptionId } : {})}
         tabIndex={-1}
         className={[
-          'relative flex max-h-[90vh] w-full flex-col rounded-t-lg border border-border bg-surface shadow-lg sm:rounded-lg',
+          'relative flex max-h-[90dvh] w-full flex-col rounded-t-lg border border-border bg-surface shadow-lg sm:rounded-lg',
           SIZE_CLASSES[size],
         ].join(' ')}
       >

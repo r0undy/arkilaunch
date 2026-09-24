@@ -10,7 +10,7 @@ import { db } from './client.js';
 export interface PaymentInvoiceLookupRow {
   tenantId: string;
   invoiceId: string;
-  rentalId: string;
+  rentalId: string | null;
   invoiceStatus: string;
 }
 
@@ -20,7 +20,7 @@ export async function findTenantByInvoiceIdForWebhook(
   const rows = await db.execute<{
     tenant_id: string;
     invoice_id: string;
-    rental_id: string;
+    rental_id: string | null;
     invoice_status: string;
   }>(sql`select * from payments_find_tenant_by_invoice(${invoiceId})`);
   const row = rows[0];

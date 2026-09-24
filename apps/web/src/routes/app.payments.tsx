@@ -1,9 +1,14 @@
 import { createRoute } from '@tanstack/react-router';
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import type { InvoiceSummaryResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { invoicesQueries } from '../lib/queries.js';
+import { apiErrorText, apiPost } from '../lib/api-client.js';
+import { Button } from '../components/button.js';
+import { ConfirmDialog } from '../components/confirm-dialog.js';
+import { useToast } from '../components/toast.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
@@ -51,10 +56,12 @@ const COLUMNS: TableColumn<InvoiceSummaryResponse>[] = [
 // "which rental is this invoice against?" and "what is its full id?" were
 // unanswerable from this screen, which is awkward for the one table in the
 // console that stands for money already charged.
-function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) {
+export function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) {
   const rows: [string, string][] = [
     ['Invoice id', invoice.id],
-    ['Rental id', invoice.rentalId],
+    invoice.truckRequestId
+      ? ['Truck request id', invoice.truckRequestId]
+      : ['Rental id', invoice.rentalId ?? '--'],
     ['Type', formatInvoiceType(invoice.invoiceType)],
     ['Status', formatStatus(invoice.status)],
     ['Amount', formatPeso(invoice.amount)],
@@ -62,17 +69,55 @@ function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) {
     ['Raised', formatDate(invoice.createdAt)],
   ];
   return (
-    <dl className="flex flex-col">
-      {rows.map(([label, value]) => (
-        <div
-          key={label}
-          className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border py-2 last:border-0"
-        >
-          <dt className="text-sm text-text-muted">{label}</dt>
-          <dd className="font-mono text-sm tabular-nums text-text">{value}</dd>
-        </div>
-      ))}
-    </dl>
+    <div className="flex flex-col gap-3">
+      <dl className="flex flex-col">
+        {rows.map(([label, value]) => (
+          <div
+            key={label}
+            className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border py-2 last:border-0"
+          >
+            <dt className="text-sm text-text-muted">{label}</dt>
+            <dd className="min-w-0 break-all font-mono text-sm tabular-nums text-text">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {invoice.status === 'issued' && <RecordCash invoice={invoice} />}
+    </div>
+  );
+}
+
+// Cash is only ever settled here, by a staff member with the money in hand
+// (CR truck-booking-and-kyc-docs). The API names them on the payment row.
+function RecordCash({ invoice }: { invoice: InvoiceSummaryResponse }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const record = useMutation({
+    mutationFn: () => apiPost(`/invoices/${invoice.id}/cash-payment`, {}),
+    onSuccess: () => {
+      toast.success('Cash payment recorded');
+      setConfirming(false);
+      void queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    },
+    onError: (e) => toast.error('Not recorded', apiErrorText(e)),
+  });
+  return (
+    <>
+      <Button variant="approve" onClick={() => setConfirming(true)}>
+        Record cash payment
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        title="Record cash payment"
+        body={`Confirm you received ${formatPeso(invoice.amount)} in cash for this invoice. It will be marked paid under your name.`}
+        confirmLabel="Record payment"
+        pending={record.isPending}
+        onConfirm={async () => {
+          await record.mutateAsync();
+        }}
+        onCancel={() => setConfirming(false)}
+      />
+    </>
   );
 }
 

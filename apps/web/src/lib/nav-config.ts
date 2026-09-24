@@ -17,6 +17,7 @@ import {
   TrendingUp,
   UserPlus,
   Users,
+  Truck,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -69,6 +70,7 @@ export const ACCOUNT_NAV: NavGroup[] = [
         // entry of their own, so without this they would light nothing.
         owns: ['/account/companies'],
       },
+      { label: 'Self-loading truck', to: '/account/trucks', icon: Truck },
       { label: 'Notifications', to: '/account/notifications', icon: Bell },
       { label: 'Settings', to: '/account/settings', icon: Settings },
     ],
@@ -111,6 +113,7 @@ export const APP_NAV: NavGroup[] = [
       { label: 'Tickets', to: '/app/tickets', icon: ClipboardList },
       { label: 'Security logs', to: '/app/security-logs', icon: ShieldAlert },
       { label: 'Rate cards', to: '/app/settings', icon: Settings },
+      { label: 'Truck service', to: '/app/trucks', icon: Truck },
       { label: 'Onboarding', to: '/app/registration', icon: UserPlus },
       { label: 'Registration pending', to: '/app/registration/pending', icon: ClipboardList },
       { label: 'Registration verified', to: '/app/registration/verified', icon: ShieldAlert },
@@ -118,16 +121,25 @@ export const APP_NAV: NavGroup[] = [
   },
 ];
 
-// platform_admin-only items, appended by the shell that renders APP_NAV for
-// that role (see _app.tsx) rather than filtered here -- keeps this file a
-// plain data module with no role logic of its own.
+// platform_admin's whole sidebar, used instead of APP_NAV (see _app.tsx).
+// The role is cross-tenant: it onboards rental companies, it does not run
+// one, so none of the Dispatch/Fleet/Billing tenant work is listed here.
+// _app.tsx also redirects the role away from any /app page not listed.
 export const PLATFORM_ADMIN_NAV: NavGroup[] = [
   {
-    title: 'Platform',
+    title: 'Companies',
     items: [
-      { label: 'Company applications', to: '/app/platform-applications', icon: Store },
-      { label: 'Pending companies', to: '/app/companies/pending', icon: ClipboardList },
+      { label: 'Applications', to: '/app/companies/pending', icon: ClipboardList },
       { label: 'Approved companies', to: '/app/companies/approved', icon: Store },
+    ],
+  },
+  {
+    title: 'Account',
+    items: [
+      { label: 'Notifications', to: '/app/notifications', icon: Bell },
+      { label: 'My profile', to: '/app/profile', icon: UserCircle },
+      { label: 'People', to: '/app/users', icon: Users },
+      { label: 'Security logs', to: '/app/security-logs', icon: ShieldAlert },
     ],
   },
 ];

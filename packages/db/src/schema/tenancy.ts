@@ -102,6 +102,15 @@ export const users = pgTable(
     firstName: text('first_name'),
     middleName: text('middle_name'),
     lastName: text('last_name'),
+    // Self-service profile (migration 0030). avatarKey is an object key in the
+    // private KYC bucket, never a public URL.
+    phone: text('phone'),
+    address: text('address'),
+    avatarKey: text('avatar_key'),
+    notificationPrefs: jsonb('notification_prefs')
+      .$type<{ email: boolean; sms: boolean; inApp: boolean }>()
+      .notNull()
+      .default({ email: true, sms: false, inApp: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

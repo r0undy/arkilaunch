@@ -2,6 +2,7 @@ import { createRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { accountLayoutRoute } from './_account.js';
 import { Button } from '../components/button.js';
+import { hasRequiredCompanyDocuments } from '@arkilaunch/shared';
 import { bookingsQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
 import { CheckIcon } from '../components/icons.js';
 
@@ -18,7 +19,7 @@ export function setupSteps(
   siteCount: number,
 ): SetupStep[] {
   const hasDocs = companies.some(
-    (c) => c.documents.some((d) => d.documentType === 'government_id') && c.documents.some((d) => d.documentType === 'company_registration'),
+    (c) => hasRequiredCompanyDocuments(c.documents),
   );
   return [
     { label: 'Add your company', done: companies.length > 0, to: '/account/companies/new' },

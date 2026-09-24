@@ -265,3 +265,14 @@ export function siteName(site: {
 }): string {
   return site.name ?? site.city ?? site.province ?? `Unnamed site ${shortCode('site', site.id)}`;
 }
+
+/**
+ * Monday (YYYY-MM-DD, UTC) of the week a date falls in. The review queue
+ * groups daily field logs by machine and week, matching the weekly EDTR
+ * sheet (docs/proposal-edtr-weather-attestation.md §2.2).
+ */
+export function weekStart(value: string | Date): string {
+  const date = new Date(value);
+  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  return date.toISOString().slice(0, 10);
+}

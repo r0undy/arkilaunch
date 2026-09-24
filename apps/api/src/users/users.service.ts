@@ -1,6 +1,6 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import { hash } from '@node-rs/argon2';
+import { hash, verify } from '@node-rs/argon2';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import {
   auditLogs,
@@ -21,14 +21,21 @@ import {
   type UserInviteRequest,
   type UserListQuery,
   type UserRoleChangeRequest,
+  type UserPasswordChange,
   type UserSelfResponse,
+  type UserSelfUpdate,
 } from '@arkilaunch/shared';
 import { AuthService } from '../auth/auth.service.js';
 import { RefreshTokenService } from '../auth/refresh-token.service.js';
 import { EventsService } from '../events/events.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import { countRows } from '../common/count-rows.js';
 
 type Ctx = RequestContext;
+
+// Profile pictures are personal data, so they live in the private KYC bucket
+// (signed URLs only), not the public equipment-photos one.
+export const avatarBucket = () => process.env.SUPABASE_STORAGE_BUCKET_KYC ?? 'kyc-documents';
 
 @Injectable()
 export class UsersService {
@@ -36,6 +43,7 @@ export class UsersService {
     private readonly auth: AuthService,
     private readonly refreshTokens: RefreshTokenService,
     private readonly events: EventsService,
+    private readonly storage: StorageService,
   ) {}
 
   // GET /users (S19).
@@ -75,24 +83,91 @@ export class UsersService {
   // is exposed through UserProfileController, not the user:manage-gated
   // UsersController above.
   async me(ctx: Ctx): Promise<UserSelfResponse> {
-    return withTenantTx(ctx, async (tx) => {
+    const result = await withTenantTx(ctx, async (tx) => {
       const [row] = await this.selectUserWithRole(tx, ctx.userId);
       if (!row) throw new NotFoundException({ error: 'user_not_found' });
+      const [profile] = await tx
+        .select({
+          firstName: users.firstName,
+          middleName: users.middleName,
+          lastName: users.lastName,
+          phone: users.phone,
+          address: users.address,
+          avatarKey: users.avatarKey,
+          notificationPrefs: users.notificationPrefs,
+        })
+        .from(users)
+        .where(eq(users.id, ctx.userId))
+        .limit(1);
       const [tenant] = await tx
         .select({ legalName: tenants.legalName, slug: tenants.slug })
         .from(tenants)
         .where(eq(tenants.id, ctx.tenantId))
         .limit(1);
-      return {
-        id: row.id,
-        email: row.email,
-        role: row.roleName,
-        status: row.status as UserSelfResponse['status'],
-        createdAt: row.createdAt,
-        tenantName: tenant?.legalName ?? '',
-        tenantSlug: tenant?.slug ?? '',
-      };
+      return { row, profile, tenant };
     });
+    const { row, profile, tenant } = result;
+    // Signed outside the transaction: it is a network call to Storage. A
+    // Storage outage costs the picture, never the whole profile.
+    const avatarUrl = profile?.avatarKey
+      ? await this.storage.createSignedDownloadUrl(avatarBucket(), profile.avatarKey).catch(() => null)
+      : null;
+    return {
+      id: row.id,
+      email: row.email,
+      role: row.roleName,
+      status: row.status as UserSelfResponse['status'],
+      createdAt: row.createdAt,
+      tenantName: tenant?.legalName ?? '',
+      tenantSlug: tenant?.slug ?? '',
+      firstName: profile?.firstName ?? null,
+      middleName: profile?.middleName ?? null,
+      lastName: profile?.lastName ?? null,
+      phone: profile?.phone ?? null,
+      address: profile?.address ?? null,
+      avatarUrl,
+      ...(profile ? { notificationPrefs: profile.notificationPrefs } : {}),
+    };
+  }
+
+  // PATCH /users/me. Own row only (ctx.userId, never a param); the schema
+  // is strict, so email, role and the KYC-owned names cannot ride along.
+  async updateSelf(ctx: Ctx, body: UserSelfUpdate): Promise<UserSelfResponse> {
+    if (Object.keys(body).length > 0) {
+      await withTenantTx(ctx, (tx) => tx.update(users).set(body).where(eq(users.id, ctx.userId)));
+    }
+    return this.me(ctx);
+  }
+
+  async setAvatar(ctx: Ctx, key: string): Promise<UserSelfResponse> {
+    await withTenantTx(ctx, (tx) =>
+      tx.update(users).set({ avatarKey: key }).where(eq(users.id, ctx.userId)),
+    );
+    return this.me(ctx);
+  }
+
+  // POST /users/me/password. Proves the current password first, then revokes
+  // every refresh-token family so any other signed-in device is logged out.
+  async changePassword(ctx: Ctx, body: UserPasswordChange): Promise<void> {
+    await withTenantTx(ctx, async (tx) => {
+      const [row] = await tx
+        .select({ passwordHash: users.passwordHash })
+        .from(users)
+        .where(eq(users.id, ctx.userId))
+        .limit(1);
+      if (!row || !(await verify(row.passwordHash, body.currentPassword)))
+        throw new UnprocessableEntityException({ error: 'current_password_incorrect' });
+      await tx
+        .update(users)
+        .set({ passwordHash: await hash(body.newPassword) })
+        .where(eq(users.id, ctx.userId));
+    });
+    await this.refreshTokens.revokeAllForUser(ctx, ctx.userId);
+  }
+
+  // POST /users/me/sign-out-everywhere.
+  async signOutEverywhere(ctx: Ctx): Promise<void> {
+    await this.refreshTokens.revokeAllForUser(ctx, ctx.userId);
   }
 
   // GET /users/:id.

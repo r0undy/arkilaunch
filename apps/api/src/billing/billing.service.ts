@@ -8,6 +8,7 @@ import {
   invoices,
   rentals,
   resolveDepositLedger,
+  truckRequests,
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
@@ -20,13 +21,37 @@ import type {
   RequestContext,
 } from '@arkilaunch/shared';
 import { countRows } from '../common/count-rows.js';
+import { ownsCustomer } from '../common/customer-scope.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function customerOwnsInvoice(
+  tx: Tx,
+  ctx: RequestContext,
+  invoice: typeof invoices.$inferSelect,
+): Promise<boolean> {
+  if (invoice.truckRequestId) {
+    const [request] = await tx
+      .select({ requestedBy: truckRequests.requestedBy })
+      .from(truckRequests)
+      .where(eq(truckRequests.id, invoice.truckRequestId))
+      .limit(1);
+    return request?.requestedBy === ctx.userId;
+  }
+  if (!invoice.rentalId) return false;
+  const [rental] = await tx
+    .select({ customerId: rentals.customerId })
+    .from(rentals)
+    .where(eq(rentals.id, invoice.rentalId))
+    .limit(1);
+  return rental ? ownsCustomer(tx, ctx, rental.customerId) : false;
+}
 
 function toInvoiceSummary(row: typeof invoices.$inferSelect): InvoiceSummaryResponse {
   return {
     id: row.id,
     rentalId: row.rentalId,
+    truckRequestId: row.truckRequestId,
     invoiceType: row.invoiceType,
     amount: Number(row.amount),
     status: row.status,
@@ -121,6 +146,12 @@ export class BillingService {
     return withTenantTx(ctx, async (tx) => {
       const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, id)).limit(1);
       if (!invoice) throw new NotFoundException({ error: 'invoice_not_found' });
+      // A customer (GET /me/invoices/:id) reads only an invoice on their own
+      // booking or truck request; anything else is a 404, not a 403, so ids
+      // cannot be probed.
+      if (ctx.role === 'customer' && !(await customerOwnsInvoice(tx, ctx, invoice))) {
+        throw new NotFoundException({ error: 'invoice_not_found' });
+      }
 
       const lineItemRows = await tx
         .select()

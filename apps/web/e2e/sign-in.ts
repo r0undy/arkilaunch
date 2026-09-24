@@ -14,6 +14,7 @@ import { expect, type Page } from '@playwright/test';
 
 const EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'admin@admin.com';
 const CUSTOMER_EMAIL = process.env.SEED_CUSTOMER_EMAIL ?? 'customer@admin.com';
+const PLATFORM_EMAIL = process.env.SEED_PLATFORM_EMAIL ?? 'platform@admin.com';
 const PASSWORD = process.env.SEED_PASSWORD ?? 'admin';
 
 async function submit(page: Page, email: string) {
@@ -40,4 +41,14 @@ export async function signInAsCustomer(page: Page): Promise<void> {
     page,
     `Sign-in as ${CUSTOMER_EMAIL} did not reach the account area. Is the API running and the anchor tenant seeded (pnpm db:seed)?`,
   ).toHaveURL(/\/account/, { timeout: 15_000 });
+}
+
+// The cross-tenant ArkiLaunch account (seed-identities.ts). Its home is the
+// company applications queue, not the tenant dashboard.
+export async function signInAsPlatformAdmin(page: Page): Promise<void> {
+  await submit(page, PLATFORM_EMAIL);
+  await expect(
+    page,
+    `Sign-in as ${PLATFORM_EMAIL} did not reach the platform console. Is the API running and the platform tenant seeded (pnpm db:seed)?`,
+  ).toHaveURL(/\/app\/companies\/pending/, { timeout: 15_000 });
 }

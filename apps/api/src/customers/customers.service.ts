@@ -20,10 +20,17 @@ import {
   type db,
 } from '@arkilaunch/db';
 import {
+  DTI_REGEX,
   ExtractionUnavailableError,
+  normalizePcn,
+  normalizeTin,
+  PHILSYS_PCN_REGEX,
+  REGISTRY_DOCUMENT_TYPES,
   SEC_REGEX,
   TIN_REGEX,
   type CompanyDocumentReadResponse,
+  type CompanyDocumentUpload,
+  type CompanyReviewResponse,
   type DocumentIntelligencePort,
   type KycScanResponse,
 } from '@arkilaunch/shared';
@@ -40,6 +47,7 @@ import {
 import { DOCUMENT_INTELLIGENCE_PORT } from '../kyc/kyc.tokens.js';
 import type {
   CompanyCreate,
+  CompanyUpdate,
   CompanyDecision,
   CompanyResponse,
   CustomerSiteCreate,
@@ -98,6 +106,97 @@ export function __clearForecastCache(): void {
   forecastCache.clear();
 }
 
+// Response field -> the snake_case port key azure-adapter.ts maps it to.
+// One table for every read, so adding a field is one line, not six.
+const READ_FIELDS = {
+  companyName: 'company_name',
+  tin: 'tin',
+  secNumber: 'sec_number',
+  dtiNumber: 'dti_number',
+  registeredAddress: 'registered_address',
+  registrationDate: 'registration_date',
+  firstName: 'first_name',
+  middleName: 'middle_name',
+  lastName: 'last_name',
+  idNumber: 'id_number',
+  birthDate: 'birth_date',
+  sex: 'sex',
+  address: 'address',
+} as const;
+type ReadField = keyof typeof READ_FIELDS;
+
+// Which fields each paper actually prints. The customer's scan suggests only
+// these, so a SEC certificate never prefills a TIN it does not carry.
+const SCAN_FIELDS: Record<string, ReadField[]> = {
+  government_id: ['firstName', 'middleName', 'lastName', 'idNumber', 'birthDate', 'sex', 'address'],
+  sec_certificate: ['companyName', 'secNumber', 'registeredAddress', 'registrationDate'],
+  bir_cor: ['companyName', 'tin', 'registeredAddress'],
+  dti_certificate: ['companyName', 'dtiNumber', 'registeredAddress'],
+  company_registration: ['companyName', 'tin', 'secNumber', 'registeredAddress', 'registrationDate'],
+};
+
+// Format checks per field. A scan suggestion failing its check is dropped;
+// a staff read reports it as invalid instead.
+const FIELD_FORMAT: Partial<Record<ReadField, { normalize?: (v: string) => string; re: RegExp }>> = {
+  tin: { normalize: normalizeTin, re: TIN_REGEX },
+  secNumber: { re: SEC_REGEX },
+  dtiNumber: { re: DTI_REGEX },
+  idNumber: { normalize: normalizePcn, re: PHILSYS_PCN_REGEX },
+};
+
+// Long free-text fields read at structurally lower confidence than a
+// number or a name, so they do not count toward a document's legibility.
+const LEGIBILITY_EXCLUDED = new Set<ReadField>(['address', 'registeredAddress']);
+
+// The card prints "M"/"F" or "MALE"/"FEMALE"; the form takes the letter.
+function normalizeSex(value: string): string {
+  const v = value.trim();
+  return /^m/i.test(v) ? 'M' : /^f/i.test(v) ? 'F' : v;
+}
+
+// OCR dates come as printed ("JANUARY 01, 1990", "1990/01/01"); the form's
+// date input needs YYYY-MM-DD. Unparseable text is passed through as read.
+function normalizeDate(value: string): string {
+  const v = value.trim().replace(/\//g, '-');
+  // Already ISO: returned as is, since Date.parse reads it as UTC midnight
+  // and the local getters below would shift it a day west of Greenwich.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const t = Date.parse(v);
+  if (Number.isNaN(t)) return value.trim();
+  const d = new Date(t);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function normalizeRead(field: ReadField, value: string): string {
+  if (field === 'sex') return normalizeSex(value);
+  if (field === 'birthDate') return normalizeDate(value);
+  return FIELD_FORMAT[field]?.normalize?.(value) ?? value.trim();
+}
+
+// What the customer typed on the upload, stored as customer_* keys beside
+// the OCR's own keys (and decide()'s confirmed_* ones) on ocr_payload.
+export type ConfirmedDocumentFields = Omit<CompanyDocumentUpload, 'documentType'>;
+const CUSTOMER_KEYS: Record<keyof ConfirmedDocumentFields, string> = {
+  firstName: 'customer_first_name',
+  middleName: 'customer_middle_name',
+  lastName: 'customer_last_name',
+  idNumber: 'customer_id_number',
+  birthDate: 'customer_birth_date',
+  sex: 'customer_sex',
+  address: 'customer_address',
+  dtiNumber: 'customer_dti_number',
+};
+
+// The keys a person wrote (customer_* at upload, confirmed_* at decide()).
+function humanKeys(payload: unknown): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries((payload as Record<string, unknown> | null) ?? {}).filter(
+      ([k]) => k.startsWith('customer_') || k.startsWith('confirmed_'),
+    ),
+  );
+}
+
 @Injectable()
 export class CustomersService {
   constructor(
@@ -122,30 +221,45 @@ export class CustomersService {
    * document under RFC-2's human gate, against what the customer submitted.
    * When no extraction adapter is available the form simply opens empty.
    */
-  async scanDocument(ctx: RequestContext, bytes: Buffer): Promise<KycScanResponse> {
+  async scanDocument(ctx: RequestContext, documentType: string, bytes: Buffer): Promise<KycScanResponse> {
     assertCustomer(ctx);
-    const empty = { companyName: null, tin: null, secNumber: null };
+    const suggestions: KycScanResponse['suggestions'] = {
+      companyName: null,
+      tin: null,
+      secNumber: null,
+      dtiNumber: null,
+      address: null,
+      firstName: null,
+      middleName: null,
+      lastName: null,
+      idNumber: null,
+      birthDate: null,
+      sex: null,
+    };
     let result;
     try {
-      result = await this.port.analyze(KYC_MODEL_ID, bytes);
+      result = await this.port.analyze(this.modelIdFor(documentType), bytes);
     } catch (error) {
       if (!(error instanceof ExtractionUnavailableError)) throw error;
       await this.events.emit(ctx, 'ocr_extraction_unavailable', {
         doc_type: 'kyc_scan',
         reason: error.reason,
       });
-      return { suggestions: empty, extractionAvailable: false };
+      return { suggestions, confidence: null, extractionAvailable: false };
     }
-    const valid = (key: string, re: RegExp) => {
-      const field = result.fields[key];
-      return field && re.test(field.value) ? field.value : null;
-    };
+    const confidences: number[] = [];
+    for (const field of SCAN_FIELDS[documentType] ?? []) {
+      const read = result.fields[READ_FIELDS[field]];
+      if (!read) continue;
+      if (!LEGIBILITY_EXCLUDED.has(field)) confidences.push(read.confidence);
+      const value = normalizeRead(field, read.value);
+      if (FIELD_FORMAT[field] && !FIELD_FORMAT[field].re.test(value)) continue;
+      // A certificate's registered address suggests the billing address.
+      suggestions[(field === 'registeredAddress' ? 'address' : field) as keyof typeof suggestions] = value;
+    }
     return {
-      suggestions: {
-        companyName: result.fields.company_name?.value ?? null,
-        tin: valid('tin', TIN_REGEX),
-        secNumber: valid('sec_number', SEC_REGEX),
-      },
+      suggestions,
+      confidence: confidences.length > 0 ? Math.min(...confidences) : null,
       extractionAvailable: true,
     };
   }
@@ -189,6 +303,24 @@ export class CustomersService {
     });
   }
 
+  // PATCH /me/companies/:id. The billing address is always the customer's to
+  // keep current. TIN and SEC number are what staff verified, so they are
+  // frozen once the company is approved -- editing them would silently void
+  // the check.
+  async updateCompany(ctx: RequestContext, id: string, body: CompanyUpdate): Promise<CompanyResponse> {
+    assertCustomer(ctx);
+    return withTenantTx(ctx, async (tx) => {
+      if (!(await ownsCustomer(tx, ctx, id))) throw new NotFoundException({ error: 'company_not_found' });
+      const [current] = await tx.select().from(customers).where(eq(customers.id, id)).limit(1);
+      if (!current) throw new NotFoundException({ error: 'company_not_found' });
+      if (current.kycStatus === 'approved' && (body.tin !== undefined || body.secNumber !== undefined))
+        throw new ConflictException({ error: 'company_verified_fields_locked' });
+      if (Object.keys(body).length > 0) await tx.update(customers).set(body).where(eq(customers.id, id));
+      const [row] = await tx.select().from(customers).where(eq(customers.id, id)).limit(1);
+      return (await withDocuments(tx, [row!]))[0]!;
+    });
+  }
+
   // Which model a document type reads with: the registration cert asks for
   // company facts, the National ID asks for the holder's name. Shared by
   // the upload-time read and the reviewer's manual re-read, so there is
@@ -205,15 +337,18 @@ export class CustomersService {
   private static readonly UPLOAD_CONFIDENCE_GATE = 0.85;
 
   // One OCR pass, whichever fields its model returns. The company model
-  // yields company_name/tin/sec_number, the National ID model yields
-  // first_name/middle_name/last_name -- azure-adapter.ts already maps
-  // Azure's query fields to these port keys, so this only needs to read
-  // whichever of the six keys came back, not branch on documentType itself.
+  // yields company_name/tin/sec_number/dti_number, the National ID model the
+  // holder's name, PCN, birth date, sex and address -- azure-adapter.ts
+  // already maps Azure's query fields to these port keys, so this reads
+  // whichever keys came back rather than branching on documentType.
   private async analyzeDocument(
     ctx: RequestContext,
     documentType: string,
     bytes: Buffer,
   ): Promise<CompanyDocumentReadResponse & { ocrPayload: Record<string, unknown> }> {
+    const suggestions = Object.fromEntries(
+      Object.keys(READ_FIELDS).map((k) => [k, null]),
+    ) as CompanyDocumentReadResponse['suggestions'];
     let result;
     try {
       result = await this.port.analyze(this.modelIdFor(documentType), bytes);
@@ -225,14 +360,7 @@ export class CustomersService {
       });
       return {
         documentId: '',
-        suggestions: {
-          companyName: null,
-          tin: null,
-          secNumber: null,
-          firstName: null,
-          middleName: null,
-          lastName: null,
-        },
+        suggestions,
         formatValid: { tin: false, secNumber: false },
         confidence: null,
         extractionAvailable: false,
@@ -240,54 +368,32 @@ export class CustomersService {
       };
     }
 
-    const nameField = result.fields.company_name ?? null;
-    const tinField = result.fields.tin ?? null;
-    const secField = result.fields.sec_number ?? null;
-    const firstField = result.fields.first_name ?? null;
-    const middleField = result.fields.middle_name ?? null;
-    const lastField = result.fields.last_name ?? null;
+    const ocrPayload: Record<string, unknown> = {};
+    const confidences: number[] = [];
+    for (const [field, key] of Object.entries(READ_FIELDS) as [ReadField, string][]) {
+      const read = result.fields[key];
+      // Only what this paper prints: one model serves all three
+      // certificates, and its low-confidence guess at a TIN on an SEC
+      // certificate is neither evidence nor a legibility signal.
+      if (!read || !(SCAN_FIELDS[documentType]?.includes(field) ?? true)) continue;
+      const value = normalizeRead(field, read.value);
+      suggestions[field] = value;
+      ocrPayload[key] = value;
+      // sec_confidence, not sec_number_confidence: the key kyc.service.ts
+      // and every stored row already use.
+      ocrPayload[key === 'sec_number' ? 'sec_confidence' : `${key}_confidence`] = read.confidence;
+      if (!LEGIBILITY_EXCLUDED.has(field)) confidences.push(read.confidence);
+    }
     const formatValid = {
-      tin: tinField ? TIN_REGEX.test(tinField.value) : false,
-      secNumber: secField ? SEC_REGEX.test(secField.value) : false,
+      tin: suggestions.tin ? TIN_REGEX.test(suggestions.tin) : false,
+      secNumber: suggestions.secNumber ? SEC_REGEX.test(suggestions.secNumber) : false,
     };
     // The lowest confidence of whatever was found: a reviewer (or the
     // upload-time gate) should judge a document by its weakest field, not
     // its strongest.
-    const found = [nameField, tinField, secField, firstField, middleField, lastField].filter(
-      (f) => f !== null,
-    );
-    const confidence = found.length > 0 ? Math.min(...found.map((f) => f!.confidence)) : null;
+    const confidence = confidences.length > 0 ? Math.min(...confidences) : null;
 
-    return {
-      documentId: '',
-      suggestions: {
-        companyName: nameField?.value ?? null,
-        tin: tinField?.value ?? null,
-        secNumber: secField?.value ?? null,
-        firstName: firstField?.value ?? null,
-        middleName: middleField?.value ?? null,
-        lastName: lastField?.value ?? null,
-      },
-      formatValid,
-      confidence,
-      extractionAvailable: true,
-      ocrPayload: {
-        ...(nameField
-          ? { company_name: nameField.value, company_name_confidence: nameField.confidence }
-          : {}),
-        ...(tinField ? { tin: tinField.value, tin_confidence: tinField.confidence } : {}),
-        ...(secField ? { sec_number: secField.value, sec_confidence: secField.confidence } : {}),
-        ...(firstField
-          ? { first_name: firstField.value, first_name_confidence: firstField.confidence }
-          : {}),
-        ...(middleField
-          ? { middle_name: middleField.value, middle_name_confidence: middleField.confidence }
-          : {}),
-        ...(lastField
-          ? { last_name: lastField.value, last_name_confidence: lastField.confidence }
-          : {}),
-      },
-    };
+    return { documentId: '', suggestions, formatValid, confidence, extractionAvailable: true, ocrPayload };
   }
 
   // The file is already validated and in storage (controller); this
@@ -304,14 +410,29 @@ export class CustomersService {
     documentType: string,
     fileUri: string,
     bytes: Buffer,
+    confirmed: ConfirmedDocumentFields = {},
   ) {
     assertCustomer(ctx);
+    // What the customer checked on screen, kept even when OCR is off so the
+    // reviewer still sees the PCN they typed.
+    const customerPayload = Object.fromEntries(
+      (Object.entries(confirmed) as [keyof ConfirmedDocumentFields, string | undefined][])
+        .filter(([k, v]) => v && CUSTOMER_KEYS[k])
+        .map(([k, v]) => [CUSTOMER_KEYS[k], v]),
+    );
     return withTenantTx(ctx, async (tx) => {
       if (!(await ownsCustomer(tx, ctx, customerId)))
         throw new NotFoundException({ error: 'company_not_found' });
       const [row] = await tx
         .insert(kycDocuments)
-        .values({ tenantId: ctx.tenantId, customerId, documentType, fileUri, status: 'pending' })
+        .values({
+          tenantId: ctx.tenantId,
+          customerId,
+          documentType,
+          fileUri,
+          status: 'pending',
+          ...(Object.keys(customerPayload).length > 0 ? { ocrPayload: customerPayload } : {}),
+        })
         .returning();
       if (!row) throw new Error('kyc_documents insert returned no row');
 
@@ -324,7 +445,7 @@ export class CustomersService {
         await tx
           .update(kycDocuments)
           .set({
-            ocrPayload: read.ocrPayload,
+            ocrPayload: { ...read.ocrPayload, ...customerPayload },
             formatValid: { tin: read.formatValid.tin, sec_number: read.formatValid.secNumber },
             ...(read.confidence === null ? {} : { confidence: read.confidence.toFixed(4) }),
             status,
@@ -452,7 +573,10 @@ export class CustomersService {
 
   // --- Staff verification queue (kyc:verify).
 
-  async listForReview(ctx: RequestContext, kycStatus: string): Promise<CompanyResponse[]> {
+  // Each document carries its stored reads, so the reviewer sees what the
+  // upload-time OCR and the customer said without a click (or an Azure
+  // spend); "Re-read" stays for a fresh pass.
+  async listForReview(ctx: RequestContext, kycStatus: string): Promise<CompanyReviewResponse[]> {
     return withTenantTx(ctx, async (tx) => {
       const rows = await tx
         .select()
@@ -460,7 +584,7 @@ export class CustomersService {
         .where(eq(customers.kycStatus, kycStatus))
         .orderBy(desc(customers.createdAt))
         .limit(100);
-      return withDocuments(tx, rows);
+      return withDocuments(tx, rows, true);
     });
   }
 
@@ -533,7 +657,9 @@ export class CustomersService {
         await tx
           .update(kycDocuments)
           .set({
-            ocrPayload: read.ocrPayload,
+            // A re-read replaces the OCR's keys, never what the customer or
+            // a reviewer confirmed.
+            ocrPayload: { ...read.ocrPayload, ...humanKeys(doc.ocrPayload) },
             formatValid: { tin: read.formatValid.tin, sec_number: read.formatValid.secNumber },
             ...(read.confidence === null ? {} : { confidence: read.confidence.toFixed(4) }),
             status: 'needs_review', // never 'verified': that is decide()'s to set
@@ -555,6 +681,22 @@ export class CustomersService {
       if (row.kycStatus === body.decision)
         throw new ConflictException({ error: 'already_decided' });
 
+      const docs = await tx.select().from(kycDocuments).where(eq(kycDocuments.customerId, customerId));
+      // Every SEC, 2303 and DTI paper is checked on its public registry by a
+      // human before approval: the reviewer ticks each one, and a missed
+      // tick refuses the approval rather than silently verifying.
+      const registryDocs = docs.filter((d) =>
+        (REGISTRY_DOCUMENT_TYPES as readonly string[]).includes(d.documentType),
+      );
+      const checked = new Set(body.registryChecked ?? []);
+      const unchecked = registryDocs.filter((d) => !checked.has(d.id));
+      if (body.decision === 'approved' && unchecked.length > 0) {
+        throw new ConflictException({
+          error: 'registry_check_required',
+          documentTypes: unchecked.map((d) => d.documentType),
+        });
+      }
+
       // Approving with corrections writes what the reviewer confirmed
       // against the document, so a verified company carries the registered
       // name and TIN rather than whatever was typed at signup.
@@ -563,6 +705,7 @@ export class CustomersService {
           ? {
               ...(body.companyName ? { companyName: body.companyName } : {}),
               ...(body.tin ? { tin: body.tin } : {}),
+              ...(body.secNumber ? { secNumber: body.secNumber } : {}),
             }
           : {};
       await tx
@@ -583,31 +726,27 @@ export class CustomersService {
           })
           .where(eq(users.id, row.userId));
       }
-      // The company has no SEC column; the reviewer-confirmed number is
-      // evidence on the registration document it was read from.
-      if (body.decision === 'approved' && body.secNumber) {
-        const [registration] = await tx
-          .select()
-          .from(kycDocuments)
-          .where(
-            and(
-              eq(kycDocuments.customerId, customerId),
-              eq(kycDocuments.documentType, 'company_registration'),
-            ),
-          )
-          .limit(1);
-        if (registration) {
-          await tx
-            .update(kycDocuments)
-            .set({
-              ocrPayload: {
-                ...(registration.ocrPayload as Record<string, unknown> | null),
-                confirmed_sec_number: body.secNumber,
-                confirmed_by: ctx.userId,
-              },
-            })
-            .where(eq(kycDocuments.id, registration.id));
-        }
+      // The company has no DTI column (the number belongs to the business
+      // name, not the company); the reviewer-confirmed one is evidence on
+      // the DTI certificate it was read from.
+      const dti = docs.find((d) => d.documentType === 'dti_certificate');
+      if (body.decision === 'approved' && body.dtiNumber && dti) {
+        await tx
+          .update(kycDocuments)
+          .set({
+            ocrPayload: {
+              ...(dti.ocrPayload as Record<string, unknown> | null),
+              confirmed_dti_number: body.dtiNumber,
+              confirmed_by: ctx.userId,
+            },
+          })
+          .where(eq(kycDocuments.id, dti.id));
+      }
+      if (body.decision === 'approved' && registryDocs.length > 0) {
+        await tx
+          .update(kycDocuments)
+          .set({ registryStatus: 'active' })
+          .where(inArray(kycDocuments.id, registryDocs.map((d) => d.id)));
       }
       await tx
         .update(kycDocuments)
@@ -667,10 +806,17 @@ async function withUserNames(tx: Tx, rows: (typeof customers.$inferSelect)[]) {
   return new Map(rows_.map((u) => [u.id, u]));
 }
 
+async function withDocuments(tx: Tx, rows: (typeof customers.$inferSelect)[]): Promise<CompanyResponse[]>;
 async function withDocuments(
   tx: Tx,
   rows: (typeof customers.$inferSelect)[],
-): Promise<CompanyResponse[]> {
+  withReads: true,
+): Promise<CompanyReviewResponse[]>;
+async function withDocuments(
+  tx: Tx,
+  rows: (typeof customers.$inferSelect)[],
+  withReads = false,
+): Promise<CompanyResponse[] | CompanyReviewResponse[]> {
   if (rows.length === 0) return [];
   const [docs, names] = await Promise.all([
     tx
@@ -694,8 +840,28 @@ async function withDocuments(
         documentType: doc.documentType,
         status: doc.status,
         createdAt: doc.createdAt,
+        ...(withReads ? documentReads(doc) : {}),
       })),
   }));
+}
+
+// ocr_payload split for the reviewer: the OCR's own string values, and the
+// customer's (customer_* keys, prefix dropped). Per-field confidences stay
+// server-side; the document-level one is enough to judge by.
+function documentReads(doc: typeof kycDocuments.$inferSelect) {
+  const ocr: Record<string, string> = {};
+  const customer: Record<string, string> = {};
+  for (const [key, value] of Object.entries((doc.ocrPayload as Record<string, unknown> | null) ?? {})) {
+    if (typeof value !== 'string' || key.endsWith('_confidence') || key.startsWith('confirmed_')) continue;
+    if (key.startsWith('customer_')) customer[key.slice('customer_'.length)] = value;
+    else ocr[key] = value;
+  }
+  return {
+    confidence: doc.confidence === null ? null : Number(doc.confidence),
+    ocr,
+    customer,
+    registryChecked: doc.registryStatus === 'active',
+  };
 }
 
 function toSite(

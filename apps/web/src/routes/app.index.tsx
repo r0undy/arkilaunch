@@ -1,7 +1,7 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode } from 'react';
-import type { WeatherSeverity } from '@arkilaunch/shared';
+import type { IncidentResponse, InvoiceSummaryResponse, WeatherSeverity } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import {
   edtrQueries,
@@ -18,7 +18,15 @@ import { Surface } from '../components/surface.js';
 import { Modal } from '../components/modal.js';
 import { formatRelativeTime } from '../lib/format-time.js';
 import { explainAdvisory } from '../lib/weather-explain.js';
-import { formatDate, formatDateTime, formatPeso, shortCode } from '../lib/format.js';
+import {
+  formatDate,
+  formatDateTime,
+  formatPeso,
+  formatSeverity,
+  shortCode,
+  weekStart,
+} from '../lib/format.js';
+import { InvoiceDetail } from './app.payments.js';
 
 // Plain-English headline first (readable without knowing the PAGASA scale),
 // PAGASA's own label kept as a secondary tag (BRAND.md §0: the scale is
@@ -125,6 +133,10 @@ function AdminDashboardPage() {
   // Advisories opened as a stack of full banners above everything else --
   // on a bad weather day that pushed the entire dashboard below the fold.
   const [advisoriesOpen, setAdvisoriesOpen] = useState(false);
+  // Row clicks open the detail in place; the full pages stay one link away.
+  const [invoiceOpen, setInvoiceOpen] = useState<InvoiceSummaryResponse | null>(null);
+  const [incidentOpen, setIncidentOpen] = useState<IncidentResponse | null>(null);
+  const [siteOpen, setSiteOpen] = useState<string | null>(null);
 
   const alerts = (sites?.items ?? []).filter(
     (s) => s.latestSeverity && s.latestSeverity !== 'none',
@@ -137,6 +149,27 @@ function AdminDashboardPage() {
       reportDate?: string;
     }[]
   ).filter((e) => e.status === 'review');
+
+  // One row per machine-week, not per daily log: a week of one excavator
+  // is one decision, not seven (weekly EDTR sheet, proposal §2.2).
+  const reviewGroups = [
+    ...reviewItems
+      .reduce((groups, item) => {
+        const week = item.reportDate ? weekStart(item.reportDate) : '';
+        const key = `${item.equipmentId ?? ''}|${week}`;
+        const group = groups.get(key) ?? { equipmentId: item.equipmentId, week, count: 0 };
+        group.count += 1;
+        return groups.set(key, group);
+      }, new Map<string, { equipmentId: string | undefined; week: string; count: number }>())
+      .values(),
+  ].sort((a, b) => a.week.localeCompare(b.week));
+
+  function weekLabel(week: string): string {
+    if (!week) return 'Undated';
+    const end = new Date(week);
+    end.setUTCDate(end.getUTCDate() + 6);
+    return `Week of ${formatDate(week)} - ${formatDate(end)}`;
+  }
 
   // Name the machine rather than print a UUID stub: this is the first work
   // list anyone sees after signing in.
@@ -224,29 +257,30 @@ function AdminDashboardPage() {
       {/* ---- The one queue with a human decision attached (RFC-2) ---- */}
       <ConsoleCard
         title="Needs you"
-        badge={<span>Waiting: {edtrList ? reviewItems.length : '--'}</span>}
+        badge={<span>Waiting: {edtrList ? reviewGroups.length : '--'}</span>}
       >
         {reviewItems.length === 0 ? (
           <p className="px-4 py-3 text-sm text-text-muted">
             {edtrList ? 'Queue clear. No field logs waiting on a human decision.' : 'Loading...'}
           </p>
         ) : (
-          reviewItems.slice(0, 5).map((item) => (
+          reviewGroups.slice(0, 5).map((group) => (
             <Link
-              key={item.id}
+              key={`${group.equipmentId}|${group.week}`}
               to="/app/ocr"
-              className="flex items-center justify-between border-b border-border px-4 py-2.5 text-sm last:border-0 hover:bg-surface-sunk"
+              search={{
+                ...(group.equipmentId ? { equipment: group.equipmentId } : {}),
+                ...(group.week ? { week: group.week } : {}),
+              }}
+              className="flex items-center justify-between border-b border-border px-4 py-2.5 text-sm last:border-0 hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
             >
               <span className="flex flex-col">
-                <span className="font-medium text-text">
-                  {machineName(item.equipmentId)}
-                  {item.reportDate ? ` - ${formatDate(item.reportDate)}` : ''}
-                </span>
-                <span className="font-mono text-xs text-text-muted">
-                  {shortCode('log', item.id)}
-                </span>
+                <span className="font-medium text-text">{machineName(group.equipmentId)}</span>
+                <span className="text-xs text-text-muted">{weekLabel(group.week)}</span>
               </span>
-              <span className="text-text-muted">Waiting on your decision</span>
+              <span className="text-accent">
+                Review {group.count} {group.count === 1 ? 'log' : 'logs'}
+              </span>
             </Link>
           ))
         )}
@@ -307,8 +341,23 @@ function AdminDashboardPage() {
                   </thead>
                   <tbody>
                     {pendingInvoices.slice(0, 6).map((invoice) => (
-                      <tr key={invoice.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-2 font-mono">{shortCode('invoice', invoice.id)}</td>
+                      <tr
+                        key={invoice.id}
+                        onClick={() => setInvoiceOpen(invoice)}
+                        className="cursor-pointer border-b border-border last:border-0 hover:bg-surface-sunk"
+                      >
+                        <td className="px-4 py-2 font-mono">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setInvoiceOpen(invoice);
+                            }}
+                            className="text-accent hover:underline"
+                          >
+                            {shortCode('invoice', invoice.id)}
+                          </button>
+                        </td>
                         <td className="px-4 py-2">{invoice.invoiceType}</td>
                         <td className="px-4 py-2 text-right font-mono tabular-nums">
                           {formatPeso(invoice.amount)}
@@ -338,23 +387,23 @@ function AdminDashboardPage() {
               </p>
             ) : (
               (incidents?.items ?? []).slice(0, 5).map((incident) => (
-                <div
+                <button
+                  type="button"
                   key={incident.id}
-                  className="flex items-center justify-between border-b border-border px-4 py-2.5 text-sm last:border-0"
+                  onClick={() => setIncidentOpen(incident)}
+                  className="flex w-full items-center justify-between border-b border-border px-4 py-2.5 text-left text-sm last:border-0 hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
                 >
                   <span className="flex flex-col border-l-[3px] border-error pl-3">
                     <span className="font-medium text-text">
                       {incident.siteCity ?? incident.siteProvince ?? 'Unnamed site'}
-                      {incident.severity ? ` - ${incident.severity}` : ''}
+                      {incident.severity ? ` - ${formatSeverity(incident.severity)}` : ''}
                     </span>
                     <span className="text-xs text-text-muted">
                       {formatDateTime(incident.occurredAt)}
                     </span>
                   </span>
-                  <Link to="/app/incidents" className="text-accent hover:underline">
-                    View
-                  </Link>
-                </div>
+                  <span className="text-accent">View</span>
+                </button>
               ))
             )}
             <Link
@@ -379,9 +428,11 @@ function AdminDashboardPage() {
                 .sort((a, b) => Number(!!b.latestSeverity && b.latestSeverity !== 'none') - Number(!!a.latestSeverity && a.latestSeverity !== 'none'))
                 .slice(0, 8)
                 .map((site) => (
-                  <div
+                  <button
+                    type="button"
                     key={site.id}
-                    className="flex items-center justify-between border-b border-border px-4 py-2 text-sm last:border-0"
+                    onClick={() => setSiteOpen(site.id)}
+                    className="flex w-full items-center justify-between border-b border-border px-4 py-2 text-left text-sm last:border-0 hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
                   >
                     <span className="truncate text-text">
                       {site.city ?? site.province ?? 'Unnamed site'}
@@ -389,7 +440,7 @@ function AdminDashboardPage() {
                     <span className="text-text-muted">
                       {SEVERITY_META[(site.latestSeverity ?? 'none') as WeatherSeverity].headline}
                     </span>
-                  </div>
+                  </button>
                 ))
             )}
             <Link
@@ -410,8 +461,44 @@ function AdminDashboardPage() {
         size="lg"
       >
         <div className="flex flex-col gap-3">
-          {alerts.map((site) => {
-            const meta = SEVERITY_META[site.latestSeverity as WeatherSeverity];
+          {alerts.map(siteBanner)}
+        </div>
+      </Modal>
+
+      <Modal
+        open={invoiceOpen != null}
+        onClose={() => setInvoiceOpen(null)}
+        title={invoiceOpen ? `Invoice ${shortCode('invoice', invoiceOpen.id)}` : 'Invoice'}
+        size="sm"
+      >
+        {invoiceOpen && <InvoiceDetail invoice={invoiceOpen} />}
+        <Link to="/app/payments" className="mt-3 block text-sm font-medium text-accent hover:underline">
+          Open invoices
+        </Link>
+      </Modal>
+
+      <Modal
+        open={incidentOpen != null}
+        onClose={() => setIncidentOpen(null)}
+        title="Weather incident"
+        size="md"
+      >
+        {incidentOpen && <IncidentDetail incident={incidentOpen} />}
+        <Link to="/app/incidents" className="mt-3 block text-sm font-medium text-accent hover:underline">
+          Open the incident log
+        </Link>
+      </Modal>
+
+      <Modal open={siteOpen != null} onClose={() => setSiteOpen(null)} title="Site weather" size="lg">
+        <div className="flex flex-col gap-3">
+          {(sites?.items ?? []).filter((site) => site.id === siteOpen).map(siteBanner)}
+        </div>
+      </Modal>
+    </div>
+  );
+
+  function siteBanner(site: NonNullable<typeof sites>['items'][number]) {
+            const meta = SEVERITY_META[(site.latestSeverity ?? 'none') as WeatherSeverity];
             const advisory = advisoryBySite.get(site.id);
             const breakdown = advisory
               ? explainAdvisory(advisory.observed, advisory.advisory.severity)
@@ -429,9 +516,30 @@ function AdminDashboardPage() {
                 coordinates={{ latitude: site.latitude, longitude: site.longitude }}
               />
             );
-          })}
-        </div>
-      </Modal>
+  }
+}
+
+// What the poller saw when it logged the incident (events.properties.observed).
+function IncidentDetail({ incident }: { incident: IncidentResponse }) {
+  const observed = incident.observed as
+    | { tempC: number; windKph: number; precipMm: number; code: number }
+    | null;
+  const severity = (incident.severity ?? 'none') as WeatherSeverity;
+  const lines = observed
+    ? explainAdvisory(observed, severity)
+    : ['No reading was stored with this incident.'];
+  return (
+    <div className="flex flex-col gap-2 text-sm text-text">
+      <p className="font-medium">
+        {incident.siteCity ?? incident.siteProvince ?? 'Unnamed site'} &middot;{' '}
+        {formatSeverity(incident.severity)}
+      </p>
+      <p className="text-text-muted">{formatDateTime(incident.occurredAt)}</p>
+      <ul className="list-disc pl-5">
+        {lines.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
     </div>
   );
 }

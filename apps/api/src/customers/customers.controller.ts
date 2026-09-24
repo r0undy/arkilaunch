@@ -21,10 +21,12 @@ import { StorageService } from '../storage/storage.service.js';
 import { CustomersService } from './customers.service.js';
 import {
   CompanyCreateDto,
+  CompanyUpdateDto,
   CompanyDecisionDto,
   CompanyDocumentUploadDto,
   CompanyReviewQueryDto,
   CustomerSiteCreateDto,
+  KycScanRequestDto,
 } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
@@ -56,6 +58,12 @@ export class CustomersController {
     return this.customers.createCompany(req.ctx, body);
   }
 
+  @Patch('me/companies/:id')
+  @RequirePermission('booking:create')
+  updateCompany(@Param('id') id: string, @Body() body: CompanyUpdateDto, @Req() req: CtxRequest) {
+    return this.customers.updateCompany(req.ctx, id, body);
+  }
+
   // Validated (size, magic bytes) before anything reaches storage, same as
   // POST /kyc/extract. The already-uploaded bytes are also screened by OCR
   // (addDocument) so an illegible scan is bounced back to the customer
@@ -73,7 +81,8 @@ export class CustomersController {
     const validated = validateUpload(file);
     const key = this.storage.buildObjectKey(req.ctx.tenantId, validated.extension);
     await this.storage.uploadObject(kycBucket(), key, file!.buffer, validated.contentType);
-    return this.customers.addDocument(req.ctx, id, body.documentType, key, file!.buffer);
+    const { documentType, ...confirmed } = body;
+    return this.customers.addDocument(req.ctx, id, documentType, key, file!.buffer, confirmed);
   }
 
   // Scan-first company onboarding: extraction for the customer's own
@@ -82,11 +91,17 @@ export class CustomersController {
   // document itself is still uploaded separately through addDocument.
   @Post('me/kyc/scan')
   @RequirePermission('booking:create')
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  // One onboarding scans up to three papers (ID, primary, DTI), so 8 leaves
+  // room for one retake each.
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
-  async scanDocument(@UploadedFile() file: MulterFile | undefined, @Req() req: CtxRequest) {
+  async scanDocument(
+    @Body() body: KycScanRequestDto,
+    @UploadedFile() file: MulterFile | undefined,
+    @Req() req: CtxRequest,
+  ) {
     validateUpload(file);
-    return this.customers.scanDocument(req.ctx, file!.buffer);
+    return this.customers.scanDocument(req.ctx, body.documentType, file!.buffer);
   }
 
   @Get('me/sites')

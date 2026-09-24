@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SEC_REGEX } from './kyc.js';
+import { DTI_REGEX, PHILSYS_PCN_REGEX, SEC_REGEX } from './kyc.js';
 
 // Customer prerequisites CR: self-signup, companies (Figma 582:3946 "Add
 // New Company") and customer-owned project sites.
@@ -21,10 +21,12 @@ const TinSchema = z
 
 export const CompanyCreateSchema = z.object({
   companyName: z.string().trim().min(2).max(200),
-  tin: TinSchema,
-  // SEC/DTI registration number. Optional: the OCR scan suggests it and the
-  // customer may not have the certificate to hand when they add a company.
-  secNumber: z.string().trim().regex(SEC_REGEX, 'Registration number is 7-15 letters, digits or dashes').optional(),
+  // Each number comes from the paper that carries it: the TIN off the BIR
+  // Form 2303, the SEC number off the SEC certificate. A company registered
+  // with SEC papers only has no 2303 to read a TIN from, so neither is
+  // required here; the DTI number rides on the DTI document upload.
+  tin: TinSchema.optional(),
+  secNumber: z.string().trim().regex(SEC_REGEX, 'Not a valid SEC registration number').optional(),
   billingAddress: z.string().trim().min(5).max(500),
   // No name field here: the customer's legal name comes only from their
   // National ID scan, read by staff and confirmed on approval (decide()).
@@ -32,10 +34,68 @@ export const CompanyCreateSchema = z.object({
 });
 export type CompanyCreate = z.infer<typeof CompanyCreateSchema>;
 
-export const COMPANY_DOCUMENT_TYPES = ['government_id', 'company_registration'] as const;
-export const CompanyDocumentUploadSchema = z.object({
-  documentType: z.enum(COMPANY_DOCUMENT_TYPES),
-});
+// PATCH /me/companies/:id. The name is not editable (it is what was
+// registered and verified); TIN and SEC are refused by the service once the
+// company is approved.
+export const CompanyUpdateSchema = CompanyCreateSchema.pick({
+  tin: true,
+  secNumber: true,
+  billingAddress: true,
+})
+  .partial()
+  .strict();
+export type CompanyUpdate = z.infer<typeof CompanyUpdateSchema>;
+
+// Primary proof of registration is the BIR Certificate of Registration
+// (Form 2303) or the SEC certificate; DTI business-name registration is a
+// secondary, optional paper (sole proprietors). 'company_registration' is
+// the pre-split generic upload, still readable on old rows, never offered.
+// docs/cr-arkilaunch-truck-booking-and-kyc-docs.md.
+export const PRIMARY_REGISTRATION_TYPES = ['bir_cor', 'sec_certificate'] as const;
+export const COMPANY_DOCUMENT_TYPES = [
+  'government_id',
+  ...PRIMARY_REGISTRATION_TYPES,
+  'dti_certificate',
+] as const;
+export type PrimaryRegistrationType = (typeof PRIMARY_REGISTRATION_TYPES)[number];
+
+export function isPrimaryRegistration(documentType: string): boolean {
+  return (
+    (PRIMARY_REGISTRATION_TYPES as readonly string[]).includes(documentType) ||
+    documentType === 'company_registration'
+  );
+}
+
+// Complete = the applicant's ID plus one primary registration. DTI never
+// counts toward it.
+export function hasRequiredCompanyDocuments(documents: { documentType: string }[]): boolean {
+  return (
+    documents.some((d) => d.documentType === 'government_id') &&
+    documents.some((d) => isPrimaryRegistration(d.documentType))
+  );
+}
+// What the customer confirmed they read off the document, sent with the
+// upload and kept on the row beside the raw OCR (as customer_* keys) so the
+// reviewer sees both. Multipart fields, so every value is a string.
+export const CompanyDocumentUploadSchema = z
+  .object({
+    documentType: z.enum(COMPANY_DOCUMENT_TYPES),
+    firstName: z.string().trim().min(1).max(200).optional(),
+    middleName: z.string().trim().max(200).optional(),
+    lastName: z.string().trim().min(1).max(200).optional(),
+    idNumber: z.string().trim().regex(PHILSYS_PCN_REGEX, 'PCN is 16 digits: 0000-0000-0000-0000').optional(),
+    birthDate: z.string().trim().date().optional(),
+    sex: z.enum(['M', 'F']).optional(),
+    address: z.string().trim().max(500).optional(),
+    dtiNumber: z.string().trim().regex(DTI_REGEX, 'Not a valid DTI business name number').optional(),
+  })
+  // The customer must check their ID before it reaches a reviewer: an ID
+  // upload without the confirmed name and PCN is refused, not queued.
+  .refine(
+    (body) => body.documentType !== 'government_id' || (body.idNumber && body.firstName && body.lastName),
+    { message: 'Confirm your name and PCN before uploading the National ID', path: ['idNumber'] },
+  );
+export type CompanyDocumentUpload = z.infer<typeof CompanyDocumentUploadSchema>;
 
 // POST /me/kyc/scan. Suggestions a customer can edit before they submit
 // the form -- never a verification decision, and never stored as fact: the
@@ -49,11 +109,18 @@ export const CompanyDocumentReadResponseSchema = z.object({
     companyName: z.string().nullable(),
     tin: z.string().nullable(),
     secNumber: z.string().nullable(),
+    dtiNumber: z.string().nullable(),
+    registeredAddress: z.string().nullable(),
+    registrationDate: z.string().nullable(),
     // Populated instead of the company fields above when the document read
     // is the National ID, not the registration certificate.
     firstName: z.string().nullable(),
     middleName: z.string().nullable(),
     lastName: z.string().nullable(),
+    idNumber: z.string().nullable(),
+    birthDate: z.string().nullable(),
+    sex: z.string().nullable(),
+    address: z.string().nullable(),
   }),
   formatValid: z.object({ tin: z.boolean(), secNumber: z.boolean() }),
   confidence: z.number().nullable(),
@@ -61,12 +128,27 @@ export const CompanyDocumentReadResponseSchema = z.object({
 });
 export type CompanyDocumentReadResponse = z.infer<typeof CompanyDocumentReadResponseSchema>;
 
+// Only the fields the scanned document type actually carries are filled
+// (SCAN_FIELDS); the rest are null, so a SEC certificate never suggests a
+// TIN it does not print.
+export const KycScanRequestSchema = z.object({ documentType: z.enum(COMPANY_DOCUMENT_TYPES) });
 export const KycScanResponseSchema = z.object({
   suggestions: z.object({
     companyName: z.string().nullable(),
     tin: z.string().nullable(),
     secNumber: z.string().nullable(),
+    dtiNumber: z.string().nullable(),
+    address: z.string().nullable(),
+    firstName: z.string().nullable(),
+    middleName: z.string().nullable(),
+    lastName: z.string().nullable(),
+    idNumber: z.string().nullable(),
+    birthDate: z.string().nullable(),
+    sex: z.string().nullable(),
   }),
+  // The weakest field's confidence, so the page can ask for a retake before
+  // the upload-time gate bounces the document.
+  confidence: z.number().nullable(),
   extractionAvailable: z.boolean(),
 });
 export type KycScanResponse = z.infer<typeof KycScanResponseSchema>;
@@ -94,6 +176,26 @@ export const CompanyResponseSchema = z.object({
   createdAt: z.coerce.date(),
 });
 export type CompanyResponse = z.infer<typeof CompanyResponseSchema>;
+
+// GET /customers/review. The staff queue sees what each document says
+// without clicking anything: the stored upload-time OCR and what the
+// customer confirmed, both keyed by the snake_case port keys (tin,
+// sec_number, id_number, ...). Never on the customer's own /me responses.
+export const CompanyReviewResponseSchema = CompanyResponseSchema.extend({
+  documents: z.array(
+    z.object({
+      id: z.string().uuid(),
+      documentType: z.string(),
+      status: z.string(),
+      createdAt: z.coerce.date(),
+      confidence: z.number().nullable(),
+      ocr: z.record(z.string(), z.string()),
+      customer: z.record(z.string(), z.string()),
+      registryChecked: z.boolean(),
+    }),
+  ),
+});
+export type CompanyReviewResponse = z.infer<typeof CompanyReviewResponseSchema>;
 
 export const CustomerSiteCreateSchema = z.object({
   customerId: z.string().uuid(),
@@ -129,6 +231,10 @@ export const CompanyDecisionSchema = z.object({
   companyName: z.string().trim().min(2).max(200).optional(),
   tin: TinSchema.optional(),
   secNumber: z.string().trim().max(50).optional(),
+  dtiNumber: z.string().trim().max(50).optional(),
+  // The SEC/BIR/DTI documents the reviewer ticked as checked on the public
+  // registry. Approval is refused unless every such document is listed.
+  registryChecked: z.array(z.string().uuid()).max(20).optional(),
   // The reviewer-confirmed legal name off the National ID. Written onto the
   // customer's user account only on approval, same human gate as above.
   firstName: z.string().trim().min(1).max(200).optional(),

@@ -133,6 +133,48 @@ export async function listPendingTenantApplications(
   }));
 }
 
+// The approved-companies list for the platform console -- same shape and
+// paging as the pending pair above, over tenants_list_approved_applications()
+// (migrations/0033), plus when the decision was made.
+export interface ApprovedTenantApplication extends PendingTenantApplication {
+  reviewedAt: Date | null;
+}
+
+export async function countApprovedTenantApplications(): Promise<number> {
+  const [row] = await db.execute<{ total: string }>(
+    sql`select count(*)::text as total from tenants_list_approved_applications()`,
+  );
+  return Number(row?.total ?? 0);
+}
+
+export async function listApprovedTenantApplications(
+  limit: number,
+  offset: number,
+): Promise<ApprovedTenantApplication[]> {
+  const rows = await db.execute<{
+    application_id: string;
+    tenant_id: string;
+    company_name: string;
+    contact_first_name: string;
+    contact_last_name: string;
+    contact_mobile: string;
+    contact_job_title: string;
+    created_at: string;
+    reviewed_at: string | null;
+  }>(sql`select * from tenants_list_approved_applications() limit ${limit} offset ${offset}`);
+  return rows.map((row) => ({
+    applicationId: row.application_id,
+    tenantId: row.tenant_id,
+    companyName: row.company_name,
+    contactFirstName: row.contact_first_name,
+    contactLastName: row.contact_last_name,
+    contactMobile: row.contact_mobile,
+    contactJobTitle: row.contact_job_title,
+    createdAt: new Date(row.created_at),
+    reviewedAt: row.reviewed_at ? new Date(row.reviewed_at) : null,
+  }));
+}
+
 function isApplicationNotPending(err: unknown): boolean {
   return (
     typeof err === 'object' &&

@@ -9,6 +9,7 @@ import { TenantsModule } from './tenants/tenants.module.js';
 import { UsersModule } from './users/users.module.js';
 import { QuotesModule } from './quotes/quotes.module.js';
 import { PricingModule } from './pricing/pricing.module.js';
+import { TrucksModule } from './trucks/trucks.module.js';
 import { EdtrModule } from './edtr/edtr.module.js';
 import { KycModule } from './kyc/kyc.module.js';
 import { ReferenceModule } from './reference/reference.module.js';
@@ -43,6 +44,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard.js';
     UsersModule,
     QuotesModule,
     PricingModule,
+    TrucksModule,
     EdtrModule,
     KycModule,
     ReferenceModule,
