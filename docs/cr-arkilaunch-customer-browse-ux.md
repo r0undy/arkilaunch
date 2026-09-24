@@ -53,11 +53,18 @@ outlook.
   `/equipment/$equipmentId` move onto it; **paths are unchanged**, so no redirects and no SEO
   change. The detail page moves too — leaving it behind would drop the customer out of the
   shell one click into the page being fixed.
-- **`components/equipment-rail.tsx`** — the Figma rail. Cart for everyone, weather for
-  signed-in customers. Hidden below `xl`, where it would crowd the catalog rather than sit
-  beside it. **Cart sits above weather**, which is the reverse of Figma `185:1599` and a
-  deliberate departure: the cart is the panel with something to act on, so it takes the
-  position nearest the catalog; weather is context for that decision, not the decision.
+- **`components/weather-insights.tsx`** — the forecast, top-right and level with the
+  heading from `xl`, stacked under the catalog below it. Not hidden below `xl` any more:
+  that meant a customer browsing at 1200px or on a phone never saw it at all. A right
+  column cannot go lower than `xl` without forcing the catalog to one card per row, which
+  is the cramping this same pass fixed.
+- **The cart is one affordance in the app bar**, beside Sign out, as Figma `185:1599` draws
+  it. It had been in the sidebar with a count badge *and* drawn again as a panel in the
+  rail — the same thing three ways. The panel is deleted rather than moved, which is why
+  the rail component is now only the forecast and renamed to match. The count travels in
+  the accessible name (`Cart, 3 items`), it is customer-only since the bar is shared with
+  the admin shell, and "My bookings" picks up `/account/cart` in its `owns` list so the
+  blade still points somewhere true.
 - **`lib/weather-code.ts`** — `describeWeatherCode()` and `weekdayLabel()`. See §6.
 - **`lib/cart-client.ts`** — `useCart()`, a `useSyncExternalStore` subscription. See §4.
 - **Forecast API** — `WeatherForecastPort` (a separate interface), the Open-Meteo daily
@@ -183,6 +190,13 @@ also assumed the poller was the only caller, which is no longer true.
   comment explaining that the flag now gates the customer forecast too, not just the
   poller. CI is deliberately left off: enabling it would put a live third-party call on the
   `console-e2e` critical path.
+- **A unit-test flake was found and fixed, not retried away.** `login.test.tsx` stubbed
+  `[]` for every endpoint, which is not the shape a paginated list returns: `/app/inventory`'s
+  `isEmpty()` reads `data.items` and threw on undefined, crashing the destination route
+  into its error boundary. It had been stderr noise for a long time and became an
+  intermittent failure — about one run in three — once the app bar grew another subscriber
+  and the timing shifted. Six consecutive clean runs after the fix, with the TypeError gone
+  from the output.
 - **One e2e flake was found and fixed, not retried away.** `openSidebar` asked
   `isVisible()` the instant it was called, which is a snapshot rather than a wait: on a
   cold CI boot the app bar had not rendered, the helper concluded there was no drawer, and
