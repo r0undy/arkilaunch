@@ -21,6 +21,7 @@ import { StorageService } from '../storage/storage.service.js';
 import { CustomersService } from './customers.service.js';
 import {
   CompanyCreateDto,
+  CompanyUpdateDto,
   CompanyDecisionDto,
   CompanyDocumentUploadDto,
   CompanyReviewQueryDto,
@@ -54,6 +55,12 @@ export class CustomersController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   createCompany(@Body() body: CompanyCreateDto, @Req() req: CtxRequest) {
     return this.customers.createCompany(req.ctx, body);
+  }
+
+  @Patch('me/companies/:id')
+  @RequirePermission('booking:create')
+  updateCompany(@Param('id') id: string, @Body() body: CompanyUpdateDto, @Req() req: CtxRequest) {
+    return this.customers.updateCompany(req.ctx, id, body);
   }
 
   // Validated (size, magic bytes) before anything reaches storage, same as
