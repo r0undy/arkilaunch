@@ -1,5 +1,5 @@
 import { and, desc, eq } from 'drizzle-orm';
-import { invoices } from './schema/billing.js';
+import { billingSettings, invoices } from './schema/billing.js';
 import { quotations, rentalContracts } from './schema/rentals.js';
 import { db } from './client.js';
 
@@ -12,6 +12,22 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 // drift apart: a deduction must never exceed the deposit really held
 // (audit-ocr-money-path.md #5).
 export const DEFAULT_DEPOSIT_PHP = 5000;
+
+export interface BillingSettings {
+  dailyHours: number;
+  minDepositPhp: number;
+  lowBalancePct: number;
+}
+
+// The tenant's billing knobs; the 0038 column defaults when never set.
+export async function getBillingSettings(tx: Tx, tenantId: string): Promise<BillingSettings> {
+  const [row] = await tx.select().from(billingSettings).where(eq(billingSettings.tenantId, tenantId)).limit(1);
+  return {
+    dailyHours: row ? Number(row.dailyHours) : 8,
+    minDepositPhp: row ? Number(row.minDepositPhp) : DEFAULT_DEPOSIT_PHP,
+    lowBalancePct: row ? Number(row.lowBalancePct) : 20,
+  };
+}
 
 export interface DepositDeduction {
   invoiceId: string;

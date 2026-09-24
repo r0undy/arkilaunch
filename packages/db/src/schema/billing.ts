@@ -233,3 +233,19 @@ export const payments = pgTable(
     check('payments_amount_nonneg_chk', sql`${table.amount} >= 0`),
   ],
 );
+
+// 0038: per-tenant billing knobs. No row = the column defaults
+// (getBillingSettings in deposit-ledger.ts).
+export const billingSettings = pgTable(
+  'billing_settings',
+  {
+    tenantId: uuid('tenant_id')
+      .primaryKey()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    dailyHours: numeric('daily_hours', { precision: 4, scale: 2 }).notNull().default('8'),
+    minDepositPhp: numeric('min_deposit_php', { precision: 12, scale: 2 }).notNull().default('5000'),
+    lowBalancePct: numeric('low_balance_pct', { precision: 5, scale: 2 }).notNull().default('20'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [tenantIsolationPolicy()],
+);

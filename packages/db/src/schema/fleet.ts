@@ -64,6 +64,8 @@ export const rateCards = pgTable(
     equipmentTypeId: uuid('equipment_type_id')
       .notNull()
       .references(() => equipmentTypes.id),
+    // 0038: a unit card overrides its type's card; null = type-wide.
+    equipmentId: uuid('equipment_id').references(() => equipment.id),
     rateType: text('rate_type').notNull(), // hourly, daily
     rateValue: numeric('rate_value', { precision: 12, scale: 2 }).notNull(),
     currency: text('currency').notNull().default('PHP'),
