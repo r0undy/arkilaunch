@@ -54,7 +54,10 @@ outlook.
   change. The detail page moves too — leaving it behind would drop the customer out of the
   shell one click into the page being fixed.
 - **`components/equipment-rail.tsx`** — the Figma rail. Cart for everyone, weather for
-  signed-in customers. Hidden below `lg`, where it would push the catalog off the fold.
+  signed-in customers. Hidden below `xl`, where it would crowd the catalog rather than sit
+  beside it. **Cart sits above weather**, which is the reverse of Figma `185:1599` and a
+  deliberate departure: the cart is the panel with something to act on, so it takes the
+  position nearest the catalog; weather is context for that decision, not the decision.
 - **`lib/weather-code.ts`** — `describeWeatherCode()` and `weekdayLabel()`. See §6.
 - **`lib/cart-client.ts`** — `useCart()`, a `useSyncExternalStore` subscription. See §4.
 - **Forecast API** — `WeatherForecastPort` (a separate interface), the Open-Meteo daily
@@ -173,6 +176,13 @@ also assumed the poller was the only caller, which is no longer true.
   keeps the order of magnitude the same, but the arithmetic in
   `cr-arkilaunch-open-meteo-free-tier.md` is now stale.
 - Per-page document titles remain absent — every page is titled "ArkiLaunch".
+- **`ENABLE_WEATHER_POLL` is on locally and in Terraform `dev` (which already set it
+  `true`), and stays `false` in `prod`** by the user's decision on 2026-09-24 — turning it
+  on there starts the cron poller and the customer forecast against the non-commercial free
+  tier, which is the open item in §5. `.env.example` keeps its documented `false` with a
+  comment explaining that the flag now gates the customer forecast too, not just the
+  poller. CI is deliberately left off: enabling it would put a live third-party call on the
+  `console-e2e` critical path.
 - **One e2e flake was found and fixed, not retried away.** `openSidebar` asked
   `isVisible()` the instant it was called, which is a snapshot rather than a wait: on a
   cold CI boot the app bar had not rendered, the helper concluded there was no drawer, and
