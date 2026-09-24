@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll } from 'vitest';
+import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import postgres from 'postgres';
@@ -6,6 +6,7 @@ import {
   ExtractionUnavailableError,
   StubPaymentsAdapter,
   UnavailableDocumentIntelligenceAdapter,
+  WeatherUnavailableError,
   type RequestContext,
 } from '@arkilaunch/shared';
 import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared/testing';
@@ -13,7 +14,7 @@ import { AuthService } from '../src/auth/auth.service.js';
 import { RefreshTokenService } from '../src/auth/refresh-token.service.js';
 import { TotpService } from '../src/auth/totp.service.js';
 import { BookingsService } from '../src/bookings/bookings.service.js';
-import { CustomersService } from '../src/customers/customers.service.js';
+import { CustomersService, __clearForecastCache } from '../src/customers/customers.service.js';
 import { PaymentsService } from '../src/payments/payments.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { JwtService } from '@nestjs/jwt';
@@ -125,7 +126,16 @@ describe('Customer onboarding', () => {
       billingAddress: '1248 North Quarry Way, Pasig',
       contactMobile: '09170000000',
     };
-    const acme = await companies.createCompany(ctx, { companyName: 'Acme Builders', ...details });
+    const acme = await companies.createCompany(ctx, {
+      companyName: 'Acme Builders',
+      secNumber: 'PH62780901',
+      ...details,
+    });
+    // The card shows this as "Registration Number" (Figma 251:1945).
+    expect(acme.secNumber).toBe('PH62780901');
+    expect((await companies.listCompanies(ctx)).find((c) => c.id === acme.id)?.secNumber).toBe(
+      'PH62780901',
+    );
     const beta = await companies.createCompany(ctx, { companyName: 'Beta Works', ...details });
     expect((await companies.listCompanies(ctx)).map((c) => c.companyName).sort()).toEqual([
       'Acme Builders',
@@ -227,6 +237,34 @@ describe('Customer onboarding', () => {
       mine.id,
     );
 
+    // The company card fetches its own registration certificate through
+    // ownDocumentKey(). RLS bounds the tenant and no further -- without the
+    // ownership predicate on top, this read is one customer of a tenant
+    // pulling another's KYC evidence by guessing a customer id.
+    const myDoc = await companies.addDocument(
+      ctx,
+      mine.id,
+      'company_registration',
+      `${tenantId}/test/gamma-registration.jpg`,
+      Buffer.from('not-really-an-image'),
+    );
+    await expect(companies.ownDocumentKey(ctx, mine.id, myDoc.id)).resolves.toContain(
+      'gamma-registration.jpg',
+    );
+    await expect(
+      companies.ownDocumentKey(seededCustomerCtx, mine.id, myDoc.id),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    // A staff login -- of this tenant or another -- never reaches the
+    // ownership check at all: this route is the customer's own, and
+    // assertCustomer refuses the role first. Staff read the same document
+    // through the quote:approve route, which is audited.
+    await expect(
+      companies.ownDocumentKey(adminCtx, mine.id, myDoc.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      companies.ownDocumentKey(otherTenantCtx, mine.id, myDoc.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
     // Staff cannot create companies under their own login.
     await expect(companies.listCompanies(adminCtx)).rejects.toBeInstanceOf(ForbiddenException);
 
@@ -237,6 +275,149 @@ describe('Customer onboarding', () => {
     await expect(
       companies.decide(otherTenantCtx, mine.id, { decision: 'approved' }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+
+  // The browse page's weather rail reads this. It is the first weather route
+  // a customer can reach at all -- the two on sites.controller.ts are
+  // STAFF_READ -- so the isolation is new surface, not a variation on old.
+  describe('site forecast', () => {
+    const DAYS = Array.from({ length: 5 }, (_, i) => ({
+      date: `2026-09-2${i}`,
+      tempMaxC: 32,
+      tempMinC: 25,
+      windMaxKph: 18,
+      precipMm: 1.5,
+      code: 3,
+    }));
+
+    function counting(days = DAYS) {
+      let calls = 0;
+      const port = {
+        async getForecast() {
+          calls += 1;
+          return days;
+        },
+      };
+      return { port, calls: () => calls };
+    }
+
+    function serviceWith(port: { getForecast: () => Promise<typeof DAYS> }) {
+      return new CustomersService(
+        events,
+        new UnavailableDocumentIntelligenceAdapter('flag_disabled'),
+        port,
+      );
+    }
+
+    async function siteFor(ctx: RequestContext, service: CustomersService, city: string) {
+      const company = await service.createCompany(ctx, {
+        companyName: `Forecast ${city} ${randomUUID().slice(0, 6)}`,
+        tin: '123-456-789',
+        billingAddress: `1 ${city} Road`,
+        contactMobile: '09170000000',
+      });
+      return service.createSite(ctx, {
+        customerId: company.id,
+        line1: `1 ${city} Road`,
+        city,
+        province: 'Metro Manila',
+        latitude: 14.58,
+        longitude: 121.06,
+      });
+    }
+
+    let ownerCtx: RequestContext;
+
+    beforeAll(async () => {
+      const tokens = await auth.registerCustomer({
+        email: `forecast-${randomUUID().slice(0, 8)}@onboarding.test`,
+        password: 'correct horse battery',
+        acceptedTerms: true,
+      });
+      ownerCtx = decodeCtx(tokens.accessToken);
+    });
+
+    beforeEach(() => {
+      __clearForecastCache();
+    });
+
+    it('returns five days for the caller own site, unmodified', async () => {
+      const { port } = counting();
+      const service = serviceWith(port);
+      const site = await siteFor(ownerCtx, service, 'Pasig');
+
+      const forecast = await service.siteForecast(ownerCtx, site.id);
+      expect(forecast.siteId).toBe(site.id);
+      expect(forecast.days).toEqual(DAYS);
+      expect(forecast.fetchedAt).toMatch(/^\d{4}-/);
+    });
+
+    // RLS bounds the tenant and no further, and `customer` is an intra-tenant
+    // role: without ownCustomers() on top, this read tells one customer where
+    // another company is working.
+    it('refuses another customer site in the same tenant', async () => {
+      const { port } = counting();
+      const service = serviceWith(port);
+      const site = await siteFor(ownerCtx, service, 'Makati');
+
+      await expect(service.siteForecast(seededCustomerCtx, site.id)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('refuses a staff login: this is the customer own surface', async () => {
+      const { port } = counting();
+      const service = serviceWith(port);
+      const site = await siteFor(ownerCtx, service, 'Taguig');
+
+      await expect(service.siteForecast(adminCtx, site.id)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      await expect(service.siteForecast(otherTenantCtx, site.id)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+
+    // The one failure mode that can hurt someone: an empty week or a row of
+    // zeros reads as a calm five days rather than as missing data.
+    it('reports an unavailable forecast as unavailable, never as an empty week', async () => {
+      const service = serviceWith({
+        async getForecast() {
+          throw new WeatherUnavailableError('flag_disabled');
+        },
+      });
+      const site = await siteFor(ownerCtx, service, 'Mandaluyong');
+
+      await expect(service.siteForecast(ownerCtx, site.id)).rejects.toMatchObject({
+        response: { error: 'weather_unavailable', reason: 'flag_disabled' },
+      });
+    });
+
+    it('serves a second read from cache rather than paying the free tier twice', async () => {
+      const { port, calls } = counting();
+      const service = serviceWith(port);
+      const site = await siteFor(ownerCtx, service, 'Ortigas');
+
+      await service.siteForecast(ownerCtx, site.id);
+      await service.siteForecast(ownerCtx, site.id);
+      expect(calls()).toBe(1);
+    });
+
+    it('does not cache a failure into the next half hour', async () => {
+      let attempts = 0;
+      const service = serviceWith({
+        async getForecast() {
+          attempts += 1;
+          throw new WeatherUnavailableError('no_adapter');
+        },
+      });
+      const site = await siteFor(ownerCtx, service, 'Cubao');
+
+      await expect(service.siteForecast(ownerCtx, site.id)).rejects.toBeTruthy();
+      await expect(service.siteForecast(ownerCtx, site.id)).rejects.toBeTruthy();
+      expect(attempts).toBe(2);
+    });
   });
 
   // Scan-first onboarding: the scan only fills the form in. It must not

@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
@@ -27,6 +28,15 @@ import {
   type KycScanResponse,
 } from '@arkilaunch/shared';
 import { KYC_MODEL_ID, NATIONAL_ID_MODEL_ID } from '@arkilaunch/document-intelligence';
+import { createWeatherAdapter } from '@arkilaunch/weather';
+import { WEATHER_FORECAST_PORT } from './weather.tokens.js';
+import {
+  WEATHER_POLL_CADENCE_MINUTES,
+  WeatherUnavailableError,
+  type DailyForecast,
+  type SiteForecastResponse,
+  type WeatherForecastPort,
+} from '@arkilaunch/shared';
 import { DOCUMENT_INTELLIGENCE_PORT } from '../kyc/kyc.tokens.js';
 import type {
   CompanyCreate,
@@ -46,11 +56,59 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 // 582:3946 "Add New Company"), their verification documents, and the
 // project sites they deliver to. RLS bounds the tenant; ownCustomers()
 // bounds a customer to their own companies.
+
+// Forecasts are cached in-process, keyed on coordinates rounded to ~100 m so
+// neighbouring sites share one upstream call.
+//
+// This is the load-bearing half: a client-side staleTime does nothing about N
+// customers each opening the browse page. The free tier's daily call budget
+// (docs/cr-arkilaunch-open-meteo-free-tier.md) was sized for the poller
+// alone, and this route is the first thing customers can trigger directly.
+// Successes only -- a cached failure would turn one bad minute into thirty.
+//
+// ponytail: per-instance Map. A shared cache only matters above ~2 replicas.
+const FORECAST_TTL_MS = WEATHER_POLL_CADENCE_MINUTES * 60_000;
+const forecastCache = new Map<string, { days: DailyForecast[]; fetchedAt: string; at: number }>();
+
+function forecastKey(latitude: number, longitude: number): string {
+  return `${latitude.toFixed(3)},${longitude.toFixed(3)}`;
+}
+
+function readForecastCache(latitude: number, longitude: number) {
+  const hit = forecastCache.get(forecastKey(latitude, longitude));
+  if (!hit) return null;
+  if (Date.now() - hit.at > FORECAST_TTL_MS) {
+    forecastCache.delete(forecastKey(latitude, longitude));
+    return null;
+  }
+  return hit;
+}
+
+function writeForecastCache(
+  latitude: number,
+  longitude: number,
+  days: DailyForecast[],
+  fetchedAt: string,
+): void {
+  forecastCache.set(forecastKey(latitude, longitude), { days, fetchedAt, at: Date.now() });
+}
+
+/** Test seam: the cache is module state and would otherwise leak across specs. */
+export function __clearForecastCache(): void {
+  forecastCache.clear();
+}
+
 @Injectable()
 export class CustomersService {
   constructor(
     private readonly events: EventsService,
     @Inject(DOCUMENT_INTELLIGENCE_PORT) private readonly port: DocumentIntelligencePort,
+    // Injected by token, not by type: an interface erases to `Object` in the
+    // DI metadata, so a bare `weather: WeatherForecastPort` makes Nest look
+    // for a provider called Object and refuse to construct this service at
+    // boot. The default keeps the spec able to pass a counting stub.
+    @Inject(WEATHER_FORECAST_PORT)
+    private readonly weather: WeatherForecastPort = createWeatherAdapter(),
   ) {}
 
   /**
@@ -109,6 +167,7 @@ export class CustomersService {
           userId: ctx.userId,
           companyName: body.companyName,
           tin: body.tin,
+          secNumber: body.secNumber ?? null,
           billingAddress: body.billingAddress,
           kycStatus: 'pending',
         })
@@ -312,6 +371,54 @@ export class CustomersService {
     });
   }
 
+  /**
+   * GET /me/sites/:id/forecast. Five days for one of the caller's own sites.
+   *
+   * The weather routes on sites.controller.ts are STAFF_READ, so a customer
+   * could not read weather at all -- this is the customer's own surface, and
+   * it is bounded the same way every other /me read is. RLS puts every
+   * customer of a tenant in one scope; ownCustomers() on top is what stops
+   * one customer reading the forecast for another's site, which would leak
+   * where that company is working (audit-api-surface.md #1).
+   */
+  async siteForecast(ctx: RequestContext, siteId: string): Promise<SiteForecastResponse> {
+    assertCustomer(ctx);
+    const site = await withTenantTx(ctx, async (tx) => {
+      const ids = (await ownCustomers(tx, ctx)).map((row) => row.id);
+      if (ids.length === 0) throw new NotFoundException({ error: 'site_not_found' });
+      const [row] = await tx
+        .select()
+        .from(projectSites)
+        .where(and(eq(projectSites.id, siteId), inArray(projectSites.customerId, ids)))
+        .limit(1);
+      // Not-found rather than forbidden, so the check confirms no ids.
+      if (!row) throw new NotFoundException({ error: 'site_not_found' });
+      return row;
+    });
+
+    const latitude = Number(site.latitude);
+    const longitude = Number(site.longitude);
+    const cached = readForecastCache(latitude, longitude);
+    if (cached) return { siteId, days: cached.days, fetchedAt: cached.fetchedAt };
+
+    let days;
+    try {
+      days = await this.weather.getForecast(latitude, longitude);
+    } catch (err) {
+      // Unavailable is reported as unavailable. Never an empty week, never
+      // zeros: packages/shared/src/weather-port.spec.ts pins why a
+      // fabricated all-clear is the one failure mode that can hurt someone.
+      throw new ServiceUnavailableException({
+        error: 'weather_unavailable',
+        reason: err instanceof WeatherUnavailableError ? err.reason : 'upstream_failed',
+      });
+    }
+
+    const fetchedAt = new Date().toISOString();
+    writeForecastCache(latitude, longitude, days, fetchedAt);
+    return { siteId, days, fetchedAt };
+  }
+
   async createSite(ctx: RequestContext, body: CustomerSiteCreate): Promise<CustomerSiteResponse> {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
@@ -354,6 +461,32 @@ export class CustomersService {
         .orderBy(desc(customers.createdAt))
         .limit(100);
       return withDocuments(tx, rows);
+    });
+  }
+
+  /**
+   * GET /me/companies/:id/documents/:documentId/url. The customer's own
+   * copy of documentKey().
+   *
+   * RLS bounds the tenant and nothing more, and `customer` is an
+   * intra-tenant role -- without ownsCustomer() on top, one customer of a
+   * tenant could read another's registration certificate by guessing a
+   * customer id (audit-api-surface.md #1). Refuses as not-found rather
+   * than forbidden so the check leaks no ids.
+   */
+  async ownDocumentKey(ctx: RequestContext, customerId: string, documentId: string): Promise<string> {
+    assertCustomer(ctx);
+    return withTenantTx(ctx, async (tx) => {
+      if (!(await ownsCustomer(tx, ctx, customerId))) {
+        throw new NotFoundException({ error: 'document_not_found' });
+      }
+      const [doc] = await tx
+        .select()
+        .from(kycDocuments)
+        .where(and(eq(kycDocuments.id, documentId), eq(kycDocuments.customerId, customerId)))
+        .limit(1);
+      if (!doc) throw new NotFoundException({ error: 'document_not_found' });
+      return doc.fileUri;
     });
   }
 
@@ -514,6 +647,7 @@ function toCompany(
     id: row.id,
     companyName: row.companyName,
     tin: row.tin,
+    secNumber: row.secNumber,
     billingAddress: row.billingAddress,
     kycStatus: row.kycStatus,
     firstName: name?.firstName ?? null,

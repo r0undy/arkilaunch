@@ -44,6 +44,9 @@ importers:
       '@arkilaunch/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@arkilaunch/weather':
+        specifier: workspace:*
+        version: link:../../packages/weather
       '@azure/monitor-opentelemetry':
         specifier: 1.19.0
         version: 1.19.0

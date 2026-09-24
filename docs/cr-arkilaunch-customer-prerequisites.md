@@ -22,7 +22,7 @@ The customer journey (cart → quote → pay) had no way in for a real customer:
 
 - **Customers sign up themselves**, in the storefront tenant (`ANCHOR_TENANT_SLUG`). Rental-business registration stays at `/register`.
 - **One login may own several companies**: several `customers` rows share `user_id`, and the customer names which company a booking is for.
-- **Booking before verification is allowed; payment is not.** Checkout returns 409 `company_not_verified` until staff approve the company.
+- **Booking before verification is allowed; payment is not.** Checkout returns 409 `company_not_verified` until staff approve the company. **Narrowed 2026-09-24** by [cr-arkilaunch-cart-validation.md](cr-arkilaunch-cart-validation.md) §2: the API contract is unchanged, but the cart no longer offers an unverified company, so a booking request cannot be started against one from the UI.
 - **Sites are pinned on a map**, using Leaflet with OpenStreetMap tiles.
 
 ## 3. What changed

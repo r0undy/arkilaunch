@@ -1,7 +1,8 @@
-import { createRouter } from '@tanstack/react-router';
+import { createRoute, createRouter, redirect } from '@tanstack/react-router';
 import { rootRoute } from './routes/__root.js';
 
 import { publicLayoutRoute } from './routes/_public.js';
+import { storefrontLayoutRoute } from './routes/_storefront.js';
 import { indexRoute } from './routes/index.js';
 import { equipmentRoute } from './routes/equipment.js';
 import { equipmentDetailRoute } from './routes/equipment.$equipmentId.js';
@@ -80,13 +81,27 @@ import {
   fieldSettingsRoute,
 } from './routes/unbacked-screens.js';
 import {
-  accountCompaniesRoute,
+  accountCompanyDetailRoute,
   accountCompanyNewRoute,
   accountCompanyDocumentsRoute,
 } from './routes/account.companies.js';
 
+// /account/companies was a second, differently-styled list of the same rows
+// the Figma company list (251:1945) now draws at /account/applications.
+// Redirected rather than deleted: it is linked from older emails and the
+// customer journey docs.
+const accountCompaniesRedirectRoute = createRoute({
+  getParentRoute: () => accountLayoutRoute,
+  path: '/account/companies',
+  beforeLoad: () => {
+    throw redirect({ to: '/account/applications' });
+  },
+});
+
 export const routeTree = rootRoute.addChildren([
-  publicLayoutRoute.addChildren([indexRoute, equipmentRoute, equipmentDetailRoute, contactRoute, helpRoute, termsRoute, privacyRoute]),
+  publicLayoutRoute.addChildren([indexRoute, contactRoute, helpRoute, termsRoute, privacyRoute]),
+  // Same paths as before -- only the chrome changes, and only by auth state.
+  storefrontLayoutRoute.addChildren([equipmentRoute, equipmentDetailRoute]),
   authLayoutRoute.addChildren([loginRoute, signupRoute, registerRoute, registerCompanyRoute, registerPendingRoute, activateRoute]),
   accountLayoutRoute.addChildren([
     accountIndexRoute,
@@ -101,7 +116,8 @@ export const routeTree = rootRoute.addChildren([
     accountNotificationsRoute,
     accountBookingRoute,
     accountBookingExtendRoute,
-    accountCompaniesRoute,
+    accountCompaniesRedirectRoute,
+    accountCompanyDetailRoute,
     accountCompanyNewRoute,
     accountCompanyDocumentsRoute,
     accountNegotiationRoute,

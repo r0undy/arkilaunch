@@ -95,6 +95,11 @@ export const CatalogEquipmentSchema = z.object({
   equipmentTypeName: z.string(),
   model: z.string(),
   availabilityStatus: EquipmentStatusSchema,
+  // A pointer into the public-read equipment-photos bucket (migration 0028).
+  // Null for a machine nobody has photographed yet. The safe-column allowlist
+  // behind this endpoint is otherwise unchanged: no serial_no, no
+  // runtime_hours -- screens that want a per-unit label use shortCode(id).
+  photoUri: z.string().nullable(),
 });
 export type CatalogEquipment = z.infer<typeof CatalogEquipmentSchema>;
 

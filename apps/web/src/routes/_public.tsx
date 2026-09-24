@@ -1,8 +1,12 @@
-import { createRoute, Outlet } from '@tanstack/react-router';
+import { createRoute, Link, Outlet, type LinkProps } from '@tanstack/react-router';
+import type { ReactNode } from 'react';
 import { rootRoute } from './__root.js';
 import { FloatingNav } from '../components/floating-nav.js';
+import { SkipLink } from '../components/skip-link.js';
 
-const FOOTER_COLUMNS = [
+type FooterTo = NonNullable<LinkProps['to']>;
+
+const FOOTER_COLUMNS: { title: string; links: { label: string; to: FooterTo }[] }[] = [
   {
     title: 'Use cases',
     links: [
@@ -36,12 +40,17 @@ const FOOTER_COLUMNS = [
 // footer are now full-bleed, sitting directly on the marketing frame
 // background; only the page's own content (via each route + the footer's
 // inner row) is width-capped with max-w-shell.
-function PublicLayout() {
+// Exported so the storefront layout can reuse it for signed-out visitors --
+// /equipment renders this chrome or the account shell depending on who is
+// looking (see routes/_storefront.tsx). The footer markup stays here, in one
+// place, rather than being copied into a second shell.
+export function MarketingChrome({ children }: { children: ReactNode }) {
   return (
     <div data-tier="marketing" className="flex min-h-screen flex-col bg-bg-mk-frame">
+      <SkipLink />
       <FloatingNav />
-      <main className="mx-auto w-full max-w-shell flex-1 bg-bg-mk shadow-mk-inset">
-        <Outlet />
+      <main id="main" className="mx-auto w-full max-w-shell flex-1 bg-bg-mk shadow-mk-inset">
+        {children}
       </main>
       <footer className="bg-surface-mk">
         <div className="mx-auto flex max-w-shell flex-col gap-8 px-6 py-12 sm:flex-row sm:justify-between">
@@ -56,9 +65,14 @@ function PublicLayout() {
                 <ul className="mt-3 flex flex-col gap-2">
                   {col.links.map((link) => (
                     <li key={link.to}>
-                      <a href={link.to} className="text-sm text-text-muted hover:text-text">
+                      {/* Router Link, not a bare anchor: every footer click
+                          used to be a full page reload. */}
+                      <Link
+                        to={link.to}
+                        className="text-sm text-text-muted hover:text-text"
+                      >
                         {link.label}
-                      </a>
+                      </Link>
                     </li>
                   ))}
                 </ul>
@@ -68,6 +82,14 @@ function PublicLayout() {
         </div>
       </footer>
     </div>
+  );
+}
+
+function PublicLayout() {
+  return (
+    <MarketingChrome>
+      <Outlet />
+    </MarketingChrome>
   );
 }
 

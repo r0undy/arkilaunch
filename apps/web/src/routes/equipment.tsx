@@ -1,7 +1,8 @@
 import { createRoute, useNavigate } from '@tanstack/react-router';
+import type { CatalogEquipment } from '@arkilaunch/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { publicLayoutRoute } from './_public.js';
+import { storefrontLayoutRoute } from './_storefront.js';
 import { EquipmentCard } from '../components/equipment-card.js';
 import { SearchFilterBar, type AvailabilityFilter } from '../components/search-filter-bar.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
@@ -14,6 +15,8 @@ import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
+import { WeatherInsights, weatherInsightsVisible } from '../components/weather-insights.js';
+import { getAccessToken } from '../lib/auth-client.js';
 
 // <input type="datetime-local"> speaks local "YYYY-MM-DDTHH:mm"; the cart
 // stores ISO. The frame draws date and time as two fields per end of the
@@ -37,7 +40,7 @@ function ConfigureRentalDialog({
   equipment,
   onClose,
 }: {
-  equipment: { id: string; model: string };
+  equipment: Pick<CatalogEquipment, 'id' | 'model' | 'equipmentTypeName' | 'photoUri'>;
   onClose: () => void;
 }) {
   const navigate = useNavigate();
@@ -50,19 +53,35 @@ function ConfigureRentalDialog({
   // than letting the cart's submit be the first time anyone finds out.
   const invalid = !start || !end || new Date(end) <= new Date(start);
 
+  // /account/cart is behind requireAuth(), so "Book now" used to hand a
+  // signed-out visitor a silent guard bounce to /login -- which reads as the
+  // button having eaten the click. Send them there deliberately instead, with
+  // the cart as the redirect target: the cart survives in sessionStorage, so
+  // they arrive signed in with the machine already in it.
+  const signedIn = Boolean(getAccessToken());
+
   function commit(thenGoToCart: boolean) {
     if (invalid) return;
     addToCart({
       equipmentId: equipment.id,
       model: equipment.model,
+      equipmentTypeName: equipment.equipmentTypeName,
+      photoUri: equipment.photoUri,
       start: new Date(start).toISOString(),
       end: new Date(end).toISOString(),
     });
     onClose();
     if (thenGoToCart) {
-      void navigate({ to: '/account/cart' });
+      void navigate(
+        signedIn
+          ? { to: '/account/cart' }
+          : { to: '/login', search: { redirect: '/account/cart' } },
+      );
     } else {
-      toast.success(`${equipment.model} added to your cart`);
+      toast.success(
+        `${equipment.model} added to your cart`,
+        signedIn ? undefined : 'Sign in when you are ready to book.',
+      );
     }
   }
 
@@ -79,7 +98,7 @@ function ConfigureRentalDialog({
             Add to cart
           </Button>
           <Button variant="primary" disabled={invalid} onClick={() => commit(true)}>
-            Book now
+            {signedIn ? 'Book now' : 'Sign in to book'}
           </Button>
         </>
       }
@@ -115,7 +134,7 @@ function EquipmentPage() {
   const [query, setQuery] = useState('');
   const [availability, setAvailability] = useState<AvailabilityFilter>('all');
   const [offset, setOffset] = useState(0);
-  const [configuring, setConfiguring] = useState<{ id: string; model: string } | null>(null);
+  const [configuring, setConfiguring] = useState<CatalogEquipment | null>(null);
   const { data, isPending, isError, refetch } = useQuery(catalogQueries.equipment());
 
   const equipment = useMemo(
@@ -137,8 +156,23 @@ function EquipmentPage() {
   const safeOffset = offset < equipment.length ? offset : 0;
   const page = equipment.slice(safeOffset, safeOffset + PAGE_SIZE);
 
+  // Weather sits top-right, level with the heading, and only when there is
+  // something to show: a signed-out visitor has no site to forecast, and
+  // reserving 320px for a panel that renders nothing would leave a hole.
+  //
+  // The column waits for xl. Below that it took 320px out of a viewport that
+  // had already given 240px to the account sidebar, leaving the catalog ~440px
+  // and three cards squeezed to 201px with the machine names wrapping -- so it
+  // stacks under the catalog there rather than crowding it or vanishing.
+  const showWeather = weatherInsightsVisible();
   return (
-    <div className="flex flex-col gap-6 px-6 py-10 sm:px-10">
+    <div
+      className={[
+        'grid gap-6 px-6 py-10 sm:px-10',
+        showWeather ? 'xl:grid-cols-[1fr_320px] xl:items-start' : '',
+      ].join(' ')}
+    >
+      <div className="flex min-w-0 flex-col gap-6">
       <h1 className="font-display text-2xl font-semibold text-ink-mk">Equipment for hire</h1>
       <SearchFilterBar
         query={query}
@@ -154,9 +188,16 @@ function EquipmentPage() {
         />
       )}
       {data && (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        // auto-fill against a minimum card width, not viewport breakpoints. The
+        // same viewport means different content widths here depending on whether
+        // the sidebar and the rail are present, so a breakpoint cannot know how
+        // many cards fit -- the grid measures itself instead.
+        //
+        // 280px is where a machine name still fits on one line beside the Rent
+        // button: at 240 the name had ~155px and "Almara Backhoe #1" wrapped.
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
           {page.map((eq) => {
-            const imageUrl = equipmentImageUrl(eq.model);
+            const imageUrl = eq.photoUri ?? equipmentImageUrl(eq.model);
             return (
               <EquipmentCard
                 key={eq.id}
@@ -165,7 +206,7 @@ function EquipmentPage() {
                 model={eq.model}
                 make={eq.equipmentTypeName}
                 availabilityStatus={eq.availabilityStatus}
-                onRent={() => setConfiguring({ id: eq.id, model: eq.model })}
+                onRent={() => setConfiguring(eq)}
                 onViewDetails={() =>
                   navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })
                 }
@@ -186,6 +227,12 @@ function EquipmentPage() {
         onOffsetChange={setOffset}
         noun="machines"
       />
+      </div>
+      {showWeather && (
+        <aside aria-label="Weather insights">
+          <WeatherInsights />
+        </aside>
+      )}
       {configuring && (
         <ConfigureRentalDialog equipment={configuring} onClose={() => setConfiguring(null)} />
       )}
@@ -194,7 +241,7 @@ function EquipmentPage() {
 }
 
 export const equipmentRoute = createRoute({
-  getParentRoute: () => publicLayoutRoute,
+  getParentRoute: () => storefrontLayoutRoute,
   path: '/equipment',
   component: EquipmentPage,
 });

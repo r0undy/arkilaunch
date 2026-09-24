@@ -3,6 +3,7 @@ import type {
   BookingDetailResponse,
   NegotiationMessageResponse,
   CompanyResponse,
+  SiteForecastResponse,
   CustomerSiteResponse,
   BookingListResponse,
   CatalogEquipment,
@@ -234,10 +235,35 @@ export const companiesQueries = {
       queryKey: ['me', 'companies'] as const,
       queryFn: () => apiGet<CompanyResponse[]>('/me/companies'),
     }),
+  // A 300s signed URL for one of the caller's own KYC documents, used as
+  // the registration-certificate thumbnail on the company card. Short TTL,
+  // so it is not cached beyond the screen that shows it.
+  documentUrl: (companyId: string, documentId: string) =>
+    queryOptions({
+      queryKey: ['me', 'companies', companyId, 'documents', documentId, 'url'] as const,
+      queryFn: () =>
+        apiGet<{ url: string }>(`/me/companies/${companyId}/documents/${documentId}/url`),
+      staleTime: 240_000,
+      retry: false,
+    }),
   review: (kycStatus: 'pending' | 'approved' | 'rejected') =>
     queryOptions({
       queryKey: ['customers', 'review', kycStatus] as const,
       queryFn: () => apiGet<CompanyResponse[]>(`/customers/review?kycStatus=${kycStatus}`),
+    }),
+};
+
+export const forecastQueries = {
+  // The server caches on coordinates for the poller's own cadence, so this
+  // staleTime only stops a remount refetching -- it is not the budget
+  // control. Retry is off: an unavailable forecast is a state the rail
+  // renders, not a transient to hammer through against a metered free tier.
+  site: (siteId: string) =>
+    queryOptions({
+      queryKey: ['me', 'sites', siteId, 'forecast'] as const,
+      queryFn: () => apiGet<SiteForecastResponse>(`/me/sites/${siteId}/forecast`),
+      staleTime: 1_800_000,
+      retry: false,
     }),
 };
 

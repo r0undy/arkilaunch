@@ -102,6 +102,35 @@ export class CustomersController {
     return this.customers.createSite(req.ctx, body);
   }
 
+  // The customer's own thumbnail for the company card (Figma 251:1945).
+  // Same 300s signed URL as the staff route, but gated on booking:read and
+  // on owning the company -- see ownDocumentKey().
+  @Get('me/companies/:id/documents/:documentId/url')
+  @RequirePermission('booking:read')
+  async ownDocumentUrl(
+    @Param('id') id: string,
+    @Param('documentId') documentId: string,
+    @Req() req: CtxRequest,
+  ) {
+    const key = await this.customers.ownDocumentKey(req.ctx, id, documentId);
+    return { url: await this.storage.createSignedDownloadUrl(kycBucket(), key) };
+  }
+
+  // The browse page's weather rail. The two routes on sites.controller.ts
+  // are STAFF_READ, so a customer could not read weather at all; this is the
+  // customer's own surface, bounded by ownCustomers() in the service.
+  //
+  // booking:read, not a new weather:read code: that would be granted to the
+  // same role set, need seeding in two places, and add nothing -- the
+  // isolation here is the ownership check, not the permission. Throttled
+  // because each miss is an upstream call against a metered free tier.
+  @Get('me/sites/:id/forecast')
+  @RequirePermission('booking:read')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  forecast(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.customers.siteForecast(req.ctx, id);
+  }
+
   @Get('customers/review')
   @RequirePermission('quote:approve')
   listForReview(@Query() query: CompanyReviewQueryDto, @Req() req: CtxRequest) {
