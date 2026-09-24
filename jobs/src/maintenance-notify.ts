@@ -1,4 +1,4 @@
-import { and, eq, gte, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
 import {
   equipment,
   events,
@@ -52,6 +52,22 @@ export async function runMaintenanceNotify(): Promise<void> {
 
     console.log(`maintenance-notify: ${due.length} schedule(s) at or past 90% of their interval.`);
 
+    // One read for every dedup key and one per tenant for recipients: a
+    // round trip per schedule timed the job out once a few hundred schedules
+    // sat past 90%.
+    const seen = new Set(
+      (
+        await db
+          .select({ type: notifications.notificationType, payload: notifications.payload })
+          .from(notifications)
+          .where(inArray(notifications.notificationType, [NOTIFICATION_TYPE, WARNING_TYPE]))
+      ).map((row) => {
+        const p = row.payload as Record<string, unknown>;
+        return `${row.type}|${String(p.equipment_id)}|${String(p.schedule_id)}|${String(p.threshold)}`;
+      }),
+    );
+    const recipientsByTenant = new Map<string, { id: string }[]>();
+
     for (const item of due) {
       const type =
         Number(item.runtimeHours) >= Number(item.nextDue) ? NOTIFICATION_TYPE : WARNING_TYPE;
@@ -59,43 +75,39 @@ export async function runMaintenanceNotify(): Promise<void> {
       // resets next_due, the threshold value changes and a fresh
       // notification can fire again for the next interval, but the SAME
       // threshold never re-notifies every 30-minute cycle it stays crossed.
-      const existing = await db
-        .select({ id: notifications.id })
-        .from(notifications)
-        .where(
-          and(
-            eq(notifications.tenantId, item.tenantId),
-            eq(notifications.notificationType, type),
-            sql`${notifications.payload} ->> 'equipment_id' = ${item.equipmentId}`,
-            sql`${notifications.payload} ->> 'schedule_id' = ${item.scheduleId}`,
-            sql`${notifications.payload} ->> 'threshold' = ${item.nextDue}`,
-          ),
-        )
-        .limit(1);
-      if (existing.length > 0) continue;
+      const key = `${type}|${item.equipmentId}|${item.scheduleId}|${String(item.nextDue)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
 
       // A1: notifications.user_id is NOT NULL, so the recipient set is
       // every active user holding fleet:manage in this tenant, not an
       // invented default.
-      const recipients = await db
-        .select({ id: users.id })
-        .from(users)
-        .innerJoin(roles, eq(roles.id, users.roleId))
-        .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
-        .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
-        .where(
-          and(
-            eq(users.tenantId, item.tenantId),
-            eq(users.status, 'active'),
-            eq(permissions.code, RECIPIENT_PERMISSION),
-          ),
-        );
+      const recipients =
+        recipientsByTenant.get(item.tenantId) ??
+        (await db
+          .select({ id: users.id })
+          .from(users)
+          .innerJoin(roles, eq(roles.id, users.roleId))
+          .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+          .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+          .where(
+            and(
+              eq(users.tenantId, item.tenantId),
+              eq(users.status, 'active'),
+              eq(permissions.code, RECIPIENT_PERMISSION),
+            ),
+          ));
+      recipientsByTenant.set(item.tenantId, recipients);
 
       if (recipients.length === 0) {
         await db.insert(events).values({
           tenantId: item.tenantId,
           name: 'external_dependency_degraded',
-          properties: { dependency: 'maintenance_notify', mode: 'no_recipient', equipment_id: item.equipmentId },
+          properties: {
+            dependency: 'maintenance_notify',
+            mode: 'no_recipient',
+            equipment_id: item.equipmentId,
+          },
         });
         console.warn(
           `maintenance-notify: tenant ${item.tenantId} has no active fleet:manage user; skipping equipment ${item.equipmentId}.`,
@@ -103,8 +115,8 @@ export async function runMaintenanceNotify(): Promise<void> {
         continue;
       }
 
-      for (const recipient of recipients) {
-        await db.insert(notifications).values({
+      await db.insert(notifications).values(
+        recipients.map((recipient) => ({
           tenantId: item.tenantId,
           userId: recipient.id,
           notificationType: type,
@@ -115,15 +127,16 @@ export async function runMaintenanceNotify(): Promise<void> {
             threshold: item.nextDue,
             runtime_hours: item.runtimeHours,
           },
-        });
-      }
+        })),
+      );
     }
   } finally {
     await client.end();
   }
 }
 
-const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
+const isMainModule =
+  process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
 if (isMainModule) {
   runInstrumentedJob('pm-notify', () => runMaintenanceNotify()).catch((err) => {
     console.error(err);
