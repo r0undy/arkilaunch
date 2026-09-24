@@ -249,3 +249,32 @@ export const billingSettings = pgTable(
   },
   () => [tenantIsolationPolicy()],
 );
+
+// 0039: reconciled hours billed past the deposit balance. Unbilled until
+// jobs/src/weekly-billing.ts rolls them into a 'weekly' invoice.
+export const depositAccruals = pgTable(
+  'deposit_accruals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    rentalId: uuid('rental_id')
+      .notNull()
+      .references(() => rentals.id),
+    reconciliationId: uuid('reconciliation_id')
+      .notNull()
+      .unique('deposit_accruals_reconciliation_unique')
+      .references(() => edtrReconciliations.id),
+    hours: numeric('hours', { precision: 10, scale: 2 }).notNull(),
+    unitPrice: numeric('unit_price', { precision: 12, scale: 2 }).notNull(),
+    amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+    invoiceId: uuid('invoice_id').references(() => invoices.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    tenantIsolationPolicy(),
+    index('deposit_accruals_tenant_id_idx').on(table.tenantId),
+    check('deposit_accruals_amount_positive', sql`${table.amount} > 0`),
+  ],
+);
