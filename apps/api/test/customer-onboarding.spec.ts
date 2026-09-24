@@ -244,7 +244,7 @@ describe('Customer onboarding', () => {
     const myDoc = await companies.addDocument(
       ctx,
       mine.id,
-      'company_registration',
+      'sec_certificate',
       `${tenantId}/test/gamma-registration.jpg`,
       Buffer.from('not-really-an-image'),
     );
@@ -511,7 +511,7 @@ describe('Customer onboarding', () => {
       const doc = await companies.addDocument(
         reviewCtx,
         company.id,
-        'company_registration',
+        'sec_certificate',
         `storage://fixtures/${randomUUID()}.jpg`,
         bytes,
       );

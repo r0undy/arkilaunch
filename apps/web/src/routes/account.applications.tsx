@@ -2,6 +2,7 @@ import { createRoute, Link } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { CompanyResponse } from '@arkilaunch/shared';
+import { isPrimaryRegistration } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { companiesQueries } from '../lib/queries.js';
 import { PageHeader } from '../components/page-header.js';
@@ -48,7 +49,7 @@ function CounterTile({ value, label }: { value: number; label: string }) {
 // signed URL per document rather than served from a public bucket; a company
 // with no certificate yet, or a URL that fails, falls back to the label.
 function RegistrationThumbnail({ company }: { company: CompanyResponse }) {
-  const doc = company.documents.find((d) => d.documentType === 'company_registration');
+  const doc = company.documents.find((d) => isPrimaryRegistration(d.documentType));
   const url = useQuery({
     ...companiesQueries.documentUrl(company.id, doc?.id ?? ''),
     enabled: Boolean(doc),

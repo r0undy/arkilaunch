@@ -15,7 +15,7 @@ export type ModelRequest =
 // queryFields recommends camelCase/PascalCase names (max 20 per request);
 // the mapping back to this repo's snake_case field keys happens in
 // azure-adapter.ts, not here.
-const KYC_QUERY_FIELDS = ['SecNumber', 'Tin', 'CompanyName'];
+const KYC_QUERY_FIELDS = ['SecNumber', 'Tin', 'CompanyName', 'RegisteredAddress', 'RegistrationDate'];
 
 // The Philippine National ID (PhilSys) is a person-identity document, not a
 // corporate one -- same reason as above, prebuilt-idDocument doesn't cover
@@ -83,6 +83,8 @@ export const QUERY_FIELD_TO_PORT_KEY: Record<string, string> = {
   SecNumber: 'sec_number',
   Tin: 'tin',
   CompanyName: 'company_name',
+  RegisteredAddress: 'registered_address',
+  RegistrationDate: 'registration_date',
   FirstName: 'first_name',
   MiddleName: 'middle_name',
   LastName: 'last_name',
