@@ -16,6 +16,7 @@ import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 import { rentals } from './rentals.js';
 import { equipment } from './fleet.js';
+import { truckRequests } from './trucks.js';
 
 // One of two independent logs per equipment-day (RFC-2). attempts/lockedAt/
 // lastError back the edtr-ocr-worker claim/lock/retry loop (RFC2-01);
@@ -148,10 +149,10 @@ export const invoices = pgTable(
     tenantId: uuid('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
-    rentalId: uuid('rental_id')
-      .notNull()
-      .references(() => rentals.id),
-    invoiceType: text('invoice_type').notNull(), // deposit_deduction, weekly, final
+    // Exactly one of rental_id / truck_request_id (migration 0032 CHECK).
+    rentalId: uuid('rental_id').references(() => rentals.id),
+    truckRequestId: uuid('truck_request_id').references(() => truckRequests.id),
+    invoiceType: text('invoice_type').notNull(), // deposit_deduction, weekly, final, booking, truck
     amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
     status: text('status').notNull().default('draft'), // draft, issued, paid, void
     dueDate: timestamp('due_date', { withTimezone: true }).notNull(),
@@ -218,7 +219,9 @@ export const payments = pgTable(
     invoiceId: uuid('invoice_id')
       .notNull()
       .references(() => invoices.id),
-    method: text('method').notNull(), // card, gcash, maya, bank (channel only)
+    method: text('method').notNull(), // card, gcash, maya, bank (channel only), cash
+    // Set only on a cash payment: the staff member who received it.
+    recordedByUserId: uuid('recorded_by_user_id').references(() => users.id),
     amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
     providerRef: text('provider_ref').unique(),
     status: text('status').notNull().default('pending'), // pending, paid, failed, refunded

@@ -47,5 +47,8 @@ export type PaymongoEventEnvelope = z.infer<typeof PaymongoEventEnvelopeSchema>;
 // keeps working and PayMongo offers every channel.
 export const CheckoutRequestSchema = z.object({
   method: z.enum(CHECKOUT_METHODS).optional(),
+  // Pay at the office: issues the invoice without a PayMongo session. Staff
+  // record the cash receipt by hand (CR truck-booking-and-kyc-docs).
+  cash: z.boolean().optional(),
 });
 export type CheckoutRequest = z.infer<typeof CheckoutRequestSchema>;

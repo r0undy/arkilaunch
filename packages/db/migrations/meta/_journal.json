@@ -225,6 +225,13 @@
       "when": 1790181777064,
       "tag": "0031_truck_service",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790181778064,
+      "tag": "0032_truck_booking",
+      "breakpoints": true
     }
   ]
 }

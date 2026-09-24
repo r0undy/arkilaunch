@@ -27,6 +27,13 @@ export class BillingController {
     return this.billing.getInvoice(req.ctx, id);
   }
 
+  // The customer's own invoice (ownership checked in the service).
+  @Get('me/invoices/:id')
+  @RequirePermission('booking:read')
+  mine(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.billing.getInvoice(req.ctx, id);
+  }
+
   @Get('rentals/:id/deposit')
   @RequirePermission('billing:read')
   deposit(@Param('id') id: string, @Req() req: CtxRequest) {

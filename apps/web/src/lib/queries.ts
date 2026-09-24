@@ -88,7 +88,7 @@ export const invoicesQueries = {
   detail: (invoiceId: string) =>
     queryOptions({
       queryKey: ['invoice', invoiceId] as const,
-      queryFn: () => apiGet<InvoiceDetailResponse>(`/invoices/${invoiceId}`),
+      queryFn: () => apiGet<InvoiceDetailResponse>(`/me/invoices/${invoiceId}`),
     }),
 };
 

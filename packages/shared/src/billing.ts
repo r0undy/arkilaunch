@@ -30,7 +30,8 @@ export type InvoiceListQuery = z.infer<typeof InvoiceListQuerySchema>;
 
 export const InvoiceSummaryResponseSchema = z.object({
   id: z.string().uuid(),
-  rentalId: z.string().uuid(),
+  rentalId: z.string().uuid().nullable(),
+  truckRequestId: z.string().uuid().nullable(),
   invoiceType: z.string(),
   amount: z.number(),
   status: z.string(),

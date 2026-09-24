@@ -3,6 +3,8 @@ import { Throttle } from '@nestjs/throttler';
 import { createZodDto } from 'nestjs-zod';
 import type { Request } from 'express';
 import {
+  NegotiationMessageCreateSchema,
+  TruckAgreeSchema,
   TruckEstimateRequestSchema,
   TruckKmConfirmSchema,
   TruckRequestCreateSchema,
@@ -17,6 +19,8 @@ type CtxRequest = Request & { ctx: RequestContext };
 class TruckEstimateDto extends createZodDto(TruckEstimateRequestSchema) {}
 class TruckRequestCreateDto extends createZodDto(TruckRequestCreateSchema) {}
 class TruckKmConfirmDto extends createZodDto(TruckKmConfirmSchema) {}
+class TruckAgreeDto extends createZodDto(TruckAgreeSchema) {}
+class TruckMessageDto extends createZodDto(NegotiationMessageCreateSchema) {}
 class TruckSettingsDto extends createZodDto(TruckSettingsSchema) {}
 
 // /me/truck-requests is the customer's own; /truck-requests and
@@ -51,6 +55,37 @@ export class TrucksController {
   @RequirePermission('booking:create')
   cancel(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.trucks.cancelOwn(req.ctx, id);
+  }
+
+  @Get('me/truck-requests/:id/messages')
+  @RequirePermission('booking:read')
+  myMessages(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.trucks.listMessages(req.ctx, id);
+  }
+
+  @Post('me/truck-requests/:id/messages')
+  @RequirePermission('booking:create')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  postMyMessage(@Param('id') id: string, @Body() body: TruckMessageDto, @Req() req: CtxRequest) {
+    return this.trucks.postMessage(req.ctx, id, body);
+  }
+
+  @Get('truck-requests/:id/messages')
+  @RequirePermission('pricing:manage')
+  messages(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.trucks.listMessages(req.ctx, id);
+  }
+
+  @Post('truck-requests/:id/messages')
+  @RequirePermission('pricing:manage')
+  postMessage(@Param('id') id: string, @Body() body: TruckMessageDto, @Req() req: CtxRequest) {
+    return this.trucks.postMessage(req.ctx, id, body);
+  }
+
+  @Patch('truck-requests/:id/agree')
+  @RequirePermission('quote:approve')
+  agree(@Param('id') id: string, @Body() body: TruckAgreeDto, @Req() req: CtxRequest) {
+    return this.trucks.agree(req.ctx, id, body.pricePhp);
   }
 
   @Get('truck-requests')

@@ -17,6 +17,7 @@ import { tenants, users } from './tenancy.js';
 import { addresses, customers } from './customers.js';
 import { equipment, equipmentTypes, rateCards } from './fleet.js';
 import { dieselPriceReadings, pricingParameters } from './pricing.js';
+import { truckRequests } from './trucks.js';
 
 export const projectSites = pgTable(
   'project_sites',
@@ -235,9 +236,9 @@ export const negotiationMessages = pgTable(
     tenantId: uuid('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
-    rentalId: uuid('rental_id')
-      .notNull()
-      .references(() => rentals.id),
+    // Exactly one of rental_id / truck_request_id (migration 0032 CHECK).
+    rentalId: uuid('rental_id').references(() => rentals.id),
+    truckRequestId: uuid('truck_request_id').references(() => truckRequests.id),
     authorUserId: uuid('author_user_id')
       .notNull()
       .references(() => users.id),
