@@ -171,6 +171,15 @@ function NextStep({ booking }: { booking: BookingDetailResponse }) {
   return toNegotiation('Open negotiation');
 }
 
+// What a customer can see grows with the booking: before payment only the
+// request and its quote; once paid, invoices, payments and the deposit;
+// once the machine is on site, hire progress and the deposit being used.
+export function bookingStage(booking: BookingDetailResponse) {
+  const onSite = booking.status === 'active' || booking.status === 'completed';
+  const paid = onSite || booking.status === 'confirmed' || booking.payments.some((payment) => payment.status === 'paid');
+  return { paid, onSite, cancelled: booking.status === 'cancelled' };
+}
+
 function DepositCard({ booking }: { booking: BookingDetailResponse }) {
   const { required, totalDeducted, deductions } = booking.deposit;
   return (
@@ -181,7 +190,7 @@ function DepositCard({ booking }: { booking: BookingDetailResponse }) {
       ) : (
         <>
           <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="text-text-muted">Held</span>
+            <span className="text-text-muted">Prepaid</span>
             <span className="font-mono text-text">{formatPeso(required)}</span>
           </div>
           {deductions.map((deduction) => (
@@ -196,11 +205,12 @@ function DepositCard({ booking }: { booking: BookingDetailResponse }) {
             </Link>
           ))}
           <div className="flex items-center justify-between gap-3 border-t border-border pt-3 text-sm">
-            <span className="font-semibold text-text">To be refunded</span>
+            <span className="font-semibold text-text">Balance left</span>
             <span className="font-mono font-semibold text-text">{formatPeso(Math.max(0, required - totalDeducted))}</span>
           </div>
           <p className="text-xs text-text-muted">
-            Deductions are only made from verified field logs, each with its own invoice showing why.
+            Your deposit is prepaid hire, used up by verified field-log hours (each with its own invoice). You
+            are warned when it runs low, so you can top up or extend.
           </p>
         </>
       )}
@@ -227,7 +237,8 @@ function ChangeRequests({ booking }: { booking: BookingDetailResponse }) {
 
 function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
   const first = booking.items[0];
-  const progress = first ? leaseProgress(first.start, first.end) : null;
+  const { paid, onSite } = bookingStage(booking);
+  const progress = first && onSite ? leaseProgress(first.start, first.end) : null;
   const invoiceTotal = booking.invoices.reduce((sum, invoice) => sum + invoice.amount, 0);
   const paidTotal = booking.payments
     .filter((payment) => payment.status === 'paid')
@@ -264,7 +275,7 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
         <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">
-              Lease timeline
+              {onSite ? 'Lease timeline' : paid ? 'Scheduled dates' : 'Requested dates'}
             </h2>
             {progress && (
               <p className="font-display text-sm font-semibold text-text">
@@ -289,7 +300,7 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
                 {progress.pct}% complete
               </p>
             </>
-          ) : (
+          ) : !onSite ? null : (
             <p className="text-sm text-text-muted">
               {booking.items.length === 0
                 ? 'This booking has no equipment lines, so there is no hire period to track.'
@@ -319,6 +330,19 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
       </div>
 
       <div className="flex min-w-0 flex-col gap-4">
+      {!paid ? (
+        <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
+          <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Price</h2>
+          {booking.quotation?.totalPhp != null ? (
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-text-muted">Quoted ({formatStatus(booking.quotation.status)})</span>
+              <span className="font-mono text-text">{formatPeso(booking.quotation.totalPhp)}</span>
+            </div>
+          ) : (
+            <p className="text-sm text-text-muted">The rental team is preparing your quote. Invoices and your deposit show here once you pay.</p>
+          )}
+        </Surface>
+      ) : (
       <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
         <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">
           Financial ledger
@@ -358,7 +382,8 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
             the API states a tax rate, and 20% is not the Philippine rate the
             rest of this product is priced in. */}
       </Surface>
-      <DepositCard booking={booking} />
+      )}
+      {paid && <DepositCard booking={booking} />}
       <ChangeRequests booking={booking} />
       </div>
     </div>
@@ -432,7 +457,7 @@ function BookingDetailPage() {
                 icon={status === 'confirmed' ? <CheckIcon /> : <ClockIcon />}
               />
             )}
-            {booking.data && booking.data.status !== 'cancelled' && (
+            {booking.data && bookingStage(booking.data).paid && !bookingStage(booking.data).cancelled && (
               <Link to="/account/bookings/$bookingId/extend" params={{ bookingId }}>
                 <Button variant="secondary">Extend rental</Button>
               </Link>
