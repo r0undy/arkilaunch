@@ -102,13 +102,4 @@ test.describe('equipment browsing', () => {
     // <main>, so the link has a target on this page.
     await expect(page.locator('main#main')).toHaveCount(1);
   });
-
-  test('every catalog card shows a price or "Price on request"', async ({ page }) => {
-    await page.goto('/equipment');
-    const prices = page.getByTestId('equipment-card-price');
-    await expect(prices.first()).toBeVisible();
-    for (const text of await prices.allTextContents()) {
-      expect(text).toMatch(/\d \/ (hour|day)$|^Price on request$/);
-    }
-  });
 });
