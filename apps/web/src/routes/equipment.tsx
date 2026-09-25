@@ -222,6 +222,8 @@ function EquipmentPage() {
             return (
               <EquipmentCard
                 key={eq.id}
+                rateValue={eq.rateValue ?? null}
+                rateType={eq.rateType ?? null}
                 imageAlt={`${eq.equipmentTypeName} ${eq.model}`}
                 {...(imageUrl ? { imageUrl } : {})}
                 model={eq.model}
