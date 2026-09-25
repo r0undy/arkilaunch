@@ -327,7 +327,7 @@
     {
       "idx": 47,
       "version": "7",
-      "when": 1790400006000,
+      "when": 1790400008000,
       "tag": "0047_min_hours",
       "breakpoints": true
     }
