@@ -1,6 +1,7 @@
 import { createRoute, useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PinMap, type LatLng } from '../components/pin-map.js';
+import { matchPhLocation, reverseGeocode } from '../lib/reverse-geocode.js';
 import { useState } from 'react';
 import type { TruckPrice, TruckRequestResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
@@ -91,6 +92,17 @@ function TrucksPage() {
     .filter(Boolean)
     .join('\n');
   const [when, setWhen] = useState(tomorrowMorning);
+
+  // A pin fills the street/barangay line and, when the names line up, the
+  // region/province/city pickers; everything stays editable.
+  async function fillFromPin(at: LatLng, setDetail: (v: string) => void, setPlace: (v: PhLocation) => void) {
+    const found = await reverseGeocode(at.lat, at.lng);
+    if (!found) return;
+    const detail = [found.street, found.barangay && `Brgy. ${found.barangay}`].filter(Boolean).join(', ');
+    if (detail) setDetail(detail);
+    const place = matchPhLocation(found);
+    if (place) setPlace(place);
+  }
   const mine = useQuery(myTruckRequestsQuery);
 
   const ready = pickup !== '' && dropoff !== '';
@@ -152,6 +164,7 @@ function TrucksPage() {
             onChange={(next) => {
               setPickupPin(next);
               estimate.reset();
+              void fillFromPin(next, setPickupDetail, setPickupAt);
             }}
           />
         </div>
@@ -175,6 +188,7 @@ function TrucksPage() {
             onChange={(next) => {
               setDropoffPin(next);
               estimate.reset();
+              void fillFromPin(next, setDropoffDetail, setDropoffAt);
             }}
           />
         </div>

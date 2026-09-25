@@ -61,6 +61,7 @@ export const addresses = pgTable(
       .references(() => tenants.id, { onDelete: 'restrict' }),
     line1: text('line1').notNull(),
     line2: text('line2'),
+    barangay: text('barangay'), // 0045
     city: text('city').notNull(),
     province: text('province').notNull(),
     postalCode: text('postal_code'),
