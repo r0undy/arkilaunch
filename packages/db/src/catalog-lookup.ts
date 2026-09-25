@@ -187,9 +187,9 @@ export async function listCatalogTenants(
   }));
 }
 
-// The directory's category filter options: the global equipment_types
-// reference names (SELECT granted in 0016; no tenant data).
+// The directory's category filter options: equipment types some listed
+// company actually rents out (migration 0052; type names only).
 export async function listEquipmentTypeNames(): Promise<string[]> {
-  const rows = await db.execute<{ name: string }>(sql`select name from equipment_types order by name`);
+  const rows = await db.execute<{ name: string }>(sql`select name from catalog_list_categories()`);
   return rows.map((r) => r.name);
 }

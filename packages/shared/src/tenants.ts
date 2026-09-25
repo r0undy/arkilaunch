@@ -180,7 +180,7 @@ export type CatalogTenantListItem = z.infer<typeof CatalogTenantListItemSchema>;
 
 export const CatalogTenantListResponseSchema = z.object({
   items: z.array(CatalogTenantListItemSchema),
-  // Filter options: equipment-type names (global reference data).
+  // Filter options: equipment types listed companies rent out.
   categories: z.array(z.string()),
 });
 export type CatalogTenantListResponse = z.infer<typeof CatalogTenantListResponseSchema>;
