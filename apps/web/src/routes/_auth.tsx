@@ -1,4 +1,5 @@
-import { createRoute, Outlet } from '@tanstack/react-router';
+import { createRoute, Link, Outlet } from '@tanstack/react-router';
+import { homeHref } from '../lib/guards.js';
 import { SkipLink } from '../components/skip-link.js';
 import { rootRoute } from './__root.js';
 
@@ -7,10 +8,9 @@ function AuthLayout() {
     <div className="flex min-h-screen flex-col lg:flex-row">
       <SkipLink />
       <div className="flex flex-col justify-between bg-[var(--yb-color-text)] px-8 py-10 text-text-inverse lg:w-[42%] lg:px-14 lg:py-16">
-        <div className="flex items-center gap-2">
-          <span className="font-display text-lg font-semibold">Almara</span>
-          <span className="font-display text-lg font-semibold text-text-inverse/60">by ArkiLaunch</span>
-        </div>
+        <Link to={homeHref()} className="self-start font-display text-lg font-semibold" aria-label="Almara home">
+          Almara
+        </Link>
         <div className="my-12 lg:my-0">
           <p className="max-w-sm border-l-2 border-primary pl-4 font-display text-2xl font-semibold leading-snug sm:text-3xl">
             Your timekeeper&apos;s handwriting sits right next to the hours we bill.

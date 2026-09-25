@@ -1,6 +1,7 @@
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { getAccessToken } from '../lib/auth-client.js';
+import { homeHref } from '../lib/guards.js';
 import { Button } from './button.js';
 import { CloseIcon, MenuIcon } from './icons.js';
 
@@ -13,7 +14,7 @@ const LINKS = [
 // (--blur-mk-nav, --border-glass, --shadow-mk-nav). Rendered here in
 // Yardboard tokens, not SprintForge's cool palette. Below sm, the nav links
 // and auth actions move into a burger-triggered panel -- at 360px baseline
-// width there isn't room for "ArkiLaunch / Almara" + 2 links + 2 buttons on
+// width there isn't room for "Almara" + 2 links + 2 buttons on
 // one row.
 export function FloatingNav({ className }: { className?: string }) {
   const [scrolled, setScrolled] = useState(false);
@@ -71,9 +72,8 @@ export function FloatingNav({ className }: { className?: string }) {
       ].join(' ')}
     >
       <div className="flex items-center justify-between px-6 py-4">
-        <Link to="/" className="flex items-center gap-2">
-          <span className="font-display text-lg font-semibold text-ink-mk">ArkiLaunch</span>
-          <span className="font-display text-lg font-semibold text-text-muted">/ Almara</span>
+        <Link to={homeHref()} className="font-display text-lg font-semibold text-ink-mk" aria-label="Almara home">
+          Almara
         </Link>
         <nav className="hidden items-center gap-6 sm:flex" aria-label="Primary">
           {LINKS.map((link) => (
