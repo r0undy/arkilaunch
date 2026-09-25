@@ -42,8 +42,8 @@ export function FloatingNav({ className }: { className?: string }) {
   }, [pathname]);
 
   const authActions = signedIn ? (
-    <Button size="default" variant="secondary" onClick={() => window.location.assign('/account')}>
-      My account
+    <Button size="default" variant="secondary" onClick={() => window.location.assign(homeHref())}>
+      Dashboard
     </Button>
   ) : (
     <>
