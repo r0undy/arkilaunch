@@ -48,6 +48,11 @@ function fromDateInput(value: string, hour: number): string {
   return new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1, hour).toISOString();
 }
 
+// A cart saved before the catalog served photo URLs holds a bare storage key.
+function cartPhoto(item: CartItem): string | undefined {
+  return (item.photoUri?.startsWith('http') ? item.photoUri : null) ?? equipmentImageUrl(item.model);
+}
+
 function rentalDays(item: CartItem): number {
   return bookingDays(item.start, item.end);
 }
@@ -216,8 +221,8 @@ function CartPage() {
       setEstimates((prev) => (prev[index] === estimate ? prev : { ...prev, [index]: estimate })),
     [],
   );
-  const signedRates = useQuery(catalogQueries.rates());
-  const rateById = new Map(signedRates.data?.items.map((rate) => [rate.equipmentId, rate]));
+  const rates = useQuery(catalogQueries.equipment());
+  const rateById = new Map(rates.data?.items.map((eq) => [eq.id, { rateType: eq.rateType ?? null, rateValue: eq.rateValue ?? null }]));
   // Only a full total is shown: a sum missing an unpriced machine would mislead.
   const lineEstimates = items.map((_, index) => estimates[index] ?? null);
   const estimatedTotal = lineEstimates.every((value) => value !== null)
@@ -385,9 +390,9 @@ function CartPage() {
                 className="flex flex-col gap-3 rounded-md border border-border p-3"
               >
                 <div className="flex items-start gap-3">
-                  {(item.photoUri ?? equipmentImageUrl(item.model)) ? (
+                  {(cartPhoto(item)) ? (
                     <img
-                      src={item.photoUri ?? equipmentImageUrl(item.model)}
+                      src={cartPhoto(item)}
                       alt=""
                       className="h-20 w-28 shrink-0 rounded-sm border border-border object-cover"
                     />
