@@ -344,6 +344,13 @@
       "when": 1790400010000,
       "tag": "0049_platform_companies",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1790400011000,
+      "tag": "0050_hide_fixture_tenants",
+      "breakpoints": true
     }
   ]
 }

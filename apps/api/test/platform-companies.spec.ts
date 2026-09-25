@@ -23,12 +23,14 @@ describe('platform companies', () => {
   const tenants = new TenantsService(auth);
   const catalog = new CatalogService();
 
-  it('lists companies with counts and never the platform tenant', async () => {
+  it('lists companies with counts, never the platform tenant or test fixtures', async () => {
     const { items } = await tenants.listCompanies();
-    const a = items.find((c) => c.slug === 'test-tenant-a');
-    expect(a).toMatchObject({ status: 'active' });
-    expect(a!.usersCount).toBeGreaterThan(0);
-    expect(items.some((c) => c.slug === 'arkilaunch-platform')).toBe(false);
+    // CI seeds only the fixtures, so the list may be empty there.
+    for (const c of items) expect(c.usersCount).toBeGreaterThanOrEqual(0);
+    const slugs = items.map((c) => c.slug);
+    expect(slugs).not.toContain('arkilaunch-platform');
+    expect(slugs).not.toContain('test-tenant-a');
+    expect(slugs).not.toContain('test-tenant-b');
   });
 
   it('deactivating a company blocks sign-in, session renewal and its storefront', async () => {
@@ -49,8 +51,10 @@ describe('platform companies', () => {
       ).rejects.toThrow(UnauthorizedException);
       await expect(auth.refresh({ refreshToken: tokens.refreshToken })).rejects.toThrow();
       await expect(catalog.getTenant('test-tenant-b')).rejects.toThrow(NotFoundException);
-      const { items } = await tenants.listCompanies();
-      expect(items.find((c) => c.slug === 'test-tenant-b')?.status).toBe('suspended');
+      const check = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+      const [row] = await check`select status from tenants where id = ${tenantId}`;
+      await check.end();
+      expect((row as { status: string }).status).toBe('suspended');
     } finally {
       await tenants.setCompanyStatus(ctx as never, tenantId, 'active');
     }
