@@ -23,6 +23,9 @@ function EquipmentDetailPage() {
     error,
     refetch,
   } = useQuery(catalogQueries.equipmentDetail(equipmentId));
+  // Prices are for verified customers; the API returns none to anyone else.
+  const { data: rates } = useQuery({ ...catalogQueries.rates(), enabled: signedIn });
+  const rate = rates?.items.find((item) => item.equipmentId === equipmentId);
 
   if (isPending) {
     return <Skeleton label="Loading equipment" rows={2} className="px-6 py-10 sm:px-10" />;
@@ -75,11 +78,17 @@ function EquipmentDetailPage() {
       <div>
         <h1 className="font-display text-2xl font-semibold text-ink-mk">{equipment.model}</h1>
         <p className="text-sm text-text-muted">{equipment.equipmentTypeName}</p>
-        {equipment.rateValue != null && (
+        {rate?.rateValue != null ? (
           <p className="mt-2 font-display text-lg font-semibold text-text" data-testid="equipment-price">
-            {formatPeso(equipment.rateValue)}
-            <span className="text-sm font-normal text-text-muted"> / {equipment.rateType === 'daily' ? 'day' : 'hour'}</span>
+            {formatPeso(rate.rateValue)}
+            <span className="text-sm font-normal text-text-muted"> / {rate.rateType === 'daily' ? 'day' : 'hour'}</span>
           </p>
+        ) : (
+          rates?.items.length === 0 || !signedIn ? (
+            <p className="mt-2 text-sm text-text-muted" data-testid="equipment-price">
+              Verify your company to see pricing
+            </p>
+          ) : null
         )}
       </div>
       <Button

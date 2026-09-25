@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
 import {
   addresses,
@@ -8,7 +8,9 @@ import {
   equipment,
   equipmentTypes,
   equipmentAssignments,
+  getBillingSettings,
   invoices,
+  listCatalogEquipmentForSlug,
   negotiationMessages,
   payments,
   projectSites,
@@ -28,11 +30,13 @@ import type {
   BookingCreateResponse,
   BookingDetailResponse,
   BookingListResponse,
+  CatalogRatesResponse,
   EdtrSheetContext,
   AvailabilityBlocker,
   RequestContext,
   RescheduleSuggestion,
 } from '@arkilaunch/shared';
+import { bookingDays, minBookingHours } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { QuotesService } from '../quotes/quotes.service.js';
 import {
@@ -106,6 +110,15 @@ export class BookingsService {
       }
       await requireVerifiedCompany(tx, customerId);
 
+      const { dailyHours, minHours } = await getBillingSettings(tx, ctx.tenantId);
+      const bookedHours = body.items.map((item) => {
+        const min = minBookingHours(bookingDays(item.start, item.end), dailyHours, minHours);
+        if (item.hours !== undefined && item.hours < min) {
+          throw new UnprocessableEntityException({ error: 'hours_below_minimum', equipmentId: item.equipmentId, minHours: min });
+        }
+        return item.hours ?? min;
+      });
+
       const equipmentIds = body.items.map((item) => item.equipmentId);
       const equipmentRows = await tx
         .select()
@@ -165,13 +178,14 @@ export class BookingsService {
         .returning();
       if (!rental) throw new Error('rentals insert returned no row');
 
-      for (const item of body.items) {
+      for (const [index, item] of body.items.entries()) {
         await tx.insert(equipmentAssignments).values({
           tenantId: ctx.tenantId,
           equipmentId: item.equipmentId,
           rentalId: rental.id,
           start: new Date(item.start),
           end: new Date(item.end),
+          bookedHours: String(bookedHours[index]),
           status: 'scheduled',
         });
       }
@@ -205,6 +219,28 @@ export class BookingsService {
   // GET /api/v1/bookings (PRD-F8 US-09). A `customer` sees only their own
   // bookings; staff see the whole tenant (RLS is the tenant boundary,
   // matching reference/* and fleet's read posture).
+  // GET /bookings/rates. The catalog's upfront prices, only for staff or a
+  // customer with a verified company. Filtered to machines this tenant's RLS
+  // can see, so the anchor-tenant catalog never leaks into another tenant.
+  async rates(ctx: RequestContext): Promise<CatalogRatesResponse> {
+    const slug = process.env.ANCHOR_TENANT_SLUG;
+    if (!slug) return { items: [] };
+    const visible = await withTenantTx(ctx, async (tx) => {
+      if (ctx.role === 'customer' && !(await ownCustomers(tx, ctx)).some((c) => c.kycStatus === 'approved')) {
+        return null;
+      }
+      return new Set((await tx.select({ id: equipment.id }).from(equipment)).map((row) => row.id));
+    });
+    if (!visible) return { items: [] };
+    // ponytail: one page of 500; paginate if a fleet ever outgrows it.
+    const rows = await listCatalogEquipmentForSlug(slug, 500, 0);
+    return {
+      items: rows
+        .filter((row) => visible.has(row.id))
+        .map((row) => ({ equipmentId: row.id, rateType: row.rateType, rateValue: row.rateValue })),
+    };
+  }
+
   async list(ctx: RequestContext, query: BookingListQuery): Promise<BookingListResponse> {
     return withTenantTx(ctx, async (tx) => {
       // The role branch was always correct; it was the BOUND that was

@@ -130,7 +130,7 @@ export async function dayAvailability(
   equipmentId: string,
   from: string,
   to: string,
-): Promise<AvailabilityResponse> {
+): Promise<Omit<AvailabilityResponse, 'dailyHours' | 'minHours'>> {
   const cal = await readCalendar(tx);
   const rangeStart = manilaMidnight(from);
   const days = Math.min(MAX_DAYS, Math.round((manilaMidnight(to).getTime() - rangeStart.getTime()) / DAY_MS) + 1);
