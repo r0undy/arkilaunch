@@ -6,6 +6,7 @@ import {
   edtr,
   edtrLineItems,
   equipment,
+  getBillingSettings,
   invoices,
   maintenanceLogs,
   maintenanceSchedules,
@@ -528,7 +529,8 @@ export class FleetService {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select({ id: equipment.id }).from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
       if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
-      return dayAvailability(tx, equipmentId, query.from, query.to);
+      const { dailyHours, minHours } = await getBillingSettings(tx, ctx.tenantId);
+      return { ...(await dayAvailability(tx, equipmentId, query.from, query.to)), dailyHours, minHours };
     });
   }
 

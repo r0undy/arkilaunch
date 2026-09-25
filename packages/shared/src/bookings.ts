@@ -13,10 +13,24 @@ export const BookingItemRequestSchema = z
     equipmentId: z.string().uuid(),
     start: z.string().datetime({ offset: true }),
     end: z.string().datetime({ offset: true }),
+    // Hours the customer means to run the machine; at least minBookingHours.
+    // Omitted (staff, older clients) = that minimum.
+    hours: z.number().finite().positive().max(100_000).optional(),
   })
   .refine((item) => new Date(item.end).getTime() > new Date(item.start).getTime(), {
     message: 'end must be after start',
   });
+
+// Calendar days a window spans, a part day counting whole (pricing agrees).
+export function bookingDays(start: string | Date, end: string | Date): number {
+  return Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000));
+}
+
+// The fewest hours a booking may ask for: the tenant minimum, and never less
+// than a full working day for every day the dates span.
+export function minBookingHours(days: number, dailyHours: number, minHours: number): number {
+  return Math.max(minHours, days * dailyHours);
+}
 export type BookingItemRequest = z.infer<typeof BookingItemRequestSchema>;
 
 // customerId: for staff, the customer being booked for. For a `customer`
@@ -206,6 +220,9 @@ export type AvailabilityBlocker = 'assignment' | 'maintenance' | 'closed' | 'hol
 export interface AvailabilityResponse {
   // null = the tenant set no calendar: any time of any day.
   hours: { openTime: string; closeTime: string; openDays: number[] } | null;
+  // Billing settings the cart needs for minBookingHours.
+  dailyHours: number;
+  minHours: number;
   days: { date: string; available: boolean; reason: AvailabilityBlocker | null }[];
 }
 

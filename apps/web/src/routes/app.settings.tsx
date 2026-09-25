@@ -304,6 +304,7 @@ interface BillingSettings {
   depositPct: number;
   mobilizationPhp: number;
   demobilizationPhp: number;
+  minHours: number;
 }
 
 // Hours in a rental day (a daily card is divided by this), the minimum
@@ -334,6 +335,7 @@ function BillingSettingsForm() {
         <Input label="Deposit (% of rented hours)" type="number" min="0" max="100" step="0.5" numeric hint="Prepaid and consumed by EDTR hours, not refunded. 50 on a 50-hour rental prepays 25 hours. 0 uses the minimum deposit only." value={String(current.depositPct)} onChange={(e) => edit({ depositPct: Number(e.target.value) })} />
         <Input label="Low-balance warning (%)" type="number" min="0" max="100" step="1" numeric hint="Warns you and the customer when this much deposit is left." value={String(current.lowBalancePct)} onChange={(e) => edit({ lowBalancePct: Number(e.target.value) })} />
         <Input label="Mobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Self-loader delivery on every new quote. You can change it per quote." value={String(current.mobilizationPhp)} onChange={(e) => edit({ mobilizationPhp: Number(e.target.value) })} />
+        <Input label="Minimum rental hours" type="number" min="0" step="1" numeric hint="Customers cannot book fewer hours than this. 0 means only the chosen dates count." value={String(current.minHours)} onChange={(e) => edit({ minHours: Number(e.target.value) })} />
         <Input label="Demobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Pick-up at the end of the hire, on every new quote." value={String(current.demobilizationPhp)} onChange={(e) => edit({ demobilizationPhp: Number(e.target.value) })} />
       </div>
       <div>

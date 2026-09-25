@@ -226,7 +226,7 @@ export class QuotesService {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, rentalId)).limit(1);
       if (!rental) return null;
       const lines = await tx
-        .select({ equipmentId: equipment.id, equipmentTypeId: equipment.equipmentTypeId, start: equipmentAssignments.start, end: equipmentAssignments.end })
+        .select({ equipmentId: equipment.id, equipmentTypeId: equipment.equipmentTypeId, start: equipmentAssignments.start, end: equipmentAssignments.end, bookedHours: equipmentAssignments.bookedHours })
         .from(equipmentAssignments)
         .innerJoin(equipment, eq(equipment.id, equipmentAssignments.equipmentId))
         .where(eq(equipmentAssignments.rentalId, rentalId));
@@ -262,7 +262,7 @@ export class QuotesService {
           rateCardId: card.id,
           quantity: 1,
           kind: 'equipment',
-          estimatedHours: days * dailyHours,
+          estimatedHours: line.bookedHours !== null ? Number(line.bookedHours) : days * dailyHours,
           mobilizationKm: 0,
           demobilizationKm: 0,
         });

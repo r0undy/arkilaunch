@@ -10,6 +10,8 @@ export interface EquipmentCardProps {
   // The catalog's upfront price; none reads "Price on request".
   rateValue?: number | null;
   rateType?: string | null;
+  // No price because the viewer is not verified, not because none is set.
+  priceLocked?: boolean;
   // No status label on the customer side: a "Deployed" badge on a card you
   // cannot rent is click bait. An unrentable unit is greyed and inert.
   unavailable?: boolean;
@@ -30,6 +32,7 @@ export function EquipmentCard({
   make,
   rateValue = null,
   rateType = null,
+  priceLocked = false,
   unavailable = false,
   rentLabel = 'Rent',
   onRent,
@@ -75,7 +78,9 @@ export function EquipmentCard({
           <p className="text-sm font-semibold text-text" data-testid="equipment-card-price">
             {rateValue != null
               ? `${formatPeso(rateValue)} / ${rateType === 'daily' ? 'day' : 'hour'}`
-              : 'Price on request'}
+              : priceLocked
+                ? 'Verify your company to see pricing'
+                : 'Price on request'}
           </p>
         </div>
         <Button size="default" variant="primary" className="shrink-0" disabled={unavailable} onClick={onRent}>
