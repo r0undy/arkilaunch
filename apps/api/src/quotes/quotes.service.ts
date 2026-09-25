@@ -392,7 +392,7 @@ export class QuotesService {
         currency: 'PHP',
         lineItems: items.map(({ item, typeName }) => ({
           equipmentTypeId: item.equipmentTypeId,
-          equipmentTypeName: typeName ?? undefined,
+          ...(typeName ? { equipmentTypeName: typeName } : {}),
           quantity: item.quantity,
           estimatedHours: Number(item.estimatedHours),
           hourlyRate: Number(item.hourlyRatePhp),

@@ -471,10 +471,13 @@ export class CustomersService {
     return withTenantTx(ctx, async (tx) => {
       if (!(await ownsCustomer(tx, ctx, customerId)))
         throw new NotFoundException({ error: 'company_not_found' });
-      const onFile = (await liveDocuments(tx, customerId)).some((d) => d.documentType === documentType);
+      const live = await liveDocuments(tx, customerId);
+      const onFile = live.some((d) => d.documentType === documentType);
       if (onFile) {
         const [company] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
-        if (!company?.unlockedFields.includes(documentType))
+        // A company still being assembled (not yet submitted) may replace a
+        // document, e.g. a fresh ID over the one carried from another company.
+        if (hasRequiredCompanyDocuments(live) && !company?.unlockedFields.includes(documentType))
           throw new ConflictException({ error: 'document_locked' });
         await tx
           .update(kycDocuments)
@@ -488,7 +491,7 @@ export class CustomersService {
           );
         await tx
           .update(customers)
-          .set({ unlockedFields: company.unlockedFields.filter((f) => f !== documentType) })
+          .set({ unlockedFields: (company?.unlockedFields ?? []).filter((f) => f !== documentType) })
           .where(eq(customers.id, customerId));
       }
       const [row] = await tx
