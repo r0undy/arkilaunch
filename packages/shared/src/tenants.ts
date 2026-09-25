@@ -38,6 +38,10 @@ export const TenantApplicationDecisionResponseSchema = z.object({
   // the new owner, exactly like a user invite (no email provider in the
   // pinned stack).
   activationToken: z.string().optional(),
+  // The approved tenant's host label, so the console builds the activation
+  // link on `{slug}.<platform domain>` -- the owner signs in there, not on
+  // the platform host.
+  tenantSlug: z.string().optional(),
 });
 export type TenantApplicationDecisionResponse = z.infer<typeof TenantApplicationDecisionResponseSchema>;
 
@@ -81,3 +85,23 @@ export const ApprovedTenantApplicationListResponseSchema = z.object({
 export type ApprovedTenantApplicationListResponse = z.infer<
   typeof ApprovedTenantApplicationListResponseSchema
 >;
+
+// Host-based tenant resolution: `{slug}.localhost` / `{slug}.arkilaunch.tech`
+// is a tenant, the bare domain is the ArkiLaunch platform. A slug is one DNS
+// label, so it is capped at 63 chars. Reserved labels never resolve to a
+// tenant -- `arkilaunch-platform` is the platform_admin's own tenant row
+// (seed/anchor.ts), not a storefront -- and registration never mints them.
+export const TENANT_SLUG_REGEX = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+export const RESERVED_TENANT_SLUGS: ReadonlySet<string> = new Set([
+  'www',
+  'admin',
+  'api',
+  'app',
+  'arkilaunch',
+  'arkilaunch-platform',
+]);
+export const PLATFORM_TENANT_SLUG = 'arkilaunch-platform';
+
+export function isTenantSlug(value: string): boolean {
+  return TENANT_SLUG_REGEX.test(value) && !RESERVED_TENANT_SLUGS.has(value);
+}

@@ -42,6 +42,9 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // `{tenant}.localhost` is how a tenant is picked in dev (lib/host.ts);
+    // Vite rejects Host headers it does not know once host: true is set.
+    allowedHosts: ['.localhost'],
     ...(https ? { https } : {}),
     // API_PORT matches apps/api/src/main.ts, so a machine where something
     // else already holds 3000 needs no edit here.
