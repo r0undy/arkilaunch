@@ -1,6 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator.js';
+import { LoginTenantSlug, StorefrontSlug } from '../common/decorators/tenant-slug.decorator.js';
 import { AuthService } from './auth.service.js';
 import { ForgotPasswordDto, LoginDto, RefreshDto, UserActivateDto, Verify2faDto } from './dto.js';
 import { CustomerSignupDto } from '../customers/dto.js';
@@ -17,16 +18,16 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('login')
-  login(@Body() body: LoginDto) {
-    return this.auth.login(body);
+  login(@Body() body: LoginDto, @LoginTenantSlug() tenantSlug: string) {
+    return this.auth.login(body, tenantSlug);
   }
 
   // Customer self-signup (customer prerequisites CR). Throttled hard: it
   // is an unauthenticated write that spends an argon2 hash.
   @Post('register-customer')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  registerCustomer(@Body() body: CustomerSignupDto) {
-    return this.auth.registerCustomer(body);
+  registerCustomer(@Body() body: CustomerSignupDto, @StorefrontSlug() tenantSlug: string) {
+    return this.auth.registerCustomer(body, tenantSlug);
   }
 
   // Always 200 whether or not the email has an account (no enumeration).
@@ -34,8 +35,8 @@ export class AuthController {
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  forgotPassword(@Body() body: ForgotPasswordDto) {
-    return this.auth.forgotPassword(body);
+  forgotPassword(@Body() body: ForgotPasswordDto, @LoginTenantSlug() tenantSlug: string) {
+    return this.auth.forgotPassword(body, tenantSlug);
   }
 
   @Post('refresh')

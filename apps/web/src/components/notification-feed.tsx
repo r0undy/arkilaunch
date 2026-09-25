@@ -241,7 +241,7 @@ function NotificationRow({ notification }: { notification: NotificationResponse 
           aria-hidden="true"
           className={[
             'flex h-11 w-11 shrink-0 items-center justify-center rounded-md',
-            isUnread ? 'bg-primary text-text' : 'bg-surface-sunk text-text-muted',
+            isUnread ? 'bg-primary text-on-primary' : 'bg-surface-sunk text-text-muted',
           ].join(' ')}
         >
           <BellIcon />

@@ -57,7 +57,7 @@ variable "memory" {
 variable "env_vars" {
   type        = map(string)
   default     = {}
-  description = "Plain (non-secret) env vars, e.g. NODE_ENV, feature flags, ANCHOR_TENANT_SLUG."
+  description = "Plain (non-secret) env vars, e.g. NODE_ENV, feature flags, PLATFORM_DOMAIN."
 }
 
 variable "secrets" {

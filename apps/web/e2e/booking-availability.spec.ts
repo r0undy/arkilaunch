@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signInAsCustomer } from './sign-in.js';
+import { signInAsCustomer, TENANT_HEADERS } from './sign-in.js';
 
 // Phase 3: the rent dialog greys the days a unit cannot take. The admin
 // blocks two maintenance days on the first catalog unit through the API,
@@ -21,7 +21,10 @@ test('booking disables taken dates', async ({ page }) => {
   await expect(page).toHaveURL(/\/equipment\/[0-9a-f-]{36}/);
   const equipmentId = page.url().split('/equipment/')[1]!.split(/[?#]/)[0]!;
 
-  const login = await page.request.post('/api/v1/auth/login', { data: { email: ADMIN_EMAIL, password: PASSWORD } });
+  const login = await page.request.post('/api/v1/auth/login', {
+    data: { email: ADMIN_EMAIL, password: PASSWORD },
+    headers: TENANT_HEADERS,
+  });
   expect(login.ok(), `admin login answered ${login.status()}`).toBe(true);
   const { accessToken } = (await login.json()) as { accessToken: string };
   const headers = { Authorization: `Bearer ${accessToken}` };

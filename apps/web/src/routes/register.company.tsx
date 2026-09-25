@@ -6,10 +6,18 @@ import { ApiError } from '../lib/api-client.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Surface } from '../components/surface.js';
+import { onlyOn } from '../lib/guards.js';
 
 function RegisterCompanyDetailsPage() {
   const navigate = useNavigate();
-  const [companyName, setCompanyName] = useState('');
+  // Prefilled from the landing page's address preview, if the visitor typed one.
+  const [companyName, setCompanyName] = useState(() => {
+    try {
+      return sessionStorage.getItem('arkilaunch.registrationCompanyName') ?? '';
+    } catch {
+      return '';
+    }
+  });
   const [businessAddress, setBusinessAddress] = useState('');
   const [secNumber, setSecNumber] = useState('');
   const [tin, setTin] = useState('');
@@ -65,6 +73,7 @@ function RegisterCompanyDetailsPage() {
 
 export const registerCompanyRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
+  beforeLoad: onlyOn('platform'),
   path: '/register/company',
   component: RegisterCompanyDetailsPage,
 });

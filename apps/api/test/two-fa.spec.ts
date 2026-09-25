@@ -43,7 +43,7 @@ describe('AuthService: timekeeper 2FA', () => {
   });
 
   it('an unenrolled timekeeper logs in normally (full tokens, not a challenge)', async () => {
-    const result = await auth.login({ email: timekeeperEmail, password: 'test-password' });
+    const result = await auth.login({ email: timekeeperEmail, password: 'test-password' }, 'test-tenant-a');
     expect('accessToken' in result).toBe(true);
   });
 
@@ -60,7 +60,7 @@ describe('AuthService: timekeeper 2FA', () => {
     const confirmed = await auth.enrollConfirm(timekeeperCtx, { secret, code });
     expect(confirmed.enrolled).toBe(true);
 
-    const loginResult = await auth.login({ email: timekeeperEmail, password: 'test-password' });
+    const loginResult = await auth.login({ email: timekeeperEmail, password: 'test-password' }, 'test-tenant-a');
     expect((loginResult as TwoFaChallenge).requires2fa).toBe(true);
 
     // Completing the challenge with the right code issues real tokens.
@@ -72,7 +72,7 @@ describe('AuthService: timekeeper 2FA', () => {
   });
 
   it('a wrong code at the verify step is rejected', async () => {
-    const loginResult = (await auth.login({ email: timekeeperEmail, password: 'test-password' })) as TwoFaChallenge;
+    const loginResult = (await auth.login({ email: timekeeperEmail, password: 'test-password' }, 'test-tenant-a')) as TwoFaChallenge;
     expect(loginResult.requires2fa).toBe(true);
     await expect(auth.verifyTwoFa({ twoFaToken: loginResult.twoFaToken, code: '000000' })).rejects.toThrow(
       UnauthorizedException,
@@ -80,7 +80,7 @@ describe('AuthService: timekeeper 2FA', () => {
   });
 
   it('the 2FA challenge token cannot be used as a normal Bearer access token', async () => {
-    const loginResult = (await auth.login({ email: timekeeperEmail, password: 'test-password' })) as TwoFaChallenge;
+    const loginResult = (await auth.login({ email: timekeeperEmail, password: 'test-password' }, 'test-tenant-a')) as TwoFaChallenge;
     // JwtClaimsSchema requires a literal `role` claim; the challenge token
     // carries `r` instead, so parsing it as JwtClaims must fail.
     const jwt = jwtService();

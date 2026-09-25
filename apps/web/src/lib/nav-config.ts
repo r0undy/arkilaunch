@@ -126,25 +126,24 @@ export const APP_NAV: NavGroup[] = [
   },
 ];
 
-// platform_admin's whole sidebar, used instead of APP_NAV (see _app.tsx).
+// The /admin console's sidebar (routes/_admin.tsx, platform host only).
 // The role is cross-tenant: it onboards rental companies, it does not run
 // one, so none of the Dispatch/Fleet/Billing tenant work is listed here.
-// _app.tsx also redirects the role away from any /app page not listed.
 export const PLATFORM_ADMIN_NAV: NavGroup[] = [
   {
     title: 'Companies',
     items: [
-      { label: 'Applications', to: '/app/companies/pending', icon: ClipboardList },
-      { label: 'Approved companies', to: '/app/companies/approved', icon: Store },
+      { label: 'Applications', to: '/admin/applications', icon: ClipboardList },
+      { label: 'Companies', to: '/admin/companies', icon: Store },
     ],
   },
   {
     title: 'Account',
     items: [
-      { label: 'Notifications', to: '/app/notifications', icon: Bell },
-      { label: 'My profile', to: '/app/profile', icon: UserCircle },
-      { label: 'People', to: '/app/users', icon: Users },
-      { label: 'Security logs', to: '/app/security-logs', icon: ShieldAlert },
+      { label: 'Notifications', to: '/admin/notifications', icon: Bell },
+      { label: 'My profile', to: '/admin/profile', icon: UserCircle },
+      { label: 'People', to: '/admin/users', icon: Users },
+      { label: 'Security logs', to: '/admin/security-logs', icon: ShieldAlert },
     ],
   },
 ];

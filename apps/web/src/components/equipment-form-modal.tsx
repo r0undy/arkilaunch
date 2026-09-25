@@ -115,18 +115,31 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
           });
 
       // The photo is a second request: it is multipart, and a failed upload
-      // should not lose the machine that was just recorded.
+      // must not fail the save. Failing it left the modal open over a machine
+      // that was already inserted, so the retry POSTed a duplicate.
+      let photoError: string | null = null;
       if (photo) {
-        await apiPostForm<EquipmentResponse>(`/equipment/${saved.id}/photo`, {}, photo);
+        try {
+          await apiPostForm<EquipmentResponse>(`/equipment/${saved.id}/photo`, {}, photo);
+        } catch (error) {
+          photoError = apiErrorText(error);
+        }
       }
-      return saved;
+      return { saved, photoError };
     },
-    onSuccess: (saved) => {
+    onSuccess: ({ saved, photoError }) => {
       void queryClient.invalidateQueries({ queryKey: ['equipment'] });
-      toast.success(
-        isEdit ? 'Equipment updated' : 'Equipment added',
-        `${saved.model} (${saved.serialNo}).`,
-      );
+      if (photoError) {
+        toast.error(
+          `${saved.model} saved, but the photo did not upload`,
+          `${photoError} Open Edit details to try the photo again.`,
+        );
+      } else {
+        toast.success(
+          isEdit ? 'Equipment updated' : 'Equipment added',
+          `${saved.model} (${saved.serialNo}).`,
+        );
+      }
       onClose();
     },
     onError: (error) => {

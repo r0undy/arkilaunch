@@ -8,7 +8,6 @@ location           = "southeastasia"
 # that domain was never created, so every browser login was blocked by CORS and
 # surfaced in the UI as "incorrect email or password".
 web_origin         = "https://arkilaunch-web-24lk.vercel.app"
-anchor_tenant_slug = "almara"
 supabase_url       = "https://ydalnvzyeseycdakofgp.supabase.co" # derived from the project ref in the local .env's DATABASE_URL_POOLED
 
 # On in dev at the operator's explicit direction

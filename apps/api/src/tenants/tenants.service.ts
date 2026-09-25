@@ -7,9 +7,10 @@ import {
   DuplicatePendingApplicationError,
   auditLogs,
   decideTenantApplication,
-  countApprovedTenantApplications,
   countPendingTenantApplications,
-  listApprovedTenantApplications,
+  listPlatformCompanies,
+  setPlatformCompanyStatus,
+  CompanyNotFoundError,
   listPendingTenantApplications,
   registerTenant,
   tenantApplications,
@@ -17,7 +18,8 @@ import {
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
-  ApprovedTenantApplicationListResponse,
+  CompanyStatus,
+  PlatformCompanyListResponse,
   RequestContext,
   TenantApplication,
   TenantApplicationDecisionResponse,
@@ -27,6 +29,7 @@ import type {
   TenantRegisterResponse,
   TenantSettingsUpdateRequest,
 } from '@arkilaunch/shared';
+import { isTenantSlug, PlatformCompanyListResponseSchema } from '@arkilaunch/shared';
 import { AuthService } from '../auth/auth.service.js';
 
 @Injectable()
@@ -80,17 +83,21 @@ export class TenantsService {
     return { items, total };
   }
 
-  // GET /tenants/applications/approved (tenant:approve, platform_admin
-  // only). Same cross-tenant SECURITY DEFINER path as listApplications --
-  // tenants_list_approved_applications() in migrations/0033.
-  async listApprovedApplications(
-    query: TenantApplicationListQuery,
-  ): Promise<ApprovedTenantApplicationListResponse> {
-    const [items, total] = await Promise.all([
-      listApprovedTenantApplications(query.limit, query.offset),
-      countApprovedTenantApplications(),
-    ]);
-    return { items, total };
+  // GET /tenants/companies (tenant:approve). Cross-tenant aggregate read,
+  // same SECURITY DEFINER rationale as listApplications (migration 0049).
+  async listCompanies(): Promise<PlatformCompanyListResponse> {
+    return PlatformCompanyListResponseSchema.parse({ items: await listPlatformCompanies() });
+  }
+
+  // PATCH /tenants/:id/status (tenant:approve). Audited in the function.
+  async setCompanyStatus(ctx: RequestContext, tenantId: string, status: CompanyStatus) {
+    try {
+      await setPlatformCompanyStatus(tenantId, status, ctx.userId);
+      return { tenantId, status };
+    } catch (err) {
+      if (err instanceof CompanyNotFoundError) throw new NotFoundException({ error: 'company_not_found' });
+      throw err;
+    }
   }
 
   // GET /tenants/me/application (tenant:manage). An owner's own pending
@@ -130,8 +137,10 @@ export class TenantsService {
     const baseSlug = slugify(input.companyName);
     const placeholderHash = await hash(randomBytes(32).toString('hex'));
 
-    let attempt = 0;
-    while (attempt < 5) {
+    // A reserved label (www, admin, api, ...) is never minted: it would be
+    // unreachable as a host (lib/host.ts), so start at the suffixed form.
+    let attempt = isTenantSlug(baseSlug) ? 0 : 1;
+    while (attempt < 6) {
       const slug = attempt === 0 ? baseSlug : `${baseSlug}-${attempt}`;
       try {
         const result = await registerTenant({
@@ -181,7 +190,7 @@ export class TenantsService {
         // Relayed out-of-band by the platform admin, exactly like a user
         // invite -- there is no email provider in the pinned stack.
         const activationToken = this.auth.signActivationToken(result.tenantId, result.ownerUserId, result.passwordHash);
-        return { applicationId, status: decision, activationToken };
+        return { applicationId, status: decision, activationToken, tenantSlug: result.tenantSlug };
       }
       return { applicationId, status: decision };
     } catch (err) {
@@ -193,12 +202,14 @@ export class TenantsService {
   }
 }
 
+// Capped at 50 so the `-N` collision suffix still fits one 63-char DNS label.
 function slugify(companyName: string): string {
   return (
     companyName
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
+      .slice(0, 50)
       .replace(/^-+|-+$/g, '') || 'tenant'
   );
 }

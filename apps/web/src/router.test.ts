@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { routeTree } from './router.js';
 import { ACCOUNT_NAV, APP_NAV, FIELD_NAV, PLATFORM_ADMIN_NAV } from './lib/nav-config.js';
-import { platformAdminMayOpen } from './routes/_app.js';
 
 /**
  * Every path the route tree actually serves.
@@ -48,8 +47,8 @@ describe('navigation targets resolve to registered routes', () => {
       '/account/checkout/success',
       '/account/bookings/$bookingId',
       '/app/billing/weekly',
-      '/app/companies/pending',
-      '/app/companies/$applicationId',
+      '/admin/applications',
+      '/admin/applications/$applicationId',
       '/app/security-logs',
       '/field/profile',
     ]) {
@@ -58,25 +57,18 @@ describe('navigation targets resolve to registered routes', () => {
   });
 });
 
-// The platform admin used to get the whole tenant sidebar with its own links
-// bolted on the end. It now gets its own short list, and _app.tsx sends it
-// home from any /app page that list does not reach.
+// The platform admin's console is its own /admin shell on the platform host
+// (routes/_admin.tsx); none of a tenant's /app operations are reachable from
+// its sidebar.
 describe('platform admin console', () => {
-  const tenantOps = APP_NAV.filter((group) => ['Dispatch', 'Fleet', 'Billing', 'Customers'].includes(group.title))
-    .flatMap((group) => group.items)
-    .map((item) => item.to);
   const platformTargets = PLATFORM_ADMIN_NAV.flatMap((group) => group.items).map((item) => item.to);
 
-  it('lists no tenant operations pages', () => {
-    for (const to of tenantOps) expect(platformTargets).not.toContain(to);
+  it('lists Companies and lives entirely under /admin', () => {
+    for (const to of platformTargets) expect(to.startsWith('/admin/')).toBe(true);
   });
 
-  it('may open its own pages and an application detail, and nothing else', () => {
-    expect(platformAdminMayOpen('/app/companies/pending')).toBe(true);
-    expect(platformAdminMayOpen('/app/companies/approved')).toBe(true);
-    expect(platformAdminMayOpen('/app/companies/0b6e1c1e-0000-4000-8000-000000000000')).toBe(true);
-    expect(platformAdminMayOpen('/app/users')).toBe(true);
-    for (const to of tenantOps) expect(platformAdminMayOpen(to)).toBe(false);
-    expect(platformAdminMayOpen('/app/usersx')).toBe(false);
+  it('is served by the route tree', () => {
+    const paths = new Set(registeredPaths(routeTree as never));
+    for (const to of platformTargets) expect(paths).toContain(to);
   });
 });

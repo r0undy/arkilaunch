@@ -1,6 +1,7 @@
 import { createRoute, Outlet } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { rootRoute } from './__root.js';
+import { onlyOn } from '../lib/guards.js';
 import { SidebarShell } from '../components/sidebar-shell.js';
 import { MarketingChrome } from './_public.js';
 import { ACCOUNT_NAV } from '../lib/nav-config.js';
@@ -51,5 +52,6 @@ function StorefrontLayout() {
 export const storefrontLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'storefront-layout',
+  beforeLoad: onlyOn('tenant'),
   component: StorefrontLayout,
 });

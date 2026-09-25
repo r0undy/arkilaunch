@@ -5,7 +5,9 @@ import { defineConfig, devices } from '@playwright/test';
 // http://localhost:5173 baseURL could only ever answer ERR_EMPTY_RESPONSE.
 // PLAYWRIGHT_BASE_URL overrides it when vite has fallen through to another
 // port because 5173 was taken.
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'https://localhost:5173';
+// The specs drive the Almara tenant; bare localhost is the ArkiLaunch
+// platform host (src/lib/host.ts), reached via platformUrl() in e2e/sign-in.ts.
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'https://almara.localhost:5173';
 
 export default defineConfig({
   testDir: './e2e',

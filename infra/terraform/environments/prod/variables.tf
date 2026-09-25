@@ -15,8 +15,10 @@ variable "web_origin" {
   description = "CORS origin for the prod frontend (production Vercel domain)."
 }
 
-variable "anchor_tenant_slug" {
-  type = string
+variable "platform_domain" {
+  type        = string
+  description = "Root domain; tenant storefronts at https://{slug}.<domain> are allowed by the API's CORS."
+  default     = "arkilaunch.tech"
 }
 
 variable "supabase_url" {

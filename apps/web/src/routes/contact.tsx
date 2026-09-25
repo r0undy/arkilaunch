@@ -5,6 +5,8 @@ function ContactPage() {
   return (
     <div className="flex flex-col gap-4 px-6 py-10 sm:px-10">
       <h1 className="font-display text-2xl font-semibold text-ink-mk">Contact</h1>
+      {/* ponytail: one tenant's contact details, hardcoded; move to tenant
+          settings when per-tenant branding (address, phone, email) lands. */}
       <p className="text-sm text-text-muted">
         Almara Construction, Quezon City. Call 800-4657 or email arkilaunch2026@gmail.com.
       </p>

@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
 import {
   addresses,
@@ -8,6 +8,7 @@ import {
   equipment,
   equipmentTypes,
   equipmentAssignments,
+  getBillingSettings,
   invoices,
   negotiationMessages,
   payments,
@@ -33,6 +34,7 @@ import type {
   RequestContext,
   RescheduleSuggestion,
 } from '@arkilaunch/shared';
+import { bookingDays, minBookingHours } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { QuotesService } from '../quotes/quotes.service.js';
 import {
@@ -106,6 +108,15 @@ export class BookingsService {
       }
       await requireVerifiedCompany(tx, customerId);
 
+      const { dailyHours, minHours } = await getBillingSettings(tx, ctx.tenantId);
+      const bookedHours = body.items.map((item) => {
+        const min = minBookingHours(bookingDays(item.start, item.end), dailyHours, minHours);
+        if (item.hours !== undefined && item.hours < min) {
+          throw new UnprocessableEntityException({ error: 'hours_below_minimum', equipmentId: item.equipmentId, minHours: min });
+        }
+        return item.hours ?? min;
+      });
+
       const equipmentIds = body.items.map((item) => item.equipmentId);
       const equipmentRows = await tx
         .select()
@@ -165,13 +176,14 @@ export class BookingsService {
         .returning();
       if (!rental) throw new Error('rentals insert returned no row');
 
-      for (const item of body.items) {
+      for (const [index, item] of body.items.entries()) {
         await tx.insert(equipmentAssignments).values({
           tenantId: ctx.tenantId,
           equipmentId: item.equipmentId,
           rentalId: rental.id,
           start: new Date(item.start),
           end: new Date(item.end),
+          bookedHours: String(bookedHours[index]),
           status: 'scheduled',
         });
       }

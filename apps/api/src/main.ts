@@ -57,8 +57,14 @@ async function bootstrap() {
   // without this the browser blocks every request with a CORS error before
   // it even reaches a controller, which looks exactly like "auth doesn't
   // work" from the login form.
+  // Tenant storefronts live on `{slug}.<PLATFORM_DOMAIN>`, so besides the
+  // platform origin any one-label subdomain of it is allowed. In dev the
+  // Vite proxy makes every call same-origin and this never comes into play.
+  const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
+  const platformDomain = process.env.PLATFORM_DOMAIN?.replace(/\./g, '\\.');
+  const tenantOrigin = platformDomain ? new RegExp(`^https://[a-z0-9-]+\\.${platformDomain}$`) : null;
   app.enableCors({
-    origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
+    origin: tenantOrigin ? [webOrigin, tenantOrigin] : webOrigin,
     credentials: true,
   });
   // File uploads (EDTR/KYC) now go through multipart FileInterceptor

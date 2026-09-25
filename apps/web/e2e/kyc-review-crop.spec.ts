@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
-import { signIn } from './sign-in.js';
+import { signIn, TENANT_HEADERS } from './sign-in.js';
 
 // Customer feedback round: crop the National ID, check what it says before
 // upload, company fields that follow the uploaded papers, and an admin card
@@ -68,6 +68,7 @@ let idRead = false;
 async function signUpCustomer(page: Page) {
   const res = await page.request.post('/api/v1/auth/register-customer', {
     data: { email: customerEmail, password: customerPassword, acceptedTerms: true },
+    headers: TENANT_HEADERS,
   });
   expect(res.ok(), `register-customer answered ${res.status()}`).toBe(true);
   await logInCustomer(page);

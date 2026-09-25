@@ -228,6 +228,8 @@ export const equipmentAssignments = pgTable(
     status: text('status').notNull().default('scheduled'), // double-book guard enforced at the app layer
     // Operator sent with the unit (migration 0036); same app-layer overlap guard.
     operatorUserId: uuid('operator_user_id').references(() => users.id),
+    // Hours the customer booked (0047); null on bookings made before it.
+    bookedHours: numeric('booked_hours', { precision: 10, scale: 2 }),
   },
   (table) => [tenantIsolationPolicy(),
     index('equipment_assignments_tenant_id_idx').on(table.tenantId),

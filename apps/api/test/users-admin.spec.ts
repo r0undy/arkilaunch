@@ -246,7 +246,7 @@ describe('UsersService (S19)', () => {
       expect(invited.status).toBe('invited');
 
       // Cannot log in yet -- status is 'invited', no password is known.
-      await expect(auth.login({ email, password: 'whatever-12345' })).rejects.toThrow(UnauthorizedException);
+      await expect(auth.login({ email, password: 'whatever-12345' }, 'test-tenant-a')).rejects.toThrow(UnauthorizedException);
 
       // The activation token is not a Bearer token: it deliberately fails
       // JwtClaimsSchema (no `role` claim, carries `purpose` instead) -- the
@@ -261,7 +261,7 @@ describe('UsersService (S19)', () => {
         auth.activate({ activationToken: invited.activationToken, password: 'another-password-2' }),
       ).rejects.toThrow(UnauthorizedException);
 
-      const tokens = await auth.login({ email, password: 'a-strong-password-1' });
+      const tokens = await auth.login({ email, password: 'a-strong-password-1' }, 'test-tenant-a');
       expect('accessToken' in tokens).toBe(true);
     });
 
@@ -272,7 +272,7 @@ describe('UsersService (S19)', () => {
 
       await auth.activate({ activationToken: invited.activationToken, password: 'a-strong-password-3' });
 
-      const tokens = await auth.login({ email: email.toLowerCase(), password: 'a-strong-password-3' });
+      const tokens = await auth.login({ email: email.toLowerCase(), password: 'a-strong-password-3' }, 'test-tenant-a');
       expect('accessToken' in tokens).toBe(true);
     });
 
@@ -286,7 +286,7 @@ describe('UsersService (S19)', () => {
       ).rejects.toThrow(UnauthorizedException);
 
       await auth.activate({ activationToken: reinvited.activationToken, password: 'a-strong-password-4' });
-      const tokens = await auth.login({ email, password: 'a-strong-password-4' });
+      const tokens = await auth.login({ email, password: 'a-strong-password-4' }, 'test-tenant-a');
       expect('accessToken' in tokens).toBe(true);
     });
   });
@@ -298,7 +298,7 @@ describe('UsersService (S19)', () => {
       await auth.activate({ activationToken: invited.activationToken, password: 'a-strong-password-5' });
 
       await usersService.deactivate(adminCtxA, invited.id);
-      await expect(auth.login({ email, password: 'a-strong-password-5' })).rejects.toThrow(UnauthorizedException);
+      await expect(auth.login({ email, password: 'a-strong-password-5' }, 'test-tenant-a')).rejects.toThrow(UnauthorizedException);
 
       const rows = await withTenantTx(adminCtxA, (tx) =>
         tx.select().from(auditLogs).where(eq(auditLogs.entityId, invited.id)),

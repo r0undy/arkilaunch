@@ -66,6 +66,7 @@
   --yb-color-border-strong: var(--sand-600);
   --yb-color-primary: var(--amber-500);
   --yb-color-primary-hover: var(--amber-600);
+  --yb-color-on-primary: var(--steel-900);
   --yb-color-accent: var(--dispatch-blue-600);
   --yb-color-accent-hover: var(--dispatch-blue-700);
   --yb-color-text: var(--steel-900);
@@ -183,6 +184,7 @@
   --color-border-strong: var(--yb-color-border-strong);
   --color-primary: var(--yb-color-primary);
   --color-primary-hover: var(--yb-color-primary-hover);
+  --color-on-primary: var(--yb-color-on-primary);
   --color-accent: var(--yb-color-accent);
   --color-accent-hover: var(--yb-color-accent-hover);
   --color-text: var(--yb-color-text);

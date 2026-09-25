@@ -102,3 +102,10 @@ export async function listCatalogTestimonialsForSlug(slug: string): Promise<Cata
     authorTitle: row.author_title,
   }));
 }
+
+// GET /catalog/tenant (@Public). The host's tenant name for storefront
+// branding; null for an unknown or not-yet-active slug (migration 0048).
+export async function getCatalogTenantForSlug(slug: string): Promise<{ name: string } | null> {
+  const rows = await db.execute<{ name: string }>(sql`select * from catalog_get_tenant(${slug})`);
+  return rows[0] ? { name: rows[0].name } : null;
+}

@@ -14,7 +14,10 @@ export interface AuthUserRow {
   status: string;
 }
 
-export async function findUserByEmailForAuth(email: string): Promise<AuthUserRow | undefined> {
+// Login is scoped to the request host's tenant (migration 0048): the slug
+// narrows the email to at most one row, so a shared email across tenants
+// can no longer resolve to whichever row Postgres returns first.
+export async function findUserByEmailForAuth(email: string, tenantSlug: string): Promise<AuthUserRow | undefined> {
   const rows = await db.execute<{
     id: string;
     tenant_id: string;
@@ -22,7 +25,7 @@ export async function findUserByEmailForAuth(email: string): Promise<AuthUserRow
     role_name: string;
     password_hash: string;
     status: string;
-  }>(sql`select * from auth_find_user_by_email(${email})`);
+  }>(sql`select * from auth_find_user_by_email_in_tenant(${email}, ${tenantSlug})`);
   const row = rows[0];
   if (!row) return undefined;
   return {

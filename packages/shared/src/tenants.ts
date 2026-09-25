@@ -38,6 +38,10 @@ export const TenantApplicationDecisionResponseSchema = z.object({
   // the new owner, exactly like a user invite (no email provider in the
   // pinned stack).
   activationToken: z.string().optional(),
+  // The approved tenant's host label, so the console builds the activation
+  // link on `{slug}.<platform domain>` -- the owner signs in there, not on
+  // the platform host.
+  tenantSlug: z.string().optional(),
 });
 export type TenantApplicationDecisionResponse = z.infer<typeof TenantApplicationDecisionResponseSchema>;
 
@@ -68,16 +72,50 @@ export const TenantApplicationListResponseSchema = z.object({
 });
 export type TenantApplicationListResponse = z.infer<typeof TenantApplicationListResponseSchema>;
 
-// GET /tenants/applications/approved (tenant:approve, platform_admin only).
-export const ApprovedTenantApplicationSchema = TenantApplicationSchema.extend({
-  reviewedAt: z.coerce.date().nullable(),
-});
-export type ApprovedTenantApplication = z.infer<typeof ApprovedTenantApplicationSchema>;
+// Host-based tenant resolution: `{slug}.localhost` / `{slug}.arkilaunch.tech`
+// is a tenant, the bare domain is the ArkiLaunch platform. A slug is one DNS
+// label, so it is capped at 63 chars. Reserved labels never resolve to a
+// tenant -- `arkilaunch-platform` is the platform_admin's own tenant row
+// (seed/anchor.ts), not a storefront -- and registration never mints them.
+export const TENANT_SLUG_REGEX = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+export const RESERVED_TENANT_SLUGS: ReadonlySet<string> = new Set([
+  'www',
+  'admin',
+  'api',
+  'app',
+  'arkilaunch',
+  'arkilaunch-platform',
+]);
+export const PLATFORM_TENANT_SLUG = 'arkilaunch-platform';
 
-export const ApprovedTenantApplicationListResponseSchema = z.object({
-  items: z.array(ApprovedTenantApplicationSchema),
-  total: z.number().int(),
+export function isTenantSlug(value: string): boolean {
+  return TENANT_SLUG_REGEX.test(value) && !RESERVED_TENANT_SLUGS.has(value);
+}
+
+// GET /tenants/companies (tenant:approve, platform_admin only): every rental
+// company past review, with headline counts (migration 0049).
+export const CompanyStatusSchema = z.enum(['active', 'suspended']);
+export type CompanyStatus = z.infer<typeof CompanyStatusSchema>;
+
+export const PlatformCompanySchema = z.object({
+  tenantId: z.string().uuid(),
+  legalName: z.string(),
+  slug: z.string(),
+  status: CompanyStatusSchema,
+  createdAt: z.coerce.date(),
+  usersCount: z.number().int(),
+  customersCount: z.number().int(),
+  equipmentCount: z.number().int(),
+  rentalsCount: z.number().int(),
+  // PHP, paid payments only; a decimal string to keep NUMERIC precision.
+  revenuePaid: z.string(),
 });
-export type ApprovedTenantApplicationListResponse = z.infer<
-  typeof ApprovedTenantApplicationListResponseSchema
->;
+export type PlatformCompany = z.infer<typeof PlatformCompanySchema>;
+
+export const PlatformCompanyListResponseSchema = z.object({ items: z.array(PlatformCompanySchema) });
+export type PlatformCompanyListResponse = z.infer<typeof PlatformCompanyListResponseSchema>;
+
+// PATCH /tenants/:id/status (tenant:approve). 'suspended' is shown as
+// "Inactive": its people cannot sign in and its storefront goes offline.
+export const CompanyStatusUpdateRequestSchema = z.object({ status: CompanyStatusSchema }).strict();
+export type CompanyStatusUpdateRequest = z.infer<typeof CompanyStatusUpdateRequestSchema>;

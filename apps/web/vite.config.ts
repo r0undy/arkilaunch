@@ -42,6 +42,9 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // `{tenant}.localhost` is how a tenant is picked in dev (lib/host.ts);
+    // Vite rejects Host headers it does not know once host: true is set.
+    allowedHosts: ['.localhost'],
     ...(https ? { https } : {}),
     // API_PORT matches apps/api/src/main.ts, so a machine where something
     // else already holds 3000 needs no edit here.
@@ -55,6 +58,9 @@ export default defineConfig({
     // `document`, so they pass unchanged under jsdom; new tests (guards,
     // auth-client, route-level) need a real DOM to render into.
     environment: 'jsdom',
+    // Route tests exercise a tenant's app; bare localhost is the platform
+    // host (src/lib/host.ts), which redirects every tenant route to `/`.
+    environmentOptions: { jsdom: { url: 'http://almara.localhost:3000/' } },
     setupFiles: ['./src/test/setup.ts'],
   },
 });

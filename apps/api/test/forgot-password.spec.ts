@@ -18,14 +18,14 @@ describe('AuthService.forgotPassword', () => {
   const auth = new AuthService(jwtService(), new RefreshTokenService(), new TotpService());
 
   it('answers the same for an unknown and a known email', async () => {
-    const unknown = await auth.forgotPassword({ email: `nobody-${Date.now()}@example.test` });
-    const known = await auth.forgotPassword({ email: 'Timekeeper@test-tenant-a.test' });
+    const unknown = await auth.forgotPassword({ email: `nobody-${Date.now()}@example.test` }, 'test-tenant-a');
+    const known = await auth.forgotPassword({ email: 'Timekeeper@test-tenant-a.test' }, 'test-tenant-a');
     expect(unknown).toEqual({ ok: true });
     expect(known).toEqual(unknown);
   });
 
   it("alerts the account's own tenant admins, not another tenant's", async () => {
-    await auth.forgotPassword({ email: 'timekeeper@test-tenant-a.test' });
+    await auth.forgotPassword({ email: 'timekeeper@test-tenant-a.test' }, 'test-tenant-a');
     const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
     try {
       const rows = await sql<{ email: string }[]>`

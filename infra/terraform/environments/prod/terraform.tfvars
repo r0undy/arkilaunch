@@ -3,7 +3,6 @@
 
 location           = "southeastasia"
 web_origin         = "https://arkilaunch.app" # placeholder -- replace with the real production domain
-anchor_tenant_slug = "almara"
 supabase_url       = "https://<prod-project-ref>.supabase.co" # fill in against the actual prod Supabase project
 
 # Pilot posture (docs/ops-arkilaunch.md §0): one production tenant, feature

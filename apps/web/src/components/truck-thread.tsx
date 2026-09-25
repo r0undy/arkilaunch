@@ -49,7 +49,7 @@ export function TruckThread({ base }: { base: string }) {
             key={m.id}
             className={[
               'max-w-[85%] rounded-md px-3 py-2 text-sm',
-              m.mine ? 'self-end bg-primary text-text' : 'self-start bg-surface-sunk text-text',
+              m.mine ? 'self-end bg-primary text-on-primary' : 'self-start bg-surface-sunk text-text',
             ].join(' ')}
           >
             <p>{m.body}</p>

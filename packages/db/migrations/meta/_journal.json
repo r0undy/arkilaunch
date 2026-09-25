@@ -323,6 +323,27 @@
       "when": 1790400005000,
       "tag": "0046_toll_matrix",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1790400008000,
+      "tag": "0047_min_hours",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1790400009000,
+      "tag": "0048_host_tenant_resolution",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1790400010000,
+      "tag": "0049_platform_companies",
+      "breakpoints": true
     }
   ]
 }

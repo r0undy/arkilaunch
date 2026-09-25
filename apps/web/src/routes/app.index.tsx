@@ -312,7 +312,7 @@ function AdminDashboardPage() {
                 onKeyDown={(event) => onTabKeyDown(event, index)}
                 className={[
                   'px-4 py-2.5 font-display text-sm font-semibold uppercase tracking-[0.04em] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
-                  tab === entry.id ? 'bg-primary text-text' : 'text-white hover:bg-white/15',
+                  tab === entry.id ? 'bg-primary text-on-primary' : 'text-white hover:bg-white/15',
                 ].join(' ')}
               >
                 {entry.label}

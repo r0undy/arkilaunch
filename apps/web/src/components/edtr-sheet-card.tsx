@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { EdtrSheetContext } from '@arkilaunch/shared';
 import { apiErrorText, apiGet } from '../lib/api-client.js';
+import { usersQueries } from '../lib/queries.js';
 import { localDate } from './availability-days.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
@@ -24,6 +25,7 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
     queryFn: () => apiGet<EdtrSheetContext>(`/bookings/${bookingId}/edtr-sheet`),
     enabled: printable,
   });
+  const me = useQuery(usersQueries.me());
   const [equipmentId, setEquipmentId] = useState('');
   const [week, setWeek] = useState(thisMonday);
   const [busy, setBusy] = useState<string | null>(null);
@@ -37,7 +39,11 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
       // A picked date snaps to its week's Monday, so the sheet always covers Mon-Sun.
       const d = new Date(`${week}T00:00:00`);
       d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-      const input = blank || !context.data ? {} : { context: context.data, equipmentId: unit, weekStart: localDate(d) };
+      const companyName = me.data?.tenantName ?? '';
+      const input =
+        blank || !context.data
+          ? { companyName }
+          : { context: context.data, equipmentId: unit, weekStart: localDate(d), companyName };
       const png = await sheet.svgToPng(sheet.buildEdtrSheetSvg(input));
       sheet.downloadBlob(kind === 'png' ? png : await sheet.pngToPdf(png), sheet.edtrSheetFilename(input, kind));
     } catch (e) {

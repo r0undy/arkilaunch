@@ -432,6 +432,6 @@ function TruckAdminPage() {
 export const appTrucksRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/trucks',
-  beforeLoad: requireRole('admin', 'platform_admin'),
+  beforeLoad: requireRole('admin'),
   component: TruckAdminPage,
 });

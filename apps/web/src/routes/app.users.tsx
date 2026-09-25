@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AssignableRole } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
+import { adminLayoutRoute } from './_admin.js';
 import { requireRole } from '../lib/guards.js';
 import { apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 import { DataPanel } from '../components/data-panel.js';
@@ -329,6 +330,13 @@ function ManageUsersPage() {
 export const appUsersRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/users',
-  beforeLoad: requireRole('admin', 'platform_admin'),
+  beforeLoad: requireRole('admin'),
+  component: ManageUsersPage,
+});
+
+// The platform's own staff (the arkilaunch-platform tenant's users).
+export const adminUsersRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/admin/users',
   component: ManageUsersPage,
 });

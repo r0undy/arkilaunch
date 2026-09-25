@@ -6,6 +6,7 @@ import {
   edtr,
   edtrLineItems,
   equipment,
+  getBillingSettings,
   invoices,
   maintenanceLogs,
   maintenanceSchedules,
@@ -59,7 +60,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 // the same fleet is already served anonymously by GET /catalog/equipment.
 // Keys stay tenant-prefixed and UUID-suffixed so they are not enumerable.
 // Recorded in docs/cr-arkilaunch-equipment-crud.md.
-function publicPhotoUrl(key: string | null): string | null {
+export function publicPhotoUrl(key: string | null): string | null {
   if (!key) return null;
   const base = process.env.SUPABASE_URL?.replace(/\/$/, '');
   const bucket = process.env.SUPABASE_STORAGE_BUCKET_EQUIPMENT ?? 'equipment-photos';
@@ -528,7 +529,8 @@ export class FleetService {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select({ id: equipment.id }).from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
       if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
-      return dayAvailability(tx, equipmentId, query.from, query.to);
+      const { dailyHours, minHours } = await getBillingSettings(tx, ctx.tenantId);
+      return { ...(await dayAvailability(tx, equipmentId, query.from, query.to)), dailyHours, minHours };
     });
   }
 

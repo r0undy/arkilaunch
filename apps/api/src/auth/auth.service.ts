@@ -3,13 +3,20 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
-  ServiceUnavailableException,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { createHash } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
-import { EmailTakenError, findUserByEmailForAuth, registerCustomerUser, users, withTenantTx } from '@arkilaunch/db';
+import {
+  EmailTakenError,
+  findUserByEmailForAuth,
+  registerCustomerUser,
+  StorefrontNotFoundError,
+  users,
+  withTenantTx,
+} from '@arkilaunch/db';
 import { eq } from 'drizzle-orm';
 import { notifyStaff } from '../common/notify-customer.js';
 import type {
@@ -75,11 +82,15 @@ export class AuthService {
     private readonly totp: TotpService,
   ) {}
 
-  async login({ email, password }: LoginRequest): Promise<AuthTokens | TwoFaChallenge> {
+  // Scoped to the request host's tenant (tenant-slug.decorator.ts): an
+  // Almara admin signs in on almara.<domain>, the platform_admin on the bare
+  // domain. The wrong host gets the same invalid_credentials as a bad
+  // password, so a host reveals nothing about which tenants an email is in.
+  async login({ email, password }: LoginRequest, tenantSlug: string): Promise<AuthTokens | TwoFaChallenge> {
     const normalizedEmail = email.toLowerCase();
     this.assertNotLockedOut(normalizedEmail);
 
-    const user = await findUserByEmailForAuth(normalizedEmail);
+    const user = await findUserByEmailForAuth(normalizedEmail, tenantSlug);
     // Same error for bad email, bad password (RFC-1 §3): no user-enumeration signal.
     if (!user || user.status !== 'active') {
       this.recordLoginFailure(normalizedEmail);
@@ -112,20 +123,19 @@ export class AuthService {
   }
 
   // POST /auth/register-customer (customer prerequisites CR): self-signup
-  // on the storefront. The login lands in the storefront tenant named by
-  // ANCHOR_TENANT_SLUG -- server config, never the request -- and is signed
-  // straight in, the same as a login. 'email_taken' does reveal that an
-  // address has an account, which every signup form does; login keeps its
-  // no-enumeration posture.
-  async registerCustomer({ email, password }: CustomerSignup): Promise<AuthTokens> {
-    const slug = process.env.ANCHOR_TENANT_SLUG;
-    if (!slug) throw new ServiceUnavailableException({ error: 'signup_unavailable' });
+  // on a tenant's storefront. The customer lands in the tenant of the host
+  // they signed up on; customer_register (0048) refuses a tenant that is not
+  // active. Signed straight in, the same as a login. 'email_taken' does
+  // reveal that an address has an account, which every signup form does;
+  // login keeps its no-enumeration posture.
+  async registerCustomer({ email, password }: CustomerSignup, tenantSlug: string): Promise<AuthTokens> {
     const passwordHash = await hash(password);
     try {
-      const created = await registerCustomerUser(slug, email.toLowerCase(), passwordHash);
+      const created = await registerCustomerUser(tenantSlug, email.toLowerCase(), passwordHash);
       return this.issueTokens(created.tenantId, created.userId, 'customer');
     } catch (err) {
       if (err instanceof EmailTakenError) throw new ConflictException({ error: 'email_taken' });
+      if (err instanceof StorefrontNotFoundError) throw new NotFoundException({ error: 'tenant_not_found' });
       throw err;
     }
   }
@@ -135,9 +145,9 @@ export class AuthService {
   // /app/users (UsersService.resetPassword) and hand over the /activate
   // link. The answer is the same for every email, known or not, so it
   // reveals nothing about which addresses have an account.
-  async forgotPassword({ email }: ForgotPasswordRequest): Promise<{ ok: true }> {
+  async forgotPassword({ email }: ForgotPasswordRequest, tenantSlug: string): Promise<{ ok: true }> {
     const normalizedEmail = email.toLowerCase();
-    const user = await findUserByEmailForAuth(normalizedEmail);
+    const user = await findUserByEmailForAuth(normalizedEmail, tenantSlug);
     if (user && user.status === 'active') {
       await withTenantTx({ tenantId: user.tenantId, userId: user.id, role: BOOTSTRAP_ROLE }, (tx) =>
         notifyStaff(tx, user.tenantId, 'password_reset_requested', { email: normalizedEmail, user_id: user.id }),
