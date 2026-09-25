@@ -15,6 +15,8 @@ export interface CartItem {
   // falls back rather than breaking.
   equipmentTypeName?: string;
   photoUri?: string | null;
+  // Hours the customer means to run it; the cart requires minBookingHours.
+  hours?: number | undefined;
 }
 
 const CART_KEY = 'arkilaunch.cart';
