@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { CustomerSiteResponse } from '@arkilaunch/shared';
 import { apiErrorText, apiPost } from '../lib/api-client.js';
+import { reverseGeocode } from '../lib/reverse-geocode.js';
 import { Modal } from './modal.js';
 import { Button } from './button.js';
 import { Input } from './input.js';
@@ -42,13 +43,31 @@ export function SiteDialog({
   const markerRef = useRef<L.Marker | null>(null);
   const [pin, setPin] = useState<{ lat: number; lng: number } | null>(null);
   const [line1, setLine1] = useState('');
+  const [barangay, setBarangay] = useState('');
   const [city, setCity] = useState('');
   const [province, setProvince] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [looking, setLooking] = useState(false);
+
+  // A dropped or dragged pin fills the address from OpenStreetMap; the
+  // fields stay editable and a part OSM does not know is left as typed.
+  async function fillFromPin(lat: number, lng: number) {
+    setLooking(true);
+    const found = await reverseGeocode(lat, lng);
+    setLooking(false);
+    if (!found) return;
+    if (found.street) setLine1(found.street);
+    if (found.barangay) setBarangay(found.barangay);
+    if (found.city) setCity(found.city);
+    if (found.province) setProvince(found.province);
+    if (found.postalCode) setPostalCode(found.postalCode);
+  }
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
 
   function placePin(lat: number, lng: number) {
     setPin({ lat, lng });
+    void fillFromPin(lat, lng);
     const map = mapRef.current;
     if (!map) return;
     if (markerRef.current) {
@@ -59,6 +78,7 @@ export function SiteDialog({
         .on('dragend', (e) => {
           const at = (e.target as L.Marker).getLatLng();
           setPin({ lat: at.lat, lng: at.lng });
+          void fillFromPin(at.lat, at.lng);
         });
     }
   }
@@ -113,8 +133,10 @@ export function SiteDialog({
       apiPost<CustomerSiteResponse>('/me/sites', {
         customerId,
         line1: line1.trim(),
+        ...(barangay.trim() ? { barangay: barangay.trim() } : {}),
         city: city.trim(),
         province: province.trim(),
+        ...(postalCode.trim() ? { postalCode: postalCode.trim() } : {}),
         latitude: pin!.lat,
         longitude: pin!.lng,
       }),
@@ -122,8 +144,10 @@ export function SiteDialog({
       await queryClient.invalidateQueries({ queryKey: ['me', 'sites'] });
       onCreated?.(site);
       setLine1('');
+      setBarangay('');
       setCity('');
       setProvince('');
+      setPostalCode('');
       setPin(null);
       onClose();
     },
@@ -146,7 +170,9 @@ export function SiteDialog({
           />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-text-muted" aria-live="polite">
-              {pin ? `Pinned at ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}` : 'Click the map to place the pin.'}
+              {pin
+                ? `Pinned at ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}${looking ? '. Finding the address...' : ''}`
+                : 'Click the map to place the pin. The address fills in from it.'}
             </p>
             <Button type="button" variant="secondary" loading={locating} onClick={useMyLocation}>
               Use my location
@@ -154,10 +180,12 @@ export function SiteDialog({
           </div>
           {locateError && <p className="text-sm text-error">{locateError}</p>}
         </div>
-        <Input label="Street address" required maxLength={300} value={line1} onChange={(e) => setLine1(e.target.value)} />
         <div className="grid gap-3 sm:grid-cols-2">
-          <Input label="City" required maxLength={120} value={city} onChange={(e) => setCity(e.target.value)} />
+          <Input label="Street address" required maxLength={300} value={line1} onChange={(e) => setLine1(e.target.value)} />
+          <Input label="Barangay" maxLength={120} value={barangay} onChange={(e) => setBarangay(e.target.value)} />
+          <Input label="City / municipality" required maxLength={120} value={city} onChange={(e) => setCity(e.target.value)} />
           <Input label="Province" required maxLength={120} value={province} onChange={(e) => setProvince(e.target.value)} />
+          <Input label="ZIP code" inputMode="numeric" pattern="\d{4}" maxLength={4} value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
         </div>
         {create.isError && <p className="text-sm text-error">{apiErrorText(create.error)}</p>}
         <div className="flex justify-end gap-2">

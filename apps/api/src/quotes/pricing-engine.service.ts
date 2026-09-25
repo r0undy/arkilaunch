@@ -1,9 +1,12 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
-import { and, desc, eq, gte, isNull, lte, or } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, isNull, lte, or, sql } from 'drizzle-orm';
 import { db, dieselPriceReadings, getBillingSettings, pricingParameters, rateCards } from '@arkilaunch/db';
-import type { Discount, QuoteItemInput } from '@arkilaunch/shared';
+import { rentFor, type Discount, type QuoteItemInput, type QuoteRequest, type RentPart, type RentUnit } from '@arkilaunch/shared';
 
-const FORMULA_VERSION = '1.0';
+// 2.0: rent charged in the card's own unit (rentFor), flat per-quote
+// mobilization, custom lines.
+const FORMULA_VERSION = '2.0';
+const RENT_UNITS: readonly string[] = ['hourly', 'daily', 'monthly'];
 // RFC-3 §3: default staleness window; DOE updates weekly (typically
 // Tuesdays), so a week-old reading is still usable, just labeled stale.
 const STALENESS_WINDOW_DAYS = 7;
@@ -33,13 +36,19 @@ export interface DieselResolution {
 }
 
 export interface PricedItem {
-  equipmentTypeId: string;
-  rateCardId: string;
+  kind: 'equipment' | 'custom';
+  description: string | null;
+  equipmentTypeId: string | null;
+  rateCardId: string | null;
   quantity: number;
   estimatedHours: number;
   mobilizationKm: number;
   demobilizationKm: number;
+  // Effective per-hour figure (rent / hours + operator, maintenance, fuel),
+  // so hours x quantity x hourlyRate = operatingCost (the deposit reads it).
   hourlyRatePhp: number;
+  rentPhp: number;
+  rentParts: RentPart[];
   operatingCostPhp: number;
   mobilizationCostPhp: number;
   demobilizationCostPhp: number;
@@ -50,6 +59,8 @@ export interface PricedItem {
 
 export interface PricedQuote {
   items: PricedItem[];
+  mobilizationPhp: number;
+  demobilizationPhp: number;
   subtotalPhp: number;
   discountPhp: number;
   totalPhp: number;
@@ -137,9 +148,9 @@ export class PricingEngineService {
     });
   }
 
-  // Loads the rate card and prices one line item per the RFC-3 §3 formula.
-  // `dailyHours` converts a daily card to the hourly figure the formula
-  // needs (tenant billing_settings.daily_hours).
+  // Prices one line. An equipment line loads its rate card and charges the
+  // rent in the card's own unit (rentFor), plus operator, maintenance and
+  // fuel per hour of the hire; a custom line is the admin's own price.
   async priceItem(
     tx: Tx,
     tenantId: string,
@@ -147,6 +158,16 @@ export class PricingEngineService {
     input: QuoteItemInput,
     dailyHours = 8,
   ): Promise<PricedItem> {
+    if (input.kind === 'custom') {
+      return {
+        kind: 'custom', description: input.description, equipmentTypeId: null, rateCardId: null,
+        quantity: input.quantity, estimatedHours: 0, mobilizationKm: 0, demobilizationKm: 0,
+        hourlyRatePhp: 0, rentPhp: 0, rentParts: [], operatingCostPhp: 0, mobilizationCostPhp: 0,
+        demobilizationCostPhp: 0, bufferPhp: 0, subtotalPhp: round2HalfUp(input.unitPricePhp * input.quantity),
+        pricingInputs: { unit_price_php: input.unitPricePhp, formula_version: FORMULA_VERSION },
+      };
+    }
+
     const now = new Date();
     const [rateCard] = await tx
       .select()
@@ -172,15 +193,25 @@ export class PricingEngineService {
         message: 'This rate card is not currently effective (superseded or not yet active); reload rate cards.',
       });
     }
+    // Each equipment type is priced off its own cards only.
+    if (rateCard.equipmentTypeId !== input.equipmentTypeId) {
+      throw new UnprocessableEntityException({ error: 'rate_card_type_mismatch', rateCardId: input.rateCardId });
+    }
+    if (!RENT_UNITS.includes(rateCard.rateType)) {
+      throw new UnprocessableEntityException({ error: 'rate_type_unsupported', rateType: rateCard.rateType });
+    }
+    const rateType = rateCard.rateType as RentUnit;
 
     const rateCardValuePhp = Number(rateCard.rateValue);
-    // A daily card used to be added in as if it were per hour (an 8x
-    // overcharge at 8 hours/day). The formula is hourly, so convert.
-    const rateCardHourlyPhp = rateCard.rateType === 'daily' ? rateCardValuePhp / dailyHours : rateCardValuePhp;
+    const dailyRatePhp = rateType === 'monthly' ? await this.dailyRateBeside(tx, tenantId, rateCard, now) : null;
+    const hours = input.days !== undefined ? input.days * dailyHours : input.estimatedHours;
+    const rent = rentFor(rateType, rateCardValuePhp, hours, dailyHours, dailyRatePhp);
     const fuelPerHourCost = diesel.fuelLPerHour * diesel.pricePhp;
-    const hourlyRate = rateCardHourlyPhp + diesel.operatorHourlyPhp + diesel.maintenanceHourlyPhp + fuelPerHourCost;
-    const operatingCost = hourlyRate * input.estimatedHours * input.quantity;
+    const addersPerHour = diesel.operatorHourlyPhp + diesel.maintenanceHourlyPhp + fuelPerHourCost;
+    const hourlyRate = (hours > 0 ? rent.rentPhp / hours : 0) + addersPerHour;
+    const operatingCost = (rent.rentPhp + addersPerHour * hours) * input.quantity;
 
+    // Legacy per-km transport; new quotes send 0 and use the flat per-quote amount.
     const transportRatePerKm = diesel.transportPhpPerKm + diesel.fuelLPerKm * diesel.pricePhp;
     const mobilizationCost = input.mobilizationKm * transportRatePerKm * input.quantity;
     const demobilizationCost = input.demobilizationKm * transportRatePerKm * input.quantity;
@@ -193,15 +224,20 @@ export class PricingEngineService {
     // beside it in pricing_inputs so the snapshot shows both.
     const agreed = input.agreedSubtotalPhp;
     const subtotal = agreed !== undefined ? round2HalfUp(agreed) : computedSubtotal;
+    const rentPhp = round2HalfUp(rent.rentPhp * input.quantity);
 
     return {
+      kind: 'equipment',
+      description: null,
       equipmentTypeId: input.equipmentTypeId,
       rateCardId: input.rateCardId,
       quantity: input.quantity,
-      estimatedHours: input.estimatedHours,
+      estimatedHours: hours,
       mobilizationKm: input.mobilizationKm,
       demobilizationKm: input.demobilizationKm,
       hourlyRatePhp: round2HalfUp(hourlyRate),
+      rentPhp,
+      rentParts: rent.parts,
       operatingCostPhp: round2HalfUp(operatingCost),
       mobilizationCostPhp: round2HalfUp(mobilizationCost),
       demobilizationCostPhp: round2HalfUp(demobilizationCost),
@@ -213,10 +249,12 @@ export class PricingEngineService {
         diesel_price_source: diesel.source,
         rate_card_id: rateCard.id,
         rate_card_value_php: rateCardValuePhp,
-        rate_card_rate_type: rateCard.rateType,
+        rate_card_rate_type: rateType,
         rate_card_equipment_id: rateCard.equipmentId,
-        rate_card_hourly_php: rateCardHourlyPhp,
-        daily_hours: rateCard.rateType === 'daily' ? dailyHours : null,
+        daily_hours: dailyHours,
+        daily_rate_php: dailyRatePhp,
+        rent_php: rentPhp,
+        rent_parts: rent.parts,
         ...(agreed !== undefined ? { agreed_subtotal_php: subtotal, computed_subtotal_php: computedSubtotal } : {}),
         rate_card_effective_from: rateCard.effectiveFrom,
         rate_card_effective_to: rateCard.effectiveTo,
@@ -231,8 +269,40 @@ export class PricingEngineService {
     };
   }
 
-  applyDiscount(items: PricedItem[], discount: Discount): { subtotalPhp: number; discountPhp: number; totalPhp: number } {
-    const subtotal = round2HalfUp(items.reduce((sum, item) => sum + item.subtotalPhp, 0));
+  // The daily card beside a monthly one (same unit, else same type), which
+  // charges a monthly hire's leftover days. null: pro-rate the month.
+  private async dailyRateBeside(
+    tx: Tx,
+    tenantId: string,
+    card: { equipmentTypeId: string; equipmentId: string | null },
+    now: Date,
+  ): Promise<number | null> {
+    const typeWide = and(eq(rateCards.equipmentTypeId, card.equipmentTypeId), isNull(rateCards.equipmentId));
+    const [daily] = await tx
+      .select({ rateValue: rateCards.rateValue })
+      .from(rateCards)
+      .where(
+        and(
+          eq(rateCards.tenantId, tenantId),
+          eq(rateCards.rateType, 'daily'),
+          card.equipmentId ? or(eq(rateCards.equipmentId, card.equipmentId), typeWide) : typeWide,
+          lte(rateCards.effectiveFrom, now),
+          or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, now)),
+        ),
+      )
+      .orderBy(sql`${rateCards.equipmentId} is null`, desc(rateCards.effectiveFrom))
+      .limit(1);
+    return daily ? Number(daily.rateValue) : null;
+  }
+
+  // Subtotal = the lines plus the flat mobilization/demobilization; the
+  // discount comes off that.
+  applyDiscount(
+    items: PricedItem[],
+    discount: Discount,
+    transportPhp = 0,
+  ): { subtotalPhp: number; discountPhp: number; totalPhp: number } {
+    const subtotal = round2HalfUp(items.reduce((sum, item) => sum + item.subtotalPhp, 0) + transportPhp);
     let discountAmount = 0;
     if (discount.type === 'percent') discountAmount = subtotal * (discount.value / 100);
     else if (discount.type === 'fixed') discountAmount = discount.value;
@@ -243,17 +313,19 @@ export class PricingEngineService {
   async priceQuote(
     tx: Tx,
     tenantId: string,
-    items: QuoteItemInput[],
-    discount: Discount,
+    request: Pick<QuoteRequest, 'items' | 'discount' | 'mobilizationPhp' | 'demobilizationPhp'>,
     region = 'NCR',
   ): Promise<PricedQuote> {
     const diesel = await this.resolveDieselAndParams(tx, tenantId, region);
-    const { dailyHours } = await getBillingSettings(tx, tenantId);
+    const settings = await getBillingSettings(tx, tenantId);
     const pricedItems: PricedItem[] = [];
-    for (const item of items) {
-      pricedItems.push(await this.priceItem(tx, tenantId, diesel, item, dailyHours));
+    for (const item of request.items) {
+      pricedItems.push(await this.priceItem(tx, tenantId, diesel, item, settings.dailyHours));
     }
-    const totals = this.applyDiscount(pricedItems, discount);
-    return { items: pricedItems, diesel, ...totals };
+    // Omitted: the company default every quote starts with.
+    const mobilizationPhp = round2HalfUp(request.mobilizationPhp ?? settings.mobilizationPhp);
+    const demobilizationPhp = round2HalfUp(request.demobilizationPhp ?? settings.demobilizationPhp);
+    const totals = this.applyDiscount(pricedItems, request.discount, mobilizationPhp + demobilizationPhp);
+    return { items: pricedItems, diesel, mobilizationPhp, demobilizationPhp, ...totals };
   }
 }

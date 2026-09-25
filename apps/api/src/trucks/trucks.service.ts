@@ -1,9 +1,12 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import { negotiationMessages, notifications, tollRates, truckRequests, truckSettings, withTenantTx } from '@arkilaunch/db';
 import {
+  PH_CLASS3_TOLLS,
+  PH_TOLLS_AS_OF,
   priceTruckTrip,
   type TollRateCreate,
+  type TollRateUpdate,
   type TollRateResponse,
   type TruckPriceLine,
   type NegotiationMessageCreate,
@@ -71,11 +74,12 @@ export class TrucksService {
   }
 
   // Per-km and fuel are the tenant's pricing parameters and today's resolved
-  // diesel price for the tenant's region -- the same inputs as every
-  // equipment quote. low/high are the total +/- the tenant's band.
+  // diesel price (tenant override, else the national GasWatch average) --
+  // the same inputs as every equipment quote. truck_settings.region is no
+  // longer read. low/high are the total +/- the tenant's band.
   private async price(tx: Tx, tenantId: string, km: number, tolls: TruckPriceLine[] = []): Promise<TruckPrice> {
     const settings = await this.readSettings(tx, tenantId);
-    const diesel = await this.engine.resolveDieselAndParams(tx, tenantId, settings.region);
+    const diesel = await this.engine.resolveDieselAndParams(tx, tenantId);
     const price = priceTruckTrip({
       km,
       settings,
@@ -90,8 +94,43 @@ export class TrucksService {
 
   listTolls(ctx: RequestContext): Promise<TollRateResponse[]> {
     return withTenantTx(ctx, async (tx) => {
-      const rows = await tx.select().from(tollRates).orderBy(asc(tollRates.name)).limit(200);
-      return rows.map((t) => ({ id: t.id, name: t.name, feePhp: Number(t.feePhp) }));
+      const rows = await tx.select().from(tollRates).where(eq(tollRates.tenantId, ctx.tenantId)).orderBy(asc(tollRates.expressway), asc(tollRates.name)).limit(1000);
+      return rows.map(toToll);
+    });
+  }
+
+  // Loads the PH Class 3 expressway matrix as this tenant's own editable
+  // toll rates. Idempotent: a pair already loaded (edited or not) is kept.
+  loadPhTolls(ctx: RequestContext): Promise<{ added: number }> {
+    return withTenantTx(ctx, async (tx) => {
+      const have = new Set(
+        (await tx.select().from(tollRates).where(and(eq(tollRates.tenantId, ctx.tenantId), isNotNull(tollRates.expressway)))).map((t) => `${t.expressway}|${t.entryPoint}|${t.exitPoint}`),
+      );
+      const missing = PH_CLASS3_TOLLS.filter((t) => !have.has(`${t.expressway}|${t.entry}|${t.exit}`));
+      if (missing.length > 0) {
+        await tx.insert(tollRates).values(
+          missing.map((t) => ({
+            tenantId: ctx.tenantId,
+            name: `${t.expressway}: ${t.entry} to ${t.exit}`,
+            feePhp: String(t.feePhp),
+            expressway: t.expressway,
+            entryPoint: t.entry,
+            exitPoint: t.exit,
+            vehicleClass: 3,
+            asOf: PH_TOLLS_AS_OF,
+          })),
+        );
+      }
+      return { added: missing.length };
+    });
+  }
+
+  // A TRB change: the admin corrects the fee in place.
+  updateToll(ctx: RequestContext, id: string, body: TollRateUpdate): Promise<TollRateResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [t] = await tx.update(tollRates).set({ feePhp: String(body.feePhp) }).where(and(eq(tollRates.id, id), eq(tollRates.tenantId, ctx.tenantId))).returning();
+      if (!t) throw new NotFoundException({ error: 'toll_not_found' });
+      return toToll(t);
     });
   }
 
@@ -101,13 +140,13 @@ export class TrucksService {
         .insert(tollRates)
         .values({ tenantId: ctx.tenantId, name: body.name, feePhp: String(body.feePhp) })
         .returning();
-      return { id: t!.id, name: t!.name, feePhp: Number(t!.feePhp) };
+      return toToll(t!);
     });
   }
 
   removeToll(ctx: RequestContext, id: string) {
     return withTenantTx(ctx, async (tx) => {
-      await tx.delete(tollRates).where(eq(tollRates.id, id));
+      await tx.delete(tollRates).where(and(eq(tollRates.id, id), eq(tollRates.tenantId, ctx.tenantId)));
       return { id };
     });
   }
@@ -363,3 +402,15 @@ export class TrucksService {
   }
 }
 
+function toToll(t: typeof tollRates.$inferSelect): TollRateResponse {
+  return {
+    id: t.id,
+    name: t.name,
+    feePhp: Number(t.feePhp),
+    expressway: t.expressway,
+    entryPoint: t.entryPoint,
+    exitPoint: t.exitPoint,
+    vehicleClass: t.vehicleClass,
+    asOf: t.asOf,
+  };
+}

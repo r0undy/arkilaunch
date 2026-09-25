@@ -1,17 +1,18 @@
 import { createRoute } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { DEFAULT_TRUCK_FORMULA, FORMULA_BASE_VARS, formulaVarName, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
+import { DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
-import { formatPeso, formatStatus } from '../lib/format.js';
+import { formatDate, formatPeso, formatStatus } from '../lib/format.js';
 import { PriceBreakdown } from './account.trucks.js';
 import { Surface } from '../components/surface.js';
 import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { TruckThread } from '../components/truck-thread.js';
+import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
 
 const settingsQuery = {
   queryKey: ['truck-settings'] as const,
@@ -34,7 +35,15 @@ function SettingsEditor({ initial }: { initial: TruckSettings }) {
   const [extras, setExtras] = useState<TruckExtra[]>(initial.extras);
   const [formula, setFormula] = useState(initial.formula || DEFAULT_TRUCK_FORMULA);
   const [rangePct, setRangePct] = useState(String(initial.rangePct));
-  const [region, setRegion] = useState(initial.region);
+  // The builder's sample trip is priced with the same per-km, fuel and
+  // national diesel figures a real request uses.
+  const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<{ transportPhpPerKm: string; fuelLPerKm: string } | null>('/pricing/parameters') });
+  const diesel = useQuery({ queryKey: ['diesel-price'], queryFn: () => apiGet<{ pricePhp: number } | null>('/pricing/diesel-price') });
+  const sample: SampleInputs = {
+    perKmPhp: Number(params.data?.transportPhpPerKm ?? 0),
+    fuelLPerKm: Number(params.data?.fuelLPerKm ?? 0),
+    dieselPhp: Number(diesel.data?.pricePhp ?? 0),
+  };
 
   const save = useMutation({
     mutationFn: () =>
@@ -42,9 +51,8 @@ function SettingsEditor({ initial }: { initial: TruckSettings }) {
         baseFeePhp: Number(base),
         driverFeePhp: Number(driver),
         extras,
-        formula: formula.trim() === DEFAULT_TRUCK_FORMULA ? null : formula.trim(),
+        formula: formula.trim() === '' || formula.trim() === DEFAULT_TRUCK_FORMULA ? null : formula.trim(),
         rangePct: Number(rangePct),
-        region: region.trim(),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: settingsQuery.queryKey });
@@ -61,23 +69,25 @@ function SettingsEditor({ initial }: { initial: TruckSettings }) {
       <div>
         <h2 className="font-display text-lg font-semibold text-text">Truck pricing</h2>
         <p className="text-sm text-text-muted">
-          Per-km rate, fuel use and diesel price come from your pricing parameters and today&apos;s diesel
-          reading. Set the truck&apos;s own fees and any extra charges here.
+          Per-km rate and fuel use come from your pricing parameters; diesel is the national GasWatch
+          average (or your own diesel price in Settings). Set the truck&apos;s own fees and any extra
+          charges here.
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <Input label="Base fee (₱ per trip)" type="number" min={0} numeric value={base} onChange={(e) => setBase(e.target.value)} />
         <Input label="Driver's fee (₱ per trip)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
         <Input label="Estimate range (± %)" type="number" min={0} max={100} numeric value={rangePct} onChange={(e) => setRangePct(e.target.value)} />
-        <Input label="Diesel price region" value={region} onChange={(e) => setRegion(e.target.value)} />
       </div>
-      <div className="flex flex-col gap-1">
-        <Input label="Price formula" value={formula} onChange={(e) => setFormula(e.target.value)} />
-        <p className="text-xs text-text-muted">
-          Numbers, + − × ÷ and brackets. Variables: {[...FORMULA_BASE_VARS, ...extras.map((x) => formulaVarName(x.label)).filter(Boolean)].join(', ')}.
-          The high end of the range is the most a customer can be charged without approving.
-        </p>
-      </div>
+      <FormulaBuilder
+        value={formula}
+        onChange={setFormula}
+        settings={{ baseFeePhp: Number(base), driverFeePhp: Number(driver), extras }}
+        sample={sample}
+      />
+      <p className="text-xs text-text-muted">
+        The high end of the estimate range is the most a customer can be charged without approving.
+      </p>
       <fieldset className="flex flex-col gap-3">
         <legend className="mb-2 text-sm font-medium text-text">Extra charges</legend>
         {extras.map((x, i) => (
@@ -117,6 +127,27 @@ function SettingsEditor({ initial }: { initial: TruckSettings }) {
   );
 }
 
+// One toll fee, edited in place (a TRB change) or removed.
+function TollFee({ toll, onSaved, onRemove }: { toll: TollRateResponse; onSaved: () => void; onRemove: () => void }) {
+  const toast = useToast();
+  const [fee, setFee] = useState(String(toll.feePhp));
+  const save = useMutation({
+    mutationFn: () => apiPatch(`/toll-rates/${toll.id}`, { feePhp: Number(fee) }),
+    onSuccess: onSaved,
+    onError: (e) => toast.error('Fee not saved', apiErrorText(e)),
+  });
+  const label = toll.expressway ? `${toll.entryPoint} to ${toll.exitPoint}` : toll.name;
+  return (
+    <div className="grid grid-cols-[1fr_120px_auto] items-end gap-2 text-sm">
+      <span className="min-w-0 pb-3 text-text">{label}</span>
+      <Input label="₱" aria-label={`${label} fee`} type="number" min={0} numeric value={fee} onChange={(e) => setFee(e.target.value)} onBlur={() => Number(fee) !== toll.feePhp && fee !== '' && save.mutate()} />
+      <Button variant="ghost" onClick={onRemove}>
+        Remove
+      </Button>
+    </div>
+  );
+}
+
 function TollsEditor() {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -133,27 +164,58 @@ function TollsEditor() {
     },
     onError: (e) => toast.error('Toll not added', apiErrorText(e)),
   });
+  const load = useMutation({
+    mutationFn: () => apiPost<{ added: number }>('/toll-rates/load-ph', {}),
+    onSuccess: (res) => {
+      refresh();
+      toast.success('Toll matrix loaded', res.added ? `${res.added} expressway fees added.` : 'Every fee was already loaded.');
+    },
+    onError: (e) => toast.error('Toll matrix not loaded', apiErrorText(e)),
+  });
   const remove = useMutation({ mutationFn: (id: string) => apiDelete(`/toll-rates/${id}`), onSuccess: refresh });
+  const rows = tolls.data ?? [];
+  const expressways = [...new Set(rows.filter((t) => t.expressway).map((t) => t.expressway!))];
+  const manual = rows.filter((t) => !t.expressway);
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4 sm:p-6">
       <div>
         <h2 className="font-display text-lg font-semibold text-text">Toll rates</h2>
-        <p className="text-sm text-text-muted">Pick the tolls a trip passes when you confirm its km.</p>
+        <p className="text-sm text-text-muted">
+          Class 3 (large trucks) expressway fees, picked by entry and exit when you confirm a trip&apos;s km.
+          Loaded fees are the TRB-approved rates effective {formatDate(PH_TOLLS_AS_OF)}; check them against the
+          operator&apos;s current matrix and edit any that changed.
+        </p>
       </div>
-      {tolls.data?.map((t) => (
-        <div key={t.id} className="flex items-center justify-between gap-2 text-sm">
-          <span className="min-w-0 text-text">{t.name}</span>
-          <span className="flex items-center gap-2">
-            <span className="font-mono tabular-nums">{formatPeso(t.feePhp)}</span>
-            <Button variant="secondary" onClick={() => remove.mutate(t.id)}>
-              Remove
-            </Button>
-          </span>
-        </div>
+      <div>
+        <Button variant="secondary" loading={load.isPending} onClick={() => load.mutate()}>
+          {expressways.length ? 'Load any missing expressway fees' : 'Load PH expressway toll matrix (Class 3)'}
+        </Button>
+      </div>
+      {expressways.map((x) => (
+        <details key={x} className="rounded-md border border-border p-3">
+          <summary className="cursor-pointer text-sm font-medium text-text">
+            {x} ({rows.filter((t) => t.expressway === x).length} fees)
+          </summary>
+          <div className="mt-2 flex flex-col gap-2">
+            {rows
+              .filter((t) => t.expressway === x)
+              .map((t) => (
+                <TollFee key={t.id} toll={t} onSaved={refresh} onRemove={() => remove.mutate(t.id)} />
+              ))}
+          </div>
+        </details>
       ))}
+      {manual.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium text-text">Other tolls</span>
+          {manual.map((t) => (
+            <TollFee key={t.id} toll={t} onSaved={refresh} onRemove={() => remove.mutate(t.id)} />
+          ))}
+        </div>
+      )}
       <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_140px_auto]">
         <div className="col-span-2 sm:col-span-1">
-          <Input label="Toll name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input label="Other toll name" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <Input label="Toll fee (₱)" type="number" min={0} numeric value={fee} onChange={(e) => setFee(e.target.value)} />
         <Button variant="secondary" loading={add.isPending} disabled={!name.trim() || fee === ''} onClick={() => add.mutate()}>
@@ -163,6 +225,83 @@ function TollsEditor() {
     </Surface>
   );
 }
+
+// Tolls a trip passes: expressway, then two points on it (either order),
+// and the loaded fee fills in; free-named tolls are picked by name.
+function TollPicker({ tolls, value, onChange }: { tolls: TollRateResponse[]; value: string[]; onChange: (ids: string[]) => void }) {
+  const [expressway, setExpressway] = useState('');
+  const [a, setA] = useState('');
+  const [b, setB] = useState('');
+  const onRoad = tolls.filter((t) => (expressway === OTHER ? !t.expressway : t.expressway === expressway));
+  const points = [...new Set(onRoad.flatMap((t) => [t.entryPoint!, t.exitPoint!]))];
+  const match =
+    expressway === OTHER
+      ? onRoad.find((t) => t.id === a)
+      : onRoad.find((t) => (t.entryPoint === a && t.exitPoint === b) || (t.entryPoint === b && t.exitPoint === a));
+  const picked = value.map((id) => tolls.find((t) => t.id === id)).filter((t): t is TollRateResponse => Boolean(t));
+  const expressways = [...new Set(tolls.filter((t) => t.expressway).map((t) => t.expressway!))];
+  const selectClass = 'min-h-11 rounded-mk-sm border border-border bg-surface px-2 text-sm';
+  return (
+    <fieldset className="flex flex-col gap-2 text-sm">
+      <legend className="mb-1 text-xs text-text-muted">Tolls on this route</legend>
+      {picked.map((t) => (
+        <div key={t.id} className="flex items-center justify-between gap-2">
+          <span>
+            {t.name} ({formatPeso(t.feePhp)})
+          </span>
+          <Button variant="ghost" onClick={() => onChange(value.filter((id) => id !== t.id))}>
+            Remove
+          </Button>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <select aria-label="Expressway" className={selectClass} value={expressway} onChange={(e) => { setExpressway(e.target.value); setA(''); setB(''); }}>
+          <option value="">Expressway</option>
+          {expressways.map((x) => (
+            <option key={x}>{x}</option>
+          ))}
+          {tolls.some((t) => !t.expressway) && <option value={OTHER}>Other tolls</option>}
+        </select>
+        {expressway === OTHER ? (
+          <select aria-label="Toll" className={selectClass} value={a} onChange={(e) => setA(e.target.value)}>
+            <option value="">Toll</option>
+            {onRoad.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          expressway && (
+            <>
+              <select aria-label="Entry" className={selectClass} value={a} onChange={(e) => setA(e.target.value)}>
+                <option value="">Entry</option>
+                {points.map((pt) => (
+                  <option key={pt}>{pt}</option>
+                ))}
+              </select>
+              <select aria-label="Exit" className={selectClass} value={b} onChange={(e) => setB(e.target.value)}>
+                <option value="">Exit</option>
+                {points.filter((pt) => pt !== a).map((pt) => (
+                  <option key={pt}>{pt}</option>
+                ))}
+              </select>
+            </>
+          )
+        )}
+        {match ? (
+          <Button variant="secondary" disabled={value.includes(match.id)} onClick={() => onChange([...value, match.id])}>
+            Add {formatPeso(match.feePhp)}
+          </Button>
+        ) : (
+          expressway && expressway !== OTHER && a && b && <span className="text-xs text-text-muted">No fee loaded for that pair; add it under Toll rates.</span>
+        )}
+      </div>
+    </fieldset>
+  );
+}
+
+const OTHER = '__other__';
 
 function RequestRow({ r }: { r: TruckRequestResponse }) {
   const toast = useToast();
@@ -225,19 +364,7 @@ function RequestRow({ r }: { r: TruckRequestResponse }) {
           </div>
         )}
         {r.status !== 'cancelled' && (tolls.data?.length ?? 0) > 0 && (
-          <fieldset className="flex flex-wrap gap-3 text-sm">
-            <legend className="mb-1 text-xs text-text-muted">Tolls on this route</legend>
-            {tolls.data!.map((t) => (
-              <label key={t.id} className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={tollIds.includes(t.id)}
-                  onChange={(e) => setTollIds((ids) => (e.target.checked ? [...ids, t.id] : ids.filter((x) => x !== t.id)))}
-                />
-                {t.name} ({formatPeso(t.feePhp)})
-              </label>
-            ))}
-          </fieldset>
+          <TollPicker tolls={tolls.data!} value={tollIds} onChange={setTollIds} />
         )}
         {r.status !== 'cancelled' && (
           <div className="flex flex-wrap items-end gap-2">

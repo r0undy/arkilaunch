@@ -302,6 +302,8 @@ interface BillingSettings {
   minDepositPhp: number;
   lowBalancePct: number;
   depositPct: number;
+  mobilizationPhp: number;
+  demobilizationPhp: number;
 }
 
 // Hours in a rental day (a daily card is divided by this), the minimum
@@ -331,6 +333,8 @@ function BillingSettingsForm() {
         <Input label="Minimum deposit (PHP)" type="number" min="0" step="0.01" numeric value={String(current.minDepositPhp)} onChange={(e) => edit({ minDepositPhp: Number(e.target.value) })} />
         <Input label="Deposit (% of rented hours)" type="number" min="0" max="100" step="0.5" numeric hint="Prepaid and consumed by EDTR hours, not refunded. 50 on a 50-hour rental prepays 25 hours. 0 uses the minimum deposit only." value={String(current.depositPct)} onChange={(e) => edit({ depositPct: Number(e.target.value) })} />
         <Input label="Low-balance warning (%)" type="number" min="0" max="100" step="1" numeric hint="Warns you and the customer when this much deposit is left." value={String(current.lowBalancePct)} onChange={(e) => edit({ lowBalancePct: Number(e.target.value) })} />
+        <Input label="Mobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Self-loader delivery on every new quote. You can change it per quote." value={String(current.mobilizationPhp)} onChange={(e) => edit({ mobilizationPhp: Number(e.target.value) })} />
+        <Input label="Demobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Pick-up at the end of the hire, on every new quote." value={String(current.demobilizationPhp)} onChange={(e) => edit({ demobilizationPhp: Number(e.target.value) })} />
       </div>
       <div>
         <Button variant="primary" loading={save.isPending} disabled={!draft} onClick={() => save.mutate()}>
@@ -379,7 +383,9 @@ function DieselPriceForm() {
     mutationFn: () => apiPost<DieselReading | null>('/pricing/diesel-price/fetch', {}),
     onSuccess: (reading) => {
       void queryClient.invalidateQueries({ queryKey: ['diesel-price'] });
-      toast.success('Diesel price updated', reading ? `${formatPeso(reading.pricePhp)} per litre` : undefined);
+      // Put the fetched average in the field; the admin still saves it.
+      if (reading) setOverride(String(Number(reading.pricePhp)));
+      toast.success('Diesel price fetched', reading ? `${formatPeso(reading.pricePhp)} per litre. Save to use it.` : undefined);
     },
     onError: (e) => toast.error('Could not reach GasWatch', apiErrorText(e)),
   });

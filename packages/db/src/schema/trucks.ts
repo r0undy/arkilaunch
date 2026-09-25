@@ -1,4 +1,4 @@
-import { index, jsonb, numeric, pgTable, text, timestamp, uuid, check } from 'drizzle-orm/pg-core';
+import { date, index, integer, jsonb, numeric, pgTable, text, timestamp, uuid, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { TruckExtra, TruckPrice } from '@arkilaunch/shared';
 import { tenantIsolationPolicy } from '../rls.js';
@@ -76,6 +76,12 @@ export const tollRates = pgTable(
       .references(() => tenants.id, { onDelete: 'restrict' }),
     name: text('name').notNull(),
     feePhp: numeric('fee_php', { precision: 12, scale: 2 }).notNull(),
+    // 0046: an expressway entry-to-exit fee (null on a free-named toll).
+    expressway: text('expressway'),
+    entryPoint: text('entry_point'),
+    exitPoint: text('exit_point'),
+    vehicleClass: integer('vehicle_class').notNull().default(3),
+    asOf: date('as_of'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

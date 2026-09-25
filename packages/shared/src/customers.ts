@@ -210,8 +210,10 @@ export type CompanyReviewResponse = z.infer<typeof CompanyReviewResponseSchema>;
 export const CustomerSiteCreateSchema = z.object({
   customerId: z.string().uuid(),
   line1: z.string().trim().min(3).max(300),
+  barangay: z.string().trim().max(120).optional(),
   city: z.string().trim().min(2).max(120),
   province: z.string().trim().min(2).max(120),
+  postalCode: z.string().trim().regex(/^\d{4}$/, 'A Philippine ZIP code is 4 digits').optional(),
   // The Philippines, with margin: a pin outside it is a slipped click.
   latitude: z.number().finite().min(4).max(22),
   longitude: z.number().finite().min(116).max(128),
@@ -222,8 +224,10 @@ export const CustomerSiteResponseSchema = z.object({
   id: z.string().uuid(),
   customerId: z.string().uuid(),
   line1: z.string().nullable(),
+  barangay: z.string().nullable(),
   city: z.string().nullable(),
   province: z.string().nullable(),
+  postalCode: z.string().nullable(),
   latitude: z.number(),
   longitude: z.number(),
 });

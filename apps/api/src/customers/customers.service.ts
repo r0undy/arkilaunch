@@ -604,8 +604,10 @@ export class CustomersService {
         .values({
           tenantId: ctx.tenantId,
           line1: body.line1,
+          barangay: body.barangay || null,
           city: body.city,
           province: body.province,
+          postalCode: body.postalCode || null,
         })
         .returning();
       if (!address) throw new Error('addresses insert returned no row');
@@ -975,8 +977,10 @@ function toSite(
     id: site.id,
     customerId: site.customerId!,
     line1: address.line1,
+    barangay: address.barangay,
     city: address.city,
     province: address.province,
+    postalCode: address.postalCode,
     latitude: Number(site.latitude),
     longitude: Number(site.longitude),
   };
