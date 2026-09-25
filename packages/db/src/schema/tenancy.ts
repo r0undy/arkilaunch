@@ -21,6 +21,18 @@ export const tenants = pgTable(
     slug: text('slug').notNull().unique(),
     status: text('status').notNull().default('onboarding'), // onboarding, active, suspended
     kycState: text('kyc_state').notNull().default('unverified'), // unverified, submitted, verified
+    // Public storefront branding (migration 0051). Written only through
+    // tenants_update_branding / tenants_set_branding_image.
+    logoKey: text('logo_key'),
+    heroKey: text('hero_key'),
+    primaryColor: text('primary_color'), // #rrggbb, CHECK in 0051
+    tagline: text('tagline'),
+    about: text('about'),
+    phone: text('phone'),
+    contactEmail: text('contact_email'),
+    address: text('address'),
+    city: text('city'),
+    province: text('province'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   () => [

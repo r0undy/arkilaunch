@@ -253,3 +253,97 @@ export async function setPlatformCompanyStatus(
     throw err;
   }
 }
+
+// POST /auth/activate: an auto-approved tenant goes live when its invited
+// owner sets a password (migration 0051). A no-op for any other tenant.
+export async function activateOnboardingTenant(tenantId: string): Promise<void> {
+  await db.execute(sql`select tenants_activate_onboarding(${tenantId})`);
+}
+
+// Tenant branding writes (migration 0051). The caller decides the tenant:
+// the verified JWT's tenant for owner/admin, or a platform admin's chosen
+// company. The functions never touch legal_name, slug or status and refuse
+// the platform tenant.
+export interface TenantBrandingInput {
+  primaryColor: string | null;
+  tagline: string | null;
+  about: string | null;
+  phone: string | null;
+  contactEmail: string | null;
+  address: string | null;
+  city: string | null;
+  province: string | null;
+}
+
+function rethrowCompanyNotFound(err: unknown): never {
+  const e = err as { message?: unknown; cause?: { message?: unknown } };
+  if (/company_not_found/.test(`${String(e?.message)} ${String(e?.cause?.message)}`)) {
+    throw new CompanyNotFoundError('company_not_found');
+  }
+  throw err;
+}
+
+export async function updateTenantBranding(
+  tenantId: string,
+  actorUserId: string,
+  b: TenantBrandingInput,
+): Promise<void> {
+  try {
+    await db.execute(
+      sql`select tenants_update_branding(${tenantId}, ${actorUserId}, ${b.primaryColor}, ${b.tagline}, ${b.about},
+        ${b.phone}, ${b.contactEmail}, ${b.address}, ${b.city}, ${b.province})`,
+    );
+  } catch (err) {
+    rethrowCompanyNotFound(err);
+  }
+}
+
+export async function setTenantBrandingImage(
+  tenantId: string,
+  actorUserId: string,
+  kind: 'logo' | 'hero',
+  key: string | null,
+): Promise<void> {
+  try {
+    await db.execute(sql`select tenants_set_branding_image(${tenantId}, ${actorUserId}, ${kind}, ${key})`);
+  } catch (err) {
+    rethrowCompanyNotFound(err);
+  }
+}
+
+// The branding form's current values for any tenant (owner/admin reads its
+// own; platform admin reads the company it is editing).
+export async function getTenantBranding(
+  tenantId: string,
+): Promise<(TenantBrandingInput & { legalName: string; slug: string; logoKey: string | null; heroKey: string | null }) | null> {
+  const rows = await db.execute<{
+    legal_name: string;
+    slug: string;
+    logo_key: string | null;
+    hero_key: string | null;
+    primary_color: string | null;
+    tagline: string | null;
+    about: string | null;
+    phone: string | null;
+    contact_email: string | null;
+    address: string | null;
+    city: string | null;
+    province: string | null;
+  }>(sql`select * from tenants_get_branding(${tenantId})`);
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    legalName: r.legal_name,
+    slug: r.slug,
+    logoKey: r.logo_key,
+    heroKey: r.hero_key,
+    primaryColor: r.primary_color,
+    tagline: r.tagline,
+    about: r.about,
+    phone: r.phone,
+    contactEmail: r.contact_email,
+    address: r.address,
+    city: r.city,
+    province: r.province,
+  };
+}

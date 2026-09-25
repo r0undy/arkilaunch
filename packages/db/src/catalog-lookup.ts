@@ -103,9 +103,93 @@ export async function listCatalogTestimonialsForSlug(slug: string): Promise<Cata
   }));
 }
 
-// GET /catalog/tenant (@Public). The host's tenant name for storefront
-// branding; null for an unknown or not-yet-active slug (migration 0048).
-export async function getCatalogTenantForSlug(slug: string): Promise<{ name: string } | null> {
-  const rows = await db.execute<{ name: string }>(sql`select * from catalog_get_tenant(${slug})`);
-  return rows[0] ? { name: rows[0].name } : null;
+// GET /catalog/tenant (@Public). The host tenant's public branding; null
+// for an unknown or not-yet-active slug (migrations 0048, 0051). Image
+// fields are storage keys; the API turns them into URLs.
+export interface CatalogTenantRow {
+  name: string;
+  logoKey: string | null;
+  heroKey: string | null;
+  primaryColor: string | null;
+  tagline: string | null;
+  about: string | null;
+  phone: string | null;
+  contactEmail: string | null;
+  address: string | null;
+  city: string | null;
+  province: string | null;
+}
+
+export async function getCatalogTenantForSlug(slug: string): Promise<CatalogTenantRow | null> {
+  const rows = await db.execute<{
+    name: string;
+    logo_key: string | null;
+    hero_key: string | null;
+    primary_color: string | null;
+    tagline: string | null;
+    about: string | null;
+    phone: string | null;
+    contact_email: string | null;
+    address: string | null;
+    city: string | null;
+    province: string | null;
+  }>(sql`select * from catalog_get_tenant(${slug})`);
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    name: r.name,
+    logoKey: r.logo_key,
+    heroKey: r.hero_key,
+    primaryColor: r.primary_color,
+    tagline: r.tagline,
+    about: r.about,
+    phone: r.phone,
+    contactEmail: r.contact_email,
+    address: r.address,
+    city: r.city,
+    province: r.province,
+  };
+}
+
+// GET /catalog/tenants (@Public). The platform directory (migration 0051):
+// active rental companies only, public columns only. NULL filter = none.
+export interface CatalogTenantListRow {
+  slug: string;
+  name: string;
+  logoKey: string | null;
+  tagline: string | null;
+  city: string | null;
+  province: string | null;
+}
+
+export async function listCatalogTenants(
+  filters: { q: string | null; category: string | null; province: string | null },
+  limit: number,
+  offset: number,
+): Promise<CatalogTenantListRow[]> {
+  const rows = await db.execute<{
+    slug: string;
+    name: string;
+    logo_key: string | null;
+    tagline: string | null;
+    city: string | null;
+    province: string | null;
+  }>(
+    sql`select * from catalog_list_tenants(${filters.q}, ${filters.category}, ${filters.province}) limit ${limit} offset ${offset}`,
+  );
+  return rows.map((r) => ({
+    slug: r.slug,
+    name: r.name,
+    logoKey: r.logo_key,
+    tagline: r.tagline,
+    city: r.city,
+    province: r.province,
+  }));
+}
+
+// The directory's category filter options: the global equipment_types
+// reference names (SELECT granted in 0016; no tenant data).
+export async function listEquipmentTypeNames(): Promise<string[]> {
+  const rows = await db.execute<{ name: string }>(sql`select name from equipment_types order by name`);
+  return rows.map((r) => r.name);
 }
