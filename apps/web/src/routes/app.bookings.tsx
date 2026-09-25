@@ -12,6 +12,7 @@ import { Button } from '../components/button.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { NegotiationThread } from '../components/negotiation-thread.js';
+import { EdtrSheetCard } from '../components/edtr-sheet-card.js';
 import { useToast } from '../components/toast.js';
 import { formatDate, formatPeso, formatStatus, shortCode, siteName } from '../lib/format.js';
 
@@ -207,6 +208,7 @@ function BookingSide({ booking }: { booking: BookingDetailResponse }) {
           </p>
         ))}
       </Surface>
+      <EdtrSheetCard bookingId={booking.id} printable={['confirmed', 'active', 'completed'].includes(booking.status)} />
       <PendingRequests booking={booking} />
       {booking.status === 'confirmed' && <RescheduleCard bookingId={booking.id} />}
     </div>

@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
 import postgres from 'postgres';
-import { and, eq, inArray } from 'drizzle-orm';
-import { edtr, edtrLineItems, edtrReconciliations } from '@arkilaunch/db';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { edtr, edtrLineItems, edtrReconciliations, events, rentals, weatherAlerts } from '@arkilaunch/db';
 import { FixtureDocumentIntelligenceAdapter } from '@arkilaunch/shared/testing';
 import type { DocumentExtractionResult } from '@arkilaunch/shared';
 import { runEdtrOcrWorker } from './edtr-ocr-worker.js';
@@ -401,5 +401,64 @@ describe('edtr-ocr-worker', () => {
     // The attempt is burned so a row that reliably kills the worker cannot
     // loop forever.
     expect(updated!.attempts).toBe(1);
+  });
+  it('EDTR v2: holds a weather-idle day the site readings call dry (D1), and logs it', async () => {
+    const reportDate = '2022-06-01';
+    const row = await insertQueuedPaperEdtr(reportDate);
+    const { db, client } = makeJobDb();
+    const [rental] = await db.select({ siteId: rentals.projectSiteId }).from(rentals).where(eq(rentals.id, rentalId));
+    const siteId = rental!.siteId!;
+    // Dry, calm polls through the shift, Manila time.
+    const alertRows = await db
+      .insert(weatherAlerts)
+      .values(
+        ['08:00', '10:00', '14:00', '16:00'].map((hm) => ({
+          tenantId,
+          projectSiteId: siteId,
+          severity: 'none',
+          observed: { tempC: 31, windKph: 6, precipMm: 0, code: 1 },
+          effectiveAt: new Date(`${reportDate}T${hm}:00+08:00`),
+          status: 'cleared',
+        })),
+      )
+      .returning({ id: weatherAlerts.id });
+    await client.end();
+
+    const tick = (n: number, at: number) => Array.from({ length: n }, (_, i) => (i === at ? ':selected:' : ':unselected:')).join(' ');
+    const rows = [
+      ['DATE', 'AM', '', 'PM', '', 'OVERTIME', '', 'TOTAL HOURS', 'IDLE HRS', 'IDLE REASON', 'WEATHER AM', 'WEATHER PM', 'INITIAL'],
+      ['', 'IN', 'OUT', 'IN', 'OUT', 'IN', 'OUT', '', '', '', '', '', ''],
+      [reportDate, '07:00', '12:00', '', '', '', '', '5', '3', tick(5, 0), tick(6, 0), tick(6, 3), ''],
+    ];
+    await runEdtrOcrWorker(
+      new FixtureDocumentIntelligenceAdapter({
+        fields: {},
+        tables: [
+          {
+            rowCount: rows.length,
+            columnCount: 13,
+            cells: rows.flatMap((r, rowIndex) => r.map((content, columnIndex) => ({ rowIndex, columnIndex, content, confidence: 0.97 }))),
+          },
+        ],
+      }),
+      stubFetchBytes,
+    );
+
+    const { db: db2, client: c2 } = makeJobDb();
+    const [updated] = await db2.select().from(edtr).where(eq(edtr.id, row.id));
+    const logged = await db2
+      .select()
+      .from(events)
+      .where(and(eq(events.name, 'edtr_weather_discrepancy'), sql`${events.properties} ->> 'edtr_id' = ${row.id}`));
+    await db2.delete(events).where(inArray(events.id, logged.map((e) => e.id)));
+    await db2.delete(weatherAlerts).where(inArray(weatherAlerts.id, alertRows.map((a) => a.id)));
+    await c2.end();
+
+    expect(updated!.status).toBe('review');
+    expect(updated!.lastError).toBe('weather_D1:day');
+    expect(logged).toHaveLength(1);
+    expect((logged[0]!.properties as { rule: string }).rule).toBe('D1');
+
+    await cleanup([row.id]);
   });
 });

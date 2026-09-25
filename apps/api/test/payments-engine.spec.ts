@@ -1,3 +1,4 @@
+import type { QuotesService } from '../src/quotes/quotes.service.js';
 import { describe, expect, it, beforeAll } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { ForbiddenException, HttpException } from '@nestjs/common';
@@ -16,7 +17,7 @@ import { EventsService } from '../src/events/events.service.js';
 describe('PaymentsService (PRD-F2)', () => {
   const events = new EventsService();
   const payments_ = new PaymentsService(new StubPaymentsAdapter(), events);
-  const bookings = new BookingsService(events);
+  const bookings = new BookingsService(events, { autoQuoteBooking: async () => null } as unknown as QuotesService);
   const webhookSecret = 'whsec_test_secret';
 
   let customerCtxA: RequestContext;

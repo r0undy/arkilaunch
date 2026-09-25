@@ -26,8 +26,8 @@ import { EventsService } from '../src/events/events.service.js';
 // charged is the accepted quote plus the contract deposit, once.
 describe('Customer journey', () => {
   const events = new EventsService();
-  const bookings = new BookingsService(events);
   const quotes = new QuotesService(new PricingEngineService(), events);
+  const bookings = new BookingsService(events, quotes);
   // Real PayMongo issues a new session id per call; the shared stub's id
   // is deterministic, which would make a checkout retry collide on the
   // unique provider_ref.
@@ -144,6 +144,14 @@ describe('Customer journey', () => {
     const sig = createHmac('sha256', webhookSecret).update(`${t}.${rawBody}`).digest('hex');
     return { rawBody, header: `t=${t},te=deadbeef,li=${sig}` };
   }
+
+  it('auto-quotes a new booking from the machine rate card and sends it to the customer', async () => {
+    const booking = await book(25, 2);
+    const detail = await bookings.get(customerCtx, booking.id);
+    expect(detail.quotation?.status).toBe('approved');
+    expect(detail.quotation?.totalPhp).toBeGreaterThan(0);
+    expect(await notificationTypes(booking.id)).toContain('quote_ready');
+  });
 
   it('negotiates, accepts, and charges the accepted quote plus the deposit exactly once', async () => {
     const booking = await book(0);

@@ -50,6 +50,14 @@ export const BookingSummaryResponseSchema = z.object({
 });
 export type BookingSummaryResponse = z.infer<typeof BookingSummaryResponseSchema>;
 
+// GET /bookings/:id/edtr-sheet: the pre-printed EDTR v2 header.
+export interface EdtrSheetContext {
+  rentalId: string;
+  chargeTo: string;
+  projectLocation: string;
+  equipment: { id: string; type: string; model: string; serialNo: string }[];
+}
+
 // Paging, same shape as the users/invoices/equipment lists. GET /bookings
 // was the one list module with no query DTO at all, so the ?limit=&offset=
 // the UI already sent was silently discarded and page 2 returned page 1

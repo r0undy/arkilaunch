@@ -36,8 +36,10 @@ describe('Customer onboarding', () => {
     events,
     new UnavailableDocumentIntelligenceAdapter('flag_disabled'),
   );
-  const bookings = new BookingsService(events);
   const quotes = new QuotesService(new PricingEngineService(), events);
+  // Auto-quoting off: this suite covers bookings/payments, not pricing
+  // (customer-journey.spec.ts covers the automatic quote).
+  const bookings = new BookingsService(events, { autoQuoteBooking: async () => null } as unknown as QuotesService);
   let sessions = 0;
   const adapter = new StubPaymentsAdapter();
   adapter.createCheckoutSession = async (amountPhp: number, invoiceId: string) => ({

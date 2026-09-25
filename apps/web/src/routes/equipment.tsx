@@ -18,7 +18,7 @@ import { useToast } from '../components/toast.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
 import { WeatherInsights, weatherInsightsVisible } from '../components/weather-insights.js';
 import { getAccessToken } from '../lib/auth-client.js';
-import { AvailabilityDays, availabilityProblem, useAvailability } from '../components/availability-days.js';
+import { RangeCalendar, availabilityProblem, useAvailability } from '../components/availability-days.js';
 
 // <input type="datetime-local"> speaks local "YYYY-MM-DDTHH:mm"; the cart
 // stores ISO. The frame draws date and time as two fields per end of the
@@ -55,17 +55,14 @@ function ConfigureRentalDialog({
   // than letting the cart's submit be the first time anyone finds out.
   const order = !start || !end || new Date(end) <= new Date(start);
   // Taken days and closed hours, from the same check the server runs.
-  const availability = useAvailability(equipment.id);
+  const availability = useAvailability(equipment.id, end);
   const problem = order ? null : availabilityProblem(availability.data, start, end);
   const invalid = order || problem !== null;
 
-  function pickDay(date: string) {
-    const time = start.slice(11) || (availability.data?.hours?.openTime ?? '08:00');
-    const nextStart = `${date}T${time}`;
-    setStart(nextStart);
-    if (!end || new Date(end) <= new Date(nextStart)) {
-      setEnd(`${date}T${availability.data?.hours?.closeTime ?? '17:00'}`);
-    }
+  // Keeps any pickup/return time already typed; else opening/closing time.
+  function pickRange(startDate: string, endDate: string) {
+    setStart(`${startDate}T${start.slice(11) || (availability.data?.hours?.openTime ?? '08:00')}`);
+    setEnd(`${endDate}T${end.slice(11) || (availability.data?.hours?.closeTime ?? '17:00')}`);
   }
 
   // /account/cart is behind requireAuth(), so "Book now" used to hand a
@@ -142,7 +139,7 @@ function ConfigureRentalDialog({
         </div>
       </div>
       <div className="mt-4">
-        <AvailabilityDays data={availability.data} start={start} end={end} onPick={pickDay} />
+        <RangeCalendar equipmentId={equipment.id} start={start} end={end} onRange={pickRange} />
       </div>
       <p className="mt-4 text-sm text-text-muted">
         The delivery site is chosen once for the whole booking, in your cart.

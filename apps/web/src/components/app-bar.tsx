@@ -6,7 +6,7 @@ import { formatStatus } from '../lib/format.js';
 import { ShoppingCart } from 'lucide-react';
 import { clearTokens } from '../lib/auth-client.js';
 import { useCart } from '../lib/cart-client.js';
-import { getCurrentRole } from '../lib/guards.js';
+import { getCurrentRole, homeHref } from '../lib/guards.js';
 import { edtrQueries, notificationsQueries } from '../lib/queries.js';
 import { StatusPill } from './status-pill.js';
 import { applicationsListQuery } from './application-actions.js';
@@ -189,9 +189,9 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             </svg>
           </button>
         )}
-        <span className="truncate font-display text-base font-semibold text-text">
+        <Link to={homeHref()} className="truncate font-display text-base font-semibold text-text" aria-label={`${tenantLabel} home`}>
           {tenantLabel}
-        </span>
+        </Link>
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">

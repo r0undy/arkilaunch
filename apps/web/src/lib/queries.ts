@@ -94,10 +94,11 @@ export const invoicesQueries = {
 };
 
 export const incidentsQueries = {
-  list: (limit = PAGE_SIZE, offset = 0) =>
+  list: (limit = PAGE_SIZE, offset = 0, kind?: 'weather' | 'discrepancy') =>
     queryOptions({
-      queryKey: ['incidents', limit, offset] as const,
-      queryFn: () => apiGet<IncidentListResponse>(`/incidents?limit=${limit}&offset=${offset}`),
+      queryKey: ['incidents', limit, offset, kind ?? 'all'] as const,
+      queryFn: () =>
+        apiGet<IncidentListResponse>(`/incidents?limit=${limit}&offset=${offset}${kind ? `&kind=${kind}` : ''}`),
     }),
 };
 
