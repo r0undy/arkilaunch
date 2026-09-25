@@ -379,7 +379,9 @@ function DieselPriceForm() {
     mutationFn: () => apiPost<DieselReading | null>('/pricing/diesel-price/fetch', {}),
     onSuccess: (reading) => {
       void queryClient.invalidateQueries({ queryKey: ['diesel-price'] });
-      toast.success('Diesel price updated', reading ? `${formatPeso(reading.pricePhp)} per litre` : undefined);
+      // Put the fetched average in the field; the admin still saves it.
+      if (reading) setOverride(String(Number(reading.pricePhp)));
+      toast.success('Diesel price fetched', reading ? `${formatPeso(reading.pricePhp)} per litre. Save to use it.` : undefined);
     },
     onError: (e) => toast.error('Could not reach GasWatch', apiErrorText(e)),
   });
