@@ -1,11 +1,13 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { hash } from '@node-rs/argon2';
 import { desc, eq } from 'drizzle-orm';
 import {
   ApplicationNotPendingError,
   DuplicatePendingApplicationError,
-  auditLogs,
+  getTenantBranding,
+  setTenantBrandingImage,
+  updateTenantBranding,
   decideTenantApplication,
   countPendingTenantApplications,
   listPlatformCompanies,
@@ -27,49 +29,30 @@ import type {
   TenantApplicationListResponse,
   TenantRegisterRequest,
   TenantRegisterResponse,
-  TenantSettingsUpdateRequest,
+  TenantBranding,
+  TenantBrandingUpdateRequest,
 } from '@arkilaunch/shared';
 import { isTenantSlug, PlatformCompanyListResponseSchema } from '@arkilaunch/shared';
 import { AuthService } from '../auth/auth.service.js';
+import { sendEmail } from '../email/send-email.js';
+import { publicPhotoUrl } from '../fleet/fleet.service.js';
+import { StorageService } from '../storage/storage.service.js';
+import { validateUpload } from '../storage/upload-validation.js';
+
+const brandingBucket = () => process.env.SUPABASE_STORAGE_BUCKET_EQUIPMENT ?? 'equipment-photos';
+const logger = new Logger('TenantsService');
 
 @Injectable()
 export class TenantsService {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly storage: StorageService,
+  ) {}
   async me(ctx: RequestContext) {
     const [tenant] = await withTenantTx(ctx, (tx) =>
       tx.select().from(tenants).where(eq(tenants.id, ctx.tenantId)),
     );
     return tenant;
-  }
-
-  // PATCH /tenants/me (S18). legalName is the only writable field: `slug`
-  // (public identity), `status`, and `kycState` are deliberately absent
-  // from TenantSettingsUpdateRequestSchema (.strict(), so a smuggled field
-  // is a 400) -- a tenant admin flipping their own status/kycState would
-  // walk straight past the PRD-F6 human KYC verification gate. Migration
-  // 0007 also revokes the column-level UPDATE privilege for every column
-  // but legal_name, so this is enforced twice.
-  async updateSettings(ctx: RequestContext, input: TenantSettingsUpdateRequest) {
-    return withTenantTx(ctx, async (tx) => {
-      const [existing] = await tx.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1);
-      if (!existing) throw new NotFoundException({ error: 'tenant_not_found' });
-
-      const [updated] = await tx
-        .update(tenants)
-        .set({ legalName: input.legalName })
-        .where(eq(tenants.id, ctx.tenantId))
-        .returning();
-
-      await tx.insert(auditLogs).values({
-        tenantId: ctx.tenantId,
-        actorId: ctx.userId,
-        action: 'UPDATE',
-        entity: 'tenants',
-        entityId: ctx.tenantId,
-      });
-
-      return updated;
-    });
   }
 
   // GET /tenants/applications (tenant:approve, platform_admin only). Cross-
@@ -127,12 +110,11 @@ export class TenantsService {
 
   // POST /tenants/register (@Public). No JWT, so no tenant context -- see
   // registerTenant()/tenants_register() for why this is a SECURITY DEFINER
-  // write rather than a withTenantTx call. The owner user is created
-  // status='invited' with an unusable random password hash (never a
-  // caller-chosen password); it can only log in once an admin approves and
-  // the owner completes POST /auth/activate, mirroring the invite flow
-  // exactly. Slug is derived from the company name with a numeric suffix on
-  // collision, since tenants.slug is UNIQUE.
+  // write. Auto-approved (migration 0051): the owner is created 'invited'
+  // with an unusable random password hash and is emailed an activation link
+  // at once; POST /auth/activate then takes the tenant live. The emailed
+  // token is the proof of email ownership. Slug is derived from the company
+  // name with a numeric suffix on collision, since tenants.slug is UNIQUE.
   async register(input: TenantRegisterRequest): Promise<TenantRegisterResponse> {
     const baseSlug = slugify(input.companyName);
     const placeholderHash = await hash(randomBytes(32).toString('hex'));
@@ -157,7 +139,8 @@ export class TenantsService {
           contactMobile: input.mobileNumber,
           contactJobTitle: input.jobTitle,
         });
-        return { applicationId: result.applicationId, status: 'pending' };
+        await this.sendActivationEmail(input.email, input.companyName, slug, result, placeholderHash);
+        return { applicationId: result.applicationId, status: 'approved' };
       } catch (err) {
         if (err instanceof DuplicatePendingApplicationError) {
           throw new ConflictException({ error: 'duplicate_pending_application' });
@@ -170,6 +153,82 @@ export class TenantsService {
       }
     }
     throw new ConflictException({ error: 'slug_collision_retry_exhausted' });
+  }
+
+  // The link opens on the platform host (WEB_ORIGIN): an onboarding
+  // tenant's own subdomain is not served until it is active.
+  // ponytail: a lost email leaves the owner stuck until the 409 guard is
+  // cleared by hand; add a "resend activation" route if that happens.
+  private async sendActivationEmail(
+    email: string,
+    companyName: string,
+    slug: string,
+    result: { tenantId: string; ownerUserId: string },
+    placeholderHash: string,
+  ): Promise<void> {
+    const token = this.auth.signActivationToken(result.tenantId, result.ownerUserId, placeholderHash);
+    const origin = (process.env.WEB_ORIGIN ?? 'http://localhost:5173').replace(/\/$/, '');
+    const link = `${origin}/activate?token=${encodeURIComponent(token)}&slug=${encodeURIComponent(slug)}`;
+    try {
+      await sendEmail(
+        email,
+        `Activate ${companyName} on ArkiLaunch`,
+        `Welcome to ArkiLaunch.
+
+Set your password to put ${companyName} online:
+${link}
+
+If you did not register, ignore this email.`,
+      );
+    } catch (err) {
+      logger.error(`activation email to ${email} failed: ${String(err)}`);
+    }
+  }
+
+  // Branding (migration 0051). `tenantId` is the verified JWT's tenant for
+  // owner/admin, or the company a platform admin picked (controller decides).
+  async getBranding(tenantId: string): Promise<TenantBranding> {
+    const row = await getTenantBranding(tenantId);
+    if (!row) throw new NotFoundException({ error: 'company_not_found' });
+    const { logoKey, heroKey, ...rest } = row;
+    return { ...rest, logoUrl: publicPhotoUrl(logoKey), heroUrl: publicPhotoUrl(heroKey) };
+  }
+
+  async updateBranding(ctx: RequestContext, tenantId: string, input: TenantBrandingUpdateRequest) {
+    try {
+      await updateTenantBranding(tenantId, ctx.userId, input);
+    } catch (err) {
+      if (err instanceof CompanyNotFoundError) throw new NotFoundException({ error: 'company_not_found' });
+      throw err;
+    }
+    return this.getBranding(tenantId);
+  }
+
+  // Logo or hero image. Key built from the target tenant id, never request
+  // input; magic bytes sniffed, and images only (the shared validator also
+  // admits PDF). Passing no file removes the image.
+  async setBrandingImage(
+    ctx: RequestContext,
+    tenantId: string,
+    kind: 'logo' | 'hero',
+    file: { buffer: Buffer; size: number } | null,
+  ) {
+    let key: string | null = null;
+    if (file) {
+      const validated = validateUpload(file);
+      if (!validated.contentType.startsWith('image/')) {
+        throw new UnprocessableEntityException({ error: 'image_required' });
+      }
+      key = this.storage.buildObjectKey(tenantId, validated.extension);
+      await this.storage.uploadObject(brandingBucket(), key, file.buffer, validated.contentType);
+    }
+    try {
+      await setTenantBrandingImage(tenantId, ctx.userId, kind, key);
+    } catch (err) {
+      if (err instanceof CompanyNotFoundError) throw new NotFoundException({ error: 'company_not_found' });
+      throw err;
+    }
+    return this.getBranding(tenantId);
   }
 
   // POST /tenants/:id/approve | /reject (tenant:approve, platform_admin

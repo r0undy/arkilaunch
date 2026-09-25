@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll } from 'vitest';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
-import { rateCards, tenants, withTenantTx } from '@arkilaunch/db';
+import { rateCards, withTenantTx } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
 import { PricingService } from '../src/pricing/pricing.service.js';
 
@@ -128,22 +128,5 @@ describe('PricingService: rate cards + tenant settings (S18)', () => {
     expect(fromB.items.length).toBe(0);
 
     await expect(pricing.supersedeRateCard(adminCtxB, tenantACardId, { rateValue: 1 })).rejects.toThrow(NotFoundException);
-  });
-
-  describe('tenant settings (PATCH /tenants/me)', () => {
-    it('legalName is updatable; status/kycState are never touched by this write', async () => {
-      const { TenantsService } = await import('../src/tenants/tenants.service.js');
-      const { AuthService } = await import('../src/auth/auth.service.js');
-      const tenantsService = new TenantsService(new AuthService(null as never, null as never, null as never));
-
-      const before = await tenantsService.me(adminCtxA);
-      const updated = await tenantsService.updateSettings(adminCtxA, { legalName: 'Updated Legal Name Co.' });
-      expect(updated!.legalName).toBe('Updated Legal Name Co.');
-      expect(updated!.status).toBe(before!.status);
-      expect(updated!.kycState).toBe(before!.kycState);
-
-      const [row] = await withTenantTx(adminCtxA, (tx) => tx.select().from(tenants).where(eq(tenants.id, adminCtxA.tenantId)));
-      expect(row!.legalName).toBe('Updated Legal Name Co.');
-    });
   });
 });

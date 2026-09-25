@@ -20,7 +20,7 @@ function jwtService(): JwtService {
 // race another spec; `finally` always restores it.
 describe('platform companies', () => {
   const auth = new AuthService(jwtService(), new RefreshTokenService(), new TotpService());
-  const tenants = new TenantsService(auth);
+  const tenants = new TenantsService(auth, null as never);
   const catalog = new CatalogService();
 
   it('lists companies with counts, never the platform tenant or test fixtures', async () => {
