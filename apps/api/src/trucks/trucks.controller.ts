@@ -5,6 +5,7 @@ import type { Request } from 'express';
 import {
   NegotiationMessageCreateSchema,
   TollRateCreateSchema,
+  TollRateUpdateSchema,
   TruckAgreeSchema,
   TruckEstimateRequestSchema,
   TruckKmConfirmSchema,
@@ -24,6 +25,7 @@ class TruckAgreeDto extends createZodDto(TruckAgreeSchema) {}
 class TruckMessageDto extends createZodDto(NegotiationMessageCreateSchema) {}
 class TruckSettingsDto extends createZodDto(TruckSettingsSchema) {}
 class TollRateDto extends createZodDto(TollRateCreateSchema) {}
+class TollRateUpdateDto extends createZodDto(TollRateUpdateSchema) {}
 
 // /me/truck-requests is the customer's own; /truck-requests and
 // /truck-settings are the tenant admin's. Tenant comes from the JWT (RLS);
@@ -131,6 +133,18 @@ export class TrucksController {
   @RequirePermission('pricing:manage')
   addToll(@Body() body: TollRateDto, @Req() req: CtxRequest) {
     return this.trucks.addToll(req.ctx, body);
+  }
+
+  @Post('toll-rates/load-ph')
+  @RequirePermission('pricing:manage')
+  loadPhTolls(@Req() req: CtxRequest) {
+    return this.trucks.loadPhTolls(req.ctx);
+  }
+
+  @Patch('toll-rates/:id')
+  @RequirePermission('pricing:manage')
+  updateToll(@Param('id') id: string, @Body() body: TollRateUpdateDto, @Req() req: CtxRequest) {
+    return this.trucks.updateToll(req.ctx, id, body);
   }
 
   @Delete('toll-rates/:id')
