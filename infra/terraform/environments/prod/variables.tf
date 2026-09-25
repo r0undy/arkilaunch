@@ -87,7 +87,7 @@ variable "edtr_ocr_worker_cron" {
 
 variable "diesel_cron" {
   type    = string
-  default = "0 6 * * *"
+  default = "0 22 * * 0" # weekly, Monday 06:00 PHT (UTC cron)
 }
 
 variable "maintenance_notify_cron" {
