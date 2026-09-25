@@ -329,14 +329,121 @@ function BillingSettingsForm() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Input label="Hours in a rental day" type="number" min="1" max="24" step="0.5" numeric value={String(current.dailyHours)} onChange={(e) => edit({ dailyHours: Number(e.target.value) })} />
         <Input label="Minimum deposit (PHP)" type="number" min="0" step="0.01" numeric value={String(current.minDepositPhp)} onChange={(e) => edit({ minDepositPhp: Number(e.target.value) })} />
-        <Input label="Deposit (% of quote total)" type="number" min="0" max="100" step="0.5" numeric hint="0 uses the minimum deposit only." value={String(current.depositPct)} onChange={(e) => edit({ depositPct: Number(e.target.value) })} />
-        <Input label="Low-balance warning (%)" type="number" min="0" max="100" step="1" numeric value={String(current.lowBalancePct)} onChange={(e) => edit({ lowBalancePct: Number(e.target.value) })} />
+        <Input label="Deposit (% of rented hours)" type="number" min="0" max="100" step="0.5" numeric hint="Prepaid and consumed by EDTR hours, not refunded. 50 on a 50-hour rental prepays 25 hours. 0 uses the minimum deposit only." value={String(current.depositPct)} onChange={(e) => edit({ depositPct: Number(e.target.value) })} />
+        <Input label="Low-balance warning (%)" type="number" min="0" max="100" step="1" numeric hint="Warns you and the customer when this much deposit is left." value={String(current.lowBalancePct)} onChange={(e) => edit({ lowBalancePct: Number(e.target.value) })} />
       </div>
       <div>
         <Button variant="primary" loading={save.isPending} disabled={!draft} onClick={() => save.mutate()}>
           Save billing settings
         </Button>
       </div>
+    </Surface>
+  );
+}
+
+interface DieselReading {
+  pricePhp: number;
+  observedDate: string;
+  source: string;
+}
+
+// Pricing parameters as the API returns them (numeric columns are strings).
+interface PricingParametersRow {
+  region: string;
+  operatorHourlyPhp: string;
+  maintenanceHourlyPhp: string;
+  bufferPct: string;
+  fuelLPerHour: string;
+  fuelLPerKm: string;
+  transportPhpPerKm: string;
+  dieselOverridePhp: string | null;
+}
+
+const DIESEL_SOURCE: Record<string, string> = {
+  gaswatch: 'GasWatch PH national average',
+  doe_scrape: 'DOE',
+  platform_manual: 'Entered by platform admin',
+  admin_override: 'Admin override',
+};
+
+// The national diesel price quotes charge fuel at (refreshed from GasWatch
+// PH every Monday, or now with the button), and this company's own price,
+// which wins while it is set and less than the staleness window old.
+function DieselPriceForm() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const latest = useQuery({ queryKey: ['diesel-price'], queryFn: () => apiGet<DieselReading | null>('/pricing/diesel-price') });
+  const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<PricingParametersRow | null>('/pricing/parameters') });
+  const [override, setOverride] = useState<string | null>(null);
+  const fetchNow = useMutation({
+    mutationFn: () => apiPost<DieselReading | null>('/pricing/diesel-price/fetch', {}),
+    onSuccess: (reading) => {
+      void queryClient.invalidateQueries({ queryKey: ['diesel-price'] });
+      toast.success('Diesel price updated', reading ? `${formatPeso(reading.pricePhp)} per litre` : undefined);
+    },
+    onError: (e) => toast.error('Could not reach GasWatch', apiErrorText(e)),
+  });
+  const saveOverride = useMutation({
+    mutationFn: (price: number | undefined) => {
+      const p = params.data!;
+      return apiPost('/pricing/parameters', {
+        region: p.region,
+        operatorHourlyPhp: Number(p.operatorHourlyPhp),
+        maintenanceHourlyPhp: Number(p.maintenanceHourlyPhp),
+        bufferPct: Number(p.bufferPct),
+        fuelLPerHour: Number(p.fuelLPerHour),
+        fuelLPerKm: Number(p.fuelLPerKm),
+        transportPhpPerKm: Number(p.transportPhpPerKm),
+        ...(price !== undefined ? { dieselOverridePhp: price, dieselOverrideDate: new Date().toISOString().slice(0, 10) } : {}),
+      });
+    },
+    onSuccess: () => {
+      setOverride(null);
+      void queryClient.invalidateQueries({ queryKey: ['pricing-parameters'] });
+      toast.success('Diesel price saved');
+    },
+    onError: (e) => toast.error('Could not save diesel price', apiErrorText(e)),
+  });
+  const saved = params.data?.dieselOverridePhp ?? null;
+  const value = override ?? (saved !== null ? String(Number(saved)) : '');
+  return (
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Diesel price">
+      <h2 className="font-display text-base font-semibold text-text">Diesel price</h2>
+      <p className="text-sm text-text-muted">
+        {latest.data
+          ? `National: ${formatPeso(latest.data.pricePhp)} per litre, ${DIESEL_SOURCE[latest.data.source] ?? latest.data.source}, as of ${formatDate(latest.data.observedDate)}. Refreshes every Monday.`
+          : 'No national diesel price on file yet.'}
+      </p>
+      <div>
+        <Button variant="secondary" loading={fetchNow.isPending} onClick={() => fetchNow.mutate()}>
+          Fetch now from GasWatch
+        </Button>
+      </div>
+      {params.data ? (
+        <div className="flex flex-wrap items-end gap-3">
+          <Input
+            label="Your diesel price (PHP per litre)"
+            type="number"
+            min="20"
+            max="150"
+            step="0.01"
+            numeric
+            hint="Leave empty to use the national price."
+            value={value}
+            onChange={(e) => setOverride(e.target.value)}
+          />
+          <Button
+            variant="primary"
+            loading={saveOverride.isPending}
+            disabled={override === null}
+            onClick={() => saveOverride.mutate(value === '' ? undefined : Number(value))}
+          >
+            Save diesel price
+          </Button>
+        </div>
+      ) : (
+        <p className="text-sm text-text-muted">Set up pricing parameters to use your own diesel price.</p>
+      )}
     </Surface>
   );
 }
@@ -378,6 +485,7 @@ function SettingsPage() {
       />
       <BusinessCalendarForm />
       <BillingSettingsForm />
+      <DieselPriceForm />
       <RateCardForm />
       <DataPanel
         title="Rate cards"
