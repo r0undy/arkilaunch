@@ -13,24 +13,9 @@ import { DEFAULT_WEATHER_THRESHOLDS, evaluateSeverity, type WeatherSeverity, typ
 // reader together.
 export const WEATHER_CODES = ['C', 'O', 'LR', 'HR', 'W', 'T'] as const;
 export type WeatherCode = (typeof WEATHER_CODES)[number];
-export const WEATHER_CODE_LABELS: Record<WeatherCode, string> = {
-  C: 'Clear',
-  O: 'Cloudy',
-  LR: 'Light rain',
-  HR: 'Heavy rain',
-  W: 'Strong wind',
-  T: 'Storm',
-};
 
 export const IDLE_REASONS = ['weather', 'breakdown', 'no_operator', 'client_hold', 'other'] as const;
 export type IdleReason = (typeof IDLE_REASONS)[number];
-export const IDLE_REASON_LABELS: Record<IdleReason, string> = {
-  weather: 'Weather',
-  breakdown: 'Breakdown',
-  no_operator: 'No operator',
-  client_hold: 'Client hold',
-  other: 'Other',
-};
 
 // Default shift halves when the row carries no usable in/out pair,
 // minutes since midnight, Manila.
