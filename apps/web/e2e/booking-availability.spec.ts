@@ -50,13 +50,19 @@ test('booking disables taken dates', async ({ page }) => {
     // Same first card; its Rent button opens the dialog.
     await page.getByRole('button', { name: /rent/i }).first().click();
     const dialog = page.getByRole('dialog');
-    const grid = dialog.getByRole('group', { name: 'Available dates' });
-    await expect(grid).toBeVisible();
+    const calendar = dialog.getByRole('group', { name: /^Rental dates/ });
+    await expect(calendar).toBeVisible();
+    const cell = (d: Date) => calendar.locator(`[data-date="${localDate(d)}"]`);
+    // The calendar opens on this month; page forward to the blocked days.
+    for (let i = 0; i < 3 && (await cell(blocked[1]!).count()) === 0; i++) {
+      await dialog.getByRole('button', { name: 'Next month' }).click();
+    }
 
     for (const d of blocked) {
-      await expect(grid.getByRole('button', { name: `${localDate(d)} Maintenance` })).toBeDisabled();
+      await expect(cell(d)).toBeDisabled();
+      await expect(cell(d)).toHaveAttribute('aria-label', /Maintenance/);
     }
-    const free = grid.getByRole('button', { name: localDate(day(25)), exact: true });
+    const free = cell(day(22));
     await expect(free).toBeEnabled();
 
     // Picking a window across the blocked days is refused before submit.
@@ -65,7 +71,7 @@ test('booking disables taken dates', async ({ page }) => {
     await expect(dialog.getByText(/is not available/)).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Add to cart' })).toBeDisabled();
 
-    // A free day from the grid clears it.
+    // A free day picked on the calendar clears it.
     await free.click();
     await expect(dialog.getByText(/is not available/)).toBeHidden();
     await expect(dialog.getByRole('button', { name: 'Add to cart' })).toBeEnabled();

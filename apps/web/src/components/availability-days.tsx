@@ -170,6 +170,7 @@ export function RangeCalendar({
             <button
               key={date}
               type="button"
+              data-date={date}
               disabled={disabled}
               aria-label={`${prettyDate(date)}${reason ? `, ${reason}` : ''}`}
               aria-pressed={inSpan}
