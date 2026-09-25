@@ -1,91 +1,35 @@
-import { events, recordScrapeDieselReading } from '@arkilaunch/db';
+import { events, recordGasWatchDieselReading } from '@arkilaunch/db';
 import { makeJobDb } from './db-client.js';
 import { runInstrumentedJob } from './telemetry.js';
 
-// RFC-3 §3/§6/§8 (QUOTE-04): daily ACA Job cron. Fetches the DOE public
-// oil-price-watch page, parses the diesel figure defensively, bound-checks
-// it, and writes a new diesel_price_readings row. The quote path never
-// calls DOE directly -- it only ever reads the last row this job writes.
+// Weekly ACA Job cron (customer feedback 3; was the RFC-3 QUOTE-04 DOE
+// scrape). Records GasWatch PH's national average diesel price as a new
+// diesel_price_readings row; the quote path only ever reads the last row.
+// The admin "Fetch now" button (POST /pricing/diesel-price/fetch) runs the
+// same recordGasWatchDieselReading, and the tenant diesel override on
+// pricing_parameters is the edit path.
 //
-// Gated by ENABLE_DIESEL_SCRAPE (default false): the CLR legal-review note
-// on robots.txt/RA 10175 (RFC-3 §6) has not cleared yet, so this ships
-// built but off. Manual entry (a platform-admin route) and the tenant
-// diesel override on pricing_parameters keep the quote engine fully
-// functional with the flag off.
-const DOE_HOST_ALLOWLIST = new Set(['www.doe.gov.ph']);
-const DEFAULT_DOE_URL = 'https://www.doe.gov.ph/oil-monitor';
-const PRICE_SANE_MIN = 20;
-const PRICE_SANE_MAX = 150;
-const REGION = 'NCR'; // Almara (Quezon City) = NCR, RFC-3 §3
-
-function assertAllowlistedHost(url: string): void {
-  const parsed = new URL(url);
-  if (parsed.protocol !== 'https:' || !DOE_HOST_ALLOWLIST.has(parsed.hostname)) {
-    throw new Error(`refusing to fetch a non-allowlisted host: ${parsed.hostname}`);
-  }
-}
-
-// Defensive: the DOE page has no API contract and can change layout without
-// notice (RFC-3 §8). Treat the fetched HTML as untrusted data -- extract a
-// number, never eval/exec it, never render it. Verify this selector/regex
-// against the live page before ever enabling ENABLE_DIESEL_SCRAPE.
-function parseDieselPricePhp(html: string): number | null {
-  const match = html.match(/diesel[^0-9]{0,60}(\d{1,3}\.\d{1,4})/i);
-  if (!match?.[1]) return null;
-  const value = Number(match[1]);
-  return Number.isFinite(value) ? value : null;
-}
+// ENABLE_DIESEL_SCRAPE stays the ops switch. GasWatch publishes a public
+// JSON endpoint and its robots.txt allows all, unlike the DOE page the
+// flag was first held off for.
+const REGION = 'NCR'; // the one region quotes price in today (RFC-3 §3)
 
 export async function runDieselRefresh(): Promise<void> {
   if (process.env.ENABLE_DIESEL_SCRAPE !== 'true') {
-    console.log('diesel-refresh: ENABLE_DIESEL_SCRAPE is off; skipping (RFC-3 CLR legal review pending).');
+    console.log('diesel-refresh: ENABLE_DIESEL_SCRAPE is off; skipping.');
     return;
   }
 
-  const url = process.env.DOE_PRICE_WATCH_URL ?? DEFAULT_DOE_URL;
   const { db, client } = makeJobDb();
-
   try {
-    assertAllowlistedHost(url);
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`DOE fetch returned ${response.status}`);
-    const html = await response.text();
-
-    const price = parseDieselPricePhp(html);
-    const outOfBand = price !== null && (price < PRICE_SANE_MIN || price > PRICE_SANE_MAX);
-
-    if (price === null || outOfBand) {
-      await db.insert(events).values({
-        name: 'external_dependency_degraded',
-        properties: {
-          dependency: 'doe_diesel',
-          mode: 'fallback',
-          reason: price === null ? 'parse_failed' : 'out_of_band_value',
-        },
-      });
-      console.warn(
-        `diesel-refresh: ${price === null ? 'parse failed' : `out-of-band value ${price}`}; leaving last-known reading in place.`,
-      );
-      return;
-    }
-
-    // Through the SECURITY DEFINER function: this job runs on the pooled
-    // app_authenticated client like everything else, and that role no
-    // longer holds INSERT on the global diesel_price_readings table
-    // (migration 0020/0021, audit-db-tenant-isolation.md #7).
-    await recordScrapeDieselReading({
-      region: REGION,
-      pricePhp: String(price),
-      observedDate: new Date().toISOString().slice(0, 10),
-      sourceUrl: url,
-    });
-    console.log(`diesel-refresh: wrote a new ${REGION} reading of ${price} PHP/L from ${url}.`);
+    const reading = await recordGasWatchDieselReading(REGION);
+    console.log(`diesel-refresh: wrote a new ${REGION} reading of ${reading.price_php} PHP/L from GasWatch.`);
   } catch (err) {
     await db.insert(events).values({
       name: 'external_dependency_degraded',
-      properties: { dependency: 'doe_diesel', mode: 'down', error: err instanceof Error ? err.message : String(err) },
+      properties: { dependency: 'gaswatch_diesel', mode: 'down', error: err instanceof Error ? err.message : String(err) },
     });
-    console.error('diesel-refresh: fetch/parse failed, leaving last-known reading in place.', err);
+    console.error('diesel-refresh: GasWatch fetch failed, leaving last-known reading in place.', err);
   } finally {
     await client.end();
   }

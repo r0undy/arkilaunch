@@ -50,6 +50,13 @@ export function requireRole(...roles: RoleCode[]) {
   };
 }
 
+// Where the "Almara" brand link goes: the landing page when signed out,
+// else the signed-in role's home.
+export function homeHref(): string {
+  const role = getCurrentRole();
+  return role ? homeRouteForRole(role) : '/';
+}
+
 // Home route per role, used right after login and to redirect a
 // wrong-shell visitor back to where they belong.
 export function homeRouteForRole(role: RoleCode | null): string {

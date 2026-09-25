@@ -7,6 +7,6 @@ import { PricingEngineService } from './pricing-engine.service.js';
 @Module({
   controllers: [QuotesController],
   providers: [QuotesService, PricingEngineService, EventsService],
-  exports: [PricingEngineService],
+  exports: [PricingEngineService, QuotesService],
 })
 export class QuotesModule {}

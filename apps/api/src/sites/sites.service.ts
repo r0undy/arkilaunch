@@ -77,6 +77,14 @@ function toWeatherAdvisoryResponse(
   };
 }
 
+// EDTR v2 discrepancy rules (packages/shared/src/weather-attestation.ts).
+function discrepancyDetail(rule?: string, date?: string, half?: string): string {
+  const when = `${date ?? ''}${half && half !== 'day' ? ` ${half.toUpperCase()}` : ''}`;
+  if (rule === 'D1') return `Idle hours put down to weather, but the site readings show no rain or wind (${when}).`;
+  if (rule === 'D2') return `Worked through a weather warning the timekeeper marked clear or cloudy (${when}).`;
+  return `Weather report discrepancy (${when}).`;
+}
+
 @Injectable()
 export class SitesService {
   constructor(private readonly events: EventsService) {}
@@ -498,7 +506,13 @@ export class SitesService {
   // data the first-party analytics sink already holds (restraint ladder).
   async incidents(ctx: RequestContext, query: IncidentListQuery): Promise<IncidentListResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const conditions: SQL[] = [eq(events.name, 'weather_liability_incident')];
+      const names =
+        query.kind === 'weather'
+          ? ['weather_liability_incident']
+          : query.kind === 'discrepancy'
+            ? ['edtr_weather_discrepancy']
+            : ['weather_liability_incident', 'edtr_weather_discrepancy'];
+      const conditions: SQL[] = [inArray(events.name, names)];
       if (query.projectSiteId) {
         conditions.push(sql`${events.properties} ->> 'project_site_id' = ${query.projectSiteId}`);
       }
@@ -536,7 +550,12 @@ export class SitesService {
           project_site_id?: string;
           severity?: string;
           observed?: unknown;
+          rule?: string;
+          date?: string;
+          half?: string;
+          system?: unknown;
         };
+        const discrepancy = row.name === 'edtr_weather_discrepancy';
         const site = properties.project_site_id
           ? siteById.get(properties.project_site_id)
           : undefined;
@@ -545,9 +564,11 @@ export class SitesService {
           projectSiteId: properties.project_site_id ?? null,
           siteCity: site?.city ?? null,
           siteProvince: site?.province ?? null,
-          severity: properties.severity ?? null,
-          observed: properties.observed ?? null,
+          severity: discrepancy ? 'high' : (properties.severity ?? null),
+          observed: (discrepancy ? properties.system : properties.observed) ?? null,
           occurredAt: row.occurredAt,
+          kind: discrepancy ? ('discrepancy' as const) : ('weather' as const),
+          detail: discrepancy ? discrepancyDetail(properties.rule, properties.date, properties.half) : null,
         };
       });
       return { items, total };

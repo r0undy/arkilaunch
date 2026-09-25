@@ -19,6 +19,15 @@ const SERVICES: { id: Service; label: string }[] = [
   { id: 'truck', label: 'Self-loading truck' },
 ];
 
+// One line on where each booking stands; the detail page shows more as
+// the booking moves along (bookingStage in account.booking.tsx).
+const STAGE_HINT: Record<string, string> = {
+  pending: 'Quote and payment next',
+  confirmed: 'Paid, waiting for delivery',
+  active: 'On site',
+  completed: 'Returned',
+};
+
 const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
   {
     header: 'Where',
@@ -31,7 +40,15 @@ const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
       </div>
     ),
   },
-  { header: 'Status', cell: (row) => formatStatus(row.status) },
+  {
+    header: 'Status',
+    cell: (row) => (
+      <div className="flex flex-col">
+        <span className="text-text">{formatStatus(row.status)}</span>
+        <span className="text-xs text-text-muted">{STAGE_HINT[row.status] ?? ''}</span>
+      </div>
+    ),
+  },
   {
     header: 'Details',
     cell: (row) => (

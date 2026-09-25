@@ -25,5 +25,5 @@ enable_ocr_kyc       = false
 # false -- an operator flips it deliberately after checking active-site
 # count against the free tier's ~200-site ceiling (WEATHER_POLL_MAX_SITES).
 enable_weather_poll  = true
-enable_diesel_scrape = false
+enable_diesel_scrape = true
 enable_payments      = false

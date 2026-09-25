@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BookingDetailResponse } from '@arkilaunch/shared';
-import { bookingTimeline, leaseProgress } from './account.booking.js';
+import { bookingStage, bookingTimeline, leaseProgress } from './account.booking.js';
 import { amountDue } from './account.checkout.js';
 import { describeNotification } from '../components/notification-feed.js';
 
@@ -157,5 +157,13 @@ describe('describeNotification', () => {
 
   it('falls back for anything it does not know', () => {
     expect(describeNotification('maintenance_due', { equipment_id: 'x' })).toBeNull();
+  });
+});
+
+describe('bookingStage', () => {
+  it('shows money and deposit only once paid, hire progress only once on site', () => {
+    expect(bookingStage(booking())).toEqual({ paid: false, onSite: false, cancelled: false });
+    expect(bookingStage(booking({ status: 'confirmed' }))).toEqual({ paid: true, onSite: false, cancelled: false });
+    expect(bookingStage(booking({ status: 'active' }))).toEqual({ paid: true, onSite: true, cancelled: false });
   });
 });

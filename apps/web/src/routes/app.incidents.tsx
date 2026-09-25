@@ -13,6 +13,10 @@ const COLUMNS: TableColumn<IncidentResponse>[] = [
   { header: 'Occurred', cell: (row) => formatDateTime(row.occurredAt) },
   { header: 'Severity', cell: (row) => formatSeverity(row.severity) },
   {
+    header: 'What happened',
+    cell: (row) => row.detail ?? 'Weather advisory crossed at this site',
+  },
+  {
     header: 'Project site',
     cell: (row) =>
       row.siteCity ??
@@ -23,19 +27,45 @@ const COLUMNS: TableColumn<IncidentResponse>[] = [
   },
 ];
 
+const KINDS = [
+  { id: undefined, label: 'All' },
+  { id: 'weather', label: 'Weather incidents' },
+  { id: 'discrepancy', label: 'Report discrepancies' },
+] as const;
+
 function IncidentsPage() {
   const [offset, setOffset] = useState(0);
+  const [kind, setKind] = useState<'weather' | 'discrepancy' | undefined>(undefined);
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="Billing"
         title="Incident log"
-        description="Weather and liability events recorded against your sites."
+        description="Weather and liability events recorded against your sites, and timekeeper weather reports the site readings contradict."
       />
+      <div role="group" aria-label="Filter incidents" className="flex flex-wrap gap-2">
+        {KINDS.map((entry) => (
+          <button
+            key={entry.label}
+            type="button"
+            aria-pressed={kind === entry.id}
+            onClick={() => {
+              setKind(entry.id);
+              setOffset(0);
+            }}
+            className={[
+              'min-h-9 rounded-full border px-3 text-sm',
+              kind === entry.id ? 'border-accent bg-accent text-white' : 'border-border text-text hover:border-accent',
+            ].join(' ')}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
       <DataPanel
         title="Incident log"
-        options={incidentsQueries.list(PAGE_SIZE, offset)}
+        options={incidentsQueries.list(PAGE_SIZE, offset, kind)}
         emptyTitle="No incidents logged"
         emptyDescription="Weather and liability incidents will appear here as they are auto-logged or recorded."
         isEmpty={(data) => data.total === 0}

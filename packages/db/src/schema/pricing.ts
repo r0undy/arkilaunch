@@ -14,14 +14,14 @@ export const dieselPriceReadings = pgTable(
     region: text('region').notNull().default('NCR'),
     pricePhp: numeric('price_php', { precision: 8, scale: 4 }).notNull(),
     observedDate: date('observed_date').notNull(),
-    source: text('source').notNull(), // doe_scrape | platform_manual | admin_override
+    source: text('source').notNull(), // doe_scrape | platform_manual | admin_override | gaswatch (0043)
     sourceUrl: text('source_url'),
     capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
     capturedBy: uuid('captured_by').references(() => users.id),
   },
   (t) => [
     check('price_sane', sql`${t.pricePhp} BETWEEN 20 AND 150`),
-    check('source_valid', sql`${t.source} IN ('doe_scrape','platform_manual','admin_override')`),
+    check('source_valid', sql`${t.source} IN ('doe_scrape','platform_manual','admin_override','gaswatch')`),
   ],
 );
 

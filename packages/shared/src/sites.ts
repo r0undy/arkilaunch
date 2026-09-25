@@ -57,6 +57,9 @@ export type DeploymentCreateRequest = z.infer<typeof DeploymentCreateRequestSche
 // GET /api/v1/incidents?projectSiteId=...
 export const IncidentListQuerySchema = PaginationQuerySchema.extend({
   projectSiteId: z.string().uuid().optional(),
+  // weather = auto-logged severity crossings; discrepancy = EDTR v2
+  // timekeeper reports the site readings contradict. Omitted = both.
+  kind: z.enum(['weather', 'discrepancy']).optional(),
 });
 
 export const SiteListQuerySchema = PaginationQuerySchema;
@@ -108,6 +111,9 @@ export const IncidentResponseSchema = z.object({
   severity: z.string().nullable(),
   observed: z.unknown().nullable(),
   occurredAt: z.coerce.date(),
+  kind: z.enum(['weather', 'discrepancy']),
+  // Human sentence for a discrepancy (which rule, which date and half).
+  detail: z.string().nullable(),
 });
 export type IncidentResponse = z.infer<typeof IncidentResponseSchema>;
 

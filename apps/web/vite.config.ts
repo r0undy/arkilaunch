@@ -24,6 +24,10 @@ const https =
 // generated routeTree.gen.ts to keep in sync.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Pre-bundled up front: the EDTR sheet imports these lazily, and a dep
+  // Vite discovers mid-session makes it re-optimise and reload the page,
+  // which a cold CI browser run sees as a page that never rendered.
+  optimizeDeps: { include: ['pdf-lib', 'qrcode'] },
   // host: true binds 0.0.0.0 so a phone on the same network can load the dev
   // server. The OCR capture path can only really be exercised from a phone
   // camera, and Vite answering on localhost only made that impossible.

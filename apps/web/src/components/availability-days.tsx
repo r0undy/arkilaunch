@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { AvailabilityResponse } from '@arkilaunch/shared';
 import { apiGet } from '../lib/api-client.js';
 import { getAccessToken } from '../lib/auth-client.js';
@@ -20,14 +22,23 @@ export function localDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// Free/taken days for the next DAYS_AHEAD days. Signed-out visitors get
-// nothing (the endpoint is authenticated); the server check still guards.
-export function useAvailability(equipmentId: string) {
-  const from = localDate(new Date());
-  const to = localDate(new Date(Date.now() + (DAYS_AHEAD - 1) * 86_400_000));
-  return useQuery({
-    queryKey: ['equipment', equipmentId, 'availability', from] as const,
+function availabilityQuery(equipmentId: string, from: string, to: string) {
+  return {
+    queryKey: ['equipment', equipmentId, 'availability', from, to] as const,
     queryFn: () => apiGet<AvailabilityResponse>(`/equipment/${equipmentId}/availability?from=${from}&to=${to}`),
+  };
+}
+
+// Free/taken days from today through the chosen return (at least
+// DAYS_AHEAD days), so a booking of any length is checked end to end.
+// Signed-out visitors get nothing (the endpoint is authenticated); the
+// server check still guards.
+export function useAvailability(equipmentId: string, end?: string) {
+  const from = localDate(new Date());
+  const minTo = localDate(new Date(Date.now() + (DAYS_AHEAD - 1) * 86_400_000));
+  const endDate = end ? localDate(new Date(end)) : '';
+  return useQuery({
+    ...availabilityQuery(equipmentId, from, endDate > minTo ? endDate : minTo),
     enabled: Boolean(getAccessToken()),
   });
 }
@@ -52,54 +63,149 @@ export function availabilityProblem(data: AvailabilityResponse | undefined, star
   return null;
 }
 
-// A day grid: taken days are disabled, the chosen window is highlighted,
-// clicking a free day moves the pickup to it.
-export function AvailabilityDays({
-  data,
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const addDays = (date: string, n: number) => {
+  const d = new Date(`${date}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return localDate(d);
+};
+const daysBetween = (a: string, b: string) =>
+  Math.round((new Date(`${b}T00:00:00`).getTime() - new Date(`${a}T00:00:00`).getTime()) / 86_400_000) + 1;
+const prettyDate = (date: string) =>
+  new Date(`${date}T00:00:00`).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+// A month calendar for the rental span: the first click sets pickup, the
+// second sets return (the span previews on hover), the next click starts
+// over. Pages month by month with no limit; past and taken days are
+// disabled. Each visible month reads its own availability.
+export function RangeCalendar({
+  equipmentId,
   start,
   end,
-  onPick,
+  onRange,
 }: {
-  data: AvailabilityResponse | undefined;
+  equipmentId: string;
   start: string;
   end: string;
-  onPick: (date: string) => void;
+  onRange: (startDate: string, endDate: string) => void;
 }) {
-  if (!data) return null;
+  const today = localDate(new Date());
   const first = start ? localDate(new Date(start)) : '';
   const last = end ? localDate(new Date(end)) : '';
+  const [month, setMonth] = useState(() => (first && first > today ? first : today).slice(0, 7));
+  // Pickup chosen, return not yet.
+  const [anchor, setAnchor] = useState<string | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
+
+  const monthStart = `${month}-01`;
+  const gridStart = addDays(monthStart, -new Date(`${monthStart}T00:00:00`).getDay());
+  const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+  const gridEnd = cells[41]!;
+  const visible = useQuery({
+    ...availabilityQuery(equipmentId, gridStart < today ? today : gridStart, gridEnd),
+    enabled: Boolean(getAccessToken()),
+  });
+  const byDate = new Map((visible.data?.days ?? []).map((d) => [d.date, d]));
+
+  const shift = (n: number) => {
+    const d = new Date(`${monthStart}T00:00:00`);
+    d.setMonth(d.getMonth() + n);
+    setMonth(localDate(d).slice(0, 7));
+  };
+
+  const spanStart = anchor ?? first;
+  const spanEnd = anchor ? (hover && hover >= anchor ? hover : anchor) : last;
+
+  function pick(date: string) {
+    if (anchor && date >= anchor) {
+      onRange(anchor, date);
+      setAnchor(null);
+    } else {
+      setAnchor(date);
+      onRange(date, date);
+    }
+  }
+
+  const title = new Date(`${monthStart}T00:00:00`).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+  const hours = visible.data?.hours;
+  const span = first && last ? daysBetween(first, last) : 0;
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm text-text-muted">
-        Availability, next {data.days.length} days
-        {data.hours ? ` · open ${data.hours.openTime}–${data.hours.closeTime}` : ''}
-      </p>
-      <div role="group" aria-label="Available dates" className="grid grid-cols-7 gap-1">
-        {data.days.map((d) => {
-          const chosen = d.date >= first && d.date <= last;
-          const label = `${d.date}${d.available ? '' : ` ${REASON[d.reason ?? ''] ?? 'Taken'}`}`;
+    <div className="flex flex-col gap-3 rounded-md border border-border p-3">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => shift(-1)}
+          disabled={month <= today.slice(0, 7)}
+          aria-label="Previous month"
+          className="flex min-h-10 min-w-10 items-center justify-center rounded-sm text-text hover:bg-surface-sunk disabled:opacity-30"
+        >
+          <ChevronLeft className="h-4 w-4" aria-hidden />
+        </button>
+        <p className="font-display text-sm font-semibold text-text" aria-live="polite">
+          {title}
+        </p>
+        <button
+          type="button"
+          onClick={() => shift(1)}
+          aria-label="Next month"
+          className="flex min-h-10 min-w-10 items-center justify-center rounded-sm text-text hover:bg-surface-sunk"
+        >
+          <ChevronRight className="h-4 w-4" aria-hidden />
+        </button>
+      </div>
+      <div role="group" aria-label={`Rental dates, ${title}`} className="grid grid-cols-7 gap-y-1" onMouseLeave={() => setHover(null)}>
+        {WEEKDAYS.map((d) => (
+          <span key={d} aria-hidden className="pb-1 text-center text-xs font-medium text-text-muted">
+            {d}
+          </span>
+        ))}
+        {cells.map((date) => {
+          const info = byDate.get(date);
+          const taken = info ? !info.available : false;
+          const disabled = date < today || taken;
+          const inSpan = Boolean(spanStart) && date >= spanStart && date <= spanEnd;
+          const edge = date === spanStart || date === spanEnd;
+          const reason = taken ? (REASON[info?.reason ?? ''] ?? 'Taken') : '';
           return (
             <button
-              key={d.date}
+              key={date}
               type="button"
-              disabled={!d.available}
-              aria-label={label}
-              aria-pressed={chosen}
-              title={label}
-              onClick={() => onPick(d.date)}
+              data-date={date}
+              disabled={disabled}
+              aria-label={`${prettyDate(date)}${reason ? `, ${reason}` : ''}`}
+              aria-pressed={inSpan}
+              title={reason || undefined}
+              onClick={() => pick(date)}
+              onMouseEnter={() => setHover(date)}
               className={[
-                'min-h-9 rounded-sm border text-xs tabular-nums',
-                !d.available
-                  ? 'cursor-not-allowed border-border bg-surface-sunk text-text-muted line-through'
-                  : chosen
-                    ? 'border-accent bg-accent text-white'
-                    : 'border-border text-text hover:border-accent',
+                'min-h-10 text-sm tabular-nums transition-colors',
+                date.slice(0, 7) === month ? '' : 'opacity-40',
+                disabled
+                  ? `cursor-not-allowed text-text-muted ${taken ? 'line-through' : ''}`
+                  : edge
+                    ? 'rounded-sm bg-accent font-semibold text-white'
+                    : inSpan
+                      ? 'bg-accent/15 text-text'
+                      : 'rounded-sm text-text hover:bg-surface-sunk',
               ].join(' ')}
             >
-              {Number(d.date.slice(8))}
+              {Number(date.slice(8))}
             </button>
           );
         })}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-text-muted">
+        <span aria-live="polite">
+          {anchor
+            ? 'Now pick the return date.'
+            : span
+              ? `${prettyDate(first)} to ${prettyDate(last)} · ${span} ${span === 1 ? 'day' : 'days'}`
+              : 'Pick the pickup date.'}
+        </span>
+        <span>
+          <span className="line-through">12</span> unavailable
+          {hours ? ` · open ${hours.openTime}–${hours.closeTime}` : ''}
+        </span>
       </div>
     </div>
   );
