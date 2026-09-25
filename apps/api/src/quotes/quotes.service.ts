@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   auditLogs,
+  depositForQuote,
   getBillingSettings,
   quotationItems,
   quotations,
@@ -291,7 +292,9 @@ export class QuotesService {
       await tx.insert(rentalContracts).values({
         tenantId: ctx.tenantId,
         quotationId,
-        depositRequired: String((await getBillingSettings(tx, ctx.tenantId)).minDepositPhp),
+        depositRequired: String(
+          depositForQuote(await getBillingSettings(tx, ctx.tenantId), quotation.totalPhp !== null ? Number(quotation.totalPhp) : null),
+        ),
         status: 'active',
       });
       await tx.insert(auditLogs).values({
