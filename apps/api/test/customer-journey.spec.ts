@@ -145,6 +145,14 @@ describe('Customer journey', () => {
     return { rawBody, header: `t=${t},te=deadbeef,li=${sig}` };
   }
 
+  it('auto-quotes a new booking from the machine rate card and sends it to the customer', async () => {
+    const booking = await book(20, 2);
+    const detail = await bookings.get(customerCtx, booking.id);
+    expect(detail.quotation?.status).toBe('approved');
+    expect(detail.quotation?.totalPhp).toBeGreaterThan(0);
+    expect(await notificationTypes(booking.id)).toContain('quote_ready');
+  });
+
   it('negotiates, accepts, and charges the accepted quote plus the deposit exactly once', async () => {
     const booking = await book(0);
 

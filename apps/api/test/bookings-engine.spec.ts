@@ -1,5 +1,4 @@
-import { QuotesService } from '../src/quotes/quotes.service.js';
-import { PricingEngineService } from '../src/quotes/pricing-engine.service.js';
+import type { QuotesService } from '../src/quotes/quotes.service.js';
 import { describe, expect, it, beforeAll } from 'vitest';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import postgres from 'postgres';
@@ -11,7 +10,9 @@ import { EventsService } from '../src/events/events.service.js';
 // surface (cr-arkilaunch-f2-f8-bookings-payments.md). QAD-T9 (happy path),
 // QAD-T21 (never overbooks), QAD-T23/T24 (cross-tenant read/write).
 describe('BookingsService (PRD-F8)', () => {
-  const bookings = new BookingsService(new EventsService(), new QuotesService(new PricingEngineService(), new EventsService()));
+  // Auto-quoting off: this suite covers bookings/payments, not pricing
+  // (customer-journey.spec.ts covers the automatic quote).
+  const bookings = new BookingsService(new EventsService(), { autoQuoteBooking: async () => null } as unknown as QuotesService);
   let customerCtxA: RequestContext;
   let adminCtxA: RequestContext;
   let adminCtxB: RequestContext;
