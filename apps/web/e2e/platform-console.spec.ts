@@ -11,17 +11,20 @@ test.describe('platform console', () => {
   test('lands on Applications with only the platform sidebar', async ({ page }) => {
     await expect(page.getByRole('heading', { name: 'Applications', level: 1 })).toBeVisible();
     const sidebar = page.getByRole('complementary', { name: 'Sidebar' });
-    await expect(sidebar.getByRole('link', { name: 'Approved companies' })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: 'Companies' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: 'Equipment and maintenance' })).toHaveCount(0);
     await expect(sidebar.getByRole('link', { name: 'Dashboard' })).toHaveCount(0);
   });
 
-  test('Approved companies is a real list, not a placeholder', async ({ page }) => {
-    await page.goto(platformUrl('/admin/approved'));
-    await expect(page.getByRole('heading', { name: 'Approved companies', level: 1 })).toBeVisible();
-    await expect(page.getByText(/are not listed yet/i)).toHaveCount(0);
-    const loaded = page.getByRole('table').or(page.getByText('No approved companies yet'));
-    await expect(loaded.first()).toBeVisible();
+  test('Companies lists the seeded tenant with its stats and site link', async ({ page }) => {
+    await page.goto(platformUrl('/admin/companies'));
+    await expect(page.getByRole('heading', { name: 'Companies', level: 1 })).toBeVisible();
+    const row = page.getByRole('row').filter({ hasText: 'Almara' });
+    await expect(row).toBeVisible();
+    await expect(row.getByText('Active')).toBeVisible();
+    // The site link follows the host family: almara.localhost in dev.
+    await expect(row.getByRole('link', { name: /almara\.localhost/ })).toHaveAttribute('href', /^https?:\/\/almara\.localhost/);
+    await expect(page.getByText('Equipment listed')).toBeVisible();
   });
 
   // Tenant shells do not exist on the platform host.

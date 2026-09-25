@@ -134,7 +134,7 @@ export const PLATFORM_ADMIN_NAV: NavGroup[] = [
     title: 'Companies',
     items: [
       { label: 'Applications', to: '/admin/applications', icon: ClipboardList },
-      { label: 'Approved companies', to: '/admin/approved', icon: Store },
+      { label: 'Companies', to: '/admin/companies', icon: Store },
     ],
   },
   {

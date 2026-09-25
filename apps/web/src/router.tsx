@@ -58,9 +58,9 @@ import { quotePrintRoute } from './routes/quote-print.js';
 import { edtrRoute } from './routes/edtr.js';
 import { appOcrDeploymentsRoute, fieldScanRoute } from './routes/app.ocr.deployments.js';
 import { adminUsersRoute } from './routes/app.users.js';
+import { adminCompaniesRoute } from './routes/admin.companies.js';
 import {
   appCompaniesPendingRoute,
-  appCompaniesApprovedRoute,
   appCompanyApplicationRoute,
 } from './routes/app.companies.js';
 import {
@@ -159,7 +159,7 @@ export const routeTree = rootRoute.addChildren([
   // Platform host only: ArkiLaunch's console for onboarding rental companies.
   adminLayoutRoute.addChildren([
     appCompaniesPendingRoute,
-    appCompaniesApprovedRoute,
+    adminCompaniesRoute,
     appCompanyApplicationRoute,
     adminNotificationsRoute,
     adminProfileRoute,

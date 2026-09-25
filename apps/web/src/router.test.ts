@@ -63,7 +63,7 @@ describe('navigation targets resolve to registered routes', () => {
 describe('platform admin console', () => {
   const platformTargets = PLATFORM_ADMIN_NAV.flatMap((group) => group.items).map((item) => item.to);
 
-  it('lives entirely under /admin', () => {
+  it('lists Companies and lives entirely under /admin', () => {
     for (const to of platformTargets) expect(to.startsWith('/admin/')).toBe(true);
   });
 
