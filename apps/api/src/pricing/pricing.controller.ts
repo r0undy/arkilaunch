@@ -19,6 +19,21 @@ export class PricingController {
     return this.pricing.recordDieselPrice(req.ctx, body);
   }
 
+  // Latest national diesel reading, and the admin "Fetch now" from GasWatch
+  // PH. pricing:manage, not diesel:manage: a tenant admin can refresh the
+  // shared reading because the value comes from GasWatch, never the body.
+  @Get('diesel-price')
+  @RequirePermission('pricing:manage')
+  latestDieselPrice(@Query() query: PricingParametersQueryDto) {
+    return this.pricing.latestDieselPrice(query.region);
+  }
+
+  @Post('diesel-price/fetch')
+  @RequirePermission('pricing:manage')
+  fetchDieselPrice(@Query() query: PricingParametersQueryDto, @Req() req: CtxRequest) {
+    return this.pricing.fetchGasWatchDiesel(req.ctx, query.region);
+  }
+
   // Tenant diesel override + pricing inputs (RFC-3 §2 QUOTE-05): the
   // tenant's own back-office admin, used when they have a fresher pump
   // price or want to hold a negotiated fuel basis.

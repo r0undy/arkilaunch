@@ -1,12 +1,15 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadGatewayException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import {
   auditLogs,
   billingSettings,
+  db,
+  dieselPriceReadings,
   equipment,
   getBillingSettings,
   pricingParameters,
   rateCards,
+  recordGasWatchDieselReading,
   recordManualDieselReading,
   withTenantTx,
 } from '@arkilaunch/db';
@@ -59,6 +62,42 @@ export class PricingService {
       capturedAt: reading.captured_at,
       capturedBy: reading.captured_by,
     };
+  }
+
+  // GET /pricing/diesel-price: the latest national reading (what a quote
+  // prices against when the tenant has no fresh override).
+  async latestDieselPrice(region: string) {
+    const [latest] = await db
+      .select()
+      .from(dieselPriceReadings)
+      .where(eq(dieselPriceReadings.region, region))
+      .orderBy(desc(dieselPriceReadings.observedDate), desc(dieselPriceReadings.capturedAt))
+      .limit(1);
+    return latest
+      ? { pricePhp: Number(latest.pricePhp), observedDate: latest.observedDate, source: latest.source, capturedAt: latest.capturedAt }
+      : null;
+  }
+
+  // POST /pricing/diesel-price/fetch: the admin "Fetch now" button. Same
+  // fetch as the weekly job; the URL is fixed server-side, so nothing the
+  // caller sends reaches the global reading.
+  async fetchGasWatchDiesel(ctx: RequestContext, region: string) {
+    let reading;
+    try {
+      reading = await recordGasWatchDieselReading(region);
+    } catch (err) {
+      throw new BadGatewayException({ error: 'gaswatch_unavailable', message: err instanceof Error ? err.message : String(err) });
+    }
+    await withTenantTx(ctx, async (tx) => {
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'CREATE',
+        entity: 'diesel_price_readings',
+        entityId: reading.id,
+      });
+    });
+    return this.latestDieselPrice(region);
   }
 
   // Tenant diesel override + pricing inputs (RFC-3 §2/§3 QUOTE-05):

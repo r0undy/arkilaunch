@@ -295,6 +295,13 @@
       "when": 1790400001000,
       "tag": "0042_catalog_list_price",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1790400002000,
+      "tag": "0043_diesel_gaswatch",
+      "breakpoints": true
     }
   ]
 }
