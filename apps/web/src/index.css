@@ -21,9 +21,6 @@
    can express "only inside the marketing surface" without a manual selector. */
 @custom-variant marketing (&:where([data-tier='marketing'], [data-tier='marketing'] *));
 
-/* `platform:` targets the ArkiLaunch platform tier (landing, registration, /admin). */
-@custom-variant platform (&:where([data-tier='platform'], [data-tier='platform'] *));
-
 :root {
   /* ---- Primitives (raw values, no meaning; DSD §2.0) ---- */
   --steel-900: #10151b;
@@ -161,74 +158,6 @@
   --color-border-glass: var(--yb-border-glass);
 }
 
-/* ---- Platform tier (CR: platform-tenant-split; DSD §0 Named tiers, "Platform") ----
-   ArkiLaunch's own surfaces, after discord.design.md: outer ink-black frame,
-   midnight indigo band, one Blurple voltage reserved for CTAs, candy-colored
-   feature cards, 12px pills vs 120px poster cards. Scoped to
-   [data-tier="platform"]; the /admin console only takes the Blurple accent
-   (primary + on-primary), the rest of its console tokens are unchanged. */
-[data-tier='platform'] {
-  --pf-ink: #000000;
-  --pf-navy-deep: #1a2081;
-  --pf-navy: #24173f;
-  --pf-blurple: #5865f2;
-  --pf-blurple-hover: #8891f2;
-  --pf-blurple-dark: #3442d9;
-  --pf-greyple: #99aab5;
-  --pf-white: #ffffff;
-  --pf-cerulean: #00b0f4;
-  --pf-pink: #ffcdee;
-  --pf-green: #57f287;
-  --pf-yellow: #fee75c;
-  --pf-fuchsia: #eb459e;
-  --pf-orange: #fda220;
-
-  --yb-color-primary: var(--pf-blurple);
-  --yb-color-primary-hover: var(--pf-blurple-dark);
-  --yb-color-on-primary: var(--pf-white);
-  --yb-input-focus-ring: var(--pf-cerulean);
-  /* Same same-scope re-declaration as the marketing tier above. */
-  --color-primary: var(--yb-color-primary);
-  --color-primary-hover: var(--yb-color-primary-hover);
-  --color-on-primary: var(--yb-color-on-primary);
-  --color-focus-ring: var(--yb-input-focus-ring);
-
-  --color-pf-ink: var(--pf-ink);
-  --color-pf-navy-deep: var(--pf-navy-deep);
-  --color-pf-navy: var(--pf-navy);
-  --color-pf-blurple: var(--pf-blurple);
-  --color-pf-blurple-hover: var(--pf-blurple-hover);
-  --color-pf-blurple-dark: var(--pf-blurple-dark);
-  --color-pf-greyple: var(--pf-greyple);
-  --color-pf-cerulean: var(--pf-cerulean);
-  --color-pf-pink: var(--pf-pink);
-  --color-pf-green: var(--pf-green);
-  --color-pf-yellow: var(--pf-yellow);
-  --color-pf-fuchsia: var(--pf-fuchsia);
-  --color-pf-orange: var(--pf-orange);
-}
-
-@theme {
-  /* Platform-tier palette aliases; only resolve inside [data-tier="platform"]. */
-  --color-pf-ink: var(--pf-ink);
-  --color-pf-navy-deep: var(--pf-navy-deep);
-  --color-pf-navy: var(--pf-navy);
-  --color-pf-blurple: var(--pf-blurple);
-  --color-pf-blurple-hover: var(--pf-blurple-hover);
-  --color-pf-blurple-dark: var(--pf-blurple-dark);
-  --color-pf-greyple: var(--pf-greyple);
-  --color-pf-cerulean: var(--pf-cerulean);
-  --color-pf-pink: var(--pf-pink);
-  --color-pf-green: var(--pf-green);
-  --color-pf-yellow: var(--pf-yellow);
-  --color-pf-fuchsia: var(--pf-fuchsia);
-  --color-pf-orange: var(--pf-orange);
-  --radius-pf-pill: 12px;
-  --radius-pf-card: 120px;
-  /* Inter stands in for the proprietary ABC Ginto Discord / Nord faces. */
-  --font-platform: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-}
-
 @theme {
   /* Fonts (§2.3). Body/heading share one IBM Plex Sans variable file (wght 100-700);
      display/label use the static Condensed 600 cut; data uses static Mono 500;
@@ -340,15 +269,6 @@
   src: url('/fonts/ibm-plex-mono-500.woff2') format('woff2');
 }
 
-/* Platform tier only (Inter, SIL OFL 1.1; stands in for ABC Ginto Discord). */
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src: url('/fonts/inter-variable.woff2') format('woff2');
-}
-
 /* Marketing accent only; not preloaded (DSD §2.3) so a console route that never
    renders .font-serif-accent never fetches it. */
 @font-face {
@@ -380,11 +300,6 @@
      an ancestor, not a descendant, of that scope). */
   body:has([data-tier='marketing']) {
     background-color: var(--sand-200);
-  }
-
-  /* Platform landing/auth pages are dark-only; keep overscroll black. */
-  body:has([data-tier='platform'][data-canvas='dark']) {
-    background-color: #000000;
   }
 
   body {
@@ -433,31 +348,4 @@
   body {
     background: white;
   }
-}
-
-/* Discord's Nord "shout" register on Inter: heavy, uppercase, tight. */
-@utility font-platform-display {
-  font-family: var(--font-platform);
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: -0.01em;
-}
-
-/* Hero starfield (discord.design.md "starfield illustration"), pure CSS. */
-.pf-starfield::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    radial-gradient(1.5px 1.5px at 12% 18%, #fff 50%, transparent 51%),
-    radial-gradient(1px 1px at 28% 72%, #fff 50%, transparent 51%),
-    radial-gradient(2px 2px at 46% 30%, #fff 50%, transparent 51%),
-    radial-gradient(1px 1px at 63% 82%, #fff 50%, transparent 51%),
-    radial-gradient(1.5px 1.5px at 78% 14%, #fff 50%, transparent 51%),
-    radial-gradient(1px 1px at 88% 58%, #fff 50%, transparent 51%),
-    radial-gradient(2px 2px at 8% 88%, #808aff 50%, transparent 51%),
-    radial-gradient(1px 1px at 55% 8%, #fff 50%, transparent 51%),
-    radial-gradient(1.5px 1.5px at 94% 92%, #808aff 50%, transparent 51%);
-  opacity: 0.7;
 }
