@@ -17,16 +17,23 @@ test.describe('company documents', () => {
     const png = await page.screenshot({ clip: { x: 0, y: 0, width: 64, height: 64 } });
     const file = (name: string) => ({ name, mimeType: 'image/png', buffer: png });
 
-    // Step 1: the applicant's ID.
-    await page.getByTestId('doc-government_id-file').setInputFiles(file('id.png'));
-    await page.getByRole('button', { name: 'Skip cropping' }).click();
-    await page.getByRole('button', { name: 'Next: check your ID details' }).click();
+    // Steps 1-2 (the ID) run only while this login has no ID on file; once
+    // one is, every later company skips straight to the registration.
+    const idStep = page.getByTestId('doc-government_id-file');
+    const regStep = page.getByLabel('Document type');
+    await expect(idStep.or(regStep)).toBeVisible();
+    if (await idStep.isVisible()) {
+      // Step 1: the applicant's ID.
+      await page.getByTestId('doc-government_id-file').setInputFiles(file('id.png'));
+      await page.getByRole('button', { name: 'Skip cropping' }).click();
+      await page.getByRole('button', { name: 'Next: check your ID details' }).click();
 
-    // Step 2: the customer confirms what the ID says.
-    await page.getByLabel('First name').fill('Juan');
-    await page.getByLabel('Last name').fill('Dela Cruz');
-    await page.getByLabel(/PCN/).fill('1234-5678-9012-3456');
-    await page.getByRole('button', { name: 'Next: company registration' }).click();
+      // Step 2: the customer confirms what the ID says.
+      await page.getByLabel('First name').fill('Juan');
+      await page.getByLabel('Last name').fill('Dela Cruz');
+      await page.getByLabel(/PCN/).fill('1234-5678-9012-3456');
+      await page.getByRole('button', { name: 'Next: company registration' }).click();
+    }
 
     // Step 2: the dropdown offers exactly BIR and SEC; DTI is never primary.
     const type = page.getByLabel('Document type');
@@ -66,5 +73,15 @@ test.describe('company documents', () => {
     await page.getByRole('group', { name }).getByRole('link', { name: /manage/i }).click();
     await expect(page.getByText('SEC Certificate of Incorporation')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('DTI Business Name (secondary)')).toBeVisible();
+  });
+
+  test('a second company reuses the National ID on file', async ({ page }) => {
+    test.skip(STORAGE_UNAVAILABLE, 'needs a first company with an uploaded ID');
+    await signInAsCustomer(page);
+    await page.goto('/account/companies/new');
+    // The first test left an ID on file for this login: no ID steps.
+    await expect(page.getByLabel('Document type')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('doc-government_id-file')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Next: check your ID details' })).toHaveCount(0);
   });
 });
