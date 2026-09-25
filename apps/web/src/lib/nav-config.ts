@@ -117,6 +117,7 @@ export const APP_NAV: NavGroup[] = [
     title: 'Administration',
     items: [
       { label: 'Rate cards', to: '/app/settings', icon: Settings },
+      { label: 'Storefront branding', to: '/app/branding', icon: Store },
       { label: 'People', to: '/app/users', icon: Users },
       { label: 'Notifications', to: '/app/notifications', icon: Bell },
       { label: 'My profile', to: '/app/profile', icon: UserCircle },

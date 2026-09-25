@@ -11,12 +11,14 @@ import { SearchFilterBar } from '../components/search-filter-bar.js';
 import { TestimonialCard } from '../components/testimonial-card.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import { catalogQueries } from '../lib/queries.js';
+import { useTenant } from '../lib/tenant.js';
 
 function LandingPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const { data } = useQuery(catalogQueries.equipment());
   const { data: testimonialData } = useQuery(catalogQueries.testimonials());
+  const tenant = useTenant();
 
   const equipment = useMemo(() => {
     const items = data?.items ?? [];
@@ -34,12 +36,15 @@ function LandingPage() {
   return (
     <div className="flex flex-col gap-16 px-6 py-10 sm:px-10">
       <section className="flex flex-col gap-4">
+        {tenant?.heroUrl && (
+          <img src={tenant.heroUrl} alt="" className="aspect-[3/1] w-full rounded-sm object-cover" />
+        )}
         <h1 className="max-w-2xl font-display text-[28px] font-semibold uppercase leading-[1.15] text-ink-mk sm:text-5xl lg:text-6xl">
           Industrial fleet management &amp; rentals
         </h1>
         <p className="max-w-md border-l-2 border-primary pl-4 text-sm text-text-muted">
-          Handwritten field logs get scanned and reconciled before any peso is deducted. Every quote prices
-          against today&apos;s diesel, not last week&apos;s estimate.
+          {tenant?.tagline ??
+            'Handwritten field logs get scanned and reconciled before any peso is deducted. Every quote prices against today’s diesel, not last week’s estimate.'}
         </p>
         <div className="flex flex-wrap gap-3">
           <Button variant="primary" onClick={() => navigate({ to: '/equipment' })}>
