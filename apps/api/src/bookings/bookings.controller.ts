@@ -34,6 +34,12 @@ export class BookingsController {
     return this.bookings.list(req.ctx, query);
   }
 
+  @Get(':id/edtr-sheet')
+  @RequirePermission('edtr:create')
+  edtrSheet(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.bookings.edtrSheet(req.ctx, id);
+  }
+
   @Get(':id')
   @RequirePermission('booking:read')
   get(@Param('id') id: string, @Req() req: CtxRequest) {

@@ -4,7 +4,9 @@ import {
   addresses,
   auditLogs,
   bookingChangeRequests,
+  customers,
   equipment,
+  equipmentTypes,
   equipmentAssignments,
   invoices,
   negotiationMessages,
@@ -26,6 +28,7 @@ import type {
   BookingCreateResponse,
   BookingDetailResponse,
   BookingListResponse,
+  EdtrSheetContext,
   AvailabilityBlocker,
   RequestContext,
   RescheduleSuggestion,
@@ -230,6 +233,38 @@ export class BookingsService {
           };
         }),
         total,
+      };
+    });
+  }
+
+  // GET /bookings/:id/edtr-sheet: the pre-printed header of the EDTR v2
+  // sheet (docs/cr-arkilaunch-edtr-v2-weather.md), one per machine on the
+  // booking. Staff only (edtr:create); the web renders the PDF/PNG.
+  async edtrSheet(ctx: RequestContext, id: string): Promise<EdtrSheetContext> {
+    return withTenantTx(ctx, async (tx) => {
+      const rental = await this.visibleRental(tx, ctx, id);
+      const [customer] = await tx
+        .select({ companyName: customers.companyName })
+        .from(customers)
+        .where(eq(customers.id, rental.customerId))
+        .limit(1);
+      const [site] = await tx
+        .select({ line: addresses.line1, city: addresses.city, province: addresses.province })
+        .from(projectSites)
+        .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
+        .where(eq(projectSites.id, rental.projectSiteId))
+        .limit(1);
+      const machines = await tx
+        .select({ id: equipment.id, type: equipmentTypes.name, model: equipment.model, serialNo: equipment.serialNo })
+        .from(equipmentAssignments)
+        .innerJoin(equipment, eq(equipment.id, equipmentAssignments.equipmentId))
+        .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipment.equipmentTypeId))
+        .where(eq(equipmentAssignments.rentalId, id));
+      return {
+        rentalId: id,
+        chargeTo: customer?.companyName ?? '',
+        projectLocation: [site?.line, site?.city, site?.province].filter(Boolean).join(', '),
+        equipment: machines,
       };
     });
   }
