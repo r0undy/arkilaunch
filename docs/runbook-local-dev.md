@@ -55,6 +55,10 @@ Open-Meteo client works immediately, no key to fill in.
 ```
 pnpm db:migrate         # applies packages/db/migrations/*, sets app_authenticated's password
 pnpm db:seed            # almara tenant + arkilaunch-platform (platform_admin)
+# Then open https://localhost:5173 (ArkiLaunch platform: landing, /register, /admin)
+# and https://almara.localhost:5173 (the Almara tenant). Any {slug}.localhost is
+# that tenant; browsers resolve *.localhost to loopback. If you use the dev
+# certs, regenerate them to cover the tenant hosts you test.
 pnpm db:seed:test       # OR: two tenants, for isolation testing
 ```
 

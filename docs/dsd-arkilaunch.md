@@ -45,6 +45,7 @@
 |---|---|---|
 | **Console** (default) | S2 to S21, S25; all authed, task-first surfaces | The instrument-panel system as specified throughout this DSD: tight radii, border-first depth, <=250ms motion, IBM Plex only. |
 | **Marketing** | S1 Public Landing, S22 Catalog Browse | The SprintForge-derived surface merged in by this amendment: large radii, layered/glass depth, Instrument Serif accent, rise-in/drift motion, all behind the §6 progressive-enhancement gate. |
+| **Platform** (CR: platform-tenant-split) | ArkiLaunch's own surfaces on the bare platform host: landing, tenant registration, platform sign-in; the `/admin` console takes its accent only | After `discord.design.md`: ink-black frame, `#1a2081` to `#24173f` indigo band, Blurple `#5865f2` on CTAs only, one candy fill per feature card (pink, spring green, yellow, fuchsia), 12px pills against 120px cards, Inter 800 uppercase display standing in for ABC Ginto Nord. Tokens resolve only inside `[data-tier="platform"]`. "Default SaaS purple" stays banned in the other two tiers; Blurple is the explicit brand choice here. |
 
 A component never silently crosses tiers. The tier is set once, on a route wrapper (`data-tier="marketing"` on the root of S1/S22, unset elsewhere), and every token below that reads "marketing" or carries an `-mk` suffix applies only inside that scope.
 
