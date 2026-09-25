@@ -301,12 +301,41 @@ export class CustomersService {
         contactValue: body.contactMobile,
         isPrimary: 'true',
       });
+      // The National ID belongs to the login, not a company: captured once,
+      // it is copied onto each new company so every review (and
+      // hasRequiredCompanyDocuments) still sees it on that company.
+      const [id] = await tx
+        .select()
+        .from(kycDocuments)
+        .innerJoin(customers, eq(customers.id, kycDocuments.customerId))
+        .where(
+          and(
+            eq(customers.userId, ctx.userId),
+            eq(kycDocuments.documentType, 'government_id'),
+            ne(kycDocuments.status, 'superseded'),
+          ),
+        )
+        .orderBy(desc(kycDocuments.createdAt))
+        .limit(1);
+      if (id) {
+        const d = id.kyc_documents;
+        await tx.insert(kycDocuments).values({
+          tenantId: ctx.tenantId,
+          customerId: row.id,
+          documentType: d.documentType,
+          fileUri: d.fileUri,
+          status: d.status,
+          ocrPayload: d.ocrPayload,
+          formatValid: d.formatValid,
+          confidence: d.confidence,
+        });
+      }
       await this.events.emit(ctx, 'company_created', { customer_id: row.id });
       await notifyStaff(tx, ctx.tenantId, 'company_submitted', {
         customer_id: row.id,
         company_name: row.companyName,
       });
-      return { ...toCompany(row), documents: [] };
+      return (await withDocuments(tx, [row]))[0]!;
     });
   }
 

@@ -398,7 +398,13 @@ function NewCompanyPage() {
   // Scan first, type last: the documents are captured in order, the ID is
   // checked on its own step, and the form opens on what the registration
   // scans read, for final edits.
-  const [stage, setStage] = useState<DocStep | 'id_details' | 'details'>('government_id');
+  const [chosenStage, setStage] = useState<DocStep | 'id_details' | 'details'>('government_id');
+  // The National ID is captured once per login: with one on file (any of this
+  // account's companies) the ID steps are skipped and the server reuses it.
+  const idOnFile = Boolean(
+    useQuery(companiesQueries.mine()).data?.some((c) => c.documents.some((d) => d.documentType === 'government_id')),
+  );
+  const stage = idOnFile && (chosenStage === 'government_id' || chosenStage === 'id_details') ? 'company_registration' : chosenStage;
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState<boolean | null>(null);
 
@@ -522,7 +528,7 @@ function NewCompanyPage() {
             >
               {stage === 'government_id' ? 'Next: check your ID details' : 'Next: check the details'}
             </Button>
-            {stage === 'company_registration' ? (
+            {stage === 'company_registration' && !idOnFile ? (
               <Button variant="ghost" onClick={() => setStage('id_details')}>
                 Back
               </Button>
@@ -620,10 +626,10 @@ function NewCompanyPage() {
           />
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-muted">
             <span>
-              Scanned: {governmentId ? 'National ID' : 'no ID'}, {DOC_LABELS[registrationType]}
+              Scanned: {idOnFile ? 'National ID on file' : governmentId ? 'National ID' : 'no ID'}, {DOC_LABELS[registrationType]}
               {dti ? ' and DTI certificate' : ''}.
             </span>
-            <Button type="button" variant="ghost" onClick={() => setStage('government_id')}>
+            <Button type="button" variant="ghost" onClick={() => setStage(idOnFile ? 'company_registration' : 'government_id')}>
               Rescan
             </Button>
           </div>
