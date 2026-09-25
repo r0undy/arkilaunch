@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   ShoppingCart,
   Store,
+  ExternalLink,
   CalendarCheck,
   TrendingUp,
   Users,
@@ -117,6 +118,8 @@ export const APP_NAV: NavGroup[] = [
     title: 'Administration',
     items: [
       { label: 'Rate cards', to: '/app/settings', icon: Settings },
+      { label: 'Storefront branding', to: '/app/branding', icon: Store },
+      { label: 'View storefront', to: '/', icon: ExternalLink, exact: true },
       { label: 'People', to: '/app/users', icon: Users },
       { label: 'Notifications', to: '/app/notifications', icon: Bell },
       { label: 'My profile', to: '/app/profile', icon: UserCircle },

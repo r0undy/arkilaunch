@@ -1,19 +1,40 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { Public } from '../common/decorators/public.decorator.js';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import type { RequestContext } from '@arkilaunch/shared';
 import { UuidParamPipe } from '../common/uuid-param.pipe.js';
+import { MAX_UPLOAD_BYTES } from '../storage/upload-validation.js';
 import { TenantsService } from './tenants.service.js';
 import {
   CompanyStatusUpdateDto,
   TenantApplicationListQueryDto,
   TenantRegisterDto,
-  TenantSettingsUpdateDto,
+  TenantBrandingUpdateDto,
 } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
+type MulterFile = { buffer: Buffer; size: number; mimetype: string };
+
+function imageKind(kind: string): 'logo' | 'hero' {
+  if (kind !== 'logo' && kind !== 'hero') throw new BadRequestException({ error: 'invalid_kind' });
+  return kind;
+}
 
 // Demonstrates the full golden-path chain (AGENTS.md §4): JWT identity,
 // tenant-context derivation, RBAC, and an RLS-scoped read/write -- on a
@@ -30,11 +51,34 @@ export class TenantsController {
     return this.tenants.me(req.ctx);
   }
 
-  // PATCH /tenants/me (S18 Tenant Settings).
-  @Patch('me')
+  // Branding (migration 0051). Owner/admin edit their own tenant; the tenant
+  // is always req.ctx.tenantId from the verified JWT (RFC-1), never input.
+  // legal_name/slug are not in the DTO (.strict()), so the name stays locked.
+  @Get('me/branding')
   @RequirePermission('tenant:manage')
-  updateSettings(@Body() body: TenantSettingsUpdateDto, @Req() req: CtxRequest) {
-    return this.tenants.updateSettings(req.ctx, body);
+  myBranding(@Req() req: CtxRequest) {
+    return this.tenants.getBranding(req.ctx.tenantId);
+  }
+
+  @Patch('me/branding')
+  @RequirePermission('tenant:manage')
+  updateMyBranding(@Body() body: TenantBrandingUpdateDto, @Req() req: CtxRequest) {
+    return this.tenants.updateBranding(req.ctx, req.ctx.tenantId, body);
+  }
+
+  @Post('me/branding/:kind')
+  @RequirePermission('tenant:manage')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  uploadMyImage(@Param('kind') kind: string, @UploadedFile() file: MulterFile | undefined, @Req() req: CtxRequest) {
+    if (!file) throw new BadRequestException({ error: 'file_required' });
+    return this.tenants.setBrandingImage(req.ctx, req.ctx.tenantId, imageKind(kind), file);
+  }
+
+  @Delete('me/branding/:kind')
+  @RequirePermission('tenant:manage')
+  removeMyImage(@Param('kind') kind: string, @Req() req: CtxRequest) {
+    return this.tenants.setBrandingImage(req.ctx, req.ctx.tenantId, imageKind(kind), null);
   }
 
   // POST /tenants/register (@Public, unauthenticated write -- tight
@@ -73,6 +117,43 @@ export class TenantsController {
     @Req() req: CtxRequest,
   ) {
     return this.tenants.setCompanyStatus(req.ctx, id, body.status);
+  }
+
+  // Platform admin edits any rental company's branding from /admin/companies.
+  @Get(':id/branding')
+  @RequirePermission('tenant:approve')
+  companyBranding(@Param('id', UuidParamPipe) id: string) {
+    return this.tenants.getBranding(id);
+  }
+
+  @Patch(':id/branding')
+  @RequirePermission('tenant:approve')
+  updateCompanyBranding(
+    @Param('id', UuidParamPipe) id: string,
+    @Body() body: TenantBrandingUpdateDto,
+    @Req() req: CtxRequest,
+  ) {
+    return this.tenants.updateBranding(req.ctx, id, body);
+  }
+
+  @Post(':id/branding/:kind')
+  @RequirePermission('tenant:approve')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  uploadCompanyImage(
+    @Param('id', UuidParamPipe) id: string,
+    @Param('kind') kind: string,
+    @UploadedFile() file: MulterFile | undefined,
+    @Req() req: CtxRequest,
+  ) {
+    if (!file) throw new BadRequestException({ error: 'file_required' });
+    return this.tenants.setBrandingImage(req.ctx, id, imageKind(kind), file);
+  }
+
+  @Delete(':id/branding/:kind')
+  @RequirePermission('tenant:approve')
+  removeCompanyImage(@Param('id', UuidParamPipe) id: string, @Param('kind') kind: string, @Req() req: CtxRequest) {
+    return this.tenants.setBrandingImage(req.ctx, id, imageKind(kind), null);
   }
 
   // GET /tenants/me/application (tenant:manage) -- an owner's own pending

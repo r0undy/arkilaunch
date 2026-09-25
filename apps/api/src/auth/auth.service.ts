@@ -10,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { createHash } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import {
+  activateOnboardingTenant,
   EmailTakenError,
   findUserByEmailForAuth,
   registerCustomerUser,
@@ -215,6 +216,9 @@ export class AuthService {
       const passwordHash = await hash(password);
       await tx.update(users).set({ passwordHash, status: 'active' }).where(eq(users.id, payload.sub));
     });
+    // A self-registered company goes live when its owner activates
+    // (migration 0051); a no-op for staff invites and legacy applications.
+    await activateOnboardingTenant(payload.tenantId);
   }
 
   // Binds the token to the CURRENT password hash so activation (which

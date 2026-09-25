@@ -1,7 +1,13 @@
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
+import type { CatalogTenantListResponse } from '@arkilaunch/shared';
 import { Button } from '../components/button.js';
+import { Input } from '../components/input.js';
+import { Select } from '../components/select.js';
 import { SkipLink } from '../components/skip-link.js';
+import { apiGet } from '../lib/api-client.js';
+import { tenantOrigin } from '../lib/host.js';
 
 // ArkiLaunch's own landing page (platform host only; see routes/index.tsx).
 // Uses the same marketing tier as the tenant storefronts.
@@ -36,10 +42,114 @@ const FEATURES = [
 ];
 
 const STEPS = [
-  { title: 'Apply', body: 'Tell us about your company: SEC, TIN and one contact person.' },
-  { title: 'Get approved', body: 'We check your registration and send your owner account an activation link.' },
-  { title: 'Go live', body: 'Your storefront and back office open at your own address.' },
+  { title: 'Register', body: 'Tell us about your company: SEC, TIN and one contact person.' },
+  { title: 'Activate', body: 'Open the link we email you and set your password.' },
+  { title: 'Go live', body: 'Your storefront and back office open at your own address, in your colors.' },
 ];
+
+// The directory filters live in the URL (?q=&category=&location=) so a
+// filtered list can be shared. `/` is also the tenant home, so the search
+// is read loosely rather than through a route-level validateSearch.
+type DirectorySearch = { q?: string; category?: string; location?: string };
+
+function readSearch(raw: Record<string, unknown>): DirectorySearch {
+  const pick = (k: string) => (typeof raw[k] === 'string' && raw[k] !== '' ? (raw[k] as string) : undefined);
+  const out: DirectorySearch = {};
+  for (const k of ['q', 'category', 'location'] as const) {
+    const v = pick(k);
+    if (v) out[k] = v;
+  }
+  return out;
+}
+
+function Directory() {
+  const navigate = useNavigate();
+  const search = readSearch(useSearch({ strict: false }) as Record<string, unknown>);
+  const [q, setQ] = useState(search.q ?? '');
+  const [location, setLocation] = useState(search.location ?? '');
+  const params = new URLSearchParams({ limit: '60', ...search }).toString();
+  const { data, isPending, isError } = useQuery({
+    queryKey: ['catalog', 'tenants', params] as const,
+    queryFn: () => apiGet<CatalogTenantListResponse>(`/catalog/tenants?${params}`),
+    placeholderData: keepPreviousData,
+  });
+
+  function apply(next: DirectorySearch) {
+    void navigate({ to: '/', search: readSearch({ ...search, ...next }) as never, replace: true });
+  }
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    apply({ q: q.trim(), location: location.trim() });
+  }
+
+  return (
+    <section aria-labelledby="directory-title" className="flex flex-col gap-6">
+      <h2 id="directory-title" className="font-display text-2xl font-semibold text-ink-mk">
+        Find a rental company
+      </h2>
+      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto] lg:items-end">
+        <Input label="Company name" type="search" value={q} onChange={(e) => setQ(e.target.value)} maxLength={100} />
+        <Select
+          label="Equipment"
+          value={search.category ?? ''}
+          onChange={(e) => apply({ category: e.target.value })}
+        >
+          <option value="">Any equipment</option>
+          {(data?.categories ?? []).map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+        <Input
+          label="City or province"
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          maxLength={100}
+        />
+        <Button type="submit">Search</Button>
+      </form>
+      {isError ? (
+        <p className="text-sm text-text-muted">The directory could not be loaded. Try again in a moment.</p>
+      ) : isPending ? (
+        <p className="text-sm text-text-muted">Loading companies…</p>
+      ) : data.items.length === 0 ? (
+        <p className="text-sm text-text-muted">No rental companies match these filters.</p>
+      ) : (
+        <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3" aria-live="polite">
+          {data.items.map((t) => {
+            const place = [t.city, t.province].filter(Boolean).join(', ');
+            return (
+              <li key={t.slug}>
+                <a
+                  href={tenantOrigin(t.slug)}
+                  className="flex h-full gap-4 rounded-sm border border-border bg-surface-mk p-5 hover:border-border-strong"
+                >
+                  {t.logoUrl ? (
+                    <img src={t.logoUrl} alt="" className="size-14 shrink-0 object-contain" />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className="flex size-14 shrink-0 items-center justify-center rounded-sm bg-primary font-display text-xl font-semibold text-on-primary"
+                    >
+                      {t.name.charAt(0)}
+                    </span>
+                  )}
+                  <span className="flex min-w-0 flex-col gap-1">
+                    <span className="font-display text-lg font-semibold text-ink-mk">{t.name}</span>
+                    {t.tagline && <span className="text-sm text-text-muted">{t.tagline}</span>}
+                    {place && <span className="text-xs text-text-muted">{place}</span>}
+                  </span>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
 
 // Type a company name, watch its address form; submitting carries the name
 // into registration.
@@ -111,6 +221,8 @@ function PlatformLanding() {
           </div>
           <AddressPreview />
         </section>
+
+        <Directory />
 
         <section aria-labelledby="features-title" className="flex flex-col gap-6">
           <h2 id="features-title" className="font-display text-2xl font-semibold text-ink-mk">

@@ -9,6 +9,8 @@ import { Surface } from '../components/surface.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
+import { BrandingForm } from '../components/branding-form.js';
+import { Modal } from '../components/modal.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { useToast } from '../components/toast.js';
 import { apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
@@ -37,6 +39,22 @@ function StatusBadge({ status }: { status: CompanyStatus }) {
       <span aria-hidden="true" className={`size-2 rounded-full ${active ? 'bg-success' : 'bg-border-strong'}`} />
       {active ? 'Active' : 'Inactive'}
     </span>
+  );
+}
+
+// A platform admin edits any company's storefront branding (the name stays
+// locked, same form the company's own owner/admin uses).
+function BrandingAction({ company }: { company: PlatformCompany }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="secondary" size="field" onClick={() => setOpen(true)}>
+        Branding<span className="sr-only"> for {company.legalName}</span>
+      </Button>
+      <Modal open={open} onClose={() => setOpen(false)} title={`${company.legalName} branding`} size="lg">
+        {open && <BrandingForm basePath={`/tenants/${company.tenantId}`} />}
+      </Modal>
+    </>
   );
 }
 
@@ -124,6 +142,7 @@ const COLUMNS: TableColumn<PlatformCompany>[] = [
         >
           Open site<span className="sr-only"> for {row.legalName} (opens in a new tab)</span>
         </a>
+        <BrandingAction company={row} />
         <StatusAction company={row} />
       </span>
     ),

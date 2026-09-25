@@ -2,13 +2,10 @@ import { z } from 'zod';
 import { SEC_REGEX, TIN_REGEX } from './kyc.js';
 import { PaginationQuerySchema } from './pagination.js';
 
-// POST /tenants/register (@Public, backend-unblock plan workstream 1).
-// Mirrors apps/web/src/lib/registration-client.ts's PersonalDetails +
-// CompanyDetails two-step form. No `password` field: the owner sets their
-// own password later through the proven POST /auth/activate flow once an
-// admin approves the application (there is no platform-console approval UI
-// yet, see the Change Record) -- storing a self-chosen password for an
-// unapproved account would be new, unaudited state.
+// POST /tenants/register (@Public). Mirrors apps/web/src/lib/registration-
+// client.ts's two-step form. Auto-approved (CR: tenant-self-serve-branding):
+// no `password` field, the owner sets one through POST /auth/activate from
+// the emailed link, which is what proves they own the email.
 export const TenantRegisterRequestSchema = z.object({
   firstName: z.string().min(1).max(200),
   lastName: z.string().min(1).max(200),
@@ -24,7 +21,7 @@ export type TenantRegisterRequest = z.infer<typeof TenantRegisterRequestSchema>;
 
 export const TenantRegisterResponseSchema = z.object({
   applicationId: z.string().uuid(),
-  status: z.literal('pending'),
+  status: z.literal('approved'),
 });
 export type TenantRegisterResponse = z.infer<typeof TenantRegisterResponseSchema>;
 
@@ -119,3 +116,71 @@ export type PlatformCompanyListResponse = z.infer<typeof PlatformCompanyListResp
 // "Inactive": its people cannot sign in and its storefront goes offline.
 export const CompanyStatusUpdateRequestSchema = z.object({ status: CompanyStatusSchema }).strict();
 export type CompanyStatusUpdateRequest = z.infer<typeof CompanyStatusUpdateRequestSchema>;
+
+// Tenant branding (migration 0051). legal_name and slug are shown but never
+// writable: .strict() makes a smuggled legalName/slug/status a 400.
+const HEX_COLOR = /^#[0-9a-f]{6}$/;
+const optionalText = (max: number) => z.string().trim().max(max).nullable();
+
+export const TenantBrandingUpdateRequestSchema = z
+  .object({
+    primaryColor: z.string().toLowerCase().regex(HEX_COLOR).nullable(),
+    tagline: z.string().trim().min(1).max(160),
+    about: optionalText(2000),
+    phone: optionalText(50),
+    contactEmail: z.string().email().max(200).nullable(),
+    address: optionalText(500),
+    city: optionalText(100),
+    province: optionalText(100),
+  })
+  .strict();
+export type TenantBrandingUpdateRequest = z.infer<typeof TenantBrandingUpdateRequestSchema>;
+
+// GET /tenants/me/branding, GET /tenants/:id/branding: the form's values.
+export const TenantBrandingSchema = z.object({
+  legalName: z.string(),
+  slug: z.string(),
+  logoUrl: z.string().nullable(),
+  heroUrl: z.string().nullable(),
+  primaryColor: z.string().nullable(),
+  tagline: z.string().nullable(),
+  about: z.string().nullable(),
+  phone: z.string().nullable(),
+  contactEmail: z.string().nullable(),
+  address: z.string().nullable(),
+  city: z.string().nullable(),
+  province: z.string().nullable(),
+});
+export type TenantBranding = z.infer<typeof TenantBrandingSchema>;
+
+// GET /catalog/tenant (@Public): the host tenant's public branding.
+export const CatalogTenantSchema = TenantBrandingSchema.omit({ legalName: true, slug: true }).extend({
+  name: z.string(),
+});
+export type CatalogTenant = z.infer<typeof CatalogTenantSchema>;
+
+// GET /catalog/tenants (@Public): the platform directory.
+export const CatalogTenantListQuerySchema = PaginationQuerySchema.extend({
+  q: z.string().trim().max(100).optional(),
+  category: z.string().trim().max(100).optional(),
+  // Matches city or province.
+  location: z.string().trim().max(100).optional(),
+});
+export type CatalogTenantListQuery = z.infer<typeof CatalogTenantListQuerySchema>;
+
+export const CatalogTenantListItemSchema = z.object({
+  slug: z.string(),
+  name: z.string(),
+  logoUrl: z.string().nullable(),
+  tagline: z.string().nullable(),
+  city: z.string().nullable(),
+  province: z.string().nullable(),
+});
+export type CatalogTenantListItem = z.infer<typeof CatalogTenantListItemSchema>;
+
+export const CatalogTenantListResponseSchema = z.object({
+  items: z.array(CatalogTenantListItemSchema),
+  // Filter options: equipment types listed companies rent out.
+  categories: z.array(z.string()),
+});
+export type CatalogTenantListResponse = z.infer<typeof CatalogTenantListResponseSchema>;
