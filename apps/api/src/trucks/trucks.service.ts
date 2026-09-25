@@ -94,7 +94,7 @@ export class TrucksService {
 
   listTolls(ctx: RequestContext): Promise<TollRateResponse[]> {
     return withTenantTx(ctx, async (tx) => {
-      const rows = await tx.select().from(tollRates).orderBy(asc(tollRates.expressway), asc(tollRates.name)).limit(1000);
+      const rows = await tx.select().from(tollRates).where(eq(tollRates.tenantId, ctx.tenantId)).orderBy(asc(tollRates.expressway), asc(tollRates.name)).limit(1000);
       return rows.map(toToll);
     });
   }
@@ -104,7 +104,7 @@ export class TrucksService {
   loadPhTolls(ctx: RequestContext): Promise<{ added: number }> {
     return withTenantTx(ctx, async (tx) => {
       const have = new Set(
-        (await tx.select().from(tollRates).where(isNotNull(tollRates.expressway))).map((t) => `${t.expressway}|${t.entryPoint}|${t.exitPoint}`),
+        (await tx.select().from(tollRates).where(and(eq(tollRates.tenantId, ctx.tenantId), isNotNull(tollRates.expressway)))).map((t) => `${t.expressway}|${t.entryPoint}|${t.exitPoint}`),
       );
       const missing = PH_CLASS3_TOLLS.filter((t) => !have.has(`${t.expressway}|${t.entry}|${t.exit}`));
       if (missing.length > 0) {
@@ -128,7 +128,7 @@ export class TrucksService {
   // A TRB change: the admin corrects the fee in place.
   updateToll(ctx: RequestContext, id: string, body: TollRateUpdate): Promise<TollRateResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const [t] = await tx.update(tollRates).set({ feePhp: String(body.feePhp) }).where(eq(tollRates.id, id)).returning();
+      const [t] = await tx.update(tollRates).set({ feePhp: String(body.feePhp) }).where(and(eq(tollRates.id, id), eq(tollRates.tenantId, ctx.tenantId))).returning();
       if (!t) throw new NotFoundException({ error: 'toll_not_found' });
       return toToll(t);
     });
@@ -146,7 +146,7 @@ export class TrucksService {
 
   removeToll(ctx: RequestContext, id: string) {
     return withTenantTx(ctx, async (tx) => {
-      await tx.delete(tollRates).where(eq(tollRates.id, id));
+      await tx.delete(tollRates).where(and(eq(tollRates.id, id), eq(tollRates.tenantId, ctx.tenantId)));
       return { id };
     });
   }
