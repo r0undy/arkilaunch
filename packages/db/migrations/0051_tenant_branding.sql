@@ -118,8 +118,9 @@ GRANT EXECUTE ON FUNCTION catalog_get_tenant(text) TO app_authenticated;--> stat
 
 -- 5. Platform directory. Active rental companies only: never the platform
 -- tenant or the test fixtures. Public columns only. Filters are optional
--- (NULL = no filter); the caller pages with LIMIT/OFFSET.
-CREATE OR REPLACE FUNCTION catalog_list_tenants(p_q text, p_category text, p_province text)
+-- (NULL = no filter); location matches city or province. The caller pages
+-- with LIMIT/OFFSET.
+CREATE OR REPLACE FUNCTION catalog_list_tenants(p_q text, p_category text, p_location text)
 RETURNS TABLE (
   slug text, name text, logo_key text, tagline text, city text, province text
 )
@@ -129,7 +130,7 @@ LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
   WHERE t.status = 'active'
     AND t.slug NOT IN ('arkilaunch-platform', 'test-tenant-a', 'test-tenant-b')
     AND (p_q IS NULL OR t.legal_name ILIKE '%' || p_q || '%')
-    AND (p_province IS NULL OR t.province ILIKE p_province)
+    AND (p_location IS NULL OR t.city ILIKE '%' || p_location || '%' OR t.province ILIKE '%' || p_location || '%')
     AND (p_category IS NULL OR EXISTS (
       SELECT 1 FROM equipment e
       JOIN equipment_types et ON et.id = e.equipment_type_id

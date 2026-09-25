@@ -22,7 +22,7 @@ ArkiLaunch hosts many rental companies. Registration sat in a platform-admin app
 | Abuse | The existing `/admin/companies` Deactivate toggle (0049). A suspended company disappears from the directory and its subdomain shows "Rental company not found". |
 | Branding | New nullable `tenants` columns: `logo_key`, `hero_key`, `primary_color` (`#rrggbb`), `tagline`, `about`, `phone`, `contact_email`, `address`, `city`, `province`. `legal_name` and `slug` are not editable here. Writes go through `tenants_update_branding()` (SECURITY DEFINER, audited); `app_authenticated` keeps no UPDATE grant on these columns. Owner/admin edit at `/app/settings` (`tenant:manage`, tenant from the JWT); a platform admin edits any company from `/admin/companies` (`tenant:approve`). Logo and hero upload to the public equipment-photos bucket under the tenant's own prefix, magic-byte validated, same as equipment photos. |
 | Storefront | `GET /catalog/tenant` returns the public branding. Logo in the nav and auth panel, tagline and optional hero on the home page, contact/about on `/contact`. `primary_color` overrides `--color-primary`; text on it is black or white, whichever has the higher WCAG contrast. |
-| Directory | `GET /catalog/tenants?q=&category=&province=` (public, throttled, paged) over `catalog_list_tenants()`: active tenants only, never the platform tenant or the test fixtures. Rendered on the platform landing with a name search and equipment-category and province filters kept in the URL. Each card links to the company's subdomain. |
+| Directory | `GET /catalog/tenants?q=&category=&location=` (public, throttled, paged) over `catalog_list_tenants()`: active tenants only, never the platform tenant or the test fixtures. Rendered on the platform landing with a name search and equipment-category and location (city or province) filters kept in the URL. Each card links to the company's subdomain. |
 
 ## 3. Known gaps
 
@@ -30,3 +30,5 @@ ArkiLaunch hosts many rental companies. Registration sat in a platform-admin app
 - Without `RESEND_API_KEY` (local dev, CI) the activation link is logged by the API instead of emailed.
 - The `/approve` and `/reject` endpoints stay only to clear applications still `pending` from before this change.
 - Custom domains and full-palette theming are out of scope.
+- The EDTR sheet keeps the company name only, no logo: it is an OCR-read form on the money path (RFC-2), and a logo would shift the layout the extractor is aligned to. Revisit with the OCR evals (AI-01..AI-06).
+- A lost activation email has no resend route yet: the owner is blocked by the one-pending-company-per-email guard until an admin clears the onboarding tenant.

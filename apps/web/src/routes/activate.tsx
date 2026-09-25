@@ -6,24 +6,29 @@ import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Surface } from '../components/surface.js';
 import { useToast } from '../components/toast.js';
-import { onlyOn } from '../lib/guards.js';
+import { isTenantSlug } from '@arkilaunch/shared';
+import { currentHost, tenantOrigin } from '../lib/host.js';
 
 // Minimum enforced server-side by UserPasswordSchema (min 12). Mirrored
 // here as a courtesy so the user is not told to try again by a 400; the
 // server check is the authoritative one.
 const MIN_PASSWORD_LENGTH = 12;
 
-// The token may arrive in the link (?token=) or be pasted by hand, since
-// approval currently hands the token to an admin who relays it -- there is
-// no approval email yet.
-function validateActivateSearch(search: Record<string, unknown>): { token?: string } {
-  return typeof search.token === 'string' && search.token.length > 0 ? { token: search.token } : {};
+// The token arrives in the link (?token=) or is pasted by hand (a staff
+// invite relayed by an admin). A new company's owner opens it on the
+// platform host (?slug= names the company, whose own subdomain is not
+// served until this activation takes it live), then signs in on its host.
+function validateActivateSearch(search: Record<string, unknown>): { token?: string; slug?: string } {
+  const out: { token?: string; slug?: string } = {};
+  if (typeof search.token === 'string' && search.token.length > 0) out.token = search.token;
+  if (typeof search.slug === 'string' && isTenantSlug(search.slug)) out.slug = search.slug;
+  return out;
 }
 
 function ActivatePage() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { token: tokenFromLink } = activateRoute.useSearch();
+  const { token: tokenFromLink, slug } = activateRoute.useSearch();
   const [activationToken, setActivationToken] = useState(tokenFromLink ?? '');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -45,6 +50,10 @@ function ActivatePage() {
       // login screen says nothing about where they came from, so the only
       // acknowledgement that the password took is this toast.
       toast.success('Your account is active', 'Sign in with your new password.');
+      if (currentHost.kind === 'platform' && slug) {
+        window.location.assign(`${tenantOrigin(slug)}/login`);
+        return;
+      }
       await navigate({ to: '/login' });
     } catch {
       setError('That activation token is not valid, or it has already been used.');
@@ -60,7 +69,7 @@ function ActivatePage() {
           Set your password
         </h1>
         <p className="mb-6 text-sm text-text-muted">
-          Your company has been approved. Choose a password to finish activating your account.
+          Choose a password to finish activating your account.
         </p>
 
         {!tokenFromLink && (
@@ -120,7 +129,6 @@ function ActivatePage() {
 
 export const activateRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
-  beforeLoad: onlyOn('tenant'),
   path: '/activate',
   validateSearch: validateActivateSearch,
   component: ActivatePage,

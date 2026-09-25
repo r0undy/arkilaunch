@@ -163,7 +163,7 @@ export interface CatalogTenantListRow {
 }
 
 export async function listCatalogTenants(
-  filters: { q: string | null; category: string | null; province: string | null },
+  filters: { q: string | null; category: string | null; location: string | null },
   limit: number,
   offset: number,
 ): Promise<CatalogTenantListRow[]> {
@@ -175,7 +175,7 @@ export async function listCatalogTenants(
     city: string | null;
     province: string | null;
   }>(
-    sql`select * from catalog_list_tenants(${filters.q}, ${filters.category}, ${filters.province}) limit ${limit} offset ${offset}`,
+    sql`select * from catalog_list_tenants(${filters.q}, ${filters.category}, ${filters.location}) limit ${limit} offset ${offset}`,
   );
   return rows.map((r) => ({
     slug: r.slug,

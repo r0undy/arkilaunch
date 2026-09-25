@@ -14,6 +14,14 @@ test.describe('platform landing', () => {
     await expect(page).toHaveURL(platformUrl('/register'));
   });
 
+  test('has a rental company directory whose filters live in the URL', async ({ page }) => {
+    await page.goto(platformUrl('/'));
+    await expect(page.getByRole('heading', { name: 'Find a rental company' })).toBeVisible();
+    await page.getByLabel('City or province').fill('Cebu');
+    await page.getByRole('button', { name: 'Search' }).click();
+    await expect(page).toHaveURL(/location=Cebu/);
+  });
+
   test('fits a phone screen with no sideways scroll', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 780 });
     await page.goto(platformUrl('/'));

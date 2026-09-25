@@ -163,7 +163,8 @@ export type CatalogTenant = z.infer<typeof CatalogTenantSchema>;
 export const CatalogTenantListQuerySchema = PaginationQuerySchema.extend({
   q: z.string().trim().max(100).optional(),
   category: z.string().trim().max(100).optional(),
-  province: z.string().trim().max(100).optional(),
+  // Matches city or province.
+  location: z.string().trim().max(100).optional(),
 });
 export type CatalogTenantListQuery = z.infer<typeof CatalogTenantListQuerySchema>;
 

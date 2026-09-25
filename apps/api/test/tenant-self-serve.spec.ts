@@ -64,9 +64,9 @@ describe('self-serve rental company', () => {
     expect(saved).toMatchObject({ legalName: 'Self Serve Rentals', tagline: 'Cranes on time', province: 'Cebu' });
     await expect(catalog.getTenant(slug)).resolves.toMatchObject({ primaryColor: '#1e5f8c', city: 'Cebu City' });
 
-    const found = await catalog.listTenants({ q: 'self serve', province: 'cebu', limit: 50, offset: 0 });
+    const found = await catalog.listTenants({ q: 'self serve', location: 'cebu', limit: 50, offset: 0 });
     expect(found.items.map((t) => t.slug)).toContain(slug);
-    const otherProvince = await catalog.listTenants({ q: 'self serve', province: 'Davao', limit: 50, offset: 0 });
+    const otherProvince = await catalog.listTenants({ q: 'self serve', location: 'Davao', limit: 50, offset: 0 });
     expect(otherProvince.items.map((t) => t.slug)).not.toContain(slug);
 
     await tenants.setCompanyStatus(ctx as never, reg.tenantId, 'suspended');

@@ -43,7 +43,7 @@ export class CatalogService {
 
   // The platform directory: active rental companies, public columns only.
   async listTenants(query: CatalogTenantListQuery): Promise<CatalogTenantListResponse> {
-    const filters = { q: query.q || null, category: query.category || null, province: query.province || null };
+    const filters = { q: query.q || null, category: query.category || null, location: query.location || null };
     const [rows, categories] = await Promise.all([
       listCatalogTenants(filters, query.limit, query.offset),
       listEquipmentTypeNames(),
