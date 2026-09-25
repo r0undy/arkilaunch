@@ -246,6 +246,9 @@ export const billingSettings = pgTable(
     minDepositPhp: numeric('min_deposit_php', { precision: 12, scale: 2 }).notNull().default('5000'),
     lowBalancePct: numeric('low_balance_pct', { precision: 5, scale: 2 }).notNull().default('20'),
     depositPct: numeric('deposit_pct', { precision: 5, scale: 2 }).notNull().default('0'), // 0041
+    // 0044: the mobilization/demobilization every new quote starts with.
+    mobilizationPhp: numeric('mobilization_php', { precision: 12, scale: 2 }).notNull().default('0'),
+    demobilizationPhp: numeric('demobilization_php', { precision: 12, scale: 2 }).notNull().default('0'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   () => [tenantIsolationPolicy()],

@@ -32,7 +32,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     const [tenantB] = await sql`select id from tenants where slug = 'test-tenant-b'`;
     const [userA] = await sql`select id from users where tenant_id = ${(tenantA as { id: string }).id} limit 1`;
     const [userB] = await sql`select id from users where tenant_id = ${(tenantB as { id: string }).id} limit 1`;
-    const [rateCardA] = await sql`select id, equipment_type_id from rate_cards where tenant_id = ${(tenantA as { id: string }).id} limit 1`;
+    const [rateCardA] = await sql`select id, equipment_type_id from rate_cards where tenant_id = ${(tenantA as { id: string }).id} and equipment_id is null and rate_type = 'hourly' and (effective_to is null or effective_to > now()) order by effective_from limit 1`;
     // The customer row linked to the fixture customer login -- not "any"
     // customer, since other specs add companies to this tenant.
     const [customerA] = await sql`
@@ -237,7 +237,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     });
 
     const priced = await withTenantTx(ctxA, (tx) =>
-      pricingEngine.priceQuote(tx, ctxA.tenantId, itemsFor(rateCardIdA, equipmentTypeIdA), { type: 'none', value: 0 }, 'STALE_TEST'),
+      pricingEngine.priceQuote(tx, ctxA.tenantId, { items: itemsFor(rateCardIdA, equipmentTypeIdA), discount: { type: 'none', value: 0 } }, 'STALE_TEST'),
     );
     expect(priced.diesel.stale).toBe(true);
   });
@@ -262,8 +262,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
         pricingEngine.priceQuote(
           tx,
           ctxA.tenantId,
-          itemsFor(rateCardIdA, equipmentTypeIdA),
-          { type: 'none', value: 0 },
+          { items: itemsFor(rateCardIdA, equipmentTypeIdA), discount: { type: 'none', value: 0 } },
           'NO_READING_TEST',
         ),
       ),

@@ -176,6 +176,34 @@ function CallCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
+// Staff mark a paid booking delivered (machines on site, field sheet
+// unlocked) and later returned. Both endpoints already guard the status.
+function DeliveryCard({ booking }: { booking: BookingDetailResponse }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const move = useMutation({
+    mutationFn: (step: 'deliver' | 'return') => apiPost(`/bookings/${booking.id}/${step}`, {}),
+    onSuccess: (_data, step) => {
+      void queryClient.invalidateQueries({ queryKey: bookingsQueries.detail(booking.id).queryKey });
+      toast.success(step === 'deliver' ? 'Marked delivered' : 'Marked returned');
+    },
+    onError: (e) => toast.error('Not saved', apiErrorText(e)),
+  });
+  if (booking.status !== 'confirmed' && booking.status !== 'active') return null;
+  const deliver = booking.status === 'confirmed';
+  return (
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
+      <h2 className={heading}>Delivery</h2>
+      <p className="text-sm text-text-muted">
+        {deliver ? 'Paid. Mark delivered once the machines are on site.' : 'On site. Mark returned once every machine is back.'}
+      </p>
+      <Button variant="primary" loading={move.isPending} onClick={() => move.mutate(deliver ? 'deliver' : 'return')}>
+        {deliver ? 'Mark delivered' : 'Mark returned'}
+      </Button>
+    </Surface>
+  );
+}
+
 function BookingSide({ booking }: { booking: BookingDetailResponse }) {
   const quote = booking.quotation;
   return (
@@ -196,6 +224,11 @@ function BookingSide({ booking }: { booking: BookingDetailResponse }) {
             <Button variant="primary">{quote ? 'Send a revised quote' : 'Quote this booking'}</Button>
           </Link>
         )}
+        {quote && (
+          <Link to="/app/quotes/$quoteId/print" params={{ quoteId: quote.id }}>
+            <Button variant="secondary">Print quote</Button>
+          </Link>
+        )}
       </Surface>
       <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5 text-sm">
         <h2 className={heading}>Site</h2>
@@ -208,7 +241,9 @@ function BookingSide({ booking }: { booking: BookingDetailResponse }) {
           </p>
         ))}
       </Surface>
-      <EdtrSheetCard bookingId={booking.id} printable={['confirmed', 'active', 'completed'].includes(booking.status)} />
+      <DeliveryCard booking={booking} />
+      {/* The field sheet is for machines on site: hidden until delivered. */}
+      {['active', 'completed'].includes(booking.status) && <EdtrSheetCard bookingId={booking.id} printable />}
       <PendingRequests booking={booking} />
       {booking.status === 'confirmed' && <RescheduleCard bookingId={booking.id} />}
     </div>

@@ -18,6 +18,8 @@ export interface BillingSettings {
   minDepositPhp: number;
   lowBalancePct: number;
   depositPct: number;
+  mobilizationPhp: number;
+  demobilizationPhp: number;
 }
 
 // The tenant's billing knobs; the 0038 column defaults when never set.
@@ -28,6 +30,8 @@ export async function getBillingSettings(tx: Tx, tenantId: string): Promise<Bill
     minDepositPhp: row ? Number(row.minDepositPhp) : DEFAULT_DEPOSIT_PHP,
     lowBalancePct: row ? Number(row.lowBalancePct) : 20,
     depositPct: row ? Number(row.depositPct) : 0,
+    mobilizationPhp: row ? Number(row.mobilizationPhp) : 0,
+    demobilizationPhp: row ? Number(row.demobilizationPhp) : 0,
   };
 }
 

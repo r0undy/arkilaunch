@@ -26,7 +26,7 @@ export const TruckSettingsSchema = z
     formula: z.string().trim().max(500).nullish(),
     // The estimate is shown as total ± rangePct; the high end is the cap.
     rangePct: z.number().min(0).max(100).default(10),
-    // The diesel price / pricing_parameters region the tenant prices in.
+    // Legacy: trucks now price on the national diesel average; not read.
     region: z.string().trim().min(1).max(40).default('NCR'),
   })
   .strict()
@@ -89,10 +89,18 @@ export const TollRateCreateSchema = z
   .object({ name: z.string().trim().min(1).max(80), feePhp: z.number().nonnegative().max(1_000_000) })
   .strict();
 export type TollRateCreate = z.infer<typeof TollRateCreateSchema>;
+export const TollRateUpdateSchema = z.object({ feePhp: z.number().nonnegative().max(1_000_000) }).strict();
+export type TollRateUpdate = z.infer<typeof TollRateUpdateSchema>;
 export interface TollRateResponse {
   id: string;
   name: string;
   feePhp: number;
+  // Set on an expressway matrix fee; null on a free-named toll.
+  expressway: string | null;
+  entryPoint: string | null;
+  exitPoint: string | null;
+  vehicleClass: number;
+  asOf: string | null;
 }
 
 export interface TruckPriceInput {

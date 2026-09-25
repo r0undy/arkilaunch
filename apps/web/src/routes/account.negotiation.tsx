@@ -12,6 +12,7 @@ import { EmptyState } from '../components/empty-state.js';
 import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon, ClockIcon } from '../components/icons.js';
 import { NegotiationThread } from '../components/negotiation-thread.js';
+import { QuoteLines } from '../components/quote-lines.js';
 import { useToast } from '../components/toast.js';
 import { LoadError } from '../components/load-error.js';
 import { Skeleton } from '../components/skeleton.js';
@@ -78,8 +79,8 @@ function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
       {quote.status === 'approved' && !expired && (
         <>
           <p className="text-sm text-text-muted">
-            Valid until {formatDate(expiresAt)}. Accept to lock this price, or send a counter-offer
-            in the conversation and the team will revise it.
+            This price is fixed until {formatDate(expiresAt)}. Accept to lock it, or negotiate: send
+            a counter-offer in the conversation and the team will send you a revised quote.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -89,8 +90,11 @@ function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
             >
               Accept quote
             </Button>
+            <Button variant="secondary" onClick={() => document.getElementById(`message-${booking.id}`)?.focus()}>
+              Negotiate
+            </Button>
             <Button
-              variant="secondary"
+              variant="ghost"
               loading={decide.isPending && decide.variables === 'decline'}
               onClick={() => decide.mutate('decline')}
             >
@@ -267,11 +271,6 @@ function NegotiationFinalRoute() {
       <Surface radius="md" elevation="sm" className="flex w-full flex-col gap-3 p-5">
         <h2 className={heading}>Summary &middot; revision {quote.data?.revision ?? '--'}</h2>
         <LineItems quoteId={quoteId} />
-        <Row label="Rental subtotal" value={formatPeso(quote.data?.subtotal)} />
-        {Boolean(quote.data?.discount) && (
-          <Row label="Negotiated discount" value={`- ${formatPeso(quote.data?.discount)}`} />
-        )}
-        <Row label="Agreed rental price" value={formatPeso(quote.data?.total)} />
         <Row label="Refundable deposit" value={formatPeso(deposit)} />
         <div className="flex items-end justify-between gap-3 border-t border-border pt-3">
           <span className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text">
@@ -306,21 +305,7 @@ function NegotiationFinalRoute() {
 function LineItems({ quoteId }: { quoteId: string }) {
   const quote = useQuery({ ...quotesQueries.detail(quoteId), enabled: Boolean(quoteId) });
   if (!quote.data?.lineItems.length) return null;
-  return (
-    <ul aria-label="Quote line items" className="flex flex-col gap-2 border-b border-border pb-3">
-      {quote.data.lineItems.map((item, i) => (
-        <li key={i} className="flex items-start justify-between gap-3 text-sm">
-          <span className="text-text">
-            {item.quantity} &times; {item.equipmentTypeName ?? 'Equipment'}
-            <span className="block text-xs text-text-muted">
-              {item.estimatedHours} h at {formatPeso(item.hourlyRate)}/h, plus operating and mobilisation
-            </span>
-          </span>
-          <span className="font-mono text-text">{formatPeso(item.subtotal)}</span>
-        </li>
-      ))}
-    </ul>
-  );
+  return <QuoteLines quote={quote.data} />;
 }
 
 function Row({ label, value }: { label: string; value: string }) {

@@ -29,9 +29,9 @@ export const PricingParametersInputSchema = z.object({
 export type PricingParametersInput = z.infer<typeof PricingParametersInputSchema>;
 
 // S18 Rate Cards & Tenant Settings (PRD-F1/F7). rate_cards.rate_type is a
-// free-text column today ('hourly, daily' per its own comment); this enum
-// is the boundary validation for it.
-export const RateTypeSchema = z.enum(['hourly', 'daily']);
+// free-text column; this enum is the boundary validation for it. A card is
+// charged in its own unit (see rentFor in quotes.ts).
+export const RateTypeSchema = z.enum(['hourly', 'daily', 'monthly']);
 export type RateType = z.infer<typeof RateTypeSchema>;
 
 export const RateCardCreateRequestSchema = z
@@ -69,7 +69,8 @@ export type RateCardSupersedeRequest = z.infer<typeof RateCardSupersedeRequestSc
 export const RateCardListQuerySchema = PaginationQuerySchema.extend({
   equipmentTypeId: z.string().uuid().optional(),
   rateType: RateTypeSchema.optional(),
-  includeSuperseded: z.coerce.boolean().default(false),
+  // stringbool, not coerce.boolean: coerce turns the query text "false" into true.
+  includeSuperseded: z.stringbool().default(false),
 });
 export type RateCardListQuery = z.infer<typeof RateCardListQuerySchema>;
 
@@ -93,5 +94,8 @@ export const BillingSettingsSchema = z.object({
   lowBalancePct: z.number().finite().min(0).max(100),
   // Deposit as a percent of the quote total; 0 = flat minDepositPhp only.
   depositPct: z.number().finite().min(0).max(100).default(0),
+  // Flat transport every new quote starts with; the admin can change it per quote.
+  mobilizationPhp: z.number().finite().min(0).max(99_999_999.99).default(0),
+  demobilizationPhp: z.number().finite().min(0).max(99_999_999.99).default(0),
 });
 export type BillingSettingsInput = z.infer<typeof BillingSettingsSchema>;

@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll } from 'vitest';
 import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
 import { notifications, truckRequests, withTenantTx } from '@arkilaunch/db';
-import { StubPaymentsAdapter, type RequestContext } from '@arkilaunch/shared';
+import { PH_CLASS3_TOLLS, PH_TOLLS_AS_OF, StubPaymentsAdapter, type RequestContext } from '@arkilaunch/shared';
 import { PaymentsService } from '../src/payments/payments.service.js';
 import { TrucksService } from '../src/trucks/trucks.service.js';
 import { PricingEngineService } from '../src/quotes/pricing-engine.service.js';
@@ -66,5 +66,18 @@ describe('Truck checkout gates', () => {
     await trucks.approveOverCap(customerCtx, id);
     const paid = await payments.checkoutTruck(customerCtx, id, { cash: true });
     expect(paid).toMatchObject({ cash: true });
+  });
+
+  it('loads the PH Class 3 toll matrix once, and keeps an admin-edited fee on reload', async () => {
+    await trucks.loadPhTolls(adminCtx);
+    const loaded = (await trucks.listTolls(adminCtx)).filter((t) => t.expressway);
+    expect(loaded.length).toBe(PH_CLASS3_TOLLS.length);
+    const slex = loaded.find((t) => t.expressway === 'SLEX' && t.entryPoint === 'Magallanes' && t.exitPoint === 'Calamba')!;
+    expect(slex).toMatchObject({ vehicleClass: 3, asOf: PH_TOLLS_AS_OF });
+
+    await trucks.updateToll(adminCtx, slex.id, { feePhp: 760 });
+    expect((await trucks.loadPhTolls(adminCtx)).added).toBe(0);
+    const after = (await trucks.listTolls(adminCtx)).find((t) => t.id === slex.id)!;
+    expect(after.feePhp).toBe(760);
   });
 });
