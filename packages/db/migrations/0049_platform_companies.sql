@@ -59,7 +59,7 @@ REVOKE ALL ON FUNCTION tenants_set_status(uuid, text, uuid) FROM PUBLIC;--> stat
 GRANT EXECUTE ON FUNCTION tenants_set_status(uuid, text, uuid) TO app_authenticated;--> statement-breakpoint
 
 -- A deactivated company's people cannot sign in or renew a session.
--- Storefront reads already require status = 'active' (0047 and earlier).
+-- Storefront reads already require status = 'active' (0048 and earlier).
 CREATE OR REPLACE FUNCTION auth_find_user_by_email_in_tenant(p_email text, p_slug text)
 RETURNS TABLE (
   id uuid, tenant_id uuid, role_id uuid, role_name text,

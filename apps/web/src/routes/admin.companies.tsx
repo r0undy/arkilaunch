@@ -16,7 +16,7 @@ import { formatDate, formatPeso } from '../lib/format.js';
 import { tenantOrigin } from '../lib/host.js';
 
 // Every rental company on the platform, seeded or approved (GET
-// /tenants/companies, migration 0048), with its headline numbers, a link to
+// /tenants/companies, migration 0049), with its headline numbers, a link to
 // its own site and an active/inactive switch. The site link is built from
 // the current host, so it is `{slug}.localhost:5173` in dev and
 // `{slug}.arkilaunch.tech` in production.

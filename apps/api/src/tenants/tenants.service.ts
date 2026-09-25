@@ -84,7 +84,7 @@ export class TenantsService {
   }
 
   // GET /tenants/companies (tenant:approve). Cross-tenant aggregate read,
-  // same SECURITY DEFINER rationale as listApplications (migration 0048).
+  // same SECURITY DEFINER rationale as listApplications (migration 0049).
   async listCompanies(): Promise<PlatformCompanyListResponse> {
     return PlatformCompanyListResponseSchema.parse({ items: await listPlatformCompanies() });
   }

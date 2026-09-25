@@ -56,7 +56,7 @@ export class TenantsController {
   }
 
   // GET /tenants/companies (tenant:approve, platform_admin only): every
-  // rental company past review, with headline counts (migration 0048).
+  // rental company past review, with headline counts (migration 0049).
   @Get('companies')
   @RequirePermission('tenant:approve')
   listCompanies() {

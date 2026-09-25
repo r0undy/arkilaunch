@@ -93,7 +93,7 @@ export function isTenantSlug(value: string): boolean {
 }
 
 // GET /tenants/companies (tenant:approve, platform_admin only): every rental
-// company past review, with headline counts (migration 0048).
+// company past review, with headline counts (migration 0049).
 export const CompanyStatusSchema = z.enum(['active', 'suspended']);
 export type CompanyStatus = z.infer<typeof CompanyStatusSchema>;
 

@@ -14,7 +14,7 @@ function jwtService(): JwtService {
   return new JwtService({ privateKey, publicKey, signOptions: { algorithm: 'RS256' } });
 }
 
-// The /admin Companies page (migration 0048): a tenant-level list with
+// The /admin Companies page (migration 0049): a tenant-level list with
 // counts, and a status switch that really cuts a company off. Files run
 // one at a time (vitest.config.ts), so suspending test-tenant-b here cannot
 // race another spec; `finally` always restores it.

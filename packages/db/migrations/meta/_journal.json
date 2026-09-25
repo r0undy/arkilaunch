@@ -327,15 +327,22 @@
     {
       "idx": 47,
       "version": "7",
-      "when": 1790400006000,
-      "tag": "0047_host_tenant_resolution",
+      "when": 1790400008000,
+      "tag": "0047_min_hours",
       "breakpoints": true
     },
     {
       "idx": 48,
       "version": "7",
-      "when": 1790400007000,
-      "tag": "0048_platform_companies",
+      "when": 1790400009000,
+      "tag": "0048_host_tenant_resolution",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1790400010000,
+      "tag": "0049_platform_companies",
       "breakpoints": true
     }
   ]

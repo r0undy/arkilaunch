@@ -14,7 +14,7 @@ function jwtService(): JwtService {
   return new JwtService({ privateKey, publicKey, signOptions: { algorithm: 'RS256' } });
 }
 
-// The storefront tenant now comes from the request host (migration 0047),
+// The storefront tenant now comes from the request host (migration 0048),
 // so a slug is visitor-chosen: only an ACTIVE tenant may ever answer.
 describe('host-resolved storefront tenant', () => {
   const catalog = new CatalogService();

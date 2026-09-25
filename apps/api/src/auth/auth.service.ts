@@ -124,7 +124,7 @@ export class AuthService {
 
   // POST /auth/register-customer (customer prerequisites CR): self-signup
   // on a tenant's storefront. The customer lands in the tenant of the host
-  // they signed up on; customer_register (0047) refuses a tenant that is not
+  // they signed up on; customer_register (0048) refuses a tenant that is not
   // active. Signed straight in, the same as a login. 'email_taken' does
   // reveal that an address has an account, which every signup form does;
   // login keeps its no-enumeration posture.

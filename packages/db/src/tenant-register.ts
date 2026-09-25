@@ -170,7 +170,7 @@ export class EmailTakenError extends Error {}
 export class StorefrontNotFoundError extends Error {}
 
 // Pre-tenant-context write for POST /auth/register-customer (migration
-// 0023, active-tenant check added in 0047). The slug is the request host's
+// 0023, active-tenant check added in 0048). The slug is the request host's
 // tenant label; customer_register only accepts an active tenant.
 export async function registerCustomerUser(
   tenantSlug: string,
@@ -195,7 +195,7 @@ export async function registerCustomerUser(
 }
 
 // Cross-tenant administrative read/write for the /admin Companies page
-// (migration 0048). Aggregate counts only; see tenants_list_companies().
+// (migration 0049). Aggregate counts only; see tenants_list_companies().
 export interface PlatformCompanyRow {
   tenantId: string;
   legalName: string;

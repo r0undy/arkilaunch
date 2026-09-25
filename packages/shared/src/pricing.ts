@@ -97,5 +97,7 @@ export const BillingSettingsSchema = z.object({
   // Flat transport every new quote starts with; the admin can change it per quote.
   mobilizationPhp: z.number().finite().min(0).max(99_999_999.99).default(0),
   demobilizationPhp: z.number().finite().min(0).max(99_999_999.99).default(0),
+  // Fewest hours a booking may ask for; 0 = only the date span applies.
+  minHours: z.number().finite().min(0).max(999_999).default(0),
 });
 export type BillingSettingsInput = z.infer<typeof BillingSettingsSchema>;

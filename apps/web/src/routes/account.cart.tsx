@@ -1,7 +1,7 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import type { BookingCreateResponse } from '@arkilaunch/shared';
+import { bookingDays, minBookingHours, rentFor, type BookingCreateResponse, type RentUnit } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { EmptyState } from '../components/empty-state.js';
 import { Button } from '../components/button.js';
@@ -14,7 +14,7 @@ import { apiPost } from '../lib/api-client.js';
 import { bookingAlternatives, explainBookingError } from '../lib/booking-error.js';
 import { catalogQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
 import { SiteDialog } from '../components/site-dialog.js';
-import { shortCode } from '../lib/format.js';
+import { formatPeso, shortCode } from '../lib/format.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import {
   validateCart,
@@ -48,30 +48,50 @@ function fromDateInput(value: string, hour: number): string {
   return new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1, hour).toISOString();
 }
 
+// A cart saved before the catalog served photo URLs holds a bare storage key.
+function cartPhoto(item: CartItem): string | undefined {
+  return (item.photoUri?.startsWith('http') ? item.photoUri : null) ?? equipmentImageUrl(item.model);
+}
+
 function rentalDays(item: CartItem): number {
-  return Math.max(
-    1,
-    Math.round((new Date(item.end).getTime() - new Date(item.start).getTime()) / 86_400_000),
-  );
+  return bookingDays(item.start, item.end);
 }
 
 // One cart line's date fields plus its availability grid. Taken days are
 // disabled; a window that touches one is flagged and blocks submit.
 function CartItemDates({
   item,
+  rate,
   onDate,
+  onHours,
   onProblem,
+  onEstimate,
 }: {
   item: CartItem;
+  rate: { rateType: string | null; rateValue: number | null } | undefined;
   onDate: (field: 'start' | 'end', value: string, hour: number) => void;
+  onHours: (hours: number | undefined) => void;
   onProblem: (problem: string | null) => void;
+  onEstimate: (estimate: number | null) => void;
 }) {
   const availability = useAvailability(item.equipmentId, item.end);
   const hours = availability.data?.hours;
   const openHour = hours ? Number(hours.openTime.slice(0, 2)) + (hours.openTime.slice(3) === '00' ? 0 : 1) : 8;
   const closeHour = hours ? Number(hours.closeTime.slice(0, 2)) : 17;
-  const problem = availabilityProblem(availability.data, item.start, item.end);
+  const dailyHours = availability.data?.dailyHours ?? 8;
+  const minHours = minBookingHours(rentalDays(item), dailyHours, availability.data?.minHours ?? 0);
+  const hoursProblem =
+    item.hours === undefined || item.hours < minHours
+      ? `Enter at least ${minHours} hours: the admin minimum, or ${dailyHours} hours for each day you picked.`
+      : null;
+  const problem = availabilityProblem(availability.data, item.start, item.end) ?? hoursProblem;
   useEffect(() => onProblem(problem), [problem, onProblem]);
+  // Rent only, from the published card; the quote adds diesel, operator and transport.
+  const estimate =
+    rate?.rateValue != null && item.hours !== undefined && !hoursProblem
+      ? rentFor(rate.rateType as RentUnit, rate.rateValue, item.hours, dailyHours).rentPhp
+      : null;
+  useEffect(() => onEstimate(estimate), [estimate, onEstimate]);
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -88,9 +108,21 @@ function CartItemDates({
           value={toDateInput(item.end)}
           min={toDateInput(item.start)}
           onChange={(e) => onDate('end', e.target.value, closeHour)}
-          {...(problem ? { error: problem } : {})}
+          {...(problem && !hoursProblem ? { error: problem } : {})}
         />
       </div>
+      <Input
+        label="Rental hours"
+        type="number"
+        min={minHours}
+        step="1"
+        numeric
+        required
+        value={item.hours === undefined ? '' : String(item.hours)}
+        onChange={(e) => onHours(e.target.value === '' ? undefined : Number(e.target.value))}
+        hint={`At least ${minHours} hours for these dates.${estimate !== null ? ` Estimated rent ${formatPeso(estimate)}.` : ''}`}
+        {...(hoursProblem && item.hours !== undefined ? { error: hoursProblem } : {})}
+      />
       <RangeCalendar
         equipmentId={item.equipmentId}
         start={item.start}
@@ -183,6 +215,19 @@ function CartPage() {
     [],
   );
   const unavailable = items.some((_, index) => problems[index]);
+  const [estimates, setEstimates] = useState<Record<number, number | null>>({});
+  const reportEstimate = useCallback(
+    (index: number, estimate: number | null) =>
+      setEstimates((prev) => (prev[index] === estimate ? prev : { ...prev, [index]: estimate })),
+    [],
+  );
+  const rates = useQuery(catalogQueries.equipment());
+  const rateById = new Map(rates.data?.items.map((eq) => [eq.id, { rateType: eq.rateType ?? null, rateValue: eq.rateValue ?? null }]));
+  // Only a full total is shown: a sum missing an unpriced machine would mislead.
+  const lineEstimates = items.map((_, index) => estimates[index] ?? null);
+  const estimatedTotal = lineEstimates.every((value) => value !== null)
+    ? lineEstimates.reduce<number>((sum, value) => sum + (value ?? 0), 0)
+    : null;
 
   const createBooking = useMutation({
     mutationFn: () =>
@@ -191,7 +236,7 @@ function CartPage() {
         projectSiteId,
         ...(siteContact.trim() ? { siteContact: siteContact.trim() } : {}),
         ...(siteNotes.trim() ? { siteNotes: siteNotes.trim() } : {}),
-        items: items.map(({ equipmentId, start, end }) => ({ equipmentId, start, end })),
+        items: items.map(({ equipmentId, start, end, hours }) => ({ equipmentId, start, end, hours })),
       }),
     onSuccess: (data) => {
       setBooking(data);
@@ -345,9 +390,9 @@ function CartPage() {
                 className="flex flex-col gap-3 rounded-md border border-border p-3"
               >
                 <div className="flex items-start gap-3">
-                  {(item.photoUri ?? equipmentImageUrl(item.model)) ? (
+                  {(cartPhoto(item)) ? (
                     <img
-                      src={item.photoUri ?? equipmentImageUrl(item.model)}
+                      src={cartPhoto(item)}
                       alt=""
                       className="h-20 w-28 shrink-0 rounded-sm border border-border object-cover"
                     />
@@ -380,8 +425,14 @@ function CartPage() {
                 </div>
                 <CartItemDates
                   item={item}
+                  rate={rateById.get(item.equipmentId)}
                   onDate={(field, value, hour) => handleDate(index, field, value, hour)}
+                  onHours={(hours) => {
+                    updateCartItem(index, { hours });
+                    setItems(getCart());
+                  }}
                   onProblem={(problem) => reportProblem(index, problem)}
+                  onEstimate={(estimate) => reportEstimate(index, estimate)}
                 />
                 {submitted && errors.items[index] && (
                   <p role="alert" className="text-sm text-error">
@@ -495,6 +546,12 @@ function CartPage() {
               <span className="text-text-muted">Machine-days</span>
               <span className="text-text">{totalDays}</span>
             </div>
+            {estimatedTotal !== null && (
+              <div className="flex justify-between gap-3 font-semibold">
+                <span className="text-text">Estimated rent</span>
+                <span className="text-text" data-testid="cart-estimate">{formatPeso(estimatedTotal)}</span>
+              </div>
+            )}
           </div>
           <p className="border-t border-border pt-3 text-sm text-text-muted">
             Your quote is priced automatically from each machine&apos;s rate card, with diesel,
