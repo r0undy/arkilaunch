@@ -25,7 +25,7 @@ import {
   MAX_SITE_NOTES,
   type CartFieldErrors,
 } from '../lib/cart-validation.js';
-import { AvailabilityDays, availabilityProblem, localDate, useAvailability } from '../components/availability-days.js';
+import { RangeCalendar, availabilityProblem, useAvailability } from '../components/availability-days.js';
 import {
   getCart,
   removeFromCart,
@@ -66,7 +66,7 @@ function CartItemDates({
   onDate: (field: 'start' | 'end', value: string, hour: number) => void;
   onProblem: (problem: string | null) => void;
 }) {
-  const availability = useAvailability(item.equipmentId);
+  const availability = useAvailability(item.equipmentId, item.end);
   const hours = availability.data?.hours;
   const openHour = hours ? Number(hours.openTime.slice(0, 2)) + (hours.openTime.slice(3) === '00' ? 0 : 1) : 8;
   const closeHour = hours ? Number(hours.closeTime.slice(0, 2)) : 17;
@@ -91,13 +91,13 @@ function CartItemDates({
           {...(problem ? { error: problem } : {})}
         />
       </div>
-      <AvailabilityDays
-        data={availability.data}
+      <RangeCalendar
+        equipmentId={item.equipmentId}
         start={item.start}
         end={item.end}
-        onPick={(date) => {
-          onDate('start', date, openHour);
-          if (date > localDate(new Date(item.end))) onDate('end', date, closeHour);
+        onRange={(startDate, endDate) => {
+          onDate('start', startDate, openHour);
+          onDate('end', endDate, closeHour);
         }}
       />
     </>

@@ -35,7 +35,9 @@ export async function overlappingAssignments(tx: Tx, equipmentId: string, window
 // Philippines has no DST, so a fixed +08:00 is exact.
 const MANILA_OFFSET_MS = 8 * 3_600_000;
 const DAY_MS = 86_400_000;
-const MAX_DAYS = 92;
+// Bookings have no length cap; this only bounds one availability read
+// (the calendar asks per month, the conflict check for the whole booking).
+const MAX_DAYS = 3660;
 const manila = (d: Date) => new Date(d.getTime() + MANILA_OFFSET_MS);
 const manilaMidnight = (date: string) => new Date(`${date}T00:00:00+08:00`);
 
