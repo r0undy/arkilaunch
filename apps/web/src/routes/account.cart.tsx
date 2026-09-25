@@ -216,8 +216,8 @@ function CartPage() {
       setEstimates((prev) => (prev[index] === estimate ? prev : { ...prev, [index]: estimate })),
     [],
   );
-  const signedRates = useQuery(catalogQueries.rates());
-  const rateById = new Map(signedRates.data?.items.map((rate) => [rate.equipmentId, rate]));
+  const rates = useQuery(catalogQueries.equipment());
+  const rateById = new Map(rates.data?.items.map((eq) => [eq.id, { rateType: eq.rateType ?? null, rateValue: eq.rateValue ?? null }]));
   // Only a full total is shown: a sum missing an unpriced machine would mislead.
   const lineEstimates = items.map((_, index) => estimates[index] ?? null);
   const estimatedTotal = lineEstimates.every((value) => value !== null)

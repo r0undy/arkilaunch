@@ -10,7 +10,6 @@ import {
   equipmentAssignments,
   getBillingSettings,
   invoices,
-  listCatalogEquipmentForSlug,
   negotiationMessages,
   payments,
   projectSites,
@@ -30,7 +29,6 @@ import type {
   BookingCreateResponse,
   BookingDetailResponse,
   BookingListResponse,
-  CatalogRatesResponse,
   EdtrSheetContext,
   AvailabilityBlocker,
   RequestContext,
@@ -219,28 +217,6 @@ export class BookingsService {
   // GET /api/v1/bookings (PRD-F8 US-09). A `customer` sees only their own
   // bookings; staff see the whole tenant (RLS is the tenant boundary,
   // matching reference/* and fleet's read posture).
-  // GET /bookings/rates. The catalog's upfront prices, only for staff or a
-  // customer with a verified company. Filtered to machines this tenant's RLS
-  // can see, so the anchor-tenant catalog never leaks into another tenant.
-  async rates(ctx: RequestContext): Promise<CatalogRatesResponse> {
-    const slug = process.env.ANCHOR_TENANT_SLUG;
-    if (!slug) return { items: [] };
-    const visible = await withTenantTx(ctx, async (tx) => {
-      if (ctx.role === 'customer' && !(await ownCustomers(tx, ctx)).some((c) => c.kycStatus === 'approved')) {
-        return null;
-      }
-      return new Set((await tx.select({ id: equipment.id }).from(equipment)).map((row) => row.id));
-    });
-    if (!visible) return { items: [] };
-    // ponytail: one page of 500; paginate if a fleet ever outgrows it.
-    const rows = await listCatalogEquipmentForSlug(slug, 500, 0);
-    return {
-      items: rows
-        .filter((row) => visible.has(row.id))
-        .map((row) => ({ equipmentId: row.id, rateType: row.rateType, rateValue: row.rateValue })),
-    };
-  }
-
   async list(ctx: RequestContext, query: BookingListQuery): Promise<BookingListResponse> {
     return withTenantTx(ctx, async (tx) => {
       // The role branch was always correct; it was the BOUND that was

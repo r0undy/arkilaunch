@@ -1,6 +1,5 @@
 import { queryOptions } from '@tanstack/react-query';
 import type {
-  CatalogRatesResponse,
   BookingDetailResponse,
   NegotiationMessageResponse,
   RentPart,
@@ -66,12 +65,6 @@ export const catalogQueries = {
     queryOptions({
       queryKey: ['catalog', 'equipment', id] as const,
       queryFn: () => apiGet<CatalogEquipment>(`/catalog/equipment/${id}`),
-    }),
-  // Signed in only: the API returns prices just for a verified company.
-  rates: () =>
-    queryOptions({
-      queryKey: ['catalog', 'rates'] as const,
-      queryFn: () => apiGet<CatalogRatesResponse>('/bookings/rates'),
     }),
   testimonials: () =>
     queryOptions({

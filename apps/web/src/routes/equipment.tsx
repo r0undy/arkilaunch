@@ -160,10 +160,6 @@ function EquipmentPage() {
   const signedIn = Boolean(getAccessToken());
   const { data: companies } = useQuery({ ...companiesQueries.mine(), enabled: signedIn });
   const rentLocked = Boolean(companies && !companies.some(isSelectableCompany));
-  // Prices are for verified customers; the API returns none to anyone else.
-  const { data: rates } = useQuery({ ...catalogQueries.rates(), enabled: signedIn });
-  const rateById = new Map(rates?.items.map((rate) => [rate.equipmentId, rate]));
-  const priceLocked = !signedIn || rentLocked;
 
   const equipment = useMemo(
     () =>
@@ -223,9 +219,8 @@ function EquipmentPage() {
             return (
               <EquipmentCard
                 key={eq.id}
-                rateValue={rateById.get(eq.id)?.rateValue ?? null}
-                rateType={rateById.get(eq.id)?.rateType ?? null}
-                priceLocked={priceLocked}
+                rateValue={eq.rateValue ?? null}
+                rateType={eq.rateType ?? null}
                 imageAlt={`${eq.equipmentTypeName} ${eq.model}`}
                 {...(imageUrl ? { imageUrl } : {})}
                 model={eq.model}
