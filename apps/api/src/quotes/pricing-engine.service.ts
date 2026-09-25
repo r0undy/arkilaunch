@@ -20,7 +20,7 @@ export function round2HalfUp(value: number): number {
 export interface DieselResolution {
   pricePhp: number;
   observedDate: string;
-  source: 'tenant_override' | 'doe_scrape' | 'platform_manual' | 'admin_override';
+  source: 'tenant_override' | 'doe_scrape' | 'platform_manual' | 'admin_override' | 'gaswatch';
   stale: boolean;
   readingId: string | null;
   pricingParamsId: string;
