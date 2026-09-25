@@ -3,6 +3,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   auditLogs,
   depositForQuote,
+  equipmentTypes,
   getBillingSettings,
   quotationItems,
   quotations,
@@ -31,6 +32,7 @@ export interface QuoteResponse {
   currency: 'PHP';
   lineItems: Array<{
     equipmentTypeId: string;
+    equipmentTypeName?: string;
     quantity: number;
     estimatedHours: number;
     hourlyRate: number;
@@ -374,8 +376,9 @@ export class QuotesService {
       }
 
       const items = await tx
-        .select()
+        .select({ item: quotationItems, typeName: equipmentTypes.name })
         .from(quotationItems)
+        .leftJoin(equipmentTypes, eq(equipmentTypes.id, quotationItems.equipmentTypeId))
         .where(eq(quotationItems.quotationId, quotationId));
 
       return {
@@ -387,8 +390,9 @@ export class QuotesService {
         dieselPriceSource: quotation.dieselPriceSource ?? '',
         priceStale: quotation.priceStale === 'true',
         currency: 'PHP',
-        lineItems: items.map((item) => ({
+        lineItems: items.map(({ item, typeName }) => ({
           equipmentTypeId: item.equipmentTypeId,
+          equipmentTypeName: typeName ?? undefined,
           quantity: item.quantity,
           estimatedHours: Number(item.estimatedHours),
           hourlyRate: Number(item.hourlyRatePhp),

@@ -72,6 +72,7 @@ function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
           <StatusPill tone="recon-approved" label="Agreed" icon={<CheckIcon />} />
         )}
       </div>
+      <LineItems quoteId={quote.id} />
       <p className="font-mono text-3xl font-semibold text-text">{formatPeso(quote.totalPhp)}</p>
 
       {quote.status === 'approved' && !expired && (
@@ -265,6 +266,7 @@ function NegotiationFinalRoute() {
       </div>
       <Surface radius="md" elevation="sm" className="flex w-full flex-col gap-3 p-5">
         <h2 className={heading}>Summary &middot; revision {quote.data?.revision ?? '--'}</h2>
+        <LineItems quoteId={quoteId} />
         <Row label="Rental subtotal" value={formatPeso(quote.data?.subtotal)} />
         {Boolean(quote.data?.discount) && (
           <Row label="Negotiated discount" value={`- ${formatPeso(quote.data?.discount)}`} />
@@ -296,6 +298,28 @@ function NegotiationFinalRoute() {
         </Link>
       </div>
     </div>
+  );
+}
+
+// Each quoted line with its own price, so the customer sees what makes up
+// the total, not just the total.
+function LineItems({ quoteId }: { quoteId: string }) {
+  const quote = useQuery({ ...quotesQueries.detail(quoteId), enabled: Boolean(quoteId) });
+  if (!quote.data?.lineItems.length) return null;
+  return (
+    <ul aria-label="Quote line items" className="flex flex-col gap-2 border-b border-border pb-3">
+      {quote.data.lineItems.map((item, i) => (
+        <li key={i} className="flex items-start justify-between gap-3 text-sm">
+          <span className="text-text">
+            {item.quantity} &times; {item.equipmentTypeName ?? 'Equipment'}
+            <span className="block text-xs text-text-muted">
+              {item.estimatedHours} h at {formatPeso(item.hourlyRate)}/h, plus operating and mobilisation
+            </span>
+          </span>
+          <span className="font-mono text-text">{formatPeso(item.subtotal)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
