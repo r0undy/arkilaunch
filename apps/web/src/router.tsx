@@ -42,6 +42,7 @@ import {
 } from './routes/account.negotiation.js';
 
 import { appLayoutRoute } from './routes/_app.js';
+import { adminLayoutRoute } from './routes/_admin.js';
 import { appIndexRoute } from './routes/app.index.js';
 import { appInventoryRoute } from './routes/app.inventory.js';
 import { appDeploymentRoute } from './routes/app.deployment.js';
@@ -56,6 +57,7 @@ import { quotesRoute } from './routes/quotes.js';
 import { quotePrintRoute } from './routes/quote-print.js';
 import { edtrRoute } from './routes/edtr.js';
 import { appOcrDeploymentsRoute, fieldScanRoute } from './routes/app.ocr.deployments.js';
+import { adminUsersRoute } from './routes/app.users.js';
 import {
   appCompaniesPendingRoute,
   appCompaniesApprovedRoute,
@@ -71,13 +73,15 @@ import { fieldIndexRoute } from './routes/field.index.js';
 import { fieldDeploymentRoute } from './routes/field.deployment.js';
 import {
   appNotificationsRoute,
+  adminNotificationsRoute,
   accountNotificationsRoute,
   fieldNotificationsRoute,
 } from './routes/notifications.js';
-import { appProfileRoute, fieldProfileRoute } from './routes/profile.js';
+import { appProfileRoute, adminProfileRoute, fieldProfileRoute } from './routes/profile.js';
 import {
   appTicketsRoute,
   appSecurityLogsRoute,
+  adminSecurityLogsRoute,
   fieldSettingsRoute,
 } from './routes/unbacked-screens.js';
 import {
@@ -99,7 +103,9 @@ const accountCompaniesRedirectRoute = createRoute({
 });
 
 export const routeTree = rootRoute.addChildren([
-  publicLayoutRoute.addChildren([indexRoute, contactRoute, helpRoute, termsRoute, privacyRoute]),
+  // `/` renders per host: ArkiLaunch landing or the tenant storefront home.
+  indexRoute,
+  publicLayoutRoute.addChildren([contactRoute, helpRoute, termsRoute, privacyRoute]),
   // Same paths as before -- only the chrome changes, and only by auth state.
   storefrontLayoutRoute.addChildren([equipmentRoute, equipmentDetailRoute]),
   authLayoutRoute.addChildren([loginRoute, signupRoute, registerRoute, registerCompanyRoute, registerPendingRoute, activateRoute]),
@@ -145,13 +151,20 @@ export const routeTree = rootRoute.addChildren([
     appOcrDeploymentsRoute,
     appRegistrationPendingRoute,
     appRegistrationVerifiedRoute,
-    appCompaniesPendingRoute,
-    appCompaniesApprovedRoute,
-    appCompanyApplicationRoute,
     appNotificationsRoute,
     appProfileRoute,
     appTicketsRoute,
     appSecurityLogsRoute,
+  ]),
+  // Platform host only: ArkiLaunch's console for onboarding rental companies.
+  adminLayoutRoute.addChildren([
+    appCompaniesPendingRoute,
+    appCompaniesApprovedRoute,
+    appCompanyApplicationRoute,
+    adminNotificationsRoute,
+    adminProfileRoute,
+    adminUsersRoute,
+    adminSecurityLogsRoute,
   ]),
   fieldLayoutRoute.addChildren([
     fieldIndexRoute,

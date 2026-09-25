@@ -1,6 +1,6 @@
 import { createRoute, Link, Outlet, useRouterState } from '@tanstack/react-router';
 import { rootRoute } from './__root.js';
-import { requireRole } from '../lib/guards.js';
+import { onlyOn, requireRole } from '../lib/guards.js';
 import { clearTokens } from '../lib/auth-client.js';
 import { FIELD_NAV } from '../lib/nav-config.js';
 
@@ -52,6 +52,6 @@ function FieldLayout() {
 export const fieldLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'field-layout',
-  beforeLoad: requireRole('timekeeper'),
+  beforeLoad: onlyOn('tenant', requireRole('timekeeper')),
   component: FieldLayout,
 });

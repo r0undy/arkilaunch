@@ -171,7 +171,7 @@ function ApplicationsPage() {
               className={[
                 'min-h-11 w-full rounded-pill border px-4 py-2 text-sm font-medium transition-colors sm:w-auto',
                 status === tab.value
-                  ? 'border-primary bg-primary text-text'
+                  ? 'border-primary bg-primary text-on-primary'
                   : 'border-border bg-surface-mk text-text-muted hover:text-text',
               ].join(' ')}
             >

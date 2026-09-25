@@ -6,6 +6,7 @@ import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Surface } from '../components/surface.js';
 import { useToast } from '../components/toast.js';
+import { onlyOn } from '../lib/guards.js';
 
 // Minimum enforced server-side by UserPasswordSchema (min 12). Mirrored
 // here as a courtesy so the user is not told to try again by a 400; the
@@ -119,6 +120,7 @@ function ActivatePage() {
 
 export const activateRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
+  beforeLoad: onlyOn('tenant'),
   path: '/activate',
   validateSearch: validateActivateSearch,
   component: ActivatePage,

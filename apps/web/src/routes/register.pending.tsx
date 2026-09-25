@@ -3,6 +3,7 @@ import { authLayoutRoute } from './_auth.js';
 import { Surface } from '../components/surface.js';
 import { StatusPill } from '../components/status-pill.js';
 import { AlertIcon } from '../components/icons.js';
+import { onlyOn } from '../lib/guards.js';
 
 function AdminApprovalPage() {
   return (
@@ -22,6 +23,7 @@ function AdminApprovalPage() {
 
 export const registerPendingRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
+  beforeLoad: onlyOn('platform'),
   path: '/register/pending',
   component: AdminApprovalPage,
 });

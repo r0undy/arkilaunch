@@ -2,8 +2,7 @@ import { createRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ApprovedTenantApplication, TenantApplication } from '@arkilaunch/shared';
-import { appLayoutRoute } from './_app.js';
-import { requireRole } from '../lib/guards.js';
+import { adminLayoutRoute } from './_admin.js';
 import { DataPanel } from '../components/data-panel.js';
 import { EmptyState } from '../components/empty-state.js';
 import { PageHeader } from '../components/page-header.js';
@@ -31,7 +30,7 @@ import { formatDate, shortCode } from '../lib/format.js';
 function CompanyLink({ application }: { application: TenantApplication }) {
   return (
     <Link
-      to="/app/companies/$applicationId"
+      to="/admin/applications/$applicationId"
       params={{ applicationId: application.applicationId }}
       className="font-semibold text-accent underline"
     >
@@ -159,7 +158,7 @@ function CompanyApplicationPage() {
         title={application?.companyName ?? 'Company application'}
         description="Who applied, and what they told us."
         actions={
-          <Link to="/app/companies/pending">
+          <Link to="/admin/applications">
             <Button variant="ghost">Back</Button>
           </Link>
         }
@@ -221,22 +220,19 @@ function CompanyApplicationPage() {
 }
 
 export const appCompaniesPendingRoute = createRoute({
-  getParentRoute: () => appLayoutRoute,
-  path: '/app/companies/pending',
-  beforeLoad: requireRole('platform_admin'),
+  getParentRoute: () => adminLayoutRoute,
+  path: '/admin/applications',
   component: CompaniesPendingPage,
 });
 
 export const appCompaniesApprovedRoute = createRoute({
-  getParentRoute: () => appLayoutRoute,
-  path: '/app/companies/approved',
-  beforeLoad: requireRole('platform_admin'),
+  getParentRoute: () => adminLayoutRoute,
+  path: '/admin/approved',
   component: CompaniesApprovedPage,
 });
 
 export const appCompanyApplicationRoute = createRoute({
-  getParentRoute: () => appLayoutRoute,
-  path: '/app/companies/$applicationId',
-  beforeLoad: requireRole('platform_admin'),
+  getParentRoute: () => adminLayoutRoute,
+  path: '/admin/applications/$applicationId',
   component: CompanyApplicationPage,
 });

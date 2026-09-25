@@ -1,6 +1,7 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { appLayoutRoute } from './_app.js';
+import { adminLayoutRoute } from './_admin.js';
 import { fieldLayoutRoute } from './_field.js';
 import { PageHeader } from '../components/page-header.js';
 import { EmptyState } from '../components/empty-state.js';
@@ -72,6 +73,25 @@ export const appSecurityLogsRoute = createRoute({
       action={
         <Link to="/app/incidents">
           <Button variant="primary">Open the incident log</Button>
+        </Link>
+      }
+    />
+  ),
+});
+
+export const adminSecurityLogsRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/admin/security-logs',
+  component: () => (
+    <GapScreen
+      eyebrow="Administration"
+      title="Security logs"
+      description="Who signed in, what changed, and when."
+      gapTitle="Audit events are recorded but not readable"
+      gap="Approvals and deductions write an audit trail -- an invoice can show its own -- but there is no endpoint that reads audit events across the tenant, so there is nothing to list here. Wiring this needs an audit query and its own Change Record; inventing rows on a security screen would be the worst possible place to do it."
+      action={
+        <Link to="/admin/applications">
+          <Button variant="primary">Open applications</Button>
         </Link>
       }
     />

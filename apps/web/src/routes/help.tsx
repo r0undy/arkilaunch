@@ -1,6 +1,7 @@
 import { createRoute } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { publicLayoutRoute } from './_public.js';
+import { useTenantName } from '../lib/tenant.js';
 import { Surface } from '../components/surface.js';
 import { EmptyState } from '../components/empty-state.js';
 
@@ -49,12 +50,13 @@ const CHANNELS: { label: string; detail: string; href: string; icon: ReactNode }
 ];
 
 function HelpPage() {
+  const tenantName = useTenantName();
   return (
     <div className="flex flex-col gap-6 px-6 py-10 sm:px-10">
       <div>
         <h1 className="font-display text-2xl font-semibold text-ink-mk">Help center</h1>
         <p className="mt-1 text-sm text-text-muted">
-          Reach Almara Construction directly. Someone answers during yard hours.
+          Reach {tenantName} directly. Someone answers during yard hours.
         </p>
       </div>
 

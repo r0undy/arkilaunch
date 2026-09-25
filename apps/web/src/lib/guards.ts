@@ -3,6 +3,7 @@ import type { ParsedLocation } from '@tanstack/react-router';
 import type { RoleCode } from '@arkilaunch/shared';
 import { ensureFreshToken, getAccessToken } from './auth-client.js';
 import { decodeAccessToken, isTokenExpired } from './jwt.js';
+import { currentHost, type HostKind } from './host.js';
 
 // Client-side UX guards only; the real boundary is server-side RLS + RBAC
 // (packages/db/src/seed/permission-catalog.ts is the source of truth).
@@ -29,6 +30,20 @@ export function requireAuth() {
   };
 }
 
+// Platform pages (landing, tenant registration, /admin) exist only on the
+// bare domain; a tenant's storefront and back office only on its own host.
+// The wrong host lands on that host's own home page. `next` chains the
+// route's usual guard after the host check.
+export function onlyOn(
+  kind: HostKind['kind'],
+  next?: (opts: { location: ParsedLocation }) => Promise<void> | void,
+) {
+  return async (opts: { location: ParsedLocation }) => {
+    if (currentHost.kind !== kind) throw redirect({ to: '/' });
+    await next?.(opts);
+  };
+}
+
 export function getCurrentRole(): RoleCode | null {
   const token = getAccessToken();
   if (!token) return null;
@@ -50,7 +65,7 @@ export function requireRole(...roles: RoleCode[]) {
   };
 }
 
-// Where the "Almara" brand link goes: the landing page when signed out,
+// Where the brand link goes: the landing page when signed out,
 // else the signed-in role's home.
 export function homeHref(): string {
   const role = getCurrentRole();
@@ -68,7 +83,7 @@ export function homeRouteForRole(role: RoleCode | null): string {
     case 'timekeeper':
       return '/field';
     case 'platform_admin':
-      return '/app/companies/pending';
+      return '/admin/applications';
     case 'admin':
       return '/app';
     default:

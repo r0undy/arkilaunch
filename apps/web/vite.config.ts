@@ -58,6 +58,9 @@ export default defineConfig({
     // `document`, so they pass unchanged under jsdom; new tests (guards,
     // auth-client, route-level) need a real DOM to render into.
     environment: 'jsdom',
+    // Route tests exercise a tenant's app; bare localhost is the platform
+    // host (src/lib/host.ts), which redirects every tenant route to `/`.
+    environmentOptions: { jsdom: { url: 'http://almara.localhost:3000/' } },
     setupFiles: ['./src/test/setup.ts'],
   },
 });

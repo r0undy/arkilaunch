@@ -6,6 +6,7 @@ import type {
   TenantApplicationListResponse,
 } from '@arkilaunch/shared';
 import { apiGet, apiPost } from '../lib/api-client.js';
+import { tenantOrigin } from '../lib/host.js';
 import { Button } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { useToast } from './toast.js';
@@ -31,7 +32,7 @@ export const approvedApplicationsListQuery = (limit: number, offset: number) => 
 
 export function ApplicationActions({ application }: { application: TenantApplication }) {
   const queryClient = useQueryClient();
-  const [activationToken, setActivationToken] = useState<string | null>(null);
+  const [activation, setActivation] = useState<{ token: string; slug: string | undefined } | null>(null);
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['tenants', 'applications'] });
 
   const toast = useToast();
@@ -39,9 +40,9 @@ export function ApplicationActions({ application }: { application: TenantApplica
 
   const approve = useMutation({
     mutationFn: () =>
-      apiPost<{ activationToken?: string }>(`/tenants/${application.tenantId}/approve`, {}),
+      apiPost<{ activationToken?: string; tenantSlug?: string }>(`/tenants/${application.tenantId}/approve`, {}),
     onSuccess: (data) => {
-      if (data.activationToken) setActivationToken(data.activationToken);
+      if (data.activationToken) setActivation({ token: data.activationToken, slug: data.tenantSlug });
       invalidate();
       toast.success('Application approved', `${application.companyName} can now be set up.`);
     },
@@ -74,11 +75,12 @@ export function ApplicationActions({ application }: { application: TenantApplica
       >
         Reject
       </Button>
-      {activationToken && (
+      {activation && (
         <span className="text-sm text-text-muted">
           Send this sign-up link to the owner:{' '}
           <code className="rounded-sm bg-surface-sunk px-1.5 py-0.5 font-mono text-xs">
-            {`${window.location.origin}/activate?token=${encodeURIComponent(activationToken)}`}
+            {/* The owner activates and signs in on their company's own host. */}
+            {`${activation.slug ? tenantOrigin(activation.slug) : window.location.origin}/activate?token=${encodeURIComponent(activation.token)}`}
           </code>
         </span>
       )}
