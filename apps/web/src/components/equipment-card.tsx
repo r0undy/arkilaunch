@@ -1,11 +1,15 @@
 import { Button } from './button.js';
 import { EquipmentSchematic } from './equipment-schematic.js';
+import { formatPeso } from '../lib/format.js';
 
 export interface EquipmentCardProps {
   imageAlt: string;
   imageUrl?: string;
   model: string;
   make: string;
+  // The catalog's upfront price; none reads "Price on request".
+  rateValue?: number | null;
+  rateType?: string | null;
   // No status label on the customer side: a "Deployed" badge on a card you
   // cannot rent is click bait. An unrentable unit is greyed and inert.
   unavailable?: boolean;
@@ -24,6 +28,8 @@ export function EquipmentCard({
   imageUrl,
   model,
   make,
+  rateValue = null,
+  rateType = null,
   unavailable = false,
   rentLabel = 'Rent',
   onRent,
@@ -66,6 +72,11 @@ export function EquipmentCard({
             )}
           </h3>
           <p className="text-xs text-text-muted">{make}</p>
+          <p className="text-sm font-semibold text-text" data-testid="equipment-card-price">
+            {rateValue != null
+              ? `${formatPeso(rateValue)} / ${rateType === 'daily' ? 'day' : 'hour'}`
+              : 'Price on request'}
+          </p>
         </div>
         <Button size="default" variant="primary" className="shrink-0" disabled={unavailable} onClick={onRent}>
           {rentLabel}

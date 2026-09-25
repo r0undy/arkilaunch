@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
-import { negotiationMessages, tollRates, truckRequests, truckSettings, withTenantTx } from '@arkilaunch/db';
+import { negotiationMessages, notifications, tollRates, truckRequests, truckSettings, withTenantTx } from '@arkilaunch/db';
 import {
   priceTruckTrip,
   type TollRateCreate,
@@ -250,8 +250,7 @@ export class TrucksService {
     });
   }
 
-  // ponytail: no notification on a truck message; both sides see the thread
-  // on refresh. Add notifyStaff/customer pings if replies get missed.
+  // A staff reply pings the requesting customer; a customer message pings staff.
   postMessage(ctx: RequestContext, id: string, body: NegotiationMessageCreate) {
     return withTenantTx(ctx, async (tx) => {
       const request = await this.visibleRequest(tx, ctx, id);
@@ -270,6 +269,17 @@ export class TrucksService {
         })
         .returning();
       if (!row) throw new Error('negotiation_messages insert returned no row');
+      const payload = { truck_request_id: id, offer_php: body.offerPhp ?? null };
+      if (ctx.role === 'customer') {
+        await notifyStaff(tx, ctx.tenantId, 'customer_message', payload);
+      } else {
+        await tx.insert(notifications).values({
+          tenantId: ctx.tenantId,
+          userId: request.requestedBy,
+          notificationType: 'negotiation_reply',
+          payload,
+        });
+      }
       return { id: row.id };
     });
   }

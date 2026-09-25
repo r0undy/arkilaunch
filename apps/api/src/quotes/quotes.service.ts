@@ -2,6 +2,8 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   auditLogs,
+  depositForQuote,
+  equipmentTypes,
   getBillingSettings,
   quotationItems,
   quotations,
@@ -30,6 +32,7 @@ export interface QuoteResponse {
   currency: 'PHP';
   lineItems: Array<{
     equipmentTypeId: string;
+    equipmentTypeName?: string;
     quantity: number;
     estimatedHours: number;
     hourlyRate: number;
@@ -291,7 +294,9 @@ export class QuotesService {
       await tx.insert(rentalContracts).values({
         tenantId: ctx.tenantId,
         quotationId,
-        depositRequired: String((await getBillingSettings(tx, ctx.tenantId)).minDepositPhp),
+        depositRequired: String(
+          depositForQuote(await getBillingSettings(tx, ctx.tenantId), quotation.totalPhp !== null ? Number(quotation.totalPhp) : null),
+        ),
         status: 'active',
       });
       await tx.insert(auditLogs).values({
@@ -371,8 +376,9 @@ export class QuotesService {
       }
 
       const items = await tx
-        .select()
+        .select({ item: quotationItems, typeName: equipmentTypes.name })
         .from(quotationItems)
+        .leftJoin(equipmentTypes, eq(equipmentTypes.id, quotationItems.equipmentTypeId))
         .where(eq(quotationItems.quotationId, quotationId));
 
       return {
@@ -384,8 +390,9 @@ export class QuotesService {
         dieselPriceSource: quotation.dieselPriceSource ?? '',
         priceStale: quotation.priceStale === 'true',
         currency: 'PHP',
-        lineItems: items.map((item) => ({
+        lineItems: items.map(({ item, typeName }) => ({
           equipmentTypeId: item.equipmentTypeId,
+          ...(typeName ? { equipmentTypeName: typeName } : {}),
           quantity: item.quantity,
           estimatedHours: Number(item.estimatedHours),
           hourlyRate: Number(item.hourlyRatePhp),

@@ -293,6 +293,7 @@ export class PricingService {
         dailyHours: String(input.dailyHours),
         minDepositPhp: String(input.minDepositPhp),
         lowBalancePct: String(input.lowBalancePct),
+        depositPct: String(input.depositPct),
         updatedAt: new Date(),
       };
       await tx

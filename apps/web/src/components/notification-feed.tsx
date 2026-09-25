@@ -106,6 +106,19 @@ export function describeNotification(type: string, payload: unknown): Described 
       action: { label: 'Open trucks', to: '/app/trucks', params: {} },
     };
   }
+  if ((type === 'negotiation_reply' || type === 'customer_message') && typeof p.truck_request_id === 'string') {
+    const staffSide = type === 'customer_message';
+    const offer = typeof p.offer_php === 'number' ? ` with an offer of ${formatPeso(p.offer_php)}` : '';
+    return {
+      title: staffSide ? 'Customer message' : 'Negotiation update',
+      body: staffSide
+        ? `A customer replied on a truck request${offer}.`
+        : `The rental team replied on your truck request${offer}.`,
+      action: staffSide
+        ? { label: 'Open trucks', to: '/app/trucks', params: {} }
+        : { label: 'Open truck requests', to: '/account/trucks', params: {} },
+    };
+  }
   if ((type === 'payment_paid' || type === 'payment_failed' || type === 'payment_disputed') && typeof p.rental_id !== 'string') {
     const what = type === 'payment_paid' ? 'was paid' : type === 'payment_failed' ? 'failed' : 'is disputed';
     return {

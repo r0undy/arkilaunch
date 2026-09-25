@@ -91,5 +91,7 @@ export const BillingSettingsSchema = z.object({
   dailyHours: z.number().finite().positive().max(24),
   minDepositPhp: z.number().finite().min(0).max(99_999_999.99),
   lowBalancePct: z.number().finite().min(0).max(100),
+  // Deposit as a percent of the quote total; 0 = flat minDepositPhp only.
+  depositPct: z.number().finite().min(0).max(100).default(0),
 });
 export type BillingSettingsInput = z.infer<typeof BillingSettingsSchema>;
