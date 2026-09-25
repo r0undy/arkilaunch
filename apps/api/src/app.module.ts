@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { PlatformThrottlerGuard } from './common/throttler/platform-throttler.guard.js';
@@ -32,7 +31,6 @@ import { PermissionsGuard } from './common/guards/permissions.guard.js';
 // latter three, not the throttle.
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
     // A generous global default (120 req/min); specific expensive/money
     // routes (POST /edtr, /kyc/extract, /quotes, /bookings/:id/checkout)
     // override this 'default' bucket down to a tighter limit per-route via

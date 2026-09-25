@@ -15,17 +15,6 @@ import {
 } from '@arkilaunch/shared';
 import { AzureDocumentIntelligenceAdapter } from '@arkilaunch/document-intelligence';
 
-export {
-  type DocumentExtractionResult,
-  type DocumentIntelligencePort,
-  type ExtractedField,
-  type DocumentIntelligenceAvailability,
-  type ExtractionUnavailableReason,
-  ExtractionUnavailableError,
-  UnavailableDocumentIntelligenceAdapter,
-  documentIntelligenceAvailability,
-} from '@arkilaunch/shared';
-
 // True only when an operator has asked for the OCR pipeline AND a real
 // adapter can actually serve it.
 export function isOcrPipelineEnabled(): boolean {
