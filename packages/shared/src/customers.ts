@@ -4,8 +4,8 @@ import { DTI_REGEX, PHILSYS_PCN_REGEX, SEC_REGEX } from './kyc.js';
 // Customer prerequisites CR: self-signup, companies (Figma 582:3946 "Add
 // New Company") and customer-owned project sites.
 
-// POST /auth/register-customer. The storefront tenant is the API's
-// ANCHOR_TENANT_SLUG; nothing here names a tenant.
+// POST /auth/register-customer. The storefront tenant is the request host's
+// (X-Tenant-Slug); nothing here names a tenant.
 export const CustomerSignupSchema = z.object({
   email: z.string().trim().email().max(254),
   password: z.string().min(10).max(200),

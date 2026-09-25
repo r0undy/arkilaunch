@@ -31,7 +31,7 @@ Copy `.env.example` to `.env` (already `.gitignore`d) and fill in:
 | `DATABASE_URL_POOLED` | Transaction mode, port `6543`, username `app_authenticated.<project-ref>`, same password as above. This is what the running API/jobs use — never the `postgres` superuser, which always bypasses RLS regardless of `FORCE ROW LEVEL SECURITY`. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Migrations + trusted cron only. Never referenced on a request path. |
 | `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | RS256 keypair, PEM, single line with `\n` escapes. Generate with `openssl genrsa -out key.pem 2048 && openssl rsa -in key.pem -pubout -out pub.pem`. |
-| `ANCHOR_TENANT_SLUG` | `GET /catalog/equipment` and the public storefront routes return nothing without this — set it to the slug of a seeded active tenant. |
+| `PLATFORM_DOMAIN` | Deployed envs only: lets the API's CORS accept `https://{slug}.<domain>` tenant origins. Not needed in dev (Vite proxy). |
 | `WEB_ORIGIN` | `http://localhost:5173` for the Vite dev server — CORS rejects anything else. |
 | `SUPABASE_URL`, `SUPABASE_STORAGE_BUCKET_EDTR`, `SUPABASE_STORAGE_BUCKET_KYC` | Storage REST API, distinct from the `DATABASE_URL_*` Postgres connections. |
 
@@ -54,7 +54,7 @@ Open-Meteo client works immediately, no key to fill in.
 
 ```
 pnpm db:migrate         # applies packages/db/migrations/*, sets app_authenticated's password
-pnpm db:seed            # single anchor tenant — matches ANCHOR_TENANT_SLUG
+pnpm db:seed            # almara tenant + arkilaunch-platform (platform_admin)
 pnpm db:seed:test       # OR: two tenants, for isolation testing
 ```
 

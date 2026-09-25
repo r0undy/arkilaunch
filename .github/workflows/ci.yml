@@ -110,7 +110,6 @@ jobs:
       # regardless of FORCE, so running the suite as postgres would make
       # every tenant-isolation assertion pass vacuously (RFC-1 §3).
       DATABASE_URL_POOLED: postgresql://app_authenticated:ci_throwaway_not_a_secret@localhost:5432/postgres
-      ANCHOR_TENANT_SLUG: test-tenant-a
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -206,7 +205,6 @@ jobs:
           # localhost, so assertSeedTargetIsLocal() permits the weak
           # development credentials this seed writes.
           DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/postgres
-          ANCHOR_TENANT_SLUG: almara
 
   cross-tenant-isolation-suite:
     runs-on: ubuntu-latest
@@ -311,7 +309,6 @@ jobs:
       # tenant-registry assertions in rls-enumeration.spec.ts pass
       # vacuously (RFC-1 §3).
       DATABASE_URL_POOLED: postgresql://app_authenticated:ci_throwaway_not_a_secret@localhost:5432/postgres
-      ANCHOR_TENANT_SLUG: test-tenant-a
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -377,7 +374,6 @@ jobs:
       DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/postgres
       DATABASE_URL_POOLED: postgresql://app_authenticated:ci_throwaway_not_a_secret@localhost:5432/postgres
       # seed:anchor creates the five RBAC sign-in accounts the specs use.
-      ANCHOR_TENANT_SLUG: almara
       SEED_PASSWORD: ci_throwaway_not_a_secret
       # StorageService reads these in field initializers, so the API cannot
       # boot without them. Nothing in this suite uploads, so they only have to
@@ -393,7 +389,9 @@ jobs:
       # browser blocks that call as mixed content, and login.tsx's bare catch
       # reports the blocked request as "Incorrect email or password", which
       # is a genuinely confusing way to discover a transport problem.
-      PLAYWRIGHT_BASE_URL: http://localhost:5173
+      # The specs drive the Almara tenant; bare localhost is the ArkiLaunch
+      # platform (lib/host.ts). Chromium resolves *.localhost to loopback.
+      PLAYWRIGHT_BASE_URL: http://almara.localhost:5173
       # Must match the origin vite serves on; the API's CORS default is this
       # value, set explicitly so a port change here fails loudly.
       WEB_ORIGIN: http://localhost:5173

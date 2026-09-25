@@ -74,7 +74,7 @@ locals {
     NODE_ENV                     = local.env == "prod" ? "production" : "development"
     API_PORT                     = "3000"
     WEB_ORIGIN                   = var.web_origin
-    ANCHOR_TENANT_SLUG           = var.anchor_tenant_slug
+    PLATFORM_DOMAIN              = var.platform_domain
     SUPABASE_URL                 = var.supabase_url
     SUPABASE_STORAGE_BUCKET_EDTR = var.supabase_storage_bucket_edtr
     SUPABASE_STORAGE_BUCKET_KYC  = var.supabase_storage_bucket_kyc

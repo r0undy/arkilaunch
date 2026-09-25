@@ -52,6 +52,7 @@ export interface TenantApplicationDecisionResult {
   tenantId: string;
   ownerUserId: string | null;
   passwordHash: string | null;
+  tenantSlug: string;
 }
 
 // Cross-tenant administrative write for POST /tenants/:id/approve|/reject
@@ -67,12 +68,22 @@ export async function decideTenantApplication(
   reviewerUserId: string,
 ): Promise<TenantApplicationDecisionResult> {
   try {
-    const rows = await db.execute<{ tenant_id: string; owner_user_id: string | null; password_hash: string | null }>(
+    const rows = await db.execute<{
+      tenant_id: string;
+      owner_user_id: string | null;
+      password_hash: string | null;
+      tenant_slug: string;
+    }>(
       sql`select * from tenants_decide_application(${applicationId}, ${decision}, ${reviewerUserId})`,
     );
     const row = rows[0];
     if (!row) throw new Error('tenants_decide_application returned no row');
-    return { tenantId: row.tenant_id, ownerUserId: row.owner_user_id, passwordHash: row.password_hash };
+    return {
+      tenantId: row.tenant_id,
+      ownerUserId: row.owner_user_id,
+      passwordHash: row.password_hash,
+      tenantSlug: row.tenant_slug,
+    };
   } catch (err) {
     if (isApplicationNotPending(err)) throw new ApplicationNotPendingError('application_not_pending');
     throw err;
@@ -198,10 +209,11 @@ function isDuplicatePendingApplication(err: unknown): boolean {
 }
 
 export class EmailTakenError extends Error {}
+export class StorefrontNotFoundError extends Error {}
 
 // Pre-tenant-context write for POST /auth/register-customer (migration
-// 0023 customer_register). The slug is the API's ANCHOR_TENANT_SLUG, never
-// a client value.
+// 0023, active-tenant check added in 0047). The slug is the request host's
+// tenant label; customer_register only accepts an active tenant.
 export async function registerCustomerUser(
   tenantSlug: string,
   email: string,
@@ -217,7 +229,9 @@ export async function registerCustomerUser(
   } catch (err) {
     // Drizzle wraps the Postgres error; its RAISE message is on `cause`.
     const e = err as { message?: unknown; cause?: { message?: unknown } };
-    if (/email_taken/.test(`${String(e?.message)} ${String(e?.cause?.message)}`)) throw new EmailTakenError('email_taken');
+    const text = `${String(e?.message)} ${String(e?.cause?.message)}`;
+    if (/email_taken/.test(text)) throw new EmailTakenError('email_taken');
+    if (/storefront_tenant_not_found/.test(text)) throw new StorefrontNotFoundError('tenant_not_found');
     throw err;
   }
 }

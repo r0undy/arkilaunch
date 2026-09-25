@@ -27,6 +27,7 @@ import type {
   TenantRegisterResponse,
   TenantSettingsUpdateRequest,
 } from '@arkilaunch/shared';
+import { isTenantSlug } from '@arkilaunch/shared';
 import { AuthService } from '../auth/auth.service.js';
 
 @Injectable()
@@ -130,8 +131,10 @@ export class TenantsService {
     const baseSlug = slugify(input.companyName);
     const placeholderHash = await hash(randomBytes(32).toString('hex'));
 
-    let attempt = 0;
-    while (attempt < 5) {
+    // A reserved label (www, admin, api, ...) is never minted: it would be
+    // unreachable as a host (lib/host.ts), so start at the suffixed form.
+    let attempt = isTenantSlug(baseSlug) ? 0 : 1;
+    while (attempt < 6) {
       const slug = attempt === 0 ? baseSlug : `${baseSlug}-${attempt}`;
       try {
         const result = await registerTenant({
@@ -181,7 +184,7 @@ export class TenantsService {
         // Relayed out-of-band by the platform admin, exactly like a user
         // invite -- there is no email provider in the pinned stack.
         const activationToken = this.auth.signActivationToken(result.tenantId, result.ownerUserId, result.passwordHash);
-        return { applicationId, status: decision, activationToken };
+        return { applicationId, status: decision, activationToken, tenantSlug: result.tenantSlug };
       }
       return { applicationId, status: decision };
     } catch (err) {
@@ -193,12 +196,14 @@ export class TenantsService {
   }
 }
 
+// Capped at 50 so the `-N` collision suffix still fits one 63-char DNS label.
 function slugify(companyName: string): string {
   return (
     companyName
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
+      .slice(0, 50)
       .replace(/^-+|-+$/g, '') || 'tenant'
   );
 }

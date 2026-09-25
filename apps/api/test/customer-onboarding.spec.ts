@@ -58,8 +58,6 @@ describe('Customer onboarding', () => {
   beforeAll(async () => {
     const url = process.env.DATABASE_URL_DIRECT;
     if (!url) throw new Error('DATABASE_URL_DIRECT is required');
-    // Signup lands in the storefront tenant; point it at the fixture.
-    process.env.ANCHOR_TENANT_SLUG = 'test-tenant-a';
     const sql = postgres(url, { max: 1 });
     const [tenantA] = await sql`select id from tenants where slug = 'test-tenant-a'`;
     const [tenantB] = await sql`select id from tenants where slug = 'test-tenant-b'`;
@@ -116,13 +114,13 @@ describe('Customer onboarding', () => {
       email,
       password: 'correct horse battery',
       acceptedTerms: true,
-    });
+    }, 'test-tenant-a');
     const ctx = decodeCtx(tokens.accessToken);
     expect(ctx).toMatchObject({ tenantId, role: 'customer' });
 
     // The same email cannot sign up twice, in any tenant.
     await expect(
-      auth.registerCustomer({ email, password: 'another long password', acceptedTerms: true }),
+      auth.registerCustomer({ email, password: 'another long password', acceptedTerms: true }, 'test-tenant-a'),
     ).rejects.toBeInstanceOf(ConflictException);
 
     const details = {
@@ -224,7 +222,7 @@ describe('Customer onboarding', () => {
       email: `signup-${randomUUID().slice(0, 8)}@onboarding.test`,
       password: 'correct horse battery',
       acceptedTerms: true,
-    });
+    }, 'test-tenant-a');
     const ctx = decodeCtx(tokens.accessToken);
     const mine = await companies.createCompany(ctx, {
       companyName: 'Gamma Corp',
@@ -354,7 +352,7 @@ describe('Customer onboarding', () => {
         email: `forecast-${randomUUID().slice(0, 8)}@onboarding.test`,
         password: 'correct horse battery',
         acceptedTerms: true,
-      });
+      }, 'test-tenant-a');
       ownerCtx = decodeCtx(tokens.accessToken);
     });
 
@@ -572,7 +570,7 @@ describe('Customer onboarding', () => {
         email: `staff-review-${randomUUID().slice(0, 8)}@onboarding.test`,
         password: 'correct horse battery',
         acceptedTerms: true,
-      });
+      }, 'test-tenant-a');
       reviewCtx = decodeCtx(tokens.accessToken);
     });
 
