@@ -34,7 +34,7 @@ function RegisterCompanyDetailsPage() {
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 409
-          ? 'An application for this email is already pending review.'
+          ? 'This email already has a company waiting for activation. Check your inbox for the link.'
           : 'Something went wrong submitting your application. Please try again.',
       );
     } finally {

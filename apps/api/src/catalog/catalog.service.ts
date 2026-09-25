@@ -3,6 +3,8 @@ import {
   getCatalogEquipmentForSlug,
   getCatalogTenantForSlug,
   listCatalogEquipmentForSlug,
+  listCatalogTenants,
+  listEquipmentTypeNames,
   listCatalogTestimonialsForSlug,
 } from '@arkilaunch/db';
 import {
@@ -10,6 +12,9 @@ import {
   CatalogEquipmentSchema,
   CatalogTestimonialListResponseSchema,
   type CatalogEquipment,
+  type CatalogTenant,
+  type CatalogTenantListQuery,
+  type CatalogTenantListResponse,
   type CatalogEquipmentListQuery,
   type CatalogEquipmentListResponse,
   type CatalogTestimonialListResponse,
@@ -28,10 +33,23 @@ function withPhotoUrl<T extends { photoUri: string | null }>(row: T): T {
 // still-onboarding slug simply has nothing to serve.
 @Injectable()
 export class CatalogService {
-  async getTenant(slug: string): Promise<{ name: string }> {
+  // Public branding for the host's storefront (migration 0051).
+  async getTenant(slug: string): Promise<CatalogTenant> {
     const tenant = await getCatalogTenantForSlug(slug);
     if (!tenant) throw new NotFoundException({ error: 'tenant_not_found' });
-    return tenant;
+    const { logoKey, heroKey, ...rest } = tenant;
+    return { ...rest, logoUrl: publicPhotoUrl(logoKey), heroUrl: publicPhotoUrl(heroKey) };
+  }
+
+  // The platform directory: active rental companies, public columns only.
+  async listTenants(query: CatalogTenantListQuery): Promise<CatalogTenantListResponse> {
+    const filters = { q: query.q || null, category: query.category || null, location: query.location || null };
+    const [rows, categories] = await Promise.all([
+      listCatalogTenants(filters, query.limit, query.offset),
+      listEquipmentTypeNames(),
+    ]);
+    const items = rows.map(({ logoKey, ...rest }) => ({ ...rest, logoUrl: publicPhotoUrl(logoKey) }));
+    return { items, categories };
   }
 
   async listEquipment(slug: string, query: CatalogEquipmentListQuery): Promise<CatalogEquipmentListResponse> {

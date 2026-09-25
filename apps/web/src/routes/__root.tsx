@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { ApiError } from '../lib/api-client.js';
 import { currentHost, platformOrigin } from '../lib/host.js';
-import { tenantQuery } from '../lib/tenant.js';
+import { applyTenantPrimary, tenantQuery } from '../lib/tenant.js';
 
 function TenantNotFound() {
   return (
@@ -26,6 +26,8 @@ function RootLayout() {
     if (currentHost.kind === 'platform') document.title = 'ArkiLaunch';
     else if (tenant.data) document.title = tenant.data.name;
   }, [tenant.data]);
+
+  useEffect(() => applyTenantPrimary(tenant.data?.primaryColor), [tenant.data?.primaryColor]);
 
   if (tenant.error instanceof ApiError && tenant.error.status === 404) return <TenantNotFound />;
   return <Outlet />;

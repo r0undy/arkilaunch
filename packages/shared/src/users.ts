@@ -45,14 +45,6 @@ export const UserActivateRequestSchema = z.object({
 });
 export type UserActivateRequest = z.infer<typeof UserActivateRequestSchema>;
 
-export const TenantSettingsUpdateRequestSchema = z
-  .object({
-    legalName: z.string().min(1).max(200),
-  })
-  .strict(); // .strict(): a status/kycState/slug field is a 400, not silently dropped
-
-export type TenantSettingsUpdateRequest = z.infer<typeof TenantSettingsUpdateRequestSchema>;
-
 // GET /users/me. Self-service profile read -- distinct route from the
 // user:manage-gated UsersController (that controller is class-level gated;
 // a caller reading their OWN record is not a privileged action). No PATCH

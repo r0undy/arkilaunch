@@ -3,10 +3,10 @@ import {
   CompanyStatusUpdateRequestSchema,
   TenantApplicationListQuerySchema,
   TenantRegisterRequestSchema,
-  TenantSettingsUpdateRequestSchema,
+  TenantBrandingUpdateRequestSchema,
 } from '@arkilaunch/shared';
 
-export class TenantSettingsUpdateDto extends createZodDto(TenantSettingsUpdateRequestSchema) {}
+export class TenantBrandingUpdateDto extends createZodDto(TenantBrandingUpdateRequestSchema) {}
 export class TenantRegisterDto extends createZodDto(TenantRegisterRequestSchema) {}
 export class TenantApplicationListQueryDto extends createZodDto(TenantApplicationListQuerySchema) {}
 export class CompanyStatusUpdateDto extends createZodDto(CompanyStatusUpdateRequestSchema) {}

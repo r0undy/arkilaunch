@@ -35,7 +35,7 @@ Palette is high-contrast by construction, verified for WCAG 2.2 AA at the pairin
 | `--color-surface-sunk` | `#ECE7DB` | Insets, code/data wells, the original-image tray in the Evidence Split View. |
 | `--color-border` | `#CFC7B6` | Dividers, input borders. 1px, deliberately visible (no hairlines). |
 | `--color-border-strong` | `#9A917E` | Table grid, section separators, gauge bezels. |
-| `--color-primary` | `#F2A100` | Primary action (signal amber). **Pairs with dark text `#10151B` only**; amber + white fails AA. |
+| `--color-primary` | `#F2A100` | Primary action (signal amber). **Pairs with dark text `#10151B` only**; amber + white fails AA. A tenant storefront may override this one token with its own `primary_color` (CR: tenant-self-serve-branding); `--color-on-primary` is then picked as black or white by higher WCAG contrast. No other token is tenant-overridable. |
 | `--color-primary-hover` | `#D98C00` | Primary hover/active. |
 | `--color-accent` | `#1E5F8C` | Dispatch blue: links, active nav, focus ring, secondary action. Pairs with white text or as text on `--color-bg`. |
 | `--color-accent-hover` | `#164B6E` | Accent hover/active. |

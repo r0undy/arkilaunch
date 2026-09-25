@@ -1,18 +1,15 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { authLayoutRoute } from './_auth.js';
 import { Surface } from '../components/surface.js';
-import { StatusPill } from '../components/status-pill.js';
-import { AlertIcon } from '../components/icons.js';
 import { onlyOn } from '../lib/guards.js';
 
-function AdminApprovalPage() {
+function CheckEmailPage() {
   return (
     <Surface radius="lg" elevation="md" className="flex w-full max-w-sm flex-col items-center gap-4 p-8 text-center">
-      <StatusPill tone="recon-review" label="Pending admin approval" icon={<AlertIcon />} />
-      <h1 className="font-display text-xl font-semibold text-text">Application submitted</h1>
+      <h1 className="font-display text-xl font-semibold text-text">Check your email</h1>
       <p className="text-sm text-text-muted">
-        We are verifying your company details against SEC and BIR records. This is a human review step and may
-        take a few business days. We will email you once it is confirmed.
+        We sent an activation link to the email you registered with. Open it and set your password, and your
+        storefront goes live right away.
       </p>
       <Link to="/login" className="text-sm font-semibold text-accent hover:underline">
         Back to sign in
@@ -25,5 +22,5 @@ export const registerPendingRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
   beforeLoad: onlyOn('platform'),
   path: '/register/pending',
-  component: AdminApprovalPage,
+  component: CheckEmailPage,
 });
