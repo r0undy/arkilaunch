@@ -1,4 +1,11 @@
-import { DEFAULT_TOLERANCE_HOURS } from './edtr.js';
+import { CONFIDENCE_GATE, DEFAULT_TOLERANCE_HOURS } from './edtr.js';
+import {
+  IDLE_REASONS,
+  WEATHER_CODES,
+  readTickGroup,
+  type IdleReason,
+  type WeatherCode,
+} from './weather-attestation.js';
 import type { BoundingRegion, ExtractedTable } from './document-intelligence-port.js';
 
 // Parses the real Almara "EQUIPMENT DAILY TIME REPORT" sheet
@@ -40,6 +47,17 @@ export interface EdtrSheetDay {
   // than at the sheet in general. Absent when the response carried no
   // usable polygon for that cell.
   boundingRegion?: BoundingRegion;
+  // EDTR v2 columns (docs/cr-arkilaunch-edtr-v2-weather.md), present only
+  // when the sheet carries them. Unread or ambiguous ticks are null.
+  v2?: {
+    idleHours: number | null;
+    idleReason: IdleReason | null;
+    weatherAm: WeatherCode | null;
+    weatherPm: WeatherCode | null;
+    // The row's own AM/PM in-out pairs, minutes since midnight.
+    amWindow: [number, number] | null;
+    pmWindow: [number, number] | null;
+  };
 }
 
 export type EdtrSheetParse =
@@ -94,6 +112,14 @@ interface Columns {
   total: number;
   // [inCol, outCol] per AM/PM/OVERTIME group, for groups actually present.
   pairs: Array<[number, number]>;
+  // AM and PM pairs by name, for the v2 weather windows.
+  am: [number, number] | null;
+  pm: [number, number] | null;
+  // v2 columns, -1 when absent.
+  idleHours: number;
+  idleReason: number;
+  weatherAm: number;
+  weatherPm: number;
   headerRows: number;
 }
 
@@ -111,6 +137,7 @@ function findColumns(grid: Grid): Columns | null {
   if (date < 0 || total < 0) return null;
 
   const pairs: Array<[number, number]> = [];
+  const named: Partial<Record<(typeof GROUPS)[number], [number, number]>> = {};
   for (const group of GROUPS) {
     const at = row0.findIndex((c) => norm(c) === group);
     if (at < 0) continue;
@@ -128,10 +155,25 @@ function findColumns(grid: Grid): Columns | null {
       if (sub === 'IN') ins.push(c);
       if (sub === 'OUT') outs.push(c);
     }
-    if (ins.length === 1 && outs.length === 1) pairs.push([ins[0]!, outs[0]!]);
+    if (ins.length === 1 && outs.length === 1) {
+      pairs.push([ins[0]!, outs[0]!]);
+      named[group] = [ins[0]!, outs[0]!];
+    }
   }
 
-  return { date, total, pairs, headerRows: 2 };
+  const at = (label: string) => row0.findIndex((c) => norm(c) === label);
+  return {
+    date,
+    total,
+    pairs,
+    am: named.AM ?? null,
+    pm: named.PM ?? null,
+    idleHours: at('IDLE HRS'),
+    idleReason: at('IDLE REASON'),
+    weatherAm: at('WEATHER AM'),
+    weatherPm: at('WEATHER PM'),
+    headerRows: 2,
+  };
 }
 
 // "07:00" / "7:00" / "07.00" -> minutes since midnight. Anything else is
@@ -184,6 +226,27 @@ export function resolveSheetDate(raw: string, captureDate: string): string | nul
     }
   }
   return best?.date ?? null;
+}
+
+function window(row: string[], pair: [number, number] | null): [number, number] | null {
+  if (!pair) return null;
+  const start = parseTime(row[pair[0]] ?? '');
+  const end = parseTime(row[pair[1]] ?? '');
+  return start !== null && end !== null && end > start ? [start, end] : null;
+}
+
+function readV2(row: string[], confidences: number[], columns: Columns): EdtrSheetDay['v2'] {
+  if (columns.weatherAm < 0 && columns.weatherPm < 0 && columns.idleReason < 0) return undefined;
+  const tick = <T extends string>(col: number, options: readonly T[]) =>
+    col < 0 ? null : readTickGroup(row[col] ?? '', options, confidences[col] ?? 0, CONFIDENCE_GATE);
+  return {
+    idleHours: columns.idleHours < 0 ? null : parseHours(row[columns.idleHours] ?? ''),
+    idleReason: tick(columns.idleReason, IDLE_REASONS),
+    weatherAm: tick(columns.weatherAm, WEATHER_CODES),
+    weatherPm: tick(columns.weatherPm, WEATHER_CODES),
+    amWindow: window(row, columns.am),
+    pmWindow: window(row, columns.pm),
+  };
 }
 
 function computeHours(row: string[], pairs: Array<[number, number]>): number | null {
@@ -263,6 +326,7 @@ export function parseEdtrSheet(
 
     const computedHours = computeHours(row, columns.pairs);
     const cellConfidences = grid.confidences[r]!;
+    const v2 = readV2(row, cellConfidences, columns);
     days.push({
       reportDate,
       hoursActive,
@@ -272,6 +336,7 @@ export function parseEdtrSheet(
       ...(grid.regions[r]![columns.total]
         ? { boundingRegion: grid.regions[r]![columns.total]! }
         : {}),
+      ...(v2 ? { v2 } : {}),
     });
   }
 
