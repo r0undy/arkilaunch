@@ -301,12 +301,41 @@ export class CustomersService {
         contactValue: body.contactMobile,
         isPrimary: 'true',
       });
+      // The National ID belongs to the login, not a company: captured once,
+      // it is copied onto each new company so every review (and
+      // hasRequiredCompanyDocuments) still sees it on that company.
+      const [id] = await tx
+        .select()
+        .from(kycDocuments)
+        .innerJoin(customers, eq(customers.id, kycDocuments.customerId))
+        .where(
+          and(
+            eq(customers.userId, ctx.userId),
+            eq(kycDocuments.documentType, 'government_id'),
+            ne(kycDocuments.status, 'superseded'),
+          ),
+        )
+        .orderBy(desc(kycDocuments.createdAt))
+        .limit(1);
+      if (id) {
+        const d = id.kyc_documents;
+        await tx.insert(kycDocuments).values({
+          tenantId: ctx.tenantId,
+          customerId: row.id,
+          documentType: d.documentType,
+          fileUri: d.fileUri,
+          status: d.status,
+          ocrPayload: d.ocrPayload,
+          formatValid: d.formatValid,
+          confidence: d.confidence,
+        });
+      }
       await this.events.emit(ctx, 'company_created', { customer_id: row.id });
       await notifyStaff(tx, ctx.tenantId, 'company_submitted', {
         customer_id: row.id,
         company_name: row.companyName,
       });
-      return { ...toCompany(row), documents: [] };
+      return (await withDocuments(tx, [row]))[0]!;
     });
   }
 
@@ -442,10 +471,13 @@ export class CustomersService {
     return withTenantTx(ctx, async (tx) => {
       if (!(await ownsCustomer(tx, ctx, customerId)))
         throw new NotFoundException({ error: 'company_not_found' });
-      const onFile = (await liveDocuments(tx, customerId)).some((d) => d.documentType === documentType);
+      const live = await liveDocuments(tx, customerId);
+      const onFile = live.some((d) => d.documentType === documentType);
       if (onFile) {
         const [company] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
-        if (!company?.unlockedFields.includes(documentType))
+        // A company still being assembled (not yet submitted) may replace a
+        // document, e.g. a fresh ID over the one carried from another company.
+        if (hasRequiredCompanyDocuments(live) && !company?.unlockedFields.includes(documentType))
           throw new ConflictException({ error: 'document_locked' });
         await tx
           .update(kycDocuments)
@@ -459,7 +491,7 @@ export class CustomersService {
           );
         await tx
           .update(customers)
-          .set({ unlockedFields: company.unlockedFields.filter((f) => f !== documentType) })
+          .set({ unlockedFields: (company?.unlockedFields ?? []).filter((f) => f !== documentType) })
           .where(eq(customers.id, customerId));
       }
       const [row] = await tx

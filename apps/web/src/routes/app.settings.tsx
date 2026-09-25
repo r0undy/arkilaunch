@@ -301,6 +301,7 @@ interface BillingSettings {
   dailyHours: number;
   minDepositPhp: number;
   lowBalancePct: number;
+  depositPct: number;
 }
 
 // Hours in a rental day (a daily card is divided by this), the minimum
@@ -325,9 +326,10 @@ function BillingSettingsForm() {
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Billing settings">
       <h2 className="font-display text-base font-semibold text-text">Deposit and billing</h2>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Input label="Hours in a rental day" type="number" min="1" max="24" step="0.5" numeric value={String(current.dailyHours)} onChange={(e) => edit({ dailyHours: Number(e.target.value) })} />
         <Input label="Minimum deposit (PHP)" type="number" min="0" step="0.01" numeric value={String(current.minDepositPhp)} onChange={(e) => edit({ minDepositPhp: Number(e.target.value) })} />
+        <Input label="Deposit (% of quote total)" type="number" min="0" max="100" step="0.5" numeric hint="0 uses the minimum deposit only." value={String(current.depositPct)} onChange={(e) => edit({ depositPct: Number(e.target.value) })} />
         <Input label="Low-balance warning (%)" type="number" min="0" max="100" step="1" numeric value={String(current.lowBalancePct)} onChange={(e) => edit({ lowBalancePct: Number(e.target.value) })} />
       </div>
       <div>

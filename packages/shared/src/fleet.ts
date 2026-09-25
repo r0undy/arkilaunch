@@ -143,7 +143,7 @@ export const CatalogEquipmentSchema = z.object({
   // behind this endpoint is otherwise unchanged: no serial_no, no
   // runtime_hours -- screens that want a per-unit label use shortCode(id).
   photoUri: z.string().nullable(),
-  // Detail only: the public upfront price (same for every customer).
+  // The public upfront price (same for every customer); null = on request.
   rateType: z.string().nullable().optional(),
   rateValue: z.number().nullable().optional(),
 });

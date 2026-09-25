@@ -13,13 +13,12 @@ export interface CatalogEquipmentRow {
   model: string;
   availabilityStatus: string;
   photoUri: string | null;
-}
-
-// Detail adds the upfront public price (0038): unit card, else type card.
-export interface CatalogEquipmentDetailRow extends CatalogEquipmentRow {
+  // The upfront public price (0038 detail, 0042 list): unit card, else type card.
   rateType: string | null;
   rateValue: number | null;
 }
+
+export type CatalogEquipmentDetailRow = CatalogEquipmentRow;
 
 // Bounded at the database: this is an unauthenticated route, and every
 // storefront page load used to ship the anchor tenant's entire equipment
@@ -36,6 +35,8 @@ export async function listCatalogEquipmentForSlug(
     model: string;
     availability_status: string;
     photo_uri: string | null;
+    rate_type: string | null;
+    rate_value: string | null;
   }>(sql`select * from catalog_list_equipment(${slug}) limit ${limit} offset ${offset}`);
   return rows.map((row) => ({
     id: row.id,
@@ -43,6 +44,8 @@ export async function listCatalogEquipmentForSlug(
     model: row.model,
     availabilityStatus: row.availability_status,
     photoUri: row.photo_uri,
+    rateType: row.rate_type,
+    rateValue: row.rate_value !== null ? Number(row.rate_value) : null,
   }));
 }
 

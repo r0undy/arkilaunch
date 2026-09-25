@@ -17,6 +17,7 @@ export interface BillingSettings {
   dailyHours: number;
   minDepositPhp: number;
   lowBalancePct: number;
+  depositPct: number;
 }
 
 // The tenant's billing knobs; the 0038 column defaults when never set.
@@ -26,7 +27,15 @@ export async function getBillingSettings(tx: Tx, tenantId: string): Promise<Bill
     dailyHours: row ? Number(row.dailyHours) : 8,
     minDepositPhp: row ? Number(row.minDepositPhp) : DEFAULT_DEPOSIT_PHP,
     lowBalancePct: row ? Number(row.lowBalancePct) : 20,
+    depositPct: row ? Number(row.depositPct) : 0,
   };
+}
+
+// The deposit a quote opens its contract with: depositPct% of the quote
+// total, else (no total, or pct 0) the flat minimum.
+export function depositForQuote(settings: Pick<BillingSettings, 'minDepositPhp' | 'depositPct'>, quoteTotal: number | null): number {
+  if (!quoteTotal || quoteTotal <= 0 || settings.depositPct <= 0) return settings.minDepositPhp;
+  return cents((quoteTotal * settings.depositPct) / 100);
 }
 
 export interface DepositDeduction {

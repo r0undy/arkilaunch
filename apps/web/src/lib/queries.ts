@@ -127,7 +127,14 @@ export interface QuoteDetail {
   id: string;
   revision: number;
   status: string;
-  lineItems: { equipmentTypeId: string; quantity: number; estimatedHours: number; subtotal: number }[];
+  lineItems: {
+    equipmentTypeId: string;
+    equipmentTypeName?: string;
+    quantity: number;
+    estimatedHours: number;
+    hourlyRate: number;
+    subtotal: number;
+  }[];
   subtotal: number;
   discount: number;
   total: number;
