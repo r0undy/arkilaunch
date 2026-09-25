@@ -31,11 +31,14 @@ export async function getBillingSettings(tx: Tx, tenantId: string): Promise<Bill
   };
 }
 
-// The deposit a quote opens its contract with: depositPct% of the quote
-// total, else (no total, or pct 0) the flat minimum.
-export function depositForQuote(settings: Pick<BillingSettings, 'minDepositPhp' | 'depositPct'>, quoteTotal: number | null): number {
-  if (!quoteTotal || quoteTotal <= 0 || settings.depositPct <= 0) return settings.minDepositPhp;
-  return cents((quoteTotal * settings.depositPct) / 100);
+// The consumable deposit a quote opens its contract with: depositPct% of
+// the rented hours' worth (sum of hours x quantity x quoted hourly rate),
+// so 50% of a 50-hour rental prepays 25 hours. Not refundable: approved
+// EDTR hours draw it down and the low-balance warning fires at
+// lowBalancePct. No hours value, or pct 0, falls back to the flat minimum.
+export function depositForQuote(settings: Pick<BillingSettings, 'minDepositPhp' | 'depositPct'>, rentedHoursValue: number | null): number {
+  if (!rentedHoursValue || rentedHoursValue <= 0 || settings.depositPct <= 0) return settings.minDepositPhp;
+  return cents((rentedHoursValue * settings.depositPct) / 100);
 }
 
 export interface DepositDeduction {

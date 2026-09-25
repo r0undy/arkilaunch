@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   auditLogs,
   depositForQuote,
@@ -291,11 +291,15 @@ export class QuotesService {
       if (quoteExpiresAt(quotation.createdAt) < new Date()) throw new ConflictException({ error: 'quote_expired' });
 
       await tx.update(quotations).set({ status: 'accepted' }).where(eq(quotations.id, quotationId));
+      const [rentedHoursValue] = await tx
+        .select({ value: sql<string | null>`sum(${quotationItems.estimatedHours} * ${quotationItems.quantity} * ${quotationItems.hourlyRatePhp})` })
+        .from(quotationItems)
+        .where(eq(quotationItems.quotationId, quotationId));
       await tx.insert(rentalContracts).values({
         tenantId: ctx.tenantId,
         quotationId,
         depositRequired: String(
-          depositForQuote(await getBillingSettings(tx, ctx.tenantId), quotation.totalPhp !== null ? Number(quotation.totalPhp) : null),
+          depositForQuote(await getBillingSettings(tx, ctx.tenantId), rentedHoursValue?.value != null ? Number(rentedHoursValue.value) : null),
         ),
         status: 'active',
       });
