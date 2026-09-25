@@ -58,4 +58,4 @@ These need a contract change, a migration or a product decision, so they are out
 | `migration-rls-guardian` | No. No schema or migration diff | Not run |
 | `edtr-ocr-worker` | No. Only unused re-exports removed from the DI port; `createDocumentIntelligenceAdapter` is unchanged | Not run |
 | `ai-ocr-abuse-runner` | No. The OCR path's behaviour is unchanged | Not run |
-| `restraint-guardian` | Yes | See PR |
+| `restraint-guardian` | Yes | PASS. Pure subtraction; no validation, authz, RLS, a11y or security control cut |
