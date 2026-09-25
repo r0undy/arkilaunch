@@ -1,7 +1,7 @@
 import { createRoute } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { DEFAULT_TRUCK_FORMULA, FORMULA_BASE_VARS, formulaVarName, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
+import { DEFAULT_TRUCK_FORMULA, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
@@ -12,6 +12,7 @@ import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { TruckThread } from '../components/truck-thread.js';
+import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
 
 const settingsQuery = {
   queryKey: ['truck-settings'] as const,
@@ -34,7 +35,15 @@ function SettingsEditor({ initial }: { initial: TruckSettings }) {
   const [extras, setExtras] = useState<TruckExtra[]>(initial.extras);
   const [formula, setFormula] = useState(initial.formula || DEFAULT_TRUCK_FORMULA);
   const [rangePct, setRangePct] = useState(String(initial.rangePct));
-  const [region, setRegion] = useState(initial.region);
+  // The builder's sample trip is priced with the same per-km, fuel and
+  // national diesel figures a real request uses.
+  const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<{ transportPhpPerKm: string; fuelLPerKm: string } | null>('/pricing/parameters') });
+  const diesel = useQuery({ queryKey: ['diesel-price'], queryFn: () => apiGet<{ pricePhp: number } | null>('/pricing/diesel-price') });
+  const sample: SampleInputs = {
+    perKmPhp: Number(params.data?.transportPhpPerKm ?? 0),
+    fuelLPerKm: Number(params.data?.fuelLPerKm ?? 0),
+    dieselPhp: Number(diesel.data?.pricePhp ?? 0),
+  };
 
   const save = useMutation({
     mutationFn: () =>
@@ -42,9 +51,8 @@ function SettingsEditor({ initial }: { initial: TruckSettings }) {
         baseFeePhp: Number(base),
         driverFeePhp: Number(driver),
         extras,
-        formula: formula.trim() === DEFAULT_TRUCK_FORMULA ? null : formula.trim(),
+        formula: formula.trim() === '' || formula.trim() === DEFAULT_TRUCK_FORMULA ? null : formula.trim(),
         rangePct: Number(rangePct),
-        region: region.trim(),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: settingsQuery.queryKey });
@@ -61,23 +69,25 @@ function SettingsEditor({ initial }: { initial: TruckSettings }) {
       <div>
         <h2 className="font-display text-lg font-semibold text-text">Truck pricing</h2>
         <p className="text-sm text-text-muted">
-          Per-km rate, fuel use and diesel price come from your pricing parameters and today&apos;s diesel
-          reading. Set the truck&apos;s own fees and any extra charges here.
+          Per-km rate and fuel use come from your pricing parameters; diesel is the national GasWatch
+          average (or your own diesel price in Settings). Set the truck&apos;s own fees and any extra
+          charges here.
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <Input label="Base fee (₱ per trip)" type="number" min={0} numeric value={base} onChange={(e) => setBase(e.target.value)} />
         <Input label="Driver's fee (₱ per trip)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
         <Input label="Estimate range (± %)" type="number" min={0} max={100} numeric value={rangePct} onChange={(e) => setRangePct(e.target.value)} />
-        <Input label="Diesel price region" value={region} onChange={(e) => setRegion(e.target.value)} />
       </div>
-      <div className="flex flex-col gap-1">
-        <Input label="Price formula" value={formula} onChange={(e) => setFormula(e.target.value)} />
-        <p className="text-xs text-text-muted">
-          Numbers, + − × ÷ and brackets. Variables: {[...FORMULA_BASE_VARS, ...extras.map((x) => formulaVarName(x.label)).filter(Boolean)].join(', ')}.
-          The high end of the range is the most a customer can be charged without approving.
-        </p>
-      </div>
+      <FormulaBuilder
+        value={formula}
+        onChange={setFormula}
+        settings={{ baseFeePhp: Number(base), driverFeePhp: Number(driver), extras }}
+        sample={sample}
+      />
+      <p className="text-xs text-text-muted">
+        The high end of the estimate range is the most a customer can be charged without approving.
+      </p>
       <fieldset className="flex flex-col gap-3">
         <legend className="mb-2 text-sm font-medium text-text">Extra charges</legend>
         {extras.map((x, i) => (

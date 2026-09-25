@@ -26,7 +26,7 @@ export const TruckSettingsSchema = z
     formula: z.string().trim().max(500).nullish(),
     // The estimate is shown as total ± rangePct; the high end is the cap.
     rangePct: z.number().min(0).max(100).default(10),
-    // The diesel price / pricing_parameters region the tenant prices in.
+    // Legacy: trucks now price on the national diesel average; not read.
     region: z.string().trim().min(1).max(40).default('NCR'),
   })
   .strict()

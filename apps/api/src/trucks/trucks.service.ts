@@ -71,11 +71,12 @@ export class TrucksService {
   }
 
   // Per-km and fuel are the tenant's pricing parameters and today's resolved
-  // diesel price for the tenant's region -- the same inputs as every
-  // equipment quote. low/high are the total +/- the tenant's band.
+  // diesel price (tenant override, else the national GasWatch average) --
+  // the same inputs as every equipment quote. truck_settings.region is no
+  // longer read. low/high are the total +/- the tenant's band.
   private async price(tx: Tx, tenantId: string, km: number, tolls: TruckPriceLine[] = []): Promise<TruckPrice> {
     const settings = await this.readSettings(tx, tenantId);
-    const diesel = await this.engine.resolveDieselAndParams(tx, tenantId, settings.region);
+    const diesel = await this.engine.resolveDieselAndParams(tx, tenantId);
     const price = priceTruckTrip({
       km,
       settings,
