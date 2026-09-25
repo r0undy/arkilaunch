@@ -25,6 +25,12 @@ export function platformUrl(path: string): string {
   return new URL(path, base).toString();
 }
 
+// Raw page.request calls skip the web app's lib/host.ts, so they name the
+// tenant themselves, exactly as the browser build does.
+export const TENANT_HEADERS = {
+  'X-Tenant-Slug': new URL(process.env.PLAYWRIGHT_BASE_URL ?? 'https://almara.localhost:5173').hostname.split('.')[0]!,
+};
+
 async function submit(page: Page, email: string, loginUrl = '/login') {
   await page.goto(loginUrl);
   await page.getByLabel('Email').fill(email);
