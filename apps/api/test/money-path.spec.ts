@@ -78,19 +78,30 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     // reprices every other spec's deductions -- which is exactly what a
     // first attempt at this did to billing-engine. Scoped to 2021 as well
     // as to its own type, so it cannot reach anything pricing at `now`.
-    const [cappedType] = await sql`
-      insert into equipment_types (name) values (${`Money Path Cap Fixture ${Date.now()}`}) returning id
-    `;
+    // One fixed fixture type, unit and card, reused across runs (type names
+    // are unique since 0040) -- a fresh type per run piled up in the
+    // Category dropdown.
+    await sql`insert into equipment_types (name) values ('Money Path Cap Fixture') on conflict (name) do nothing`;
+    const [cappedType] = await sql`select id from equipment_types where name = 'Money Path Cap Fixture'`;
     const cappedTypeId = (cappedType as { id: string }).id;
-    const [cappedEquipment] = await sql`
-      insert into equipment (tenant_id, equipment_type_id, model, serial_no)
-      values (${tenantId}, ${cappedTypeId}, 'Money Path Cap Unit', ${`test-tenant-a-serial-cap-${Date.now()}`})
-      returning id
+    const capSerial = 'test-tenant-a-serial-cap';
+    let [cappedEquipment] = await sql`
+      select id from equipment where tenant_id = ${tenantId} and serial_no = ${capSerial}
     `;
+    if (!cappedEquipment) {
+      [cappedEquipment] = await sql`
+        insert into equipment (tenant_id, equipment_type_id, model, serial_no)
+        values (${tenantId}, ${cappedTypeId}, 'Money Path Cap Unit', ${capSerial})
+        returning id
+      `;
+    }
     uncappedEquipmentId = (cappedEquipment as { id: string }).id;
     await sql`
       insert into rate_cards (tenant_id, equipment_type_id, rate_type, rate_value, currency, effective_from, effective_to)
-      values (${tenantId}, ${cappedTypeId}, 'hourly', 1000.00, 'PHP', '2021-01-01', '2021-12-31')
+      select ${tenantId}, ${cappedTypeId}, 'hourly', 1000.00, 'PHP', '2021-01-01', '2021-12-31'
+      where not exists (
+        select 1 from rate_cards where tenant_id = ${tenantId} and equipment_type_id = ${cappedTypeId}
+      )
     `;
     const [customerRow] = await sql`select id from customers where tenant_id = ${tenantId} limit 1`;
     const [siteRow] = await sql`select id from project_sites where tenant_id = ${tenantId} limit 1`;
@@ -103,7 +114,8 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     // idempotency guard as edtr-engine.spec.ts.
     const dates = Object.values(DATES);
     const staleIds = await sql`
-      select id from edtr where equipment_id = ${equipmentId} and report_date = any(${dates})
+      select id from edtr
+      where equipment_id in (${equipmentId}, ${uncappedEquipmentId}) and report_date = any(${dates})
     `;
     const ids = staleIds.map((row) => (row as { id: string }).id);
     if (ids.length > 0) {
@@ -114,6 +126,12 @@ describe('the money path: no deduction without a passing reconciliation', () => 
       // the reconciliations they cite.
       await sql`
         delete from invoice_line_items
+        where reconciliation_id in (
+          select id from edtr_reconciliations
+          where edtr_id = any(${ids}) or counterpart_edtr_id = any(${ids})
+        )`;
+      await sql`
+        delete from deposit_accruals
         where reconciliation_id in (
           select id from edtr_reconciliations
           where edtr_id = any(${ids}) or counterpart_edtr_id = any(${ids})
