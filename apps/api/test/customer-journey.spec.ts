@@ -146,7 +146,7 @@ describe('Customer journey', () => {
   }
 
   it('auto-quotes a new booking from the machine rate card and sends it to the customer', async () => {
-    const booking = await book(20, 2);
+    const booking = await book(25, 2);
     const detail = await bookings.get(customerCtx, booking.id);
     expect(detail.quotation?.status).toBe('approved');
     expect(detail.quotation?.totalPhp).toBeGreaterThan(0);
