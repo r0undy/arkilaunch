@@ -227,30 +227,6 @@ export function formatDateTime(value: string | Date | null | undefined): string 
   });
 }
 
-/** "8-12 Sep 2026", collapsing the repeated month and year. */
-export function formatDateRange(
-  start: string | Date | null | undefined,
-  end: string | Date | null | undefined,
-): string {
-  if (!start && !end) return '--';
-  if (!end) return formatDate(start);
-  if (!start) return formatDate(end);
-  const from = start instanceof Date ? start : new Date(start);
-  const to = end instanceof Date ? end : new Date(end);
-  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return '--';
-  const sameYear = from.getFullYear() === to.getFullYear();
-  const sameMonth = sameYear && from.getMonth() === to.getMonth();
-  if (sameMonth) {
-    return `${from.getDate()}-${to.getDate()} ${to.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}`;
-  }
-  const fromPart = from.toLocaleDateString('en-PH', {
-    day: 'numeric',
-    month: 'short',
-    ...(sameYear ? {} : { year: 'numeric' }),
-  });
-  return `${fromPart} - ${formatDate(to)}`;
-}
-
 // -------------------------------------------------------------- place naming
 
 /**
