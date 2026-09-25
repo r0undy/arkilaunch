@@ -45,10 +45,10 @@ export async function recordManualDieselReading(
   return row;
 }
 
-// DOE scrape cron (jobs/src/diesel.ts). Same reason as the manual entry
-// above: the cron runs on the pooled app_authenticated client, not as
-// service_role, so it lost its direct INSERT with migration 0020 and goes
-// through its own SECURITY DEFINER function, which hard-codes
+// The retired DOE scrape path (the cron now reads GasWatch, below). Kept
+// because the stale-reading test (QAD-T45, quotes-engine.spec.ts) needs a
+// per-region write: app_authenticated lost its direct INSERT with
+// migration 0020, and this SECURITY DEFINER function hard-codes
 // source='doe_scrape'.
 export async function recordScrapeDieselReading(input: {
   region: string;

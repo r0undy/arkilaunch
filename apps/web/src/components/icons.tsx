@@ -42,14 +42,6 @@ export function XCircleIcon(props: IconProps) {
   );
 }
 
-export function CloudIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <path d="M6 15.5a3.5 3.5 0 01-.5-6.96A4.5 4.5 0 0114 9a3 3 0 010 6H6z" />
-    </svg>
-  );
-}
-
 export function ClockIcon(props: IconProps) {
   return (
     <svg {...base(props)}>

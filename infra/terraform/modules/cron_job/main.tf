@@ -1,5 +1,5 @@
 # Reusable ACA Job for one of jobs/src/{weather-poll,diesel,maintenance-notify,
-# edtr-ocr-worker}.ts. parallelism=1 + replica_completion_count=1 is the
+# edtr-ocr-worker}.ts (weekly-billing.ts is not scheduled yet). parallelism=1 + replica_completion_count=1 is the
 # overlap guard ops-arkilaunch.md requires (A8: "two runs overlap despite the
 # guard" is itself a P1/P2 alert condition) -- a second scheduled run cannot
 # start concurrently with one still in flight.

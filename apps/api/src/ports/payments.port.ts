@@ -11,8 +11,6 @@ import {
   type PaymentsPort,
 } from '@arkilaunch/shared';
 
-export { type CheckoutSession, type PaymentsPort, StubPaymentsAdapter } from '@arkilaunch/shared';
-
 const PAYMONGO_API_BASE = 'https://api.paymongo.com/v1';
 
 // Real PayMongo Hosted Checkout adapter (PRD-F2). Verified 2026-08-02

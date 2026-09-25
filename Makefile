@@ -118,4 +118,4 @@ build-api:
 # packages/*/dist as well, which the other workspaces resolve
 # @arkilaunch/shared through.
 clean:
-	rm -rf apps/web/dist apps/api/dist packages/*/dist jobs/dist node_modules/.vite apps/web/node_modules/.vite .turbo apps/*/.turbo packages/*/.turbo
+	rm -rf apps/web/dist apps/api/dist packages/*/dist jobs/dist node_modules/.vite apps/web/node_modules/.vite

@@ -4,8 +4,8 @@ export interface TestimonialCardProps {
   testimonial: CatalogTestimonial;
 }
 
-// Card conventions match feature-tile.tsx (rounded-mk-lg surface-mk card,
-// shadow-mk-card); this is the anchor tenant's own quote, fetched via
+// Marketing card conventions (rounded-mk-lg surface-mk card, shadow-mk-card,
+// DSD §4); this is the anchor tenant's own quote, fetched via
 // GET /catalog/testimonials -- see queries.ts catalogQueries.testimonials.
 export function TestimonialCard({ testimonial }: TestimonialCardProps) {
   return (
