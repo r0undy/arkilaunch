@@ -5,7 +5,8 @@ import { tenants } from './tenancy.js';
 // Global reference catalog (SDD §3), same category as diesel_price_readings.
 export const equipmentTypes = pgTable('equipment_types', {
   id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
+  // Unique since 0040: one row per standard category.
+  name: text('name').notNull().unique('equipment_types_name_unique'),
 });
 
 export const equipment = pgTable(
