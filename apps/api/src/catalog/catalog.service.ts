@@ -13,6 +13,13 @@ import {
   type CatalogEquipmentListResponse,
   type CatalogTestimonialListResponse,
 } from '@arkilaunch/shared';
+import { publicPhotoUrl } from '../fleet/fleet.service.js';
+
+// photo_uri is a storage key, not something an <img> can load; every
+// storefront screen (list, detail, cart) reads the photo from here.
+function withPhotoUrl<T extends { photoUri: string | null }>(row: T): T {
+  return { ...row, photoUri: publicPhotoUrl(row.photoUri) };
+}
 
 // GET /catalog/equipment (@Public). Anchor-tenant only for now: the
 // storefront (`/`, `/equipment`) is Almara's single-tenant catalog, and a
@@ -24,7 +31,7 @@ export class CatalogService {
   async listEquipment(query: CatalogEquipmentListQuery): Promise<CatalogEquipmentListResponse> {
     const slug = process.env.ANCHOR_TENANT_SLUG;
     if (!slug) return { items: [] };
-    const items = await listCatalogEquipmentForSlug(slug, query.limit, query.offset);
+    const items = (await listCatalogEquipmentForSlug(slug, query.limit, query.offset)).map(withPhotoUrl);
     // availability_status is a free-text column at the DB level; parse
     // rather than cast so a corrupt/unexpected value fails loudly instead
     // of silently mistyping past the response contract.
@@ -39,7 +46,7 @@ export class CatalogService {
     if (!slug) throw new NotFoundException({ error: 'equipment_not_found' });
     const row = await getCatalogEquipmentForSlug(slug, id);
     if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
-    return CatalogEquipmentSchema.parse(row);
+    return CatalogEquipmentSchema.parse(withPhotoUrl(row));
   }
 
   // GET /catalog/testimonials (@Public, anchor-tenant only). Same

@@ -52,7 +52,7 @@ function LandingPage() {
         <SearchFilterBar query={query} onQueryChange={setQuery} />
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {preview.map((eq) => {
-            const imageUrl = equipmentImageUrl(eq.model);
+            const imageUrl = eq.photoUri ?? equipmentImageUrl(eq.model);
             return (
               <EquipmentCard
                 key={eq.id}
