@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException, UnprocessableEntityEx
 import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import {
   auditLogs,
+  customers,
   depositForQuote,
   equipment,
   equipmentAssignments,
@@ -14,7 +15,7 @@ import {
   rentals,
   withTenantTx,
 } from '@arkilaunch/db';
-import { quoteExpiresAt, type QuoteRequest, type RequestContext } from '@arkilaunch/shared';
+import { DAYS_PER_MONTH, quoteExpiresAt, type QuoteRequest, type RentPart, type RequestContext } from '@arkilaunch/shared';
 import { ownsCustomer, requireVerifiedCompany } from '../common/customer-scope.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { EventsService } from '../events/events.service.js';
@@ -34,10 +35,17 @@ export interface QuoteResponse {
   priceStale: boolean;
   currency: 'PHP';
   lineItems: Array<{
-    equipmentTypeId: string;
+    kind: 'equipment' | 'custom';
+    // A custom line's own text; unset on equipment lines.
+    description?: string;
+    equipmentTypeId: string | null;
     equipmentTypeName?: string;
+    rateCardId: string | null;
     quantity: number;
     estimatedHours: number;
+    // The rent as charged, e.g. [{ daily, 8000, 12 }] = 8,000/day x 12 days.
+    rentParts: RentPart[];
+    rent: number;
     hourlyRate: number;
     operatingCost: number;
     mobilizationCost: number;
@@ -45,17 +53,27 @@ export interface QuoteResponse {
     buffer: number;
     subtotal: number;
   }>;
+  mobilization: number;
+  demobilization: number;
   subtotal: number;
   discount: number;
   total: number;
   printableUrl: string | null;
+  // Filled by GET /quotes/:id for the printable quote.
+  createdAt?: string;
+  customerName?: string;
 }
 
 function toLineItems(priced: PricedQuote): QuoteResponse['lineItems'] {
   return priced.items.map((item) => ({
+    kind: item.kind,
+    ...(item.description ? { description: item.description } : {}),
     equipmentTypeId: item.equipmentTypeId,
+    rateCardId: item.rateCardId,
     quantity: item.quantity,
     estimatedHours: item.estimatedHours,
+    rentParts: item.rentParts,
+    rent: item.rentPhp,
     hourlyRate: item.hourlyRatePhp,
     operatingCost: item.operatingCostPhp,
     mobilizationCost: item.mobilizationCostPhp,
@@ -75,7 +93,7 @@ export class QuotesService {
   // POST /quotes/preview: compute only, nothing persisted (RFC-3 §3).
   async preview(ctx: RequestContext, body: QuoteRequest): Promise<QuoteResponse> {
     const priced = await withTenantTx(ctx, (tx) =>
-      this.pricingEngine.priceQuote(tx, ctx.tenantId, body.items, body.discount),
+      this.pricingEngine.priceQuote(tx, ctx.tenantId, body),
     );
     return {
       id: '',
@@ -87,6 +105,8 @@ export class QuotesService {
       priceStale: priced.diesel.stale,
       currency: 'PHP',
       lineItems: toLineItems(priced),
+      mobilization: priced.mobilizationPhp,
+      demobilization: priced.demobilizationPhp,
       subtotal: priced.subtotalPhp,
       discount: priced.discountPhp,
       total: priced.totalPhp,
@@ -127,7 +147,7 @@ export class QuotesService {
         }
       }
 
-      const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body.items, body.discount);
+      const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body);
 
       const [quotation] = await tx
         .insert(quotations)
@@ -146,6 +166,8 @@ export class QuotesService {
           pricingParamsId: priced.diesel.pricingParamsId,
           discountType: body.discount.type,
           discountValue: String(body.discount.value),
+          mobilizationPhp: String(priced.mobilizationPhp),
+          demobilizationPhp: String(priced.demobilizationPhp),
           subtotalPhp: String(priced.subtotalPhp),
           totalPhp: String(priced.totalPhp),
         })
@@ -156,6 +178,8 @@ export class QuotesService {
         priced.items.map((item) => ({
           tenantId: ctx.tenantId,
           quotationId: quotation.id,
+          kind: item.kind,
+          description: item.description,
           equipmentTypeId: item.equipmentTypeId,
           rateCardId: item.rateCardId,
           quantity: item.quantity,
@@ -190,13 +214,13 @@ export class QuotesService {
   }
 
   // Automatic quote on a new booking: every machine priced off its own rate
-  // card (the unit's, else its type's; hourly before daily, the same pick
-  // as the catalog price), for its booked days x the tenant's hours per
-  // day, then sent to the customer at once. Staff can still revise it
-  // before it is accepted. Returns null, leaving the booking for a manual
-  // quote, when a machine has no rate card or pricing is not set up.
-  // ponytail: transport km start at 0 (no route distance yet); staff add
-  // mobilization in a revision.
+  // card (the unit's, else its type's), picked by hire length: 30+ days
+  // monthly, else daily, else hourly, falling back to whatever card exists.
+  // Hours = booked days x the tenant's hours per day; mobilization and
+  // demobilization are the company defaults. Sent to the customer at once;
+  // staff can still revise it before it is accepted. Returns null, leaving
+  // the booking for a manual quote, when a machine has no rate card or
+  // pricing is not set up.
   async autoQuoteBooking(ctx: RequestContext, rentalId: string): Promise<QuoteResponse | null> {
     const body = await withTenantTx(ctx, async (tx): Promise<QuoteRequest | null> => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, rentalId)).limit(1);
@@ -211,6 +235,10 @@ export class QuotesService {
       const now = new Date();
       const items: QuoteRequest['items'] = [];
       for (const line of lines) {
+        // No end date: an open-ended hire has no days to price; manual quote.
+        if (!line.end) return null;
+        const days = Math.max(1, Math.ceil((line.end.getTime() - line.start.getTime()) / 86_400_000));
+        const preferred = days >= DAYS_PER_MONTH ? ['monthly', 'daily', 'hourly'] : ['daily', 'hourly', 'monthly'];
         const [card] = await tx
           .select({ id: rateCards.id })
           .from(rateCards)
@@ -222,15 +250,18 @@ export class QuotesService {
               or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, now)),
             ),
           )
-          .orderBy(sql`${rateCards.equipmentId} is null`, asc(sql`${rateCards.rateType} <> 'hourly'`), desc(rateCards.effectiveFrom))
+          .orderBy(
+            sql`${rateCards.equipmentId} is null`,
+            sql`array_position(${sql.raw(`array['${preferred.join("','")}']`)}::text[], ${rateCards.rateType})`,
+            desc(rateCards.effectiveFrom),
+          )
           .limit(1);
-        // No card, or an open-ended hire with no days to price: manual quote.
-        if (!card || !line.end) return null;
-        const days = Math.max(1, Math.ceil((line.end.getTime() - line.start.getTime()) / 86_400_000));
+        if (!card) return null;
         items.push({
           equipmentTypeId: line.equipmentTypeId,
           rateCardId: card.id,
           quantity: 1,
+          kind: 'equipment',
           estimatedHours: days * dailyHours,
           mobilizationKm: 0,
           demobilizationKm: 0,
@@ -257,7 +288,7 @@ export class QuotesService {
       if (!parent) throw new NotFoundException({ error: 'quote_not_found' });
       await requireVerifiedCompany(tx, body.customerId);
 
-      const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body.items, body.discount);
+      const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body);
 
       const [revised] = await tx
         .insert(quotations)
@@ -276,6 +307,8 @@ export class QuotesService {
           parentQuotationId: parent.id,
           discountType: body.discount.type,
           discountValue: String(body.discount.value),
+          mobilizationPhp: String(priced.mobilizationPhp),
+          demobilizationPhp: String(priced.demobilizationPhp),
           subtotalPhp: String(priced.subtotalPhp),
           totalPhp: String(priced.totalPhp),
         })
@@ -286,6 +319,8 @@ export class QuotesService {
         priced.items.map((item) => ({
           tenantId: ctx.tenantId,
           quotationId: revised.id,
+          kind: item.kind,
+          description: item.description,
           equipmentTypeId: item.equipmentTypeId,
           rateCardId: item.rateCardId,
           quantity: item.quantity,
@@ -403,7 +438,7 @@ export class QuotesService {
     quotationId: string,
     body: QuoteRequest,
   ) {
-    const agreed = body.items.filter((item) => item.agreedSubtotalPhp !== undefined);
+    const agreed = body.items.flatMap((item) => (item.kind !== 'custom' && item.agreedSubtotalPhp !== undefined ? [item] : []));
     if (agreed.length === 0) return;
     await tx.insert(auditLogs).values({
       tenantId: ctx.tenantId,
@@ -448,6 +483,11 @@ export class QuotesService {
         .from(quotationItems)
         .leftJoin(equipmentTypes, eq(equipmentTypes.id, quotationItems.equipmentTypeId))
         .where(eq(quotationItems.quotationId, quotationId));
+      const [customer] = await tx
+        .select({ companyName: customers.companyName })
+        .from(customers)
+        .where(eq(customers.id, quotation.customerId))
+        .limit(1);
 
       return {
         id: quotation.id,
@@ -458,22 +498,37 @@ export class QuotesService {
         dieselPriceSource: quotation.dieselPriceSource ?? '',
         priceStale: quotation.priceStale === 'true',
         currency: 'PHP',
-        lineItems: items.map(({ item, typeName }) => ({
-          equipmentTypeId: item.equipmentTypeId,
-          ...(typeName ? { equipmentTypeName: typeName } : {}),
-          quantity: item.quantity,
-          estimatedHours: Number(item.estimatedHours),
-          hourlyRate: Number(item.hourlyRatePhp),
-          operatingCost: Number(item.operatingCostPhp),
-          mobilizationCost: Number(item.mobilizationCostPhp),
-          demobilizationCost: Number(item.demobilizationCostPhp),
-          buffer: Number(item.bufferPhp),
-          subtotal: Number(item.subtotalPhp),
-        })),
+        lineItems: items.map(({ item, typeName }) => {
+          const inputs = item.pricingInputs as { rent_php?: number; rent_parts?: RentPart[] };
+          return {
+            kind: item.kind === 'custom' ? ('custom' as const) : ('equipment' as const),
+            ...(item.description ? { description: item.description } : {}),
+            equipmentTypeId: item.equipmentTypeId,
+            ...(typeName ? { equipmentTypeName: typeName } : {}),
+            rateCardId: item.rateCardId,
+            quantity: item.quantity,
+            estimatedHours: Number(item.estimatedHours),
+            // Quotes from before 2.0 carry no rent breakdown: rent shows as
+            // the operating cost, priced per hour.
+            rentParts: inputs.rent_parts ?? [],
+            rent: inputs.rent_php ?? Number(item.operatingCostPhp),
+            hourlyRate: Number(item.hourlyRatePhp),
+            operatingCost: Number(item.operatingCostPhp),
+            mobilizationCost: Number(item.mobilizationCostPhp),
+            demobilizationCost: Number(item.demobilizationCostPhp),
+            buffer: Number(item.bufferPhp),
+            subtotal: Number(item.subtotalPhp),
+          };
+        }),
+        mobilization: Number(quotation.mobilizationPhp),
+        demobilization: Number(quotation.demobilizationPhp),
         subtotal: Number(quotation.subtotalPhp ?? 0),
-        discount: Number(quotation.discountValue ?? 0),
+        // The amount taken off (discount_value is a percent on percent quotes).
+        discount: Number(quotation.subtotalPhp ?? 0) - Number(quotation.totalPhp ?? 0),
         total: Number(quotation.totalPhp ?? 0),
         printableUrl: quotation.printableUrl,
+        createdAt: quotation.createdAt.toISOString(),
+        ...(customer ? { customerName: customer.companyName } : {}),
       };
     });
   }
@@ -495,6 +550,8 @@ export class QuotesService {
       priceStale: priced.diesel.stale,
       currency: 'PHP',
       lineItems: toLineItems(priced),
+      mobilization: priced.mobilizationPhp,
+      demobilization: priced.demobilizationPhp,
       subtotal: priced.subtotalPhp,
       discount: priced.discountPhp,
       total: priced.totalPhp,

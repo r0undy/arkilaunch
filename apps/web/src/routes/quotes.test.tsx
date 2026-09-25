@@ -12,7 +12,7 @@ import { setAccessToken } from '../lib/auth-client.js';
 
 const CUSTOMER = { id: 'cust-1', companyName: 'Almara Construction' };
 const EQUIPMENT_TYPE = { id: 'et-1', name: 'Excavator 20T' };
-const RATE_CARD = { id: 'rc-1', rateType: 'hourly', currency: 'PHP', rateValue: 2500 };
+const RATE_CARD = { id: 'rc-1', equipmentTypeId: 'et-1', equipmentId: null, rateType: 'daily', currency: 'PHP', rateValue: '20000' };
 const SITE = { id: 'site-1', city: 'Taguig', province: 'NCR', latitude: 14.5, longitude: 121 };
 
 const PREVIEW = {
@@ -21,11 +21,18 @@ const PREVIEW = {
   dieselPriceDate: '2026-09-20',
   priceStale: false,
   lineItems: [
-    { equipmentTypeId: 'et-1', quantity: 1, estimatedHours: 8, hourlyRate: 2500, subtotal: 20000 },
+    {
+      kind: 'equipment', equipmentTypeId: 'et-1', rateCardId: 'rc-1', quantity: 1, estimatedHours: 8,
+      rentParts: [{ rateType: 'daily', ratePhp: 20000, count: 1 }], rent: 20000, hourlyRate: 2500,
+      operatingCost: 20000, buffer: 0, subtotal: 20000,
+    },
+    { kind: 'custom', description: 'Operator overtime', equipmentTypeId: null, rateCardId: null, quantity: 2, estimatedHours: 0, rentParts: [], rent: 0, hourlyRate: 0, operatingCost: 0, buffer: 0, subtotal: 3000 },
   ],
-  subtotal: 20000,
+  mobilization: 15000,
+  demobilization: 15000,
+  subtotal: 53000,
   discount: 0,
-  total: 20000,
+  total: 53000,
 };
 
 function stubFetch(onQuotes?: (url: string) => Response) {
@@ -71,7 +78,11 @@ describe('Quotes', () => {
     // The machine being priced reads by name; the column used to print a
     // slice of its UUID.
     expect(dialog).toHaveTextContent('Excavator 20T');
-    expect(dialog).toHaveTextContent('20000.00');
+    // Charged in the card's own unit, the same way the customer reads it.
+    expect(dialog).toHaveTextContent('/day × 1 day');
+    expect(dialog).toHaveTextContent('Operator overtime');
+    expect(dialog).toHaveTextContent('Mobilization');
+    expect(dialog).toHaveTextContent('53000.00');
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create draft' }));
 

@@ -1,5 +1,5 @@
 import { hash } from '@node-rs/argon2';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import * as schema from '../schema/index.js';
 import { makeServiceDb, seedPermissionCatalog } from './permission-catalog.js';
 
@@ -90,10 +90,20 @@ async function main() {
       }
     }
 
+    // A live type-wide hourly card: the specs price against it, and a run
+    // that retires or supersedes one must not leave the next run without.
     const existingRateCard = await db
       .select()
       .from(schema.rateCards)
-      .where(eq(schema.rateCards.tenantId, tenant.id));
+      .where(
+        and(
+          eq(schema.rateCards.tenantId, tenant.id),
+          eq(schema.rateCards.equipmentTypeId, resolvedEquipmentType.id),
+          eq(schema.rateCards.rateType, 'hourly'),
+          isNull(schema.rateCards.equipmentId),
+          isNull(schema.rateCards.effectiveTo),
+        ),
+      );
     if (existingRateCard.length === 0) {
       await db.insert(schema.rateCards).values({
         tenantId: tenant.id,

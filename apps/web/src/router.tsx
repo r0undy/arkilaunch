@@ -53,6 +53,7 @@ import { appUsersRoute } from './routes/app.users.js';
 import { appSettingsRoute } from './routes/app.settings.js';
 import { appTrucksRoute } from './routes/app.trucks.js';
 import { quotesRoute } from './routes/quotes.js';
+import { quotePrintRoute } from './routes/quote-print.js';
 import { edtrRoute } from './routes/edtr.js';
 import { appOcrDeploymentsRoute, fieldScanRoute } from './routes/app.ocr.deployments.js';
 import {
@@ -139,6 +140,7 @@ export const routeTree = rootRoute.addChildren([
     appSettingsRoute,
     appTrucksRoute,
     quotesRoute,
+    quotePrintRoute,
     edtrRoute,
     appOcrDeploymentsRoute,
     appRegistrationPendingRoute,

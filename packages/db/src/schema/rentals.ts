@@ -126,6 +126,9 @@ export const quotations = pgTable(
     subtotalPhp: numeric('subtotal_php', { precision: 14, scale: 2 }),
     totalPhp: numeric('total_php', { precision: 14, scale: 2 }),
     printableUrl: text('printable_url'),
+    // 0044: flat per-quote transport, defaulted from billing_settings.
+    mobilizationPhp: numeric('mobilization_php', { precision: 14, scale: 2 }).notNull().default('0'),
+    demobilizationPhp: numeric('demobilization_php', { precision: 14, scale: 2 }).notNull().default('0'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [tenantIsolationPolicy(),
@@ -149,12 +152,12 @@ export const quotationItems = pgTable(
     quotationId: uuid('quotation_id')
       .notNull()
       .references(() => quotations.id),
-    equipmentTypeId: uuid('equipment_type_id')
-      .notNull()
-      .references(() => equipmentTypes.id),
-    rateCardId: uuid('rate_card_id')
-      .notNull()
-      .references(() => rateCards.id),
+    // 0044: 'equipment' (type + rate card) or 'custom' (description, priced
+    // by hand); the quotation_items_kind_shape CHECK enforces the pairing.
+    kind: text('kind').notNull().default('equipment'),
+    description: text('description'),
+    equipmentTypeId: uuid('equipment_type_id').references(() => equipmentTypes.id),
+    rateCardId: uuid('rate_card_id').references(() => rateCards.id),
     quantity: integer('quantity').notNull().default(1),
     mobilizationKm: numeric('mobilization_km', { precision: 8, scale: 2 }).notNull().default('0'),
     demobilizationKm: numeric('demobilization_km', { precision: 8, scale: 2 })

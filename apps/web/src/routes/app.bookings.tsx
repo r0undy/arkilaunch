@@ -224,6 +224,11 @@ function BookingSide({ booking }: { booking: BookingDetailResponse }) {
             <Button variant="primary">{quote ? 'Send a revised quote' : 'Quote this booking'}</Button>
           </Link>
         )}
+        {quote && (
+          <Link to="/app/quotes/$quoteId/print" params={{ quoteId: quote.id }}>
+            <Button variant="secondary">Print quote</Button>
+          </Link>
+        )}
       </Surface>
       <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5 text-sm">
         <h2 className={heading}>Site</h2>

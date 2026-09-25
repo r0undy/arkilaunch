@@ -1,7 +1,8 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useEffect, useState, type FormEvent } from 'react';
+import type { BookingDetailResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
-import { apiPost, apiErrorText } from '../lib/api-client.js';
+import { apiGet, apiPost, apiErrorText } from '../lib/api-client.js';
 import {
   getCustomers,
   getEquipmentTypes,
@@ -12,6 +13,8 @@ import {
   type ProjectSiteRef,
   type RateCardRef,
 } from '../lib/reference-client.js';
+import type { QuoteDetail } from '../lib/queries.js';
+import { formatPeso, formatRateType, formatStatus, shortCode } from '../lib/format.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
@@ -19,27 +22,25 @@ import { Surface } from '../components/surface.js';
 import { PageHeader } from '../components/page-header.js';
 import { GaugeReadout } from '../components/gauge-readout.js';
 import { Modal } from '../components/modal.js';
-import { Table, type TableColumn } from '../components/table.js';
+import { QuoteLines } from '../components/quote-lines.js';
 import { useToast } from '../components/toast.js';
 
-// Wire shape returned by QuotesService.preview/create (apps/api/src/quotes/quotes.service.ts).
-interface QuoteLineItem {
+// A quote line as the builder edits it: a catalog machine priced off its
+// type's rate card, or a free-text item the admin prices by hand.
+type EquipmentLine = {
+  key: number;
+  kind: 'equipment';
   equipmentTypeId: string;
-  quantity: number;
-  estimatedHours: number;
-  hourlyRate: number;
-  subtotal: number;
-}
-interface QuoteResult {
-  status: string;
-  dieselPrice: number;
-  dieselPriceDate: string;
-  priceStale: boolean;
-  lineItems: QuoteLineItem[];
-  subtotal: number;
-  discount: number;
-  total: number;
-}
+  rateCardId: string;
+  quantity: string;
+  // Hours for an hourly card, days for a daily or monthly one.
+  duration: string;
+  agreed: string;
+};
+type CustomLine = { key: number; kind: 'custom'; description: string; quantity: string; unitPrice: string };
+type Line = EquipmentLine | CustomLine;
+
+let nextKey = 1;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -52,8 +53,14 @@ function validateQuoteSearch(search: Record<string, unknown>): { bookingId?: str
   return out;
 }
 
-// DESIGN.md §4.1 Quotation builder: rate-card selector + live diesel Gauge
-// Readout (with date + staleness label) + computed line items.
+function hireDays(booking: BookingDetailResponse): number {
+  const spans = booking.items.filter((item) => item.end).map((item) => (item.end!.getTime() - item.start.getTime()) / 86_400_000);
+  return spans.length ? Math.max(1, Math.ceil(Math.max(...spans))) : 1;
+}
+
+// DESIGN.md §4.1 Quotation builder: several lines, each machine priced off
+// its own type's rate card in the card's unit, plus free-text items,
+// flat mobilization/demobilization, and a live diesel Gauge Readout.
 function QuotesPage() {
   const toast = useToast();
   const { bookingId, customerId: bookingCustomerId } = quotesRoute.useSearch();
@@ -65,28 +72,34 @@ function QuotesPage() {
 
   const [customerId, setCustomerId] = useState('');
   const [projectSiteId, setProjectSiteId] = useState('');
-  const [equipmentTypeId, setEquipmentTypeId] = useState('');
-  const [rateCardId, setRateCardId] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const [estimatedHours, setEstimatedHours] = useState('8');
-  const [mobilizationKm, setMobilizationKm] = useState('0');
-  const [demobilizationKm, setDemobilizationKm] = useState('0');
-  const [agreedPrice, setAgreedPrice] = useState('');
+  const [lines, setLines] = useState<Line[]>([]);
+  // Empty = the company default from Settings.
+  const [mobilization, setMobilization] = useState('');
+  const [demobilization, setDemobilization] = useState('');
   // A fixed peso discount is how staff meet a customer's counter-offer.
   const [discount, setDiscount] = useState('0');
 
-  const [result, setResult] = useState<QuoteResult | null>(null);
-  // The priced figures used to appear inline below the form, so Preview and
-  // Create sat side by side as two blind sibling buttons and the price
-  // scrolled off under a long form. A preview is a decision point, so it
-  // opens over the form and carries Create draft in its own footer.
+  const [result, setResult] = useState<QuoteDetail | null>(null);
+  // A preview is a decision point, so it opens over the form and carries
+  // Create draft in its own footer.
   const [previewOpen, setPreviewOpen] = useState(false);
   const [busy, setBusy] = useState<'preview' | 'create' | 'approve' | null>(null);
   const [quoteId, setQuoteId] = useState<string | null>(null);
 
+  const cardsFor = (typeId: string) => rateCards.filter((rc) => rc.equipmentTypeId === typeId);
+
+  function equipmentLine(types: EquipmentTypeRef[], cards: RateCardRef[], days = 1): EquipmentLine {
+    const typeId = types.find((t) => cards.some((rc) => rc.equipmentTypeId === t.id))?.id ?? types[0]?.id ?? '';
+    const card = cards.find((rc) => rc.equipmentTypeId === typeId);
+    return {
+      key: nextKey++, kind: 'equipment', equipmentTypeId: typeId, rateCardId: card?.id ?? '', quantity: '1',
+      duration: String(card?.rateType === 'hourly' ? days * 8 : days), agreed: '',
+    };
+  }
+
   useEffect(() => {
     Promise.all([getCustomers(), getEquipmentTypes(), getRateCards(), getProjectSites()])
-      .then(([c, et, rc, ps]) => {
+      .then(async ([c, et, rc, ps]) => {
         setCustomers(c);
         setEquipmentTypes(et);
         setRateCards(rc);
@@ -94,9 +107,37 @@ function QuotesPage() {
         const preset = bookingCustomerId && c.find((customer) => customer.id === bookingCustomerId);
         if (preset) setCustomerId(preset.id);
         else if (c[0]) setCustomerId(c[0].id);
-        if (et[0]) setEquipmentTypeId(et[0].id);
-        if (rc[0]) setRateCardId(rc[0].id);
         if (ps[0]) setProjectSiteId(ps[0].id);
+        if (!bookingId) {
+          setLines([equipmentLine(et, rc)]);
+          return;
+        }
+        // Quoting a booking starts from its current quote (a revision is an
+        // edit of what the customer saw), else one line per booked day span.
+        const booking = await apiGet<BookingDetailResponse>(`/bookings/${bookingId}`);
+        setProjectSiteId(booking.projectSiteId);
+        const current = booking.quotation ? await apiGet<QuoteDetail>(`/quotes/${booking.quotation.id}`) : null;
+        if (!current) {
+          setLines([equipmentLine(et, rc, hireDays(booking))]);
+          return;
+        }
+        setMobilization(String(current.mobilization));
+        setDemobilization(String(current.demobilization));
+        setDiscount(String(current.discount));
+        setLines(
+          current.lineItems.map((line): Line => {
+            if (line.kind === 'custom') {
+              return { key: nextKey++, kind: 'custom', description: line.description ?? '', quantity: String(line.quantity), unitPrice: String(line.subtotal / line.quantity) };
+            }
+            const card = rc.find((r) => r.id === line.rateCardId) ?? rc.find((r) => r.equipmentTypeId === line.equipmentTypeId);
+            const hourly = card?.rateType === 'hourly';
+            // A retired card can't price a new revision; fall back to the type's live one.
+            return {
+              key: nextKey++, kind: 'equipment', equipmentTypeId: line.equipmentTypeId ?? '', rateCardId: card?.id ?? '',
+              quantity: String(line.quantity), duration: String(hourly ? line.estimatedHours : hireDays(booking)), agreed: '',
+            };
+          }),
+        );
       })
       .catch((err: unknown) => {
         setRefFailed(true);
@@ -105,19 +146,13 @@ function QuotesPage() {
     // Pick lists are fetched once on mount; the toast context is stable.
   }, []);
 
-  // The line-item table printed a UUID slice for the machine being priced,
-  // while its name was already on the page in the equipment-type picker.
   function equipmentTypeName(id: string): string {
     return equipmentTypes.find((et) => et.id === id)?.name ?? 'Unknown equipment type';
   }
 
-  const lineItemColumns: TableColumn<QuoteLineItem>[] = [
-    { header: 'Equipment type', cell: (row) => equipmentTypeName(row.equipmentTypeId) },
-    { header: 'Qty', cell: (row) => String(row.quantity), align: 'right' },
-    { header: 'Hours', cell: (row) => row.estimatedHours.toFixed(2), align: 'right' },
-    { header: 'Rate (PHP/h)', cell: (row) => row.hourlyRate.toFixed(2), align: 'right' },
-    { header: 'Subtotal (PHP)', cell: (row) => row.subtotal.toFixed(2), align: 'right' },
-  ];
+  function update(key: number, patch: Partial<EquipmentLine> | Partial<CustomLine>) {
+    setLines((prev) => prev.map((line) => (line.key === key ? ({ ...line, ...patch } as Line) : line)));
+  }
 
   function buildBody() {
     return {
@@ -125,17 +160,23 @@ function QuotesPage() {
       projectSiteId,
       ...(bookingId ? { rentalId: bookingId } : {}),
       discount: Number(discount) > 0 ? { type: 'fixed', value: Number(discount) } : { type: 'none', value: 0 },
-      items: [
-        {
-          equipmentTypeId,
-          rateCardId,
-          quantity: Number(quantity),
-          estimatedHours: Number(estimatedHours),
-          mobilizationKm: Number(mobilizationKm),
-          demobilizationKm: Number(demobilizationKm),
-          ...(agreedPrice ? { agreedSubtotalPhp: Number(agreedPrice) } : {}),
-        },
-      ],
+      ...(mobilization !== '' ? { mobilizationPhp: Number(mobilization) } : {}),
+      ...(demobilization !== '' ? { demobilizationPhp: Number(demobilization) } : {}),
+      items: lines.map((line) => {
+        if (line.kind === 'custom') {
+          return { kind: 'custom', description: line.description, quantity: Number(line.quantity), unitPricePhp: Number(line.unitPrice) };
+        }
+        const hourly = rateCards.find((rc) => rc.id === line.rateCardId)?.rateType === 'hourly';
+        return {
+          kind: 'equipment',
+          equipmentTypeId: line.equipmentTypeId,
+          rateCardId: line.rateCardId,
+          quantity: Number(line.quantity),
+          estimatedHours: hourly ? Number(line.duration) : 0,
+          ...(hourly ? {} : { days: Number(line.duration) }),
+          ...(line.agreed ? { agreedSubtotalPhp: Number(line.agreed) } : {}),
+        };
+      }),
     };
   }
 
@@ -143,7 +184,7 @@ function QuotesPage() {
     event.preventDefault();
     setBusy('preview');
     try {
-      const res = await apiPost<QuoteResult>('/quotes/preview', buildBody());
+      const res = await apiPost<QuoteDetail>('/quotes/preview', buildBody());
       setResult(res);
       setPreviewOpen(true);
       if (res.priceStale) {
@@ -163,11 +204,11 @@ function QuotesPage() {
   async function create() {
     setBusy('create');
     try {
-      const res = await apiPost<QuoteResult & { id: string }>('/quotes', buildBody());
+      const res = await apiPost<QuoteDetail>('/quotes', buildBody());
       setResult(res);
       setQuoteId(res.id);
       setPreviewOpen(false);
-      toast.success('Draft quote created', `Total ${res.total.toFixed(2)} PHP. Approve it to send.`);
+      toast.success('Draft quote created', `Total ${formatPeso(res.total)}. Approve it to send.`);
     } catch (err) {
       toast.error('Could not create the draft', apiErrorText(err));
     } finally {
@@ -190,9 +231,13 @@ function QuotesPage() {
     }
   }
 
-  const incomplete = !customerId || !projectSiteId || !equipmentTypeId || !rateCardId;
+  const incomplete =
+    !customerId ||
+    !projectSiteId ||
+    lines.length === 0 ||
+    lines.some((line) => (line.kind === 'custom' ? !line.description.trim() || line.unitPrice === '' : !line.equipmentTypeId || !line.rateCardId));
 
-  function QuoteFigures({ quote }: { quote: QuoteResult }) {
+  function QuoteFigures({ quote }: { quote: QuoteDetail }) {
     return (
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-3">
@@ -205,15 +250,8 @@ function QuotesPage() {
           />
           <GaugeReadout label="Total" value={quote.total.toFixed(2)} unit="PHP" />
         </div>
-        <Table
-          columns={lineItemColumns}
-          rows={quote.lineItems}
-          rowKey={(row) => row.equipmentTypeId}
-        />
-        <p className="text-sm text-text-muted">
-          Subtotal {quote.subtotal.toFixed(2)} PHP, discount {quote.discount.toFixed(2)} PHP, status{' '}
-          {quote.status}.
-        </p>
+        <QuoteLines quote={quote} typeName={equipmentTypeName} />
+        <p className="text-sm text-text-muted">Status {formatStatus(quote.status)}.</p>
       </div>
     );
   }
@@ -223,7 +261,7 @@ function QuotesPage() {
       <PageHeader
         eyebrow="Billing"
         title="Quotes"
-        description="Price a quote against today's diesel rate."
+        description="Price each machine off its own rate card, add any extra items, and set transport."
       />
       {bookingId && (
         <p className="text-sm text-text">
@@ -240,133 +278,141 @@ function QuotesPage() {
           reachable.
         </p>
       )}
-      <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
+      <Surface radius="md" elevation="sm" className="flex max-w-3xl flex-col gap-4 p-6">
         <form className="flex flex-col gap-4" onSubmit={preview}>
-          <Select
-            id="customerId"
-            label="Customer"
-            value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
-            required
-          >
-            {customers.length === 0 && <option value="">No customers on file yet</option>}
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.companyName}
-              </option>
-            ))}
-          </Select>
-          <Select
-            id="projectSiteId"
-            label="Project site"
-            value={projectSiteId}
-            onChange={(e) => setProjectSiteId(e.target.value)}
-            required
-          >
-            {projectSites.length === 0 && <option value="">No project sites yet</option>}
-            {projectSites.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.city ?? s.province ?? `Site ${s.id.slice(0, 8)}`} ({s.latitude}, {s.longitude})
-              </option>
-            ))}
-          </Select>
-          <Select
-            id="equipmentTypeId"
-            label="Equipment type"
-            value={equipmentTypeId}
-            onChange={(e) => setEquipmentTypeId(e.target.value)}
-            required
-          >
-            {equipmentTypes.map((et) => (
-              <option key={et.id} value={et.id}>
-                {et.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            id="rateCardId"
-            label="Rate card"
-            value={rateCardId}
-            onChange={(e) => setRateCardId(e.target.value)}
-            required
-          >
-            {rateCards.length === 0 && <option value="">No rate cards set up yet</option>}
-            {rateCards.map((rc) => (
-              <option key={rc.id} value={rc.id}>
-                {rc.rateType} @ {rc.currency} {rc.rateValue}/hr
-              </option>
-            ))}
-          </Select>
-          <Input
-            numeric
-            id="quantity"
-            label="Quantity"
-            type="number"
-            min="1"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-          />
-          <Input
-            numeric
-            id="estimatedHours"
-            label="Estimated hours"
-            type="number"
-            value={estimatedHours}
-            onChange={(e) => setEstimatedHours(e.target.value)}
-          />
-          <Input
-            numeric
-            id="mobilizationKm"
-            label="Mobilization km"
-            type="number"
-            value={mobilizationKm}
-            onChange={(e) => setMobilizationKm(e.target.value)}
-          />
-          <Input
-            numeric
-            id="demobilizationKm"
-            label="Demobilization km"
-            type="number"
-            value={demobilizationKm}
-            onChange={(e) => setDemobilizationKm(e.target.value)}
-          />
-          <Input
-            numeric
-            id="agreedPrice"
-            label="Agreed line price (PHP, optional)"
-            type="number"
-            min="0"
-            step="0.01"
-            value={agreedPrice}
-            onChange={(e) => setAgreedPrice(e.target.value)}
-          />
-          <Input
-            numeric
-            id="discount"
-            label="Discount (PHP, fixed)"
-            type="number"
-            min="0"
-            step="0.01"
-            value={discount}
-            onChange={(e) => setDiscount(e.target.value)}
-          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Select id="customerId" label="Customer" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
+              {customers.length === 0 && <option value="">No customers on file yet</option>}
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.companyName}
+                </option>
+              ))}
+            </Select>
+            <Select id="projectSiteId" label="Project site" value={projectSiteId} onChange={(e) => setProjectSiteId(e.target.value)} required>
+              {projectSites.length === 0 && <option value="">No project sites yet</option>}
+              {projectSites.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.city ?? s.province ?? `Site ${s.id.slice(0, 8)}`} ({s.latitude}, {s.longitude})
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Lines</h2>
+          {lines.map((line, index) => (
+            <fieldset key={line.key} className="flex flex-col gap-3 rounded-md border border-border p-4">
+              <legend className="px-1 text-sm font-medium text-text">
+                {line.kind === 'custom' ? `Item ${index + 1}` : `Equipment ${index + 1}`}
+              </legend>
+              {line.kind === 'equipment' ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Select
+                    id={`type-${line.key}`}
+                    label="Equipment type"
+                    value={line.equipmentTypeId}
+                    onChange={(e) => {
+                      const card = cardsFor(e.target.value)[0];
+                      update(line.key, { equipmentTypeId: e.target.value, rateCardId: card?.id ?? '' });
+                    }}
+                    required
+                  >
+                    {equipmentTypes.map((et) => (
+                      <option key={et.id} value={et.id}>
+                        {et.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <Select
+                    id={`card-${line.key}`}
+                    label="Rate card"
+                    value={line.rateCardId}
+                    onChange={(e) => update(line.key, { rateCardId: e.target.value })}
+                    required
+                  >
+                    {cardsFor(line.equipmentTypeId).length === 0 && <option value="">No rate card for this type</option>}
+                    {cardsFor(line.equipmentTypeId).map((rc) => (
+                      <option key={rc.id} value={rc.id}>
+                        {formatRateType(rc.rateType)}: {formatPeso(rc.rateValue)}
+                        {rc.equipmentId ? ` (unit ${shortCode('equipment', rc.equipmentId)})` : ''}
+                      </option>
+                    ))}
+                  </Select>
+                  <Input numeric id={`qty-${line.key}`} label="Quantity" type="number" min="1" value={line.quantity} onChange={(e) => update(line.key, { quantity: e.target.value })} />
+                  <Input
+                    numeric
+                    id={`duration-${line.key}`}
+                    label={rateCards.find((rc) => rc.id === line.rateCardId)?.rateType === 'hourly' ? 'Hours' : 'Days'}
+                    hint={rateCards.find((rc) => rc.id === line.rateCardId)?.rateType === 'monthly' ? 'Whole months at the monthly rate, leftover days at the daily rate.' : undefined}
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={line.duration}
+                    onChange={(e) => update(line.key, { duration: e.target.value })}
+                  />
+                  <Input
+                    numeric
+                    id={`agreed-${line.key}`}
+                    label="Agreed line price (PHP, optional)"
+                    hint="Only after a negotiation: replaces the computed price for this line."
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={line.agreed}
+                    onChange={(e) => update(line.key, { agreed: e.target.value })}
+                  />
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr]">
+                  <Input id={`desc-${line.key}`} label="Description" value={line.description} maxLength={200} onChange={(e) => update(line.key, { description: e.target.value })} required />
+                  <Input numeric id={`qty-${line.key}`} label="Quantity" type="number" min="1" value={line.quantity} onChange={(e) => update(line.key, { quantity: e.target.value })} />
+                  <Input numeric id={`price-${line.key}`} label="Price each (PHP)" type="number" min="0" step="0.01" value={line.unitPrice} onChange={(e) => update(line.key, { unitPrice: e.target.value })} required />
+                </div>
+              )}
+              {lines.length > 1 && (
+                <div>
+                  <Button type="button" variant="ghost" onClick={() => setLines((prev) => prev.filter((l) => l.key !== line.key))}>
+                    Remove line
+                  </Button>
+                </div>
+              )}
+            </fieldset>
+          ))}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={() => setLines((prev) => [...prev, equipmentLine(equipmentTypes, rateCards)])}>
+              + Add equipment
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setLines((prev) => [...prev, { key: nextKey++, kind: 'custom', description: '', quantity: '1', unitPrice: '' }])}
+            >
+              + Add item
+            </Button>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Input numeric id="mobilization" label="Mobilization (PHP)" placeholder="Company default" type="number" min="0" step="0.01" value={mobilization} onChange={(e) => setMobilization(e.target.value)} />
+            <Input numeric id="demobilization" label="Demobilization (PHP)" placeholder="Company default" type="number" min="0" step="0.01" value={demobilization} onChange={(e) => setDemobilization(e.target.value)} />
+            <Input numeric id="discount" label="Discount (PHP, fixed)" type="number" min="0" step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+          </div>
           <div className="flex flex-wrap gap-3">
             <Button type="submit" disabled={incomplete} loading={busy === 'preview'}>
               Preview price
             </Button>
           </div>
           <p className="text-sm text-text-muted">
-            Pricing runs against today&apos;s diesel rate. Nothing is saved until you create the
-            draft.
+            Pricing runs against today&apos;s diesel rate. Leave mobilization empty to use the company
+            default. Nothing is saved until you create the draft.
           </p>
         </form>
       </Surface>
 
       {quoteId && result && (
-        <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
+        <Surface radius="md" elevation="sm" className="flex max-w-3xl flex-col gap-4 p-6">
           <h2 className="font-display text-lg font-semibold text-text">Draft quote</h2>
           <QuoteFigures quote={result} />
-          <div>
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="approve"
@@ -376,6 +422,11 @@ function QuotesPage() {
             >
               {result.status === 'approved' ? 'Approved' : 'Approve'}
             </Button>
+            <Link to="/app/quotes/$quoteId/print" params={{ quoteId }}>
+              <Button type="button" variant="secondary">
+                Print quote
+              </Button>
+            </Link>
           </div>
         </Surface>
       )}

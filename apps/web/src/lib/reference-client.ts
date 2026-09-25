@@ -15,6 +15,8 @@ export interface EquipmentRef {
 export interface RateCardRef {
   id: string;
   equipmentTypeId: string;
+  // Set when the card overrides one unit of the type.
+  equipmentId: string | null;
   rateType: string;
   rateValue: string;
   currency: string;

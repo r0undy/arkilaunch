@@ -2,6 +2,7 @@ import { queryOptions } from '@tanstack/react-query';
 import type {
   BookingDetailResponse,
   NegotiationMessageResponse,
+  RentPart,
   CompanyResponse,
   CompanyReviewResponse,
   SiteForecastResponse,
@@ -123,22 +124,38 @@ export const bookingsQueries = {
     }),
 };
 
-// Wire shape of QuotesService.get (apps/api/src/quotes/quotes.service.ts).
+// Wire shape of QuotesService.get/preview/create (apps/api/src/quotes/quotes.service.ts).
+export interface QuoteLine {
+  kind: 'equipment' | 'custom';
+  description?: string;
+  equipmentTypeId: string | null;
+  equipmentTypeName?: string;
+  rateCardId: string | null;
+  quantity: number;
+  estimatedHours: number;
+  rentParts: RentPart[];
+  rent: number;
+  hourlyRate: number;
+  operatingCost: number;
+  buffer: number;
+  subtotal: number;
+}
+
 export interface QuoteDetail {
   id: string;
   revision: number;
   status: string;
-  lineItems: {
-    equipmentTypeId: string;
-    equipmentTypeName?: string;
-    quantity: number;
-    estimatedHours: number;
-    hourlyRate: number;
-    subtotal: number;
-  }[];
+  dieselPrice: number;
+  dieselPriceDate: string;
+  priceStale: boolean;
+  lineItems: QuoteLine[];
+  mobilization: number;
+  demobilization: number;
   subtotal: number;
   discount: number;
   total: number;
+  createdAt?: string;
+  customerName?: string;
 }
 
 export const quotesQueries = {
