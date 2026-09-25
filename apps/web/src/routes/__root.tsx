@@ -12,7 +12,7 @@ function TenantNotFound() {
       <p className="max-w-sm text-sm text-text-muted">
         There is no active rental company at this address. It may still be under review.
       </p>
-      <a href={platformOrigin()} className="text-sm font-semibold text-primary underline">
+      <a href={platformOrigin()} className="text-sm font-semibold text-text underline">
         Go to ArkiLaunch
       </a>
     </main>
