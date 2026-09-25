@@ -69,7 +69,8 @@ export type RateCardSupersedeRequest = z.infer<typeof RateCardSupersedeRequestSc
 export const RateCardListQuerySchema = PaginationQuerySchema.extend({
   equipmentTypeId: z.string().uuid().optional(),
   rateType: RateTypeSchema.optional(),
-  includeSuperseded: z.coerce.boolean().default(false),
+  // stringbool, not coerce.boolean: coerce turns the query text "false" into true.
+  includeSuperseded: z.stringbool().default(false),
 });
 export type RateCardListQuery = z.infer<typeof RateCardListQuerySchema>;
 
