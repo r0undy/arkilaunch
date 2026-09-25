@@ -42,7 +42,10 @@ export class StorageService {
       body: buffer,
     });
     if (!res.ok) {
-      throw new InternalServerErrorException({ error: 'storage_upload_failed', status: res.status });
+      // Supabase's message ("Bucket not found", "invalid JWT") is the only
+      // clue to a misconfigured bucket or key, so it travels with the error.
+      const detail = (await res.text().catch(() => '')).slice(0, 200);
+      throw new InternalServerErrorException({ error: 'storage_upload_failed', status: res.status, detail });
     }
   }
 
