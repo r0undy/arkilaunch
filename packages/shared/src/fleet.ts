@@ -143,18 +143,11 @@ export const CatalogEquipmentSchema = z.object({
   // behind this endpoint is otherwise unchanged: no serial_no, no
   // runtime_hours -- screens that want a per-unit label use shortCode(id).
   photoUri: z.string().nullable(),
-  // Always absent here: prices are for verified customers only and come
-  // from GET /bookings/rates (CatalogRatesResponse).
+  // The public upfront price (same for every customer); null = on request.
   rateType: z.string().nullable().optional(),
   rateValue: z.number().nullable().optional(),
 });
 export type CatalogEquipment = z.infer<typeof CatalogEquipmentSchema>;
-
-// GET /bookings/rates: the upfront price per machine, empty until the
-// caller's company is verified (staff always see it).
-export interface CatalogRatesResponse {
-  items: { equipmentId: string; rateType: string | null; rateValue: number | null }[];
-}
 
 // Unauthenticated and previously unbounded: every storefront page load
 // shipped the anchor tenant's whole equipment table, and the client had no
