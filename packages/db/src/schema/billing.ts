@@ -249,6 +249,8 @@ export const billingSettings = pgTable(
     // 0044: the mobilization/demobilization every new quote starts with.
     mobilizationPhp: numeric('mobilization_php', { precision: 12, scale: 2 }).notNull().default('0'),
     demobilizationPhp: numeric('demobilization_php', { precision: 12, scale: 2 }).notNull().default('0'),
+    // 0047: the fewest hours a customer may book, whatever the dates.
+    minHours: numeric('min_hours', { precision: 8, scale: 2 }).notNull().default('0'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   () => [tenantIsolationPolicy()],
