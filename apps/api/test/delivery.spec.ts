@@ -54,7 +54,7 @@ describe('Delivery, return and staff alerts', () => {
     const [adminUser] = await sql`select id from users where tenant_id = ${tenantId} and id <> ${(customerUser as { id: string }).id} limit 1`;
     const [site] = await sql`select id from project_sites where tenant_id = ${tenantId} limit 1`;
     const [unit] = await sql`select id from equipment where tenant_id = ${tenantId} and serial_no = 'test-tenant-a-serial-booking-001'`;
-    const [rateCard] = await sql`select id, equipment_type_id from rate_cards where tenant_id = ${tenantId} limit 1`;
+    const [rateCard] = await sql`select id, equipment_type_id from rate_cards where tenant_id = ${tenantId} and equipment_id is null and rate_type = 'hourly' and (effective_to is null or effective_to > now()) order by effective_from limit 1`;
 
     customerCtx = { tenantId, userId: (customerUser as { id: string }).id, role: 'customer' };
     adminCtx = { tenantId, userId: (adminUser as { id: string }).id, role: 'admin' };
