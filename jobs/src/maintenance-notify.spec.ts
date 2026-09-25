@@ -152,5 +152,13 @@ describe('maintenance-notify (PRD-F4)', () => {
     expect(notifRows).toHaveLength(0);
     expect(degradedEvent).toBeTruthy();
     expect((degradedEvent!.properties as Record<string, unknown>).equipment_id).toBe(equipmentId);
+
+    // Throwaway tenant: remove it so repeat runs don't pile up companies.
+    const { db: db3, client: client3 } = makeJobDb();
+    await db3.delete(events).where(eq(events.tenantId, noRecipientTenant!.id));
+    await db3.delete(maintenanceSchedules).where(eq(maintenanceSchedules.tenantId, noRecipientTenant!.id));
+    await db3.delete(equipment).where(eq(equipment.tenantId, noRecipientTenant!.id));
+    await db3.delete(tenants).where(eq(tenants.id, noRecipientTenant!.id));
+    await client3.end();
   });
 });

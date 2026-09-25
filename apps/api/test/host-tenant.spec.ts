@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import postgres from 'postgres';
 import { NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { registerTenant } from '@arkilaunch/db';
@@ -47,5 +48,12 @@ describe('host-resolved storefront tenant', () => {
     await expect(
       auth.registerCustomer({ email: `c-${slug}@host-tenant.test`, password: 'a long enough password', acceptedTerms: true }, slug),
     ).rejects.toThrow(NotFoundException);
+
+    // Throwaway tenant: remove it so repeat runs don't pile up companies.
+    const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    await sql`delete from tenant_applications where tenant_id in (select id from tenants where slug = ${slug})`;
+    await sql`delete from users where tenant_id in (select id from tenants where slug = ${slug})`;
+    await sql`delete from tenants where slug = ${slug}`;
+    await sql.end();
   });
 });
