@@ -330,6 +330,13 @@
       "when": 1790400006000,
       "tag": "0047_host_tenant_resolution",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1790400007000,
+      "tag": "0048_platform_companies",
+      "breakpoints": true
     }
   ]
 }

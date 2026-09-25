@@ -7,9 +7,10 @@ import {
   DuplicatePendingApplicationError,
   auditLogs,
   decideTenantApplication,
-  countApprovedTenantApplications,
   countPendingTenantApplications,
-  listApprovedTenantApplications,
+  listPlatformCompanies,
+  setPlatformCompanyStatus,
+  CompanyNotFoundError,
   listPendingTenantApplications,
   registerTenant,
   tenantApplications,
@@ -17,7 +18,8 @@ import {
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
-  ApprovedTenantApplicationListResponse,
+  CompanyStatus,
+  PlatformCompanyListResponse,
   RequestContext,
   TenantApplication,
   TenantApplicationDecisionResponse,
@@ -27,7 +29,7 @@ import type {
   TenantRegisterResponse,
   TenantSettingsUpdateRequest,
 } from '@arkilaunch/shared';
-import { isTenantSlug } from '@arkilaunch/shared';
+import { isTenantSlug, PlatformCompanyListResponseSchema } from '@arkilaunch/shared';
 import { AuthService } from '../auth/auth.service.js';
 
 @Injectable()
@@ -81,17 +83,21 @@ export class TenantsService {
     return { items, total };
   }
 
-  // GET /tenants/applications/approved (tenant:approve, platform_admin
-  // only). Same cross-tenant SECURITY DEFINER path as listApplications --
-  // tenants_list_approved_applications() in migrations/0033.
-  async listApprovedApplications(
-    query: TenantApplicationListQuery,
-  ): Promise<ApprovedTenantApplicationListResponse> {
-    const [items, total] = await Promise.all([
-      listApprovedTenantApplications(query.limit, query.offset),
-      countApprovedTenantApplications(),
-    ]);
-    return { items, total };
+  // GET /tenants/companies (tenant:approve). Cross-tenant aggregate read,
+  // same SECURITY DEFINER rationale as listApplications (migration 0048).
+  async listCompanies(): Promise<PlatformCompanyListResponse> {
+    return PlatformCompanyListResponseSchema.parse({ items: await listPlatformCompanies() });
+  }
+
+  // PATCH /tenants/:id/status (tenant:approve). Audited in the function.
+  async setCompanyStatus(ctx: RequestContext, tenantId: string, status: CompanyStatus) {
+    try {
+      await setPlatformCompanyStatus(tenantId, status, ctx.userId);
+      return { tenantId, status };
+    } catch (err) {
+      if (err instanceof CompanyNotFoundError) throw new NotFoundException({ error: 'company_not_found' });
+      throw err;
+    }
   }
 
   // GET /tenants/me/application (tenant:manage). An owner's own pending

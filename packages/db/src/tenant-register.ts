@@ -144,48 +144,6 @@ export async function listPendingTenantApplications(
   }));
 }
 
-// The approved-companies list for the platform console -- same shape and
-// paging as the pending pair above, over tenants_list_approved_applications()
-// (migrations/0033), plus when the decision was made.
-export interface ApprovedTenantApplication extends PendingTenantApplication {
-  reviewedAt: Date | null;
-}
-
-export async function countApprovedTenantApplications(): Promise<number> {
-  const [row] = await db.execute<{ total: string }>(
-    sql`select count(*)::text as total from tenants_list_approved_applications()`,
-  );
-  return Number(row?.total ?? 0);
-}
-
-export async function listApprovedTenantApplications(
-  limit: number,
-  offset: number,
-): Promise<ApprovedTenantApplication[]> {
-  const rows = await db.execute<{
-    application_id: string;
-    tenant_id: string;
-    company_name: string;
-    contact_first_name: string;
-    contact_last_name: string;
-    contact_mobile: string;
-    contact_job_title: string;
-    created_at: string;
-    reviewed_at: string | null;
-  }>(sql`select * from tenants_list_approved_applications() limit ${limit} offset ${offset}`);
-  return rows.map((row) => ({
-    applicationId: row.application_id,
-    tenantId: row.tenant_id,
-    companyName: row.company_name,
-    contactFirstName: row.contact_first_name,
-    contactLastName: row.contact_last_name,
-    contactMobile: row.contact_mobile,
-    contactJobTitle: row.contact_job_title,
-    createdAt: new Date(row.created_at),
-    reviewedAt: row.reviewed_at ? new Date(row.reviewed_at) : null,
-  }));
-}
-
 function isApplicationNotPending(err: unknown): boolean {
   return (
     typeof err === 'object' &&
@@ -232,6 +190,66 @@ export async function registerCustomerUser(
     const text = `${String(e?.message)} ${String(e?.cause?.message)}`;
     if (/email_taken/.test(text)) throw new EmailTakenError('email_taken');
     if (/storefront_tenant_not_found/.test(text)) throw new StorefrontNotFoundError('tenant_not_found');
+    throw err;
+  }
+}
+
+// Cross-tenant administrative read/write for the /admin Companies page
+// (migration 0048). Aggregate counts only; see tenants_list_companies().
+export interface PlatformCompanyRow {
+  tenantId: string;
+  legalName: string;
+  slug: string;
+  status: 'active' | 'suspended';
+  createdAt: Date;
+  usersCount: number;
+  customersCount: number;
+  equipmentCount: number;
+  rentalsCount: number;
+  revenuePaid: string;
+}
+
+export async function listPlatformCompanies(): Promise<PlatformCompanyRow[]> {
+  const rows = await db.execute<{
+    tenant_id: string;
+    legal_name: string;
+    slug: string;
+    status: 'active' | 'suspended';
+    created_at: string;
+    users_count: string;
+    customers_count: string;
+    equipment_count: string;
+    rentals_count: string;
+    revenue_paid: string;
+  }>(sql`select * from tenants_list_companies()`);
+  return rows.map((r) => ({
+    tenantId: r.tenant_id,
+    legalName: r.legal_name,
+    slug: r.slug,
+    status: r.status,
+    createdAt: new Date(r.created_at),
+    usersCount: Number(r.users_count),
+    customersCount: Number(r.customers_count),
+    equipmentCount: Number(r.equipment_count),
+    rentalsCount: Number(r.rentals_count),
+    revenuePaid: String(r.revenue_paid),
+  }));
+}
+
+export class CompanyNotFoundError extends Error {}
+
+export async function setPlatformCompanyStatus(
+  tenantId: string,
+  status: 'active' | 'suspended',
+  actorUserId: string,
+): Promise<void> {
+  try {
+    await db.execute(sql`select * from tenants_set_status(${tenantId}, ${status}, ${actorUserId})`);
+  } catch (err) {
+    const e = err as { message?: unknown; cause?: { message?: unknown } };
+    if (/company_not_found/.test(`${String(e?.message)} ${String(e?.cause?.message)}`)) {
+      throw new CompanyNotFoundError('company_not_found');
+    }
     throw err;
   }
 }
