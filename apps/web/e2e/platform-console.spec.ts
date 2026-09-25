@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { signInAsPlatformAdmin } from './sign-in.js';
+import { platformUrl, signInAsPlatformAdmin } from './sign-in.js';
 
-// The platform admin's console: its own short sidebar, no tenant operations
-// pages, and no way into the timekeeper or customer shells.
+// The platform admin's console: /admin on the platform host, its own short
+// sidebar, and no way into a tenant's shells from there.
 test.describe('platform console', () => {
   test.beforeEach(async ({ page }) => {
     await signInAsPlatformAdmin(page);
@@ -11,27 +11,27 @@ test.describe('platform console', () => {
   test('lands on Applications with only the platform sidebar', async ({ page }) => {
     await expect(page.getByRole('heading', { name: 'Applications', level: 1 })).toBeVisible();
     const sidebar = page.getByRole('complementary', { name: 'Sidebar' });
-    await expect(sidebar.getByRole('link', { name: 'Approved companies' })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: 'Companies' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: 'Equipment and maintenance' })).toHaveCount(0);
     await expect(sidebar.getByRole('link', { name: 'Dashboard' })).toHaveCount(0);
   });
 
-  test('Approved companies is a real list, not a placeholder', async ({ page }) => {
-    await page.goto('/app/companies/approved');
-    await expect(page.getByRole('heading', { name: 'Approved companies', level: 1 })).toBeVisible();
-    await expect(page.getByText(/are not listed yet/i)).toHaveCount(0);
-    // The list loaded: either rows or its own empty state, never the error
-    // panel a missing endpoint or function renders.
-    const loaded = page
-      .getByRole('table')
-      .or(page.getByText('No approved companies yet'));
-    await expect(loaded.first()).toBeVisible();
+  test('Companies lists the seeded tenant with its stats and site link', async ({ page }) => {
+    await page.goto(platformUrl('/admin/companies'));
+    await expect(page.getByRole('heading', { name: 'Companies', level: 1 })).toBeVisible();
+    const row = page.getByRole('row').filter({ hasText: 'Almara' });
+    await expect(row).toBeVisible();
+    await expect(row.getByText('Active')).toBeVisible();
+    // The site link follows the host family: almara.localhost in dev.
+    await expect(row.getByRole('link', { name: /almara\.localhost/ })).toHaveAttribute('href', /^https?:\/\/almara\.localhost/);
+    await expect(page.getByText('Equipment listed')).toBeVisible();
   });
 
+  // Tenant shells do not exist on the platform host.
   for (const path of ['/app', '/app/inventory', '/field', '/account']) {
-    test(`${path} sends it back to Applications`, async ({ page }) => {
-      await page.goto(path);
-      await expect(page).toHaveURL(/\/app\/companies\/pending$/);
+    test(`${path} on the platform host goes to the landing page`, async ({ page }) => {
+      await page.goto(platformUrl(path));
+      await expect(page).toHaveURL(platformUrl('/'));
     });
   }
 });

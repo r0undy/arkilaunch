@@ -2,6 +2,7 @@ import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { getAccessToken } from '../lib/auth-client.js';
 import { homeHref } from '../lib/guards.js';
+import { useTenantName } from '../lib/tenant.js';
 import { Button } from './button.js';
 import { CloseIcon, MenuIcon } from './icons.js';
 
@@ -20,6 +21,7 @@ export function FloatingNav({ className }: { className?: string }) {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const tenantName = useTenantName();
   const signedIn = typeof window !== 'undefined' && Boolean(getAccessToken());
 
   useEffect(() => {
@@ -72,8 +74,8 @@ export function FloatingNav({ className }: { className?: string }) {
       ].join(' ')}
     >
       <div className="flex items-center justify-between px-6 py-4">
-        <Link to={homeHref()} className="font-display text-lg font-semibold text-ink-mk" aria-label="Almara home">
-          Almara
+        <Link to={homeHref()} className="font-display text-lg font-semibold text-ink-mk" aria-label={`${tenantName} home`}>
+          {tenantName}
         </Link>
         <nav className="hidden items-center gap-6 sm:flex" aria-label="Primary">
           {LINKS.map((link) => (

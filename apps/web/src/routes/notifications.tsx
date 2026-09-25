@@ -1,5 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
+import { adminLayoutRoute } from './_admin.js';
 import { accountLayoutRoute } from './_account.js';
 import { fieldLayoutRoute } from './_field.js';
 import { PageHeader } from '../components/page-header.js';
@@ -20,6 +21,17 @@ function NotificationsPage({ eyebrow, description }: { eyebrow: string; descript
 export const appNotificationsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/notifications',
+  component: () => (
+    <NotificationsPage
+      eyebrow="Dispatch"
+      description="Maintenance alerts, weather advisories and review-queue items."
+    />
+  ),
+});
+
+export const adminNotificationsRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/admin/notifications',
   component: () => (
     <NotificationsPage
       eyebrow="Dispatch"

@@ -1,18 +1,17 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
-  ApprovedTenantApplicationListResponse,
   TenantApplication,
   TenantApplicationListResponse,
 } from '@arkilaunch/shared';
 import { apiGet, apiPost } from '../lib/api-client.js';
+import { tenantOrigin } from '../lib/host.js';
 import { Button } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { useToast } from './toast.js';
 
 // The applications lists and the approve/reject pair are shared by the
-// Applications queue, a single application's page, the Approved companies
-// list and the app bar's count, so they live here instead of being copied.
+// Applications queue, a single application's page and the app bar's count, so they live here instead of being copied.
 // Both lists sit under ['tenants', 'applications'], so the one invalidation
 // after a decision refreshes the pending and the approved list together.
 export const applicationsListQuery = (limit: number, offset: number) => ({
@@ -21,27 +20,21 @@ export const applicationsListQuery = (limit: number, offset: number) => ({
     apiGet<TenantApplicationListResponse>(`/tenants/applications?limit=${limit}&offset=${offset}`),
 });
 
-export const approvedApplicationsListQuery = (limit: number, offset: number) => ({
-  queryKey: ['tenants', 'applications', 'approved', limit, offset] as const,
-  queryFn: () =>
-    apiGet<ApprovedTenantApplicationListResponse>(
-      `/tenants/applications/approved?limit=${limit}&offset=${offset}`,
-    ),
-});
-
 export function ApplicationActions({ application }: { application: TenantApplication }) {
   const queryClient = useQueryClient();
-  const [activationToken, setActivationToken] = useState<string | null>(null);
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['tenants', 'applications'] });
+  const [activation, setActivation] = useState<{ token: string; slug: string | undefined } | null>(null);
+  // ['tenants'] covers both the application lists and /admin/companies:
+  // an approval adds a company there.
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['tenants'] });
 
   const toast = useToast();
   const [confirming, setConfirming] = useState<'approve' | 'reject' | null>(null);
 
   const approve = useMutation({
     mutationFn: () =>
-      apiPost<{ activationToken?: string }>(`/tenants/${application.tenantId}/approve`, {}),
+      apiPost<{ activationToken?: string; tenantSlug?: string }>(`/tenants/${application.tenantId}/approve`, {}),
     onSuccess: (data) => {
-      if (data.activationToken) setActivationToken(data.activationToken);
+      if (data.activationToken) setActivation({ token: data.activationToken, slug: data.tenantSlug });
       invalidate();
       toast.success('Application approved', `${application.companyName} can now be set up.`);
     },
@@ -74,11 +67,12 @@ export function ApplicationActions({ application }: { application: TenantApplica
       >
         Reject
       </Button>
-      {activationToken && (
+      {activation && (
         <span className="text-sm text-text-muted">
           Send this sign-up link to the owner:{' '}
           <code className="rounded-sm bg-surface-sunk px-1.5 py-0.5 font-mono text-xs">
-            {`${window.location.origin}/activate?token=${encodeURIComponent(activationToken)}`}
+            {/* The owner activates and signs in on their company's own host. */}
+            {`${activation.slug ? tenantOrigin(activation.slug) : window.location.origin}/activate?token=${encodeURIComponent(activation.token)}`}
           </code>
         </span>
       )}

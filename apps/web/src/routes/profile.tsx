@@ -1,5 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
+import { adminLayoutRoute } from './_admin.js';
 import { fieldLayoutRoute } from './_field.js';
 import { usersQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
@@ -90,6 +91,12 @@ function ProfilePage({ eyebrow }: { eyebrow: string }) {
 export const appProfileRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/profile',
+  component: () => <ProfilePage eyebrow="Account" />,
+});
+
+export const adminProfileRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/admin/profile',
   component: () => <ProfilePage eyebrow="Account" />,
 });
 

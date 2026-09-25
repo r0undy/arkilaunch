@@ -674,7 +674,7 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
 export const appRegistrationPendingRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/registration/pending',
-  beforeLoad: requireRole('admin', 'platform_admin'),
+  beforeLoad: requireRole('admin'),
   component: () => (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -690,7 +690,7 @@ export const appRegistrationPendingRoute = createRoute({
 export const appRegistrationVerifiedRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/registration/verified',
-  beforeLoad: requireRole('admin', 'platform_admin'),
+  beforeLoad: requireRole('admin'),
   component: () => (
     <div className="flex flex-col gap-5">
       <PageHeader

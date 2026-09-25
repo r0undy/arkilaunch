@@ -522,6 +522,6 @@ function SettingsPage() {
 export const appSettingsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/settings',
-  beforeLoad: requireRole('admin', 'platform_admin'),
+  beforeLoad: requireRole('admin'),
   component: SettingsPage,
 });

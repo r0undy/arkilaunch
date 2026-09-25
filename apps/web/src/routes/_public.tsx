@@ -1,6 +1,8 @@
 import { createRoute, Link, Outlet, type LinkProps } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { rootRoute } from './__root.js';
+import { onlyOn } from '../lib/guards.js';
+import { useTenantName } from '../lib/tenant.js';
 import { FloatingNav } from '../components/floating-nav.js';
 import { SkipLink } from '../components/skip-link.js';
 
@@ -45,6 +47,7 @@ const FOOTER_COLUMNS: { title: string; links: { label: string; to: FooterTo }[] 
 // looking (see routes/_storefront.tsx). The footer markup stays here, in one
 // place, rather than being copied into a second shell.
 export function MarketingChrome({ children }: { children: ReactNode }) {
+  const tenantName = useTenantName();
   return (
     <div data-tier="marketing" className="flex min-h-screen flex-col bg-bg-mk-frame">
       <SkipLink />
@@ -55,8 +58,10 @@ export function MarketingChrome({ children }: { children: ReactNode }) {
       <footer className="bg-surface-mk">
         <div className="mx-auto flex max-w-shell flex-col gap-8 px-6 py-12 sm:flex-row sm:justify-between">
           <div>
-            <p className="font-display text-lg font-semibold text-ink-mk">Almara</p>
-            <p className="mt-2 text-sm text-text-muted">Almara &copy; 2026. All rights reserved.</p>
+            <p className="font-display text-lg font-semibold text-ink-mk">{tenantName}</p>
+            <p className="mt-2 text-sm text-text-muted">
+              {tenantName} &copy; 2026. All rights reserved. Powered by ArkiLaunch.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">
             {FOOTER_COLUMNS.map((col) => (
@@ -96,5 +101,6 @@ function PublicLayout() {
 export const publicLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'public-layout',
+  beforeLoad: onlyOn('tenant'),
   component: PublicLayout,
 });

@@ -1,3 +1,4 @@
+import { tenantSlug } from './host.js';
 import type {
   CustomerSignup,
   AuthTokens,
@@ -9,6 +10,14 @@ import type {
 } from '@arkilaunch/shared';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+
+// Every API call says which tenant host it came from. The API only uses it
+// to pick a tenant for public reads and to scope login/signup; authenticated
+// data is still scoped by the JWT alone (RFC-1).
+function hostHeaders(): Record<string, string> {
+  const slug = tenantSlug();
+  return slug ? { 'X-Tenant-Slug': slug } : {};
+}
 
 const REFRESH_TOKEN_KEY = 'arkilaunch.refreshToken';
 
@@ -63,7 +72,7 @@ function isAuthTokens(response: AuthTokens | TwoFaChallenge): response is AuthTo
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...hostHeaders() },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -150,7 +159,10 @@ function redirectToLogin(): void {
 
 export async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const accessToken = getAccessToken();
-  const headers: Record<string, string> = { ...(init.headers as Record<string, string> | undefined) };
+  const headers: Record<string, string> = {
+    ...hostHeaders(),
+    ...(init.headers as Record<string, string> | undefined),
+  };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });

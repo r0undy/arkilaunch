@@ -26,7 +26,16 @@ const addresses = Object.values(networkInterfaces())
   .filter((i) => i && i.family === 'IPv4' && !i.internal)
   .map((i) => i.address);
 
-const sans = ['DNS:localhost', 'IP:127.0.0.1', ...addresses.map((a) => `IP:${a}`)];
+// Tenant hosts are `{slug}.localhost` (apps/web/src/lib/host.ts). Browsers
+// reject a *.localhost wildcard, so each tenant host is listed; add more
+// with DEV_CERT_TENANTS=slug1,slug2.
+const tenants = ['almara', 'test-tenant-a', 'test-tenant-b', ...(process.env.DEV_CERT_TENANTS?.split(',') ?? [])];
+const sans = [
+  'DNS:localhost',
+  ...tenants.filter(Boolean).map((t) => `DNS:${t.trim()}.localhost`),
+  'IP:127.0.0.1',
+  ...addresses.map((a) => `IP:${a}`),
+];
 
 mkdirSync(certDir, { recursive: true });
 

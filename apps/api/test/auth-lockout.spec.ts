@@ -27,14 +27,14 @@ describe('AuthService: login lockout', () => {
     const email = 'admin@test-tenant-a.test';
 
     for (let i = 0; i < 5; i += 1) {
-      await expect(auth.login({ email, password: 'wrong-password' })).rejects.toThrow(UnauthorizedException);
+      await expect(auth.login({ email, password: 'wrong-password' }, 'test-tenant-a')).rejects.toThrow(UnauthorizedException);
     }
 
     // The 6th attempt is locked out before password verification even
     // runs -- rejected even though this one supplies the RIGHT password.
     let threw = false;
     try {
-      await auth.login({ email, password: 'test-password' });
+      await auth.login({ email, password: 'test-password' }, 'test-tenant-a');
     } catch (err) {
       threw = true;
       expect(err).toBeInstanceOf(HttpException);
@@ -49,27 +49,45 @@ describe('AuthService: login lockout', () => {
     const email = 'timekeeper@test-tenant-a.test';
 
     for (let i = 0; i < 3; i += 1) {
-      await expect(auth.login({ email, password: 'wrong-password' })).rejects.toThrow(UnauthorizedException);
+      await expect(auth.login({ email, password: 'wrong-password' }, 'test-tenant-a')).rejects.toThrow(UnauthorizedException);
     }
-    const success = await auth.login({ email, password: 'test-password' });
+    const success = await auth.login({ email, password: 'test-password' }, 'test-tenant-a');
     expect(success).toBeDefined();
 
     // Failures reset: another 3 wrong attempts (below the threshold of 5)
     // still doesn't lock out.
     for (let i = 0; i < 3; i += 1) {
-      await expect(auth.login({ email, password: 'wrong-password' })).rejects.toThrow(UnauthorizedException);
+      await expect(auth.login({ email, password: 'wrong-password' }, 'test-tenant-a')).rejects.toThrow(UnauthorizedException);
     }
-    await expect(auth.login({ email, password: 'test-password' })).resolves.toBeDefined();
+    await expect(auth.login({ email, password: 'test-password' }, 'test-tenant-a')).resolves.toBeDefined();
   });
 
   it('lockout is scoped per email -- brute-forcing one account never locks out another', async () => {
     const auth = freshAuth();
     for (let i = 0; i < 5; i += 1) {
-      await expect(auth.login({ email: 'admin@test-tenant-b.test', password: 'wrong-password' })).rejects.toThrow(
+      await expect(auth.login({ email: 'admin@test-tenant-b.test', password: 'wrong-password' }, 'test-tenant-b')).rejects.toThrow(
         UnauthorizedException,
       );
     }
     // A different tenant's admin, unaffected.
-    await expect(auth.login({ email: 'admin@test-tenant-a.test', password: 'test-password' })).resolves.toBeDefined();
+    await expect(auth.login({ email: 'admin@test-tenant-a.test', password: 'test-password' }, 'test-tenant-a')).resolves.toBeDefined();
+  });
+});
+
+// Login is scoped to the request host's tenant (tenant-slug.decorator.ts):
+// the right password on the wrong host is the same invalid_credentials as a
+// wrong password, so a host reveals nothing about another tenant's users.
+describe('AuthService: host-scoped login', () => {
+  const auth = new AuthService(jwtService(), new RefreshTokenService(), new TotpService());
+
+  it('rejects a tenant user on another tenant host and on the platform host', async () => {
+    const email = 'admin@test-tenant-a.test';
+    await expect(auth.login({ email, password: 'test-password' }, 'test-tenant-b')).rejects.toThrow(
+      UnauthorizedException,
+    );
+    await expect(auth.login({ email, password: 'test-password' }, 'arkilaunch-platform')).rejects.toThrow(
+      UnauthorizedException,
+    );
+    await expect(auth.login({ email, password: 'test-password' }, 'test-tenant-a')).resolves.toBeDefined();
   });
 });

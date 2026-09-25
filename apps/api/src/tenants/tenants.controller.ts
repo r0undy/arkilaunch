@@ -4,8 +4,14 @@ import type { Request } from 'express';
 import { Public } from '../common/decorators/public.decorator.js';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import type { RequestContext } from '@arkilaunch/shared';
+import { UuidParamPipe } from '../common/uuid-param.pipe.js';
 import { TenantsService } from './tenants.service.js';
-import { TenantApplicationListQueryDto, TenantRegisterDto, TenantSettingsUpdateDto } from './dto.js';
+import {
+  CompanyStatusUpdateDto,
+  TenantApplicationListQueryDto,
+  TenantRegisterDto,
+  TenantSettingsUpdateDto,
+} from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -49,11 +55,24 @@ export class TenantsController {
     return this.tenants.listApplications(query);
   }
 
-  // GET /tenants/applications/approved (tenant:approve, platform_admin only).
-  @Get('applications/approved')
+  // GET /tenants/companies (tenant:approve, platform_admin only): every
+  // rental company past review, with headline counts (migration 0049).
+  @Get('companies')
   @RequirePermission('tenant:approve')
-  listApprovedApplications(@Query() query: TenantApplicationListQueryDto) {
-    return this.tenants.listApprovedApplications(query);
+  listCompanies() {
+    return this.tenants.listCompanies();
+  }
+
+  // PATCH /tenants/:id/status (tenant:approve): activate or deactivate a
+  // company. Deactivated = no sign-in, no session renewal, storefront offline.
+  @Patch(':id/status')
+  @RequirePermission('tenant:approve')
+  setStatus(
+    @Param('id', UuidParamPipe) id: string,
+    @Body() body: CompanyStatusUpdateDto,
+    @Req() req: CtxRequest,
+  ) {
+    return this.tenants.setCompanyStatus(req.ctx, id, body.status);
   }
 
   // GET /tenants/me/application (tenant:manage) -- an owner's own pending

@@ -23,6 +23,8 @@ export interface EdtrSheetInput {
   equipmentId?: string;
   // Monday of the covered week, YYYY-MM-DD.
   weekStart?: string;
+  // The rental company printing it (GET /users/me tenantName).
+  companyName?: string;
 }
 
 const W = 297;
@@ -126,7 +128,7 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   const out: string[] = [];
 
   // Title block.
-  out.push(text(M, 15, 'ALMARA', 7, { bold: true }));
+  out.push(text(M, 15, (input.companyName ?? '').toUpperCase(), 7, { bold: true }));
   out.push(text(M, 21.5, 'EQUIPMENT DAILY TIME REPORT', 4.6, { bold: true }));
   out.push(text(M, 26.5, 'Form EDTR v2 · Times in 24-hour format (07:30, 13:00) · Tick ONE box per group', 2.4, { fill: MUTED }));
   out.push(line(M, 30.5, W - M, 30.5, 0.6));
@@ -230,12 +232,12 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   y += 4;
   out.push(text(M, y, 'IDLE REASON:  Wx Weather  ·  Brk Breakdown  ·  NoOp No operator  ·  Hold Client hold  ·  Oth Other', 2.3));
 
-  // Signatures: the timekeeper (Almara staff) attests the weather.
+  // Signatures: the timekeeper (the rental company's staff) attests the weather.
   const sy = y + 5;
   const sw = (W - 2 * M - 8) / 3;
   const blocks = [
     ['OPERATOR', 'Printed name', 'Signature'],
-    ['TIMEKEEPER · ALMARA (attests the weather)', 'Printed name', 'Signature'],
+    [`TIMEKEEPER · ${(input.companyName ?? '').toUpperCase()} (attests the weather)`, 'Printed name', 'Signature'],
     ['CERTIFIED CORRECT · CLIENT SITE ENGINEER', 'Printed name', 'Signature and signed on'],
   ];
   blocks.forEach(([title, a, b], i) => {
@@ -250,7 +252,7 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
 
   const ref = context ? `Ref ${context.rentalId.slice(0, 8).toUpperCase()}${machine ? ` · Unit SN ${machine.serialNo}` : ''}` : 'Blank sheet';
   out.push(text(M, H - 4, `${ref} · Printed ${new Date().toISOString().slice(0, 10)} · One sheet per unit per week`, 2, { fill: MUTED }));
-  out.push(text(W - M, H - 4, 'Almara Construction · Quezon City', 2, { anchor: 'end', fill: MUTED }));
+  out.push(text(W - M, H - 4, input.companyName ?? '', 2, { anchor: 'end', fill: MUTED }));
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#ffffff"/>${out.join('')}</svg>`;
 }
@@ -278,7 +280,7 @@ export async function svgToPng(svg: string): Promise<Blob> {
 export async function pngToPdf(png: Blob): Promise<Blob> {
   const pdf = await PDFDocument.create();
   pdf.setTitle('Equipment Daily Time Report');
-  pdf.setCreator('Almara');
+  pdf.setCreator('ArkiLaunch');
   const image = await pdf.embedPng(await png.arrayBuffer());
   const page = pdf.addPage([841.89, 595.28]); // A4 landscape, points
   page.drawImage(image, { x: 0, y: 0, width: 841.89, height: 595.28 });

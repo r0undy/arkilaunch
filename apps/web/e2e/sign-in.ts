@@ -17,8 +17,22 @@ const CUSTOMER_EMAIL = process.env.SEED_CUSTOMER_EMAIL ?? 'customer@admin.com';
 const PLATFORM_EMAIL = process.env.SEED_PLATFORM_EMAIL ?? 'platform@admin.com';
 const PASSWORD = process.env.SEED_PASSWORD ?? 'admin';
 
-async function submit(page: Page, email: string) {
-  await page.goto('/login');
+// The ArkiLaunch platform host: the tenant base URL minus its tenant label
+// (https://almara.localhost:5173 -> https://localhost:5173).
+export function platformUrl(path: string): string {
+  const base = new URL(process.env.PLAYWRIGHT_BASE_URL ?? 'https://almara.localhost:5173');
+  base.hostname = base.hostname.split('.').slice(1).join('.');
+  return new URL(path, base).toString();
+}
+
+// Raw page.request calls skip the web app's lib/host.ts, so they name the
+// tenant themselves, exactly as the browser build does.
+export const TENANT_HEADERS = {
+  'X-Tenant-Slug': new URL(process.env.PLAYWRIGHT_BASE_URL ?? 'https://almara.localhost:5173').hostname.split('.')[0]!,
+};
+
+async function submit(page: Page, email: string, loginUrl = '/login') {
+  await page.goto(loginUrl);
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -44,11 +58,11 @@ export async function signInAsCustomer(page: Page): Promise<void> {
 }
 
 // The cross-tenant ArkiLaunch account (seed-identities.ts). Its home is the
-// company applications queue, not the tenant dashboard.
+// company applications queue on the platform host, not a tenant dashboard.
 export async function signInAsPlatformAdmin(page: Page): Promise<void> {
-  await submit(page, PLATFORM_EMAIL);
+  await submit(page, PLATFORM_EMAIL, platformUrl('/login'));
   await expect(
     page,
     `Sign-in as ${PLATFORM_EMAIL} did not reach the platform console. Is the API running and the platform tenant seeded (pnpm db:seed)?`,
-  ).toHaveURL(/\/app\/companies\/pending/, { timeout: 15_000 });
+  ).toHaveURL(/\/admin\/applications/, { timeout: 15_000 });
 }

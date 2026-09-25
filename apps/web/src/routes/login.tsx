@@ -1,6 +1,7 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
 import { authLayoutRoute } from './_auth.js';
+import { currentHost } from '../lib/host.js';
 import { login, requestPasswordReset, verify2fa } from '../lib/auth-client.js';
 import { getCurrentRole, homeRouteForRole } from '../lib/guards.js';
 import { Button } from '../components/button.js';
@@ -20,6 +21,7 @@ function validateLoginSearch(search: Record<string, unknown>): { redirect?: stri
 }
 
 function LoginPage() {
+  const onPlatform = currentHost.kind === 'platform';
   const navigate = useNavigate();
   const { redirect: redirectTo } = loginRoute.useSearch();
   const [email, setEmail] = useState('');
@@ -187,7 +189,9 @@ function LoginPage() {
         <h1 id="login-heading" className="mb-1 font-display text-xl font-semibold text-text">
           Sign in
         </h1>
-        <p className="mb-6 text-sm text-text-muted">Enter your credentials to start renting equipment.</p>
+        <p className="mb-6 text-sm text-text-muted">
+          {onPlatform ? 'Sign in to the ArkiLaunch console.' : 'Enter your credentials to start renting equipment.'}
+        </p>
 
         <div className="mb-4">
           <Input
@@ -229,9 +233,9 @@ function LoginPage() {
         </Button>
 
         <p className="mt-6 text-center text-sm text-text-muted">
-          No account yet?{' '}
-          <Link to="/signup" className="font-semibold text-accent hover:underline">
-            Create an account
+          {onPlatform ? 'Run a rental company?' : 'No account yet?'}{' '}
+          <Link to={onPlatform ? '/register' : '/signup'} className="font-semibold text-accent hover:underline">
+            {onPlatform ? 'Register your company' : 'Create an account'}
           </Link>
         </p>
       </form>

@@ -5,6 +5,7 @@ import { savePersonalDetails } from '../lib/registration-client.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Surface } from '../components/surface.js';
+import { onlyOn } from '../lib/guards.js';
 
 function RegisterPersonalDetailsPage() {
   const navigate = useNavigate();
@@ -63,6 +64,7 @@ function RegisterPersonalDetailsPage() {
 
 export const registerRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
+  beforeLoad: onlyOn('platform'),
   path: '/register',
   component: RegisterPersonalDetailsPage,
 });

@@ -5,6 +5,8 @@ import { registerCustomer } from '../lib/auth-client.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Surface } from '../components/surface.js';
+import { onlyOn } from '../lib/guards.js';
+import { platformOrigin } from '../lib/host.js';
 
 export const MIN_PASSWORD = 10;
 
@@ -102,9 +104,10 @@ function SignupPage() {
         </p>
         <p className="text-center text-xs text-text-muted">
           Renting out equipment?{' '}
-          <Link to="/register" className="underline">
+          {/* Registering a rental company is a platform action (bare domain). */}
+          <a href={`${platformOrigin()}/register`} className="underline">
             Register your rental business
-          </Link>
+          </a>
         </p>
       </form>
     </Surface>
@@ -113,6 +116,7 @@ function SignupPage() {
 
 export const signupRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
+  beforeLoad: onlyOn('tenant'),
   path: '/signup',
   component: SignupPage,
 });

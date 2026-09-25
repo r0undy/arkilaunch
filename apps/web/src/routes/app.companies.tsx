@@ -1,9 +1,8 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { ApprovedTenantApplication, TenantApplication } from '@arkilaunch/shared';
-import { appLayoutRoute } from './_app.js';
-import { requireRole } from '../lib/guards.js';
+import type { TenantApplication } from '@arkilaunch/shared';
+import { adminLayoutRoute } from './_admin.js';
 import { DataPanel } from '../components/data-panel.js';
 import { EmptyState } from '../components/empty-state.js';
 import { PageHeader } from '../components/page-header.js';
@@ -14,15 +13,14 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import {
   ApplicationActions,
   applicationsListQuery,
-  approvedApplicationsListQuery,
 } from '../components/application-actions.js';
 import { formatDate, shortCode } from '../lib/format.js';
 
 // Figma splits company approval across four frames: Pending Company Approval
 // (621:8341), Approved Companies (621:8533), Manage Company Application
 // (369:1589) and Registration Review (349:942). The API backs the first two:
-// GET /tenants/applications (pending) and GET /tenants/applications/approved,
-// both SECURITY DEFINER reads. There is no per-application query and no KYC
+// GET /tenants/applications (pending), a SECURITY DEFINER read; approved
+// companies are managed as tenants on /admin/companies. There is no per-application query and no KYC
 // list, so the detail page reads from the pending list and says plainly what
 // it cannot show -- the same choice cr-arkilaunch-frontend-storefront-shell.md
 // made for the screens it could not wire. This pending queue is the platform
@@ -31,7 +29,7 @@ import { formatDate, shortCode } from '../lib/format.js';
 function CompanyLink({ application }: { application: TenantApplication }) {
   return (
     <Link
-      to="/app/companies/$applicationId"
+      to="/admin/applications/$applicationId"
       params={{ applicationId: application.applicationId }}
       className="font-semibold text-accent underline"
     >
@@ -88,54 +86,6 @@ function CompaniesPendingPage() {
   );
 }
 
-const APPROVED_COLUMNS: TableColumn<ApprovedTenantApplication>[] = [
-  { header: 'Company', cell: (row) => <span className="font-semibold">{row.companyName}</span> },
-  {
-    header: 'Representative',
-    cell: (row) => (
-      <span className="flex flex-col">
-        <span>{`${row.contactFirstName} ${row.contactLastName}`}</span>
-        <span className="text-xs text-text-muted">{row.contactJobTitle}</span>
-      </span>
-    ),
-  },
-  { header: 'Applied', cell: (row) => formatDate(row.createdAt) },
-  { header: 'Approved', cell: (row) => (row.reviewedAt ? formatDate(row.reviewedAt) : '-') },
-];
-
-function CompaniesApprovedPage() {
-  const [offset, setOffset] = useState(0);
-
-  return (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        eyebrow="Companies"
-        title="Approved companies"
-        description="Businesses already granted a workspace, newest first."
-      />
-      <DataPanel
-        title="Approved companies"
-        options={approvedApplicationsListQuery(PAGE_SIZE, offset)}
-        emptyTitle="No approved companies yet"
-        emptyDescription="Companies appear here once you approve their application."
-        isEmpty={(data) => data.total === 0}
-        render={(data) => (
-          <div>
-            <Table columns={APPROVED_COLUMNS} rows={data.items} rowKey={(row) => row.applicationId} />
-            <Pagination
-              offset={offset}
-              limit={PAGE_SIZE}
-              total={data.total}
-              onOffsetChange={setOffset}
-              noun="companies"
-            />
-          </div>
-        )}
-      />
-    </div>
-  );
-}
-
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5 border-t border-border pt-3">
@@ -159,7 +109,7 @@ function CompanyApplicationPage() {
         title={application?.companyName ?? 'Company application'}
         description="Who applied, and what they told us."
         actions={
-          <Link to="/app/companies/pending">
+          <Link to="/admin/applications">
             <Button variant="ghost">Back</Button>
           </Link>
         }
@@ -221,22 +171,13 @@ function CompanyApplicationPage() {
 }
 
 export const appCompaniesPendingRoute = createRoute({
-  getParentRoute: () => appLayoutRoute,
-  path: '/app/companies/pending',
-  beforeLoad: requireRole('platform_admin'),
+  getParentRoute: () => adminLayoutRoute,
+  path: '/admin/applications',
   component: CompaniesPendingPage,
 });
 
-export const appCompaniesApprovedRoute = createRoute({
-  getParentRoute: () => appLayoutRoute,
-  path: '/app/companies/approved',
-  beforeLoad: requireRole('platform_admin'),
-  component: CompaniesApprovedPage,
-});
-
 export const appCompanyApplicationRoute = createRoute({
-  getParentRoute: () => appLayoutRoute,
-  path: '/app/companies/$applicationId',
-  beforeLoad: requireRole('platform_admin'),
+  getParentRoute: () => adminLayoutRoute,
+  path: '/admin/applications/$applicationId',
   component: CompanyApplicationPage,
 });

@@ -1,7 +1,10 @@
 import { createRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { publicLayoutRoute } from './_public.js';
+import { rootRoute } from './__root.js';
+import { MarketingChrome } from './_public.js';
+import { PlatformLanding } from './platform.index.js';
+import { currentHost } from '../lib/host.js';
 import { Button } from '../components/button.js';
 import { EquipmentCard } from '../components/equipment-card.js';
 import { SearchFilterBar } from '../components/search-filter-bar.js';
@@ -96,8 +99,19 @@ function LandingPage() {
   );
 }
 
+// `/` is the one path both hosts serve: ArkiLaunch's landing on the
+// platform host, the tenant's storefront home on a tenant host.
+function HomePage() {
+  if (currentHost.kind === 'platform') return <PlatformLanding />;
+  return (
+    <MarketingChrome>
+      <LandingPage />
+    </MarketingChrome>
+  );
+}
+
 export const indexRoute = createRoute({
-  getParentRoute: () => publicLayoutRoute,
+  getParentRoute: () => rootRoute,
   path: '/',
-  component: LandingPage,
+  component: HomePage,
 });

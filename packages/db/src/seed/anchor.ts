@@ -79,8 +79,8 @@ async function main() {
 
   // Per-tenant testimonial for the public storefront (GET
   // /catalog/testimonials, catalog_list_testimonials). Different text per
-  // tenant so switching ANCHOR_TENANT_SLUG demonstrably changes what the
-  // storefront shows, not just structurally.
+  // tenant so switching tenant host (almara.localhost vs another)
+  // demonstrably changes what the storefront shows, not just structurally.
   const existingTestimonial = await db
     .select()
     .from(schema.testimonials)

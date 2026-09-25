@@ -1,7 +1,7 @@
 import { createRoute, Outlet } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { rootRoute } from './__root.js';
-import { requireRole } from '../lib/guards.js';
+import { onlyOn, requireRole } from '../lib/guards.js';
 import { SidebarShell } from '../components/sidebar-shell.js';
 import { ACCOUNT_NAV } from '../lib/nav-config.js';
 import { usersQueries } from '../lib/queries.js';
@@ -20,6 +20,6 @@ export const accountLayoutRoute = createRoute({
   id: 'account-layout',
   // Customer-only: a staff role following a "My account" link lands on its
   // own home (requireRole redirects by role) instead of an empty customer UI.
-  beforeLoad: requireRole('customer'),
+  beforeLoad: onlyOn('tenant', requireRole('customer')),
   component: AccountLayout,
 });
