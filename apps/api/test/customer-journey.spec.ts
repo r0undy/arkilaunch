@@ -26,8 +26,8 @@ import { EventsService } from '../src/events/events.service.js';
 // charged is the accepted quote plus the contract deposit, once.
 describe('Customer journey', () => {
   const events = new EventsService();
-  const bookings = new BookingsService(events);
   const quotes = new QuotesService(new PricingEngineService(), events);
+  const bookings = new BookingsService(events, quotes);
   // Real PayMongo issues a new session id per call; the shared stub's id
   // is deterministic, which would make a checkout retry collide on the
   // unique provider_ref.

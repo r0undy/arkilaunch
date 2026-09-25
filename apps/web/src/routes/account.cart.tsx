@@ -213,9 +213,10 @@ function CartPage() {
             Booking {shortCode('booking', booking.id)} is in
           </h1>
           <p className="text-sm text-text-muted">
-            Your machines are held for those dates while the rental team prices the job. You will
-            get a notification when the quote is ready; you can ask questions or make a
-            counter-offer in the meantime. Nothing is charged until you accept a quote and pay.
+            Your machines are held for those dates. Each machine is priced from its rate card
+            straight away, so your quote is usually waiting on the booking page now; if a machine
+            has no published rate, the rental team prices it and notifies you. Ask questions or
+            counter-offer any time. Nothing is charged until you accept a quote and pay.
           </p>
           {/* Figma 219:2226 splits "Proceed to Negotiation" into a channel
               choice -- phone call or messenger. The frame puts it on the cart
@@ -496,8 +497,9 @@ function CartPage() {
             </div>
           </div>
           <p className="border-t border-border pt-3 text-sm text-text-muted">
-            Diesel, transport, operator and helper costs depend on your site and dates, so the
-            rental team prices them in a quote. You can negotiate it before anything is charged.
+            Your quote is priced automatically from each machine&apos;s rate card, with diesel,
+            operator and upkeep, as soon as you submit. Transport to your site can be added by the
+            rental team. You can negotiate it before anything is charged.
           </p>
           {/* Not disabled on invalid: a dead button explains nothing. It
               submits, validation runs, and the form says what is wrong. */}

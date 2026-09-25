@@ -1,9 +1,12 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import {
   auditLogs,
   depositForQuote,
+  equipment,
+  equipmentAssignments,
   equipmentTypes,
+  rateCards,
   getBillingSettings,
   quotationItems,
   quotations,
@@ -184,6 +187,67 @@ export class QuotesService {
     });
 
     return this.toResponse(result.quotation.id, result.quotation.revision, result.quotation.status, result.priced, result.quotation.printableUrl);
+  }
+
+  // Automatic quote on a new booking: every machine priced off its own rate
+  // card (the unit's, else its type's; hourly before daily, the same pick
+  // as the catalog price), for its booked days x the tenant's hours per
+  // day, then sent to the customer at once. Staff can still revise it
+  // before it is accepted. Returns null, leaving the booking for a manual
+  // quote, when a machine has no rate card or pricing is not set up.
+  // ponytail: transport km start at 0 (no route distance yet); staff add
+  // mobilization in a revision.
+  async autoQuoteBooking(ctx: RequestContext, rentalId: string): Promise<QuoteResponse | null> {
+    const body = await withTenantTx(ctx, async (tx): Promise<QuoteRequest | null> => {
+      const [rental] = await tx.select().from(rentals).where(eq(rentals.id, rentalId)).limit(1);
+      if (!rental) return null;
+      const lines = await tx
+        .select({ equipmentId: equipment.id, equipmentTypeId: equipment.equipmentTypeId, start: equipmentAssignments.start, end: equipmentAssignments.end })
+        .from(equipmentAssignments)
+        .innerJoin(equipment, eq(equipment.id, equipmentAssignments.equipmentId))
+        .where(eq(equipmentAssignments.rentalId, rentalId));
+      if (lines.length === 0) return null;
+      const { dailyHours } = await getBillingSettings(tx, ctx.tenantId);
+      const now = new Date();
+      const items: QuoteRequest['items'] = [];
+      for (const line of lines) {
+        const [card] = await tx
+          .select({ id: rateCards.id })
+          .from(rateCards)
+          .where(
+            and(
+              eq(rateCards.tenantId, ctx.tenantId),
+              or(eq(rateCards.equipmentId, line.equipmentId), and(eq(rateCards.equipmentTypeId, line.equipmentTypeId), isNull(rateCards.equipmentId))),
+              lte(rateCards.effectiveFrom, now),
+              or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, now)),
+            ),
+          )
+          .orderBy(sql`${rateCards.equipmentId} is null`, asc(sql`${rateCards.rateType} <> 'hourly'`), desc(rateCards.effectiveFrom))
+          .limit(1);
+        // No card, or an open-ended hire with no days to price: manual quote.
+        if (!card || !line.end) return null;
+        const days = Math.max(1, Math.ceil((line.end.getTime() - line.start.getTime()) / 86_400_000));
+        items.push({
+          equipmentTypeId: line.equipmentTypeId,
+          rateCardId: card.id,
+          quantity: 1,
+          estimatedHours: days * dailyHours,
+          mobilizationKm: 0,
+          demobilizationKm: 0,
+        });
+      }
+      return { customerId: rental.customerId, projectSiteId: rental.projectSiteId, rentalId, discount: { type: 'none', value: 0 }, items };
+    });
+    if (!body) return null;
+    try {
+      const quote = await this.create(ctx, body);
+      await this.approve(ctx, quote.id);
+      return { ...quote, status: 'approved' };
+    } catch (err) {
+      // No pricing parameters or diesel price yet (422): staff quote by hand.
+      if (err instanceof UnprocessableEntityException) return null;
+      throw err;
+    }
   }
 
   // POST /quotes/:id/revise: fresh snapshot, supersede the parent (RFC-3 §3).

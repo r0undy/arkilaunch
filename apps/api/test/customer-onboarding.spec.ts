@@ -36,8 +36,8 @@ describe('Customer onboarding', () => {
     events,
     new UnavailableDocumentIntelligenceAdapter('flag_disabled'),
   );
-  const bookings = new BookingsService(events);
   const quotes = new QuotesService(new PricingEngineService(), events);
+  const bookings = new BookingsService(events, quotes);
   let sessions = 0;
   const adapter = new StubPaymentsAdapter();
   adapter.createCheckoutSession = async (amountPhp: number, invoiceId: string) => ({

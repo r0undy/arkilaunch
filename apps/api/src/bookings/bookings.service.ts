@@ -34,6 +34,7 @@ import type {
   RescheduleSuggestion,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
+import { QuotesService } from '../quotes/quotes.service.js';
 import {
   availabilityBlockers,
   findAvailableAlternatives,
@@ -65,14 +66,17 @@ const BLOCKER_REASON: Record<AvailabilityBlocker, string> = {
 // as a rental; cr-arkilaunch-f2-f8-bookings-payments.md).
 @Injectable()
 export class BookingsService {
-  constructor(private readonly events: EventsService) {}
+  constructor(
+    private readonly events: EventsService,
+    private readonly quotes: QuotesService,
+  ) {}
 
   // POST /api/v1/bookings (SDD §4, PRD-F8 US-09). Never overbooks: the
   // candidate equipment rows are locked with FOR UPDATE before the overlap
   // check, so a concurrent booking attempt on the same unit/window is
   // serialized rather than racing past this check (QAD-T21).
   async create(ctx: RequestContext, body: BookingCreateRequest): Promise<BookingCreateResponse> {
-    return withTenantTx(ctx, async (tx) => {
+    const booked = await withTenantTx(ctx, async (tx) => {
       let customerId = body.customerId;
       if (ctx.role === 'customer') {
         const own = await ownCustomers(tx, ctx);
@@ -186,6 +190,16 @@ export class BookingsService {
 
       return { id: rental.id, status: rental.status, trackerUrl: `/orders/${rental.id}` };
     });
+
+    // Priced straight off the rate cards once the booking is committed, so
+    // the customer sees a total now. Never fails the booking: without a rate
+    // card or pricing set up, staff quote it by hand as before.
+    try {
+      await this.quotes.autoQuoteBooking(ctx, booked.id);
+    } catch (err) {
+      console.error(`auto-quote failed for booking ${booked.id}; left for a manual quote.`, err);
+    }
+    return booked;
   }
 
   // GET /api/v1/bookings (PRD-F8 US-09). A `customer` sees only their own
