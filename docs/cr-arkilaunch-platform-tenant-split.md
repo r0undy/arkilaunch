@@ -42,7 +42,7 @@ The web app was one Almara-branded app. `/` was Almara's storefront, the API pic
 
 ## 4. Verification
 
-- `migration-rls-guardian`: PASS on 0047. 0048: see PR.
+- `migration-rls-guardian`: PASS on 0047 and 0048.
 - `platform-companies.spec.ts`: list with counts excludes the platform tenant; deactivating blocks login, refresh and the storefront, and reactivating restores them; the platform tenant and unknown ids are refused.
 - Browser: `/admin/companies` lists Almara with its stats and an `almara.localhost` link; deactivating Test Tenant B shows Inactive and takes its storefront offline, activating brings it back. `tenant-isolation-checker`: PASS on the API diff.
 - API: `auth-lockout`, `customer-onboarding`, `forgot-password`, `two-fa`, `users-admin`, `host-tenant` specs green against the dev database (55 tests).
