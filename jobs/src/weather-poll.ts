@@ -1,6 +1,6 @@
 import { desc, eq } from 'drizzle-orm';
-import { events, projectSites, rentals, weatherAlerts } from '@arkilaunch/db';
-import { evaluateSeverity, MAX_POLLED_SITES_PER_CYCLE, type WeatherPort } from '@arkilaunch/shared';
+import { evaluateSiteEquipment, events, projectSites, rentals, warnOnEquipmentEscalation, weatherAlerts } from '@arkilaunch/db';
+import { evaluateSeverity, MAX_POLLED_SITES_PER_CYCLE, type EquipmentWeather, type WeatherLevel, type WeatherPort } from '@arkilaunch/shared';
 import { createWeatherAdapter } from '@arkilaunch/weather';
 import { makeJobDb } from './db-client.js';
 import { runInstrumentedJob } from './telemetry.js';
@@ -17,6 +17,8 @@ import { runInstrumentedJob } from './telemetry.js';
 // weather_alerts row is written at all, which sites.service.ts already
 // reports honestly as isStale: true / polledAt: null.
 const SEVERITY_RANK: Record<string, number> = { none: 0, watch: 1, warning: 2 };
+// The site-wide severity never reads calmer than its worst machine.
+const LEVEL_SEVERITY: Record<WeatherLevel, string> = { normal: 'none', advisory: 'watch', caution: 'warning', stop_work: 'warning' };
 
 export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter()): Promise<void> {
   if (process.env.ENABLE_WEATHER_POLL !== 'true') {
@@ -70,10 +72,16 @@ export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter())
     for (const site of activeSites) {
       try {
         const conditions = await port.getConditions(Number(site.latitude), Number(site.longitude));
-        const severity = evaluateSeverity(conditions);
+        // Each machine on the site gets its own PAGASA-style level
+        // (equipment-weather.ts), folding in the staff-recorded PAGASA
+        // warnings for the site's province.
+        const machines = await evaluateSiteEquipment(db, site.tenantId, site.id, conditions);
+        const legacy = evaluateSeverity(conditions);
+        const fromMachines = LEVEL_SEVERITY[machines.level];
+        const severity = (SEVERITY_RANK[fromMachines] ?? 0) > (SEVERITY_RANK[legacy] ?? 0) ? (fromMachines as typeof legacy) : legacy;
 
         const [previous] = await db
-          .select({ severity: weatherAlerts.severity })
+          .select({ severity: weatherAlerts.severity, observed: weatherAlerts.observed })
           .from(weatherAlerts)
           .where(eq(weatherAlerts.projectSiteId, site.id))
           .orderBy(desc(weatherAlerts.effectiveAt))
@@ -89,7 +97,7 @@ export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter())
           tenantId: site.tenantId,
           projectSiteId: site.id,
           severity,
-          observed: conditions,
+          observed: { ...conditions, level: machines.level, equipment: machines.equipment, pagasa: machines.pagasa },
           isStale: false,
           effectiveAt: new Date(),
           status: severity === 'none' ? 'cleared' : 'active',
@@ -98,6 +106,12 @@ export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter())
         // Only a NEW or WORSENING crossing also logs the liability trail
         // (SDD §4 "auto-logs a liability incident") -- a sustained warning
         // does not re-log every 30 minutes it persists.
+        // A machine whose level rises to Caution or Stop work warns its
+        // customer and the admins now; the event is the delivery proof the
+        // "used despite warning" incident later cites.
+        const before = (previous?.observed as { equipment?: EquipmentWeather[] } | null)?.equipment ?? null;
+        await warnOnEquipmentEscalation(db, site.tenantId, site.id, before, machines.equipment);
+
         if (isEscalation && severity !== 'none') {
           await db.insert(events).values({
             tenantId: site.tenantId,

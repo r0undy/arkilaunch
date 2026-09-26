@@ -15,6 +15,7 @@ import {
   kycDocuments,
   notifications,
   projectSites,
+  rentals,
   siteDocuments,
   users,
   withTenantTx,
@@ -39,6 +40,7 @@ import {
   type CompanyReviewResponse,
   type DocumentIntelligencePort,
   type KycScanResponse,
+  type SiteEquipmentWeatherResponse,
 } from '@arkilaunch/shared';
 import { KYC_MODEL_ID, NATIONAL_ID_MODEL_ID } from '@arkilaunch/document-intelligence';
 import { createWeatherAdapter } from '@arkilaunch/weather';
@@ -64,6 +66,7 @@ import { ownCustomers, ownsCustomer } from '../common/customer-scope.js';
 import { EventsService } from '../events/events.service.js';
 import { notifyStaff } from '../common/notify-customer.js';
 import { siteDocumentsFor, siteProofComplete } from '../common/site-proof.js';
+import { latestEquipmentWeather } from '../common/equipment-weather.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -642,6 +645,25 @@ export class CustomersService {
     const fetchedAt = new Date().toISOString();
     writeForecastCache(latitude, longitude, days, fetchedAt);
     return { siteId, days, fetchedAt };
+  }
+
+  // GET /me/sites/:id/equipment-weather. The weather level of each machine
+  // the caller rents on their own site, from the latest poll, with what to
+  // do about it. Only their own machines, never a neighbour's.
+  async siteEquipmentWeather(ctx: RequestContext, siteId: string): Promise<SiteEquipmentWeatherResponse> {
+    assertCustomer(ctx);
+    return withTenantTx(ctx, async (tx) => {
+      const ids = (await ownCustomers(tx, ctx)).map((row) => row.id);
+      if (ids.length === 0) throw new NotFoundException({ error: 'site_not_found' });
+      const [site] = await tx
+        .select({ id: projectSites.id })
+        .from(projectSites)
+        .where(and(eq(projectSites.id, siteId), inArray(projectSites.customerId, ids)))
+        .limit(1);
+      if (!site) throw new NotFoundException({ error: 'site_not_found' });
+      const mine = await tx.select({ id: rentals.id }).from(rentals).where(and(eq(rentals.projectSiteId, siteId), inArray(rentals.customerId, ids)));
+      return latestEquipmentWeather(tx, siteId, mine.map((row) => row.id));
+    });
   }
 
   async createSite(ctx: RequestContext, body: CustomerSiteCreate): Promise<CustomerSiteResponse> {

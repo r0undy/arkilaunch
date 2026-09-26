@@ -5,6 +5,7 @@ import { appLayoutRoute } from './_app.js';
 import { incidentsQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
+import { PagasaAdvisories } from '../components/equipment-weather.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { formatDateTime, formatSeverity, shortCode } from '../lib/format.js';
@@ -31,19 +32,21 @@ const KINDS = [
   { id: undefined, label: 'All' },
   { id: 'weather', label: 'Weather incidents' },
   { id: 'discrepancy', label: 'Report discrepancies' },
+  { id: 'used_despite_warning', label: 'Used despite warning' },
 ] as const;
 
 function IncidentsPage() {
   const [offset, setOffset] = useState(0);
-  const [kind, setKind] = useState<'weather' | 'discrepancy' | undefined>(undefined);
+  const [kind, setKind] = useState<'weather' | 'discrepancy' | 'used_despite_warning' | undefined>(undefined);
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="Billing"
         title="Incident log"
-        description="Weather and liability events recorded against your sites, and timekeeper weather reports the site readings contradict."
+        description="Weather and liability events recorded against your sites, timekeeper weather reports the site readings contradict, and machines used after a Stop work warning."
       />
+      <PagasaAdvisories />
       <div role="group" aria-label="Filter incidents" className="flex flex-wrap gap-2">
         {KINDS.map((entry) => (
           <button

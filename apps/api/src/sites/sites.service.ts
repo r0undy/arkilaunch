@@ -1,11 +1,12 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
 import {
   addresses,
   auditLogs,
   equipment,
   equipmentAssignments,
   events,
+  pagasaAdvisories,
   projectSites,
   rentals,
   users,
@@ -17,6 +18,10 @@ import {
   WEATHER_STALE_AFTER_MINUTES,
   type DeploymentCreateRequest,
   type IncidentListQuery,
+  type PagasaAdvisoryCreate,
+  type PagasaAdvisoryResponse,
+  type RainfallWarning,
+  type SiteEquipmentWeatherResponse,
   type SiteListQuery,
   type IncidentListResponse,
   type RequestContext,
@@ -36,6 +41,20 @@ import {
   findAvailableAlternatives,
 } from '../common/equipment-availability.js';
 import { countRows } from '../common/count-rows.js';
+import { latestEquipmentWeather } from '../common/equipment-weather.js';
+
+function toPagasaAdvisory(row: typeof pagasaAdvisories.$inferSelect): PagasaAdvisoryResponse {
+  return {
+    id: row.id,
+    province: row.province,
+    tcws: row.tcws,
+    rainfall: row.rainfall as RainfallWarning,
+    thunderstorm: row.thunderstorm,
+    ...(row.note ? { note: row.note } : {}),
+    validUntil: row.validUntil,
+    createdAt: row.createdAt,
+  };
+}
 
 // Upper bound on the active-alert scan behind GET /weather/advisories.
 // One row per site is returned after the JS dedupe; this caps the rows
@@ -499,6 +518,61 @@ export class SitesService {
     });
   }
 
+  // GET /sites/:id/equipment-weather (staff): each machine's PAGASA-style
+  // level from the latest poll. No reading yet reads as no data -- stale,
+  // no machines -- never as an all-clear.
+  async equipmentWeather(ctx: RequestContext, siteId: string): Promise<SiteEquipmentWeatherResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [site] = await tx.select({ id: projectSites.id }).from(projectSites).where(eq(projectSites.id, siteId)).limit(1);
+      if (!site) throw new NotFoundException({ error: 'project_site_not_found' });
+      return latestEquipmentWeather(tx, siteId);
+    });
+  }
+
+  // PAGASA warnings staff recorded, newest first (in force and recent).
+  async pagasaAdvisories(ctx: RequestContext): Promise<PagasaAdvisoryResponse[]> {
+    return withTenantTx(ctx, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(pagasaAdvisories)
+        .where(gt(pagasaAdvisories.validUntil, new Date(Date.now() - 7 * 86_400_000)))
+        .orderBy(desc(pagasaAdvisories.createdAt))
+        .limit(50);
+      return rows.map(toPagasaAdvisory);
+    });
+  }
+
+  async createPagasaAdvisory(ctx: RequestContext, body: PagasaAdvisoryCreate): Promise<PagasaAdvisoryResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx
+        .insert(pagasaAdvisories)
+        .values({
+          tenantId: ctx.tenantId,
+          province: body.province,
+          tcws: body.tcws,
+          rainfall: body.rainfall,
+          thunderstorm: body.thunderstorm,
+          note: body.note ?? null,
+          validUntil: body.validUntil,
+          createdBy: ctx.userId,
+        })
+        .returning();
+      await tx.insert(auditLogs).values({ tenantId: ctx.tenantId, actorId: ctx.userId, action: 'CREATE', entity: 'pagasa_advisories', entityId: row!.id });
+      return toPagasaAdvisory(row!);
+    });
+  }
+
+  // PAGASA lifted it: it lapses now rather than being deleted (the poll
+  // readings that cited it keep their meaning).
+  async liftPagasaAdvisory(ctx: RequestContext, id: string): Promise<PagasaAdvisoryResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.update(pagasaAdvisories).set({ validUntil: new Date() }).where(eq(pagasaAdvisories.id, id)).returning();
+      if (!row) throw new NotFoundException({ error: 'advisory_not_found' });
+      await tx.insert(auditLogs).values({ tenantId: ctx.tenantId, actorId: ctx.userId, action: 'UPDATE', entity: 'pagasa_advisories', entityId: id });
+      return toPagasaAdvisory(row);
+    });
+  }
+
   // GET /api/v1/incidents?projectSiteId=... (S14 Liability Incident Log).
   // No new table: reads the `events` rows jobs/src/weather-poll.ts already
   // writes on a new-or-worsening severity crossing (SDD §4 "auto-logs a
@@ -511,7 +585,9 @@ export class SitesService {
           ? ['weather_liability_incident']
           : query.kind === 'discrepancy'
             ? ['edtr_weather_discrepancy']
-            : ['weather_liability_incident', 'edtr_weather_discrepancy'];
+            : query.kind === 'used_despite_warning'
+              ? ['equipment_used_despite_warning']
+              : ['weather_liability_incident', 'edtr_weather_discrepancy', 'equipment_used_despite_warning'];
       const conditions: SQL[] = [inArray(events.name, names)];
       if (query.projectSiteId) {
         conditions.push(sql`${events.properties} ->> 'project_site_id' = ${query.projectSiteId}`);
@@ -554,8 +630,14 @@ export class SitesService {
           date?: string;
           half?: string;
           system?: unknown;
+          level?: string;
+          reasons?: string[];
+          hours_active?: number;
+          warned_at?: string;
+          equipment_id?: string;
         };
         const discrepancy = row.name === 'edtr_weather_discrepancy';
+        const ignored = row.name === 'equipment_used_despite_warning';
         const site = properties.project_site_id
           ? siteById.get(properties.project_site_id)
           : undefined;
@@ -564,11 +646,17 @@ export class SitesService {
           projectSiteId: properties.project_site_id ?? null,
           siteCity: site?.city ?? null,
           siteProvince: site?.province ?? null,
-          severity: discrepancy ? 'high' : (properties.severity ?? null),
-          observed: (discrepancy ? properties.system : properties.observed) ?? null,
+          severity: discrepancy || ignored ? 'high' : (properties.severity ?? null),
+          observed: (discrepancy ? properties.system : ignored ? { reasons: properties.reasons ?? [] } : properties.observed) ?? null,
           occurredAt: row.occurredAt,
-          kind: discrepancy ? ('discrepancy' as const) : ('weather' as const),
-          detail: discrepancy ? discrepancyDetail(properties.rule, properties.date, properties.half) : null,
+          kind: ignored ? ('used_despite_warning' as const) : discrepancy ? ('discrepancy' as const) : ('weather' as const),
+          detail: ignored
+            ? `${properties.hours_active ?? '?'} h logged on ${properties.date ?? 'that day'} on a machine warned to STOP WORK${
+                properties.warned_at ? ` at ${new Date(properties.warned_at).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' })}` : ''
+              }${properties.reasons?.length ? `: ${properties.reasons.join('; ')}` : ''}.`
+            : discrepancy
+              ? discrepancyDetail(properties.rule, properties.date, properties.half)
+              : null,
         };
       });
       return { items, total };

@@ -26,3 +26,4 @@ export * from './notifications.js';
 export * from './users.js';
 export * from './tenants.js';
 export * from './customers.js';
+export * from './equipment-weather.js';

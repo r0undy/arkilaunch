@@ -10,6 +10,7 @@ import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { Button } from '../components/button.js';
 import { SiteProofAdmin } from '../components/site-proof.js';
+import { SiteEquipmentWeather } from '../components/equipment-weather.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { NegotiationThread } from '../components/negotiation-thread.js';
@@ -241,6 +242,7 @@ function BookingSide({ booking }: { booking: BookingDetailResponse }) {
         {booking.siteContact && <p className="text-text-muted">Contact: {booking.siteContact}</p>}
         {booking.siteNotes && <p className="text-text-muted">Access: {booking.siteNotes}</p>}
         <SiteProofAdmin siteId={booking.projectSiteId} />
+        {booking.status === 'active' && <SiteEquipmentWeather siteId={booking.projectSiteId} />}
         {booking.items.map((item) => (
           <p key={`${item.equipmentId}-${String(item.start)}`} className="text-text-muted">
             {shortCode('equipment', item.equipmentId)}: {formatDate(item.start)} - {formatDate(item.end)}

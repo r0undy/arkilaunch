@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
@@ -6,6 +6,7 @@ import { SitesService } from './sites.service.js';
 import {
   DeploymentCreateDto,
   IncidentListQueryDto,
+  PagasaAdvisoryCreateDto,
   SiteCreateDto,
   SiteListQueryDto,
   SiteUpdateDto,
@@ -66,6 +67,32 @@ export class SitesController {
   @RequirePermission(...STAFF_READ)
   weather(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.sites.weather(req.ctx, id);
+  }
+
+  // Each machine's PAGASA-style level on the site (latest poll).
+  @Get('sites/:id/equipment-weather')
+  @RequirePermission(...STAFF_READ)
+  equipmentWeather(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.sites.equipmentWeather(req.ctx, id);
+  }
+
+  // PAGASA warnings staff record per province (TCWS, rainfall, thunderstorm).
+  @Get('weather/pagasa')
+  @RequirePermission(...STAFF_READ)
+  pagasa(@Req() req: CtxRequest) {
+    return this.sites.pagasaAdvisories(req.ctx);
+  }
+
+  @Post('weather/pagasa')
+  @RequirePermission('site:manage')
+  createPagasa(@Body() body: PagasaAdvisoryCreateDto, @Req() req: CtxRequest) {
+    return this.sites.createPagasaAdvisory(req.ctx, body);
+  }
+
+  @Delete('weather/pagasa/:id')
+  @RequirePermission('site:manage')
+  liftPagasa(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.sites.liftPagasaAdvisory(req.ctx, id);
   }
 
   @Get('weather/advisories')

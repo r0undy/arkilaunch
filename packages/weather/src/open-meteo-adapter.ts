@@ -29,7 +29,9 @@ const REQUEST_TIMEOUT_MS = 10_000;
 // silently, on a construction site. An explicit param plus a literal check
 // on the unit it claims to have honoured is the cheapest defence against
 // that.
-const CURRENT_FIELDS = 'temperature_2m,wind_speed_10m,precipitation,weather_code';
+// Gusts and humidity feed the per-equipment levels (equipment-weather.ts):
+// cranes are limited by gusts, and the heat index needs humidity.
+const CURRENT_FIELDS = 'temperature_2m,wind_speed_10m,precipitation,weather_code,wind_gusts_10m,relative_humidity_2m';
 // Same endpoint, same free-tier terms -- the daily block is what the customer
 // forecast rail reads. Units are pinned and checked for exactly the reason
 // the current block pins them (see the comment above CURRENT_FIELDS).
@@ -67,6 +69,10 @@ const CurrentUnitsSchema = z.object({
   temperature_2m: z.literal('°C'),
   wind_speed_10m: z.literal('km/h'),
   precipitation: z.literal('mm'),
+  // Optional: a response without them still yields the core reading, and
+  // the levels simply judge on sustained wind and no heat index.
+  wind_gusts_10m: z.literal('km/h').optional(),
+  relative_humidity_2m: z.literal('%').optional(),
 });
 
 const CurrentSchema = z.object({
@@ -74,6 +80,8 @@ const CurrentSchema = z.object({
   wind_speed_10m: z.number(),
   precipitation: z.number(),
   weather_code: z.number(),
+  wind_gusts_10m: z.number().nullable().optional(),
+  relative_humidity_2m: z.number().nullable().optional(),
 });
 
 const OpenMeteoResponseSchema = z.object({
@@ -170,12 +178,14 @@ export class OpenMeteoAdapter implements WeatherPort, WeatherForecastPort {
       { current: CURRENT_FIELDS },
       OpenMeteoResponseSchema,
     );
-    const { temperature_2m, wind_speed_10m, precipitation, weather_code } = data.current;
+    const { temperature_2m, wind_speed_10m, precipitation, weather_code, wind_gusts_10m, relative_humidity_2m } = data.current;
     return {
       tempC: temperature_2m,
       windKph: wind_speed_10m,
       precipMm: precipitation,
       code: weather_code,
+      ...(typeof wind_gusts_10m === 'number' ? { gustKph: wind_gusts_10m } : {}),
+      ...(typeof relative_humidity_2m === 'number' ? { humidityPct: relative_humidity_2m } : {}),
     };
   }
 

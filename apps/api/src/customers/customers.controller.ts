@@ -179,7 +179,14 @@ export class CustomersController {
     return this.customers.siteForecast(req.ctx, id);
   }
 
-  @Get('customers/review')
+  // Each of the caller's machines on their site, with its weather level.
+  @Get('me/sites/:id/equipment-weather')
+  @RequirePermission('booking:read')
+  equipmentWeather(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.customers.siteEquipmentWeather(req.ctx, id);
+  }
+
+    @Get('customers/review')
   @RequirePermission('quote:approve')
   listForReview(@Query() query: CompanyReviewQueryDto, @Req() req: CtxRequest) {
     return this.customers.listForReview(req.ctx, query.kycStatus);

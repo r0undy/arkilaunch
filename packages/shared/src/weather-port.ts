@@ -8,6 +8,9 @@ export interface WeatherObservation {
   windKph: number;
   precipMm: number;
   code: number;
+  // Newer readings only (per-equipment levels); absent on older rows.
+  gustKph?: number;
+  humidityPct?: number;
 }
 
 // Open-Meteo FREE tier (PRD-F5). The free tier is keyless and restricted to

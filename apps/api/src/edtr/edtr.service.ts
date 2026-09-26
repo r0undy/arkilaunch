@@ -18,6 +18,7 @@ import {
   invoiceLineItems,
   invoices,
   rateCards,
+  flagUsedDespiteWarning,
   reconcileEdtr,
   rentals,
   resolveDepositLedger,
@@ -204,6 +205,8 @@ export class EdtrService {
           hoursIdle: String(body.lineItems.hoursIdle),
         });
         await reconcileEdtr(tx, ctx.tenantId, created.id);
+        // Hours on a machine warned to stop work that day: incident log only.
+        await flagUsedDespiteWarning(tx, ctx.tenantId, created.id);
         // reconcileEdtr writes the authoritative status; re-read rather than
         // re-deriving it here so the two can never drift apart.
         const [refetched] = await tx.select().from(edtr).where(eq(edtr.id, created.id)).limit(1);

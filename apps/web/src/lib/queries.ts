@@ -95,7 +95,7 @@ export const invoicesQueries = {
 };
 
 export const incidentsQueries = {
-  list: (limit = PAGE_SIZE, offset = 0, kind?: 'weather' | 'discrepancy') =>
+  list: (limit = PAGE_SIZE, offset = 0, kind?: 'weather' | 'discrepancy' | 'used_despite_warning') =>
     queryOptions({
       queryKey: ['incidents', limit, offset, kind ?? 'all'] as const,
       queryFn: () =>

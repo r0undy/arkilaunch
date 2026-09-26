@@ -10,3 +10,4 @@ export * from './reconciliation.js';
 export * from './deposit-ledger.js';
 export * from './seed/ocr-fixtures/golden-set.js';
 export * from './diesel-manual-entry.js';
+export * from './equipment-weather.js';
