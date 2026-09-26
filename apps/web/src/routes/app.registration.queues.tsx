@@ -1,13 +1,13 @@
 import { Fragment, useState } from 'react';
-import type { CompanyDocumentReadResponse, CompanyReviewResponse, RegistryDocumentType } from '@arkilaunch/shared';
+import type { CompanyDecision, CompanyReviewResponse, RegistryDocumentType, RejectionReason } from '@arkilaunch/shared';
 import {
-  DTI_REGEX,
+  CURE_DOCUMENTS,
   isPrimaryRegistration,
   normalizeTin,
   REGISTRY_LINKS,
-  SEC_REGEX,
+  REJECTION_REASON_LABELS,
+  REJECTION_REASONS,
   TIN_REGEX,
-  UNLOCKABLE_COMPANY_FIELDS,
 } from '@arkilaunch/shared';
 import { createRoute } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
@@ -18,24 +18,17 @@ import { Button } from '../components/button.js';
 import { Surface } from '../components/surface.js';
 import { Modal } from '../components/modal.js';
 import { useToast } from '../components/toast.js';
-import { Input } from '../components/input.js';
+import { Select } from '../components/select.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
+import { apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { companiesQueries } from '../lib/queries.js';
 import { formatDate, formatStatus } from '../lib/format.js';
-import { DOC_LABELS, FIELD_LABELS } from '../components/company-card.js';
+import { DOC_LABELS } from '../components/company-card.js';
 
-// What a reviewer typed (or confirmed) for one company, keyed by company id
-// so several cards in the queue keep their own edits.
-interface ReviewFields {
-  companyName: string;
-  tin: string;
-  secNumber: string;
-  dtiNumber: string;
-  firstName: string;
-  middleName: string;
-  lastName: string;
-}
+type Decision = CompanyDecision;
+
+// PhilSys's public checker for the signed QR code on the National ID.
+const PHILSYS_VERIFY_URL = 'https://verify.philsys.gov.ph/';
 
 type ReviewDocument = CompanyReviewResponse['documents'][number];
 
@@ -72,17 +65,6 @@ function EditedTag({ scanned }: { scanned?: string | undefined }) {
       {scanned !== undefined && <span className="text-text-muted">scan read "{scanned}"</span>}
     </span>
   );
-}
-
-// Under each field: what the upload-time scan read, so a reviewer sees at a
-// glance whether the customer's value matches the paper.
-function scanHint(scanned: string | undefined, current: string): string | undefined {
-  if (!scanned) return undefined;
-  return sameText(scanned, current) ? 'Matches the scan.' : `Scan read "${scanned}".`;
-}
-
-function formatError(value: string, re: RegExp, message: string): string | undefined {
-  return value.trim() && !re.test(value.trim()) ? message : undefined;
 }
 
 // The public-registry check for one paper: the link copies whatever that
@@ -148,11 +130,51 @@ function RegistryCheck({
   );
 }
 
-// The admin-side counterpart to the customer's scan. The card opens with
-// what the customer confirmed and what the upload-time scan read, side by
-// side, with no click; "Re-read" runs a fresh pass. The extraction decides
-// nothing on its own -- it is a typing aid for the person looking at the
-// document, and Verify waits on their registry checks (RFC-2's human gate).
+// A read-only line of what the customer submitted, with what the scan read
+// beside it when the two differ. The reviewer never edits these (CR
+// pricebook-kyc-weather): a wrong value is a rejection with a reason.
+function SubmittedValue({
+  label,
+  value,
+  scanned,
+  edited,
+}: {
+  label: string;
+  value: string | null | undefined;
+  scanned?: string | undefined;
+  edited?: boolean;
+}) {
+  return (
+    <Fragment>
+      <dt className="text-text-muted">{label}</dt>
+      <dd className="flex flex-wrap items-center gap-2 break-words text-text">
+        {value || 'Not given'}
+        {edited ? <EditedTag scanned={scanned} /> : scanned && value && sameText(scanned, value) ? (
+          <span className="text-xs text-text-muted">Matches the scan.</span>
+        ) : null}
+      </dd>
+    </Fragment>
+  );
+}
+
+// PhilSys's own checker reads the signed QR on the card; the other two are
+// the reviewer's comparison of the selfie and the names.
+const IDENTITY_CHECKS = [
+  {
+    key: 'qr',
+    label: 'I scanned the PhilSys QR code at verify.philsys.gov.ph and the signed details match the card',
+  },
+  { key: 'selfie', label: 'The selfie shows the same person holding this ID' },
+  {
+    key: 'signatory',
+    label: 'The ID holder is the owner, officer or authorized signatory named on the SEC/DTI/BIR papers',
+  },
+] as const;
+
+// The admin-side review of one company: everything the customer submitted,
+// read-only, the upload-time scan beside it, the registry and identity
+// checks, and Approve or Reject. The extraction decides nothing on its own
+// (RFC-2's human gate).
 function CompanyReviewCard({
   company,
   decidable,
@@ -162,86 +184,38 @@ function CompanyReviewCard({
 }: {
   company: CompanyReviewResponse;
   decidable: boolean;
-  onDecide: (fields: ReviewFields, decision: 'approved' | 'rejected', registryChecked: string[]) => void;
+  onDecide: (decision: Decision) => void;
   deciding: boolean;
   onPreviewDocument: (companyId: string, documentId: string) => void;
 }) {
-  const toast = useToast();
-  const queryClient = useQueryClient();
   const byType = (type: string) => company.documents.find((doc) => doc.documentType === type);
   const registration = company.documents.find((doc) => isPrimaryRegistration(doc.documentType));
   const nationalId = byType('government_id');
+  const selfie = byType('selfie_with_id');
   const sec = byType('sec_certificate');
   const bir = byType('bir_cor');
   const dti = byType('dti_certificate');
   const legacy = byType('company_registration');
-  const idValue = (key: string) => nationalId?.customer[key] ?? nationalId?.ocr[key] ?? '';
-  const fieldHint = (doc: ReviewDocument | undefined, key: string, current: string) =>
-    doc && editedKeys(company, doc).includes(key) ? (
-      <EditedTag scanned={doc.ocr[key]} />
-    ) : (
-      scanHint(doc?.ocr[key], current)
-    );
+  const idValue = (key: string) => nationalId?.customer[key] ?? nationalId?.ocr[key];
+  const edited = (doc: ReviewDocument | undefined, key: string) => Boolean(doc && editedKeys(company, doc).includes(key));
 
-  const [fields, setFields] = useState<ReviewFields>({
-    companyName: company.companyName,
-    tin: company.tin ?? bir?.ocr.tin ?? '',
-    secNumber: company.secNumber ?? sec?.ocr.sec_number ?? '',
-    dtiNumber: dti?.customer.dti_number ?? dti?.ocr.dti_number ?? '',
-    firstName: company.firstName ?? idValue('first_name'),
-    middleName: company.middleName ?? idValue('middle_name'),
-    lastName: company.lastName ?? idValue('last_name'),
-  });
   const [checked, setChecked] = useState<Set<string>>(
     () => new Set(company.documents.filter((d) => d.registryChecked).map((d) => d.id)),
   );
+  const [identity, setIdentity] = useState<Set<string>>(() => new Set());
+  const [rejecting, setRejecting] = useState(false);
   const registryDocs = [sec, bir, dti].filter((d): d is ReviewDocument => Boolean(d));
   const allChecked = registryDocs.every((d) => checked.has(d.id));
-  const setCheck = (id: string, on: boolean) =>
-    setChecked((current) => {
-      const next = new Set(current);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-
-  const readDocument = useMutation({
-    mutationFn: (documentId: string) =>
-      apiPost<CompanyDocumentReadResponse>(
-        `/customers/${company.id}/documents/${documentId}/read`,
-        {},
-      ),
-    onSuccess: async (result) => {
-      if (!result.extractionAvailable) {
-        toast.error(
-          'Could not read the document',
-          'Document extraction is not switched on in this environment. Key the details in from the document instead.',
-        );
-        return;
-      }
-      setFields((current) => ({
-        companyName: result.suggestions.companyName ?? current.companyName,
-        tin: result.suggestions.tin ?? current.tin,
-        secNumber: result.suggestions.secNumber ?? current.secNumber,
-        dtiNumber: result.suggestions.dtiNumber ?? current.dtiNumber,
-        firstName: result.suggestions.firstName ?? current.firstName,
-        middleName: result.suggestions.middleName ?? current.middleName,
-        lastName: result.suggestions.lastName ?? current.lastName,
-      }));
-      await queryClient.invalidateQueries({ queryKey: ['customers', 'review'] });
-    },
-    onError: (err) => toast.error('Could not read the document', apiErrorText(err)),
-  });
-
-  const nameField = (key: 'firstName' | 'middleName' | 'lastName', label: string, ocrKey: string) => (
-    <Input
-      label={label}
-      maxLength={200}
-      hint={fieldHint(nationalId, ocrKey, fields[key])}
-      value={fields[key]}
-      onChange={(e) => setFields({ ...fields, [key]: e.target.value })}
-    />
-  );
+  const identityDone = IDENTITY_CHECKS.every((c) => identity.has(c.key));
+  const toggle = (set: Set<string>, key: string, on: boolean) => {
+    const next = new Set(set);
+    if (on) next.add(key);
+    else next.delete(key);
+    return next;
+  };
+  const tin = company.tin ?? bir?.ocr.tin ?? '';
+  const secNumber = company.secNumber ?? sec?.ocr.sec_number ?? '';
+  const dtiNumber = dti?.customer.dti_number ?? dti?.ocr.dti_number ?? '';
 
   return (
     <Surface
@@ -288,251 +262,195 @@ function CompanyReviewCard({
       {decidable && (
         <>
           <section aria-labelledby={`id-${company.id}`} className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 id={`id-${company.id}`} className="font-medium text-text">
-                National ID
-              </h3>
-              {nationalId && (
-                <Button
-                  variant="ghost"
-                  loading={readDocument.isPending && readDocument.variables === nationalId.id}
-                  onClick={() => readDocument.mutate(nationalId.id)}
-                >
-                  Re-read National ID
-                </Button>
-              )}
-            </div>
+            <h3 id={`id-${company.id}`} className="font-medium text-text">
+              National ID
+            </h3>
             {!nationalId && <p className="text-sm text-text-muted">No National ID uploaded.</p>}
-            <div className="grid gap-3 sm:grid-cols-3">
-              {nameField('firstName', 'First name', 'first_name')}
-              {nameField('middleName', 'Middle name', 'middle_name')}
-              {nameField('lastName', 'Last name', 'last_name')}
-            </div>
             {nationalId && (
               <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
-                {ID_DETAILS.map(({ key, label }) => {
-                  const customer = nationalId.customer[key];
-                  const scanned = nationalId.ocr[key];
-                  const edited = editedKeys(company, nationalId).includes(key);
-                  return (
-                    <Fragment key={key}>
-                      <dt className="text-text-muted">{label}</dt>
-                      <dd className="flex flex-wrap items-center gap-2 break-words text-text">
-                        {customer ?? scanned ?? 'Not read'}
-                        {edited && <EditedTag scanned={scanned} />}
-                      </dd>
-                    </Fragment>
-                  );
-                })}
+                <SubmittedValue label="First name" value={idValue('first_name')} scanned={nationalId.ocr.first_name} edited={edited(nationalId, 'first_name')} />
+                <SubmittedValue label="Middle name" value={idValue('middle_name')} scanned={nationalId.ocr.middle_name} edited={edited(nationalId, 'middle_name')} />
+                <SubmittedValue label="Last name" value={idValue('last_name')} scanned={nationalId.ocr.last_name} edited={edited(nationalId, 'last_name')} />
+                {ID_DETAILS.map(({ key, label }) => (
+                  <SubmittedValue key={key} label={label} value={idValue(key)} scanned={nationalId.ocr[key]} edited={edited(nationalId, key)} />
+                ))}
               </dl>
             )}
-            <p className="text-xs text-text-muted">
-              The name is written onto the customer's account only when you verify.
+            <p className="text-sm text-text-muted">
+              {selfie ? (
+                <Button variant="ghost" onClick={() => onPreviewDocument(company.id, selfie.id)}>
+                  Open the selfie with ID
+                </Button>
+              ) : (
+                'No selfie with ID uploaded: ask for one by rejecting with "National ID does not match".'
+              )}
             </p>
+            <fieldset className="flex flex-col gap-1">
+              <legend className="text-sm font-medium text-text">Identity checks</legend>
+              <a
+                href={PHILSYS_VERIFY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-primary underline"
+              >
+                Open the PhilSys verifier <span aria-hidden="true">↗</span>
+                <span className="sr-only"> (opens in a new tab)</span>
+              </a>
+              {IDENTITY_CHECKS.map((c) => (
+                <label key={c.key} className="flex min-h-11 items-center gap-2 text-sm text-text">
+                  <input
+                    type="checkbox"
+                    checked={identity.has(c.key)}
+                    onChange={(e) => setIdentity((cur) => toggle(cur, c.key, e.target.checked))}
+                    className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+                  />
+                  {c.label}
+                </label>
+              ))}
+            </fieldset>
           </section>
 
           <section aria-labelledby={`reg-${company.id}`} className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 id={`reg-${company.id}`} className="font-medium text-text">
-                Registration
-              </h3>
-              {registration && (
-                <Button
-                  variant="ghost"
-                  loading={readDocument.isPending && readDocument.variables === registration.id}
-                  onClick={() => readDocument.mutate(registration.id)}
-                >
-                  Re-read registration
-                </Button>
-              )}
-            </div>
-            <Input
-              label="Registered name"
-              maxLength={200}
-              hint={scanHint(registration?.ocr.company_name, fields.companyName)}
-              value={fields.companyName}
-              onChange={(e) => setFields({ ...fields, companyName: e.target.value })}
-            />
-            <div className="grid gap-3 sm:grid-cols-3">
+            <h3 id={`reg-${company.id}`} className="font-medium text-text">
+              Registration
+            </h3>
+            <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
+              <SubmittedValue label="Registered name" value={company.companyName} scanned={registration?.ocr.company_name} />
               {(bir || legacy || company.tin) && (
-                <div className="flex flex-col gap-1">
-                  <Input
-                    label="TIN"
-                    inputMode="numeric"
-                    placeholder="000-000-000-000"
-                    hint={fieldHint(bir ?? legacy, 'tin', fields.tin)}
-                    error={formatError(normalizeTin(fields.tin), TIN_REGEX, 'Not a 9 or 12 digit TIN.')}
-                    value={fields.tin}
-                    onChange={(e) => setFields({ ...fields, tin: e.target.value })}
-                  />
-                  {bir && (
-                    <RegistryCheck
-                      document={bir}
-                      number={fields.tin}
-                      companyName={fields.companyName}
-                      checked={checked.has(bir.id)}
-                      onCheckedChange={(on) => setCheck(bir.id, on)}
-                    />
-                  )}
-                </div>
+                <SubmittedValue label="TIN" value={tin} scanned={(bir ?? legacy)?.ocr.tin} edited={edited(bir ?? legacy, 'tin')} />
               )}
               {(sec || legacy || company.secNumber) && (
-                <div className="flex flex-col gap-1">
-                  <Input
-                    label="SEC registration number"
-                    maxLength={50}
-                    hint={fieldHint(sec ?? legacy, 'sec_number', fields.secNumber)}
-                    error={formatError(fields.secNumber, SEC_REGEX, 'Not an SEC registration number format.')}
-                    value={fields.secNumber}
-                    onChange={(e) => setFields({ ...fields, secNumber: e.target.value })}
-                  />
-                  {sec && (
-                    <RegistryCheck
-                      document={sec}
-                      number={fields.secNumber}
-                      companyName={fields.companyName}
-                      checked={checked.has(sec.id)}
-                      onCheckedChange={(on) => setCheck(sec.id, on)}
-                    />
-                  )}
-                </div>
+                <SubmittedValue label="SEC registration number" value={secNumber} scanned={(sec ?? legacy)?.ocr.sec_number} edited={edited(sec ?? legacy, 'sec_number')} />
               )}
-              {dti && (
-                <div className="flex flex-col gap-1">
-                  <Input
-                    label="DTI business name number"
-                    maxLength={50}
-                    hint={fieldHint(dti, 'dti_number', fields.dtiNumber)}
-                    error={formatError(fields.dtiNumber, DTI_REGEX, 'Not a DTI business name number format.')}
-                    value={fields.dtiNumber}
-                    onChange={(e) => setFields({ ...fields, dtiNumber: e.target.value })}
-                  />
-                  <RegistryCheck
-                    document={dti}
-                    number={fields.dtiNumber}
-                    companyName={fields.companyName}
-                    checked={checked.has(dti.id)}
-                    onCheckedChange={(on) => setCheck(dti.id, on)}
-                  />
-                </div>
+              {dti && <SubmittedValue label="DTI business name number" value={dtiNumber} scanned={dti.ocr.dti_number} edited={edited(dti, 'dti_number')} />}
+              {registration?.ocr.registered_address && (
+                <SubmittedValue label="Registered address" value={registration.ocr.registered_address} />
+              )}
+              {registration?.ocr.registration_date && (
+                <SubmittedValue label="Registration date" value={registration.ocr.registration_date} />
+              )}
+            </dl>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[bir, sec, dti].map(
+                (doc) =>
+                  doc && (
+                    <RegistryCheck
+                      key={doc.id}
+                      document={doc}
+                      number={doc === bir ? tin : doc === sec ? secNumber : dtiNumber}
+                      companyName={company.companyName}
+                      checked={checked.has(doc.id)}
+                      onCheckedChange={(on) => setChecked((cur) => toggle(cur, doc.id, on))}
+                    />
+                  ),
               )}
             </div>
-            {(registration?.ocr.registered_address || registration?.ocr.registration_date) && (
-              <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
-                <dt className="text-text-muted">Registered address</dt>
-                <dd className="break-words text-text">{registration.ocr.registered_address ?? 'Not read'}</dd>
-                <dt className="text-text-muted">Registration date</dt>
-                <dd className="text-text">{registration.ocr.registration_date ?? 'Not read'}</dd>
-              </dl>
-            )}
+            <p className="text-xs text-text-muted">
+              Expired 2303, or SEC shows the company suspended, revoked or delinquent? Reject with that reason: the
+              customer is told exactly which papers to bring to reapply.
+            </p>
           </section>
-
-          <ReviewComment company={company} />
 
           <div className="flex flex-wrap gap-2">
             <Button
               variant="approve"
               loading={deciding}
-              disabled={company.documents.length === 0 || !allChecked}
-              onClick={() => onDecide(fields, 'approved', [...checked])}
+              disabled={company.documents.length === 0 || !allChecked || !identityDone}
+              onClick={() => onDecide({ decision: 'approved', registryChecked: [...checked], identityChecked: true })}
             >
-              Verify
+              Approve
             </Button>
-            <Button
-              variant="destructive"
-              loading={deciding}
-              onClick={() => onDecide(fields, 'rejected', [])}
-            >
+            <Button variant="destructive" loading={deciding} onClick={() => setRejecting(true)}>
               Reject
             </Button>
           </div>
           <p className="text-xs text-text-muted">
-            {allChecked
-              ? 'Verifying saves these fields onto the company. They are your confirmation against the document, not the scan\'s.'
-              : 'Check each number on its registry and tick it before verifying.'}
+            {allChecked && identityDone
+              ? 'Approving verifies the company exactly as the customer submitted it.'
+              : 'Tick each registry check and every identity check before approving.'}
           </p>
+          <RejectDialog
+            open={rejecting}
+            companyName={company.companyName}
+            pending={deciding}
+            onCancel={() => setRejecting(false)}
+            onReject={(rejectionReason, rejectionNote) => {
+              setRejecting(false);
+              onDecide({ decision: 'rejected', rejectionReason, ...(rejectionNote ? { rejectionNote } : {}) });
+            }}
+          />
         </>
       )}
     </Surface>
   );
 }
 
-// The reviewer's way back to the customer short of rejecting: a note, and
-// the fields and documents it unlocks for them. The company stays pending
-// and the customer can change only what is ticked here.
-function ReviewComment({ company }: { company: CompanyReviewResponse }) {
-  const toast = useToast();
-  const queryClient = useQueryClient();
-  const [comment, setComment] = useState(company.reviewComment ?? '');
-  const [unlock, setUnlock] = useState<Set<string>>(() => new Set(company.unlockedFields));
-  const options = [
-    ...UNLOCKABLE_COMPANY_FIELDS.map((f) => ({ value: f as string, label: FIELD_LABELS[f]! })),
-    ...[...new Set(company.documents.map((d) => d.documentType))].map((t) => ({
-      value: t,
-      label: DOC_LABELS[t] ?? formatStatus(t),
-    })),
-  ];
-  const send = useMutation({
-    mutationFn: () =>
-      apiPatch(`/customers/${company.id}/review`, { comment: comment.trim(), unlock: [...unlock] }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['customers', 'review'] });
-      toast.success('Comment sent', 'The customer has been notified.');
-    },
-    onError: (err) => toast.error('Could not send the comment', apiErrorText(err)),
-  });
-  const id = `comment-${company.id}`;
+// A rejection always says why, and the reason decides what the customer
+// must upload to reapply (CURE_DOCUMENTS).
+function RejectDialog({
+  open,
+  companyName,
+  pending,
+  onCancel,
+  onReject,
+}: {
+  open: boolean;
+  companyName: string;
+  pending: boolean;
+  onCancel: () => void;
+  onReject: (reason: RejectionReason, note: string) => void;
+}) {
+  const [reason, setReason] = useState<RejectionReason | ''>('');
+  const [note, setNote] = useState('');
+  const cure = reason ? CURE_DOCUMENTS[reason] : null;
   return (
-    <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-3">
-      <h3 id={`${id}-heading`} className="font-medium text-text">
-        Ask the customer to fix something
-      </h3>
-      <div className="flex flex-col gap-1">
-        <label htmlFor={id} className="text-sm font-medium text-text">
-          Comment to the customer
-        </label>
-        <textarea
-          id={id}
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          maxLength={1000}
-          rows={2}
-          className="rounded-md border border-border bg-surface px-3 py-2 text-text"
-        />
-      </div>
-      <fieldset className="flex flex-col gap-1">
-        <legend className="text-sm font-medium text-text">Unlock for the customer to change</legend>
-        <div className="flex flex-wrap gap-x-4">
-          {options.map((option) => (
-            <label key={option.value} className="flex min-h-11 items-center gap-2 text-sm text-text">
-              <input
-                type="checkbox"
-                checked={unlock.has(option.value)}
-                onChange={(e) =>
-                  setUnlock((current) => {
-                    const next = new Set(current);
-                    if (e.target.checked) next.add(option.value);
-                    else next.delete(option.value);
-                    return next;
-                  })
-                }
-                className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
-              />
-              {option.label}
-            </label>
+    <Modal
+      open={open}
+      onClose={onCancel}
+      title={`Reject ${companyName}?`}
+      description="The customer is told the reason and which papers to upload to reapply."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button variant="destructive" loading={pending} disabled={!reason} onClick={() => reason && onReject(reason, note.trim())}>
+            Reject
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <Select label="Reason" value={reason} onChange={(e) => setReason(e.target.value as RejectionReason | '')} required>
+          <option value="">Choose a reason</option>
+          {REJECTION_REASONS.map((r) => (
+            <option key={r} value={r}>
+              {REJECTION_REASON_LABELS[r]}
+            </option>
           ))}
+        </Select>
+        {cure && (
+          <p className="text-sm text-text-muted">
+            {cure.required.length === 0
+              ? 'Final: the customer cannot reapply with this company.'
+              : `To reapply they must upload: ${cure.required.map((t) => DOC_LABELS[t]).join(' or ')}.`}
+          </p>
+        )}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="reject-note" className="text-sm font-medium text-text">
+            Note to the customer (optional)
+          </label>
+          <textarea
+            id="reject-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={1000}
+            rows={2}
+            className="rounded-md border border-border bg-surface px-3 py-2 text-text"
+          />
         </div>
-      </fieldset>
-      <Button
-        variant="secondary"
-        className="self-start"
-        loading={send.isPending}
-        disabled={!comment.trim()}
-        onClick={() => send.mutate()}
-      >
-        Send to customer
-      </Button>
-    </section>
+      </div>
+    </Modal>
   );
 }
 
@@ -597,31 +515,8 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   const [preview, setPreview] = useState<{ companyId: string; documentId: string } | null>(null);
 
   const decide = useMutation({
-    mutationFn: ({
-      id,
-      decision,
-      fields,
-      registryChecked,
-    }: {
-      id: string;
-      decision: 'approved' | 'rejected';
-      fields: ReviewFields;
-      registryChecked: string[];
-    }) =>
-      apiPatch(`/customers/${id}/kyc`, {
-        decision,
-        // Only what the reviewer actually filled in; the API keeps whatever
-        // the customer entered for anything left blank.
-        ...(fields.companyName.trim() ? { companyName: fields.companyName.trim() } : {}),
-        ...(fields.tin.trim() ? { tin: normalizeTin(fields.tin) } : {}),
-        ...(fields.secNumber.trim() ? { secNumber: fields.secNumber.trim() } : {}),
-        ...(fields.dtiNumber.trim() ? { dtiNumber: fields.dtiNumber.trim() } : {}),
-        ...(registryChecked.length > 0 ? { registryChecked } : {}),
-        ...(fields.firstName.trim() ? { firstName: fields.firstName.trim() } : {}),
-        ...(fields.middleName.trim() ? { middleName: fields.middleName.trim() } : {}),
-        ...(fields.lastName.trim() ? { lastName: fields.lastName.trim() } : {}),
-      }),
-    onSuccess: async (_d, { decision }) => {
+    mutationFn: ({ id, decision }: { id: string; decision: Decision }) => apiPatch(`/customers/${id}/kyc`, decision),
+    onSuccess: async (_d, { decision: { decision } }) => {
       await queryClient.invalidateQueries({ queryKey: ['customers', 'review'] });
       toast.success(
         decision === 'approved' ? 'Company verified' : 'Company rejected',
@@ -654,9 +549,7 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
           company={company}
           decidable={kycStatus === 'pending'}
           deciding={decide.isPending}
-          onDecide={(fields, decision, registryChecked) =>
-            decide.mutate({ id: company.id, decision, fields, registryChecked })
-          }
+          onDecide={(decision) => decide.mutate({ id: company.id, decision })}
           onPreviewDocument={(companyId, documentId) => setPreview({ companyId, documentId })}
         />
       ))}

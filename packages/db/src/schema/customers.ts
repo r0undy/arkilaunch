@@ -25,6 +25,10 @@ export const customers = pgTable(
     // read-only while the company waits for review.
     reviewComment: text('review_comment'),
     unlockedFields: jsonb('unlocked_fields').$type<string[]>().notNull().default([]),
+    // 0055: why a reviewer rejected the company, and when. A cure document
+    // uploaded after rejected_at lets the customer reapply (reapply()).
+    rejectionReason: text('rejection_reason'),
+    rejectedAt: timestamp('rejected_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [tenantIsolationPolicy(),
@@ -107,7 +111,7 @@ export const kycDocuments = pgTable(
     customerId: uuid('customer_id')
       .notNull()
       .references(() => customers.id),
-    documentType: text('document_type').notNull(), // company_registration (SEC/DTI), government_id (Philippine National ID / PhilSys only)
+    documentType: text('document_type').notNull(), // COMPANY_DOCUMENT_TYPES in @arkilaunch/shared (ID, BIR 2303, SEC, DTI, and the supporting/cure papers)
     fileUri: text('file_uri').notNull(), // Supabase Storage pointer, signed-URL access only
     ocrPayload: jsonb('ocr_payload'),
     confidence: numeric('confidence', { precision: 5, scale: 4 }),

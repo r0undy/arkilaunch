@@ -677,11 +677,11 @@ function NewCompanyPage() {
 function CompanyDocumentsPage() {
   const { companyId } = accountCompanyDocumentsRoute.useParams();
   const company = useQuery(companiesQueries.mine()).data?.find((row) => row.id === companyId);
-  // A document already on file is replaced only when the reviewer unlocked
-  // it; one never uploaded can always be added.
+  // A document already on file is replaced only on a rejected company (its
+  // cure, then reapply); one never uploaded can always be added.
   const mayUpload = (test: (type: string) => boolean) => {
     const onFile = company?.documents.filter((d) => test(d.documentType)) ?? [];
-    return onFile.length === 0 || onFile.some((d) => company!.unlockedFields.includes(d.documentType));
+    return onFile.length === 0 || company?.kycStatus === 'rejected';
   };
   const idOpen = mayUpload((t) => t === 'government_id');
   const primaryOpen = mayUpload(isPrimaryRegistration);

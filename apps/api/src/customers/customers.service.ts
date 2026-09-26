@@ -6,7 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, ne } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, ne } from 'drizzle-orm';
 import {
   addresses,
   auditLogs,
@@ -20,6 +20,7 @@ import {
   type db,
 } from '@arkilaunch/db';
 import {
+  CURE_DOCUMENTS,
   DTI_REGEX,
   ExtractionUnavailableError,
   hasRequiredCompanyDocuments,
@@ -31,7 +32,6 @@ import {
   TIN_REGEX,
   type CompanyDocumentReadResponse,
   type CompanyDocumentUpload,
-  type CompanyReviewComment,
   type CompanyReviewResponse,
   type DocumentIntelligencePort,
   type KycScanResponse,
@@ -477,7 +477,8 @@ export class CustomersService {
         const [company] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
         // A company still being assembled (not yet submitted) may replace a
         // document, e.g. a fresh ID over the one carried from another company.
-        if (hasRequiredCompanyDocuments(live) && !company?.unlockedFields.includes(documentType))
+        // A rejected company may upload any paper again: that is its cure.
+        if (company?.kycStatus !== 'rejected' && hasRequiredCompanyDocuments(live) && !company?.unlockedFields.includes(documentType))
           throw new ConflictException({ error: 'document_locked' });
         await tx
           .update(kycDocuments)
@@ -507,6 +508,11 @@ export class CustomersService {
         .returning();
       if (!row) throw new Error('kyc_documents insert returned no row');
 
+      // A selfie is biometric: a person compares it with the ID, and it is
+      // never sent to OCR (data minimisation, RA 10173).
+      if (documentType === 'selfie_with_id') {
+        return { id: row.id, documentType: row.documentType, status: row.status, createdAt: row.createdAt };
+      }
       const read = await this.analyzeDocument(ctx, documentType, bytes);
       let status = row.status;
       if (read.extractionAvailable) {
@@ -727,42 +733,10 @@ export class CustomersService {
     });
   }
 
-  // PATCH /customers/:id/review. The reviewer's note to the customer on a
-  // pending company, unlocking just the fields and documents it names. The
-  // status stays pending (only decide() moves it); the customer is told in
-  // their feed.
-  async comment(ctx: RequestContext, customerId: string, body: CompanyReviewComment) {
-    return withTenantTx(ctx, async (tx) => {
-      const [row] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
-      if (!row) throw new NotFoundException({ error: 'company_not_found' });
-      if (row.kycStatus !== 'pending') throw new ConflictException({ error: 'already_decided' });
-      const unlockedFields = [...new Set(body.unlock)];
-      await tx
-        .update(customers)
-        .set({ reviewComment: body.comment, unlockedFields })
-        .where(eq(customers.id, customerId));
-      await tx.insert(auditLogs).values({
-        tenantId: ctx.tenantId,
-        actorId: ctx.userId,
-        action: 'UPDATE',
-        entity: 'customers',
-        entityId: customerId,
-      });
-      if (row.userId) {
-        await tx.insert(notifications).values({
-          tenantId: ctx.tenantId,
-          userId: row.userId,
-          notificationType: 'company_review_comment',
-          payload: { company_id: customerId, company_name: row.companyName, comment: body.comment },
-        });
-      }
-      return { id: customerId, kycStatus: row.kycStatus, reviewComment: body.comment, unlockedFields };
-    });
-  }
-
-  // Verification is a human decision on the uploaded ID and registration.
-  // OCR never reaches this: a corrected value here was confirmed by the
-  // reviewer with the document in front of them.
+  // Verification is a human decision on what the customer submitted. The
+  // reviewer never edits it (CR pricebook-kyc-weather): approve with every
+  // registry and identity check ticked, or reject with a reason that tells
+  // the customer what to upload to reapply. OCR never reaches this.
   async decide(ctx: RequestContext, customerId: string, body: CompanyDecision) {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
@@ -785,51 +759,43 @@ export class CustomersService {
           documentTypes: unchecked.map((d) => d.documentType),
         });
       }
+      if (body.decision === 'rejected' && !body.rejectionReason) {
+        throw new ConflictException({ error: 'rejection_reason_required' });
+      }
+      // PhilSys QR verified, selfie compared, name matched to the
+      // registration: the person behind the company is who they say.
+      if (body.decision === 'approved' && !body.identityChecked) {
+        throw new ConflictException({ error: 'identity_check_required' });
+      }
 
-      // Approving with corrections writes what the reviewer confirmed
-      // against the document, so a verified company carries the registered
-      // name and TIN rather than whatever was typed at signup.
-      const corrections =
-        body.decision === 'approved'
-          ? {
-              ...(body.companyName ? { companyName: body.companyName } : {}),
-              ...(body.tin ? { tin: body.tin } : {}),
-              ...(body.secNumber ? { secNumber: body.secNumber } : {}),
-            }
-          : {};
       await tx
         .update(customers)
-        .set({ kycStatus: body.decision, reviewComment: null, unlockedFields: [], ...corrections })
+        .set(
+          body.decision === 'approved'
+            ? { kycStatus: 'approved', reviewComment: null, unlockedFields: [], rejectionReason: null, rejectedAt: null }
+            : {
+                kycStatus: 'rejected',
+                reviewComment: body.rejectionNote || null,
+                unlockedFields: [],
+                rejectionReason: body.rejectionReason!,
+                rejectedAt: new Date(),
+              },
+        )
         .where(eq(customers.id, customerId));
-      // The reviewer-confirmed legal name off the National ID lands on the
-      // customer's own user account, not the company row -- it is the
-      // person's identity, not a fact about this one company (RFC-2's human
-      // gate: only decide() ever writes it, never the OCR read itself).
-      if (body.decision === 'approved' && row.userId && (body.firstName || body.lastName)) {
+      // The legal name on the customer's account is the one the customer
+      // confirmed off their own National ID at upload, written only once a
+      // human approves it (RFC-2's human gate).
+      const id = docs.find((d) => d.documentType === 'government_id');
+      const confirmed = (id?.ocrPayload ?? {}) as Record<string, string | undefined>;
+      if (body.decision === 'approved' && row.userId && (confirmed.customer_first_name || confirmed.customer_last_name)) {
         await tx
           .update(users)
           .set({
-            ...(body.firstName ? { firstName: body.firstName } : {}),
-            ...(body.middleName ? { middleName: body.middleName } : {}),
-            ...(body.lastName ? { lastName: body.lastName } : {}),
+            ...(confirmed.customer_first_name ? { firstName: confirmed.customer_first_name } : {}),
+            ...(confirmed.customer_middle_name ? { middleName: confirmed.customer_middle_name } : {}),
+            ...(confirmed.customer_last_name ? { lastName: confirmed.customer_last_name } : {}),
           })
           .where(eq(users.id, row.userId));
-      }
-      // The company has no DTI column (the number belongs to the business
-      // name, not the company); the reviewer-confirmed one is evidence on
-      // the DTI certificate it was read from.
-      const dti = docs.find((d) => d.documentType === 'dti_certificate');
-      if (body.decision === 'approved' && body.dtiNumber && dti) {
-        await tx
-          .update(kycDocuments)
-          .set({
-            ocrPayload: {
-              ...(dti.ocrPayload as Record<string, unknown> | null),
-              confirmed_dti_number: body.dtiNumber,
-              confirmed_by: ctx.userId,
-            },
-          })
-          .where(eq(kycDocuments.id, dti.id));
       }
       if (body.decision === 'approved' && registryDocs.length > 0) {
         await tx
@@ -847,16 +813,65 @@ export class CustomersService {
         action: body.decision === 'approved' ? 'APPROVE' : 'REJECT',
         entity: 'customers',
         entityId: customerId,
+        ...(body.decision === 'rejected'
+          ? { reason: `${body.rejectionReason}${body.rejectionNote ? `: ${body.rejectionNote}` : ''}` }
+          : {}),
       });
       if (row.userId) {
         await tx.insert(notifications).values({
           tenantId: ctx.tenantId,
           userId: row.userId,
           notificationType: body.decision === 'approved' ? 'company_verified' : 'company_rejected',
-          payload: { customer_id: customerId, company_name: row.companyName },
+          payload: {
+            customer_id: customerId,
+            company_name: row.companyName,
+            ...(body.decision === 'rejected' ? { rejection_reason: body.rejectionReason } : {}),
+          },
         });
       }
       return { id: customerId, kycStatus: body.decision };
+    });
+  }
+
+  // POST /me/companies/:id/reapply. A rejected company goes back to the
+  // pending queue once the customer has uploaded, since the rejection, at
+  // least one cure document for its reason (CURE_DOCUMENTS). A fraudulent
+  // document is final. The reviewer then decides afresh.
+  async reapply(ctx: RequestContext, customerId: string): Promise<CompanyResponse> {
+    assertCustomer(ctx);
+    return withTenantTx(ctx, async (tx) => {
+      if (!(await ownsCustomer(tx, ctx, customerId))) throw new NotFoundException({ error: 'company_not_found' });
+      const [row] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
+      if (!row) throw new NotFoundException({ error: 'company_not_found' });
+      if (row.kycStatus !== 'rejected') throw new ConflictException({ error: 'company_not_rejected' });
+      const reason = row.rejectionReason as keyof typeof CURE_DOCUMENTS | null;
+      const cure = reason ? CURE_DOCUMENTS[reason] : null;
+      if (!cure || cure.required.length === 0) throw new ConflictException({ error: 'rejection_final' });
+      const fresh = await tx
+        .select({ documentType: kycDocuments.documentType })
+        .from(kycDocuments)
+        .where(
+          and(
+            eq(kycDocuments.customerId, customerId),
+            ne(kycDocuments.status, 'superseded'),
+            gt(kycDocuments.createdAt, row.rejectedAt ?? new Date(0)),
+          ),
+        );
+      if (!fresh.some((d) => (cure.required as string[]).includes(d.documentType))) {
+        throw new ConflictException({ error: 'cure_document_required', documentTypes: cure.required });
+      }
+      await tx.update(customers).set({ kycStatus: 'pending' }).where(eq(customers.id, customerId));
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'customers',
+        entityId: customerId,
+        reason: `reapplied after ${reason}`,
+      });
+      await notifyStaff(tx, ctx.tenantId, 'company_submitted', { customer_id: customerId, company_name: row.companyName, reapplied: true });
+      const [updated] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
+      return (await withDocuments(tx, [updated!]))[0]!;
     });
   }
 }
@@ -880,6 +895,8 @@ function toCompany(
     kycStatus: row.kycStatus,
     reviewComment: row.reviewComment,
     unlockedFields: row.unlockedFields,
+    rejectionReason: row.rejectionReason as CompanyResponse['rejectionReason'],
+    rejectedAt: row.rejectedAt,
     firstName: name?.firstName ?? null,
     middleName: name?.middleName ?? null,
     lastName: name?.lastName ?? null,

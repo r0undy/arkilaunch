@@ -3,7 +3,6 @@ import {
   CompanyCreateSchema,
   CompanyDecisionSchema,
   CompanyDocumentUploadSchema,
-  CompanyReviewCommentSchema,
   CompanyReviewQuerySchema,
   CompanyUpdateSchema,
   CustomerSignupSchema,
@@ -19,4 +18,4 @@ export class CompanyReviewQueryDto extends createZodDto(CompanyReviewQuerySchema
 export class CompanyDecisionDto extends createZodDto(CompanyDecisionSchema) {}
 export class CustomerSignupDto extends createZodDto(CustomerSignupSchema) {}
 export class KycScanRequestDto extends createZodDto(KycScanRequestSchema) {}
-export class CompanyReviewCommentDto extends createZodDto(CompanyReviewCommentSchema) {}
+

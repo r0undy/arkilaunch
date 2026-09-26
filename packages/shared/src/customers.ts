@@ -52,11 +52,54 @@ export type CompanyUpdate = z.infer<typeof CompanyUpdateSchema>;
 // the pre-split generic upload, still readable on old rows, never offered.
 // docs/cr-arkilaunch-truck-booking-and-kyc-docs.md.
 export const PRIMARY_REGISTRATION_TYPES = ['bir_cor', 'sec_certificate'] as const;
+// Supporting papers (CR pricebook-kyc-weather). A selfie holding the ID
+// lets a reviewer match the face to the PhilSys card; the rest are what a
+// rejected company uploads to prove it is legitimate (CURE_DOCUMENTS).
+export const SUPPORTING_DOCUMENT_TYPES = [
+  'selfie_with_id',
+  'bir_1905',
+  'sec_good_standing',
+  'sec_lifting_order',
+  'sec_gis',
+  'business_permit',
+  'audited_fs',
+] as const;
 export const COMPANY_DOCUMENT_TYPES = [
   'government_id',
   ...PRIMARY_REGISTRATION_TYPES,
   'dti_certificate',
+  ...SUPPORTING_DOCUMENT_TYPES,
 ] as const;
+export type CompanyDocumentType = (typeof COMPANY_DOCUMENT_TYPES)[number];
+
+// Why a reviewer rejects a company. Each reason but a fraudulent document
+// can be cured: the customer uploads at least one of its cure documents and
+// reapplies, and the new application goes back to the pending queue for a
+// fresh approve-or-reject. A tampered or fake document is final.
+export const REJECTION_REASONS = [
+  'bir_expired_or_invalid',
+  'sec_suspended_or_revoked',
+  'id_mismatch',
+  'document_unreadable',
+  'fraudulent_document',
+] as const;
+export type RejectionReason = (typeof REJECTION_REASONS)[number];
+export const REJECTION_REASON_LABELS: Record<RejectionReason, string> = {
+  bir_expired_or_invalid: 'BIR registration expired, outdated or not found on ORUS',
+  sec_suspended_or_revoked: 'SEC registration suspended, revoked or delinquent',
+  id_mismatch: 'National ID does not match the company signatory, or could not be verified',
+  document_unreadable: 'A document is unreadable, cropped or incomplete',
+  fraudulent_document: 'A document appears altered or fake (final, cannot reapply)',
+};
+// What cures each reason. required: at least one must be uploaded after the
+// rejection before the customer can reapply. optional: strengthens the case.
+export const CURE_DOCUMENTS: Record<RejectionReason, { required: CompanyDocumentType[]; optional: CompanyDocumentType[] }> = {
+  bir_expired_or_invalid: { required: ['bir_cor'], optional: ['bir_1905', 'business_permit', 'audited_fs'] },
+  sec_suspended_or_revoked: { required: ['sec_lifting_order', 'sec_good_standing'], optional: ['sec_gis', 'business_permit', 'audited_fs'] },
+  id_mismatch: { required: ['government_id', 'selfie_with_id'], optional: ['sec_gis'] },
+  document_unreadable: { required: ['government_id', 'bir_cor', 'sec_certificate', 'dti_certificate'], optional: [] },
+  fraudulent_document: { required: [], optional: [] },
+};
 export type PrimaryRegistrationType = (typeof PRIMARY_REGISTRATION_TYPES)[number];
 
 export function isPrimaryRegistration(documentType: string): boolean {
@@ -175,6 +218,10 @@ export const CompanyResponseSchema = z.object({
   // documents are in.
   reviewComment: z.string().nullable(),
   unlockedFields: z.array(z.string()),
+  // Set on a rejected company: why, and when (a cure document must be
+  // uploaded after this to reapply). reviewComment carries the note.
+  rejectionReason: z.enum(REJECTION_REASONS).nullable(),
+  rejectedAt: z.coerce.date().nullable(),
   documents: z.array(
     z.object({
       id: z.string().uuid(),
@@ -237,35 +284,27 @@ export type CustomerSiteResponse = z.infer<typeof CustomerSiteResponseSchema>;
 export const CompanyReviewQuerySchema = z.object({
   kycStatus: z.enum(['pending', 'approved', 'rejected']).default('pending'),
 });
-// What a reviewer can hand back to the customer on a pending company: the
-// company fields PATCH /me/companies/:id takes, and each document type.
-export const UNLOCKABLE_COMPANY_FIELDS = ['tin', 'secNumber', 'billingAddress'] as const;
-export const UNLOCKABLE_FIELDS = [...UNLOCKABLE_COMPANY_FIELDS, ...COMPANY_DOCUMENT_TYPES] as const;
-
-// PATCH /customers/:id/review. A comment to the customer, and what it
-// unlocks. The status stays pending; only decide() moves it.
-export const CompanyReviewCommentSchema = z.object({
-  comment: z.string().trim().min(1).max(1000),
-  unlock: z.array(z.enum(UNLOCKABLE_FIELDS)).max(UNLOCKABLE_FIELDS.length).default([]),
-});
-export type CompanyReviewComment = z.infer<typeof CompanyReviewCommentSchema>;
 
 // A reviewer may correct what the document says before approving. The
 // corrections are the human's, not the OCR's: they are what gets written
 // onto the company, and approval still requires this explicit call.
-export const CompanyDecisionSchema = z.object({
-  decision: z.enum(['approved', 'rejected']),
-  companyName: z.string().trim().min(2).max(200).optional(),
-  tin: TinSchema.optional(),
-  secNumber: z.string().trim().max(50).optional(),
-  dtiNumber: z.string().trim().max(50).optional(),
-  // The SEC/BIR/DTI documents the reviewer ticked as checked on the public
-  // registry. Approval is refused unless every such document is listed.
-  registryChecked: z.array(z.string().uuid()).max(20).optional(),
-  // The reviewer-confirmed legal name off the National ID. Written onto the
-  // customer's user account only on approval, same human gate as above.
-  firstName: z.string().trim().min(1).max(200).optional(),
-  middleName: z.string().trim().max(200).optional(),
-  lastName: z.string().trim().min(1).max(200).optional(),
-});
+// The reviewer approves or rejects what the customer submitted; they never
+// edit it (CR pricebook-kyc-weather). A wrong value is a rejection with a
+// reason, which tells the customer what to upload to reapply.
+export const CompanyDecisionSchema = z
+  .object({
+    decision: z.enum(['approved', 'rejected']),
+    // The SEC/BIR/DTI documents the reviewer ticked as checked on the public
+    // registry. Approval is refused unless every such document is listed.
+    registryChecked: z.array(z.string().uuid()).max(20).optional(),
+    // The reviewer verified the PhilSys QR, compared the selfie with the ID,
+    // and matched the holder's name to the registration. Required to approve.
+    identityChecked: z.boolean().optional(),
+    rejectionReason: z.enum(REJECTION_REASONS).optional(),
+    rejectionNote: z.string().trim().max(1000).optional(),
+  })
+  .refine((d) => d.decision !== 'rejected' || d.rejectionReason, {
+    message: 'A rejection needs a reason',
+    path: ['rejectionReason'],
+  });
 export type CompanyDecision = z.infer<typeof CompanyDecisionSchema>;

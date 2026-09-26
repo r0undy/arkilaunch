@@ -2,15 +2,16 @@ import { Link } from '@tanstack/react-router';
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  CURE_DOCUMENTS,
   hasRequiredCompanyDocuments,
   isPrimaryRegistration,
-  normalizeTin,
-  UNLOCKABLE_COMPANY_FIELDS,
+  REJECTION_REASON_LABELS,
+  SUPPORTING_DOCUMENT_TYPES,
   type CompanyResponse,
 } from '@arkilaunch/shared';
 import { companiesQueries, customerSitesQueries } from '../lib/queries.js';
-import { apiErrorText, apiPatch } from '../lib/api-client.js';
-import { Input } from './input.js';
+import { apiErrorText, apiPost, apiPostForm } from '../lib/api-client.js';
+import { Select } from './select.js';
 import { useToast } from './toast.js';
 import { formatStatus } from '../lib/format.js';
 import { Surface } from './surface.js';
@@ -31,61 +32,129 @@ export const DOC_LABELS: Record<string, string> = {
   sec_certificate: 'SEC Certificate of Incorporation',
   dti_certificate: 'DTI Business Name (secondary)',
   company_registration: 'Company registration (legacy)',
+  selfie_with_id: 'Selfie holding your National ID',
+  bir_1905: 'BIR Form 1905 (registration update)',
+  sec_good_standing: 'SEC Certificate of Good Standing / Compliance',
+  sec_lifting_order: 'SEC order lifting the suspension or revocation',
+  sec_gis: 'Latest SEC General Information Sheet (GIS)',
+  business_permit: "Current Mayor's / Business Permit",
+  audited_fs: 'Latest BIR-stamped Audited Financial Statements',
 };
 
-// The company fields a reviewer can unlock, as the customer reads them.
-export const FIELD_LABELS: Record<string, string> = {
-  tin: 'TIN',
-  secNumber: 'SEC registration number',
-  billingAddress: 'Billing address',
-};
-
-// Submitted and waiting on the rental team: read-only except whatever the
-// reviewer unlocked (customers.service.ts comment()).
+// Submitted and waiting on the rental team: read-only. The reviewer
+// approves or rejects; they never hand fields back for editing.
 export function isWaitingForReview(company: CompanyResponse): boolean {
   return company.kycStatus === 'pending' && hasRequiredCompanyDocuments(company.documents);
 }
 
-// The unlocked company fields, and nothing else, for the customer to fix.
-function UnlockedFieldsForm({ company, fields }: { company: CompanyResponse; fields: string[] }) {
+// A rejected company: why, what to upload to prove it is legitimate, and
+// Reapply once a required paper is in (customers.service.ts reapply()).
+// The ID and 2303/SEC go through the full document page (the ID needs its
+// details checked); the supporting papers upload here.
+function RejectedCompany({ company }: { company: CompanyResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(fields.map((f) => [f, (company[f as keyof CompanyResponse] as string | null) ?? ''])),
-  );
-  const save = useMutation({
-    mutationFn: () =>
-      apiPatch<CompanyResponse>(`/me/companies/${company.id}`, {
-        ...values,
-        ...(values.tin !== undefined ? { tin: normalizeTin(values.tin) } : {}),
-      }),
+  const reason = company.rejectionReason;
+  const cure = reason ? CURE_DOCUMENTS[reason] : null;
+  const supporting = cure
+    ? [...cure.required, ...cure.optional].filter((t) => (SUPPORTING_DOCUMENT_TYPES as readonly string[]).includes(t))
+    : [];
+  const [docType, setDocType] = useState(supporting[0] ?? '');
+  const [file, setFile] = useState<File | null>(null);
+  const since = company.rejectedAt ? new Date(company.rejectedAt).getTime() : 0;
+  const uploadedSince = (type: string) =>
+    company.documents.some((d) => d.documentType === type && new Date(d.createdAt).getTime() > since);
+  const cured = cure?.required.some(uploadedSince) ?? false;
+  const refresh = () => queryClient.invalidateQueries({ queryKey: companiesQueries.mine().queryKey });
+
+  const upload = useMutation({
+    mutationFn: () => apiPostForm(`/me/companies/${company.id}/documents`, { documentType: docType }, file!),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: companiesQueries.mine().queryKey });
-      toast.success('Sent to the rental team');
+      setFile(null);
+      await refresh();
+      toast.success('Uploaded');
     },
-    onError: (e) => toast.error('Not saved', apiErrorText(e)),
+    onError: (e) => toast.error('Not uploaded', apiErrorText(e)),
   });
+  const reapply = useMutation({
+    mutationFn: () => apiPost(`/me/companies/${company.id}/reapply`, {}),
+    onSuccess: async () => {
+      await refresh();
+      toast.success('Sent back for review', 'The rental team will check your new documents.');
+    },
+    onError: (e) => toast.error('Could not reapply', apiErrorText(e)),
+  });
+
+  if (!reason || !cure) {
+    return (
+      <p className="text-text-muted">
+        Verification was declined.{' '}
+        <Link to="/contact" className="underline">
+          Contact the rental team
+        </Link>{' '}
+        to fix it.
+      </p>
+    );
+  }
   return (
-    <form
-      className="flex flex-col gap-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        save.mutate();
-      }}
-    >
-      {fields.map((f) => (
-        <Input
-          key={f}
-          label={FIELD_LABELS[f] ?? f}
-          required
-          value={values[f] ?? ''}
-          onChange={(e) => setValues({ ...values, [f]: e.target.value })}
-        />
-      ))}
-      <Button type="submit" variant="primary" className="self-start" loading={save.isPending}>
-        Save changes
-      </Button>
-    </form>
+    <div role="status" className="flex flex-col gap-2 rounded-md border border-border px-3 py-2">
+      <p className="font-medium text-text">Verification declined: {REJECTION_REASON_LABELS[reason]}</p>
+      {company.reviewComment && (
+        <p className="text-text">
+          <span className="font-medium">Note from the rental team:</span> {company.reviewComment}
+        </p>
+      )}
+      {cure.required.length === 0 ? (
+        <p className="text-text-muted">This decision is final for this company.</p>
+      ) : (
+        <>
+          <p className="text-text">To reapply, upload at least one of:</p>
+          <ul className="list-disc pl-5 text-text">
+            {cure.required.map((t) => (
+              <li key={t}>
+                {DOC_LABELS[t]} {uploadedSince(t) && <span className="text-text-muted">&middot; uploaded</span>}
+              </li>
+            ))}
+          </ul>
+          {cure.optional.length > 0 && (
+            <p className="text-text-muted">
+              These make your case stronger: {cure.optional.map((t) => DOC_LABELS[t]).join(', ')}.
+            </p>
+          )}
+          <Link
+            to="/account/companies/$companyId/documents"
+            params={{ companyId: company.id }}
+            className="self-start text-accent underline"
+          >
+            Upload a new National ID, BIR 2303 or SEC certificate
+          </Link>
+          {supporting.length > 0 && (
+            <div className="flex flex-wrap items-end gap-2">
+              <Select label="Supporting document" value={docType} onChange={(e) => setDocType(e.target.value)}>
+                {supporting.map((t) => (
+                  <option key={t} value={t}>
+                    {DOC_LABELS[t]}
+                  </option>
+                ))}
+              </Select>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,application/pdf"
+                aria-label="File"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="min-h-11 text-sm"
+              />
+              <Button variant="secondary" disabled={!file || !docType} loading={upload.isPending} onClick={() => upload.mutate()}>
+                Upload
+              </Button>
+            </div>
+          )}
+          <Button variant="primary" className="self-start" disabled={!cured} loading={reapply.isPending} onClick={() => reapply.mutate()}>
+            Reapply for verification
+          </Button>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -112,10 +181,6 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
     ...(has(isPrimaryRegistration) ? [] : ['BIR Form 2303 or SEC certificate']),
   ];
   const waiting = isWaitingForReview(company);
-  const unlockedDocs = company.unlockedFields.filter((f) => f in DOC_LABELS);
-  const unlockedFields = company.unlockedFields.filter((f) =>
-    (UNLOCKABLE_COMPANY_FIELDS as readonly string[]).includes(f),
-  );
 
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5">
@@ -156,36 +221,9 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
               The rental team is checking your documents, so they cannot be changed for now. You can
               already request quotes.
             </p>
-            {company.reviewComment && (
-              <p className="text-text">
-                <span className="font-medium">Note from the rental team:</span> {company.reviewComment}
-              </p>
-            )}
-            {unlockedDocs.length > 0 && (
-              <p className="text-text-muted">
-                Unlocked for you to upload again:{' '}
-                {unlockedDocs.map((type) => DOC_LABELS[type]).join(', ')}.{' '}
-                <Link
-                  to="/account/companies/$companyId/documents"
-                  params={{ companyId: company.id }}
-                  className="text-accent underline"
-                >
-                  Upload again
-                </Link>
-              </p>
-            )}
-            {unlockedFields.length > 0 && <UnlockedFieldsForm company={company} fields={unlockedFields} />}
           </div>
         )}
-        {company.kycStatus === 'rejected' && (
-          <p className="text-text-muted">
-            Verification was declined.{' '}
-            <Link to="/contact" className="underline">
-              Contact the rental team
-            </Link>{' '}
-            to fix it.
-          </p>
-        )}
+        {company.kycStatus === 'rejected' && <RejectedCompany company={company} />}
       </div>
 
       <div className="flex flex-col gap-2 text-sm">

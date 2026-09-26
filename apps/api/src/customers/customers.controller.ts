@@ -24,7 +24,6 @@ import {
   CompanyUpdateDto,
   CompanyDecisionDto,
   CompanyDocumentUploadDto,
-  CompanyReviewCommentDto,
   CompanyReviewQueryDto,
   CustomerSiteCreateDto,
   KycScanRequestDto,
@@ -57,6 +56,15 @@ export class CustomersController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   createCompany(@Body() body: CompanyCreateDto, @Req() req: CtxRequest) {
     return this.customers.createCompany(req.ctx, body);
+  }
+
+  // A rejected company, with its cure documents uploaded, goes back to the
+  // pending queue for a fresh decision.
+  @Post('me/companies/:id/reapply')
+  @RequirePermission('booking:create')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  reapply(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.customers.reapply(req.ctx, id);
   }
 
   @Patch('me/companies/:id')
@@ -190,13 +198,6 @@ export class CustomersController {
     }
     const bytes = Buffer.from(await res.arrayBuffer());
     return this.customers.readDocument(req.ctx, id, documentId, bytes);
-  }
-
-  // A comment to the customer that unlocks what it names; status unchanged.
-  @Patch('customers/:id/review')
-  @RequirePermission('quote:approve')
-  comment(@Param('id') id: string, @Body() body: CompanyReviewCommentDto, @Req() req: CtxRequest) {
-    return this.customers.comment(req.ctx, id, body);
   }
 
   @Patch('customers/:id/kyc')
