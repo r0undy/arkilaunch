@@ -271,7 +271,7 @@ function NegotiationFinalRoute() {
       <Surface radius="md" elevation="sm" className="flex w-full flex-col gap-3 p-5">
         <h2 className={heading}>Summary &middot; revision {quote.data?.revision ?? '--'}</h2>
         <LineItems quoteId={quoteId} />
-        <Row label="Refundable deposit" value={formatPeso(deposit)} />
+        <Row label="Consumable deposit" value={formatPeso(deposit)} />
         <div className="flex items-end justify-between gap-3 border-t border-border pt-3">
           <span className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text">
             Total due

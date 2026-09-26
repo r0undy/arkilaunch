@@ -41,6 +41,14 @@ export const PaymongoEventEnvelopeSchema = z.object({
 });
 export type PaymongoEventEnvelope = z.infer<typeof PaymongoEventEnvelopeSchema>;
 
+// Coupons (cr-arkilaunch-coupons.md). Codes compare upper-case; the same
+// shape is the DB's coupons_code_chk.
+export const CouponCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9_-]{3,32}$/);
+
 // POST /bookings/:id/checkout body. Optional so the old empty-body call
 // keeps working and PayMongo offers every channel.
 export const CheckoutRequestSchema = z.object({
@@ -48,6 +56,9 @@ export const CheckoutRequestSchema = z.object({
   // Pay at the office: issues the invoice without a PayMongo session. Staff
   // record the cash receipt by hand (CR truck-booking-and-kyc-docs).
   cash: z.boolean().optional(),
+  // A rental company's coupon (cr-arkilaunch-coupons.md). The server
+  // prices it; the client only names the code.
+  couponCode: CouponCodeSchema.optional(),
 });
 export type CheckoutRequest = z.infer<typeof CheckoutRequestSchema>;
 
@@ -67,3 +78,48 @@ export const PaymongoAccountUpdateSchema = z.object({
     .nullable(),
 });
 export type PaymongoAccountUpdate = z.infer<typeof PaymongoAccountUpdateSchema>;
+
+// POST /coupons (staff). A percent coupon is at most 100.
+export const CouponCreateSchema = z
+  .object({
+    code: CouponCodeSchema,
+    discountType: z.enum(['percent', 'fixed']),
+    discountValue: z.number().positive().max(10_000_000),
+    expiresAt: z.coerce.date().nullable().optional(),
+    maxUses: z.number().int().positive().nullable().optional(),
+    oncePerCustomer: z.boolean().default(false),
+  })
+  .refine((c) => c.discountType !== 'percent' || c.discountValue <= 100, {
+    path: ['discountValue'],
+    message: 'A percent coupon is at most 100',
+  });
+export type CouponCreate = z.infer<typeof CouponCreateSchema>;
+
+// PATCH /coupons/:id (staff). A code is never edited once issued, only switched off or on.
+export const CouponUpdateSchema = z.object({ active: z.boolean() });
+export type CouponUpdate = z.infer<typeof CouponUpdateSchema>;
+
+// POST /bookings/:id/coupon (customer): what the code would take off.
+export const CouponPreviewRequestSchema = z.object({ code: CouponCodeSchema });
+export type CouponPreviewRequest = z.infer<typeof CouponPreviewRequestSchema>;
+
+export interface CouponResponse {
+  id: string;
+  code: string;
+  discountType: 'percent' | 'fixed';
+  discountValue: number;
+  expiresAt: string | null;
+  maxUses: number | null;
+  oncePerCustomer: boolean;
+  redeemedCount: number;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface CouponPreviewResponse {
+  code: string;
+  discountPhp: number;
+  rentPhp: number;
+  depositPhp: number;
+  totalPhp: number;
+}

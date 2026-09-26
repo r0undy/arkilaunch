@@ -1,4 +1,5 @@
 import {
+  boolean,
   check,
   date,
   index,
@@ -18,6 +19,7 @@ import { tenants, users } from './tenancy.js';
 import { rentals } from './rentals.js';
 import { equipment } from './fleet.js';
 import { truckRequests } from './trucks.js';
+import { customers } from './customers.js';
 
 // One of two independent logs per equipment-day (RFC-2). attempts/lockedAt/
 // lastError back the edtr-ocr-worker claim/lock/retry loop (RFC2-01);
@@ -286,5 +288,70 @@ export const depositAccruals = pgTable(
     tenantIsolationPolicy(),
     index('deposit_accruals_tenant_id_idx').on(table.tenantId),
     check('deposit_accruals_amount_positive', sql`${table.amount} > 0`),
+  ],
+);
+
+// 0057: a rental company's coupon codes (cr-arkilaunch-coupons.md). Code is
+// stored upper-case; redeemed_count is bumped by one guarded UPDATE at
+// checkout (payments/coupons.ts), never read-then-written.
+export const coupons = pgTable(
+  'coupons',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    code: text('code').notNull(),
+    discountType: text('discount_type').notNull(), // percent, fixed
+    discountValue: numeric('discount_value', { precision: 14, scale: 2 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    maxUses: integer('max_uses'),
+    oncePerCustomer: boolean('once_per_customer').notNull().default(false),
+    redeemedCount: integer('redeemed_count').notNull().default(0),
+    active: boolean('active').notNull().default(true),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    tenantIsolationPolicy(),
+    index('coupons_tenant_id_idx').on(table.tenantId),
+    unique('coupons_tenant_code_unique').on(table.tenantId, table.code),
+    check('coupons_code_chk', sql`${table.code} ~ '^[A-Z0-9_-]{3,32}$'`),
+    check(
+      'coupons_discount_chk',
+      sql`${table.discountType} IN ('percent', 'fixed') AND ${table.discountValue} > 0 AND (${table.discountType} <> 'percent' OR ${table.discountValue} <= 100)`,
+    ),
+    check('coupons_max_uses_chk', sql`${table.maxUses} IS NULL OR ${table.maxUses} > 0`),
+    check('coupons_redeemed_chk', sql`${table.redeemedCount} >= 0`),
+  ],
+);
+
+// One coupon per invoice; customer_id is the company, which is what
+// once_per_customer counts against.
+export const couponRedemptions = pgTable(
+  'coupon_redemptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    couponId: uuid('coupon_id')
+      .notNull()
+      .references(() => coupons.id),
+    customerId: uuid('customer_id')
+      .notNull()
+      .references(() => customers.id),
+    invoiceId: uuid('invoice_id')
+      .notNull()
+      .unique('coupon_redemptions_invoice_unique')
+      .references(() => invoices.id),
+    discountPhp: numeric('discount_php', { precision: 14, scale: 2 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    tenantIsolationPolicy(),
+    index('coupon_redemptions_tenant_id_idx').on(table.tenantId),
+    index('coupon_redemptions_coupon_customer_idx').on(table.couponId, table.customerId),
+    check('coupon_redemptions_discount_positive', sql`${table.discountPhp} > 0`),
   ],
 );

@@ -43,6 +43,8 @@ export interface CheckoutSessionStatus {
 export interface PaymentsPort {
   createCheckoutSession(amountPhp: number, invoiceId: string, options: CheckoutOptions): Promise<CheckoutSession>;
   getCheckoutSession(sessionId: string): Promise<CheckoutSessionStatus>;
+  // Closes an unpaid session so it can no longer be paid (a coupon re-priced its invoice).
+  expireCheckoutSession(sessionId: string): Promise<void>;
   refund(paymentId: string, amountPhp: number, reason: RefundReason): Promise<{ id: string }>;
 }
 
@@ -57,6 +59,8 @@ export class StubPaymentsAdapter implements PaymentsPort {
   async getCheckoutSession(_sessionId: string): Promise<CheckoutSessionStatus> {
     return { paid: false };
   }
+
+  async expireCheckoutSession(_sessionId: string): Promise<void> {}
 
   async refund(paymentId: string): Promise<{ id: string }> {
     return { id: `stub_ref_${paymentId}` };

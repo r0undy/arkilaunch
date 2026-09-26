@@ -139,7 +139,8 @@ export class TenantsController {
 
   // The company's PayMongo child account (org_...), pasted by the platform
   // admin after the company completes PayMongo's own onboarding. Until it
-  // is set the company takes cash only.
+  // is set, online payments are collected on ArkiLaunch's parent account
+  // (payments.service.ts startOnline, TODO(paymongo-child-accounts)).
   @Get(':id/paymongo-account')
   @RequirePermission('tenant:approve')
   companyPaymongoAccount(@Param('id', UuidParamPipe) id: string) {

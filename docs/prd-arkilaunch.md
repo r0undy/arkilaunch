@@ -130,6 +130,7 @@ Acceptance Criteria:
 Acceptance Criteria:
 - Given a confirmed booking, when the customer pays the deposit, then the system SHALL redirect to PayMongo hosted checkout and MUST record only the returned payment reference and status, never a card or account number.
 - Given the customer abandons checkout or the payment fails, when they return, then the booking SHALL remain unpaid/pending, and payment-status reconciliation SHALL rely on the idempotent PayMongo webhook, not the browser redirect alone.
+- *(Added by [cr-arkilaunch-coupons.md](cr-arkilaunch-coupons.md).)* Given the rental company issued a coupon code, when the customer applies it at checkout, then the system SHALL take the discount off the rent only (never the consumable deposit), SHALL price it server-side, and SHALL honour the code's expiry, max uses and once-per-company limits.
 
 **US-09; Browse, book, and track a rental (PRD-F8, Should-Have)**
 > As a Customer, I want to browse a tenant's catalog, book equipment, and track my transaction, so that I do not wait hours for a contact-form reply.

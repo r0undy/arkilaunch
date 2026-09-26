@@ -1,7 +1,7 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BookingDetailResponse, CheckoutMethod } from '@arkilaunch/shared';
+import type { BookingDetailResponse, CheckoutMethod, CouponPreviewResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, companiesQueries } from '../lib/queries.js';
 import { ApiError, apiErrorText, apiPost } from '../lib/api-client.js';
@@ -9,6 +9,7 @@ import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { Button } from '../components/button.js';
+import { Input } from '../components/input.js';
 import { EmptyState } from '../components/empty-state.js';
 import { StatusPill } from '../components/status-pill.js';
 import { AlertIcon } from '../components/icons.js';
@@ -44,14 +45,17 @@ export function amountDue(booking: BookingDetailResponse): { rent: number; depos
     const rent = quote.totalPhp ?? 0;
     const depositPaid = booking.invoices.some((i) => i.invoiceType === 'deposit' && i.status === 'paid');
     const deposit = depositPaid ? 0 : (booking.deposit.required ?? 0);
-    return { rent, deposit, total: rent + deposit };
+    // An invoice already issued is charged as it stands (a coupon may have lowered its rent).
+    const issued = booking.invoices.find((i) => i.invoiceType === 'booking' && i.status === 'issued');
+    return { rent, deposit, total: issued?.amount ?? rent + deposit };
   }
   const issued = booking.invoices.find((i) => i.invoiceType === 'deposit' && i.status === 'issued');
   return { rent: 0, deposit: issued?.amount ?? null, total: issued?.amount ?? null };
 }
 
-function OrderSummary({ booking }: { booking: BookingDetailResponse }) {
+function OrderSummary({ booking, coupon }: { booking: BookingDetailResponse; coupon: CouponPreviewResponse | null }) {
   const due = amountDue(booking);
+  const total = coupon ? coupon.totalPhp : due.total;
 
   return (
     <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-4 p-5">
@@ -78,8 +82,14 @@ function OrderSummary({ booking }: { booking: BookingDetailResponse }) {
             <span className="font-mono text-text">{formatPeso(due.rent)}</span>
           </div>
         )}
+        {coupon && (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-text-muted">Coupon {coupon.code}</span>
+            <span className="font-mono text-success">-{formatPeso(coupon.discountPhp)}</span>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-3">
-          <span className="text-text-muted">Refundable deposit</span>
+          <span className="text-text-muted">Consumable deposit</span>
           <span className="font-mono text-text">{due.deposit === null ? 'Set at payment' : formatPeso(due.deposit)}</span>
         </div>
       </div>
@@ -87,7 +97,7 @@ function OrderSummary({ booking }: { booking: BookingDetailResponse }) {
       <div className="flex items-end justify-between gap-3 border-t border-border pt-4">
         <span className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text">Total amount</span>
         <div className="text-right">
-          <p className="font-mono text-2xl font-semibold text-text">{due.total === null ? '--' : formatPeso(due.total)}</p>
+          <p className="font-mono text-2xl font-semibold text-text">{total === null ? '--' : formatPeso(total)}</p>
           <p className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">PHP</p>
         </div>
       </div>
@@ -103,21 +113,79 @@ function checkoutError(err: unknown): string {
     if (code === 'already_paid') return 'This booking is already paid. The receipt is on the booking page.';
     if (code === 'call_not_confirmed') return 'The rental team confirms every booking by phone first. Request a call above.';
     if (code === 'rate_limited') return 'Too many payment attempts just now. Wait a minute and try again.';
+    if (code === 'coupon_invalid') return 'That coupon code is not valid for this booking.';
+    if (code === 'coupon_used') return 'Your company has already used this coupon.';
+    if (code === 'coupon_already_applied') return 'This booking already has a coupon applied.';
+    if (code === 'payment_in_progress') return 'A payment for this booking is going through. Check the booking page in a minute.';
   }
   return apiErrorText(err);
+}
+
+// The customer names a code; the server says what it takes off (the rent
+// only) and checkout re-checks it. Nothing here computes money.
+function CouponField({
+  bookingId,
+  applied,
+  onApplied,
+}: {
+  bookingId: string;
+  applied: CouponPreviewResponse | null;
+  onApplied: (coupon: CouponPreviewResponse | null) => void;
+}) {
+  const [code, setCode] = useState('');
+  const preview = useMutation({
+    mutationFn: (value: string) => apiPost<CouponPreviewResponse>(`/bookings/${bookingId}/coupon`, { code: value }),
+    onSuccess: (data) => onApplied(data),
+  });
+
+  if (applied) {
+    return (
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span className="text-text">
+          Coupon <span className="font-mono">{applied.code}</span> applied
+        </span>
+        <Button variant="ghost" onClick={() => onApplied(null)}>
+          Remove
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <form
+      className="flex items-end gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (code.trim()) preview.mutate(code.trim().toUpperCase());
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <Input
+          label="Coupon code"
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          autoComplete="off"
+          error={preview.isError ? checkoutError(preview.error) : undefined}
+        />
+      </div>
+      <Button type="submit" variant="secondary" loading={preview.isPending}>
+        Apply
+      </Button>
+    </form>
+  );
 }
 
 function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
   const navigate = useNavigate();
   const [method, setMethod] = useState<PaymentMethod>('gcash');
   const [unavailable, setUnavailable] = useState(false);
+  const [coupon, setCoupon] = useState<CouponPreviewResponse | null>(null);
 
   const checkout = useMutation({
     mutationFn: (chosen: PaymentMethod) =>
-      apiPost<{ checkoutUrl: string | null; invoiceId: string }>(
-        `/bookings/${booking.id}/checkout`,
-        chosen === 'manual' ? { cash: true } : { method: chosen },
-      ),
+      apiPost<{ checkoutUrl: string | null; invoiceId: string }>(`/bookings/${booking.id}/checkout`, {
+        ...(chosen === 'manual' ? { cash: true } : { method: chosen }),
+        ...(coupon ? { couponCode: coupon.code } : {}),
+      }),
     onSuccess: (data) => {
       // Offline: a real issued invoice to pay against, no PayMongo session.
       if (data.checkoutUrl === null) {
@@ -231,7 +299,10 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
       </fieldset>
 
       <div className="flex min-w-0 flex-col gap-3">
-        <OrderSummary booking={booking} />
+        <OrderSummary booking={booking} coupon={coupon} />
+        {booking.quotation?.status === 'accepted' && (
+          <CouponField bookingId={booking.id} applied={coupon} onApplied={setCoupon} />
+        )}
 
         {method === 'manual' ? (
           <Button variant="secondary" loading={checkout.isPending} onClick={() => checkout.mutate('manual')}>

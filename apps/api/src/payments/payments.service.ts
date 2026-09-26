@@ -1,7 +1,9 @@
 import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte, like } from 'drizzle-orm';
 import {
   auditLogs,
+  couponRedemptions,
+  coupons,
   customers,
   findTenantByInvoiceIdForWebhook,
   findTenantByProviderPaymentIdForWebhook,
@@ -27,6 +29,7 @@ import { EventsService } from '../events/events.service.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { customerOwnsInvoice, ownsCustomer } from '../common/customer-scope.js';
 import { checkoutReturnOrigin } from './return-origin.js';
+import { claimCoupon, previewCoupon } from './coupons.js';
 import { verifyPaymongoSignature } from './signature.js';
 import { PAYMENTS_PORT } from './payments.tokens.js';
 
@@ -49,6 +52,12 @@ const CHECKOUT_RATE_LIMIT = 20;
 type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
 
 const WEBHOOK_SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
+
+// The booking invoice's rent line starts with this; a coupon finds and
+// lowers that line (the other line is the consumable deposit).
+const RENT_LINE_PREFIX = 'Equipment rental';
+
+const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 // metadata.invoice_id is ours, but it is still external input: a non-uuid
 // would make the lookup's uuid cast throw, 500, and PayMongo would retry
@@ -106,43 +115,7 @@ export class PaymentsService {
         );
       }
 
-      // Two shapes of checkout. A booking whose latest quote the customer
-      // accepted pays rent + deposit in one go, on one 'booking' invoice
-      // itemised as two lines; the rent is the stored, engine-priced quote
-      // total, never a client number. A booking with no quote at all keeps
-      // the original deposit-only checkout. A quote that exists but is not
-      // accepted blocks checkout: paying before the price is agreed is how
-      // a customer ends up charged for a number they never saw.
-      const [quotation] = await tx
-        .select()
-        .from(quotations)
-        .where(eq(quotations.rentalId, bookingId))
-        .orderBy(desc(quotations.createdAt))
-        .limit(1);
-      if (quotation && quotation.status !== 'accepted') {
-        throw new ConflictException({ error: 'quote_not_accepted', status: quotation.status });
-      }
-
-      let depositAmount = (await getBillingSettings(tx, ctx.tenantId)).minDepositPhp;
-      if (quotation) {
-        const [contract] = await tx
-          .select()
-          .from(rentalContracts)
-          .where(eq(rentalContracts.quotationId, quotation.id))
-          .orderBy(desc(rentalContracts.createdAt))
-          .limit(1);
-        if (contract) depositAmount = Number(contract.depositRequired);
-        // A deposit already paid on the deposit-only path is already held;
-        // charging it again on the booking invoice would double-take it.
-        const [paidDeposit] = await tx
-          .select()
-          .from(invoices)
-          .where(and(eq(invoices.rentalId, bookingId), eq(invoices.invoiceType, 'deposit'), eq(invoices.status, 'paid')))
-          .limit(1);
-        if (paidDeposit) depositAmount = 0;
-      }
-      const rentAmount = quotation ? Number(quotation.totalPhp ?? 0) : 0;
-      const invoiceType = quotation ? 'booking' : 'deposit';
+      const { quotation, rentAmount, depositAmount, invoiceType } = await this.bookingCharge(tx, ctx, bookingId);
       const amount = rentAmount + depositAmount;
 
       const [alreadyPaid] = await tx
@@ -174,14 +147,14 @@ export class PaymentsService {
             {
               tenantId: ctx.tenantId,
               invoiceId: invoice.id,
-              description: `Equipment rental (quote revision ${quotation.revision})`,
+              description: `${RENT_LINE_PREFIX} (quote revision ${quotation.revision})`,
               unitPrice: String(rentAmount),
               amount: String(rentAmount),
             },
             {
               tenantId: ctx.tenantId,
               invoiceId: invoice.id,
-              description: 'Refundable security deposit',
+              description: 'Consumable deposit (prepaid hours)',
               unitPrice: String(depositAmount),
               amount: String(depositAmount),
             },
@@ -190,6 +163,12 @@ export class PaymentsService {
         }
       }
       if (!invoice) throw new Error('invoices insert returned no row');
+      // A coupon lowers the rent line (never the consumable deposit). It is
+      // the one thing that re-prices an issued invoice, and only once.
+      if (body.couponCode) {
+        if (!quotation) throw new ConflictException({ error: 'coupon_invalid' });
+        invoice = await this.applyCoupon(tx, ctx, invoice, rental.customerId, body.couponCode, rentAmount);
+      }
       // Charge what the invoice says, not what was recomputed: a reused
       // issued invoice must never be re-priced underneath the customer.
       const chargeAmount = Number(invoice.amount);
@@ -204,6 +183,159 @@ export class PaymentsService {
         origin,
       });
     });
+  }
+
+  // Two shapes of checkout. A booking whose latest quote the customer
+  // accepted pays rent + deposit in one go, on one 'booking' invoice
+  // itemised as two lines; the rent is the stored, engine-priced quote
+  // total, never a client number. A booking with no quote at all keeps
+  // the original deposit-only checkout. A quote that exists but is not
+  // accepted blocks checkout: paying before the price is agreed is how
+  // a customer ends up charged for a number they never saw.
+  private async bookingCharge(tx: Tx, ctx: RequestContext, bookingId: string) {
+    const [quotation] = await tx
+      .select()
+      .from(quotations)
+      .where(eq(quotations.rentalId, bookingId))
+      .orderBy(desc(quotations.createdAt))
+      .limit(1);
+    if (quotation && quotation.status !== 'accepted') {
+      throw new ConflictException({ error: 'quote_not_accepted', status: quotation.status });
+    }
+
+    let depositAmount = (await getBillingSettings(tx, ctx.tenantId)).minDepositPhp;
+    if (quotation) {
+      const [contract] = await tx
+        .select()
+        .from(rentalContracts)
+        .where(eq(rentalContracts.quotationId, quotation.id))
+        .orderBy(desc(rentalContracts.createdAt))
+        .limit(1);
+      if (contract) depositAmount = Number(contract.depositRequired);
+      // A deposit already paid on the deposit-only path is already held;
+      // charging it again on the booking invoice would double-take it.
+      const [paidDeposit] = await tx
+        .select()
+        .from(invoices)
+        .where(and(eq(invoices.rentalId, bookingId), eq(invoices.invoiceType, 'deposit'), eq(invoices.status, 'paid')))
+        .limit(1);
+      if (paidDeposit) depositAmount = 0;
+    }
+    const rentAmount = quotation ? Number(quotation.totalPhp ?? 0) : 0;
+    const invoiceType = quotation ? 'booking' : 'deposit';
+    return { quotation, rentAmount, depositAmount, invoiceType };
+  }
+
+  // POST /bookings/:id/coupon (cr-arkilaunch-coupons.md): what the code
+  // would take off this booking's rent. Read-only; checkout re-checks and
+  // claims it. A code already on this booking's invoice previews as applied.
+  async previewCoupon(ctx: RequestContext, bookingId: string, code: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const [rental] = await tx.select().from(rentals).where(eq(rentals.id, bookingId)).limit(1);
+      if (!rental || (ctx.role === 'customer' && !(await ownsCustomer(tx, ctx, rental.customerId)))) {
+        throw new NotFoundException({ error: 'booking_not_found' });
+      }
+      const { quotation, rentAmount, depositAmount } = await this.bookingCharge(tx, ctx, bookingId);
+      if (!quotation) throw new ConflictException({ error: 'coupon_invalid' });
+
+      const [applied] = await tx
+        .select({ code: coupons.code, discountPhp: couponRedemptions.discountPhp })
+        .from(couponRedemptions)
+        .innerJoin(coupons, eq(coupons.id, couponRedemptions.couponId))
+        .innerJoin(invoices, eq(invoices.id, couponRedemptions.invoiceId))
+        .where(and(eq(invoices.rentalId, bookingId), eq(invoices.invoiceType, 'booking'), eq(invoices.status, 'issued')))
+        .limit(1);
+      if (applied && applied.code !== code) throw new ConflictException({ error: 'coupon_already_applied' });
+      const discountPhp = applied
+        ? Number(applied.discountPhp)
+        : (await previewCoupon(tx, code, rental.customerId, rentAmount)).discountPhp;
+      return {
+        code,
+        discountPhp,
+        rentPhp: round2(rentAmount - discountPhp),
+        depositPhp: depositAmount,
+        totalPhp: round2(rentAmount - discountPhp + depositAmount),
+      };
+    });
+  }
+
+  // Puts a coupon on an issued booking invoice: claims one use, takes the
+  // discount off the rent line and the invoice total, and records the
+  // redemption. The same code again is a no-op (a retry); a different code
+  // is refused -- one coupon per invoice. Re-pricing also closes any
+  // PayMongo session opened at the old amount, or the customer could still
+  // pay it (settleOnlinePayment refuses the mismatch, leaving money
+  // collected against nothing).
+  private async applyCoupon(
+    tx: Tx,
+    ctx: RequestContext,
+    invoice: typeof invoices.$inferSelect,
+    customerId: string,
+    code: string,
+    rentAmount: number,
+  ) {
+    const [applied] = await tx
+      .select({ code: coupons.code })
+      .from(couponRedemptions)
+      .innerJoin(coupons, eq(coupons.id, couponRedemptions.couponId))
+      .where(eq(couponRedemptions.invoiceId, invoice.id))
+      .limit(1);
+    if (applied) {
+      if (applied.code === code) return invoice;
+      throw new ConflictException({ error: 'coupon_already_applied' });
+    }
+
+    const pending = await tx
+      .select()
+      .from(payments)
+      .where(and(eq(payments.invoiceId, invoice.id), eq(payments.status, 'pending')));
+    for (const payment of pending) {
+      if (payment.method === 'cash' || !payment.providerRef) continue;
+      // Paid but not yet settled (webhook in flight): let it settle, do not re-price.
+      if ((await this.paymentsPort.getCheckoutSession(payment.providerRef)).paid) {
+        throw new ConflictException({ error: 'payment_in_progress' });
+      }
+      // An already-expired session refuses to expire again; either way it can no longer be paid.
+      await this.paymentsPort.expireCheckoutSession(payment.providerRef).catch(() => undefined);
+    }
+    if (pending.length > 0) {
+      await tx
+        .update(payments)
+        .set({ status: 'failed' })
+        .where(and(eq(payments.invoiceId, invoice.id), eq(payments.status, 'pending')));
+    }
+
+    const { coupon, discountPhp } = await claimCoupon(tx, code, customerId, rentAmount);
+    const [rentLine] = await tx
+      .select()
+      .from(invoiceLineItems)
+      .where(and(eq(invoiceLineItems.invoiceId, invoice.id), like(invoiceLineItems.description, `${RENT_LINE_PREFIX}%`)))
+      .limit(1);
+    if (!rentLine) throw new ConflictException({ error: 'coupon_invalid' });
+    const rentAfter = round2(Number(rentLine.amount) - discountPhp);
+    await tx
+      .update(invoiceLineItems)
+      .set({
+        unitPrice: String(rentAfter),
+        amount: String(rentAfter),
+        description: `${rentLine.description}, coupon ${coupon.code} -PHP ${discountPhp.toFixed(2)}`,
+      })
+      .where(eq(invoiceLineItems.id, rentLine.id));
+    const [repriced] = await tx
+      .update(invoices)
+      .set({ amount: String(round2(Number(invoice.amount) - discountPhp)) })
+      .where(eq(invoices.id, invoice.id))
+      .returning();
+    if (!repriced) throw new Error('invoices update returned no row');
+    await tx.insert(couponRedemptions).values({
+      tenantId: ctx.tenantId,
+      couponId: coupon.id,
+      customerId,
+      invoiceId: invoice.id,
+      discountPhp: String(discountPhp),
+    });
+    await this.events.emit(ctx, 'coupon_redeemed', { invoice_id: invoice.id, coupon_id: coupon.id });
+    return repriced;
   }
 
   // The one way an online checkout starts, for every invoice kind. A tenant

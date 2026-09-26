@@ -49,6 +49,7 @@ import { appDeploymentRoute } from './routes/app.deployment.js';
 import { appInsightsRoute } from './routes/app.insights.js';
 import { appIncidentsRoute } from './routes/app.incidents.js';
 import { appPaymentsRoute } from './routes/app.payments.js';
+import { appCouponsRoute } from './routes/app.coupons.js';
 import { appBillingWeeklyRoute } from './routes/app.billing.weekly.js';
 import { appUsersRoute } from './routes/app.users.js';
 import { appSettingsRoute } from './routes/app.settings.js';
@@ -142,6 +143,7 @@ export const routeTree = rootRoute.addChildren([
     appInsightsRoute,
     appIncidentsRoute,
     appPaymentsRoute,
+    appCouponsRoute,
     appBillingWeeklyRoute,
     appUsersRoute,
     appSettingsRoute,
