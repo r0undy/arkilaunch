@@ -24,7 +24,6 @@ import {
   CompanyUpdateDto,
   CompanyDecisionDto,
   CompanyDocumentUploadDto,
-  CompanyReviewCommentDto,
   CompanyReviewQueryDto,
   CustomerSiteCreateDto,
   KycScanRequestDto,
@@ -190,13 +189,6 @@ export class CustomersController {
     }
     const bytes = Buffer.from(await res.arrayBuffer());
     return this.customers.readDocument(req.ctx, id, documentId, bytes);
-  }
-
-  // A comment to the customer that unlocks what it names; status unchanged.
-  @Patch('customers/:id/review')
-  @RequirePermission('quote:approve')
-  comment(@Param('id') id: string, @Body() body: CompanyReviewCommentDto, @Req() req: CtxRequest) {
-    return this.customers.comment(req.ctx, id, body);
   }
 
   @Patch('customers/:id/kyc')

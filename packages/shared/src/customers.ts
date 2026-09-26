@@ -170,9 +170,9 @@ export const CompanyResponseSchema = z.object({
   firstName: z.string().nullable(),
   middleName: z.string().nullable(),
   lastName: z.string().nullable(),
-  // A reviewer's note on a pending company, and what it unlocked for the
-  // customer to fix (UNLOCKABLE_FIELDS). Nothing else is editable once the
-  // documents are in.
+  // On a rejected company, the reviewer's reason and what would cure it.
+  // unlockedFields is legacy: reviewers no longer unlock anything, so
+  // nothing is editable once the documents are in.
   reviewComment: z.string().nullable(),
   unlockedFields: z.array(z.string()),
   documents: z.array(
@@ -237,35 +237,65 @@ export type CustomerSiteResponse = z.infer<typeof CustomerSiteResponseSchema>;
 export const CompanyReviewQuerySchema = z.object({
   kycStatus: z.enum(['pending', 'approved', 'rejected']).default('pending'),
 });
-// What a reviewer can hand back to the customer on a pending company: the
-// company fields PATCH /me/companies/:id takes, and each document type.
+// What the customer may change on a company the customer-side form reads.
+// Reviewers no longer unlock anything (the review is approve or reject), so
+// in practice nothing is unlocked once the documents are in.
 export const UNLOCKABLE_COMPANY_FIELDS = ['tin', 'secNumber', 'billingAddress'] as const;
-export const UNLOCKABLE_FIELDS = [...UNLOCKABLE_COMPANY_FIELDS, ...COMPANY_DOCUMENT_TYPES] as const;
 
-// PATCH /customers/:id/review. A comment to the customer, and what it
-// unlocks. The status stays pending; only decide() moves it.
-export const CompanyReviewCommentSchema = z.object({
-  comment: z.string().trim().min(1).max(1000),
-  unlock: z.array(z.enum(UNLOCKABLE_FIELDS)).max(UNLOCKABLE_FIELDS.length).default([]),
-});
-export type CompanyReviewComment = z.infer<typeof CompanyReviewCommentSchema>;
+// Why a reviewer rejected a company, and what the customer should bring to
+// a fresh registration to cure it. A rejection is final for that record:
+// the customer registers the company anew with valid papers. The reason is
+// required so the customer always knows what to fix.
+export const REJECTION_REASONS = {
+  bir_cor_invalid: {
+    label: 'BIR Certificate of Registration outdated or not matching ORUS',
+    cure: "An updated BIR Form 2303 (reissued after any change in address, line of business or tax type) that matches the BIR ORUS record.",
+  },
+  sec_not_active: {
+    label: 'SEC status suspended, revoked or delinquent',
+    cure: 'An SEC Certificate of Good Standing, or the SEC Order lifting the suspension or revocation, with the latest General Information Sheet (GIS) and its SEC filing acknowledgement.',
+  },
+  dti_expired: {
+    label: 'DTI business name registration expired',
+    cure: 'The renewed DTI Business Name Certificate, valid today.',
+  },
+  registry_mismatch: {
+    label: 'Details do not match the public registry',
+    cure: 'Documents whose registered name, TIN and registration number match the SEC, BIR and DTI records exactly, or the amended certificate if the name changed.',
+  },
+  id_invalid: {
+    label: 'National ID unreadable, altered or not matching the registrant',
+    cure: "A clear photo of the PhilSys ID or ePhilID (QR visible) of the owner or an authorized officer, with a Secretary's Certificate or board resolution naming them if they are not the owner.",
+  },
+  document_unreadable: {
+    label: 'Document unreadable, cropped or incomplete',
+    cure: 'A full, uncropped, readable scan of every page of the same documents.',
+  },
+  other: {
+    label: 'Other',
+    cure: 'See the note from the rental team.',
+  },
+} as const;
+export type RejectionReason = keyof typeof REJECTION_REASONS;
+export const REJECTION_REASON_CODES = Object.keys(REJECTION_REASONS) as [RejectionReason, ...RejectionReason[]];
 
-// A reviewer may correct what the document says before approving. The
-// corrections are the human's, not the OCR's: they are what gets written
-// onto the company, and approval still requires this explicit call.
-export const CompanyDecisionSchema = z.object({
-  decision: z.enum(['approved', 'rejected']),
-  companyName: z.string().trim().min(2).max(200).optional(),
-  tin: TinSchema.optional(),
-  secNumber: z.string().trim().max(50).optional(),
-  dtiNumber: z.string().trim().max(50).optional(),
-  // The SEC/BIR/DTI documents the reviewer ticked as checked on the public
-  // registry. Approval is refused unless every such document is listed.
-  registryChecked: z.array(z.string().uuid()).max(20).optional(),
-  // The reviewer-confirmed legal name off the National ID. Written onto the
-  // customer's user account only on approval, same human gate as above.
-  firstName: z.string().trim().min(1).max(200).optional(),
-  middleName: z.string().trim().max(200).optional(),
-  lastName: z.string().trim().min(1).max(200).optional(),
-});
+// PATCH /customers/:id/kyc. The reviewer decides on what the customer
+// submitted and never edits it: approval writes the customer's own values,
+// and a rejection must say why ('other' must also say what).
+export const CompanyDecisionSchema = z
+  .object({
+    decision: z.enum(['approved', 'rejected']),
+    // The SEC/BIR/DTI documents the reviewer ticked as checked on the public
+    // registry. Approval is refused unless every such document is listed.
+    registryChecked: z.array(z.string().uuid()).max(20).optional(),
+    rejectionReason: z.enum(REJECTION_REASON_CODES).optional(),
+    rejectionNote: z.string().trim().max(1000).optional(),
+  })
+  .superRefine((body, ctx) => {
+    if (body.decision !== 'rejected') return;
+    if (!body.rejectionReason)
+      ctx.addIssue({ code: 'custom', path: ['rejectionReason'], message: 'A rejection needs a reason.' });
+    if (body.rejectionReason === 'other' && !body.rejectionNote)
+      ctx.addIssue({ code: 'custom', path: ['rejectionNote'], message: 'Say what is wrong.' });
+  });
 export type CompanyDecision = z.infer<typeof CompanyDecisionSchema>;

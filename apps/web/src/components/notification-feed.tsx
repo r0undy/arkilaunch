@@ -95,7 +95,10 @@ export function describeNotification(type: string, payload: unknown): Described 
         }
       : {
           title: 'Company not verified',
-          body: `${name} could not be verified. Contact the rental team to fix it.`,
+          body:
+            typeof p.reason === 'string'
+              ? `${name} could not be verified: ${p.reason}`
+              : `${name} could not be verified. Contact the rental team to fix it.`,
           action: { label: 'View company', to: '/account/companies', params: {} },
         };
   }

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import postgres from 'postgres';
 import {
+  CompanyDecisionSchema,
   StubPaymentsAdapter,
   UnavailableDocumentIntelligenceAdapter,
   WeatherUnavailableError,
@@ -649,22 +650,40 @@ describe('Customer onboarding', () => {
       }
     });
 
-    it('writes the corrections the reviewer confirmed when approving', async () => {
-      const { companyId, documentId } = await companyWithRegistration('Typo Corp');
+    it('approves what the customer submitted, unchanged', async () => {
+      const { companyId, documentId } = await companyWithRegistration('Submitted Corp');
       await companies.decide(adminCtx, companyId, {
         decision: 'approved',
-        companyName: 'Typo Construction Corporation',
-        tin: '123-456-789',
-        secNumber: 'CS202312345',
         registryChecked: [documentId],
+        // A stale client still sending a correction: stripped, never written.
+        ...({ companyName: 'Someone Else Corporation' } as object),
       });
       const approved = (await companies.listForReview(adminCtx, 'approved')).find(
         (c) => c.id === companyId,
       );
-      expect(approved?.companyName).toBe('Typo Construction Corporation');
-      expect(approved?.tin).toBe('123-456-789');
-      expect(approved?.secNumber).toBe('CS202312345');
+      expect(approved?.companyName).toBe('Submitted Corp');
       expect(approved?.documents[0]?.registryChecked).toBe(true);
+    });
+
+    it('rejects only with a reason, keeps it for the customer, and is final', async () => {
+      const { companyId, documentId } = await companyWithRegistration('Suspended Corp');
+      expect(CompanyDecisionSchema.safeParse({ decision: 'rejected' }).success).toBe(false);
+      expect(
+        CompanyDecisionSchema.safeParse({ decision: 'rejected', rejectionReason: 'other' }).success,
+      ).toBe(false);
+
+      await companies.decide(adminCtx, companyId, {
+        decision: 'rejected',
+        rejectionReason: 'sec_not_active',
+        rejectionNote: 'SEC Check shows the registration as revoked.',
+      });
+      const rejected = (await companies.listForReview(adminCtx, 'rejected')).find((c) => c.id === companyId);
+      expect(rejected?.reviewComment).toContain('SEC status suspended, revoked or delinquent.');
+      expect(rejected?.reviewComment).toContain('SEC Check shows the registration as revoked.');
+      expect(rejected?.reviewComment).toContain('Certificate of Good Standing');
+      await expect(
+        companies.decide(adminCtx, companyId, { decision: 'approved', registryChecked: [documentId] }),
+      ).rejects.toMatchObject({ response: { error: 'already_decided' } });
     });
 
     it('refuses approval until every SEC/BIR/DTI paper is ticked as checked on its registry', async () => {
@@ -682,7 +701,7 @@ describe('Customer onboarding', () => {
         response: { error: 'registry_check_required', documentTypes: ['dti_certificate'] },
       });
       // Rejecting needs no registry check.
-      await companies.decide(adminCtx, companyId, { decision: 'rejected' });
+      await companies.decide(adminCtx, companyId, { decision: 'rejected', rejectionReason: 'dti_expired' });
       const rejected = (await companies.listForReview(adminCtx, 'rejected')).find((c) => c.id === companyId);
       expect(rejected?.documents.find((d) => d.id === dti.id)?.registryChecked).toBe(false);
     });
@@ -764,7 +783,7 @@ describe('Customer onboarding', () => {
       expect(doc.status).toBe('needs_review');
     });
 
-    it('locks a submitted company until the reviewer unlocks a field, and keeps it pending', async () => {
+    it('locks a submitted company; the reviewer can only verify or reject it', async () => {
       const service = reviewer({ tin: { value: '111-222-333', confidence: 0.95 } });
       const company = await service.createCompany(reviewCtx, {
         companyName: 'Locked Corp',
@@ -782,49 +801,17 @@ describe('Customer onboarding', () => {
         ConflictException,
       );
       await expect(upload('bir_cor')).rejects.toBeInstanceOf(ConflictException);
+      expect('comment' in service).toBe(false);
 
-      const commented = await service.comment(adminCtx, company.id, {
-        comment: 'The TIN is one digit off, and the 2303 is cut off.',
-        unlock: ['tin', 'bir_cor'],
-      });
-      expect(commented.kycStatus).toBe('pending');
-
-      // Only what was unlocked, once each.
-      await expect(
-        service.updateCompany(reviewCtx, company.id, { billingAddress: '1 Other St, Cebu City' }),
-      ).rejects.toBeInstanceOf(ConflictException);
-      const fixed = await service.updateCompany(reviewCtx, company.id, { tin: '111-222-444' });
-      expect(fixed.tin).toBe('111-222-444');
-      expect(fixed.kycStatus).toBe('pending');
-      expect(fixed.unlockedFields).toEqual(['bir_cor']);
-      await upload('bir_cor');
-      await expect(upload('bir_cor')).rejects.toBeInstanceOf(ConflictException);
-
-      // The replaced 2303 no longer counts; the queue shows one of each.
       const [queued] = (await service.listForReview(adminCtx, 'pending')).filter((c) => c.id === company.id);
-      expect(queued?.documents.map((d) => d.documentType).sort()).toEqual(['bir_cor', 'government_id']);
-      expect(queued?.reviewComment).toBe('The TIN is one digit off, and the 2303 is cut off.');
       expect(queued?.unlockedFields).toEqual([]);
-
-      const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
-      try {
-        const [note] = await sql`
-          select payload from notifications
-          where notification_type = 'company_review_comment' and (payload->>'company_id') = ${company.id}
-        `;
-        expect(note).toBeDefined();
-      } finally {
-        await sql.end();
-      }
-
-      // Approval only needs the live 2303 ticked, not the superseded one.
       await service.decide(adminCtx, company.id, {
         decision: 'approved',
         registryChecked: queued!.documents.filter((d) => d.documentType === 'bir_cor').map((d) => d.id),
       });
     });
 
-    it('writes the reviewer-confirmed name onto the customer account only on approval', async () => {
+    it('writes the National ID name onto the customer account only on approval', async () => {
       const service = reviewer({
         first_name: { value: 'MARIA', confidence: 0.95 },
         last_name: { value: 'SANTOS', confidence: 0.95 },
@@ -841,20 +828,21 @@ describe('Customer onboarding', () => {
         const before = await sql`select first_name from users where id = ${reviewCtx.userId}`;
         expect((before[0] as { first_name: string | null }).first_name).toBeNull();
 
-        await service.decide(adminCtx, company.id, {
-          decision: 'approved',
-          firstName: 'Maria',
-          middleName: 'Reyes',
-          lastName: 'Santos',
-        });
+        await service.addDocument(
+          reviewCtx,
+          company.id,
+          'government_id',
+          `storage://fixtures/${randomUUID()}.jpg`,
+          bytes,
+        );
+        const after0 = await sql`select first_name from users where id = ${reviewCtx.userId}`;
+        expect((after0[0] as { first_name: string | null }).first_name).toBeNull();
+
+        await service.decide(adminCtx, company.id, { decision: 'approved' });
 
         const after =
           await sql`select first_name, middle_name, last_name from users where id = ${reviewCtx.userId}`;
-        expect(after[0]).toMatchObject({
-          first_name: 'Maria',
-          middle_name: 'Reyes',
-          last_name: 'Santos',
-        });
+        expect(after[0]).toMatchObject({ first_name: 'MARIA', last_name: 'SANTOS' });
       } finally {
         await sql.end();
       }

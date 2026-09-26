@@ -178,13 +178,21 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
           </div>
         )}
         {company.kycStatus === 'rejected' && (
-          <p className="text-text-muted">
-            Verification was declined.{' '}
-            <Link to="/contact" className="underline">
-              Contact the rental team
-            </Link>{' '}
-            to fix it.
-          </p>
+          <div role="status" className="flex flex-col gap-2 rounded-md border border-border px-3 py-2">
+            <p className="font-medium text-text">Verification was declined</p>
+            {company.reviewComment && <p className="text-text">{company.reviewComment}</p>}
+            <p className="text-text-muted">
+              A declined registration cannot be changed.{' '}
+              <Link to="/account/companies/new" className="text-accent underline">
+                Register the company again
+              </Link>{' '}
+              with documents that fix the reason, or{' '}
+              <Link to="/contact" className="underline">
+                contact the rental team
+              </Link>
+              .
+            </p>
+          </div>
         )}
       </div>
 
