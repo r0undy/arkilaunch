@@ -19,7 +19,7 @@ const port = 4319;
 const origin = `http://localhost:${port}`;
 
 // Public site origin for canonical/OG URLs -- defaults to local dev; set to
-// the deployed Vercel domain in CI (see apps/web/.env.example).
+// https://arkilaunch.app in CI (see apps/web/.env.example).
 const SITE_URL = (process.env.VITE_PUBLIC_SITE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
 const API_BASE_URL = process.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1';
 

@@ -1,7 +1,7 @@
 # Backend-only image: apps/api (persistent Container App) + jobs (Container App
 # Jobs). One image, two run modes selected by CMD/command override at deploy
-# time -- see infra/terraform/modules/{api_app,cron_job}. apps/web is Vercel,
-# not built here (see docs/build-arkilaunch.md §3).
+# time -- see infra/terraform/modules/{api_app,cron_job}. apps/web is a
+# Cloudflare Worker, not built here (see docs/build-arkilaunch.md §3).
 
 FROM node:24-slim AS base
 RUN corepack enable && corepack prepare pnpm@11.11.0 --activate
@@ -33,7 +33,7 @@ RUN pnpm install --frozen-lockfile
 # the package and its dependencies, topologically ordered, so a new package
 # is picked up by being depended on rather than by someone remembering to
 # edit this line. apps/web is excluded by construction; it is deployed to
-# Vercel, not into this image. ---
+# Cloudflare Workers, not into this image. ---
 FROM deps AS build
 COPY packages packages
 COPY jobs jobs

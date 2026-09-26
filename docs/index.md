@@ -2,7 +2,7 @@
 
 **Project slug:** `arkilaunch`
 **Maintained by:** ArkiLaunch Team (Almara Construction capstone)
-**Last updated:** 2026-09-25
+**Last updated:** 2026-09-27
 **Built on FMD:** v1.28.1
 
 ---
@@ -17,22 +17,22 @@
 |----------|------|---------|--------|--------------|-----------------|
 | IDEA · Idea Brief | [idea-arkilaunch.md](idea-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
 | VALIDATION · Validation Brief | [val-arkilaunch.md](val-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
-| SCRUTINY · Scrutiny Gate | [scrutiny-arkilaunch.md](scrutiny-arkilaunch.md) | 0.1 | Draft | 2026-08-20 | N/A |
+| SCRUTINY · Scrutiny Gate | [scrutiny-arkilaunch.md](scrutiny-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
 | VOICE · House Style | [voice-arkilaunch.md](voice-arkilaunch.md) | 0.1 | Draft | 2026-08-02 | N/A |
 | PITCH · Pitch & Demo | [pitch-arkilaunch.md](pitch-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
 | WRAP · Next Steps | [wrap-arkilaunch.md](wrap-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
 | BRD · Business Requirements | [brd-arkilaunch.md](brd-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
-| UES · Unit Economics Sheet | [ues-arkilaunch.md](ues-arkilaunch.md) | 0.1 | Draft | 2026-09-13 | N/A |
-| PRD · Product Requirements | [prd-arkilaunch.md](prd-arkilaunch.md) | 0.1 | Locked | 2026-09-19 | 2026-09-19 |
+| UES · Unit Economics Sheet | [ues-arkilaunch.md](ues-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
+| PRD · Product Requirements | [prd-arkilaunch.md](prd-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-19 |
 | DSD · Design System | [dsd-arkilaunch.md](dsd-arkilaunch.md) | 0.1 | Locked | 2026-09-19 | 2026-09-19 |
-| SDD · System Design | [sdd-arkilaunch.md](sdd-arkilaunch.md) | 0.1 | Locked | 2026-09-07 | 2026-09-07 |
-| QAD · QA & Test Plan | [qad-arkilaunch.md](qad-arkilaunch.md) | 0.1 | Locked | 2026-09-07 | 2026-09-07 |
+| SDD · System Design | [sdd-arkilaunch.md](sdd-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-07 |
+| QAD · QA & Test Plan | [qad-arkilaunch.md](qad-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-07 |
 | SAD · Subagents | [sad-arkilaunch.md](sad-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
-| BUILD · Build Guide | [build-arkilaunch.md](build-arkilaunch.md) | 0.1 | Draft | 2026-09-13 | N/A |
-| CLR · Compliance & Legal | [clr-arkilaunch.md](clr-arkilaunch.md) | 0.1 | Draft | 2026-08-20 | N/A |
+| BUILD · Build Guide | [build-arkilaunch.md](build-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
+| CLR · Compliance & Legal | [clr-arkilaunch.md](clr-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
 | AIA · AI Assurance Dossier | [aia-arkilaunch.md](aia-arkilaunch.md) | 0.1 | Draft | 2026-09-19 | N/A |
 | GTM · Go-To-Market | [gtm-arkilaunch.md](gtm-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
-| OPS · Ops & Observability | [ops-arkilaunch.md](ops-arkilaunch.md) | 0.1 | Draft | 2026-09-13 | N/A |
+| OPS · Ops & Observability | [ops-arkilaunch.md](ops-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
 | LOG · Build Session Log | [log-arkilaunch.md](log-arkilaunch.md) | 0.1 | Draft (append-only) | 2026-09-07 | N/A |
 
 ### Runbooks (operational procedure, not suite docs)
@@ -90,6 +90,7 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 
 | CR ID | Date | Summary | Trigger doc | Docs touched | File |
 |-------|------|---------|-------------|--------------|------|
+| cr-arkilaunch-cloudflare-frontend | 2026-09-27 | Frontend hosting moves to an assets-only Cloudflare Worker (`apps/web/wrangler.jsonc`, SPA fallback) on `arkilaunch.app` + `*.arkilaunch.app`, so host-resolved tenant storefronts work; deployed by a new `web` job in `deploy.yml` after the API apply. Platform domain `arkilaunch.tech` -> `arkilaunch.app` (web default, Terraform `platform_domain`, dev `web_origin`/CORS). All three `vercel.json` files removed; living docs rewritten; past CRs left as history. Operator cutover (nameservers, wildcard DNS, token, GitHub env vars, old-host decommission, registrar transfer after 60 days) in §4 | build-arkilaunch.md §5.1 | build §3/§5.2, AGENTS.md, sdd §1/§2/§5/§6, ops, qad, clr, prd, scrutiny, ues, README.md, index.md §1/§2/§5 | [cr-arkilaunch-cloudflare-frontend.md](cr-arkilaunch-cloudflare-frontend.md) |
 | cr-arkilaunch-repo-cleanup-2026-09-25 | 2026-09-25 | Second repo cleanup, after five customer feedback batches. Safe tier only: no API contract, schema or migration change. Deletes the four landing primitives the redesign stopped rendering (`FeatureTile`, `ProofPill`, `PackageCard`, `RiseIn`) plus two web exports with no callers. Removes an api port file nothing imported, unused port re-exports, and `@nestjs/config`, which was registered but never injected. Removes two unread shared label maps. Drops the dead `DOE_PRICE_WATCH_URL` from `.env.example` and documents the seed-credential vars. Corrects `jobs/src/README.md`, which still said the OCR worker ran on a stub, and adds the unscheduled `weekly-billing.ts`. Recorded, not fixed: vestigial diesel `region` columns and params, legacy `mobilizationKm`, unused schema columns and shared types, `weekly-billing` unscheduled, the manual diesel endpoint with no UI, the two `vercel.json` files, the unwired prerender, and `HazardDivider` specified for S8 and KYC review but rendered nowhere | build-arkilaunch.md §5.1 | index.md §2, log-arkilaunch.md §1, jobs/src/README.md, .env.example | [cr-arkilaunch-repo-cleanup-2026-09-25.md](cr-arkilaunch-repo-cleanup-2026-09-25.md) |
 | cr-arkilaunch-feedback-batch | 2026-09-25 | Customer/admin feedback batch. Forgot-password request that alerts admins (no email provider). KYC: free crop on every document, read-only "waiting for admin review" with reviewer comments that unlock fields, "Edited by customer" instead of read %; Onboarding removed. Standard equipment categories, per-task maintenance with hour-meter correction and date windows. Booking availability that blocks assignments, maintenance, business hours, holidays and operators. Truck map pins to OSRM, toll list, safe admin formula, estimate range with cap. Callback before payment. Unit rate cards, verified-company gate on quotes/bookings, agreed line price, daily-rate 8× overcharge fixed. Tenant minimum deposit with rollover to weekly invoices, rental locked on approve (migrations 0034–0039) | user feedback 2026-09-24 | index.md §2, cr-arkilaunch-customer-prerequisites.md, cr-arkilaunch-cart-validation.md | [cr-arkilaunch-feedback-batch.md](cr-arkilaunch-feedback-batch.md) |
 | cr-arkilaunch-platform-console | 2026-09-24 | The platform admin had the tenant's 20-link sidebar with a Platform group added at the bottom, two copies of the pending queue, an empty approved list, the Almara dashboard as its home, and access to the field and customer shells. It now gets its own short sidebar (Companies + Account), lands on Applications, is sent home from tenant operations pages, and has a real Approved companies list (`GET /tenants/applications/approved`, migration 0033). | user request 2026-09-24 | prd §5.2, dsd Nav shell, index §2 | [cr-arkilaunch-platform-console.md](cr-arkilaunch-platform-console.md) |
@@ -161,7 +162,7 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 
 - Scrutiny verdict: **PROCEED WITH FIXES** (2026-07-25). Carried fixes tracked in [scrutiny-arkilaunch.md](scrutiny-arkilaunch.md) §1 and mirrored as gaps G-1..G-10 §3; each lands in its named downstream doc (Open-Meteo commercial -> SDD/OPS/UES done **as of 2026-07-25; narrowed again 2026-08-20 by `cr-arkilaunch-open-meteo-free-tier.md` -- G-4's cost/quota halves are now resolved against the FREE tier, and the commercial-use restriction is carried forward as G-4's one remaining open item, not closed**; diesel source -> RFC-3 done; multi-tenancy -> RFC-1/SDD done; ISO 25010 version -> QAD done; Azure DI residency -> CLR done, AIA done with AIA-R7 tracked as the one open, escalated risk; 5-point Likert -> QAD done). G-10 (PayMongo webhook idempotency/refunds/disputes) resolved directly in SDD §4 as of 2026-08-01, no dedicated RFC needed.
 - Product framing decision (build start): multi-tenant SaaS (ArkiLaunch), Almara = anchor tenant.
-- Confirmed stack decisions: OCR = Azure AI Document Intelligence; payments = PayMongo; stack re-evaluated against current best practices (currency-verified 2026-07-25). Documented divergences from the thesis (persistent Azure Container Apps backend + jobs vs Vercel serverless; Drizzle vs Prisma for first-class RLS; NestJS/Passport identity vs Supabase GoTrue; Vite 8; add Playwright; Open-Meteo commercial plan **-> superseded 2026-08-20: ships against the free tier instead, see BUILD §3's divergence row**) are recorded in BUILD §3.
+- Confirmed stack decisions: OCR = Azure AI Document Intelligence; payments = PayMongo; stack re-evaluated against current best practices (currency-verified 2026-07-25). Documented divergences from the thesis (persistent Azure Container Apps backend + jobs vs serverless; Drizzle vs Prisma for first-class RLS; NestJS/Passport identity vs Supabase GoTrue; Vite 8; add Playwright; Open-Meteo commercial plan **-> superseded 2026-08-20: ships against the free tier instead, see BUILD §3's divergence row**) are recorded in BUILD §3.
 - Engine note: the root `IDEA.md` thesis is the long-form source of record; `docs/idea-arkilaunch.md` is its FMD-shaped distillation.
 - Build note: mid-build the org hit a monthly spend limit; the later docs (RFC-3, QAD, CLR, OPS, SAD, BUILD, AIA, GTM, PITCH, WRAP, VALIDATION, VOICE) were authored inline by the orchestrator rather than via parallel subagents.
 - Validation (2026-07-25): `check.py docs --scale full` = 0 failures over the generated suite + materialized artifacts. Materialization banner in AGENTS/BRAND/DESIGN was converted from an HTML comment to a blockquote so the voice check would not read the comment's closing `-->` as a spaced dash (FMD `materialize.py` quirk; a candidate engine fix noted in the WRAP field report). Root `IDEA.md` thesis still fails voice (54 em/en-dash and `--` hits); left intact as the user's source document.

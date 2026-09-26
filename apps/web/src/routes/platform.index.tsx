@@ -12,7 +12,7 @@ import { tenantOrigin } from '../lib/host.js';
 // ArkiLaunch's own landing page (platform host only; see routes/index.tsx).
 // Uses the same marketing tier as the tenant storefronts.
 
-const PLATFORM_DOMAIN = import.meta.env.VITE_PLATFORM_DOMAIN ?? 'arkilaunch.tech';
+const PLATFORM_DOMAIN = import.meta.env.VITE_PLATFORM_DOMAIN ?? 'arkilaunch.app';
 
 function toLabel(name: string): string {
   return name

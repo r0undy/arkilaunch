@@ -82,7 +82,7 @@
 | G-3 | Diesel-price data source and refresh strategy | RFC-3, SDD §4 | TBD |
 | G-4 | Open-Meteo commercial plan + quota/cost + fallback behavior | SDD §4/§6, OPS, UES | **Narrowed (2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md`): cost resolved at PHP 0 and quota resolved as the free tier's 10,000/day cap (site-count ceiling enforced in code); the commercial-use question is now the whole of what remains open -- a launch gate, not TBD-by-default.** |
 | G-5 | Azure DI model choice per source (custom EDTR vs layout+query for SEC/TIN), confidence threshold, HITL gate, data residency | RFC-2, SDD §8, AIA | TBD (resolved by design) |
-| G-6 | Persistent backend host for the cron scheduler + async OCR workers (Vercel serverless cannot run them) | SDD §6, BUILD §3 | TBD (resolved: persistent host, e.g. Azure Container Apps) |
+| G-6 | Persistent backend host for the cron scheduler + async OCR workers (serverless hosting cannot run them) | SDD §6, BUILD §3 | TBD (resolved: persistent host, e.g. Azure Container Apps) |
 | G-7 | Likert scale (thesis inconsistent: 4-point once vs 5-point elsewhere) | QAD | TBD (resolved: 5-point) |
 | G-8 | Unit economics for a SaaS: pricing tiers, CAC, LTV, subscription model | [UES](ues-arkilaunch.md), GTM | Resolved: full UES §0-§7 (UES-E1..E8, UES-F1..F5, UES-M1..M6, UES-K1..K7); GTM §3 prices the tiers against it |
 | G-9 | Concept visuals (UI reference frames) not yet generated | DSD §0.5 | TBD (still open; also carried in IDEA §5 and VAL §5) |

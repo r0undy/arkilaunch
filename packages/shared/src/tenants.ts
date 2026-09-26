@@ -69,7 +69,7 @@ export const TenantApplicationListResponseSchema = z.object({
 });
 export type TenantApplicationListResponse = z.infer<typeof TenantApplicationListResponseSchema>;
 
-// Host-based tenant resolution: `{slug}.localhost` / `{slug}.arkilaunch.tech`
+// Host-based tenant resolution: `{slug}.localhost` / `{slug}.arkilaunch.app`
 // is a tenant, the bare domain is the ArkiLaunch platform. A slug is one DNS
 // label, so it is capped at 63 chars. Reserved labels never resolve to a
 // tenant -- `arkilaunch-platform` is the platform_admin's own tenant row

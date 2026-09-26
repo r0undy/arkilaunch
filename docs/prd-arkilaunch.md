@@ -395,7 +395,7 @@ Azure DI is priced per page, not per token. Budget scales with EDTR and KYC page
 - PayMongo hosted checkout (PRD-F2); webhook, idempotency, and refund/dispute handling detail is a carried gap (scrutiny G-10).
 - Open-Meteo (PRD-F5). Requires the **commercial plan**; the free tier is non-commercial only, and ArkiLaunch is commercial (scrutiny FC-7 / G-4). Fallback is a cached last-known reading. **Addendum (2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md`): the real adapter ships against the FREE tier instead**, keyless, as a deliberate accepted exposure for the pilot -- the non-commercial-use restriction is carried forward as an open item under scrutiny G-4, not resolved. CC BY 4.0 attribution is rendered in the UI.
 - Supabase Postgres for tenant data with row-level isolation (PRD-F7).
-- A persistent backend host for the cron scheduler and async OCR/reconciliation workers. Serverless-only (for example Vercel) cannot run these (scrutiny G-6; resolved by design, for example Azure Container Apps).
+- A persistent backend host for the cron scheduler and async OCR/reconciliation workers. Serverless-only hosting cannot run these (scrutiny G-6; resolved by design, for example Azure Container Apps).
 - Diesel-price source for PRD-F1: DOE price-watch scrape vs admin input vs third-party feed. **TBD**, decided in RFC-3 (quotation-pricing-engine).
 - NestJS/Passport-JWT for identity (PRD-F7); resolved as the identity owner over Supabase Auth (scrutiny G-2).
 

@@ -81,13 +81,13 @@ Specialist build agents are defined in the SAD ([sad-arkilaunch.md](sad-arkilaun
 | Payments | PayMongo (Hosted Checkout + webhooks) | n/a; managed API, no client SDK version to pin | 2026-07-25 | paymongo.com/docs |
 | Weather | Open-Meteo (**free tier, keyless**; changed 2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md` -- see the divergence row below) | n/a; versionless HTTP API | 2026-07-25 | open-meteo.com |
 | Backend hosting | Azure Container Apps (app + ACA Jobs cron) | n/a; managed platform | 2026-07-25 | learn.microsoft.com/azure/container-apps/jobs |
-| Frontend hosting | Vercel (Edge) | n/a; managed platform | 2026-07-25 | vercel.com/docs |
+| Frontend hosting | Cloudflare Workers (Static Assets, assets-only Worker; changed 2026-09-27, `cr-arkilaunch-cloudflare-frontend.md`) | wrangler 4.139.0 (deploy CLI) | 2026-09-27 | developers.cloudflare.com/workers/static-assets |
 | Edge security | Cloudflare (WAF + L3/L4/L7 DDoS) | n/a; managed platform | 2026-07-25 | developers.cloudflare.com |
 | Unit tests | Vitest | 3.2 | 2026-07-25 | vitest.dev |
 | E2E tests | Playwright | 1.55 | 2026-07-25 | playwright.dev |
 | API tests | Postman / Newman | Newman 6.2 | 2026-07-25 | postman.com |
 
-**Reading the "n/a" rows:** six rows above are managed platforms or versionless HTTP APIs (Supabase, PayMongo, Open-Meteo, Azure Container Apps, Vercel, Cloudflare); there is no package/client version to pin, so "n/a" is an honest terminal value, not an unfilled one. Every row backed by an installable package or SDK carries an exact version.
+**Reading the "n/a" rows:** five rows above are managed platforms or versionless HTTP APIs (Supabase, PayMongo, Open-Meteo, Azure Container Apps, Cloudflare edge); there is no package/client version to pin, so "n/a" is an honest terminal value, not an unfilled one. Every row backed by an installable package or SDK carries an exact version.
 
 ### Deprecations & convention changes; DO NOT use the stale form
 
@@ -96,7 +96,7 @@ This register **overrides training memory**. It records the deliberate divergenc
 | Stale / avoided | Current convention for ArkiLaunch | Since / why | Source |
 |-----------------|-----------------------------------|-------------|--------|
 | Prisma ORM (thesis) | **Drizzle ORM** with in-schema `pgPolicy` RLS | First-class, reviewable RLS for a multi-tenant system; avoids the "owner connection bypasses RLS" trap Prisma extensions must work around | orm.drizzle.team/docs/rls |
-| Backend on Vercel serverless (naive reading) | **Azure Container Apps** (persistent API) + **ACA Jobs** (cron) | Serverless cannot run the weather poll, diesel refresh, PM notifications, or async OCR workers; a persistent host + scheduled jobs can. Vercel hosts the frontend only | learn.microsoft.com/azure/container-apps/jobs |
+| Backend on serverless (naive reading) | **Azure Container Apps** (persistent API) + **ACA Jobs** (cron) | Serverless cannot run the weather poll, diesel refresh, PM notifications, or async OCR workers; a persistent host + scheduled jobs can. The serverless/edge host (Cloudflare Workers since 2026-09-27) serves the static frontend only | learn.microsoft.com/azure/container-apps/jobs |
 | Supabase GoTrue as session authority | **NestJS/Passport-JWT** as the single identity authority; RLS driven by app-injected GUCs | We connect directly to Postgres via Drizzle, so `auth.uid()` binding does not apply; one issuer owns identity + the RBAC tables | docs.nestjs.com/security/authentication |
 | `service_role` / owner DB connection on request paths | Dedicated **non-BYPASSRLS** app role; `service_role` only for migrations + trusted cron | RLS is only enforced for non-superuser, non-owner roles | supabase.com/docs (RLS) ; RFC-1 |
 | Axios | Native `fetch` (thin typed wrapper) | Universal, no extra dependency; Axios optional | developer.mozilla.org |
@@ -213,7 +213,7 @@ Once the code is live and PRD/SDD are Locked, prefer the Change Workflow over re
 
 ### Indexability checklist
 
-- [~] Public marketing/booking pages are crawlable HTML (server-rendered or pre-rendered, not empty client shells) -- `apps/web/scripts/prerender.mjs` exists and does this (CR: frontend-storefront-shell; see `sdd-arkilaunch.md` §6), but **it does not run on deploy**: `apps/web/vercel.json`'s `buildCommand` is `pnpm --filter @arkilaunch/shared build && pnpm --filter @arkilaunch/web build` and never invokes `pnpm prerender`, so the deployed public pages are still the client shell. Wiring it in needs a Playwright browser download in the Vercel build, which is a deploy-pipeline decision, not a docs fix
+- [~] Public marketing/booking pages are crawlable HTML (server-rendered or pre-rendered, not empty client shells) -- `apps/web/scripts/prerender.mjs` exists and does this (CR: frontend-storefront-shell; see `sdd-arkilaunch.md` §6), but **it does not run on deploy**: the `web` job in `.github/workflows/deploy.yml` runs `pnpm --filter @arkilaunch/shared build && pnpm --filter @arkilaunch/web build` and never invokes `pnpm prerender`, so the deployed public pages are still the client shell. Wiring it in needs a Playwright browser download in that job, which is a deploy-pipeline decision, not a docs fix
 - [x] `sitemap.xml` published for public pages only -- `apps/web/public/sitemap.xml`, a hand-maintained static file, so this holds independently of the prerender step
 - [~] Canonical URLs set on public pages -- injected by the prerender step, and therefore not in effect on deploy for the same reason as the first box. `VITE_PUBLIC_SITE_URL` is also unset in CI, so a prerender run today would emit `http://localhost:5173` canonicals
 - [x] Authenticated app routes carry `noindex` and are excluded from the sitemap -- `/app/*`, `/account/*`, `/field/*`, `/platform` are never prerendered and keep the default `noindex` shell; this holds independently of the prerender step, since `noindex` is the shell's default and prerender is what would *remove* it
@@ -290,7 +290,7 @@ Re-materialize whenever this guide changes. Root copies are build artifacts, not
 ## Self-Check
 
 - [x] Section 1 read-order lists all 12 upstream docs relevant to build (index, SCRUTINY, BRD, PRD, SDD, RFCs, DSD, QAD, CLR, AIA, OPS, this guide); intentionally omits doc types build never reads from directly (IDEA, VALIDATION, VOICE, PITCH, WRAP, UES, SAD, GTM, LOG; each has its own consumer named in BUILD/index)
-- [x] Section 3 pins an exact version or SDK for every installable package/SDK, with a verified date (2026-07-25) and authoritative source; the 6 rows with no package to pin (Supabase, PayMongo, Open-Meteo, ACA, Vercel, Cloudflare) say so explicitly rather than "current"
+- [x] Section 3 pins an exact version or SDK for every installable package/SDK, with a verified date (2026-07-25) and authoritative source; the 5 rows with no package to pin (Supabase, PayMongo, Open-Meteo, ACA, Cloudflare edge) say so explicitly rather than "current"
 - [x] Deprecations register holds the `use-X-not-Y` traps + every documented divergence from the thesis
 - [x] Golden-path samples are version-tagged and dated (RLS tx, Nest endpoint, Azure DI gate)
 - [x] Section 5 restraint ladder present; validation/security/RLS/a11y explicitly not cuttable

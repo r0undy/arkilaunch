@@ -19,7 +19,7 @@ export class CatalogController {
     return this.catalog.getTenant(slug);
   }
 
-  // The platform directory (arkilaunch.tech landing). Host-independent.
+  // The platform directory (arkilaunch.app landing). Host-independent.
   @Get('tenants')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   listTenants(@Query() query: CatalogTenantListQueryDto) {
