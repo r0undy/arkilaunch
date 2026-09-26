@@ -25,4 +25,4 @@ enable_ocr_kyc       = false
 # count against the free tier's ~200-site ceiling (WEATHER_POLL_MAX_SITES).
 enable_weather_poll  = true
 enable_diesel_scrape = true
-enable_payments      = false
+enable_payments      = true
