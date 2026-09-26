@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   MapPin,
   Receipt,
+  BadgePercent,
   CalendarRange,
   Settings,
   Bell,
@@ -97,6 +98,7 @@ export const APP_NAV: NavGroup[] = [
     items: [
       { label: 'Invoices', to: '/app/payments', icon: Receipt },
       { label: 'Weekly billing', to: '/app/billing/weekly', icon: CalendarRange },
+      { label: 'Coupons', to: '/app/coupons', icon: BadgePercent },
       { label: 'Reports', to: '/app/insights', icon: TrendingUp },
     ],
   },

@@ -4,6 +4,7 @@ import type {
   NegotiationMessageResponse,
   RentPart,
   CompanyResponse,
+  CouponResponse,
   CompanyReviewResponse,
   SiteForecastResponse,
   CustomerSiteResponse,
@@ -78,6 +79,14 @@ export const sitesQueries = {
     queryOptions({
       queryKey: ['sites', limit, offset] as const,
       queryFn: () => apiGet<SiteListResponse>(`/sites?limit=${limit}&offset=${offset}`),
+    }),
+};
+
+export const couponsQueries = {
+  list: () =>
+    queryOptions({
+      queryKey: ['coupons'] as const,
+      queryFn: () => apiGet<CouponResponse[]>('/coupons'),
     }),
 };
 

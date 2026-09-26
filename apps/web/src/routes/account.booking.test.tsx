@@ -102,6 +102,24 @@ describe('amountDue', () => {
     expect(due.total).toBe(30000);
   });
 
+  it('shows an issued booking invoice as it stands, coupon discount included', () => {
+    const due = amountDue(
+      booking({
+        quotation: accepted,
+        deposit: { required: 5000, totalDeducted: 0, deductions: [] },
+        invoices: [
+          {
+            id: '77777777-7777-4777-8777-777777777777',
+            invoiceType: 'booking',
+            amount: 32000,
+            status: 'issued',
+          },
+        ],
+      }),
+    );
+    expect(due.total).toBe(32000);
+  });
+
   it('does not invent a total before anything is priced', () => {
     expect(amountDue(booking()).total).toBeNull();
   });

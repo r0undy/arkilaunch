@@ -74,6 +74,11 @@ export class PayMongoAdapter implements PaymentsPort {
     return paid ? { paid: true, paymentId: paid.id, amountCentavos: paid.attributes.amount } : { paid: false };
   }
 
+  // POST /v1/checkout_sessions/:id/expire (no body).
+  async expireCheckoutSession(sessionId: string): Promise<void> {
+    await this.call('POST', `/checkout_sessions/${encodeURIComponent(sessionId)}/expire`);
+  }
+
   async refund(paymentId: string, amountPhp: number, reason: RefundReason): Promise<{ id: string }> {
     const body = await this.call<{ data: { id: string } }>('POST', '/refunds', {
       amount: Math.round(amountPhp * 100),

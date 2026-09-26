@@ -295,6 +295,7 @@ describe('PaymentsService (PRD-F2)', () => {
         return stub.createCheckoutSession(amount, invoiceId);
       },
       getCheckoutSession: (id) => stub.getCheckoutSession(id),
+      expireCheckoutSession: (id) => stub.expireCheckoutSession(id),
       refund: (id) => stub.refund(id),
     };
     const service = new PaymentsService(adapter, events);

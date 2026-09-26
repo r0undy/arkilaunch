@@ -4,7 +4,7 @@ import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { PaymentsService } from './payments.service.js';
-import { CheckoutRequestDto, RefundRequestDto } from './dto.js';
+import { CheckoutRequestDto, CouponPreviewRequestDto, RefundRequestDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -26,6 +26,15 @@ export class PaymentsController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   checkout(@Param('id') id: string, @Body() body: CheckoutRequestDto, @Req() req: CtxRequest) {
     return this.payments.checkout(req.ctx, id, body, req.headers.origin);
+  }
+
+  // What a coupon would take off (cr-arkilaunch-coupons.md). Tight throttle:
+  // this is the endpoint a code guesser would hammer.
+  @Post(':id/coupon')
+  @RequirePermission('payment:checkout')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  previewCoupon(@Param('id') id: string, @Body() body: CouponPreviewRequestDto, @Req() req: CtxRequest) {
+    return this.payments.previewCoupon(req.ctx, id, body.code);
   }
 }
 
