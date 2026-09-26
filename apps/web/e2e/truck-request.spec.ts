@@ -44,6 +44,11 @@ test.describe('self-loading truck', () => {
 
     const note = `e2e ${Date.now()}`;
     await customer.getByLabel('Notes (optional)').fill(note);
+    // The trip serves one of the customer's own sites, with its proof on
+    // file (the seeded Demo Customer Site).
+    const sitePicker = customer.getByLabel('Project site this trip serves');
+    const demoSite = sitePicker.locator('option', { hasText: 'Demo Customer Site' });
+    await sitePicker.selectOption({ value: (await demoSite.first().getAttribute('value'))! });
     await customer.getByRole('button', { name: 'Request truck' }).click();
     await expect(customer.getByText('Truck requested')).toBeVisible({ timeout: 30_000 });
 
@@ -60,7 +65,9 @@ test.describe('self-loading truck', () => {
     // Staff read the thread and accept the customer's number.
     const admin = await browser.newPage();
     await signIn(admin);
+    // Truck service lives under Bookings now; /app/trucks lands on its filter.
     await admin.goto('/app/trucks');
+    await expect(admin.getByRole('button', { name: /Truck service/ })).toHaveAttribute('aria-pressed', 'true');
     const row = admin.locator('div', { hasText: note }).filter({ has: admin.getByLabel('Agreed price (PHP)') }).last();
     await row.getByRole('button', { name: 'Negotiation' }).click();
     await expect(row.getByText('Offer: ₱4,321.00')).toBeVisible();

@@ -52,12 +52,32 @@ export type CompanyUpdate = z.infer<typeof CompanyUpdateSchema>;
 // the pre-split generic upload, still readable on old rows, never offered.
 // docs/cr-arkilaunch-truck-booking-and-kyc-docs.md.
 export const PRIMARY_REGISTRATION_TYPES = ['bir_cor', 'sec_certificate'] as const;
+// Papers asked for only to cure a rejection (KYC_REJECTION_REASONS): they
+// prove a lapsed registration was put right, or that the applicant may act
+// for the company. Stored and shown to the reviewer; never read by OCR.
+export const CURE_DOCUMENT_TYPES = [
+  'business_permit',
+  'sec_good_standing',
+  'sec_gis',
+  'secretary_certificate',
+] as const;
 export const COMPANY_DOCUMENT_TYPES = [
   'government_id',
+  // The applicant holding their National ID, so the reviewer can match the
+  // face on the card to the person applying. Never sent to OCR.
+  'selfie_with_id',
   ...PRIMARY_REGISTRATION_TYPES,
   'dti_certificate',
+  ...CURE_DOCUMENT_TYPES,
 ] as const;
+export type CompanyDocumentType = (typeof COMPANY_DOCUMENT_TYPES)[number];
 export type PrimaryRegistrationType = (typeof PRIMARY_REGISTRATION_TYPES)[number];
+
+// Documents the OCR models read. The selfie and cure papers are looked at by
+// a person only.
+export function isOcrDocument(documentType: string): boolean {
+  return documentType === 'government_id' || documentType === 'dti_certificate' || isPrimaryRegistration(documentType);
+}
 
 export function isPrimaryRegistration(documentType: string): boolean {
   return (
@@ -66,14 +86,84 @@ export function isPrimaryRegistration(documentType: string): boolean {
   );
 }
 
-// Complete = the applicant's ID plus one primary registration. DTI never
-// counts toward it.
+// Complete = the applicant's ID, a selfie holding it, plus one primary
+// registration. DTI and cure papers never count toward it.
 export function hasRequiredCompanyDocuments(documents: { documentType: string }[]): boolean {
   return (
     documents.some((d) => d.documentType === 'government_id') &&
+    documents.some((d) => d.documentType === 'selfie_with_id') &&
     documents.some((d) => isPrimaryRegistration(d.documentType))
   );
 }
+
+// Why a registration was rejected, and what cures it. A rejection is final
+// for that submission (the reviewer never edits what the customer sent or
+// asks for a piecemeal re-upload); the customer cures it by uploading the
+// listed papers and reapplying, which puts the company back in the queue
+// for a fresh decision. `final` reasons cannot be reapplied from.
+export const KYC_REJECTION_REASONS = {
+  bir_registration_invalid: {
+    label: 'BIR registration not current',
+    detail: 'The Form 2303 is outdated or the TIN is not found on BIR ORUS.',
+    customer:
+      'Update your registration with your BIR RDO (BIR Form 1905), then upload the new Certificate of Registration (Form 2303) and a current Mayor\'s or Business Permit.',
+    cure: ['bir_cor', 'business_permit'],
+    final: false,
+  },
+  sec_not_in_good_standing: {
+    label: 'SEC registration suspended or revoked',
+    detail: 'Check with SEC shows the company as suspended, revoked or delinquent.',
+    customer:
+      'Have the SEC lift the suspension or revocation, then upload the SEC order lifting it (or a Certificate of Good Standing) and your latest General Information Sheet (GIS) stamped received by the SEC.',
+    cure: ['sec_good_standing', 'sec_gis'],
+    final: false,
+  },
+  dti_expired: {
+    label: 'DTI business name expired',
+    detail: 'The DTI business name registration has lapsed on BNRS.',
+    customer: 'Renew your business name on DTI BNRS, then upload the renewed certificate and a current Mayor\'s or Business Permit.',
+    cure: ['dti_certificate', 'business_permit'],
+    final: false,
+  },
+  id_not_verified: {
+    label: 'National ID could not be verified',
+    detail: 'The PhilSys QR did not verify on PhilSys Check, or the card is unreadable.',
+    customer:
+      'Upload a clear photo of your Philippine National ID (or ePhilID) with the whole QR code visible, and a new selfie holding it.',
+    cure: ['government_id', 'selfie_with_id'],
+    final: false,
+  },
+  id_holder_mismatch: {
+    label: 'Applicant does not match the ID or the company',
+    detail: 'The selfie does not match the ID, or the ID holder is not a listed officer of the company.',
+    customer:
+      'Upload a Secretary\'s Certificate or Board Resolution naming you as authorized to transact for the company (a Special Power of Attorney for sole proprietors), with your National ID and a new selfie holding it.',
+    cure: ['secretary_certificate', 'government_id', 'selfie_with_id'],
+    final: false,
+  },
+  document_unreadable: {
+    label: 'Document unreadable or incomplete',
+    detail: 'A page is cut off, blurred or missing.',
+    customer: 'Upload clear, complete copies of the documents listed.',
+    cure: [],
+    final: false,
+  },
+  fraudulent: {
+    label: 'Tampered or fraudulent document',
+    detail: 'A document was altered or does not exist on its registry.',
+    customer: 'This registration cannot be approved. Contact the rental team if you believe this is a mistake.',
+    cure: [],
+    final: true,
+  },
+} as const satisfies Record<string, { label: string; detail: string; customer: string; cure: readonly CompanyDocumentType[]; final: boolean }>;
+export type KycRejectionReason = keyof typeof KYC_REJECTION_REASONS;
+export const KYC_REJECTION_REASON_CODES = Object.keys(KYC_REJECTION_REASONS) as [KycRejectionReason, ...KycRejectionReason[]];
+
+// PhilSys Check, the PSA's official verifier for the National ID's signed
+// QR code (and ePhilID). The QR carries the holder's name, birth date and
+// photo, signed by the PSA, so a scan there proves the card is genuine
+// without trusting the printed text or our OCR.
+export const PHILSYS_CHECK_URL = 'https://verify.philsys.gov.ph';
 // What the customer confirmed they read off the document, sent with the
 // upload and kept on the row beside the raw OCR (as customer_* keys) so the
 // reviewer sees both. Multipart fields, so every value is a string.
@@ -170,11 +260,18 @@ export const CompanyResponseSchema = z.object({
   firstName: z.string().nullable(),
   middleName: z.string().nullable(),
   lastName: z.string().nullable(),
-  // A reviewer's note on a pending company, and what it unlocked for the
-  // customer to fix (UNLOCKABLE_FIELDS). Nothing else is editable once the
-  // documents are in.
-  reviewComment: z.string().nullable(),
-  unlockedFields: z.array(z.string()),
+  // The latest rejection: why, the reviewer's note, and the papers that
+  // cure it. Kept while a reapplied company is pending so the reviewer sees
+  // what it was rejected for; cleared on approval.
+  rejection: z
+    .object({
+      reason: z.enum(KYC_REJECTION_REASON_CODES),
+      note: z.string().nullable(),
+      cureDocuments: z.array(z.string()),
+      rejectedAt: z.coerce.date(),
+      final: z.boolean(),
+    })
+    .nullable(),
   documents: z.array(
     z.object({
       id: z.string().uuid(),
@@ -220,9 +317,43 @@ export const CustomerSiteCreateSchema = z.object({
 });
 export type CustomerSiteCreate = z.infer<typeof CustomerSiteCreateSchema>;
 
+// Proof a project site is real and the customer may work there, required
+// before it can take a booking or a truck trip: a photo of the site taken
+// there, plus one paper tying the company to it. Staff open them from the
+// booking and the truck request.
+export const SITE_PROOF_TYPES = ['building_permit', 'ntp_or_contract', 'lot_title_or_lease', 'barangay_clearance'] as const;
+export const SITE_DOCUMENT_TYPES = ['site_photo', ...SITE_PROOF_TYPES] as const;
+export type SiteDocumentType = (typeof SITE_DOCUMENT_TYPES)[number];
+export const SITE_DOCUMENT_LABELS: Record<SiteDocumentType, string> = {
+  site_photo: 'Photo of the site',
+  building_permit: 'Building or excavation permit',
+  ntp_or_contract: 'Notice to Proceed or construction contract',
+  lot_title_or_lease: 'Land title, lease or owner\'s authorization',
+  barangay_clearance: 'Barangay clearance for the works',
+};
+export const SiteDocumentUploadSchema = z.object({ documentType: z.enum(SITE_DOCUMENT_TYPES) });
+export type SiteDocumentUpload = z.infer<typeof SiteDocumentUploadSchema>;
+
+export function hasSiteProof(documents: { documentType: string }[]): boolean {
+  return (
+    documents.some((d) => d.documentType === 'site_photo') &&
+    documents.some((d) => (SITE_PROOF_TYPES as readonly string[]).includes(d.documentType))
+  );
+}
+
+export const SiteDocumentSchema = z.object({
+  id: z.string().uuid(),
+  documentType: z.string(),
+  status: z.string(),
+  createdAt: z.coerce.date(),
+});
+export type SiteDocument = z.infer<typeof SiteDocumentSchema>;
+
 export const CustomerSiteResponseSchema = z.object({
   id: z.string().uuid(),
   customerId: z.string().uuid(),
+  documents: z.array(SiteDocumentSchema),
+  proofComplete: z.boolean(),
   line1: z.string().nullable(),
   barangay: z.string().nullable(),
   city: z.string().nullable(),
@@ -237,35 +368,46 @@ export type CustomerSiteResponse = z.infer<typeof CustomerSiteResponseSchema>;
 export const CompanyReviewQuerySchema = z.object({
   kycStatus: z.enum(['pending', 'approved', 'rejected']).default('pending'),
 });
-// What a reviewer can hand back to the customer on a pending company: the
-// company fields PATCH /me/companies/:id takes, and each document type.
-export const UNLOCKABLE_COMPANY_FIELDS = ['tin', 'secNumber', 'billingAddress'] as const;
-export const UNLOCKABLE_FIELDS = [...UNLOCKABLE_COMPANY_FIELDS, ...COMPANY_DOCUMENT_TYPES] as const;
-
-// PATCH /customers/:id/review. A comment to the customer, and what it
-// unlocks. The status stays pending; only decide() moves it.
-export const CompanyReviewCommentSchema = z.object({
-  comment: z.string().trim().min(1).max(1000),
-  unlock: z.array(z.enum(UNLOCKABLE_FIELDS)).max(UNLOCKABLE_FIELDS.length).default([]),
-});
-export type CompanyReviewComment = z.infer<typeof CompanyReviewCommentSchema>;
-
-// A reviewer may correct what the document says before approving. The
-// corrections are the human's, not the OCR's: they are what gets written
-// onto the company, and approval still requires this explicit call.
-export const CompanyDecisionSchema = z.object({
-  decision: z.enum(['approved', 'rejected']),
-  companyName: z.string().trim().min(2).max(200).optional(),
-  tin: TinSchema.optional(),
-  secNumber: z.string().trim().max(50).optional(),
-  dtiNumber: z.string().trim().max(50).optional(),
-  // The SEC/BIR/DTI documents the reviewer ticked as checked on the public
-  // registry. Approval is refused unless every such document is listed.
-  registryChecked: z.array(z.string().uuid()).max(20).optional(),
-  // The reviewer-confirmed legal name off the National ID. Written onto the
-  // customer's user account only on approval, same human gate as above.
-  firstName: z.string().trim().min(1).max(200).optional(),
-  middleName: z.string().trim().max(200).optional(),
-  lastName: z.string().trim().min(1).max(200).optional(),
-});
+// PATCH /customers/:id/kyc. Approve or reject, nothing in between: the
+// reviewer reads what the customer submitted but never edits it.
+// Approval needs every registry paper checked on its public registry and
+// the three identity checks; a rejection needs a reason, which decides the
+// papers that cure it (plus any the reviewer adds, e.g. which document was
+// unreadable).
+// (One flat object, not a union: a Nest DTO class cannot extend a union.)
+export const CompanyDecisionSchema = z
+  .object({
+    decision: z.enum(['approved', 'rejected']),
+    // Approval: the SEC/BIR/DTI documents the reviewer ticked as checked on
+    // the public registry. Refused unless every such document is listed.
+    registryChecked: z.array(z.string().uuid()).max(20).default([]),
+    identity: z
+      .object({
+        // The National ID's QR scanned on PhilSys Check and it verified.
+        philsysVerified: z.literal(true),
+        // The face in the selfie is the face on the ID.
+        selfieMatches: z.literal(true),
+        // The ID holder is an officer or authorized representative of the
+        // company (GIS, Secretary's Certificate, or the DTI owner).
+        holderAuthorized: z.literal(true),
+      })
+      .optional(),
+    // Rejection: why, a note, and any papers to add to the reason's own.
+    reason: z.enum(KYC_REJECTION_REASON_CODES).optional(),
+    note: z.string().trim().max(1000).optional(),
+    cureDocuments: z.array(z.enum(COMPANY_DOCUMENT_TYPES)).max(COMPANY_DOCUMENT_TYPES.length).default([]),
+  })
+  .refine((body) => body.decision !== 'approved' || body.identity, {
+    message: 'Confirm the PhilSys QR, the selfie and the holder before approving',
+    path: ['identity'],
+  })
+  .refine((body) => body.decision !== 'rejected' || body.reason, {
+    message: 'A rejection needs a reason',
+    path: ['reason'],
+  });
 export type CompanyDecision = z.infer<typeof CompanyDecisionSchema>;
+
+// The papers a rejection asks for: the reason's own plus the reviewer's.
+export function cureDocumentsFor(reason: KycRejectionReason, extra: readonly string[] = []): string[] {
+  return [...new Set([...KYC_REJECTION_REASONS[reason].cure, ...extra])];
+}

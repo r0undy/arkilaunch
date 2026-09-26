@@ -34,7 +34,7 @@ describe('BookingsService (PRD-F8)', () => {
     const [customerUser] = await sql`select id from users where tenant_id = ${tenantIdA} and email = 'customer@test-tenant-a.test'`;
     const [adminA] = await sql`select id from users where tenant_id = ${tenantIdA} and email = 'admin@test-tenant-a.test'`;
     const [adminB] = await sql`select id from users where tenant_id = ${tenantIdB} and email = 'admin@test-tenant-b.test'`;
-    const [site] = await sql`select id from project_sites where tenant_id = ${tenantIdA} limit 1`;
+    const [site] = await sql`select id from project_sites where tenant_id = ${tenantIdA} and customer_id is null order by created_at limit 1`;
     const [equipmentRow] = await sql`select id, equipment_type_id from equipment where tenant_id = ${tenantIdA} and serial_no = 'test-tenant-a-serial-booking-001'`;
     const [customerRow] = await sql`select id from customers where tenant_id = ${tenantIdA} limit 1`;
 

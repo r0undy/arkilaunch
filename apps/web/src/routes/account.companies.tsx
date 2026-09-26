@@ -61,6 +61,7 @@ async function uploadDocuments(
   files: {
     governmentId: File | null;
     idDetails: IdDetails;
+    selfie?: File | null;
     registration: File | null;
     registrationType: PrimaryRegistrationType;
     dti: File | null;
@@ -69,6 +70,7 @@ async function uploadDocuments(
 ): Promise<void> {
   const uploads: [string, File | null, Record<string, string>][] = [
     ['government_id', files.governmentId, filled({ ...files.idDetails })],
+    ['selfie_with_id', files.selfie ?? null, {}],
     [files.registrationType, files.registration, {}],
     ['dti_certificate', files.dti, filled({ dtiNumber: files.dtiNumber ?? '' })],
   ];
@@ -87,7 +89,7 @@ export const DOC_STEPS: { type: DocStep; label: string; hint: string }[] = [
   {
     type: 'government_id',
     label: 'Philippine National ID (PhilSys)',
-    hint: 'Step 1 of 3. Only the PhilSys National ID is accepted -- it is how we read and confirm your legal name.',
+    hint: 'Step 1 of 3. Only the PhilSys National ID (or ePhilID) is accepted, with its QR code clearly visible: the rental team verifies it on PhilSys Check. Add a selfie holding the ID so they can match you to it.',
   },
   {
     type: 'company_registration',
@@ -159,6 +161,8 @@ function DocumentStep({
   onDtiChange,
   showPrimary = true,
   showDti = true,
+  selfie = null,
+  onSelfieChange,
 }: {
   step: (typeof DOC_STEPS)[number];
   value: File | null;
@@ -167,9 +171,11 @@ function DocumentStep({
   onRegistrationTypeChange: (type: PrimaryRegistrationType) => void;
   dti: File | null;
   onDtiChange: (file: File | null) => void;
-  // A submitted company re-uploads only what the reviewer unlocked.
+  // A rejected company re-uploads what cures it; a submitted one nothing.
   showPrimary?: boolean;
   showDti?: boolean;
+  selfie?: File | null;
+  onSelfieChange?: (file: File | null) => void;
 }) {
   const isRegistration = step.type === 'company_registration';
 
@@ -200,6 +206,24 @@ function DocumentStep({
           value={value}
           onChange={onChange}
         />
+      )}
+      {!isRegistration && onSelfieChange && (
+        <label className="flex flex-col gap-1 text-sm font-medium text-text">
+          Selfie holding your National ID
+          <span className="font-normal text-text-muted">
+            Hold the ID beside your face, both clearly visible. The rental team only compares it with the ID photo; it is
+            never read by a machine.
+          </span>
+          <input
+            id="doc-selfie_with_id"
+            type="file"
+            accept="image/*"
+            capture="user"
+            onChange={(e) => onSelfieChange(e.target.files?.[0] ?? null)}
+            className="min-h-11 text-sm"
+          />
+          {selfie && <span className="font-normal text-text-muted">{selfie.name}</span>}
+        </label>
       )}
       {isRegistration && showDti && (
         <CroppableCapture
@@ -392,6 +416,7 @@ function NewCompanyPage() {
   const [registration, setRegistration] = useState<File | null>(null);
   const [registrationType, setRegistrationType] = useState<PrimaryRegistrationType>('bir_cor');
   const [dti, setDti] = useState<File | null>(null);
+  const [selfie, setSelfie] = useState<File | null>(null);
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -458,6 +483,7 @@ function NewCompanyPage() {
       await uploadDocuments(created.id, {
         governmentId,
         idDetails,
+        selfie,
         registration,
         registrationType,
         dti,
@@ -518,6 +544,8 @@ function NewCompanyPage() {
             onRegistrationTypeChange={setRegistrationType}
             dti={dti}
             onDtiChange={setDti}
+            selfie={selfie}
+            onSelfieChange={setSelfie}
           />
           <div className="flex flex-wrap gap-2">
             <Button
@@ -677,11 +705,11 @@ function NewCompanyPage() {
 function CompanyDocumentsPage() {
   const { companyId } = accountCompanyDocumentsRoute.useParams();
   const company = useQuery(companiesQueries.mine()).data?.find((row) => row.id === companyId);
-  // A document already on file is replaced only when the reviewer unlocked
-  // it; one never uploaded can always be added.
+  // A document already on file is replaced only after a rejection, as its
+  // cure; one never uploaded can always be added.
   const mayUpload = (test: (type: string) => boolean) => {
     const onFile = company?.documents.filter((d) => test(d.documentType)) ?? [];
-    return onFile.length === 0 || onFile.some((d) => company!.unlockedFields.includes(d.documentType));
+    return onFile.length === 0 || (company!.kycStatus === 'rejected' && !company!.rejection?.final);
   };
   const idOpen = mayUpload((t) => t === 'government_id');
   const primaryOpen = mayUpload(isPrimaryRegistration);
@@ -695,6 +723,7 @@ function CompanyDocumentsPage() {
   const [registration, setRegistration] = useState<File | null>(null);
   const [registrationType, setRegistrationType] = useState<PrimaryRegistrationType>('bir_cor');
   const [dti, setDti] = useState<File | null>(null);
+  const [selfie, setSelfie] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
   // Same one-at-a-time order as adding a company, ID check included. The
@@ -745,6 +774,7 @@ function CompanyDocumentsPage() {
       await uploadDocuments(companyId, {
         governmentId,
         idDetails,
+        selfie,
         registration,
         registrationType,
         dti,
@@ -792,6 +822,8 @@ function CompanyDocumentsPage() {
                 onRegistrationTypeChange={setRegistrationType}
                 dti={dti}
                 onDtiChange={setDti}
+                selfie={selfie}
+                onSelfieChange={setSelfie}
                 showPrimary={primaryOpen}
                 showDti={dtiOpen}
               />

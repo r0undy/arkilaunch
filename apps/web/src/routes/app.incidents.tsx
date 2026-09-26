@@ -31,18 +31,19 @@ const KINDS = [
   { id: undefined, label: 'All' },
   { id: 'weather', label: 'Weather incidents' },
   { id: 'discrepancy', label: 'Report discrepancies' },
+  { id: 'used_despite_warning', label: 'Used despite warning' },
 ] as const;
 
 function IncidentsPage() {
   const [offset, setOffset] = useState(0);
-  const [kind, setKind] = useState<'weather' | 'discrepancy' | undefined>(undefined);
+  const [kind, setKind] = useState<'weather' | 'discrepancy' | 'used_despite_warning' | undefined>(undefined);
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="Billing"
         title="Incident log"
-        description="Weather and liability events recorded against your sites, and timekeeper weather reports the site readings contradict."
+        description="Weather and liability events recorded against your sites, timekeeper weather reports the site readings contradict, and machines used after a Stop work warning."
       />
       <div role="group" aria-label="Filter incidents" className="flex flex-wrap gap-2">
         {KINDS.map((entry) => (

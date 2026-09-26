@@ -2,12 +2,13 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { CustomerSiteResponse } from '@arkilaunch/shared';
+import type { CustomerSiteResponse, SiteDocumentType } from '@arkilaunch/shared';
 import { apiErrorText, apiPost } from '../lib/api-client.js';
 import { reverseGeocode } from '../lib/reverse-geocode.js';
 import { Modal } from './modal.js';
 import { Button } from './button.js';
 import { Input } from './input.js';
+import { SiteProofFields, uploadSiteDocument } from './site-proof.js';
 
 // Metro Manila: where most of the yard's work is.
 const DEFAULT_CENTER: L.LatLngTuple = [14.5995, 120.9842];
@@ -48,6 +49,10 @@ export function SiteDialog({
   const [province, setProvince] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [looking, setLooking] = useState(false);
+  // Proof the site is real and theirs, uploaded right after it is saved.
+  const [proofType, setProofType] = useState<SiteDocumentType>('building_permit');
+  const [proof, setProof] = useState<File | null>(null);
+  const [photo, setPhoto] = useState<File | null>(null);
 
   // A dropped or dragged pin fills the address from OpenStreetMap; the
   // fields stay editable and a part OSM does not know is left as typed.
@@ -129,8 +134,8 @@ export function SiteDialog({
   }
 
   const create = useMutation({
-    mutationFn: () =>
-      apiPost<CustomerSiteResponse>('/me/sites', {
+    mutationFn: async () => {
+      const site = await apiPost<CustomerSiteResponse>('/me/sites', {
         customerId,
         line1: line1.trim(),
         ...(barangay.trim() ? { barangay: barangay.trim() } : {}),
@@ -139,7 +144,14 @@ export function SiteDialog({
         ...(postalCode.trim() ? { postalCode: postalCode.trim() } : {}),
         latitude: pin!.lat,
         longitude: pin!.lng,
-      }),
+      });
+      // If an upload fails the site is still saved; it shows as missing its
+      // proof, with an upload, until both are in.
+      await uploadSiteDocument(site.id, proofType, proof!);
+      await uploadSiteDocument(site.id, 'site_photo', photo!);
+      return site;
+    },
+    onError: () => void queryClient.invalidateQueries({ queryKey: ['me', 'sites'] }),
     onSuccess: async (site) => {
       await queryClient.invalidateQueries({ queryKey: ['me', 'sites'] });
       onCreated?.(site);
@@ -149,13 +161,15 @@ export function SiteDialog({
       setProvince('');
       setPostalCode('');
       setPin(null);
+      setProof(null);
+      setPhoto(null);
       onClose();
     },
   });
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (pin) create.mutate();
+    if (pin && proof && photo) create.mutate();
   }
 
   return (
@@ -187,12 +201,13 @@ export function SiteDialog({
           <Input label="Province" required maxLength={120} value={province} onChange={(e) => setProvince(e.target.value)} />
           <Input label="ZIP code" inputMode="numeric" pattern="\d{4}" maxLength={4} value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
         </div>
+        <SiteProofFields idPrefix="new-site" proofType={proofType} onProofTypeChange={setProofType} onProofFile={setProof} onPhotoFile={setPhoto} />
         {create.isError && <p className="text-sm text-error">{apiErrorText(create.error)}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" loading={create.isPending} disabled={!pin}>
+          <Button type="submit" variant="primary" loading={create.isPending} disabled={!pin || !proof || !photo}>
             Save site
           </Button>
         </div>

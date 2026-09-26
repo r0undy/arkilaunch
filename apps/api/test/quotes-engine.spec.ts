@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import postgres from 'postgres';
-import { events, pricingParameters, rateCards, withTenantTx } from '@arkilaunch/db';
+import { events, negotiationMessages, pricingParameters, rateCards, rentals, withTenantTx } from '@arkilaunch/db';
 import { eq, and, desc } from 'drizzle-orm';
 import type { RequestContext } from '@arkilaunch/shared';
 import { QuotesService } from '../src/quotes/quotes.service.js';
@@ -22,6 +22,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
   let customerIdA: string;
   let customerCtxA: RequestContext;
   let otherCustomerIdA: string;
+  let siteIdA: string;
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL_DIRECT;
@@ -76,8 +77,23 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     // Quotes now require a verified company (company_not_verified).
     await sql`update customers set kyc_status = 'approved' where id = ${otherCustomerIdA}`;
 
+    const [siteA] = await sql`select id from project_sites where tenant_id = ${(tenantA as { id: string }).id} order by created_at limit 1`;
+    siteIdA = (siteA as { id: string }).id;
+
     await sql.end();
   });
+
+  // Every quote prices a booking now (the standard price book; no quote
+  // drawn up per company), so each test quotes a fresh draft booking.
+  async function bookingFor(customerId: string): Promise<string> {
+    return withTenantTx(ctxA, async (tx) => {
+      const [row] = await tx
+        .insert(rentals)
+        .values({ tenantId: ctxA.tenantId, customerId, projectSiteId: siteIdA, status: 'draft', startDate: new Date() })
+        .returning({ id: rentals.id });
+      return row!.id;
+    });
+  }
 
   function itemsFor(rateCardId: string, equipmentTypeId: string) {
     return [
@@ -97,7 +113,8 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     const startedAt = Date.now();
     const result = await quotes.create(ctxA, {
       customerId: customerIdA,
-      projectSiteId: '00000000-0000-0000-0000-000000000000',
+      projectSiteId: siteIdA,
+      rentalId: await bookingFor(customerIdA),
       discount: { type: 'none', value: 0 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
     });
@@ -121,7 +138,8 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
   it('QAD-T44: a persisted quote is reproducible after the diesel price and pricing params move', async () => {
     const created = await quotes.create(ctxA, {
       customerId: customerIdA,
-      projectSiteId: '00000000-0000-0000-0000-000000000000',
+      projectSiteId: siteIdA,
+      rentalId: await bookingFor(customerIdA),
       discount: { type: 'none', value: 0 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
     });
@@ -168,7 +186,8 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
 
     const created = await quotes.create(ctxA, {
       customerId: customerIdA,
-      projectSiteId: '00000000-0000-0000-0000-000000000000',
+      projectSiteId: siteIdA,
+      rentalId: await bookingFor(customerIdA),
       discount: { type: 'none', value: 0 },
       items: itemsFor(dedicatedCardId, equipmentTypeIdA),
     });
@@ -200,7 +219,8 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     await expect(
       quotes.create(ctxA, {
         customerId: customerIdA,
-        projectSiteId: '00000000-0000-0000-0000-000000000000',
+        projectSiteId: siteIdA,
+        rentalId: await bookingFor(customerIdA),
         discount: { type: 'none', value: 0 },
         items: itemsFor(dedicatedCardId, equipmentTypeIdA),
       }),
@@ -273,7 +293,8 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
   it('QAD-T46: rounded line-item subtotals reconcile to the rounded quote total within PHP 0.01', async () => {
     const priced = await quotes.preview(ctxA, {
       customerId: customerIdA,
-      projectSiteId: '00000000-0000-0000-0000-000000000000',
+      projectSiteId: siteIdA,
+      rentalId: await bookingFor(customerIdA),
       discount: { type: 'none', value: 0 },
       items: [
         ...itemsFor(rateCardIdA, equipmentTypeIdA),
@@ -289,14 +310,16 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
   it('QAD-T47: /revise creates revision n+1, links the parent, and leaves the parent unchanged', async () => {
     const original = await quotes.create(ctxA, {
       customerId: customerIdA,
-      projectSiteId: '00000000-0000-0000-0000-000000000000',
+      projectSiteId: siteIdA,
+      rentalId: await bookingFor(customerIdA),
       discount: { type: 'none', value: 0 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
     });
 
     const revised = await quotes.revise(ctxA, original.id, {
       customerId: customerIdA,
-      projectSiteId: '00000000-0000-0000-0000-000000000000',
+      projectSiteId: siteIdA,
+      rentalId: await bookingFor(customerIdA),
       discount: { type: 'fixed', value: 500 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
     });
@@ -309,11 +332,33 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     expect(parentAfter.total).toBe(original.total); // parent's numbers are unchanged
   });
 
+  // Standard price book: an approved quote stands until the customer
+  // negotiates (writes in the booking's thread, or declines it).
+  it('re-quoting an approved quote needs a negotiation from the customer', async () => {
+    const rentalId = await bookingFor(customerIdA);
+    const body = { customerId: customerIdA, projectSiteId: siteIdA, rentalId, discount: { type: 'none' as const, value: 0 }, items: itemsFor(rateCardIdA, equipmentTypeIdA) };
+    const original = await quotes.create(ctxA, body);
+    await quotes.approve(ctxA, original.id);
+
+    await expect(quotes.revise(ctxA, original.id, { ...body, discount: { type: 'fixed', value: 500 } })).rejects.toMatchObject({
+      response: { error: 'quote_not_in_negotiation' },
+    });
+    await expect(quotes.create(ctxA, body)).rejects.toMatchObject({ response: { error: 'quote_not_in_negotiation' } });
+
+    await withTenantTx(ctxA, (tx) =>
+      tx.insert(negotiationMessages).values({ tenantId: ctxA.tenantId, rentalId, authorUserId: customerCtxA.userId, authorRole: 'customer', body: 'Can you do 10% less?' }),
+    );
+    const revised = await quotes.revise(ctxA, original.id, { ...body, discount: { type: 'fixed', value: 500 } });
+    expect(revised.revision).toBe(2);
+    expect(revised.mobilization).toBe(original.mobilization); // fixed by the price book
+  });
+
   // QAD-T48: authz/isolation -- Tenant A cannot read Tenant B's quote (RLS).
   it('QAD-T48: a quote created under Tenant A is invisible to Tenant B', async () => {
     const created = await quotes.create(ctxA, {
       customerId: customerIdA,
-      projectSiteId: '00000000-0000-0000-0000-000000000000',
+      projectSiteId: siteIdA,
+      rentalId: await bookingFor(customerIdA),
       discount: { type: 'none', value: 0 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
     });
@@ -327,7 +372,8 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
   it('a customer cannot read another customer’s quote in the same tenant', async () => {
     const theirs = await quotes.create(ctxA, {
       customerId: otherCustomerIdA,
-      projectSiteId: '00000000-0000-0000-0000-000000000000',
+      projectSiteId: siteIdA,
+      rentalId: await bookingFor(otherCustomerIdA),
       discount: { type: 'none', value: 0 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
     });
@@ -339,7 +385,8 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
   it('a customer can still read their own quote', async () => {
     const mine = await quotes.create(ctxA, {
       customerId: customerIdA,
-      projectSiteId: '00000000-0000-0000-0000-000000000000',
+      projectSiteId: siteIdA,
+      rentalId: await bookingFor(customerIdA),
       discount: { type: 'none', value: 0 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
     });

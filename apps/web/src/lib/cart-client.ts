@@ -128,7 +128,11 @@ export function defaultRentalWindow(): { start: string; end: string } {
   const start = new Date();
   start.setDate(start.getDate() + 1);
   start.setHours(8, 0, 0, 0);
+  // Sunday is the usual office-closed day: never default a pickup or
+  // return onto it (the calendar and the server still have the final say).
+  if (start.getDay() === 0) start.setDate(start.getDate() + 1);
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
+  if (end.getDay() === 0) end.setDate(end.getDate() + 1);
   return { start: start.toISOString(), end: end.toISOString() };
 }

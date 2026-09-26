@@ -1,18 +1,10 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useEffect, useState, type FormEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { BookingDetailResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { apiGet, apiPost, apiErrorText } from '../lib/api-client.js';
-import {
-  getCustomers,
-  getEquipmentTypes,
-  getProjectSites,
-  getRateCards,
-  type CustomerRef,
-  type EquipmentTypeRef,
-  type ProjectSiteRef,
-  type RateCardRef,
-} from '../lib/reference-client.js';
+import { getEquipmentTypes, getRateCards, type EquipmentTypeRef, type RateCardRef } from '../lib/reference-client.js';
 import type { QuoteDetail } from '../lib/queries.js';
 import { formatPeso, formatRateType, formatStatus, shortCode } from '../lib/format.js';
 import { Button } from '../components/button.js';
@@ -24,6 +16,8 @@ import { GaugeReadout } from '../components/gauge-readout.js';
 import { Modal } from '../components/modal.js';
 import { QuoteLines } from '../components/quote-lines.js';
 import { useToast } from '../components/toast.js';
+import { DieselPriceForm, PricingParametersForm, RateCardForm, RateCardsPanel, RentalFeesForm } from './app.settings.js';
+import { SettingsEditor, TollsEditor, settingsQuery as truckSettingsQuery } from './app.trucks.js';
 
 // A quote line as the builder edits it: a catalog machine priced off its
 // type's rate card, or a free-text item the admin prices by hand.
@@ -44,38 +38,94 @@ let nextKey = 1;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// ?bookingId=&customerId= arrive from a booking's "Quote this booking":
-// the quote is then tied to that booking so the customer can accept it.
-function validateQuoteSearch(search: Record<string, unknown>): { bookingId?: string; customerId?: string } {
-  const out: { bookingId?: string; customerId?: string } = {};
+// ?bookingId= arrives from a booking in negotiation ("Revise quote"). With
+// no booking the page is the standard price book: quotes are never drawn up
+// per company; every booking is priced from the book automatically.
+function validateQuoteSearch(search: Record<string, unknown>): { bookingId?: string } {
+  const out: { bookingId?: string } = {};
   if (typeof search.bookingId === 'string' && UUID.test(search.bookingId)) out.bookingId = search.bookingId;
-  if (typeof search.customerId === 'string' && UUID.test(search.customerId)) out.customerId = search.customerId;
   return out;
 }
 
+type PriceBookTab = 'rental' | 'trucking';
+const PRICE_BOOK_TABS: Array<{ id: PriceBookTab; label: string }> = [
+  { id: 'rental', label: 'Equipment rental' },
+  { id: 'trucking', label: 'Trucking' },
+];
+
+// The standard price book: one set of prices for every client and prospect.
+// Equipment rental is rate cards + operating costs + the fixed mobilization
+// and demobilization; trucking is its per-trip fees, extras and tolls. A
+// booking is quoted from here the moment it is made.
+function PriceBook() {
+  const [tab, setTab] = useState<PriceBookTab>('rental');
+  const truck = useQuery(truckSettingsQuery);
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="Billing"
+        title="Quotes"
+        description="The standard prices every client and prospect is quoted. A booking gets its quote from these at once; you only revise one when the customer negotiates."
+      />
+      <div role="tablist" aria-label="Service" className="flex gap-1 border-b border-border">
+        {PRICE_BOOK_TABS.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === entry.id}
+            onClick={() => setTab(entry.id)}
+            className={[
+              '-mb-px border-b-2 px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
+              tab === entry.id ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text',
+            ].join(' ')}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
+      {tab === 'rental' ? (
+        <>
+          <RentalFeesForm />
+          <PricingParametersForm />
+          <DieselPriceForm />
+          <RateCardForm />
+          <RateCardsPanel />
+        </>
+      ) : (
+        <>
+          {truck.data && <SettingsEditor initial={truck.data} />}
+          {truck.isError && <p className="text-sm text-error">{apiErrorText(truck.error)}</p>}
+          <TollsEditor />
+        </>
+      )}
+    </div>
+  );
+}
+
+function QuotesPage() {
+  const { bookingId } = quotesRoute.useSearch();
+  return bookingId ? <NegotiatedQuote bookingId={bookingId} /> : <PriceBook />;
+}
+
 function hireDays(booking: BookingDetailResponse): number {
-  const spans = booking.items.filter((item) => item.end).map((item) => (item.end!.getTime() - item.start.getTime()) / 86_400_000);
+  const spans = booking.items.filter((item) => item.end).map((item) => (new Date(item.end!).getTime() - new Date(item.start).getTime()) / 86_400_000);
   return spans.length ? Math.max(1, Math.ceil(Math.max(...spans))) : 1;
 }
 
-// DESIGN.md §4.1 Quotation builder: several lines, each machine priced off
-// its own type's rate card in the card's unit, plus free-text items,
-// flat mobilization/demobilization, and a live diesel Gauge Readout.
-function QuotesPage() {
+// DESIGN.md §4.1 Quotation builder, now only for a booking in negotiation:
+// it starts from the booking's current quote (priced from the price book),
+// and staff meet the customer's counter-offer with an agreed line price or
+// a discount. Mobilization/demobilization stay the price book's.
+function NegotiatedQuote({ bookingId }: { bookingId: string }) {
   const toast = useToast();
-  const { bookingId, customerId: bookingCustomerId } = quotesRoute.useSearch();
-  const [customers, setCustomers] = useState<CustomerRef[]>([]);
   const [equipmentTypes, setEquipmentTypes] = useState<EquipmentTypeRef[]>([]);
   const [rateCards, setRateCards] = useState<RateCardRef[]>([]);
-  const [projectSites, setProjectSites] = useState<ProjectSiteRef[]>([]);
   const [refFailed, setRefFailed] = useState(false);
 
   const [customerId, setCustomerId] = useState('');
   const [projectSiteId, setProjectSiteId] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
-  // Empty = the company default from Settings.
-  const [mobilization, setMobilization] = useState('');
-  const [demobilization, setDemobilization] = useState('');
   // A fixed peso discount is how staff meet a customer's counter-offer.
   const [discount, setDiscount] = useState('0');
 
@@ -98,31 +148,20 @@ function QuotesPage() {
   }
 
   useEffect(() => {
-    Promise.all([getCustomers(), getEquipmentTypes(), getRateCards(), getProjectSites()])
-      .then(async ([c, et, rc, ps]) => {
-        setCustomers(c);
+    Promise.all([getEquipmentTypes(), getRateCards()])
+      .then(async ([et, rc]) => {
         setEquipmentTypes(et);
         setRateCards(rc);
-        setProjectSites(ps);
-        const preset = bookingCustomerId && c.find((customer) => customer.id === bookingCustomerId);
-        if (preset) setCustomerId(preset.id);
-        else if (c[0]) setCustomerId(c[0].id);
-        if (ps[0]) setProjectSiteId(ps[0].id);
-        if (!bookingId) {
-          setLines([equipmentLine(et, rc)]);
-          return;
-        }
-        // Quoting a booking starts from its current quote (a revision is an
-        // edit of what the customer saw), else one line per booked day span.
+        // A revision is an edit of what the customer saw; with no quote yet
+        // (the price book could not price it), one line per booked span.
         const booking = await apiGet<BookingDetailResponse>(`/bookings/${bookingId}`);
+        setCustomerId(booking.customerId);
         setProjectSiteId(booking.projectSiteId);
         const current = booking.quotation ? await apiGet<QuoteDetail>(`/quotes/${booking.quotation.id}`) : null;
         if (!current) {
           setLines([equipmentLine(et, rc, hireDays(booking))]);
           return;
         }
-        setMobilization(String(current.mobilization));
-        setDemobilization(String(current.demobilization));
         setDiscount(String(current.discount));
         setLines(
           current.lineItems.map((line): Line => {
@@ -141,7 +180,7 @@ function QuotesPage() {
       })
       .catch((err: unknown) => {
         setRefFailed(true);
-        toast.error('Could not load the quote reference data', apiErrorText(err));
+        toast.error('Could not load the booking to quote', apiErrorText(err));
       });
     // Pick lists are fetched once on mount; the toast context is stable.
   }, []);
@@ -158,10 +197,8 @@ function QuotesPage() {
     return {
       customerId,
       projectSiteId,
-      ...(bookingId ? { rentalId: bookingId } : {}),
+      rentalId: bookingId,
       discount: Number(discount) > 0 ? { type: 'fixed', value: Number(discount) } : { type: 'none', value: 0 },
-      ...(mobilization !== '' ? { mobilizationPhp: Number(mobilization) } : {}),
-      ...(demobilization !== '' ? { demobilizationPhp: Number(demobilization) } : {}),
       items: lines.map((line) => {
         if (line.kind === 'custom') {
           return { kind: 'custom', description: line.description, quantity: Number(line.quantity), unitPricePhp: Number(line.unitPrice) };
@@ -208,7 +245,7 @@ function QuotesPage() {
       setResult(res);
       setQuoteId(res.id);
       setPreviewOpen(false);
-      toast.success('Draft quote created', `Total ${formatPeso(res.total)}. Approve it to send.`);
+      toast.success('Revised quote drafted', `Total ${formatPeso(res.total)}. Approve it to send.`);
     } catch (err) {
       toast.error('Could not create the draft', apiErrorText(err));
     } finally {
@@ -223,7 +260,7 @@ function QuotesPage() {
       // approve answers { id, status } only; keep the priced figures.
       const res = await apiPost<{ status: string }>(`/quotes/${quoteId}/approve`, {});
       setResult((prev) => (prev ? { ...prev, status: res.status } : prev));
-      toast.success('Quote approved', bookingId ? 'The customer has been notified.' : undefined);
+      toast.success('Quote approved', 'The customer has been notified.');
     } catch (err) {
       toast.error('Could not approve the quote', apiErrorText(err));
     } finally {
@@ -260,45 +297,26 @@ function QuotesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         eyebrow="Billing"
-        title="Quotes"
-        description="Price each machine off its own rate card, add any extra items, and set transport."
+        title="Revise quote"
+        description="The customer is negotiating. Start from the price book quote they saw and meet their offer with an agreed price or a discount."
       />
-      {bookingId && (
-        <p className="text-sm text-text">
-          Quoting booking{' '}
-          <Link to="/app/bookings/$bookingId" params={{ bookingId }} className="font-mono underline">
-            {bookingId.slice(0, 8)}
-          </Link>
-          . Approving it sends it to the customer to accept.
-        </p>
-      )}
+      <p className="text-sm text-text">
+        Booking{' '}
+        <Link to="/app/bookings/$bookingId" params={{ bookingId }} className="font-mono underline">
+          {bookingId.slice(0, 8)}
+        </Link>
+        . Approving the revision sends it to the customer to accept.{' '}
+        <Link to="/app/quotes" className="underline">
+          Back to the price book
+        </Link>
+      </p>
       {refFailed && (
         <p className="text-error" role="alert">
-          Could not load customers, equipment, rate cards or sites. Reload the page once the API is
-          reachable.
+          Could not load the booking, equipment or rate cards. Reload the page once the API is reachable.
         </p>
       )}
       <Surface radius="md" elevation="sm" className="flex max-w-3xl flex-col gap-4 p-6">
         <form className="flex flex-col gap-4" onSubmit={preview}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Select id="customerId" label="Customer" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
-              {customers.length === 0 && <option value="">No customers on file yet</option>}
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.companyName}
-                </option>
-              ))}
-            </Select>
-            <Select id="projectSiteId" label="Project site" value={projectSiteId} onChange={(e) => setProjectSiteId(e.target.value)} required>
-              {projectSites.length === 0 && <option value="">No project sites yet</option>}
-              {projectSites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.city ?? s.province ?? `Site ${s.id.slice(0, 8)}`} ({s.latitude}, {s.longitude})
-                </option>
-              ))}
-            </Select>
-          </div>
-
           <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Lines</h2>
           {lines.map((line, index) => (
             <fieldset key={line.key} className="flex flex-col gap-3 rounded-md border border-border p-4">
@@ -392,8 +410,6 @@ function QuotesPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <Input numeric id="mobilization" label="Mobilization (PHP)" placeholder="Company default" type="number" min="0" step="0.01" value={mobilization} onChange={(e) => setMobilization(e.target.value)} />
-            <Input numeric id="demobilization" label="Demobilization (PHP)" placeholder="Company default" type="number" min="0" step="0.01" value={demobilization} onChange={(e) => setDemobilization(e.target.value)} />
             <Input numeric id="discount" label="Discount (PHP, fixed)" type="number" min="0" step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} />
           </div>
           <div className="flex flex-wrap gap-3">
@@ -402,15 +418,15 @@ function QuotesPage() {
             </Button>
           </div>
           <p className="text-sm text-text-muted">
-            Pricing runs against today&apos;s diesel rate. Leave mobilization empty to use the company
-            default. Nothing is saved until you create the draft.
+            Pricing runs against today&apos;s diesel rate. Mobilization and demobilization are the
+            price book&apos;s fixed fees. Nothing is saved until you create the draft.
           </p>
         </form>
       </Surface>
 
       {quoteId && result && (
         <Surface radius="md" elevation="sm" className="flex max-w-3xl flex-col gap-4 p-6">
-          <h2 className="font-display text-lg font-semibold text-text">Draft quote</h2>
+          <h2 className="font-display text-lg font-semibold text-text">Revised quote</h2>
           <QuoteFigures quote={result} />
           <div className="flex flex-wrap gap-2">
             <Button

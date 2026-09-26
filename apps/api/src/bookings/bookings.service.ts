@@ -36,7 +36,8 @@ import type {
 } from '@arkilaunch/shared';
 import { bookingDays, minBookingHours } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
-import { QuotesService } from '../quotes/quotes.service.js';
+import { QuotesService, inNegotiation } from '../quotes/quotes.service.js';
+import { requireSiteProof } from '../common/site-proof.js';
 import {
   availabilityBlockers,
   findAvailableAlternatives,
@@ -107,6 +108,8 @@ export class BookingsService {
         throw new NotFoundException({ error: 'project_site_not_found' });
       }
       await requireVerifiedCompany(tx, customerId);
+      // The customer's site shows it is real and theirs before it takes a job.
+      await requireSiteProof(tx, site.id);
 
       const { dailyHours, minHours } = await getBillingSettings(tx, ctx.tenantId);
       const bookedHours = body.items.map((item) => {
@@ -376,6 +379,7 @@ export class BookingsService {
               status: quotation.status,
               totalPhp: quotation.totalPhp !== null ? Number(quotation.totalPhp) : null,
               createdAt: quotation.createdAt,
+              inNegotiation: await inNegotiation(tx, quotation),
             }
           : null,
         invoices: invoiceRows.map((invoice) => ({

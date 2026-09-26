@@ -1,13 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { CompanyDocumentUploadSchema, hasRequiredCompanyDocuments, isPrimaryRegistration } from './customers.js';
+import {
+  CompanyDecisionSchema,
+  CompanyDocumentUploadSchema,
+  cureDocumentsFor,
+  hasRequiredCompanyDocuments,
+  isPrimaryRegistration,
+  KYC_REJECTION_REASONS,
+} from './customers.js';
 
 const docs = (...types: string[]) => types.map((documentType) => ({ documentType }));
 
 describe('company documents (CR truck-booking-and-kyc-docs)', () => {
-  it('needs the ID plus a BIR COR or SEC certificate', () => {
-    expect(hasRequiredCompanyDocuments(docs('government_id', 'bir_cor'))).toBe(true);
-    expect(hasRequiredCompanyDocuments(docs('government_id', 'sec_certificate'))).toBe(true);
-    expect(hasRequiredCompanyDocuments(docs('government_id', 'company_registration'))).toBe(true); // legacy
+  it('needs the ID, a selfie holding it, plus a BIR COR or SEC certificate', () => {
+    expect(hasRequiredCompanyDocuments(docs('government_id', 'selfie_with_id', 'bir_cor'))).toBe(true);
+    expect(hasRequiredCompanyDocuments(docs('government_id', 'selfie_with_id', 'sec_certificate'))).toBe(true);
+    // No selfie, not complete: the reviewer cannot match the person to the ID.
+    expect(hasRequiredCompanyDocuments(docs('government_id', 'sec_certificate'))).toBe(false);
+    expect(hasRequiredCompanyDocuments(docs('government_id', 'selfie_with_id', 'company_registration'))).toBe(true); // legacy
   });
 
   it('never accepts DTI alone as the primary registration', () => {
@@ -39,5 +48,29 @@ describe('CompanyDocumentUploadSchema (customer-confirmed fields)', () => {
   it('asks nothing extra of the company papers', () => {
     expect(ok({ documentType: 'bir_cor' })).toBe(true);
     expect(ok({ documentType: 'sec_certificate' })).toBe(true);
+  });
+});
+
+describe('registration review: approve or reject (CR pricebook-kyc-weather)', () => {
+  const parse = (body: Record<string, unknown>) => CompanyDecisionSchema.safeParse(body).success;
+
+  it('approves only with the three identity checks', () => {
+    expect(parse({ decision: 'approved' })).toBe(false);
+    expect(parse({ decision: 'approved', identity: { philsysVerified: true, selfieMatches: true, holderAuthorized: false } })).toBe(false);
+    expect(parse({ decision: 'approved', identity: { philsysVerified: true, selfieMatches: true, holderAuthorized: true } })).toBe(true);
+  });
+
+  it('rejects only with a reason, and never carries edits to what the customer sent', () => {
+    expect(parse({ decision: 'rejected' })).toBe(false);
+    expect(parse({ decision: 'rejected', reason: 'sec_not_in_good_standing' })).toBe(true);
+    expect(CompanyDecisionSchema.parse({ decision: 'rejected', reason: 'dti_expired', companyName: 'Edited' })).not.toHaveProperty('companyName');
+  });
+
+  it('asks for the papers that cure each reason', () => {
+    expect(cureDocumentsFor('bir_registration_invalid')).toEqual(['bir_cor', 'business_permit']);
+    expect(cureDocumentsFor('sec_not_in_good_standing')).toEqual(['sec_good_standing', 'sec_gis']);
+    expect(cureDocumentsFor('document_unreadable', ['government_id'])).toEqual(['government_id']);
+    expect(KYC_REJECTION_REASONS.fraudulent.final).toBe(true);
+    expect(cureDocumentsFor('fraudulent')).toEqual([]);
   });
 });

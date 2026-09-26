@@ -52,7 +52,7 @@ describe('Delivery, return and staff alerts', () => {
     const tenantId = (tenantA as { id: string }).id;
     const [customerUser] = await sql`select id from users where tenant_id = ${tenantId} and email = 'customer@test-tenant-a.test'`;
     const [adminUser] = await sql`select id from users where tenant_id = ${tenantId} and id <> ${(customerUser as { id: string }).id} limit 1`;
-    const [site] = await sql`select id from project_sites where tenant_id = ${tenantId} limit 1`;
+    const [site] = await sql`select id from project_sites where tenant_id = ${tenantId} and customer_id is null order by created_at limit 1`;
     const [unit] = await sql`select id from equipment where tenant_id = ${tenantId} and serial_no = 'test-tenant-a-serial-booking-001'`;
     const [rateCard] = await sql`select id, equipment_type_id from rate_cards where tenant_id = ${tenantId} and equipment_id is null and rate_type = 'hourly' and (effective_to is null or effective_to > now()) order by effective_from limit 1`;
 
@@ -128,6 +128,17 @@ describe('Delivery, return and staff alerts', () => {
     return (rows[0] as { n: number }).n;
   }
 
+
+  // A booking is quoted from the price book the moment it is made; staff
+  // quote by hand only when that could not price it (no rate card).
+  async function priceBookQuote(bookingId: string, customerId: string) {
+    const detail = await bookings.get(adminCtx, bookingId);
+    if (detail.quotation?.status === 'approved') return quotes.get(adminCtx, detail.quotation.id);
+    const quote = await quotes.create(adminCtx, quoteBody(bookingId, customerId));
+    await quotes.approve(adminCtx, quote.id);
+    return quote;
+  }
+
   it('delivers and returns a paid booking on its own reservation', async () => {
     const booking = await book(0, 2);
     expect(await staffAlerts('booking_requested', booking.id)).toBeGreaterThan(0);
@@ -135,8 +146,7 @@ describe('Delivery, return and staff alerts', () => {
     // Not paid yet: nothing to deliver.
     await expect(bookings.deliver(adminCtx, booking.id)).rejects.toMatchObject({ response: { error: 'booking_not_ready' } });
 
-    const quote = await quotes.create(adminCtx, quoteBody(booking.id, booking.customerId));
-    await quotes.approve(adminCtx, quote.id);
+    const quote = await priceBookQuote(booking.id, booking.customerId);
     await quotes.accept(customerCtx, quote.id);
     expect(await staffAlerts('quote_accepted', booking.id)).toBeGreaterThan(0);
     const checkout = await payments.checkout(customerCtx, booking.id);

@@ -68,6 +68,13 @@ export class SitesController {
     return this.sites.weather(req.ctx, id);
   }
 
+  // Each machine's PAGASA-style level on the site (latest poll).
+  @Get('sites/:id/equipment-weather')
+  @RequirePermission(...STAFF_READ)
+  equipmentWeather(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.sites.equipmentWeather(req.ctx, id);
+  }
+
   @Get('weather/advisories')
   @RequirePermission(...STAFF_READ)
   advisories(@Req() req: CtxRequest) {

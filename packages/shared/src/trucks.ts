@@ -61,6 +61,9 @@ export const TruckRequestCreateSchema = TruckEstimateRequestSchema.extend({
   // A pickup in the past can never be run.
   scheduledFor: z.coerce.date().refine((d) => d.getTime() > Date.now(), { message: 'scheduledFor must be in the future' }),
   notes: z.string().trim().max(1000).optional(),
+  // The customer's project site this trip serves; it needs its proof on
+  // file (site photo + permit/NTP/title/clearance) and staff open it.
+  projectSiteId: z.string().uuid(),
 }).strict();
 export type TruckRequestCreate = z.infer<typeof TruckRequestCreateSchema>;
 
@@ -190,5 +193,7 @@ export interface TruckRequestResponse {
   capPhp: number | null;
   callRequestedAt: string | null;
   callConfirmedAt: string | null;
+  // Null on requests made before sites were required (0055).
+  projectSiteId: string | null;
   createdAt: string;
 }

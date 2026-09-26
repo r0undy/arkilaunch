@@ -6,6 +6,7 @@ import type {
   CompanyResponse,
   CompanyReviewResponse,
   SiteForecastResponse,
+  AreaForecastResponse,
   CustomerSiteResponse,
   BookingListResponse,
   CatalogEquipment,
@@ -95,7 +96,7 @@ export const invoicesQueries = {
 };
 
 export const incidentsQueries = {
-  list: (limit = PAGE_SIZE, offset = 0, kind?: 'weather' | 'discrepancy') =>
+  list: (limit = PAGE_SIZE, offset = 0, kind?: 'weather' | 'discrepancy' | 'used_despite_warning') =>
     queryOptions({
       queryKey: ['incidents', limit, offset, kind ?? 'all'] as const,
       queryFn: () =>
@@ -288,6 +289,14 @@ export const forecastQueries = {
     queryOptions({
       queryKey: ['me', 'sites', siteId, 'forecast'] as const,
       queryFn: () => apiGet<SiteForecastResponse>(`/me/sites/${siteId}/forecast`),
+      staleTime: 1_800_000,
+      retry: false,
+    }),
+  // No site of their own yet: the general Metro Manila forecast.
+  area: () =>
+    queryOptions({
+      queryKey: ['me', 'forecast'] as const,
+      queryFn: () => apiGet<AreaForecastResponse>('/me/forecast'),
       staleTime: 1_800_000,
       retry: false,
     }),

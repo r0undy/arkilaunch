@@ -48,7 +48,9 @@ export const ACCOUNT_NAV: NavGroup[] = [
     title: 'My account',
     items: [
       { label: 'Home', to: '/account', icon: LayoutDashboard, exact: true },
+      // The two services, side by side.
       { label: 'Browse equipment', to: '/equipment', icon: Boxes },
+      { label: 'Self-loading truck', to: '/account/trucks', icon: Truck },
       {
         label: 'My bookings',
         to: '/account/bookings',
@@ -70,7 +72,6 @@ export const ACCOUNT_NAV: NavGroup[] = [
         // entry of their own, so without this they would light nothing.
         owns: ['/account/companies'],
       },
-      { label: 'Self-loading truck', to: '/account/trucks', icon: Truck },
       { label: 'Notifications', to: '/account/notifications', icon: Bell },
       { label: 'Settings', to: '/account/settings', icon: Settings },
     ],
@@ -87,7 +88,6 @@ export const APP_NAV: NavGroup[] = [
       { label: 'Dashboard', to: '/app', icon: LayoutDashboard, exact: true },
       { label: 'Bookings', to: '/app/bookings', icon: ShoppingCart },
       { label: 'Quotes', to: '/app/quotes', icon: FileText },
-      { label: 'Truck service', to: '/app/trucks', icon: Truck },
       { label: 'Field logs', to: '/app/ocr', icon: ClipboardList },
       { label: 'Sites and deployment', to: '/app/deployment', icon: MapPin },
     ],

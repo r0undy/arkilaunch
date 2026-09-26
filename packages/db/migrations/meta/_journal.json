@@ -372,6 +372,27 @@
       "when": 1790400014000,
       "tag": "0053_paymongo_linked_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1790400015000,
+      "tag": "0054_kyc_rejection_reasons",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1790400016000,
+      "tag": "0055_site_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1790400017000,
+      "tag": "0056_pagasa_advisories",
+      "breakpoints": true
     }
   ]
 }
