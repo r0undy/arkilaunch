@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
-import { describeNotification, notificationQueries } from './notification-feed.js';
+import { Link, useRouterState } from '@tanstack/react-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { describeNotification, feedAreaOf, notificationQueries } from './notification-feed.js';
+import { apiPatch } from '../lib/api-client.js';
 import { formatStatus } from '../lib/format.js';
 import { ShoppingCart } from 'lucide-react';
 import { clearTokens } from '../lib/auth-client.js';
@@ -44,6 +45,7 @@ function NotificationBell({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
   const latest = useQuery({ ...notificationQueries.list(5, 0), enabled: open, retry: false });
 
   useEffect(() => {
@@ -63,6 +65,11 @@ function NotificationBell({
   }, [open]);
 
   const closePanel = () => setOpen(false);
+  const area = feedAreaOf(useRouterState({ select: (s) => s.location.pathname }));
+  // Opening a notification from the bell marks it read, like the feed does.
+  const markRead = (id: string) => {
+    void apiPatch(`/notifications/${id}/read`, {}).then(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }));
+  };
 
   return (
     <div ref={ref} className="relative">
@@ -95,9 +102,9 @@ function NotificationBell({
           )}
           <ul>
             {latest.data?.items.map((n) => {
-              const described = describeNotification(n.notificationType, n.payload);
-              return (
-                <li key={n.id} className="border-b border-border px-4 py-3 last:border-b-0">
+              const described = describeNotification(n.notificationType, n.payload, area);
+              const body = (
+                <>
                   <p className="flex items-center gap-2 text-sm font-semibold text-text">
                     {n.status === 'unread' && (
                       <span
@@ -109,6 +116,26 @@ function NotificationBell({
                   </p>
                   {described && (
                     <p className="line-clamp-2 text-xs text-text-muted">{described.body}</p>
+                  )}
+                </>
+              );
+              return (
+                <li key={n.id} className="border-b border-border last:border-b-0">
+                  {described?.action ? (
+                    <Link
+                      to={described.action.to}
+                      params={described.action.params}
+                      {...(described.action.search ? { search: described.action.search } : {})}
+                      onClick={() => {
+                        if (n.status === 'unread') markRead(n.id);
+                        closePanel();
+                      }}
+                      className="block px-4 py-3 hover:bg-surface-sunk"
+                    >
+                      {body}
+                    </Link>
+                  ) : (
+                    <div className="px-4 py-3">{body}</div>
                   )}
                 </li>
               );
@@ -146,7 +173,8 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   const edtrList = useQuery({
     ...edtrQueries.list(),
     retry: false,
-    enabled: !isCustomer && !isPlatformAdmin,
+    // The queue is staff-only (edtr:read); a timekeeper submits and does not read it.
+    enabled: !isCustomer && !isPlatformAdmin && role !== 'timekeeper',
   });
   const applications = useQuery({
     ...applicationsListQuery(1, 0),

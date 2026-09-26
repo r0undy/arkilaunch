@@ -4,7 +4,7 @@
 **Project:** ArkiLaunch
 **Date:** 2026-09-27
 **Version:** 0.1
-**Status:** `Draft` (code in progress)
+**Status:** `Applied` (code)
 **Trigger doc:** [build-arkilaunch.md](build-arkilaunch.md) §5.1 Brownfield Change Workflow; admin feedback 2026-09-27 (item 3 of 6)
 **Docs touched by this record:** [prd-arkilaunch.md](prd-arkilaunch.md) PRD-F6 US-06 (review screen), [rfc-arkilaunch-ocr-edtr-reconciliation.md](rfc-arkilaunch-ocr-edtr-reconciliation.md) §KYC (scoring is advisory; the human gate is unchanged), [index.md](index.md) §2
 
@@ -20,7 +20,7 @@ The pending-review screen tagged every customer-edited field "Edited by customer
 - A field that disagrees with its scan shows a subtle `scan: …` hint instead of a tag.
 - **Confidence** is a small pill (`92% · High`) that expands to a checklist (✓ / ! with a one-line reason per check).
 
-## 3. `scoreRegistration()` (`packages/shared/src/kyc.ts`, pure, unit-tested)
+## 3. `scoreRegistration()` (`packages/shared/src/registration-score.ts`, pure, unit-tested)
 
 Weighted checks:
 
@@ -40,3 +40,9 @@ The score is **advisory**. It never approves or rejects; the staff decision stay
 ## 4. Deliberately not claimed
 
 The score is not calibrated against labelled outcomes; the weights are a reasoned starting point to tune once there are enough decided applications.
+
+## 5. Where it runs
+
+- `GET /customers/review` (the staff queue) attaches `score` and the applicant's `contactPhone` to each company. Duplicates are found across the tenant, under RLS, by digits only: the TIN, the National ID's PCN, and the last 10 digits of the mobile.
+- The module sits beside `kyc.ts` rather than in it, because `customers.ts` already imports `kyc.ts` and the score needs both.
+- Tests: `packages/shared/src/registration-score.spec.ts` covers a clean application scoring High, the duplicate and bad-format caps, naming the field that disagrees, an implausible age, missing documents, and token-sorted name matching.

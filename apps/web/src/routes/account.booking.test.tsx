@@ -161,21 +161,21 @@ describe('describeNotification', () => {
     const described = describeNotification('quote_ready', {
       rental_id: booking().id,
       total_php: 30000,
-    });
+    }, 'account');
     expect(described?.title).toBe('Quote ready');
     expect(described?.action?.to).toBe('/account/negotiation/$bookingId');
   });
 
   it('describes delivery, return and staff cancellation instead of dumping the payload', () => {
     for (const type of ['equipment_delivered', 'equipment_returned', 'booking_cancelled']) {
-      expect(describeNotification(type, { rental_id: booking().id })?.action?.to).toBe(
+      expect(describeNotification(type, { rental_id: booking().id }, 'account')?.action?.to).toBe(
         '/account/bookings/$bookingId',
       );
     }
   });
 
   it('falls back for anything it does not know', () => {
-    expect(describeNotification('maintenance_due', { equipment_id: 'x' })).toBeNull();
+    expect(describeNotification('maintenance_due', { equipment_id: 'x' }, 'account')).toBeNull();
   });
 });
 
