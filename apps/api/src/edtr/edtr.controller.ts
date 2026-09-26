@@ -18,7 +18,7 @@ import { RequirePermission } from '../common/decorators/require-permission.decor
 import { MAX_UPLOAD_BYTES, validateUpload } from '../storage/upload-validation.js';
 import { StorageService } from '../storage/storage.service.js';
 import { EdtrService } from './edtr.service.js';
-import { EdtrApproveDto, EdtrCaptureDto, EdtrListQueryDto, EdtrRejectDto } from './dto.js';
+import { EdtrApproveDto, EdtrCaptureDto, EdtrListQueryDto, EdtrRejectDto, EdtrReviewDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 type MulterFile = { buffer: Buffer; size: number; mimetype: string };
@@ -83,17 +83,17 @@ export class EdtrController {
     return this.edtr.capture(req.ctx, captureRequest);
   }
 
-  // GET /api/v1/edtr?... (S8 review queue). Same permission as capture:
-  // staff and timekeepers both hold edtr:create, and the service itself
-  // scopes a timekeeper's results to their assigned sites.
+  // GET /api/v1/edtr?... (S8 review queue). Staff only (edtr:read): the
+  // timekeeper submits and nothing else (cr-arkilaunch-edtr-site-hub-approval.md).
+  // The service's own timekeeper site-scoping stays as defence in depth.
   @Get()
-  @RequirePermission('edtr:create')
+  @RequirePermission('edtr:read')
   list(@Query() query: EdtrListQueryDto, @Req() req: CtxRequest) {
     return this.edtr.list(req.ctx, query);
   }
 
   @Get(':id')
-  @RequirePermission('edtr:create')
+  @RequirePermission('edtr:read')
   get(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.edtr.get(req.ctx, id);
   }
@@ -103,7 +103,7 @@ export class EdtrController {
   // Never a public URL (RFC-2 §6); the key is re-derived from the owning
   // row under RLS, never taken from the caller.
   @Get(':id/image')
-  @RequirePermission('edtr:create')
+  @RequirePermission('edtr:read')
   async image(@Param('id') id: string, @Req() req: CtxRequest) {
     const key = await this.edtr.rawFileKey(req.ctx, id);
     const url = await this.storage.createSignedDownloadUrl(EDTR_BUCKET(), key);
@@ -126,6 +126,14 @@ export class EdtrController {
   @RequirePermission('edtr:approve')
   approve(@Param('id') id: string, @Body() body: EdtrApproveDto, @Req() req: CtxRequest) {
     return this.edtr.approve(req.ctx, id, body);
+  }
+
+  // Site hub: approve with the confirmed figures, request a correction,
+  // or reject (cr-arkilaunch-edtr-site-hub-approval.md).
+  @Post(':id/review')
+  @RequirePermission('edtr:approve')
+  review(@Param('id') id: string, @Body() body: EdtrReviewDto, @Req() req: CtxRequest) {
+    return this.edtr.review(req.ctx, id, body);
   }
 
   @Post(':id/reject')

@@ -61,9 +61,7 @@ const COLUMNS: TableColumn<InvoiceSummaryResponse>[] = [
 export function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) {
   const rows: [string, string][] = [
     ['Invoice id', invoice.id],
-    invoice.truckRequestId
-      ? ['Truck request id', invoice.truckRequestId]
-      : ['Rental id', invoice.rentalId ?? '--'],
+    [invoice.truckRequestId ? 'Truck service' : 'Equipment rental', invoice.bookingCode ?? '--'],
     ['Type', formatInvoiceType(invoice.invoiceType)],
     ['Status', formatStatus(invoice.status)],
     ['Amount', formatPeso(invoice.amount)],

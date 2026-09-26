@@ -28,6 +28,7 @@ import {
 import { EventsService } from '../events/events.service.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { customerOwnsInvoice, ownsCustomer } from '../common/customer-scope.js';
+import { resolveBookingRef } from '../common/booking-ref.js';
 import { checkoutReturnOrigin } from './return-origin.js';
 import { claimCoupon, previewCoupon } from './coupons.js';
 import { verifyPaymongoSignature } from './signature.js';
@@ -352,8 +353,10 @@ export class PaymentsService {
       .limit(1);
 
     const returnTo = checkoutReturnOrigin(c.origin);
+    const bookingRef = await resolveBookingRef(tx, { invoice_id: c.invoiceId });
     const session = await this.paymentsPort.createCheckoutSession(c.amount, c.invoiceId, {
       label: c.label,
+      ...(bookingRef ? { bookingCode: bookingRef.code } : {}),
       ...(c.method ? { methods: [c.method] } : {}),
       ...(tenant?.paymongoAccountId ? { transferTo: tenant.paymongoAccountId } : {}),
       successUrl: `${returnTo}/account/checkout/success?invoice=${c.invoiceId}`,

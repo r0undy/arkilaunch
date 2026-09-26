@@ -1,4 +1,4 @@
-import { createRoute } from '@tanstack/react-router';
+import { createRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 import type { SiteResponse } from '@arkilaunch/shared';
@@ -19,7 +19,15 @@ const SEVERITY_META: Record<string, { tone: StatusTone; icon: ReactElement }> = 
 };
 
 const COLUMNS: TableColumn<SiteResponse>[] = [
-  { header: 'Site', cell: (row) => siteName(row) },
+  {
+    header: 'Site',
+    // Each site opens its hub: bookings, daily logs, machines, people.
+    cell: (row) => (
+      <Link to="/app/deployment/$siteId" params={{ siteId: row.id }} className="font-semibold text-accent underline">
+        {siteName(row)}
+      </Link>
+    ),
+  },
   { header: 'Latitude', cell: (row) => row.latitude.toFixed(4), align: 'right' },
   { header: 'Longitude', cell: (row) => row.longitude.toFixed(4), align: 'right' },
   {

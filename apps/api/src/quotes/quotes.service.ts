@@ -63,6 +63,8 @@ export interface QuoteResponse {
   // Filled by GET /quotes/:id for the printable quote.
   createdAt?: string;
   customerName?: string;
+  // The booking this quote prices (EQR-…), printed on the quote.
+  bookingCode?: string;
 }
 
 type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
@@ -521,6 +523,9 @@ export class QuotesService {
         .from(customers)
         .where(eq(customers.id, quotation.customerId))
         .limit(1);
+      const [booking] = quotation.rentalId
+        ? await tx.select({ code: rentals.code }).from(rentals).where(eq(rentals.id, quotation.rentalId)).limit(1)
+        : [];
 
       return {
         id: quotation.id,
@@ -562,6 +567,7 @@ export class QuotesService {
         printableUrl: quotation.printableUrl,
         createdAt: quotation.createdAt.toISOString(),
         ...(customer ? { customerName: customer.companyName } : {}),
+        ...(booking ? { bookingCode: booking.code } : {}),
       };
     });
   }

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { createZodDto } from 'nestjs-zod';
 import type { Request } from 'express';
@@ -7,6 +7,7 @@ import {
   TollRateCreateSchema,
   TollRateUpdateSchema,
   TruckAgreeSchema,
+  TruckCrewSchema,
   TruckEstimateRequestSchema,
   TruckKmConfirmSchema,
   TruckRequestCreateSchema,
@@ -22,6 +23,7 @@ class TruckEstimateDto extends createZodDto(TruckEstimateRequestSchema) {}
 class TruckRequestCreateDto extends createZodDto(TruckRequestCreateSchema) {}
 class TruckKmConfirmDto extends createZodDto(TruckKmConfirmSchema) {}
 class TruckAgreeDto extends createZodDto(TruckAgreeSchema) {}
+class TruckCrewDto extends createZodDto(TruckCrewSchema) {}
 class TruckMessageDto extends createZodDto(NegotiationMessageCreateSchema) {}
 class TruckSettingsDto extends createZodDto(TruckSettingsSchema) {}
 class TollRateDto extends createZodDto(TollRateCreateSchema) {}
@@ -51,8 +53,8 @@ export class TrucksController {
 
   @Get('me/truck-requests')
   @RequirePermission('booking:read')
-  mine(@Req() req: CtxRequest) {
-    return this.trucks.list(req.ctx, 'mine');
+  mine(@Query('q') q: string | undefined, @Req() req: CtxRequest) {
+    return this.trucks.list(req.ctx, 'mine', typeof q === 'string' ? q.slice(0, 40) : undefined);
   }
 
   @Post('me/truck-requests/:id/cancel')
@@ -92,10 +94,16 @@ export class TrucksController {
     return this.trucks.agree(req.ctx, id, body.pricePhp);
   }
 
+  @Patch('truck-requests/:id/crew')
+  @RequirePermission('pricing:manage')
+  crew(@Param('id') id: string, @Body() body: TruckCrewDto, @Req() req: CtxRequest) {
+    return this.trucks.setCrew(req.ctx, id, body);
+  }
+
   @Get('truck-requests')
   @RequirePermission('pricing:manage')
-  all(@Req() req: CtxRequest) {
-    return this.trucks.list(req.ctx, 'all');
+  all(@Query('q') q: string | undefined, @Req() req: CtxRequest) {
+    return this.trucks.list(req.ctx, 'all', typeof q === 'string' ? q.slice(0, 40) : undefined);
   }
 
   @Patch('truck-requests/:id/km')

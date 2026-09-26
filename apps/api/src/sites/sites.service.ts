@@ -13,9 +13,11 @@ import {
   withTenantTx,
 } from '@arkilaunch/db';
 import {
+  manilaDate,
   severityMessage,
   WEATHER_STALE_AFTER_MINUTES,
   type DeploymentCreateRequest,
+  type DeploymentReturnRequest,
   type IncidentListQuery,
   type SiteEquipmentWeatherResponse,
   type SiteListQuery,
@@ -37,6 +39,7 @@ import {
   findAvailableAlternatives,
 } from '../common/equipment-availability.js';
 import { countRows } from '../common/count-rows.js';
+import { loadFieldLogs } from '../common/field-logs.js';
 import { latestEquipmentWeather } from '../common/equipment-weather.js';
 
 // Upper bound on the active-alert scan behind GET /weather/advisories.
@@ -396,7 +399,12 @@ export class SitesService {
 
   // PATCH /api/v1/sites/:id/deployments/:assignmentId/return (PRD-F4
   // "return equipment"). Frees the unit for its next deployment/booking.
-  async returnDeployment(ctx: RequestContext, siteId: string, assignmentId: string) {
+  async returnDeployment(
+    ctx: RequestContext,
+    siteId: string,
+    assignmentId: string,
+    body: DeploymentReturnRequest = {},
+  ) {
     return withTenantTx(ctx, async (tx) => {
       const [assignment] = await tx
         .select()
@@ -415,6 +423,35 @@ export class SitesService {
       }
       if (assignment.status === 'completed' || assignment.status === 'cancelled') {
         throw new ConflictException({ error: 'already_returned' });
+      }
+
+      // Days before today in this unit's span that were never approved:
+      // billing would close on an incomplete record. Today's sheet may not
+      // be in yet, so it does not count.
+      const today = manilaDate(new Date());
+      const logs = await loadFieldLogs(tx, [rental.id], today);
+      const open = logs.days.filter(
+        (d) =>
+          d.equipmentId === assignment.equipmentId &&
+          d.date < today &&
+          ['missing', 'pending', 'needs_correction'].includes(d.status),
+      );
+      if (open.length > 0 && !body.confirmIncompleteLogs) {
+        throw new ConflictException({
+          error: 'field_logs_incomplete',
+          missing: open.filter((d) => d.status === 'missing').map((d) => d.date),
+          pending: open.filter((d) => d.status !== 'missing').map((d) => d.date),
+        });
+      }
+      if (open.length > 0) {
+        await tx.insert(auditLogs).values({
+          tenantId: ctx.tenantId,
+          actorId: ctx.userId,
+          action: 'UPDATE',
+          entity: 'return_with_incomplete_field_logs',
+          entityId: assignmentId,
+          reason: `${body.reason ?? ''} (open days: ${open.map((d) => d.date).join(', ')})`.slice(0, 2000),
+        });
       }
 
       await tx

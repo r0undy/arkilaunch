@@ -125,7 +125,7 @@ function EdtrPage() {
 
   function rentalName(rentalId: string): string {
     const rental = rentals.find((r) => r.id === rentalId);
-    return rental ? rentalLabel(rental) : `Rental ${shortCode('rental', rentalId)}`;
+    return rental ? `${rental.code} · ${rentalLabel(rental)}` : 'Rental not in your list';
   }
 
   const columns: TableColumn<EdtrListItem>[] = [

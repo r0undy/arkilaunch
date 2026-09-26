@@ -438,6 +438,58 @@ function CancelAction({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
+// The customer's daily logs: approved days only, never a pending one
+// (cr-arkilaunch-edtr-site-hub-approval.md). Billable = running + idle;
+// breakdown and weather are shown so the customer sees they were not billed.
+export function FieldLogTable({ booking }: { booking: BookingDetailResponse }) {
+  const logs = booking.fieldLogs;
+  if (!logs || logs.days.length === 0) return null;
+  const h = (n: number) => n.toFixed(1);
+  return (
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
+      <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Daily logs</h2>
+      <p className="text-sm text-text">
+        Billed <span className="font-mono font-semibold">{h(logs.billable)} h</span> (running {h(logs.running)} h + idle{' '}
+        {h(logs.idle)} h). Not billed: breakdown {h(logs.breakdown)} h, weather {h(logs.weather)} h
+        {logs.otherDowntime > 0 ? `, other ${h(logs.otherDowntime)} h` : ''}.
+      </p>
+      {logs.downtimeDays > 0 && (
+        <p className="text-sm text-text-muted">
+          {logs.downtimeDays} full day{logs.downtimeDays === 1 ? ' was' : 's were'} lost to downtime. You can ask to
+          extend your rental by those days.
+        </p>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px] text-sm">
+          <caption className="sr-only">Approved daily logs</caption>
+          <thead>
+            <tr className="text-left text-text-muted">
+              <th className="p-2">Day</th>
+              <th className="p-2">Machine</th>
+              <th className="p-2 text-right">Running</th>
+              <th className="p-2 text-right">Idle</th>
+              <th className="p-2 text-right">Downtime</th>
+              <th className="p-2 text-right">Billed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.days.map((d) => (
+              <tr key={`${d.date}-${d.equipmentName}`} className="border-t border-border">
+                <td className="p-2">{formatDate(d.date)}</td>
+                <td className="p-2">{d.equipmentName}</td>
+                <td className="p-2 text-right font-mono">{h(d.hours.running)}</td>
+                <td className="p-2 text-right font-mono">{h(d.hours.idle)}</td>
+                <td className="p-2 text-right font-mono">{h(d.hours.breakdown + d.hours.weather + d.hours.otherDowntime)}</td>
+                <td className="p-2 text-right font-mono font-semibold">{h(d.hours.billable)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Surface>
+  );
+}
+
 function BookingDetailPage() {
   const { bookingId } = accountBookingRoute.useParams();
   const booking = useQuery(bookingsQueries.detail(bookingId));
@@ -447,7 +499,7 @@ function BookingDetailPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="My bookings"
-        title={shortCode('booking', bookingId)}
+        title={booking.data?.code ?? 'Booking'}
         description="Where this hire stands and what it has cost."
         actions={
           <>
@@ -475,9 +527,22 @@ function BookingDetailPage() {
         isEmpty={(data) => !data?.id}
         render={(data) => <BookingDetail booking={data} />}
       />
+      {booking.data && <FieldLogTable booking={booking.data} />}
       {booking.data && (status === 'active' || status === 'confirmed') && <MyEquipmentWeather siteId={booking.data.projectSiteId} />}
     </div>
   );
+}
+
+// The latest return date across a booking's machines; null when any unit is
+// open-ended (no fixed date to extend from).
+export function latestEnd(items: { end: Date | string | null }[]): string | null {
+  let latest: number | null = null;
+  for (const item of items) {
+    if (item.end === null) return null;
+    const t = new Date(item.end).getTime();
+    if (latest === null || t > latest) latest = t;
+  }
+  return latest === null ? null : new Date(latest).toISOString();
 }
 
 // Figma 231:5204 (Extend Rental) and 237:1855 (Extend Rental Submitted).
@@ -490,7 +555,9 @@ function ExtendRentalPage() {
   const [end, setEnd] = useState('');
   const [reason, setReason] = useState('');
   const [sent, setSent] = useState(false);
-  const currentEnd = booking.data?.items[0]?.end ?? null;
+  // The booking is due back when its LAST machine is: items[0] alone read
+  // the first unit's end and let a later unit's days be extended over.
+  const currentEnd = latestEnd(booking.data?.items ?? []);
 
   const request = useMutation({
     mutationFn: () =>
@@ -529,7 +596,7 @@ function ExtendRentalPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="My bookings" title="Extend rental" description={`Booking ${shortCode('booking', bookingId)}`} />
+      <PageHeader eyebrow="My bookings" title="Extend rental" {...(booking.data ? { description: `Booking ${booking.data.code}` } : {})} />
       <Surface radius="md" elevation="sm" className="flex max-w-xl flex-col gap-4 p-6">
         <p className="text-sm text-text-muted">
           Currently due back {currentEnd ? formatDate(currentEnd) : 'on an open date'}.

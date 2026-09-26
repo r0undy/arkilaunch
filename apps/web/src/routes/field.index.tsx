@@ -2,12 +2,11 @@ import { createRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fieldLayoutRoute } from './_field.js';
-import { sitesQueries, edtrQueries } from '../lib/queries.js';
+import { sitesQueries } from '../lib/queries.js';
 import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { Button } from '../components/button.js';
 import { CaptureModal } from '../components/capture-modal.js';
 import { EmptyState } from '../components/empty-state.js';
-import { Surface } from '../components/surface.js';
 import { useToast } from '../components/toast.js';
 import { pluralize } from '../lib/format.js';
 
@@ -15,7 +14,6 @@ function OperatorDashboardPage() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const { data: sites, isPending: sitesPending } = useQuery(sitesQueries.list());
-  const { data: edtrList, isPending: edtrPending } = useQuery(edtrQueries.list());
 
   // Recording a field log is this role's whole job (PRD US-02), but until
   // now the only screen that opened the capture modal was /app/ocr, which
@@ -31,14 +29,13 @@ function OperatorDashboardPage() {
   const hasSites = !!sites && sites.total > 0;
   const { equipmentList, rentals, rentalLabel } = useScanDeployments(hasSites);
 
-  const pendingCount = (edtrList?.items as { status?: string }[] | undefined)?.filter(
-    (e) => e.status === 'review' || e.status === 'extracted',
-  ).length;
+  // No pending count: the timekeeper submits and the office reviews; the
+  // field-log queue is staff-only (cr-arkilaunch-edtr-site-hub-approval.md).
 
   return (
     <div className="flex flex-col gap-4">
       <h1 className="font-display text-xl font-semibold text-text">Dashboard</h1>
-      {sitesPending || edtrPending ? (
+      {sitesPending ? (
         <p className="text-sm text-text-muted">Loading your work...</p>
       ) : hasSites ? (
         <div className="flex flex-col gap-3">
@@ -56,13 +53,6 @@ function OperatorDashboardPage() {
               Nothing is out on rental at your sites yet, so there are no hours to record.
             </p>
           )}
-          {pendingCount ? (
-            <Surface radius="md" elevation="sm" className="p-4">
-              <p className="text-sm font-medium text-text">
-                {pluralize(pendingCount, 'field log')} waiting on review
-              </p>
-            </Surface>
-          ) : null}
           <p className="text-sm text-text-muted">
             You are assigned to {pluralize(sites.total, 'site')}.
           </p>
@@ -96,6 +86,8 @@ function OperatorDashboardPage() {
           void queryClient.invalidateQueries({ queryKey: ['edtr'] });
         }}
         toast={toast}
+        initialSource="paper_ocr"
+        submitOnly
       />
     </div>
   );

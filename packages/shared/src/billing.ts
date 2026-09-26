@@ -32,6 +32,9 @@ export const InvoiceSummaryResponseSchema = z.object({
   id: z.string().uuid(),
   rentalId: z.string().uuid().nullable(),
   truckRequestId: z.string().uuid().nullable(),
+  // The booking the invoice bills, whichever service it is: EQR-… for a
+  // rental, TRK-… for a truck. Null only on a detached invoice.
+  bookingCode: z.string().nullable(),
   invoiceType: z.string(),
   amount: z.number(),
   status: z.string(),

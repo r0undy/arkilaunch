@@ -19,6 +19,9 @@ export interface ModalProps {
   // A destructive confirmation should not be dismissible by a stray click on
   // the scrim; an informational form should be.
   dismissOnScrim?: boolean;
+  // 'right' is a full-height drawer from the right edge (the booking
+  // drawer); same dialog semantics, focus trap and Escape handling.
+  placement?: 'center' | 'right';
 }
 
 const SIZE_CLASSES: Record<ModalSize, string> = {
@@ -39,6 +42,7 @@ export function Modal({
   footer,
   size = 'md',
   dismissOnScrim = true,
+  placement = 'center',
 }: ModalProps) {
   const panel = useRef<HTMLDivElement>(null);
   const restoreFocusTo = useRef<HTMLElement | null>(null);
@@ -90,7 +94,13 @@ export function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center p-0 sm:items-center sm:p-4">
+    <div
+      className={
+        placement === 'right'
+          ? 'fixed inset-0 z-40 flex justify-end'
+          : 'fixed inset-0 z-40 flex items-end justify-center p-0 sm:items-center sm:p-4'
+      }
+    >
       <div
         className="absolute inset-0 bg-[var(--yb-modal-scrim)]"
         onClick={dismissOnScrim ? onClose : undefined}
@@ -104,7 +114,9 @@ export function Modal({
         {...(description ? { 'aria-describedby': descriptionId } : {})}
         tabIndex={-1}
         className={[
-          'relative flex max-h-[90dvh] w-full flex-col rounded-t-lg border border-border bg-surface shadow-lg sm:rounded-lg',
+          placement === 'right'
+            ? 'relative flex h-dvh w-full flex-col border-l border-border bg-surface shadow-lg'
+            : 'relative flex max-h-[90dvh] w-full flex-col rounded-t-lg border border-border bg-surface shadow-lg sm:rounded-lg',
           SIZE_CLASSES[size],
         ].join(' ')}
       >

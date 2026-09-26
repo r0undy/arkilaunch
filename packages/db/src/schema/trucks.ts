@@ -1,4 +1,4 @@
-import { date, index, integer, jsonb, numeric, pgTable, text, timestamp, uuid, check } from 'drizzle-orm/pg-core';
+import { date, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uuid, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { TruckExtra, TruckPrice } from '@arkilaunch/shared';
 import { tenantIsolationPolicy } from '../rls.js';
@@ -35,6 +35,8 @@ export const truckRequests = pgTable(
     requestedBy: uuid('requested_by')
       .notNull()
       .references(() => users.id),
+    // 0058: TRK-YYYY-NNNN, same generator and rules as rentals.code.
+    code: text('code').notNull().default(sql`NULL`),
     pickup: text('pickup').notNull(),
     dropoff: text('dropoff').notNull(),
     scheduledFor: timestamp('scheduled_for', { withTimezone: true }).notNull(),
@@ -60,6 +62,9 @@ export const truckRequests = pgTable(
     // its proof documents. FK in SQL (project_sites lives in rentals.ts,
     // which imports this file). Null on requests made before 0055.
     projectSiteId: uuid('project_site_id'),
+    // 0059: who drives and loads, for the site hub's personnel tab.
+    driverName: text('driver_name'),
+    helperName: text('helper_name'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -67,6 +72,25 @@ export const truckRequests = pgTable(
     check('truck_requests_status_valid', sql`${t.status} IN ('estimated','km_confirmed','agreed','paid','cancelled')`),
     index('truck_requests_tenant_id_idx').on(t.tenantId),
     index('truck_requests_requested_by_idx').on(t.requestedBy),
+  ],
+);
+
+// 0058: one counter per tenant, service and Asia/Manila year behind
+// rentals.code / truck_requests.code. Written only by the insert trigger.
+export const bookingCodeCounters = pgTable(
+  'booking_code_counters',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    service: text('service').notNull(),
+    year: integer('year').notNull(),
+    lastValue: integer('last_value').notNull(),
+  },
+  (t) => [
+    tenantIsolationPolicy(),
+    primaryKey({ name: 'booking_code_counters_pk', columns: [t.tenantId, t.service, t.year] }),
+    check('booking_code_counters_service_chk', sql`${t.service} IN ('rental','truck')`),
   ],
 );
 

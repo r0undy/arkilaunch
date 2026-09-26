@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, like, ne, type SQL } from 'drizzle-orm';
 import {
   addresses,
   auditLogs,
@@ -34,7 +34,7 @@ import type {
   RequestContext,
   RescheduleSuggestion,
 } from '@arkilaunch/shared';
-import { bookingDays, minBookingHours } from '@arkilaunch/shared';
+import { bookingCodeSearchPrefix, bookingDays, minBookingHours } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { QuotesService, inNegotiation } from '../quotes/quotes.service.js';
 import { requireSiteProof } from '../common/site-proof.js';
@@ -45,6 +45,7 @@ import {
   overlappingAssignments,
 } from '../common/equipment-availability.js';
 import { ownCustomers, ownsCustomer, requireVerifiedCompany } from '../common/customer-scope.js';
+import { loadFieldLogs } from '../common/field-logs.js';
 import { countRows } from '../common/count-rows.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 
@@ -203,7 +204,7 @@ export class BookingsService {
         await notifyStaff(tx, ctx.tenantId, 'booking_requested', { rental_id: rental.id, item_count: body.items.length });
       }
 
-      return { id: rental.id, status: rental.status, trackerUrl: `/orders/${rental.id}` };
+      return { id: rental.id, code: rental.code, status: rental.status, trackerUrl: `/orders/${rental.id}` };
     });
 
     // Priced straight off the rate cards once the booking is committed, so
@@ -224,12 +225,17 @@ export class BookingsService {
     return withTenantTx(ctx, async (tx) => {
       // The role branch was always correct; it was the BOUND that was
       // missing, on both branches (audit-api-surface.md #5).
-      let where;
+      const conditions: SQL[] = [];
       if (ctx.role === 'customer') {
         const own = await ownCustomers(tx, ctx);
         if (own.length === 0) return { items: [], total: 0 };
-        where = inArray(rentals.customerId, own.map((row) => row.id));
+        conditions.push(inArray(rentals.customerId, own.map((row) => row.id)));
       }
+      // Only letters, digits and hyphens survive bookingCodeSearchPrefix,
+      // so the LIKE pattern carries no wildcard the caller chose.
+      const codePrefix = query.q ? bookingCodeSearchPrefix(query.q) : null;
+      if (codePrefix) conditions.push(like(rentals.code, `${codePrefix}%`));
+      const where = conditions.length ? and(...conditions) : undefined;
       const rows = await tx
         .select()
         .from(rentals)
@@ -255,6 +261,7 @@ export class BookingsService {
           const site = siteById.get(row.projectSiteId);
           return {
             id: row.id,
+            code: row.code,
             status: row.status,
             projectSiteId: row.projectSiteId,
             siteCity: site?.city ?? null,
@@ -305,10 +312,22 @@ export class BookingsService {
     return withTenantTx(ctx, async (tx) => {
       const rental = await this.visibleRental(tx, ctx, id);
 
-      const assignments = await tx
-        .select()
+      const assignmentRows = await tx
+        .select({
+          assignment: equipmentAssignments,
+          typeName: equipmentTypes.name,
+          model: equipment.model,
+          serialNo: equipment.serialNo,
+        })
         .from(equipmentAssignments)
+        .innerJoin(equipment, eq(equipment.id, equipmentAssignments.equipmentId))
+        .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipment.equipmentTypeId))
         .where(eq(equipmentAssignments.rentalId, id));
+      const [customer] = await tx
+        .select({ companyName: customers.companyName })
+        .from(customers)
+        .where(eq(customers.id, rental.customerId))
+        .limit(1);
       const [quotation] = await tx
         .select()
         .from(quotations)
@@ -334,6 +353,15 @@ export class BookingsService {
         .where(eq(projectSites.id, rental.projectSiteId))
         .limit(1);
       const ledger = await resolveDepositLedger(tx, id, ctx.tenantId);
+      const logs = await loadFieldLogs(tx, [id]);
+      const unitName = new Map(logs.units.map((u) => [u.equipmentId, `${u.name} (SN ${u.serialNo})`]));
+      const fieldLogs = {
+        ...logs.totals,
+        pending: ctx.role === 'customer' ? 0 : logs.totals.pending,
+        days: logs.days
+          .filter((d) => d.status === 'approved' && d.hours)
+          .map((d) => ({ date: d.date, equipmentName: unitName.get(d.equipmentId) ?? 'Machine', hours: d.hours! })),
+      };
       const changeRows = await tx
         .select()
         .from(bookingChangeRequests)
@@ -342,12 +370,14 @@ export class BookingsService {
 
       return {
         id: rental.id,
+        code: rental.code,
         status: rental.status,
         projectSiteId: rental.projectSiteId,
         siteCity: site?.city ?? null,
         siteProvince: site?.province ?? null,
         trackerUrl: `/orders/${rental.id}`,
         customerId: rental.customerId,
+        customerName: customer?.companyName ?? null,
         siteContact: rental.siteContact,
         siteNotes: rental.siteNotes,
         callRequestedAt: rental.callRequestedAt,
@@ -366,8 +396,9 @@ export class BookingsService {
           status: row.status,
           createdAt: row.createdAt,
         })),
-        items: assignments.map((assignment) => ({
+        items: assignmentRows.map(({ assignment, typeName, model, serialNo }) => ({
           equipmentId: assignment.equipmentId,
+          equipmentName: `${typeName} · ${model} · SN ${serialNo}`,
           start: assignment.start,
           end: assignment.end,
           status: assignment.status,
@@ -395,6 +426,7 @@ export class BookingsService {
           status: payment.status,
           providerRef: payment.providerRef,
         })),
+        fieldLogs,
       };
     });
   }

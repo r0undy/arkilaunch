@@ -47,6 +47,8 @@ export const edtr = pgTable(
     attempts: integer('attempts').notNull().default(0),
     lockedAt: timestamp('locked_at', { withTimezone: true }),
     lastError: text('last_error'),
+    // 0059: who recorded it (timekeeper, or the admin's office log).
+    submittedBy: uuid('submitted_by').references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -85,10 +87,28 @@ export const edtrLineItems = pgTable(
     // from a genuinely idle machine (migration 0017).
     hoursIdle: numeric('hours_idle', { precision: 6, scale: 2 }), // >= 0 when present
     notes: text('notes'),
+    // 0059 (EDTR v3): one column per downtime cause plus the hour meter.
+    // hours_active = RUNNING, hours_idle = IDLE by the customer's choice.
+    // Same NULL-vs-0 rule as hours_idle: NULL = not recorded (pre-v3).
+    // classifyHours() in packages/shared is the only reader that turns
+    // these into billable / running figures.
+    hoursTotal: numeric('hours_total', { precision: 6, scale: 2 }),
+    hoursBreakdown: numeric('hours_breakdown', { precision: 6, scale: 2 }),
+    hoursWeather: numeric('hours_weather', { precision: 6, scale: 2 }),
+    hoursOtherDowntime: numeric('hours_other_downtime', { precision: 6, scale: 2 }),
+    downtimeNote: text('downtime_note'),
+    hourMeterStart: numeric('hour_meter_start', { precision: 10, scale: 1 }),
+    hourMeterEnd: numeric('hour_meter_end', { precision: 10, scale: 1 }),
+    // validateDayEntry() codes raised at capture; routes the day to a human.
+    reviewFlags: jsonb('review_flags').$type<string[]>().notNull().default([]),
   },
   (t) => [
     tenantIsolationPolicy(),
     check('edtr_hours_nonneg_chk', sql`${t.hoursActive} >= 0 AND ${t.hoursIdle} >= 0`),
+    check(
+      'edtr_hour_categories_nonneg_chk',
+      sql`${t.hoursTotal} >= 0 AND ${t.hoursBreakdown} >= 0 AND ${t.hoursWeather} >= 0 AND ${t.hoursOtherDowntime} >= 0 AND ${t.hourMeterStart} >= 0 AND ${t.hourMeterEnd} >= 0 AND ${t.hoursTotal} <= 24 AND ${t.hoursBreakdown} <= 24 AND ${t.hoursWeather} <= 24 AND ${t.hoursOtherDowntime} <= 24`,
+    ),
     index('edtr_line_items_tenant_id_idx').on(t.tenantId),
     // Unique, not just indexed: approve() sums ALL line items for an EDTR
     // (edtr.service.ts), so requeueing an already-extracted row inserted a

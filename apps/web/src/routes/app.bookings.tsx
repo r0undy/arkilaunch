@@ -1,7 +1,7 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BookingDetailResponse, BookingSummaryResponse, RescheduleSuggestion, TruckRequestResponse } from '@arkilaunch/shared';
+import type { BookingDetailResponse, BookingService as Service, BookingSummaryResponse, RescheduleSuggestion, TruckRequestResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { bookingsQueries } from '../lib/queries.js';
 import { apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
@@ -17,6 +17,9 @@ import { NegotiationThread } from '../components/negotiation-thread.js';
 import { EdtrSheetCard } from '../components/edtr-sheet-card.js';
 import { useToast } from '../components/toast.js';
 import { RequestRow, requestsQuery } from './app.trucks.js';
+import { BookingCode, ServiceBadge } from '../components/booking-code.js';
+import { BookingDrawer, type BookingDrawerTarget } from '../components/booking-drawer.js';
+import { bookingCodeSearchPrefix, parseBookingCode } from '@arkilaunch/shared';
 import { formatDate, formatPeso, formatStatus, shortCode, siteName } from '../lib/format.js';
 
 // The staff side of the customer journey: the same negotiation thread the
@@ -28,28 +31,13 @@ const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] 
 
 // Both services in one list, told apart by `service`: an equipment rental
 // (a booking with machines) or a truck service (a self-loading truck trip).
-type Service = 'rental' | 'truck';
 type ServiceRow =
   | { service: 'rental'; id: string; booking: BookingSummaryResponse }
   | { service: 'truck'; id: string; truck: TruckRequestResponse };
 
-const SERVICE_LABEL: Record<Service, string> = { rental: 'Equipment rental', truck: 'Truck service' };
 const CLOSED_TRUCK = ['paid', 'cancelled'];
 
-function ServiceBadge({ service }: { service: Service }) {
-  return (
-    <span
-      className={[
-        'inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold',
-        service === 'truck' ? 'border-accent text-accent' : 'border-border text-text',
-      ].join(' ')}
-    >
-      {SERVICE_LABEL[service]}
-    </span>
-  );
-}
-
-function columns(openTruck: (id: string) => void): TableColumn<ServiceRow>[] {
+function columns(openDrawer: (code: string) => void): TableColumn<ServiceRow>[] {
   return [
     { header: 'Service', cell: (row) => <ServiceBadge service={row.service} /> },
     {
@@ -57,33 +45,32 @@ function columns(openTruck: (id: string) => void): TableColumn<ServiceRow>[] {
       cell: (row) =>
         row.service === 'rental' ? (
           <div className="flex flex-col">
-            <span className="font-mono text-text">{shortCode('booking', row.id)}</span>
+            <BookingCode code={row.booking.code} />
             <span className="text-xs text-text-muted">
               {row.booking.siteCity ?? row.booking.siteProvince ?? siteName({ id: row.booking.projectSiteId })}
             </span>
           </div>
         ) : (
           <div className="flex flex-col">
-            <span className="text-text">
-              {row.truck.pickup} → {row.truck.dropoff}
+            <BookingCode code={row.truck.code} />
+            <span className="text-xs text-text-muted">
+              {row.truck.pickup} → {row.truck.dropoff} · {formatDate(row.truck.scheduledFor)}
             </span>
-            <span className="text-xs text-text-muted">{formatDate(row.truck.scheduledFor)}</span>
           </div>
         ),
     },
     { header: 'Status', cell: (row) => formatStatus(row.service === 'rental' ? row.booking.status : row.truck.status) },
     {
       header: 'Details',
-      cell: (row) =>
-        row.service === 'rental' ? (
-          <Link to="/app/bookings/$bookingId" params={{ bookingId: row.id }} className="font-semibold text-accent underline">
-            Open
-          </Link>
-        ) : (
-          <button type="button" onClick={() => openTruck(row.id)} className="font-semibold text-accent underline">
-            Open
-          </button>
-        ),
+      cell: (row) => (
+        <button
+          type="button"
+          onClick={() => openDrawer(row.service === 'rental' ? row.booking.code : row.truck.code)}
+          className="font-semibold text-accent underline"
+        >
+          Open
+        </button>
+      ),
     },
   ];
 }
@@ -94,28 +81,69 @@ const FILTERS: { id: Service | 'all'; label: string }[] = [
   { id: 'truck', label: 'Truck service' },
 ];
 
-function validateBookingsSearch(search: Record<string, unknown>): { service?: Service } {
-  return search.service === 'truck' || search.service === 'rental' ? { service: search.service } : {};
+// ?open=EQR-2026-0001 deep-links the drawer (notifications, the site hub).
+function validateBookingsSearch(search: Record<string, unknown>): { service?: Service; open?: string } {
+  const out: { service?: Service; open?: string } = {};
+  if (search.service === 'truck' || search.service === 'rental') out.service = search.service;
+  if (typeof search.open === 'string' && parseBookingCode(search.open)) out.open = search.open.trim().toUpperCase();
+  return out;
 }
 
 function BookingsPage() {
-  const { service: initial } = appBookingsRoute.useSearch();
+  const { service: initial, open } = appBookingsRoute.useSearch();
+  const navigate = appBookingsRoute.useNavigate();
   const [filter, setFilter] = useState<Service | 'all'>(initial ?? 'all');
   const [offset, setOffset] = useState(0);
+  const [search, setSearch] = useState('');
+  const codePrefix = bookingCodeSearchPrefix(search) ?? '';
   const trucks = useQuery(requestsQuery);
-  const [focusTruck, setFocusTruck] = useState<string | null>(null);
-  const openTruck = (id: string) => {
-    setFilter('truck');
-    setFocusTruck(id);
-    requestAnimationFrame(() => document.getElementById(`truck-${id}`)?.scrollIntoView({ behavior: 'smooth' }));
-  };
+
+  // The drawer is addressed by code in the URL, so a notification or the
+  // site hub can open it and the back button closes it.
+  const openCode = open ? parseBookingCode(open) : null;
+  const openRental = useQuery({
+    ...bookingsQueries.list(1, 0, open ?? ''),
+    enabled: openCode?.service === 'rental',
+  });
+  const target: BookingDrawerTarget | null = !openCode
+    ? null
+    : openCode.service === 'truck'
+      ? (() => {
+          const t = (trucks.data ?? []).find((row) => row.code === open);
+          return t ? { service: 'truck', id: t.id } : null;
+        })()
+      : (() => {
+          const hit = openRental.data?.items[0];
+          return hit && hit.code === open ? { service: 'rental', id: hit.id } : null;
+        })();
+  const openDrawer = (code: string) => void navigate({ search: (prev) => ({ ...prev, open: code }) });
+  const closeDrawer = () => void navigate({ search: ({ open: _open, ...rest }) => rest });
+
+  const matchesCode = (code: string) => !codePrefix || code.startsWith(codePrefix);
   const openTrucks: ServiceRow[] = [];
   const closedTrucks: ServiceRow[] = [];
-  for (const t of trucks.data ?? []) (CLOSED_TRUCK.includes(t.status) ? closedTrucks : openTrucks).push({ service: 'truck', id: t.id, truck: t });
+  for (const t of trucks.data ?? []) {
+    if (!matchesCode(t.code)) continue;
+    (CLOSED_TRUCK.includes(t.status) ? closedTrucks : openTrucks).push({ service: 'truck', id: t.id, truck: t });
+  }
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader eyebrow="Billing" title="Bookings" description="Equipment rentals and truck service requests, their negotiation and their requests." />
+      <input
+        type="search"
+        value={search}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setOffset(0);
+        }}
+        placeholder="Find a booking code (EQR-2026-0001, TRK-…)"
+        aria-label="Find a booking by code"
+        className="min-h-10 w-full max-w-md rounded-md border border-border bg-surface px-3 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+      />
+      {search.trim() !== '' && !codePrefix && (
+        <p className="text-xs text-text-muted">Booking codes start with EQR- (equipment) or TRK- (truck).</p>
+      )}
       <div role="group" aria-label="Filter by service" className="flex flex-wrap gap-2">
         {FILTERS.map((entry) => (
           <button
@@ -140,11 +168,9 @@ function BookingsPage() {
         <section className="flex flex-col gap-3">
           {trucks.isError && <p className="text-sm text-error">{apiErrorText(trucks.error)}</p>}
           {trucks.data?.length === 0 && <p className="text-sm text-text-muted">No truck service requests yet.</p>}
-          {trucks.data?.map((r) => (
-            <div key={r.id} className={focusTruck === r.id ? 'rounded-md ring-2 ring-accent' : undefined}>
-              <RequestRow r={r} />
-            </div>
-          ))}
+          {trucks.data
+            ?.filter((r) => matchesCode(r.code))
+            .map((r) => <RequestRow key={r.id} r={r} />)}
           <p className="text-xs text-text-muted">
             Truck fees, extras and tolls are set in{' '}
             <Link to="/app/quotes" className="underline">
@@ -156,7 +182,7 @@ function BookingsPage() {
       ) : (
         <DataPanel
           title="Bookings"
-          options={bookingsQueries.list(PAGE_SIZE, offset)}
+          options={bookingsQueries.list(PAGE_SIZE, offset, codePrefix)}
           emptyTitle="No bookings yet"
           emptyDescription="Bookings customers request from the storefront appear here."
           isEmpty={(data) => data.total === 0 && (filter === 'rental' || (trucks.data ?? []).length === 0)}
@@ -167,13 +193,14 @@ function BookingsPage() {
             const rows = filter === 'all' && offset === 0 ? [...openTrucks, ...rentals, ...closedTrucks] : rentals;
             return (
               <div>
-                <Table columns={columns(openTruck)} rows={rows} rowKey={(row) => `${row.service}-${row.id}`} />
+                <Table columns={columns(openDrawer)} rows={rows} rowKey={(row) => `${row.service}-${row.id}`} />
                 <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="bookings" />
               </div>
             );
           }}
         />
       )}
+      <BookingDrawer target={target} trucks={trucks.data ?? []} onClose={closeDrawer} />
     </div>
   );
 }
@@ -373,7 +400,7 @@ function BookingPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="Bookings"
-        title={`Booking ${shortCode('booking', bookingId)}`}
+        title={booking.data ? `Booking ${booking.data.code}` : 'Booking'}
         {...(booking.data ? { description: formatStatus(booking.data.status) } : {})}
         actions={
           <Link to="/app/bookings">

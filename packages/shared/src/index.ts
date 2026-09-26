@@ -17,6 +17,8 @@ export * from './ocr-accuracy.js';
 export * from './fleet.js';
 export * from './weather.js';
 export * from './weather-port.js';
+export * from './booking-code.js';
+export * from './field-logs.js';
 export * from './bookings.js';
 export * from './payments-port.js';
 export * from './payments.js';

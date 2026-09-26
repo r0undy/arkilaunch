@@ -255,7 +255,7 @@ function CartPage() {
         <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-4 p-6">
           <StatusPill tone="recon-approved" label="Request sent" icon={<CheckIcon />} />
           <h1 className="font-display text-2xl font-semibold text-text">
-            Booking {shortCode('booking', booking.id)} is in
+            Booking {booking.code} is in
           </h1>
           <p className="text-sm text-text-muted">
             Your machines are held for those dates. Each machine is priced from its rate card

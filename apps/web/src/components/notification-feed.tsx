@@ -159,7 +159,9 @@ export function describeNotification(type: string, payload: unknown): Described 
   }
   const rentalId = typeof p.rental_id === 'string' ? p.rental_id : null;
   if (!rentalId) return null;
-  const ref = shortCode('booking', rentalId);
+  // booking_code is added to every booking notification by the database
+  // (migration 0058), including rows written before it.
+  const ref = typeof p.booking_code === 'string' ? p.booking_code : 'your booking';
   const toNegotiation = { to: '/account/negotiation/$bookingId', params: { bookingId: rentalId } };
   const toBooking = { to: '/account/bookings/$bookingId', params: { bookingId: rentalId } };
   switch (type) {

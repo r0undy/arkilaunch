@@ -35,6 +35,7 @@ describe('leaseProgress', () => {
 function booking(overrides: Partial<BookingDetailResponse> = {}): BookingDetailResponse {
   return {
     id: '11111111-1111-4111-8111-111111111111',
+    code: 'EQR-2026-0001',
     status: 'pending',
     projectSiteId: '22222222-2222-4222-8222-222222222222',
     siteCity: 'Pasig',

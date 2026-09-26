@@ -14,6 +14,7 @@ import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { TruckThread } from '../components/truck-thread.js';
 import { Select } from '../components/select.js';
+import { BookingCode } from '../components/booking-code.js';
 import { customerSitesQueries } from '../lib/queries.js';
 import {
   EMPTY_LOCATION,
@@ -291,6 +292,7 @@ export function TruckRequestCard({ request: r }: { request: TruckRequestResponse
       aria-label={`Truck request ${r.pickup} to ${r.dropoff}`}
       className="flex flex-col gap-2 p-4"
     >
+      <BookingCode code={r.code} />
       <p className="text-sm font-medium text-text">
         {r.pickup} → {r.dropoff}
       </p>
