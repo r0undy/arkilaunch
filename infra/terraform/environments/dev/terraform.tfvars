@@ -4,10 +4,10 @@
 location           = "southeastasia"
 # The CORS allowlist for the API. Must be the deployment's real origin and must
 # match exactly -- main.ts passes it straight to enableCors({ origin }), which
-# compares strings, so no trailing slash. arkilaunch-dev.vercel.app was aspirational:
-# that domain was never created, so every browser login was blocked by CORS and
-# surfaced in the UI as "incorrect email or password".
-web_origin         = "https://arkilaunch-web-24lk.vercel.app"
+# compares strings, so no trailing slash. A wrong value blocks every browser
+# login by CORS, which surfaces in the UI as "incorrect email or password".
+# Tenant storefronts ({slug}.arkilaunch.app) are allowed via platform_domain.
+web_origin         = "https://arkilaunch.app"
 supabase_url       = "https://ydalnvzyeseycdakofgp.supabase.co" # derived from the project ref in the local .env's DATABASE_URL_POOLED
 
 # On in dev at the operator's explicit direction

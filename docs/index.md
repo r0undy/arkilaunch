@@ -2,7 +2,7 @@
 
 **Project slug:** `arkilaunch`
 **Maintained by:** ArkiLaunch Team (Almara Construction capstone)
-**Last updated:** 2026-09-25
+**Last updated:** 2026-09-27
 **Built on FMD:** v1.28.1
 
 ---
@@ -17,22 +17,22 @@
 |----------|------|---------|--------|--------------|-----------------|
 | IDEA · Idea Brief | [idea-arkilaunch.md](idea-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
 | VALIDATION · Validation Brief | [val-arkilaunch.md](val-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
-| SCRUTINY · Scrutiny Gate | [scrutiny-arkilaunch.md](scrutiny-arkilaunch.md) | 0.1 | Draft | 2026-08-20 | N/A |
+| SCRUTINY · Scrutiny Gate | [scrutiny-arkilaunch.md](scrutiny-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
 | VOICE · House Style | [voice-arkilaunch.md](voice-arkilaunch.md) | 0.1 | Draft | 2026-08-02 | N/A |
 | PITCH · Pitch & Demo | [pitch-arkilaunch.md](pitch-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
 | WRAP · Next Steps | [wrap-arkilaunch.md](wrap-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
 | BRD · Business Requirements | [brd-arkilaunch.md](brd-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
-| UES · Unit Economics Sheet | [ues-arkilaunch.md](ues-arkilaunch.md) | 0.1 | Draft | 2026-09-13 | N/A |
-| PRD · Product Requirements | [prd-arkilaunch.md](prd-arkilaunch.md) | 0.1 | Locked | 2026-09-19 | 2026-09-19 |
+| UES · Unit Economics Sheet | [ues-arkilaunch.md](ues-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
+| PRD · Product Requirements | [prd-arkilaunch.md](prd-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-19 |
 | DSD · Design System | [dsd-arkilaunch.md](dsd-arkilaunch.md) | 0.1 | Locked | 2026-09-19 | 2026-09-19 |
-| SDD · System Design | [sdd-arkilaunch.md](sdd-arkilaunch.md) | 0.1 | Locked | 2026-09-07 | 2026-09-07 |
-| QAD · QA & Test Plan | [qad-arkilaunch.md](qad-arkilaunch.md) | 0.1 | Locked | 2026-09-07 | 2026-09-07 |
+| SDD · System Design | [sdd-arkilaunch.md](sdd-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-07 |
+| QAD · QA & Test Plan | [qad-arkilaunch.md](qad-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-07 |
 | SAD · Subagents | [sad-arkilaunch.md](sad-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
-| BUILD · Build Guide | [build-arkilaunch.md](build-arkilaunch.md) | 0.1 | Draft | 2026-09-13 | N/A |
-| CLR · Compliance & Legal | [clr-arkilaunch.md](clr-arkilaunch.md) | 0.1 | Draft | 2026-08-20 | N/A |
+| BUILD · Build Guide | [build-arkilaunch.md](build-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
+| CLR · Compliance & Legal | [clr-arkilaunch.md](clr-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
 | AIA · AI Assurance Dossier | [aia-arkilaunch.md](aia-arkilaunch.md) | 0.1 | Draft | 2026-09-19 | N/A |
 | GTM · Go-To-Market | [gtm-arkilaunch.md](gtm-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
-| OPS · Ops & Observability | [ops-arkilaunch.md](ops-arkilaunch.md) | 0.1 | Draft | 2026-09-13 | N/A |
+| OPS · Ops & Observability | [ops-arkilaunch.md](ops-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
 | LOG · Build Session Log | [log-arkilaunch.md](log-arkilaunch.md) | 0.1 | Draft (append-only) | 2026-09-07 | N/A |
 
 ### Runbooks (operational procedure, not suite docs)
@@ -162,7 +162,7 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 
 - Scrutiny verdict: **PROCEED WITH FIXES** (2026-07-25). Carried fixes tracked in [scrutiny-arkilaunch.md](scrutiny-arkilaunch.md) §1 and mirrored as gaps G-1..G-10 §3; each lands in its named downstream doc (Open-Meteo commercial -> SDD/OPS/UES done **as of 2026-07-25; narrowed again 2026-08-20 by `cr-arkilaunch-open-meteo-free-tier.md` -- G-4's cost/quota halves are now resolved against the FREE tier, and the commercial-use restriction is carried forward as G-4's one remaining open item, not closed**; diesel source -> RFC-3 done; multi-tenancy -> RFC-1/SDD done; ISO 25010 version -> QAD done; Azure DI residency -> CLR done, AIA done with AIA-R7 tracked as the one open, escalated risk; 5-point Likert -> QAD done). G-10 (PayMongo webhook idempotency/refunds/disputes) resolved directly in SDD §4 as of 2026-08-01, no dedicated RFC needed.
 - Product framing decision (build start): multi-tenant SaaS (ArkiLaunch), Almara = anchor tenant.
-- Confirmed stack decisions: OCR = Azure AI Document Intelligence; payments = PayMongo; stack re-evaluated against current best practices (currency-verified 2026-07-25). Documented divergences from the thesis (persistent Azure Container Apps backend + jobs vs Vercel serverless; Drizzle vs Prisma for first-class RLS; NestJS/Passport identity vs Supabase GoTrue; Vite 8; add Playwright; Open-Meteo commercial plan **-> superseded 2026-08-20: ships against the free tier instead, see BUILD §3's divergence row**) are recorded in BUILD §3.
+- Confirmed stack decisions: OCR = Azure AI Document Intelligence; payments = PayMongo; stack re-evaluated against current best practices (currency-verified 2026-07-25). Documented divergences from the thesis (persistent Azure Container Apps backend + jobs vs serverless; Drizzle vs Prisma for first-class RLS; NestJS/Passport identity vs Supabase GoTrue; Vite 8; add Playwright; Open-Meteo commercial plan **-> superseded 2026-08-20: ships against the free tier instead, see BUILD §3's divergence row**) are recorded in BUILD §3.
 - Engine note: the root `IDEA.md` thesis is the long-form source of record; `docs/idea-arkilaunch.md` is its FMD-shaped distillation.
 - Build note: mid-build the org hit a monthly spend limit; the later docs (RFC-3, QAD, CLR, OPS, SAD, BUILD, AIA, GTM, PITCH, WRAP, VALIDATION, VOICE) were authored inline by the orchestrator rather than via parallel subagents.
 - Validation (2026-07-25): `check.py docs --scale full` = 0 failures over the generated suite + materialized artifacts. Materialization banner in AGENTS/BRAND/DESIGN was converted from an HTML comment to a blockquote so the voice check would not read the comment's closing `-->` as a spaced dash (FMD `materialize.py` quirk; a candidate engine fix noted in the WRAP field report). Root `IDEA.md` thesis still fails voice (54 em/en-dash and `--` hits); left intact as the user's source document.
