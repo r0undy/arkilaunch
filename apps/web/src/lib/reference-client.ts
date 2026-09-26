@@ -17,6 +17,8 @@ export interface RateCardRef {
   equipmentTypeId: string;
   // Set when the card overrides one unit of the type.
   equipmentId: string | null;
+  // Price book size class; null = every size of the type.
+  sizeClass: string | null;
   rateType: string;
   rateValue: string;
   currency: string;

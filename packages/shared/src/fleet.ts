@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PaginationQuerySchema } from './pagination.js';
+import { SizeClassSchema } from './pricing.js';
 
 // PRD-F4 (Fleet Inventory, Maintenance & Reporting), SDD §4 endpoint
 // contracts for /equipment, /equipment/:id/maintenance,
@@ -33,6 +34,8 @@ const EquipmentSpecFieldsSchema = z.object({
   notes: z.string().max(2000).optional(),
   // Free-text category for a machine filed under "Others".
   categoryNote: z.string().max(200).optional(),
+  // Which price book row this unit is quoted from (type x size class).
+  sizeClass: SizeClassSchema.optional(),
 });
 
 export const EquipmentCreateRequestSchema = EquipmentSpecFieldsSchema.extend({
@@ -191,6 +194,7 @@ export const EquipmentResponseSchema = z.object({
   fuelType: z.string().nullable(),
   notes: z.string().nullable(),
   categoryNote: z.string().nullable(),
+  sizeClass: SizeClassSchema.nullable(),
   // The rendered public URL, derived at the egress boundary. The raw Storage
   // object key (equipment.photo_uri) is never exposed: it encodes the tenant
   // id and the bucket layout, and keeping it server-side means the bucket can

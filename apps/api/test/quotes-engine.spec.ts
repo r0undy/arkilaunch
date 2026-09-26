@@ -100,7 +100,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
       projectSiteId: '00000000-0000-0000-0000-000000000000',
       discount: { type: 'none', value: 0 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
-    });
+    }, { auto: true });
     expect(Date.now() - startedAt).toBeLessThan(60_000);
     expect(result.total).toBeGreaterThan(0);
 
@@ -124,7 +124,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
       projectSiteId: '00000000-0000-0000-0000-000000000000',
       discount: { type: 'none', value: 0 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
-    });
+    }, { auto: true });
 
     // Move the tenant's pricing parameters (a new, different, effective-now row).
     await withTenantTx(ctxA, (tx) =>
@@ -171,7 +171,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
       projectSiteId: '00000000-0000-0000-0000-000000000000',
       discount: { type: 'none', value: 0 },
       items: itemsFor(dedicatedCardId, equipmentTypeIdA),
-    });
+    }, { auto: true });
 
     // Supersede: close the old row, insert a successor with a materially
     // different value (append-only pattern; PATCH /rate-cards does this via
@@ -203,8 +203,8 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
         projectSiteId: '00000000-0000-0000-0000-000000000000',
         discount: { type: 'none', value: 0 },
         items: itemsFor(dedicatedCardId, equipmentTypeIdA),
-      }),
-    ).rejects.toThrow(UnprocessableEntityException);
+      }, { auto: true }),
+    ).rejects.toMatchObject({ response: { error: 'rate_card_not_effective' } });
   });
 
   // QAD-T45: source-outage fallback -- stale reading and no-reading-at-all.
@@ -285,6 +285,17 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     expect(Math.abs(priced.subtotal - priced.total)).toBeLessThanOrEqual(0.01); // no discount applied
   });
 
+  it('staff cannot quote a company outside a booking: prices come from the price book', async () => {
+    await expect(
+      quotes.create(ctxA, {
+        customerId: customerIdA,
+        projectSiteId: '00000000-0000-0000-0000-000000000000',
+        discount: { type: 'none', value: 0 },
+        items: itemsFor(rateCardIdA, equipmentTypeIdA),
+      }),
+    ).rejects.toMatchObject({ response: { error: 'quote_requires_booking' } });
+  });
+
   // QAD-T47: revision integrity.
   it('QAD-T47: /revise creates revision n+1, links the parent, and leaves the parent unchanged', async () => {
     const original = await quotes.create(ctxA, {
@@ -292,7 +303,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
       projectSiteId: '00000000-0000-0000-0000-000000000000',
       discount: { type: 'none', value: 0 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
-    });
+    }, { auto: true });
 
     const revised = await quotes.revise(ctxA, original.id, {
       customerId: customerIdA,
@@ -316,7 +327,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
       projectSiteId: '00000000-0000-0000-0000-000000000000',
       discount: { type: 'none', value: 0 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
-    });
+    }, { auto: true });
 
     await expect(quotes.get(ctxB, created.id)).rejects.toThrow(NotFoundException);
   });
@@ -330,7 +341,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
       projectSiteId: '00000000-0000-0000-0000-000000000000',
       discount: { type: 'none', value: 0 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
-    });
+    }, { auto: true });
 
     // 404, not 403: a 403 would confirm the id exists.
     await expect(quotes.get(customerCtxA, theirs.id)).rejects.toThrow(NotFoundException);
@@ -342,7 +353,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
       projectSiteId: '00000000-0000-0000-0000-000000000000',
       discount: { type: 'none', value: 0 },
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
-    });
+    }, { auto: true });
 
     const read = await quotes.get(customerCtxA, mine.id);
     expect(read.id).toBe(mine.id);

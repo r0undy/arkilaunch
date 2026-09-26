@@ -16,6 +16,7 @@ import {
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
+  SizeClass,
   EquipmentCreateRequest,
   EquipmentListQuery,
   EquipmentListResponse,
@@ -88,6 +89,7 @@ function toEquipmentResponse(row: typeof equipment.$inferSelect): EquipmentRespo
     fuelType: row.fuelType,
     notes: row.notes,
     categoryNote: row.categoryNote,
+    sizeClass: row.sizeClass as SizeClass | null,
     photoUrl: publicPhotoUrl(row.photoUri),
   };
 }
@@ -102,6 +104,7 @@ type EquipmentSpecFields = {
   fuelType?: string | undefined;
   notes?: string | undefined;
   categoryNote?: string | undefined;
+  sizeClass?: SizeClass | undefined;
 };
 
 function specFieldPatch(body: EquipmentSpecFields) {
@@ -117,6 +120,7 @@ function specFieldPatch(body: EquipmentSpecFields) {
     ...(body.fuelType !== undefined ? { fuelType: body.fuelType } : {}),
     ...(body.notes !== undefined ? { notes: body.notes } : {}),
     ...(body.categoryNote !== undefined ? { categoryNote: body.categoryNote } : {}),
+    ...(body.sizeClass !== undefined ? { sizeClass: body.sizeClass } : {}),
   };
 }
 

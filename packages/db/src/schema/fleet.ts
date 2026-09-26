@@ -39,6 +39,8 @@ export const equipment = pgTable(
     photoUri: text('photo_uri'),
     // Free-text category when the type is "Others" (migration 0035).
     categoryNote: text('category_note'),
+    // Price book size class (migration 0054); null = priced type-wide.
+    sizeClass: text('size_class'),
     // Soft retire. A machine is never deleted: edtr rows cite equipment_id as
     // the evidence an invoice was computed from (billing.ts), and
     // equipment_assignments carries its rental history. Migration 0026
@@ -66,6 +68,8 @@ export const rateCards = pgTable(
       .references(() => equipmentTypes.id),
     // 0038: a unit card overrides its type's card; null = type-wide.
     equipmentId: uuid('equipment_id').references(() => equipment.id),
+    // 0054: the price book row is type x size class; null = every size.
+    sizeClass: text('size_class'),
     rateType: text('rate_type').notNull(), // hourly, daily
     rateValue: numeric('rate_value', { precision: 12, scale: 2 }).notNull(),
     currency: text('currency').notNull().default('PHP'),

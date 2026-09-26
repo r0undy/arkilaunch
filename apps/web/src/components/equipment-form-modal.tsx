@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import type { EquipmentResponse } from '@arkilaunch/shared';
+import { SIZE_CLASSES, sizeClassLabel, type EquipmentResponse, type SizeClass } from '@arkilaunch/shared';
 import { Modal } from './modal.js';
 import { Input } from './input.js';
 import { Select } from './select.js';
@@ -74,6 +74,7 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
   const [status, setStatus] = useState(equipment?.availabilityStatus ?? 'available');
   const [notes, setNotes] = useState(equipment?.notes ?? '');
   const [categoryNote, setCategoryNote] = useState(equipment?.categoryNote ?? '');
+  const [sizeClass, setSizeClass] = useState<SizeClass | ''>(equipment?.sizeClass ?? '');
   const [photo, setPhoto] = useState<File | null>(null);
   const [serialError, setSerialError] = useState<string | null>(null);
 
@@ -93,6 +94,7 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
         ...(textOrUndefined(engineType) ? { engineType: textOrUndefined(engineType) } : {}),
         ...(textOrUndefined(fuelType) ? { fuelType: textOrUndefined(fuelType) } : {}),
         ...(textOrUndefined(notes) ? { notes: textOrUndefined(notes) } : {}),
+        ...(sizeClass ? { sizeClass } : {}),
         ...(isOthers && textOrUndefined(categoryNote)
           ? { categoryNote: textOrUndefined(categoryNote) }
           : {}),
@@ -227,6 +229,19 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
               placeholder="CAT-320-GH"
             />
           </div>
+          <Select
+            label="Size class"
+            hint="Which price book row this machine is quoted from."
+            value={sizeClass}
+            onChange={(e) => setSizeClass(e.target.value as SizeClass | '')}
+          >
+            <option value="">Every size (type-wide price)</option>
+            {SIZE_CLASSES.map((size) => (
+              <option key={size} value={size}>
+                {sizeClassLabel(size, types.data?.find((type) => type.id === equipmentTypeId)?.name)}
+              </option>
+            ))}
+          </Select>
           {isOthers && (
             <Input
               label="Describe the category"

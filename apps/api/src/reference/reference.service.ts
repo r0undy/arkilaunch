@@ -58,6 +58,7 @@ export class ReferenceService {
           id: rateCards.id,
           equipmentTypeId: rateCards.equipmentTypeId,
           equipmentId: rateCards.equipmentId,
+          sizeClass: rateCards.sizeClass,
           rateType: rateCards.rateType,
           rateValue: rateCards.rateValue,
           currency: rateCards.currency,

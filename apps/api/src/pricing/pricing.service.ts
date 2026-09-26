@@ -225,6 +225,7 @@ export class PricingService {
           and(
             eq(rateCards.equipmentTypeId, input.equipmentTypeId),
             input.equipmentId ? eq(rateCards.equipmentId, input.equipmentId) : isNull(rateCards.equipmentId),
+            input.sizeClass ? eq(rateCards.sizeClass, input.sizeClass) : isNull(rateCards.sizeClass),
             eq(rateCards.rateType, input.rateType),
             lte(rateCards.effectiveFrom, effectiveTo ?? new Date('9999-12-31')),
             or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, effectiveFrom)),
@@ -241,6 +242,7 @@ export class PricingService {
           tenantId: ctx.tenantId,
           equipmentTypeId: input.equipmentTypeId,
           equipmentId: input.equipmentId ?? null,
+          sizeClass: input.sizeClass ?? null,
           rateType: input.rateType,
           rateValue: String(input.rateValue),
           currency: input.currency,
@@ -280,6 +282,7 @@ export class PricingService {
           tenantId: ctx.tenantId,
           equipmentTypeId: existing.equipmentTypeId,
           equipmentId: existing.equipmentId,
+          sizeClass: existing.sizeClass,
           rateType: existing.rateType,
           rateValue: String(input.rateValue),
           currency: existing.currency,

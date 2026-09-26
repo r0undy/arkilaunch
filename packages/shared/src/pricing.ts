@@ -34,11 +34,38 @@ export type PricingParametersInput = z.infer<typeof PricingParametersInputSchema
 export const RateTypeSchema = z.enum(['hourly', 'daily', 'monthly']);
 export type RateType = z.infer<typeof RateTypeSchema>;
 
+// Price book size classes (CR pricebook-kyc-weather): one equipment type
+// spans very different machines (a 3 t mini excavator vs a 40 t one), so the
+// fixed price is set per type x size class. The class is generic; the
+// per-type band says what it means for that kind of machine.
+export const SizeClassSchema = z.enum(['mini', 'small', 'medium', 'large', 'extra_large']);
+export type SizeClass = z.infer<typeof SizeClassSchema>;
+export const SIZE_CLASSES = SizeClassSchema.options;
+const SIZE_CLASS_BANDS: Record<string, Record<SizeClass, string>> = {
+  excavator: { mini: 'under 6 t', small: '6-15 t', medium: '15-30 t', large: '30-50 t', extra_large: 'over 50 t' },
+  crane: { mini: 'under 10 t lift', small: '10-25 t lift', medium: '25-50 t lift', large: '50-100 t lift', extra_large: 'over 100 t lift' },
+  truck: { mini: 'under 4 m3', small: '4-10 m3', medium: '10-16 m3', large: '16-20 m3', extra_large: 'over 20 m3' },
+  generator: { mini: 'under 20 kVA', small: '20-100 kVA', medium: '100-300 kVA', large: '300-750 kVA', extra_large: 'over 750 kVA' },
+  loader: { mini: 'under 1 m3 bucket', small: '1-2 m3 bucket', medium: '2-3.5 m3 bucket', large: '3.5-5 m3 bucket', extra_large: 'over 5 m3 bucket' },
+  roller: { mini: 'under 3 t', small: '3-8 t', medium: '8-12 t', large: '12-20 t', extra_large: 'over 20 t' },
+  bulldozer: { mini: 'under 10 t', small: '10-20 t', medium: '20-30 t', large: '30-50 t', extra_large: 'over 50 t' },
+};
+const SIZE_CLASS_NAMES: Record<SizeClass, string> = { mini: 'Mini', small: 'Small', medium: 'Medium', large: 'Large', extra_large: 'Extra large' };
+
+// "Medium (15-30 t)" for an excavator; the bare name for a type with no bands.
+export function sizeClassLabel(sizeClass: SizeClass, equipmentTypeName?: string): string {
+  const key = Object.keys(SIZE_CLASS_BANDS).find((k) => equipmentTypeName?.toLowerCase().includes(k));
+  const band = key ? SIZE_CLASS_BANDS[key]![sizeClass] : null;
+  return band ? `${SIZE_CLASS_NAMES[sizeClass]} (${band})` : SIZE_CLASS_NAMES[sizeClass];
+}
+
 export const RateCardCreateRequestSchema = z
   .object({
     equipmentTypeId: z.string().uuid(),
     // One unit's own rate, overriding its type's card. Omit for type-wide.
     equipmentId: z.string().uuid().optional(),
+    // The price book row: type x size class. Omit for a type-wide card.
+    sizeClass: SizeClassSchema.optional(),
     rateType: RateTypeSchema,
     rateValue: z.number().finite().positive().max(99_999_999.99),
     // Every money path (PayMongo, the pricing engine, round2HalfUp) is

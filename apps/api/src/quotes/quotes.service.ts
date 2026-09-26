@@ -7,6 +7,7 @@ import {
   equipment,
   equipmentAssignments,
   equipmentTypes,
+  negotiationMessages,
   rateCards,
   getBillingSettings,
   quotationItems,
@@ -115,13 +116,21 @@ export class QuotesService {
   }
 
   // POST /quotes: persist a draft, freeze the snapshot (RFC-3 §3).
-  async create(ctx: RequestContext, body: QuoteRequest): Promise<QuoteResponse> {
+  // Prices come from the price book. Staff do not build quotes freely for a
+  // company: a staff quote must be for a booking, and once that booking has
+  // a quote, a new one needs an open negotiation (see requireNegotiation).
+  // `auto` is the booking's own automatic quote.
+  async create(ctx: RequestContext, body: QuoteRequest, opts: { auto?: boolean } = {}): Promise<QuoteResponse> {
     const startedAt = Date.now();
     const result = await withTenantTx(ctx, async (tx) => {
+      await requireVerifiedCompany(tx, body.customerId);
+      if (!opts.auto) {
+        if (!body.rentalId) throw new UnprocessableEntityException({ error: 'quote_requires_booking' });
+        await this.requireNegotiation(tx, body.rentalId);
+      }
       // A booking has one live quote. Quoting it again is a new revision
       // that supersedes every open one, so an older, cheaper approved quote
       // can never still be accepted after the price moved.
-      await requireVerifiedCompany(tx, body.customerId);
       let revision = 1;
       let parentQuotationId: string | null = null;
       if (body.rentalId) {
@@ -226,7 +235,7 @@ export class QuotesService {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, rentalId)).limit(1);
       if (!rental) return null;
       const lines = await tx
-        .select({ equipmentId: equipment.id, equipmentTypeId: equipment.equipmentTypeId, start: equipmentAssignments.start, end: equipmentAssignments.end, bookedHours: equipmentAssignments.bookedHours })
+        .select({ equipmentId: equipment.id, equipmentTypeId: equipment.equipmentTypeId, sizeClass: equipment.sizeClass, start: equipmentAssignments.start, end: equipmentAssignments.end, bookedHours: equipmentAssignments.bookedHours })
         .from(equipmentAssignments)
         .innerJoin(equipment, eq(equipment.id, equipmentAssignments.equipmentId))
         .where(eq(equipmentAssignments.rentalId, rentalId));
@@ -245,13 +254,23 @@ export class QuotesService {
           .where(
             and(
               eq(rateCards.tenantId, ctx.tenantId),
-              or(eq(rateCards.equipmentId, line.equipmentId), and(eq(rateCards.equipmentTypeId, line.equipmentTypeId), isNull(rateCards.equipmentId))),
+              // Price book order: the unit's own card, then its type x size
+              // class, then the type-wide card.
+              or(
+                eq(rateCards.equipmentId, line.equipmentId),
+                and(
+                  eq(rateCards.equipmentTypeId, line.equipmentTypeId),
+                  isNull(rateCards.equipmentId),
+                  line.sizeClass ? or(eq(rateCards.sizeClass, line.sizeClass), isNull(rateCards.sizeClass)) : isNull(rateCards.sizeClass),
+                ),
+              ),
               lte(rateCards.effectiveFrom, now),
               or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, now)),
             ),
           )
           .orderBy(
             sql`${rateCards.equipmentId} is null`,
+            sql`${rateCards.sizeClass} is null`,
             sql`array_position(${sql.raw(`array['${preferred.join("','")}']`)}::text[], ${rateCards.rateType})`,
             desc(rateCards.effectiveFrom),
           )
@@ -271,7 +290,7 @@ export class QuotesService {
     });
     if (!body) return null;
     try {
-      const quote = await this.create(ctx, body);
+      const quote = await this.create(ctx, body, { auto: true });
       await this.approve(ctx, quote.id);
       return { ...quote, status: 'approved' };
     } catch (err) {
@@ -286,6 +305,7 @@ export class QuotesService {
     return withTenantTx(ctx, async (tx) => {
       const [parent] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
       if (!parent) throw new NotFoundException({ error: 'quote_not_found' });
+      if (parent.rentalId) await this.requireNegotiation(tx, parent.rentalId);
       await requireVerifiedCompany(tx, body.customerId);
 
       const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body);
@@ -428,6 +448,33 @@ export class QuotesService {
       if (quotation.rentalId) await notifyStaff(tx, ctx.tenantId, 'quote_declined', { rental_id: quotation.rentalId });
       return { id: quotationId, status: 'rejected' };
     });
+  }
+
+  // The price-book quote stands unless the customer negotiates it. A booking
+  // with no quote yet (the automatic one could not be priced) may be quoted
+  // by hand; otherwise staff may re-quote only after the customer has
+  // declined the current quote or written in the negotiation thread since it
+  // was issued.
+  private async requireNegotiation(tx: Parameters<Parameters<typeof withTenantTx>[1]>[0], rentalId: string) {
+    const [latest] = await tx
+      .select({ status: quotations.status, createdAt: quotations.createdAt })
+      .from(quotations)
+      .where(eq(quotations.rentalId, rentalId))
+      .orderBy(desc(quotations.createdAt))
+      .limit(1);
+    if (!latest || latest.status === 'rejected') return;
+    const [message] = await tx
+      .select({ id: negotiationMessages.id })
+      .from(negotiationMessages)
+      .where(
+        and(
+          eq(negotiationMessages.rentalId, rentalId),
+          eq(negotiationMessages.authorRole, 'customer'),
+          gt(negotiationMessages.createdAt, latest.createdAt),
+        ),
+      )
+      .limit(1);
+    if (!message) throw new ConflictException({ error: 'quote_not_in_negotiation' });
   }
 
   // A staff-agreed line price is a manual override of the engine, so it is

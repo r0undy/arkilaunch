@@ -10,7 +10,10 @@ import { setAccessToken } from '../lib/auth-client.js';
 // the figures necessarily on screen, and a failure arrived as a JSON dump.
 // The preview is now the decision point, and it carries Create in its footer.
 
-const CUSTOMER = { id: 'cust-1', companyName: 'Almara Construction' };
+const CUSTOMER = { id: '11111111-1111-4111-8111-111111111111', companyName: 'Almara Construction' };
+const BOOKING_ID = '22222222-2222-4222-8222-222222222222';
+// The builder only opens from a booking under negotiation.
+const BUILDER_URL = `/app/quotes?bookingId=${BOOKING_ID}&customerId=${CUSTOMER.id}`;
 const EQUIPMENT_TYPE = { id: 'et-1', name: 'Excavator 20T' };
 const RATE_CARD = { id: 'rc-1', equipmentTypeId: 'et-1', equipmentId: null, rateType: 'daily', currency: 'PHP', rateValue: '20000' };
 const SITE = { id: 'site-1', city: 'Taguig', province: 'NCR', latitude: 14.5, longitude: 121 };
@@ -46,6 +49,9 @@ function stubFetch(onQuotes?: (url: string) => Response) {
       if (u.includes('/reference/equipment-types')) return json([EQUIPMENT_TYPE]);
       if (u.includes('/reference/rate-cards')) return json([RATE_CARD]);
       if (u.includes('/reference/project-sites')) return json([SITE]);
+      if (u.includes(`/bookings/${BOOKING_ID}`)) return json({ id: BOOKING_ID, projectSiteId: SITE.id, items: [], quotation: null });
+      if (u.includes('/rate-cards')) return json({ items: [{ ...RATE_CARD, sizeClass: 'medium', effectiveFrom: '2026-09-01T00:00:00Z', effectiveTo: null }], total: 1 });
+      if (u.includes('/pricing/billing-settings')) return json({ mobilizationPhp: 15000, demobilizationPhp: 15000, dailyHours: 8 });
       if (u.includes('/quotes')) {
         if (onQuotes) return Promise.resolve(onQuotes(u));
         return json(u.endsWith('/preview') ? PREVIEW : { ...PREVIEW, id: 'quote-1' });
@@ -66,9 +72,18 @@ afterEach(() => {
 });
 
 describe('Quotes', () => {
-  it('opens the priced quote over the form, and creates the draft from its footer', async () => {
+  it('shows the fixed price book, not a per-company builder', async () => {
     stubFetch();
     await renderRoute('/app/quotes');
+
+    expect(await screen.findByText('Excavator 20T, Medium (15-30 t)')).toBeInTheDocument();
+    expect(screen.getByText('Mobilization and demobilization (equipment rental)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Preview price' })).not.toBeInTheDocument();
+  });
+
+  it('opens the priced quote over the form, and creates the draft from its footer', async () => {
+    stubFetch();
+    await renderRoute(BUILDER_URL);
 
     const priceIt = await screen.findByRole('button', { name: 'Preview price' });
     await waitFor(() => expect(priceIt).toBeEnabled());
@@ -94,7 +109,7 @@ describe('Quotes', () => {
 
   it('reports a rejected quote as a sentence rather than a JSON dump', async () => {
     stubFetch(() => new Response(JSON.stringify({ error: 'rate_card_expired' }), { status: 400 }));
-    await renderRoute('/app/quotes');
+    await renderRoute(BUILDER_URL);
 
     const priceIt = await screen.findByRole('button', { name: 'Preview price' });
     await waitFor(() => expect(priceIt).toBeEnabled());

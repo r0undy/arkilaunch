@@ -24,6 +24,7 @@ import { GaugeReadout } from '../components/gauge-readout.js';
 import { Modal } from '../components/modal.js';
 import { QuoteLines } from '../components/quote-lines.js';
 import { useToast } from '../components/toast.js';
+import { PriceBook } from '../components/price-book.js';
 
 // A quote line as the builder edits it: a catalog machine priced off its
 // type's rate card, or a free-text item the admin prices by hand.
@@ -58,10 +59,28 @@ function hireDays(booking: BookingDetailResponse): number {
   return spans.length ? Math.max(1, Math.ceil(Math.max(...spans))) : 1;
 }
 
+// The Quotes tab is the fixed price book every client and prospect is
+// quoted from. The builder below opens only from a booking ("Revise quote"),
+// and the API accepts it only while that booking is under negotiation.
+function QuotesPage() {
+  const { bookingId } = quotesRoute.useSearch();
+  if (bookingId) return <QuoteBuilder />;
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Billing"
+        title="Quotes"
+        description="Your fixed price book. Every new booking is quoted from it automatically; you change a price for one customer only when they negotiate."
+      />
+      <PriceBook />
+    </div>
+  );
+}
+
 // DESIGN.md §4.1 Quotation builder: several lines, each machine priced off
 // its own type's rate card in the card's unit, plus free-text items,
 // flat mobilization/demobilization, and a live diesel Gauge Readout.
-function QuotesPage() {
+function QuoteBuilder() {
   const toast = useToast();
   const { bookingId, customerId: bookingCustomerId } = quotesRoute.useSearch();
   const [customers, setCustomers] = useState<CustomerRef[]>([]);
@@ -260,8 +279,8 @@ function QuotesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         eyebrow="Billing"
-        title="Quotes"
-        description="Price each machine off its own rate card, add any extra items, and set transport."
+        title="Revise quote"
+        description="Negotiation only: start from the price book quote and adjust it for this booking."
       />
       {bookingId && (
         <p className="text-sm text-text">
@@ -281,7 +300,7 @@ function QuotesPage() {
       <Surface radius="md" elevation="sm" className="flex max-w-3xl flex-col gap-4 p-6">
         <form className="flex flex-col gap-4" onSubmit={preview}>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Select id="customerId" label="Customer" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
+            <Select id="customerId" label="Customer" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required disabled>
               {customers.length === 0 && <option value="">No customers on file yet</option>}
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -289,7 +308,7 @@ function QuotesPage() {
                 </option>
               ))}
             </Select>
-            <Select id="projectSiteId" label="Project site" value={projectSiteId} onChange={(e) => setProjectSiteId(e.target.value)} required>
+            <Select id="projectSiteId" label="Project site" value={projectSiteId} onChange={(e) => setProjectSiteId(e.target.value)} required disabled>
               {projectSites.length === 0 && <option value="">No project sites yet</option>}
               {projectSites.map((s) => (
                 <option key={s.id} value={s.id}>

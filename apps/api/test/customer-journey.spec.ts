@@ -149,6 +149,11 @@ describe('Customer journey', () => {
       response: { error: 'quote_not_accepted' },
     });
 
+    // The price-book quote stands until the customer negotiates.
+    await expect(quotes.create(adminCtx, quoteBody(booking.id, booking.customerId, 50))).rejects.toMatchObject({
+      response: { error: 'quote_not_in_negotiation' },
+    });
+
     // Counter-offer in the thread; the staff reply notifies the customer.
     await bookings.postMessage(customerCtx, booking.id, { body: 'Can you do better?', offerPhp: first.total - 100 });
     await bookings.postMessage(adminCtx, booking.id, { body: 'Meeting you halfway.', offerPhp: first.total - 50 });
