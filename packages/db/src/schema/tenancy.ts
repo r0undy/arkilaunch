@@ -33,6 +33,9 @@ export const tenants = pgTable(
     address: text('address'),
     city: text('city'),
     province: text('province'),
+    // PayMongo child account (org_..., CHECK in 0053). NULL = cash only.
+    // Written only through tenants_set_paymongo_account.
+    paymongoAccountId: text('paymongo_account_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   () => [

@@ -1,6 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { customers, db } from '@arkilaunch/db';
+import { customers, db, invoices, rentals, truckRequests } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -21,6 +21,30 @@ export async function ownCustomers(tx: Tx, ctx: RequestContext) {
 export async function ownsCustomer(tx: Tx, ctx: RequestContext, customerId: string | null): Promise<boolean> {
   if (!customerId) return false;
   return (await ownCustomers(tx, ctx)).some((row) => row.id === customerId);
+}
+
+// A customer's own invoice: one on their booking (via ownsCustomer) or on
+// their own truck request. Anything else reads as not found.
+export async function customerOwnsInvoice(
+  tx: Tx,
+  ctx: RequestContext,
+  invoice: typeof invoices.$inferSelect,
+): Promise<boolean> {
+  if (invoice.truckRequestId) {
+    const [request] = await tx
+      .select({ requestedBy: truckRequests.requestedBy })
+      .from(truckRequests)
+      .where(eq(truckRequests.id, invoice.truckRequestId))
+      .limit(1);
+    return request?.requestedBy === ctx.userId;
+  }
+  if (!invoice.rentalId) return false;
+  const [rental] = await tx
+    .select({ customerId: rentals.customerId })
+    .from(rentals)
+    .where(eq(rentals.id, invoice.rentalId))
+    .limit(1);
+  return rental ? ownsCustomer(tx, ctx, rental.customerId) : false;
 }
 
 // Only an approved company can book or be quoted, not just check out.

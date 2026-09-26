@@ -1,4 +1,5 @@
 import { createZodDto } from 'nestjs-zod';
-import { CheckoutRequestSchema } from '@arkilaunch/shared';
+import { CheckoutRequestSchema, RefundRequestSchema } from '@arkilaunch/shared';
 
 export class CheckoutRequestDto extends createZodDto(CheckoutRequestSchema) {}
+export class RefundRequestDto extends createZodDto(RefundRequestSchema) {}

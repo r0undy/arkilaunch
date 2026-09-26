@@ -8,7 +8,6 @@ import {
   invoices,
   rentals,
   resolveDepositLedger,
-  truckRequests,
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
@@ -21,31 +20,9 @@ import type {
   RequestContext,
 } from '@arkilaunch/shared';
 import { countRows } from '../common/count-rows.js';
-import { ownsCustomer } from '../common/customer-scope.js';
+import { customerOwnsInvoice } from '../common/customer-scope.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-async function customerOwnsInvoice(
-  tx: Tx,
-  ctx: RequestContext,
-  invoice: typeof invoices.$inferSelect,
-): Promise<boolean> {
-  if (invoice.truckRequestId) {
-    const [request] = await tx
-      .select({ requestedBy: truckRequests.requestedBy })
-      .from(truckRequests)
-      .where(eq(truckRequests.id, invoice.truckRequestId))
-      .limit(1);
-    return request?.requestedBy === ctx.userId;
-  }
-  if (!invoice.rentalId) return false;
-  const [rental] = await tx
-    .select({ customerId: rentals.customerId })
-    .from(rentals)
-    .where(eq(rentals.id, invoice.rentalId))
-    .limit(1);
-  return rental ? ownsCustomer(tx, ctx, rental.customerId) : false;
-}
 
 function toInvoiceSummary(row: typeof invoices.$inferSelect): InvoiceSummaryResponse {
   return {

@@ -6,6 +6,8 @@ import {
   ApplicationNotPendingError,
   DuplicatePendingApplicationError,
   getTenantBranding,
+  getTenantPaymongoAccount,
+  setTenantPaymongoAccount,
   setTenantBrandingImage,
   updateTenantBranding,
   decideTenantApplication,
@@ -202,6 +204,20 @@ If you did not register, ignore this email.`,
       throw err;
     }
     return this.getBranding(tenantId);
+  }
+
+  async getPaymongoAccount(tenantId: string) {
+    return { accountId: await getTenantPaymongoAccount(tenantId) };
+  }
+
+  async setPaymongoAccount(ctx: RequestContext, tenantId: string, accountId: string | null) {
+    try {
+      await setTenantPaymongoAccount(tenantId, ctx.userId, accountId);
+    } catch (err) {
+      if (err instanceof CompanyNotFoundError) throw new NotFoundException({ error: 'company_not_found' });
+      throw err;
+    }
+    return { accountId };
   }
 
   // Logo or hero image. Key built from the target tenant id, never request

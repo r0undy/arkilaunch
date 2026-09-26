@@ -1,26 +1,24 @@
 import { z } from 'zod';
-import { CHECKOUT_METHODS } from './payments-port.js';
+import { CHECKOUT_METHODS, REFUND_REASONS } from './payments-port.js';
 
-// PayMongo webhook event envelope (PRD-F2), verified 2026-08-02 against
-// docs.paymongo.com/reference/webhook-resource +
-// docs.paymongo.com/docs/developer-tools-webhooks-events. Every PayMongo
-// resource (and the event wrapping it) uses this `{ id, type, attributes }`
-// envelope shape; the event's own `attributes.type` is the event name
-// (e.g. "payment.paid"), and `attributes.data` is the nested affected
-// resource (a Payment, Refund, or Dispute), itself in the same envelope
-// shape.
+// PayMongo webhook event envelope (PRD-F2). Every PayMongo resource (and
+// the event wrapping it) uses a `{ id, type, attributes }` envelope; the
+// event's `attributes.type` is the event name and `attributes.data` the
+// affected resource in the same shape.
 //
-// cr-arkilaunch-f2-f8-bookings-payments.md: the actual event names differ
-// from the SDD §4 sketch. Confirmed names this pass handles:
-//   payment.paid, payment.failed   (SDD sketch matched these)
-//   refund.succeeded               (SDD sketch said "refund.updated" -- wrong)
-//   dispute.created, dispute.resolved (SDD sketch said a single "dispute" event -- wrong)
+// The events the handler acts on, confirmed by subscribing a webhook and
+// paying/refunding a live test-mode checkout on 2026-09-26
+// (cr-arkilaunch-paymongo-linked-accounts.md). POST /v1/webhooks rejects
+// `refund.succeeded` and `dispute.*` as invalid event types, so the names
+// the f2-f8 CR carried were never deliverable.
+//   checkout_session.payment.paid  resource = the checkout session (our provider_ref),
+//                                  with payments[] (pay_ id, amount) and our metadata
+//   payment.failed                 resource = the payment, with our metadata
+//   payment.refund.updated         resource = the refund (ref_ id, payment_id, status)
 export const PaymongoEventTypeSchema = z.enum([
-  'payment.paid',
+  'checkout_session.payment.paid',
   'payment.failed',
-  'refund.succeeded',
-  'dispute.created',
-  'dispute.resolved',
+  'payment.refund.updated',
 ]);
 export type PaymongoEventType = z.infer<typeof PaymongoEventTypeSchema>;
 
@@ -35,7 +33,7 @@ export const PaymongoEventEnvelopeSchema = z.object({
     id: z.string(),
     type: z.literal('event'),
     attributes: z.object({
-      type: z.string(), // validated against PaymongoEventTypeSchema by the handler, not here (unknown event types are logged, not rejected)
+      type: z.string(), // unknown event types are logged, not rejected
       livemode: z.boolean(),
       data: PaymongoResourceSchema,
     }),
@@ -52,3 +50,20 @@ export const CheckoutRequestSchema = z.object({
   cash: z.boolean().optional(),
 });
 export type CheckoutRequest = z.infer<typeof CheckoutRequestSchema>;
+
+// POST /payments/:id/refund (staff). No amount = the whole payment.
+export const RefundRequestSchema = z.object({
+  amountPhp: z.number().positive().optional(),
+  reason: z.enum(REFUND_REASONS),
+});
+export type RefundRequest = z.infer<typeof RefundRequestSchema>;
+
+// PATCH /tenants/:id/paymongo-account (platform admin). null unlinks.
+export const PaymongoAccountUpdateSchema = z.object({
+  accountId: z
+    .string()
+    .trim()
+    .regex(/^org_[A-Za-z0-9]+$/)
+    .nullable(),
+});
+export type PaymongoAccountUpdate = z.infer<typeof PaymongoAccountUpdateSchema>;

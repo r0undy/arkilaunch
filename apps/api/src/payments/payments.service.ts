@@ -1,8 +1,10 @@
 import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, gte } from 'drizzle-orm';
 import {
+  auditLogs,
   customers,
   findTenantByInvoiceIdForWebhook,
+  findTenantByProviderPaymentIdForWebhook,
   getBillingSettings,
   invoiceLineItems,
   invoices,
@@ -10,6 +12,7 @@ import {
   quotations,
   rentalContracts,
   rentals,
+  tenants,
   truckRequests,
   withTenantTx,
 } from '@arkilaunch/db';
@@ -17,11 +20,13 @@ import {
   PaymongoEventEnvelopeSchema,
   type CheckoutRequest,
   type PaymentsPort,
+  type RefundRequest,
   type RequestContext,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
-import { ownsCustomer } from '../common/customer-scope.js';
+import { customerOwnsInvoice, ownsCustomer } from '../common/customer-scope.js';
+import { checkoutReturnOrigin } from './return-origin.js';
 import { verifyPaymongoSignature } from './signature.js';
 import { PAYMENTS_PORT } from './payments.tokens.js';
 
@@ -45,6 +50,19 @@ type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
 
 const WEBHOOK_SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
 
+// metadata.invoice_id is ours, but it is still external input: a non-uuid
+// would make the lookup's uuid cast throw, 500, and PayMongo would retry
+// it forever.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface OnlineCheckout {
+  invoiceId: string;
+  amount: number;
+  label: string;
+  method: CheckoutRequest['method'];
+  origin: string | undefined;
+}
+
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -54,7 +72,7 @@ export class PaymentsService {
 
   // POST /api/v1/bookings/:id/checkout (SDD §4, PRD-F2 US-08). Stores only
   // provider_ref + status -- never a card/account number.
-  async checkout(ctx: RequestContext, bookingId: string, body: CheckoutRequest = {}) {
+  async checkout(ctx: RequestContext, bookingId: string, body: CheckoutRequest = {}, origin?: string) {
     return withTenantTx(ctx, async (tx) => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, bookingId)).limit(1);
       if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
@@ -178,28 +196,51 @@ export class PaymentsService {
 
       if (body.cash) return this.issueCash(tx, ctx, invoice.id, chargeAmount);
 
-      const session = await this.paymentsPort.createCheckoutSession(chargeAmount, invoice.id, {
+      return this.startOnline(tx, ctx, {
+        invoiceId: invoice.id,
+        amount: chargeAmount,
         label: quotation ? 'Equipment rental and deposit' : 'Rental deposit',
-        ...(body.method ? { methods: [body.method] } : {}),
+        method: body.method,
+        origin,
       });
-
-      const [payment] = await tx
-        .insert(payments)
-        .values({
-          tenantId: ctx.tenantId,
-          invoiceId: invoice.id,
-          method: body.method ?? 'checkout',
-          amount: String(chargeAmount),
-          providerRef: session.id,
-          status: 'pending',
-        })
-        .returning();
-      if (!payment) throw new Error('payments insert returned no row');
-
-      await this.events.emit(ctx, 'checkout_session_created', { invoice_id: invoice.id, payment_id: payment.id });
-
-      return { checkoutUrl: session.checkoutUrl, invoiceId: invoice.id, paymentId: payment.id };
     });
+  }
+
+  // The one way an online checkout starts, for every invoice kind. The
+  // money goes to the tenant's own PayMongo child account; a tenant with
+  // none linked yet is cash-only, so ArkiLaunch never holds its money.
+  private async startOnline(tx: Tx, ctx: RequestContext, c: OnlineCheckout) {
+    const [tenant] = await tx
+      .select({ paymongoAccountId: tenants.paymongoAccountId })
+      .from(tenants)
+      .where(eq(tenants.id, ctx.tenantId))
+      .limit(1);
+    if (!tenant?.paymongoAccountId) throw new ConflictException({ error: 'online_payment_unavailable' });
+
+    const returnTo = checkoutReturnOrigin(c.origin);
+    const session = await this.paymentsPort.createCheckoutSession(c.amount, c.invoiceId, {
+      label: c.label,
+      ...(c.method ? { methods: [c.method] } : {}),
+      transferTo: tenant.paymongoAccountId,
+      successUrl: `${returnTo}/account/checkout/success?invoice=${c.invoiceId}`,
+      cancelUrl: `${returnTo}/account/checkout/failed?invoice=${c.invoiceId}`,
+    });
+
+    const [payment] = await tx
+      .insert(payments)
+      .values({
+        tenantId: ctx.tenantId,
+        invoiceId: c.invoiceId,
+        method: c.method ?? 'checkout',
+        amount: String(c.amount),
+        providerRef: session.id,
+        status: 'pending',
+      })
+      .returning();
+    if (!payment) throw new Error('payments insert returned no row');
+
+    await this.events.emit(ctx, 'checkout_session_created', { invoice_id: c.invoiceId, payment_id: payment.id });
+    return { checkoutUrl: session.checkoutUrl, invoiceId: c.invoiceId, paymentId: payment.id };
   }
 
   // Cash: the invoice stays 'issued' and a pending cash payment marks the
@@ -241,7 +282,7 @@ export class PaymentsService {
   // POST /truck-requests/:id/checkout (the customer's own). Same money rules
   // as a rental: the amount is the staff-accepted price stored on the row,
   // never a client number, and an issued invoice is reused, never re-priced.
-  async checkoutTruck(ctx: RequestContext, truckRequestId: string, body: CheckoutRequest = {}) {
+  async checkoutTruck(ctx: RequestContext, truckRequestId: string, body: CheckoutRequest = {}, origin?: string) {
     return withTenantTx(ctx, async (tx) => {
       const [request] = await tx
         .select()
@@ -295,27 +336,20 @@ export class PaymentsService {
       const chargeAmount = Number(invoice.amount);
       if (body.cash) return this.issueCash(tx, ctx, invoice.id, chargeAmount);
 
-      const session = await this.paymentsPort.createCheckoutSession(chargeAmount, invoice.id, {
-        label: 'Self-loading truck',
-        ...(body.method ? { methods: [body.method] } : {}),
-      });
-      await tx.insert(payments).values({
-        tenantId: ctx.tenantId,
+      return this.startOnline(tx, ctx, {
         invoiceId: invoice.id,
-        method: body.method ?? 'checkout',
-        amount: String(chargeAmount),
-        providerRef: session.id,
-        status: 'pending',
+        amount: chargeAmount,
+        label: 'Self-loading truck',
+        method: body.method,
+        origin,
       });
-      await this.events.emit(ctx, 'checkout_session_created', { invoice_id: invoice.id });
-      return { checkoutUrl: session.checkoutUrl, invoiceId: invoice.id };
     });
   }
 
   // POST /me/invoices/:id/checkout: the customer pays a weekly invoice
   // (reconciled hours past the deposit, jobs/src/weekly-billing.ts) by
   // PayMongo or cash, same as a booking. The amount is the invoice's.
-  async checkoutInvoice(ctx: RequestContext, invoiceId: string, body: CheckoutRequest = {}) {
+  async checkoutInvoice(ctx: RequestContext, invoiceId: string, body: CheckoutRequest = {}, origin?: string) {
     return withTenantTx(ctx, async (tx) => {
       const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
       const [rental] = invoice?.rentalId
@@ -328,20 +362,7 @@ export class PaymentsService {
       const amount = Number(invoice.amount);
       if (body.cash) return this.issueCash(tx, ctx, invoice.id, amount);
 
-      const session = await this.paymentsPort.createCheckoutSession(amount, invoice.id, {
-        label: 'Weekly equipment usage',
-        ...(body.method ? { methods: [body.method] } : {}),
-      });
-      await tx.insert(payments).values({
-        tenantId: ctx.tenantId,
-        invoiceId: invoice.id,
-        method: body.method ?? 'checkout',
-        amount: String(amount),
-        providerRef: session.id,
-        status: 'pending',
-      });
-      await this.events.emit(ctx, 'checkout_session_created', { invoice_id: invoice.id });
-      return { checkoutUrl: session.checkoutUrl, invoiceId: invoice.id };
+      return this.startOnline(tx, ctx, { invoiceId: invoice.id, amount, label: 'Weekly equipment usage', method: body.method, origin });
     });
   }
 
@@ -379,12 +400,113 @@ export class PaymentsService {
     });
   }
 
+  // A PayMongo payment that paid this invoice, from the webhook or the
+  // return check. Replay-safe: an invoice no longer `issued` is left alone,
+  // so the second of two deliveries (or a webhook after the return check)
+  // is a no-op. The amount PayMongo collected must be exactly the invoice's
+  // -- anything else goes to staff, it never settles.
+  private async settleOnlinePayment(
+    tx: Tx,
+    tenantId: string,
+    p: { invoiceId: string; sessionId: string; paymentId: string; amountCentavos: number },
+  ): Promise<boolean> {
+    const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, p.invoiceId)).limit(1);
+    if (!invoice || invoice.status !== 'issued') return false;
+    const [payment] = await tx
+      .select()
+      .from(payments)
+      .where(and(eq(payments.invoiceId, p.invoiceId), eq(payments.providerRef, p.sessionId)))
+      .limit(1);
+    if (!payment) return false;
+    const expectedCentavos = Math.round(Number(invoice.amount) * 100);
+    if (p.amountCentavos !== expectedCentavos) {
+      await notifyStaff(tx, tenantId, 'payment_amount_mismatch', {
+        invoice_id: p.invoiceId,
+        expected_centavos: expectedCentavos,
+        paid_centavos: p.amountCentavos,
+      });
+      return false;
+    }
+    await tx
+      .update(payments)
+      .set({ status: 'paid', providerPaymentId: p.paymentId })
+      .where(eq(payments.id, payment.id));
+    await this.settleInvoice(tx, tenantId, p.invoiceId);
+    await notifyStaff(tx, tenantId, 'payment_paid', { invoice_id: p.invoiceId });
+    return true;
+  }
+
+  // POST /me/invoices/:id/confirm-payment: the customer is back on the
+  // success page. The server asks PayMongo about the session it created
+  // (never the browser), so a missed or late webhook still confirms the
+  // booking. cr-arkilaunch-paymongo-linked-accounts.md amends PRD-F2 US-08
+  // AC2: the webhook and this server-to-server read are both authorities;
+  // the redirect itself still proves nothing.
+  async confirmPayment(ctx: RequestContext, invoiceId: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+      if (!invoice || (ctx.role === 'customer' && !(await customerOwnsInvoice(tx, ctx, invoice)))) {
+        throw new NotFoundException({ error: 'invoice_not_found' });
+      }
+      if (invoice.status !== 'issued') return { invoiceId, status: invoice.status };
+      const [pending] = await tx
+        .select()
+        .from(payments)
+        .where(and(eq(payments.invoiceId, invoiceId), eq(payments.status, 'pending')))
+        .orderBy(desc(payments.createdAt))
+        .limit(1);
+      if (!pending?.providerRef || pending.method === 'cash') return { invoiceId, status: invoice.status };
+      const session = await this.paymentsPort.getCheckoutSession(pending.providerRef);
+      if (!session.paid || !session.paymentId || session.amountCentavos === undefined) {
+        return { invoiceId, status: invoice.status };
+      }
+      const settled = await this.settleOnlinePayment(tx, ctx.tenantId, {
+        invoiceId,
+        sessionId: pending.providerRef,
+        paymentId: session.paymentId,
+        amountCentavos: session.amountCentavos,
+      });
+      if (settled) await this.events.emit(ctx, 'deposit_payment_confirmed', { invoice_id: invoiceId, via: 'return_check' });
+      return { invoiceId, status: settled ? 'paid' : invoice.status };
+    });
+  }
+
+  // POST /payments/:id/refund (staff). Asks PayMongo to refund; the
+  // `refunded` row is written when PayMongo's payment.refund.updated says
+  // it succeeded, never here, so the ledger only shows money that moved.
+  async refund(ctx: RequestContext, paymentId: string, body: RefundRequest) {
+    return withTenantTx(ctx, async (tx) => {
+      const [payment] = await tx.select().from(payments).where(eq(payments.id, paymentId)).limit(1);
+      if (!payment) throw new NotFoundException({ error: 'payment_not_found' });
+      if (payment.status !== 'paid' || !payment.providerPaymentId) {
+        throw new ConflictException({ error: 'payment_not_refundable' });
+      }
+      const amount = body.amountPhp ?? Number(payment.amount);
+      if (amount > Number(payment.amount)) throw new ConflictException({ error: 'refund_exceeds_payment' });
+      // Audit first: if PayMongo then refuses, the throw rolls this back.
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'REFUND',
+        entity: 'payments',
+        entityId: payment.id,
+        reason: `${body.reason}: PHP ${amount}`,
+      });
+      const refund = await this.paymentsPort.refund(payment.providerPaymentId, amount, body.reason);
+      await this.events.emit(ctx, 'payment_refund_requested', { payment_id: payment.id, refund_id: refund.id });
+      return { paymentId: payment.id, refundId: refund.id, status: 'pending' };
+    });
+  }
+
   // POST /api/v1/webhooks/paymongo (@Public, SDD §4, PRD-F2 US-08).
   // Signature verified BEFORE any parse/DB access (QAD-T28). Returns a
   // plain result object; the controller always answers 2xx once this
   // resolves without throwing, so a durable write always precedes the 2xx.
   async handleWebhook(rawBody: string, signatureHeader: string | undefined, webhookSecret: string | undefined) {
-    if (!webhookSecret || !signatureHeader || !verifyPaymongoSignature(rawBody, signatureHeader, webhookSecret)) {
+    // Test-mode events are signed in `te` and leave `li` empty; which one
+    // to check follows the key this API runs with.
+    const live = !(process.env.PAYMONGO_SECRET_KEY ?? '').startsWith('sk_test_');
+    if (!webhookSecret || !signatureHeader || !verifyPaymongoSignature(rawBody, signatureHeader, webhookSecret, { live })) {
       throw new ForbiddenException({ error: 'invalid_signature' });
     }
 
@@ -401,53 +523,49 @@ export class PaymentsService {
 
     const eventType = parsed.data.data.attributes.type;
     const resource = parsed.data.data.attributes.data;
+    if (eventType === 'payment.refund.updated') return this.handleRefundEvent(resource);
+
     const metadata = resource.attributes.metadata as Record<string, unknown> | undefined;
     const invoiceId = typeof metadata?.invoice_id === 'string' ? metadata.invoice_id : undefined;
 
-    if (!invoiceId) {
-      // Nothing to correlate this event to; ack it rather than retry-loop
-      // PayMongo forever on an event we can never resolve.
-      return { received: true, unresolved: true };
-    }
-
+    // Nothing to correlate this event to; ack it rather than retry-loop
+    // PayMongo forever on an event we can never resolve.
+    if (!invoiceId || !UUID_RE.test(invoiceId)) return { received: true, unresolved: true };
     const lookup = await findTenantByInvoiceIdForWebhook(invoiceId);
-    if (!lookup) {
-      return { received: true, unresolved: true };
-    }
+    if (!lookup) return { received: true, unresolved: true };
 
     const ctx: RequestContext = { tenantId: lookup.tenantId, userId: WEBHOOK_SYSTEM_USER_ID, role: 'system' };
 
     await withTenantTx(ctx, async (tx) => {
-      // Idempotency: a replayed webhook event is a no-op, never a double
-      // credit (QAD-T28). Keyed on the event's own id via provider_ref on
-      // a dedicated audit row is unnecessary here -- payments.provider_ref
-      // is already globally UNIQUE and set to the checkout session id at
-      // checkout time, so the update-by-invoice below is naturally
-      // idempotent: a second payment.paid for the same invoice just
-      // re-sets the same already-paid status.
-      const [existingPayment] = await tx
-        .select()
-        .from(payments)
-        .where(eq(payments.invoiceId, invoiceId))
-        .orderBy(desc(payments.createdAt))
-        .limit(1);
-
       switch (eventType) {
-        case 'payment.paid': {
-          if (existingPayment) {
-            await tx.update(payments).set({ status: 'paid' }).where(eq(payments.id, existingPayment.id));
-          }
-          await this.settleInvoice(tx, lookup.tenantId, invoiceId);
-          await notifyStaff(tx, lookup.tenantId, 'payment_paid', { invoice_id: invoiceId });
-          await this.events.emit(ctx, 'deposit_payment_confirmed', { invoice_id: invoiceId });
+        case 'checkout_session.payment.paid': {
+          // The session is ours (provider_ref); its payments[] carries
+          // PayMongo's pay_ id and the amount actually collected.
+          const sessionPayments = resource.attributes.payments as
+            | { id: string; attributes: { status: string; amount: number } }[]
+            | undefined;
+          const paid = sessionPayments?.find((p) => p.attributes.status === 'paid');
+          if (!paid) break;
+          const settled = await this.settleOnlinePayment(tx, lookup.tenantId, {
+            invoiceId,
+            sessionId: resource.id,
+            paymentId: paid.id,
+            amountCentavos: paid.attributes.amount,
+          });
+          if (settled) await this.events.emit(ctx, 'deposit_payment_confirmed', { invoice_id: invoiceId });
           break;
         }
         case 'payment.failed': {
-          if (existingPayment) {
-            await tx.update(payments).set({ status: 'failed' }).where(eq(payments.id, existingPayment.id));
-          }
-          // Booking stays pending/unpaid; status only ever changes from
-          // the webhook, never the browser redirect (US-08 AC2, QAD-T20).
+          // Booking stays pending/unpaid; a failed attempt only ever marks
+          // a still-pending payment, never a paid one.
+          const [pending] = await tx
+            .select()
+            .from(payments)
+            .where(and(eq(payments.invoiceId, invoiceId), eq(payments.status, 'pending')))
+            .orderBy(desc(payments.createdAt))
+            .limit(1);
+          if (!pending) break;
+          await tx.update(payments).set({ status: 'failed' }).where(eq(payments.id, pending.id));
           if (lookup.rentalId) {
             await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_failed', { invoice_id: invoiceId });
           }
@@ -455,43 +573,52 @@ export class PaymentsService {
           await this.events.emit(ctx, 'deposit_payment_failed', { invoice_id: invoiceId });
           break;
         }
-        case 'refund.succeeded': {
-          // A NEW payments row, never a mutation of the original (audit
-          // immutability posture, SDD §3/§4) -- payments has no immutable
-          // DB-level constraint, but the code never updates a paid row's
-          // amount/method to reflect a refund, only adds a new one.
-          if (existingPayment) {
-            await tx.insert(payments).values({
-              tenantId: lookup.tenantId,
-              invoiceId,
-              method: existingPayment.method,
-              amount: existingPayment.amount,
-              status: 'refunded',
-            });
-          }
-          if (lookup.rentalId) {
-            await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_refunded', { invoice_id: invoiceId });
-          }
-          await this.events.emit(ctx, 'deposit_payment_refunded', { invoice_id: invoiceId });
-          break;
-        }
-        case 'dispute.created': {
-          await tx.update(invoices).set({ status: 'disputed' }).where(eq(invoices.id, invoiceId));
-          await notifyStaff(tx, lookup.tenantId, 'payment_disputed', { invoice_id: invoiceId });
-          await this.events.emit(ctx, 'deposit_payment_disputed', { invoice_id: invoiceId });
-          break;
-        }
-        case 'dispute.resolved': {
-          // Never auto-refunds or auto-voids on a dispute outcome; routes
-          // back to the admin queue for manual resolution.
-          await this.events.emit(ctx, 'deposit_dispute_resolved', { invoice_id: invoiceId });
-          break;
-        }
         default:
           await this.events.emit(ctx, 'paymongo_webhook_unhandled_event', { event_type: eventType, invoice_id: invoiceId });
       }
     });
 
+    return { received: true };
+  }
+
+  // payment.refund.updated: the resource is the refund. A succeeded refund
+  // becomes a NEW payments row (audit immutability, SDD §3/§4), keyed on
+  // the refund's own ref_ id in the globally unique provider_ref -- so a
+  // replayed event inserts nothing.
+  private async handleRefundEvent(resource: { id: string; attributes: Record<string, unknown> }) {
+    const { status, amount, payment_id: providerPaymentId } = resource.attributes;
+    if (status !== 'succeeded' || typeof providerPaymentId !== 'string' || typeof amount !== 'number') {
+      return { received: true };
+    }
+    const lookup = await findTenantByProviderPaymentIdForWebhook(providerPaymentId);
+    if (!lookup) return { received: true, unresolved: true };
+    const ctx: RequestContext = { tenantId: lookup.tenantId, userId: WEBHOOK_SYSTEM_USER_ID, role: 'system' };
+
+    await withTenantTx(ctx, async (tx) => {
+      const [original] = await tx
+        .select()
+        .from(payments)
+        .where(eq(payments.providerPaymentId, providerPaymentId))
+        .limit(1);
+      if (!original) return;
+      const inserted = await tx
+        .insert(payments)
+        .values({
+          tenantId: lookup.tenantId,
+          invoiceId: lookup.invoiceId,
+          method: original.method,
+          amount: String(amount / 100),
+          providerRef: resource.id,
+          status: 'refunded',
+        })
+        .onConflictDoNothing({ target: payments.providerRef })
+        .returning();
+      if (inserted.length === 0) return;
+      if (lookup.rentalId) {
+        await notifyBookingCustomer(tx, lookup.tenantId, lookup.rentalId, 'payment_refunded', { invoice_id: lookup.invoiceId });
+      }
+      await this.events.emit(ctx, 'deposit_payment_refunded', { invoice_id: lookup.invoiceId, refund_id: resource.id });
+    });
     return { received: true };
   }
 }

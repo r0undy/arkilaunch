@@ -1,9 +1,9 @@
 import type { QuotesService } from '../src/quotes/quotes.service.js';
 import { describe, expect, it, beforeAll } from 'vitest';
 import { createHmac } from 'node:crypto';
-import { ForbiddenException, HttpException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, HttpException } from '@nestjs/common';
 import postgres from 'postgres';
-import { invoices, payments, rentals, withTenantTx } from '@arkilaunch/db';
+import { invoices, payments, rentals, setTenantPaymongoAccount, withTenantTx } from '@arkilaunch/db';
 import { StubPaymentsAdapter, type RequestContext } from '@arkilaunch/shared';
 import { eq } from 'drizzle-orm';
 import { PaymentsService } from '../src/payments/payments.service.js';
@@ -80,27 +80,47 @@ describe('PaymentsService (PRD-F2)', () => {
     return created.id;
   }
 
+  // Signs both te and li: which one the handler checks follows the
+  // PAYMONGO_SECRET_KEY prefix of whatever env the suite runs under.
   function signWebhookHeader(rawBody: string, secret: string, timestamp = Math.floor(Date.now() / 1000)): string {
     const sig = createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
-    return `t=${timestamp},te=deadbeef,li=${sig}`;
+    return `t=${timestamp},te=${sig},li=${sig}`;
   }
 
-  function buildEvent(type: string, invoiceId: string): string {
-    return JSON.stringify({
-      data: {
-        id: `evt_${invoiceId}`,
-        type: 'event',
-        attributes: {
-          type,
-          livemode: false,
-          data: {
-            id: `pay_${invoiceId}`,
-            type: 'payment',
-            attributes: { amount: 500000, status: 'paid', metadata: { invoice_id: invoiceId } },
-          },
-        },
+  function event(type: string, resource: { id: string; type: string; attributes: Record<string, unknown> }): string {
+    return JSON.stringify({ data: { id: `evt_${resource.id}`, type: 'event', attributes: { type, livemode: false, data: resource } } });
+  }
+
+  async function invoiceCentavos(invoiceId: string): Promise<number> {
+    const [invoice] = await withTenantTx(customerCtxA, (tx) => tx.select().from(invoices).where(eq(invoices.id, invoiceId)));
+    return Math.round(Number(invoice?.amount) * 100);
+  }
+
+  // The shape a live test-mode checkout_session.payment.paid carries: the
+  // session (our provider_ref) with payments[] and our metadata.
+  async function sessionPaidEvent(invoiceId: string, amountCentavos?: number): Promise<string> {
+    return event('checkout_session.payment.paid', {
+      id: `stub_${invoiceId}`,
+      type: 'checkout_session',
+      attributes: {
+        metadata: { invoice_id: invoiceId },
+        payments: [
+          { id: `pay_${invoiceId}`, attributes: { status: 'paid', amount: amountCentavos ?? (await invoiceCentavos(invoiceId)) } },
+        ],
       },
     });
+  }
+
+  function paymentFailedEvent(invoiceId: string): string {
+    return event('payment.failed', {
+      id: `pay_${invoiceId}`,
+      type: 'payment',
+      attributes: { status: 'failed', metadata: { invoice_id: invoiceId } },
+    });
+  }
+
+  async function deliver(rawBody: string) {
+    return payments_.handleWebhook(rawBody, signWebhookHeader(rawBody, webhookSecret), webhookSecret);
   }
 
   it('QAD-T10: checkout creates a pending payment storing only provider_ref + status, never card data', async () => {
@@ -133,26 +153,25 @@ describe('PaymentsService (PRD-F2)', () => {
     const result = await payments_.checkout(customerCtxA, bookingId);
     if (!('paymentId' in result)) throw new Error('expected a card checkout');
 
-    const rawBody = buildEvent('payment.paid', result.invoiceId);
-    const header = signWebhookHeader(rawBody, webhookSecret);
-    const response = await payments_.handleWebhook(rawBody, header, webhookSecret);
+    const response = await deliver(await sessionPaidEvent(result.invoiceId));
     expect(response).toEqual({ received: true });
 
     const [invoice] = await withTenantTx(customerCtxA, (tx) => tx.select().from(invoices).where(eq(invoices.id, result.invoiceId)));
     const [rental] = await withTenantTx(customerCtxA, (tx) => tx.select().from(rentals).where(eq(rentals.id, bookingId)));
     expect(invoice?.status).toBe('paid');
     expect(rental?.status).toBe('confirmed');
+    const [paymentRow] = await withTenantTx(customerCtxA, (tx) => tx.select().from(payments).where(eq(payments.id, result.paymentId)));
+    expect(paymentRow?.providerPaymentId).toBe(`pay_${result.invoiceId}`);
   });
 
   it('QAD-T28: a replayed webhook is idempotent -- no double credit', async () => {
     const bookingId = await createBooking(4);
     const result = await payments_.checkout(customerCtxA, bookingId);
     if (!('paymentId' in result)) throw new Error('expected a card checkout');
-    const rawBody = buildEvent('payment.paid', result.invoiceId);
-    const header = signWebhookHeader(rawBody, webhookSecret);
+    const rawBody = await sessionPaidEvent(result.invoiceId);
 
-    await payments_.handleWebhook(rawBody, header, webhookSecret);
-    await payments_.handleWebhook(rawBody, header, webhookSecret);
+    await deliver(rawBody);
+    await deliver(rawBody);
 
     const paymentRows = await withTenantTx(customerCtxA, (tx) => tx.select().from(payments).where(eq(payments.invoiceId, result.invoiceId)));
     expect(paymentRows).toHaveLength(1);
@@ -163,8 +182,9 @@ describe('PaymentsService (PRD-F2)', () => {
     const bookingId = await createBooking(5);
     const result = await payments_.checkout(customerCtxA, bookingId);
     if (!('paymentId' in result)) throw new Error('expected a card checkout');
-    const rawBody = buildEvent('payment.paid', result.invoiceId);
-    const forgedHeader = `t=${Math.floor(Date.now() / 1000)},te=deadbeef,li=0000000000000000000000000000000000000000000000000000000000000000`;
+    const rawBody = await sessionPaidEvent(result.invoiceId);
+    const zeros = '0'.repeat(64);
+    const forgedHeader = `t=${Math.floor(Date.now() / 1000)},te=${zeros},li=${zeros}`;
 
     await expect(payments_.handleWebhook(rawBody, forgedHeader, webhookSecret)).rejects.toThrow(ForbiddenException);
 
@@ -176,10 +196,7 @@ describe('PaymentsService (PRD-F2)', () => {
     const bookingId = await createBooking(6);
     const result = await payments_.checkout(customerCtxA, bookingId);
     if (!('paymentId' in result)) throw new Error('expected a card checkout');
-    const rawBody = buildEvent('payment.failed', result.invoiceId);
-    const header = signWebhookHeader(rawBody, webhookSecret);
-
-    await payments_.handleWebhook(rawBody, header, webhookSecret);
+    await deliver(paymentFailedEvent(result.invoiceId));
 
     const [invoice] = await withTenantTx(customerCtxA, (tx) => tx.select().from(invoices).where(eq(invoices.id, result.invoiceId)));
     const [paymentRow] = await withTenantTx(customerCtxA, (tx) =>
@@ -187,6 +204,76 @@ describe('PaymentsService (PRD-F2)', () => {
     );
     expect(invoice?.status).toBe('issued');
     expect(paymentRow?.status).toBe('failed');
+  });
+
+  it('a paid amount that differs from the invoice never settles it', async () => {
+    const bookingId = await createBooking(7);
+    const result = await payments_.checkout(customerCtxA, bookingId);
+    if (!('paymentId' in result)) throw new Error('expected a card checkout');
+
+    await deliver(await sessionPaidEvent(result.invoiceId, (await invoiceCentavos(result.invoiceId)) - 1));
+
+    const [invoice] = await withTenantTx(customerCtxA, (tx) => tx.select().from(invoices).where(eq(invoices.id, result.invoiceId)));
+    expect(invoice?.status).toBe('issued');
+  });
+
+  it('a non-uuid metadata.invoice_id is acked as unresolved, not a 500 retry loop', async () => {
+    const rawBody = event('payment.failed', { id: 'pay_x', type: 'payment', attributes: { metadata: { invoice_id: 'not-a-uuid' } } });
+    expect(await deliver(rawBody)).toEqual({ received: true, unresolved: true });
+  });
+
+  it('a succeeded refund adds one refunded row, however many times it is delivered', async () => {
+    const bookingId = await createBooking(8);
+    const result = await payments_.checkout(customerCtxA, bookingId);
+    if (!('paymentId' in result)) throw new Error('expected a card checkout');
+    await deliver(await sessionPaidEvent(result.invoiceId));
+
+    const refund = event('payment.refund.updated', {
+      id: `ref_${result.invoiceId.slice(0, 8)}`,
+      type: 'refund',
+      attributes: { status: 'succeeded', amount: 150000, payment_id: `pay_${result.invoiceId}` },
+    });
+    await deliver(refund);
+    await deliver(refund);
+
+    const rows = await withTenantTx(customerCtxA, (tx) => tx.select().from(payments).where(eq(payments.invoiceId, result.invoiceId)));
+    const refunded = rows.filter((row) => row.status === 'refunded');
+    expect(refunded).toHaveLength(1);
+    expect(Number(refunded[0]?.amount)).toBe(1500);
+  });
+
+  it('the return check settles a session PayMongo reports paid, and leaves an unpaid one alone', async () => {
+    let paid = false;
+    const adapter = new StubPaymentsAdapter();
+    adapter.getCheckoutSession = async (sessionId: string) =>
+      paid
+        ? { paid: true, paymentId: `pay_rc_${sessionId.slice(-8)}`, amountCentavos: await invoiceCentavos(sessionId.slice(5)) }
+        : { paid: false };
+    const service = new PaymentsService(adapter, events);
+
+    const bookingId = await createBooking(9);
+    const result = await service.checkout(customerCtxA, bookingId);
+    if (!('paymentId' in result)) throw new Error('expected a card checkout');
+
+    expect(await service.confirmPayment(customerCtxA, result.invoiceId)).toEqual({ invoiceId: result.invoiceId, status: 'issued' });
+    paid = true;
+    expect(await service.confirmPayment(customerCtxA, result.invoiceId)).toEqual({ invoiceId: result.invoiceId, status: 'paid' });
+    // The webhook arriving afterwards is a no-op, not a second settlement.
+    await deliver(await sessionPaidEvent(result.invoiceId));
+    const [rental] = await withTenantTx(customerCtxA, (tx) => tx.select().from(rentals).where(eq(rentals.id, bookingId)));
+    expect(rental?.status).toBe('confirmed');
+  });
+
+  it('a tenant with no linked PayMongo account is cash-only', async () => {
+    const bookingId = await createBooking(10);
+    await setTenantPaymongoAccount(customerCtxA.tenantId, customerCtxA.userId, null);
+    try {
+      await expect(payments_.checkout(customerCtxA, bookingId)).rejects.toThrow(ConflictException);
+      const cash = await payments_.checkout(customerCtxA, bookingId, { cash: true });
+      expect(cash).toMatchObject({ checkoutUrl: null, cash: true });
+    } finally {
+      await setTenantPaymongoAccount(customerCtxA.tenantId, customerCtxA.userId, 'org_testA');
+    }
   });
 
   it(
