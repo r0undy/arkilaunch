@@ -319,6 +319,31 @@ async function main() {
     )[0];
   if (!rental) throw new Error('failed to seed a rental for Almara');
 
+  // A site of the demo customer's own, with its proof on file (a site photo
+  // and a building permit), so a truck trip or a booking onto it passes the
+  // site-proof gate (0055). The files are placeholders; nothing opens them.
+  const [ownSite] = await db.select().from(schema.projectSites).where(eq(schema.projectSites.customerId, customerRow.id)).limit(1);
+  const customerSite =
+    ownSite ??
+    (await (async () => {
+      const [ownAddress] = await db
+        .insert(schema.addresses)
+        .values({ tenantId: tenant.id, line1: 'Demo Customer Site, 12 Ortigas Ave', city: 'Pasig', province: 'Metro Manila', country: 'PH' })
+        .returning();
+      const [created] = await db
+        .insert(schema.projectSites)
+        .values({ tenantId: tenant.id, addressId: ownAddress!.id, customerId: customerRow.id, latitude: '14.587000', longitude: '121.061000' })
+        .returning();
+      return created!;
+    })());
+  const proof = await db.select().from(schema.siteDocuments).where(eq(schema.siteDocuments.projectSiteId, customerSite.id));
+  if (proof.length === 0) {
+    await db.insert(schema.siteDocuments).values([
+      { tenantId: tenant.id, projectSiteId: customerSite.id, documentType: 'site_photo', fileUri: 'seed/site-photo.jpg' },
+      { tenantId: tenant.id, projectSiteId: customerSite.id, documentType: 'building_permit', fileUri: 'seed/building-permit.pdf' },
+    ]);
+  }
+
   if (timekeeper) {
     await db
       .insert(schema.timekeeperSiteAssignments)

@@ -23,8 +23,11 @@ test('admin adds an Others machine, corrects its meter and logs a service that r
   await expect(add).toBeHidden();
 
   const card = page.getByRole('group', { name: serial });
-  await card.getByRole('button', { name: 'Maintenance' }).click();
+  await card.getByRole('button', { name: 'Report & maintenance' }).click();
   const dialog = page.getByRole('dialog');
+  // Opens on the unit's report; maintenance is the second tab.
+  await expect(dialog.getByRole('tab', { name: 'Report' })).toHaveAttribute('aria-selected', 'true');
+  await dialog.getByRole('tab', { name: 'Maintenance' }).click();
   await expect(dialog.getByText('No schedules yet.')).toBeVisible();
 
   // The Engine oil 250 h preset is the default.
