@@ -1,12 +1,11 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import {
   addresses,
   auditLogs,
   equipment,
   equipmentAssignments,
   events,
-  pagasaAdvisories,
   projectSites,
   rentals,
   users,
@@ -18,9 +17,6 @@ import {
   WEATHER_STALE_AFTER_MINUTES,
   type DeploymentCreateRequest,
   type IncidentListQuery,
-  type PagasaAdvisoryCreate,
-  type PagasaAdvisoryResponse,
-  type RainfallWarning,
   type SiteEquipmentWeatherResponse,
   type SiteListQuery,
   type IncidentListResponse,
@@ -42,19 +38,6 @@ import {
 } from '../common/equipment-availability.js';
 import { countRows } from '../common/count-rows.js';
 import { latestEquipmentWeather } from '../common/equipment-weather.js';
-
-function toPagasaAdvisory(row: typeof pagasaAdvisories.$inferSelect): PagasaAdvisoryResponse {
-  return {
-    id: row.id,
-    province: row.province,
-    tcws: row.tcws,
-    rainfall: row.rainfall as RainfallWarning,
-    thunderstorm: row.thunderstorm,
-    ...(row.note ? { note: row.note } : {}),
-    validUntil: row.validUntil,
-    createdAt: row.createdAt,
-  };
-}
 
 // Upper bound on the active-alert scan behind GET /weather/advisories.
 // One row per site is returned after the JS dedupe; this caps the rows
@@ -526,50 +509,6 @@ export class SitesService {
       const [site] = await tx.select({ id: projectSites.id }).from(projectSites).where(eq(projectSites.id, siteId)).limit(1);
       if (!site) throw new NotFoundException({ error: 'project_site_not_found' });
       return latestEquipmentWeather(tx, siteId);
-    });
-  }
-
-  // PAGASA warnings staff recorded, newest first (in force and recent).
-  async pagasaAdvisories(ctx: RequestContext): Promise<PagasaAdvisoryResponse[]> {
-    return withTenantTx(ctx, async (tx) => {
-      const rows = await tx
-        .select()
-        .from(pagasaAdvisories)
-        .where(gt(pagasaAdvisories.validUntil, new Date(Date.now() - 7 * 86_400_000)))
-        .orderBy(desc(pagasaAdvisories.createdAt))
-        .limit(50);
-      return rows.map(toPagasaAdvisory);
-    });
-  }
-
-  async createPagasaAdvisory(ctx: RequestContext, body: PagasaAdvisoryCreate): Promise<PagasaAdvisoryResponse> {
-    return withTenantTx(ctx, async (tx) => {
-      const [row] = await tx
-        .insert(pagasaAdvisories)
-        .values({
-          tenantId: ctx.tenantId,
-          province: body.province,
-          tcws: body.tcws,
-          rainfall: body.rainfall,
-          thunderstorm: body.thunderstorm,
-          note: body.note ?? null,
-          validUntil: body.validUntil,
-          createdBy: ctx.userId,
-        })
-        .returning();
-      await tx.insert(auditLogs).values({ tenantId: ctx.tenantId, actorId: ctx.userId, action: 'CREATE', entity: 'pagasa_advisories', entityId: row!.id });
-      return toPagasaAdvisory(row!);
-    });
-  }
-
-  // PAGASA lifted it: it lapses now rather than being deleted (the poll
-  // readings that cited it keep their meaning).
-  async liftPagasaAdvisory(ctx: RequestContext, id: string): Promise<PagasaAdvisoryResponse> {
-    return withTenantTx(ctx, async (tx) => {
-      const [row] = await tx.update(pagasaAdvisories).set({ validUntil: new Date() }).where(eq(pagasaAdvisories.id, id)).returning();
-      if (!row) throw new NotFoundException({ error: 'advisory_not_found' });
-      await tx.insert(auditLogs).values({ tenantId: ctx.tenantId, actorId: ctx.userId, action: 'UPDATE', entity: 'pagasa_advisories', entityId: id });
-      return toPagasaAdvisory(row);
     });
   }
 

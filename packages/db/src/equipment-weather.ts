@@ -1,9 +1,9 @@
-import { and, desc, eq, gt, gte, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import {
+  estimatePagasa,
   evaluateEquipmentWeather,
   heatIndexC,
-  isThunderstormCode,
   LEVEL_RANK,
   weatherClassFor,
   worstLevel,
@@ -12,13 +12,13 @@ import {
   type WeatherLevel,
   type WeatherObservation,
 } from '@arkilaunch/shared';
-import { addresses, customers } from './schema/customers.js';
+import { customers } from './schema/customers.js';
 import { roles, users } from './schema/tenancy.js';
 import { equipment, equipmentTypes } from './schema/fleet.js';
-import { equipmentAssignments, projectSites, rentals } from './schema/rentals.js';
+import { equipmentAssignments, rentals } from './schema/rentals.js';
 import { edtr, edtrLineItems } from './schema/billing.js';
 import { events } from './schema/events.js';
-import { notifications, pagasaAdvisories } from './schema/weather.js';
+import { notifications } from './schema/weather.js';
 
 // Shared by the weather poll (service_role, so every query names the
 // tenant explicitly -- RFC-2 §8) and the API (RLS-scoped transactions).
@@ -30,26 +30,6 @@ export interface PagasaInForce {
   rainfall: RainfallWarning;
   thunderstorm: boolean;
   validUntil: string;
-}
-
-// The latest PAGASA advisory still in force for a province, if any.
-export async function pagasaInForce(ex: Executor, tenantId: string, province: string | null, now: Date): Promise<PagasaInForce | null> {
-  if (!province) return null;
-  const [row] = await ex
-    .select()
-    .from(pagasaAdvisories)
-    .where(
-      and(
-        eq(pagasaAdvisories.tenantId, tenantId),
-        sql`lower(${pagasaAdvisories.province}) = lower(${province})`,
-        gt(pagasaAdvisories.validUntil, now),
-      ),
-    )
-    .orderBy(desc(pagasaAdvisories.createdAt))
-    .limit(1);
-  return row
-    ? { tcws: row.tcws, rainfall: row.rainfall as RainfallWarning, thunderstorm: row.thunderstorm, validUntil: row.validUntil.toISOString() }
-    : null;
 }
 
 // Every machine on a site right now: delivered ('active') assignments on
@@ -91,13 +71,10 @@ export async function evaluateSiteEquipment(
   observed: WeatherObservation,
   now = new Date(),
 ): Promise<SiteEquipmentLevels> {
-  const [site] = await ex
-    .select({ province: addresses.province })
-    .from(projectSites)
-    .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
-    .where(and(eq(projectSites.id, siteId), eq(projectSites.tenantId, tenantId)))
-    .limit(1);
-  const pagasa = await pagasaInForce(ex, tenantId, site?.province ?? null, now);
+  // PAGASA-equivalent conditions estimated from the reading itself
+  // (estimatePagasa): no bulletin keyed in per province.
+  const estimate = estimatePagasa(observed);
+  const pagasa: PagasaInForce = { ...estimate, validUntil: new Date(now.getTime() + 30 * 60_000).toISOString() };
   const inputs = {
     windKph: observed.windKph,
     gustKph: observed.gustKph ?? null,
@@ -105,9 +82,9 @@ export async function evaluateSiteEquipment(
     // colours are defined on (mm in the past hour).
     rainMmPerHour: observed.precipMm,
     heatIndexC: observed.humidityPct !== undefined ? heatIndexC(observed.tempC, observed.humidityPct) : null,
-    thunderstorm: isThunderstormCode(observed.code) || (pagasa?.thunderstorm ?? false),
-    tcws: pagasa?.tcws ?? 0,
-    pagasaRainfall: pagasa?.rainfall ?? ('none' as const),
+    thunderstorm: pagasa.thunderstorm,
+    tcws: pagasa.tcws,
+    pagasaRainfall: pagasa.rainfall,
   };
   const machines = await machinesOnSite(ex, tenantId, siteId);
   const levels: EquipmentWeather[] = machines.map((m) => {

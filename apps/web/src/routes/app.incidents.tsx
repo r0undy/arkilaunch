@@ -5,7 +5,6 @@ import { appLayoutRoute } from './_app.js';
 import { incidentsQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
-import { PagasaAdvisories } from '../components/equipment-weather.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { formatDateTime, formatSeverity, shortCode } from '../lib/format.js';
@@ -46,7 +45,6 @@ function IncidentsPage() {
         title="Incident log"
         description="Weather and liability events recorded against your sites, timekeeper weather reports the site readings contradict, and machines used after a Stop work warning."
       />
-      <PagasaAdvisories />
       <div role="group" aria-label="Filter incidents" className="flex flex-wrap gap-2">
         {KINDS.map((entry) => (
           <button

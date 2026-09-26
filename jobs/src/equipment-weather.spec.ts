@@ -13,7 +13,6 @@ import {
   events,
   flagUsedDespiteWarning,
   notifications,
-  pagasaAdvisories,
   projectSites,
   rentals,
   warnOnEquipmentEscalation,
@@ -74,12 +73,11 @@ describe('per-equipment weather (warning -> used despite warning)', () => {
     expect(levels.level).toBe('stop_work');
   });
 
-  it('folds in the PAGASA warning staff recorded for the province', async () => {
+  it('estimates the PAGASA-equivalent signal and rainfall from the live reading', async () => {
     const { db, client } = makeJobDb();
-    await db.insert(pagasaAdvisories).values({ tenantId, province, tcws: 0, rainfall: 'red', validUntil: new Date(Date.now() + 3_600_000) });
-    const levels = await evaluateSiteEquipment(db, tenantId, siteId, { tempC: 28, windKph: 5, precipMm: 0, code: 1 });
+    const levels = await evaluateSiteEquipment(db, tenantId, siteId, { tempC: 28, windKph: 45, precipMm: 35, code: 1 });
     await client.end();
-    expect(levels.pagasa?.rainfall).toBe('red');
+    expect(levels.pagasa).toMatchObject({ tcws: 1, rainfall: 'red' });
     expect(levels.equipment.find((m) => m.equipmentId === rollerId)?.level).toBe('stop_work');
   });
 

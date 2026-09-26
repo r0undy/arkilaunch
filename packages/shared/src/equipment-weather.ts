@@ -306,3 +306,19 @@ export const PagasaAdvisoryResponseSchema = PagasaAdvisoryCreateSchema.extend({
   createdAt: z.coerce.date(),
 });
 export type PagasaAdvisoryResponse = z.infer<typeof PagasaAdvisoryResponseSchema>;
+
+// PAGASA-equivalent conditions estimated from the live reading, so no one
+// has to key PAGASA bulletins in per province. The wind signal follows the
+// PAGASA 2022 TCWS wind bands (on the stronger of sustained wind and gust),
+// the rainfall colour the Rainfall Warning System rates, and thunderstorm
+// the WMO storm codes. An estimate, labelled as such: PAGASA's own signal
+// covers a forecast area and lead time a point reading cannot.
+export function estimatePagasa(observed: { windKph: number; gustKph?: number | null; precipMm: number; code: number }): {
+  tcws: number;
+  rainfall: RainfallWarning;
+  thunderstorm: boolean;
+} {
+  const wind = Math.max(observed.windKph, observed.gustKph ?? 0);
+  const tcws = wind >= 185 ? 5 : wind >= 118 ? 4 : wind >= 89 ? 3 : wind >= 62 ? 2 : wind >= 39 ? 1 : 0;
+  return { tcws, rainfall: rainfallWarningFor(observed.precipMm), thunderstorm: isThunderstormCode(observed.code) };
+}

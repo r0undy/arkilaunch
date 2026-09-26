@@ -70,3 +70,12 @@ describe('per-equipment PAGASA weather levels', () => {
     expect(worstLevel([])).toBe('normal');
   });
 });
+
+describe('estimatePagasa', () => {
+  it('maps wind to the PAGASA TCWS bands and rain to its colours', async () => {
+    const { estimatePagasa } = await import('./equipment-weather.js');
+    expect(estimatePagasa({ windKph: 20, gustKph: 30, precipMm: 0, code: 1 })).toEqual({ tcws: 0, rainfall: 'none', thunderstorm: false });
+    expect(estimatePagasa({ windKph: 45, precipMm: 8, code: 95 })).toEqual({ tcws: 1, rainfall: 'yellow', thunderstorm: true });
+    expect(estimatePagasa({ windKph: 70, gustKph: 95, precipMm: 35, code: 3 }).tcws).toBe(3);
+  });
+});
