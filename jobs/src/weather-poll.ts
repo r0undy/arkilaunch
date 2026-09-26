@@ -1,6 +1,31 @@
-import { desc, eq } from 'drizzle-orm';
-import { events, projectSites, rentals, weatherAlerts } from '@arkilaunch/db';
-import { evaluateSeverity, MAX_POLLED_SITES_PER_CYCLE, type WeatherPort } from '@arkilaunch/shared';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import {
+  addresses,
+  customers,
+  equipment,
+  equipmentAssignments,
+  equipmentTypes,
+  events,
+  notifications,
+  pagasaAdvisories,
+  projectSites,
+  rentals,
+  weatherAlerts,
+} from '@arkilaunch/db';
+import {
+  assessEquipmentWeather,
+  evaluateSeverity,
+  levelRank,
+  MAX_POLLED_SITES_PER_CYCLE,
+  NO_PAGASA_ADVISORY,
+  weatherCategoryFor,
+  type EquipmentWeatherReading,
+  type PagasaAdvisory,
+  type RainfallWarning,
+  type WeatherLevel,
+  type WeatherPort,
+  type WeatherSeverity,
+} from '@arkilaunch/shared';
 import { createWeatherAdapter } from '@arkilaunch/weather';
 import { makeJobDb } from './db-client.js';
 import { runInstrumentedJob } from './telemetry.js';
@@ -17,6 +42,56 @@ import { runInstrumentedJob } from './telemetry.js';
 // weather_alerts row is written at all, which sites.service.ts already
 // reports honestly as isStale: true / polledAt: null.
 const SEVERITY_RANK: Record<string, number> = { none: 0, watch: 1, warning: 2 };
+// A machine at stop-work makes the site a warning; any lower raised level
+// is a watch. The site's own wind/rain severity still applies on top.
+const SITE_SEVERITY_FOR_LEVEL: Record<WeatherLevel, WeatherSeverity> = {
+  normal: 'none',
+  advisory: 'watch',
+  caution: 'watch',
+  stop_work: 'warning',
+};
+
+type JobDb = ReturnType<typeof makeJobDb>['db'];
+
+// The PAGASA warnings staff recorded for the site's province (newest
+// uncleared row); none recorded = none in force.
+async function pagasaFor(db: JobDb, tenantId: string, province: string | null): Promise<PagasaAdvisory> {
+  if (!province) return NO_PAGASA_ADVISORY;
+  const [row] = await db
+    .select()
+    .from(pagasaAdvisories)
+    .where(
+      and(
+        eq(pagasaAdvisories.tenantId, tenantId),
+        sql`lower(${pagasaAdvisories.province}) = lower(${province})`,
+        isNull(pagasaAdvisories.clearedAt),
+      ),
+    )
+    .orderBy(desc(pagasaAdvisories.effectiveFrom))
+    .limit(1);
+  return row
+    ? { tcws: row.tcws, rainfallWarning: row.rainfallWarning as RainfallWarning, thunderstorm: row.thunderstorm }
+    : NO_PAGASA_ADVISORY;
+}
+
+// The machines on the site right now (an active rental's assignment), each
+// with its type name and the customer login to warn.
+async function deployedEquipment(db: JobDb, siteId: string) {
+  return db
+    .select({
+      equipmentId: equipment.id,
+      model: equipment.model,
+      typeName: equipmentTypes.name,
+      rentalId: rentals.id,
+      customerUserId: customers.userId,
+    })
+    .from(equipmentAssignments)
+    .innerJoin(rentals, eq(rentals.id, equipmentAssignments.rentalId))
+    .innerJoin(equipment, eq(equipment.id, equipmentAssignments.equipmentId))
+    .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipment.equipmentTypeId))
+    .innerJoin(customers, eq(customers.id, rentals.customerId))
+    .where(and(eq(rentals.projectSiteId, siteId), eq(rentals.status, 'active'), eq(equipmentAssignments.status, 'active')));
+}
 
 export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter()): Promise<void> {
   if (process.env.ENABLE_WEATHER_POLL !== 'true') {
@@ -35,9 +110,11 @@ export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter())
         tenantId: projectSites.tenantId,
         latitude: projectSites.latitude,
         longitude: projectSites.longitude,
+        province: addresses.province,
       })
       .from(projectSites)
       .innerJoin(rentals, eq(rentals.projectSiteId, projectSites.id))
+      .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
       .where(eq(rentals.status, 'active'));
 
     const ceiling = Number(process.env.WEATHER_POLL_MAX_SITES ?? MAX_POLLED_SITES_PER_CYCLE);
@@ -70,10 +147,22 @@ export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter())
     for (const site of activeSites) {
       try {
         const conditions = await port.getConditions(Number(site.latitude), Number(site.longitude));
-        const severity = evaluateSeverity(conditions);
+        const pagasa = await pagasaFor(db, site.tenantId, site.province);
+        const deployed = await deployedEquipment(db, site.id);
+        // Every machine on the site gets its own level (equipment-weather.ts).
+        const machines: (EquipmentWeatherReading & (typeof deployed)[number])[] = deployed.map((unit) => {
+          const category = weatherCategoryFor(unit.typeName);
+          return { ...unit, category, ...assessEquipmentWeather(category, conditions, pagasa) };
+        });
+        const worstMachine = machines.reduce<WeatherSeverity>(
+          (worst, m) => (SEVERITY_RANK[SITE_SEVERITY_FOR_LEVEL[m.level]]! > SEVERITY_RANK[worst]! ? SITE_SEVERITY_FOR_LEVEL[m.level] : worst),
+          'none',
+        );
+        const siteOwn = evaluateSeverity(conditions);
+        const severity = SEVERITY_RANK[worstMachine]! > SEVERITY_RANK[siteOwn]! ? worstMachine : siteOwn;
 
         const [previous] = await db
-          .select({ severity: weatherAlerts.severity })
+          .select({ severity: weatherAlerts.severity, observed: weatherAlerts.observed })
           .from(weatherAlerts)
           .where(eq(weatherAlerts.projectSiteId, site.id))
           .orderBy(desc(weatherAlerts.effectiveAt))
@@ -89,7 +178,11 @@ export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter())
           tenantId: site.tenantId,
           projectSiteId: site.id,
           severity,
-          observed: conditions,
+          observed: {
+            ...conditions,
+            pagasa,
+            equipment: machines.map(({ equipmentId, category, level, reasons }) => ({ equipmentId, category, level, reasons })),
+          },
           isStale: false,
           effectiveAt: new Date(),
           status: severity === 'none' ? 'cleared' : 'active',
@@ -104,6 +197,47 @@ export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter())
             name: 'weather_liability_incident',
             properties: { project_site_id: site.id, severity, observed: conditions },
           });
+        }
+
+        // Each machine whose level rose to caution or stop-work: the
+        // customer is warned about that machine by name, and the warning
+        // itself is logged -- it is what an "operated despite the warning"
+        // incident (edtr-ocr-worker, edtr.service) points back to.
+        const before = new Map(
+          (((previous?.observed as { equipment?: EquipmentWeatherReading[] } | null)?.equipment) ?? []).map((m) => [m.equipmentId, m.level]),
+        );
+        for (const m of machines) {
+          const was = before.get(m.equipmentId) ?? 'normal';
+          if (levelRank(m.level) <= levelRank(was) || levelRank(m.level) < levelRank('caution')) continue;
+          await db.insert(events).values({
+            tenantId: site.tenantId,
+            name: 'equipment_weather_warning',
+            properties: {
+              project_site_id: site.id,
+              rental_id: m.rentalId,
+              equipment_id: m.equipmentId,
+              category: m.category,
+              level: m.level,
+              reasons: m.reasons,
+              pagasa,
+              observed: conditions,
+            },
+          });
+          if (m.customerUserId) {
+            await db.insert(notifications).values({
+              tenantId: site.tenantId,
+              userId: m.customerUserId,
+              notificationType: 'equipment_weather_warning',
+              payload: {
+                rental_id: m.rentalId,
+                project_site_id: site.id,
+                equipment_id: m.equipmentId,
+                equipment: m.model,
+                level: m.level,
+                reasons: m.reasons,
+              },
+            });
+          }
         }
       } catch (err) {
         // QAD-T17: Open-Meteo down for one site must not drop the whole

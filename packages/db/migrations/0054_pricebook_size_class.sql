@@ -8,4 +8,7 @@ ALTER TABLE rate_cards ADD CONSTRAINT rate_cards_size_class_chk
   CHECK (size_class IS NULL OR size_class IN ('mini','small','medium','large','extra_large'));--> statement-breakpoint
 ALTER TABLE equipment ADD COLUMN size_class text;--> statement-breakpoint
 ALTER TABLE equipment ADD CONSTRAINT equipment_size_class_chk
-  CHECK (size_class IS NULL OR size_class IN ('mini','small','medium','large','extra_large'));
+  CHECK (size_class IS NULL OR size_class IN ('mini','small','medium','large','extra_large'));--> statement-breakpoint
+-- equipment UPDATE is column-granted (migration 0026); the size class is
+-- edited from the equipment form like the other spec fields.
+GRANT UPDATE (size_class) ON equipment TO app_authenticated;

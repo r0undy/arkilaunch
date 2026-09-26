@@ -8,5 +8,6 @@ export * from './catalog-lookup.js';
 export * from './tenant-register.js';
 export * from './reconciliation.js';
 export * from './deposit-ledger.js';
+export * from './weather-incidents.js';
 export * from './seed/ocr-fixtures/golden-set.js';
 export * from './diesel-manual-entry.js';

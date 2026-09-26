@@ -6,6 +6,7 @@ import { SitesService } from './sites.service.js';
 import {
   DeploymentCreateDto,
   IncidentListQueryDto,
+  PagasaAdvisoryInputDto,
   SiteCreateDto,
   SiteListQueryDto,
   SiteUpdateDto,
@@ -66,6 +67,32 @@ export class SitesController {
   @RequirePermission(...STAFF_READ)
   weather(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.sites.weather(req.ctx, id);
+  }
+
+  // Each machine on the site at its weather level (PAGASA + Open-Meteo).
+  @Get('sites/:id/equipment-weather')
+  @RequirePermission(...STAFF_READ)
+  equipmentWeather(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.sites.equipmentWeather(req.ctx, id);
+  }
+
+  // PAGASA warnings in force, per province, entered from the bulletin.
+  @Get('pagasa-advisories')
+  @RequirePermission(...STAFF_READ)
+  pagasaAdvisories(@Req() req: CtxRequest) {
+    return this.sites.pagasaAdvisories(req.ctx);
+  }
+
+  @Post('pagasa-advisories')
+  @RequirePermission('site:manage')
+  recordPagasa(@Body() body: PagasaAdvisoryInputDto, @Req() req: CtxRequest) {
+    return this.sites.recordPagasa(req.ctx, body);
+  }
+
+  @Post('pagasa-advisories/:id/clear')
+  @RequirePermission('site:manage')
+  clearPagasa(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.sites.clearPagasa(req.ctx, id);
   }
 
   @Get('weather/advisories')

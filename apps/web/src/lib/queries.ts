@@ -13,6 +13,7 @@ import type {
   CatalogTestimonialListResponse,
   EquipmentListResponse,
   FinancialReportResponse,
+  IncidentKind,
   IncidentListResponse,
   InvoiceDetailResponse,
   InvoiceListResponse,
@@ -95,7 +96,7 @@ export const invoicesQueries = {
 };
 
 export const incidentsQueries = {
-  list: (limit = PAGE_SIZE, offset = 0, kind?: 'weather' | 'discrepancy') =>
+  list: (limit = PAGE_SIZE, offset = 0, kind?: IncidentKind) =>
     queryOptions({
       queryKey: ['incidents', limit, offset, kind ?? 'all'] as const,
       queryFn: () =>

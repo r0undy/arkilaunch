@@ -2,7 +2,15 @@ import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryOptions } from '@tanstack/react-query';
-import type { NotificationListResponse, NotificationResponse } from '@arkilaunch/shared';
+import {
+  REJECTION_REASON_LABELS,
+  WEATHER_LEVEL_ACTIONS,
+  WEATHER_LEVEL_LABELS,
+  type NotificationListResponse,
+  type NotificationResponse,
+  type RejectionReason,
+  type WeatherLevel,
+} from '@arkilaunch/shared';
 import { apiGet, apiPatch } from '../lib/api-client.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
@@ -95,9 +103,21 @@ export function describeNotification(type: string, payload: unknown): Described 
         }
       : {
           title: 'Company not verified',
-          body: `${name} could not be verified. Contact the rental team to fix it.`,
+          body:
+            typeof p.rejection_reason === 'string' && p.rejection_reason in REJECTION_REASON_LABELS
+              ? `${name}: ${REJECTION_REASON_LABELS[p.rejection_reason as RejectionReason]}. See what to upload to reapply.`
+              : `${name} could not be verified. Contact the rental team to fix it.`,
           action: { label: 'View company', to: '/account/companies', params: {} },
         };
+  }
+  if (type === 'equipment_weather_warning' && typeof p.rental_id === 'string') {
+    const level = typeof p.level === 'string' && p.level in WEATHER_LEVEL_LABELS ? (p.level as WeatherLevel) : 'caution';
+    const reasons = Array.isArray(p.reasons) ? ` (${(p.reasons as string[]).join('; ')})` : '';
+    return {
+      title: `${WEATHER_LEVEL_LABELS[level]}: ${typeof p.equipment === 'string' ? p.equipment : 'your machine'}`,
+      body: `${WEATHER_LEVEL_ACTIONS[level]}${reasons}`,
+      action: { label: 'Open booking', to: '/account/bookings/$bookingId', params: { bookingId: p.rental_id } },
+    };
   }
   if (type === 'truck_requested' || (type === 'call_requested' && typeof p.truck_request_id === 'string')) {
     return {

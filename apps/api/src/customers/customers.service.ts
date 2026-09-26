@@ -33,6 +33,7 @@ import {
   type CompanyDocumentReadResponse,
   type CompanyDocumentUpload,
   type CompanyReviewResponse,
+  type EquipmentWeatherResponse,
   type DocumentIntelligencePort,
   type KycScanResponse,
 } from '@arkilaunch/shared';
@@ -47,6 +48,7 @@ import {
   type WeatherForecastPort,
 } from '@arkilaunch/shared';
 import { DOCUMENT_INTELLIGENCE_PORT } from '../kyc/kyc.tokens.js';
+import { equipmentWeatherFor } from '../sites/sites.service.js';
 import type {
   CompanyCreate,
   CompanyUpdate,
@@ -562,6 +564,25 @@ export class CustomersService {
    * one customer reading the forecast for another's site, which would leak
    * where that company is working (audit-api-surface.md #1).
    */
+  // GET /me/sites/:id/equipment-weather. Same own-site bound as the
+  // forecast below: RLS scopes the tenant, ownCustomers() the customer.
+  async siteEquipmentWeather(ctx: RequestContext, siteId: string): Promise<EquipmentWeatherResponse> {
+    assertCustomer(ctx);
+    return withTenantTx(ctx, async (tx) => {
+      const ids = (await ownCustomers(tx, ctx)).map((row) => row.id);
+      const [row] =
+        ids.length === 0
+          ? []
+          : await tx
+              .select({ id: projectSites.id })
+              .from(projectSites)
+              .where(and(eq(projectSites.id, siteId), inArray(projectSites.customerId, ids)))
+              .limit(1);
+      if (!row) throw new NotFoundException({ error: 'site_not_found' });
+      return equipmentWeatherFor(tx, siteId);
+    });
+  }
+
   async siteForecast(ctx: RequestContext, siteId: string): Promise<SiteForecastResponse> {
     assertCustomer(ctx);
     const site = await withTenantTx(ctx, async (tx) => {

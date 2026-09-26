@@ -54,12 +54,17 @@ export const DeploymentCreateRequestSchema = z
   });
 export type DeploymentCreateRequest = z.infer<typeof DeploymentCreateRequestSchema>;
 
+export const IncidentKindSchema = z.enum(['weather', 'discrepancy', 'equipment_warning', 'misuse']);
+export type IncidentKind = z.infer<typeof IncidentKindSchema>;
+
 // GET /api/v1/incidents?projectSiteId=...
 export const IncidentListQuerySchema = PaginationQuerySchema.extend({
   projectSiteId: z.string().uuid().optional(),
   // weather = auto-logged severity crossings; discrepancy = EDTR v2
-  // timekeeper reports the site readings contradict. Omitted = both.
-  kind: z.enum(['weather', 'discrepancy']).optional(),
+  // timekeeper reports the site readings contradict; equipment_warning = a
+  // machine rated caution/stop-work (the customer was warned); misuse = a
+  // machine logged working while rated stop-work. Omitted = all.
+  kind: IncidentKindSchema.optional(),
 });
 
 export const SiteListQuerySchema = PaginationQuerySchema;
@@ -111,9 +116,11 @@ export const IncidentResponseSchema = z.object({
   severity: z.string().nullable(),
   observed: z.unknown().nullable(),
   occurredAt: z.coerce.date(),
-  kind: z.enum(['weather', 'discrepancy']),
-  // Human sentence for a discrepancy (which rule, which date and half).
+  kind: IncidentKindSchema,
+  // Human sentence for a discrepancy (which rule, which date and half) or
+  // an equipment warning / misuse (which machine, which level, why).
   detail: z.string().nullable(),
+  equipmentId: z.string().uuid().nullable(),
 });
 export type IncidentResponse = z.infer<typeof IncidentResponseSchema>;
 

@@ -1,7 +1,8 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BookingDetailResponse } from '@arkilaunch/shared';
+import type { BookingDetailResponse, EquipmentWeatherResponse } from '@arkilaunch/shared';
+import { EquipmentWeatherList } from '../components/equipment-weather.js';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, equipmentQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
@@ -13,7 +14,7 @@ import { CheckIcon, ClockIcon } from '../components/icons.js';
 import { Input } from '../components/input.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { useToast } from '../components/toast.js';
-import { apiErrorText, apiPatch, apiPost } from '../lib/api-client.js';
+import { apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 import { formatDate, formatPeso, formatStatus, shortCode } from '../lib/format.js';
 
 const STATUS_TONES: Record<string, StatusTone> = {
@@ -235,6 +236,27 @@ function ChangeRequests({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
+// While machines are on site: each one's weather level and what to do.
+// A machine used at Stop work is recorded in the rental company's incident
+// log, so the warning is shown where the customer runs the job.
+function SiteWeather({ siteId }: { siteId: string }) {
+  const query = useQuery({
+    queryKey: ['me', 'sites', siteId, 'equipment-weather'],
+    queryFn: () => apiGet<EquipmentWeatherResponse>(`/me/sites/${siteId}/equipment-weather`),
+  });
+  if (!query.data || query.data.equipment.length === 0) return null;
+  return (
+    <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5" aria-label="Weather on your site">
+      <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Weather on your site</h2>
+      <EquipmentWeatherList data={query.data} />
+      <p className="text-xs text-text-muted">
+        Levels follow PAGASA warnings and the site&apos;s live wind, rain and heat index. Operating a machine at Stop work
+        is recorded as an incident.
+      </p>
+    </Surface>
+  );
+}
+
 function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
   const first = booking.items[0];
   const { paid, onSite } = bookingStage(booking);
@@ -251,6 +273,7 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
           <Timeline booking={booking} />
           <NextStep booking={booking} />
         </Surface>
+        {onSite && booking.projectSiteId && <SiteWeather siteId={booking.projectSiteId} />}
         {booking.items.map((item) => (
           <MachineCard key={`${item.equipmentId}-${String(item.start)}`} equipmentId={item.equipmentId} />
         ))}

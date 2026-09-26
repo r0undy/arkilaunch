@@ -1,11 +1,12 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import {
   addresses,
   auditLogs,
   equipment,
   equipmentAssignments,
   events,
+  pagasaAdvisories,
   projectSites,
   rentals,
   users,
@@ -16,7 +17,16 @@ import {
   severityMessage,
   WEATHER_STALE_AFTER_MINUTES,
   type DeploymentCreateRequest,
+  type EquipmentWeatherReading,
+  type EquipmentWeatherResponse,
+  type IncidentKind,
+  type PagasaAdvisory,
+  type PagasaAdvisoryInput,
+  type PagasaAdvisoryResponse,
+  type RainfallWarning,
   type IncidentListQuery,
+  WEATHER_LEVEL_LABELS,
+  type WeatherLevel,
   type SiteListQuery,
   type IncidentListResponse,
   type RequestContext,
@@ -83,6 +93,75 @@ function discrepancyDetail(rule?: string, date?: string, half?: string): string 
   if (rule === 'D1') return `Idle hours put down to weather, but the site readings show no rain or wind (${when}).`;
   if (rule === 'D2') return `Worked through a weather warning the timekeeper marked clear or cloudy (${when}).`;
   return `Weather report discrepancy (${when}).`;
+}
+
+// Which events row each incident kind reads (no incidents table; see
+// incidents() below).
+const INCIDENT_EVENT: Record<IncidentKind, string> = {
+  weather: 'weather_liability_incident',
+  discrepancy: 'edtr_weather_discrepancy',
+  equipment_warning: 'equipment_weather_warning',
+  misuse: 'equipment_used_despite_warning',
+};
+const KIND_FOR_EVENT = Object.fromEntries(
+  Object.entries(INCIDENT_EVENT).map(([kind, name]) => [name, kind as IncidentKind]),
+) as Record<string, IncidentKind>;
+
+// A machine rated caution/stop-work (the warning), or logged working while
+// rated stop-work (the misuse).
+function machineDetail(kind: IncidentKind, level?: WeatherLevel, reasons?: string[], date?: string, hours?: number): string {
+  const why = reasons?.length ? `: ${reasons.join('; ')}` : '';
+  const label = level ? WEATHER_LEVEL_LABELS[level] : 'Warning';
+  if (kind === 'misuse') return `Operated ${hours ?? '?'} h on ${date ?? '?'} despite a ${label} warning${why}.`;
+  return `${label} warning sent to the customer${why}.`;
+}
+
+type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
+
+function toPagasaResponse(row: typeof pagasaAdvisories.$inferSelect): PagasaAdvisoryResponse {
+  return {
+    id: row.id,
+    province: row.province,
+    tcws: row.tcws,
+    rainfallWarning: row.rainfallWarning as RainfallWarning,
+    thunderstorm: row.thunderstorm,
+    note: row.note,
+    effectiveFrom: row.effectiveFrom,
+  };
+}
+
+// Each machine's level from the newest poll of the site, named. Shared by
+// the staff endpoint and the customer's own-site one (customers.service).
+// The caller has already proved the site is in scope.
+export async function equipmentWeatherFor(tx: Tx, siteId: string): Promise<EquipmentWeatherResponse> {
+  const [latest] = await tx
+    .select()
+    .from(weatherAlerts)
+    .where(eq(weatherAlerts.projectSiteId, siteId))
+    .orderBy(desc(weatherAlerts.effectiveAt))
+    .limit(1);
+  const observed = (latest?.observed ?? null) as { pagasa?: PagasaAdvisory; equipment?: EquipmentWeatherReading[] } | null;
+  const readings = observed?.equipment ?? [];
+  const names =
+    readings.length === 0
+      ? []
+      : await tx
+          .select({ id: equipment.id, model: equipment.model })
+          .from(equipment)
+          .where(inArray(equipment.id, readings.map((r) => r.equipmentId)));
+  const model = new Map(names.map((n) => [n.id, n.model]));
+  return {
+    siteId,
+    polledAt: latest ? latest.effectiveAt.toISOString() : null,
+    pagasa: observed?.pagasa ?? null,
+    equipment: readings.map((r) => ({
+      equipmentId: r.equipmentId,
+      model: model.get(r.equipmentId) ?? 'Machine',
+      category: r.category,
+      level: r.level,
+      reasons: r.reasons,
+    })),
+  };
 }
 
 @Injectable()
@@ -469,6 +548,64 @@ export class SitesService {
     });
   }
 
+  // GET /sites/:id/equipment-weather.
+  async equipmentWeather(ctx: RequestContext, siteId: string): Promise<EquipmentWeatherResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [site] = await tx.select({ id: projectSites.id }).from(projectSites).where(eq(projectSites.id, siteId)).limit(1);
+      if (!site) throw new NotFoundException({ error: 'project_site_not_found' });
+      return equipmentWeatherFor(tx, siteId);
+    });
+  }
+
+  async pagasaAdvisories(ctx: RequestContext): Promise<PagasaAdvisoryResponse[]> {
+    return withTenantTx(ctx, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(pagasaAdvisories)
+        .where(isNull(pagasaAdvisories.clearedAt))
+        .orderBy(asc(pagasaAdvisories.province));
+      return rows.map(toPagasaResponse);
+    });
+  }
+
+  // A new bulletin for a province replaces the one in force (cleared, kept
+  // as history). Takes effect on the next weather poll.
+  async recordPagasa(ctx: RequestContext, body: PagasaAdvisoryInput): Promise<PagasaAdvisoryResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      await tx
+        .update(pagasaAdvisories)
+        .set({ clearedAt: new Date() })
+        .where(and(sql`lower(${pagasaAdvisories.province}) = lower(${body.province})`, isNull(pagasaAdvisories.clearedAt)));
+      const [row] = await tx
+        .insert(pagasaAdvisories)
+        .values({
+          tenantId: ctx.tenantId,
+          province: body.province,
+          tcws: body.tcws,
+          rainfallWarning: body.rainfallWarning,
+          thunderstorm: body.thunderstorm,
+          note: body.note ?? null,
+          createdBy: ctx.userId,
+        })
+        .returning();
+      await tx.insert(auditLogs).values({ tenantId: ctx.tenantId, actorId: ctx.userId, action: 'CREATE', entity: 'pagasa_advisories', entityId: row!.id });
+      return toPagasaResponse(row!);
+    });
+  }
+
+  async clearPagasa(ctx: RequestContext, id: string): Promise<{ id: string; cleared: true }> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx
+        .update(pagasaAdvisories)
+        .set({ clearedAt: new Date() })
+        .where(and(eq(pagasaAdvisories.id, id), isNull(pagasaAdvisories.clearedAt)))
+        .returning({ id: pagasaAdvisories.id });
+      if (!row) throw new NotFoundException({ error: 'advisory_not_found' });
+      await tx.insert(auditLogs).values({ tenantId: ctx.tenantId, actorId: ctx.userId, action: 'UPDATE', entity: 'pagasa_advisories', entityId: id });
+      return { id, cleared: true };
+    });
+  }
+
   // GET /api/v1/weather/advisories (S13). Active advisories (status !=
   // 'cleared') across every site in the tenant, one row per site (its
   // latest active reading).
@@ -506,12 +643,7 @@ export class SitesService {
   // data the first-party analytics sink already holds (restraint ladder).
   async incidents(ctx: RequestContext, query: IncidentListQuery): Promise<IncidentListResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const names =
-        query.kind === 'weather'
-          ? ['weather_liability_incident']
-          : query.kind === 'discrepancy'
-            ? ['edtr_weather_discrepancy']
-            : ['weather_liability_incident', 'edtr_weather_discrepancy'];
+      const names = query.kind ? [INCIDENT_EVENT[query.kind]] : Object.values(INCIDENT_EVENT);
       const conditions: SQL[] = [inArray(events.name, names)];
       if (query.projectSiteId) {
         conditions.push(sql`${events.properties} ->> 'project_site_id' = ${query.projectSiteId}`);
@@ -554,8 +686,14 @@ export class SitesService {
           date?: string;
           half?: string;
           system?: unknown;
+          equipment_id?: string;
+          level?: WeatherLevel;
+          reasons?: string[];
+          hours_active?: number;
         };
-        const discrepancy = row.name === 'edtr_weather_discrepancy';
+        const kind = KIND_FOR_EVENT[row.name] ?? 'weather';
+        const discrepancy = kind === 'discrepancy';
+        const machine = kind === 'equipment_warning' || kind === 'misuse';
         const site = properties.project_site_id
           ? siteById.get(properties.project_site_id)
           : undefined;
@@ -564,11 +702,16 @@ export class SitesService {
           projectSiteId: properties.project_site_id ?? null,
           siteCity: site?.city ?? null,
           siteProvince: site?.province ?? null,
-          severity: discrepancy ? 'high' : (properties.severity ?? null),
+          severity: discrepancy || kind === 'misuse' ? 'high' : machine ? (properties.level ?? null) : (properties.severity ?? null),
           observed: (discrepancy ? properties.system : properties.observed) ?? null,
           occurredAt: row.occurredAt,
-          kind: discrepancy ? ('discrepancy' as const) : ('weather' as const),
-          detail: discrepancy ? discrepancyDetail(properties.rule, properties.date, properties.half) : null,
+          kind,
+          detail: discrepancy
+            ? discrepancyDetail(properties.rule, properties.date, properties.half)
+            : machine
+              ? machineDetail(kind, properties.level, properties.reasons, properties.date, properties.hours_active)
+              : null,
+          equipmentId: properties.equipment_id ?? null,
         };
       });
       return { items, total };

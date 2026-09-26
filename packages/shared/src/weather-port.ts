@@ -8,6 +8,12 @@ export interface WeatherObservation {
   windKph: number;
   precipMm: number;
   code: number;
+  // Gusts and the feels-like (heat index) temperature drive the
+  // per-equipment levels (equipment-weather.ts). Optional so readings
+  // stored before they were fetched still parse; the Open-Meteo adapter
+  // always sets them.
+  gustKph?: number;
+  heatIndexC?: number;
 }
 
 // Open-Meteo FREE tier (PRD-F5). The free tier is keyless and restricted to

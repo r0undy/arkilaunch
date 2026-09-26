@@ -1,5 +1,5 @@
 import { and, eq, gte, lt, sql } from 'drizzle-orm';
-import { edtr, edtrLineItems, events, reconcileEdtr, rentals, weatherAlerts } from '@arkilaunch/db';
+import { edtr, edtrLineItems, events, flagUseDespiteStopWork, reconcileEdtr, rentals, weatherAlerts } from '@arkilaunch/db';
 import {
   CONFIDENCE_GATE,
   OcrPayloadSchema,
@@ -300,6 +300,16 @@ export async function runEdtrOcrWorker(
             // RFC-2 §2 step 5/6: pair with the other independent log and
             // apply the gate immediately after extraction.
             await reconcileEdtr(tx, row.tenantId, edtrId);
+            // The machine worked on a day it was rated stop-work: incident
+            // log only, never money (CR pricebook-kyc-weather).
+            await flagUseDespiteStopWork(tx, {
+              tenantId: row.tenantId,
+              rentalId: row.rentalId,
+              equipmentId: row.equipmentId,
+              reportDate: day.reportDate,
+              hoursActive: day.hoursActive,
+              edtrId,
+            });
 
             if (day.totalMismatch) {
               // The sheet contradicts itself: the in/out times do not add up

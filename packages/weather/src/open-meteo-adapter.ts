@@ -29,7 +29,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 // silently, on a construction site. An explicit param plus a literal check
 // on the unit it claims to have honoured is the cheapest defence against
 // that.
-const CURRENT_FIELDS = 'temperature_2m,wind_speed_10m,precipitation,weather_code';
+const CURRENT_FIELDS = 'temperature_2m,wind_speed_10m,wind_gusts_10m,apparent_temperature,precipitation,weather_code';
 // Same endpoint, same free-tier terms -- the daily block is what the customer
 // forecast rail reads. Units are pinned and checked for exactly the reason
 // the current block pins them (see the comment above CURRENT_FIELDS).
@@ -66,12 +66,16 @@ export class WeatherObservationError extends Error {
 const CurrentUnitsSchema = z.object({
   temperature_2m: z.literal('°C'),
   wind_speed_10m: z.literal('km/h'),
+  wind_gusts_10m: z.literal('km/h'),
+  apparent_temperature: z.literal('°C'),
   precipitation: z.literal('mm'),
 });
 
 const CurrentSchema = z.object({
   temperature_2m: z.number(),
   wind_speed_10m: z.number(),
+  wind_gusts_10m: z.number(),
+  apparent_temperature: z.number(),
   precipitation: z.number(),
   weather_code: z.number(),
 });
@@ -170,10 +174,14 @@ export class OpenMeteoAdapter implements WeatherPort, WeatherForecastPort {
       { current: CURRENT_FIELDS },
       OpenMeteoResponseSchema,
     );
-    const { temperature_2m, wind_speed_10m, precipitation, weather_code } = data.current;
+    const { temperature_2m, wind_speed_10m, wind_gusts_10m, apparent_temperature, precipitation, weather_code } = data.current;
     return {
       tempC: temperature_2m,
       windKph: wind_speed_10m,
+      gustKph: wind_gusts_10m,
+      // Open-Meteo's apparent temperature folds in humidity, the same
+      // thing PAGASA's heat index measures.
+      heatIndexC: apparent_temperature,
       precipMm: precipitation,
       code: weather_code,
     };

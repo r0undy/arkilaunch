@@ -18,6 +18,7 @@ import {
   invoiceLineItems,
   invoices,
   rateCards,
+  flagUseDespiteStopWork,
   reconcileEdtr,
   rentals,
   resolveDepositLedger,
@@ -204,6 +205,16 @@ export class EdtrService {
           hoursIdle: String(body.lineItems.hoursIdle),
         });
         await reconcileEdtr(tx, ctx.tenantId, created.id);
+        // Worked on a day this machine was rated stop-work: log it to the
+        // incident log. Money is untouched.
+        await flagUseDespiteStopWork(tx, {
+          tenantId: ctx.tenantId,
+          rentalId: body.rentalId,
+          equipmentId: body.equipmentId,
+          reportDate: body.reportDate,
+          hoursActive: body.lineItems.hoursActive,
+          edtrId: created.id,
+        });
         // reconcileEdtr writes the authoritative status; re-read rather than
         // re-deriving it here so the two can never drift apart.
         const [refetched] = await tx.select().from(edtr).where(eq(edtr.id, created.id)).limit(1);

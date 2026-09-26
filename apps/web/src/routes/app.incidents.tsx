@@ -1,6 +1,7 @@
 import { createRoute } from '@tanstack/react-router';
 import { useState } from 'react';
-import type { IncidentResponse } from '@arkilaunch/shared';
+import type { IncidentKind, IncidentResponse } from '@arkilaunch/shared';
+import { EquipmentRiskPanel, PagasaAdvisoryPanel } from '../components/equipment-weather.js';
 import { appLayoutRoute } from './_app.js';
 import { incidentsQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
@@ -31,19 +32,23 @@ const KINDS = [
   { id: undefined, label: 'All' },
   { id: 'weather', label: 'Weather incidents' },
   { id: 'discrepancy', label: 'Report discrepancies' },
+  { id: 'equipment_warning', label: 'Machine warnings' },
+  { id: 'misuse', label: 'Used despite warning' },
 ] as const;
 
 function IncidentsPage() {
   const [offset, setOffset] = useState(0);
-  const [kind, setKind] = useState<'weather' | 'discrepancy' | undefined>(undefined);
+  const [kind, setKind] = useState<IncidentKind | undefined>(undefined);
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="Billing"
         title="Incident log"
-        description="Weather and liability events recorded against your sites, and timekeeper weather reports the site readings contradict."
+        description="Weather and liability events recorded against your sites: machine weather warnings, machines used despite a stop-work warning, and timekeeper weather reports the site readings contradict."
       />
+      <PagasaAdvisoryPanel />
+      <EquipmentRiskPanel />
       <div role="group" aria-label="Filter incidents" className="flex flex-wrap gap-2">
         {KINDS.map((entry) => (
           <button

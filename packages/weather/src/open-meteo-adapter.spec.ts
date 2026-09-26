@@ -6,10 +6,12 @@ function jsonResponse(status: number, body: unknown) {
 }
 
 const VALID_BODY = {
-  current_units: { temperature_2m: '°C', wind_speed_10m: 'km/h', precipitation: 'mm' },
+  current_units: { temperature_2m: '°C', wind_speed_10m: 'km/h', wind_gusts_10m: 'km/h', apparent_temperature: '°C', precipitation: 'mm' },
   current: {
     temperature_2m: 30.1,
     wind_speed_10m: 12.4,
+    wind_gusts_10m: 25.9,
+    apparent_temperature: 36.2,
     precipitation: 0.2,
     weather_code: 3,
   },
@@ -23,7 +25,7 @@ describe('OpenMeteoAdapter', () => {
     vi.unstubAllGlobals();
   });
 
-  it('requests the free keyless endpoint with the four current fields, explicit units, and Asia/Manila', async () => {
+  it('requests the free keyless endpoint with the current fields, explicit units, and Asia/Manila', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(200, VALID_BODY));
 
     const adapter = new OpenMeteoAdapter();
@@ -33,7 +35,7 @@ describe('OpenMeteoAdapter', () => {
     expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.open-meteo.com/v1/forecast');
     expect(calledUrl.searchParams.get('latitude')).toBe('14.676');
     expect(calledUrl.searchParams.get('longitude')).toBe('121.0437');
-    expect(calledUrl.searchParams.get('current')).toBe('temperature_2m,wind_speed_10m,precipitation,weather_code');
+    expect(calledUrl.searchParams.get('current')).toBe('temperature_2m,wind_speed_10m,wind_gusts_10m,apparent_temperature,precipitation,weather_code');
     expect(calledUrl.searchParams.get('temperature_unit')).toBe('celsius');
     expect(calledUrl.searchParams.get('wind_speed_unit')).toBe('kmh');
     expect(calledUrl.searchParams.get('precipitation_unit')).toBe('mm');
@@ -50,7 +52,7 @@ describe('OpenMeteoAdapter', () => {
     const adapter = new OpenMeteoAdapter();
     const result = await adapter.getConditions(14.676, 121.0437);
 
-    expect(result).toEqual({ tempC: 30.1, windKph: 12.4, precipMm: 0.2, code: 3 });
+    expect(result).toEqual({ tempC: 30.1, windKph: 12.4, gustKph: 25.9, heatIndexC: 36.2, precipMm: 0.2, code: 3 });
   });
 
   // The safety-critical case: a missing field must throw, never coerce to
