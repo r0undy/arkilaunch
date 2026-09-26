@@ -14,6 +14,7 @@ import type { RequestContext } from '@arkilaunch/shared';
 import { BillingService } from '../src/billing/billing.service.js';
 import { EdtrService } from '../src/edtr/edtr.service.js';
 import { EventsService } from '../src/events/events.service.js';
+import { ensurePaidDeposit } from './paid-deposit.js';
 
 // PRD-F2/F3 read surface backing S9 Billing & Deposit Ledger
 // (cr-arkilaunch-f9-read-surface.md). Uses a dedicated rental (not the
@@ -107,6 +108,7 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
         depositRequired: String(DEPOSIT_REQUIRED),
       });
     });
+    await ensurePaidDeposit(adminCtxA, depositRentalId);
 
     await sql.end();
   });

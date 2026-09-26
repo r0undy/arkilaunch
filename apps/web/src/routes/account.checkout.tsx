@@ -25,6 +25,7 @@ type PaymentMethod = CheckoutMethod | 'manual';
 const METHODS: { id: PaymentMethod; title: string; description: string }[] = [
   { id: 'gcash', title: 'GCash', description: 'You log in to GCash and confirm with its OTP on the secure payment page.' },
   { id: 'paymaya', title: 'Maya', description: 'You log in to Maya and confirm on the secure payment page.' },
+  { id: 'qrph', title: 'QR Ph', description: 'Scan the QR code with any banking or e-wallet app that supports QR Ph.' },
   { id: 'dob', title: 'Online banking', description: 'Pay straight from your bank account (BPI, UnionBank) through your bank’s own login.' },
   { id: 'card', title: 'Credit or debit card', description: 'Visa or Mastercard, entered on the payment provider’s page, not ours.' },
   {
@@ -287,7 +288,7 @@ function CheckoutPage() {
   );
 }
 
-// PayMongo's cancel_url (PAYMONGO_CANCEL_URL). Reaching it means the
+// PayMongo's cancel_url (set per session, back to this storefront). Reaching it means the
 // customer backed out or the wallet/bank declined -- nothing was charged,
 // and the webhook remains the authority either way.
 function CheckoutFailedPage() {

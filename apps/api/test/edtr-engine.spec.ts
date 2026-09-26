@@ -14,6 +14,7 @@ import {
 import type { RequestContext } from '@arkilaunch/shared';
 import { EdtrService } from '../src/edtr/edtr.service.js';
 import { EventsService } from '../src/events/events.service.js';
+import { ensurePaidDeposit } from './paid-deposit.js';
 
 // RFC-2 §3/§7: the reconciliation-gated deduction endpoint. QAD-T1 (happy),
 // QAD-T11/QAD-T26 (sad/abuse: no deduction without the gate), QAD-T29
@@ -161,6 +162,7 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
         .returning();
       unassignedRentalId = unassignedRental!.id;
     });
+    await ensurePaidDeposit(adminCtx, rentalId, unassignedRentalId);
   });
 
   // "Two independent logs" (RFC-2 §2) means one paper_ocr + one

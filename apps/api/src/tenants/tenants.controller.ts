@@ -26,6 +26,7 @@ import {
   TenantApplicationListQueryDto,
   TenantRegisterDto,
   TenantBrandingUpdateDto,
+  PaymongoAccountUpdateDto,
 } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
@@ -134,6 +135,25 @@ export class TenantsController {
     @Req() req: CtxRequest,
   ) {
     return this.tenants.updateBranding(req.ctx, id, body);
+  }
+
+  // The company's PayMongo child account (org_...), pasted by the platform
+  // admin after the company completes PayMongo's own onboarding. Until it
+  // is set the company takes cash only.
+  @Get(':id/paymongo-account')
+  @RequirePermission('tenant:approve')
+  companyPaymongoAccount(@Param('id', UuidParamPipe) id: string) {
+    return this.tenants.getPaymongoAccount(id);
+  }
+
+  @Patch(':id/paymongo-account')
+  @RequirePermission('tenant:approve')
+  setCompanyPaymongoAccount(
+    @Param('id', UuidParamPipe) id: string,
+    @Body() body: PaymongoAccountUpdateDto,
+    @Req() req: CtxRequest,
+  ) {
+    return this.tenants.setPaymongoAccount(req.ctx, id, body.accountId);
   }
 
   @Post(':id/branding/:kind')

@@ -9,6 +9,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -224,12 +225,15 @@ export const payments = pgTable(
     recordedByUserId: uuid('recorded_by_user_id').references(() => users.id),
     amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
     providerRef: text('provider_ref').unique(),
+    // PayMongo's pay_... id, stamped at settlement (0053); refunds use it.
+    providerPaymentId: text('provider_payment_id'),
     status: text('status').notNull().default('pending'), // pending, paid, failed, refunded
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     tenantIsolationPolicy(),
     index('payments_tenant_id_idx').on(table.tenantId),
+    uniqueIndex('payments_provider_payment_id_key').on(table.providerPaymentId),
     check('payments_amount_nonneg_chk', sql`${table.amount} >= 0`),
   ],
 );

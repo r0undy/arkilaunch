@@ -1,5 +1,4 @@
 import { describe, expect, it, beforeAll } from 'vitest';
-import { createHmac } from 'node:crypto';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import postgres from 'postgres';
 import { and, eq } from 'drizzle-orm';
@@ -19,6 +18,7 @@ import { PaymentsService } from '../src/payments/payments.service.js';
 import { QuotesService } from '../src/quotes/quotes.service.js';
 import { PricingEngineService } from '../src/quotes/pricing-engine.service.js';
 import { EventsService } from '../src/events/events.service.js';
+import { checkoutPaidWebhook } from './paymongo-webhook.js';
 
 // Customer journey CR: cart -> booking -> quote -> counter-offer ->
 // revised quote -> accept -> rent + deposit checkout -> webhook, and the
@@ -128,23 +128,6 @@ describe('Customer journey', () => {
       .map((row) => row.notificationType);
   }
 
-  function paidEvent(invoiceId: string) {
-    const rawBody = JSON.stringify({
-      data: {
-        id: `evt_${invoiceId}`,
-        type: 'event',
-        attributes: {
-          type: 'payment.paid',
-          livemode: false,
-          data: { id: `pay_${invoiceId}`, type: 'payment', attributes: { status: 'paid', metadata: { invoice_id: invoiceId } } },
-        },
-      },
-    });
-    const t = Math.floor(Date.now() / 1000);
-    const sig = createHmac('sha256', webhookSecret).update(`${t}.${rawBody}`).digest('hex');
-    return { rawBody, header: `t=${t},te=deadbeef,li=${sig}` };
-  }
-
   it('auto-quotes a new booking from the machine rate card and sends it to the customer', async () => {
     const booking = await book(25, 2);
     const detail = await bookings.get(customerCtx, booking.id);
@@ -205,7 +188,7 @@ describe('Customer journey', () => {
     );
 
     // The webhook confirms it, tells the customer, and it cannot be paid twice.
-    const { rawBody, header } = paidEvent(checkout.invoiceId);
+    const { rawBody, header } = await checkoutPaidWebhook(adminCtx, checkout.invoiceId, webhookSecret);
     await payments.handleWebhook(rawBody, header, webhookSecret);
     const [rental] = await withTenantTx(adminCtx, (tx) => tx.select().from(rentals).where(eq(rentals.id, booking.id)));
     expect(rental?.status).toBe('confirmed');

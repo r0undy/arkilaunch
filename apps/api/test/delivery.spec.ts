@@ -1,5 +1,4 @@
 import { describe, expect, it, beforeAll } from 'vitest';
-import { createHmac } from 'node:crypto';
 import { ConflictException } from '@nestjs/common';
 import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
@@ -16,6 +15,7 @@ import { PaymentsService } from '../src/payments/payments.service.js';
 import { QuotesService } from '../src/quotes/quotes.service.js';
 import { PricingEngineService } from '../src/quotes/pricing-engine.service.js';
 import { EventsService } from '../src/events/events.service.js';
+import { checkoutPaidWebhook } from './paymongo-webhook.js';
 
 // A paid booking is delivered and returned by staff on its own
 // reservation, the customer hears about each step, and staff hear about
@@ -120,23 +120,6 @@ describe('Delivery, return and staff alerts', () => {
       .map((row) => row.notificationType);
   }
 
-  function paidEvent(invoiceId: string) {
-    const rawBody = JSON.stringify({
-      data: {
-        id: `evt_${invoiceId}`,
-        type: 'event',
-        attributes: {
-          type: 'payment.paid',
-          livemode: false,
-          data: { id: `pay_${invoiceId}`, type: 'payment', attributes: { status: 'paid', metadata: { invoice_id: invoiceId } } },
-        },
-      },
-    });
-    const t = Math.floor(Date.now() / 1000);
-    const sig = createHmac('sha256', webhookSecret).update(`${t}.${rawBody}`).digest('hex');
-    return { rawBody, header: `t=${t},te=deadbeef,li=${sig}` };
-  }
-
   async function staffAlerts(type: string, rentalId: string) {
     const url = process.env.DATABASE_URL_DIRECT!;
     const sql = postgres(url, { max: 1 });
@@ -157,7 +140,7 @@ describe('Delivery, return and staff alerts', () => {
     await quotes.accept(customerCtx, quote.id);
     expect(await staffAlerts('quote_accepted', booking.id)).toBeGreaterThan(0);
     const checkout = await payments.checkout(customerCtx, booking.id);
-    const { rawBody, header } = paidEvent(checkout.invoiceId);
+    const { rawBody, header } = await checkoutPaidWebhook(adminCtx, checkout.invoiceId, webhookSecret);
     await payments.handleWebhook(rawBody, header, webhookSecret);
 
     try {
