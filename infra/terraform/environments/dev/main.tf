@@ -79,8 +79,6 @@ locals {
     SUPABASE_STORAGE_BUCKET_EDTR = var.supabase_storage_bucket_edtr
     SUPABASE_STORAGE_BUCKET_KYC  = var.supabase_storage_bucket_kyc
     JWT_ACCESS_TOKEN_TTL         = var.jwt_access_token_ttl
-    PAYMONGO_SUCCESS_URL         = var.paymongo_success_url
-    PAYMONGO_CANCEL_URL          = var.paymongo_cancel_url
     ENABLE_OCR_PIPELINE          = tostring(var.enable_ocr_pipeline)
     ENABLE_OCR_KYC               = tostring(var.enable_ocr_kyc)
     ENABLE_WEATHER_POLL          = tostring(var.enable_weather_poll)

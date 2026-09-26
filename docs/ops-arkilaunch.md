@@ -169,7 +169,10 @@ Each runbook is the human half of a fallback the system already implements. Symp
 - **Mitigate:** If our endpoint is failing, fix the endpoint; PayMongo's retry will redeliver. If events are lost or delayed, **reconcile via the PayMongo GET payment API** and replay them into our handler; the `payments.provider_ref` UNIQUE index makes replays idempotent, so re-processing cannot double-post.
 - **Recover:** Reconcile any bookings left `pending` against PayMongo's record of truth; advance `payments.status` and booking status from the API result.
 - **Verify:** Every `payment.paid`/`payment.failed` in PayMongo's log has a matching durable row; no booking stuck pending against a completed payment.
-- **Notes:** Webhook/idempotency/refund/dispute detail is carried gap G-10 (RFC-2 or an SDD addendum). A refund/dispute incident follows that spec once it lands.
+- **Notes:** Settlement is replay-safe (only an `issued` invoice settles, exact amount) and the success page's server-side return check settles a paid session even if the webhook is late. Refund rows key on the `ref_` id. See [cr-arkilaunch-paymongo-linked-accounts.md](cr-arkilaunch-paymongo-linked-accounts.md).
+- **Register the webhook (per environment):** `POST https://api.paymongo.com/v1/webhooks` with the parent secret key, `url = <api>/api/v1/webhooks/paymongo`, `events = ["checkout_session.payment.paid","payment.failed","payment.refund.updated"]`. Store the returned `whsk_…` as `PAYMONGO_WEBHOOK_SECRET`. A changed URL (e.g. a new tunnel) is `PUT /v1/webhooks/:id`.
+- **Link a company:** PayMongo dashboard → Settings → Invitations → invite the company; once it finishes PayMongo onboarding, copy its `org_…` from Linked accounts into `/admin/companies` → Payments. Unlinking returns it to cash only.
+- **Rotate keys:** new key in the PayMongo dashboard → update the secret store (GitHub `PAYMONGO_SECRET_KEY`) → redeploy. A rotated webhook secret needs a new webhook registration.
 
 #### 4.3 Open-Meteo outage (PRD-F5)
 
