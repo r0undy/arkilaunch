@@ -321,6 +321,8 @@ Full column definitions follow for the multi-tenant additions and the load-beari
 | 34 | `diesel_price_readings` | No (global) | id | | RFC-3; DOE-scrape + manual-entry price cache |
 | 35 | `pricing_parameters` | Yes | id | tenant_id | RFC-3; time-variant per-tenant pricing inputs |
 
+*Added after lock by [cr-arkilaunch-coupons.md](cr-arkilaunch-coupons.md) (migration 0054; not renumbered):* `coupons` (tenant-scoped; code, discount_type, discount_value, expires_at, max_uses, once_per_customer, redeemed_count, active) and `coupon_redemptions` (tenant-scoped; coupon_id, customer_id, invoice_id UNIQUE, discount_php).
+
 **Key relationships:**
 - Tenant has many Users, Customers, Equipment, RateCards, ProjectSites, Subscriptions (1:N), and is the isolation root for every tenant-owned row.
 - Customer has many Rentals, Quotations, KYCDocuments (1:N); a Rental belongs to one Customer and one ProjectSite.

@@ -177,6 +177,14 @@ These turn the BRD metrics into pass/fail gates with a real measurement method.
 | QAD-T47 | Revision integrity | `/revise` creates revision n+1 with a fresh snapshot, links `parent_quotation_id`, marks the parent `superseded`; the parent's numbers are unchanged | PRD-F1 / versioned quotation |
 | QAD-T48 | AuthZ / isolation | A non-`quote:create` role is denied; a Tenant A quote cannot read Tenant B rate cards or params (RLS) | PRD-F1/F7 / US-07, RFC-1 |
 
+### 3.8 Coupon Test Cases (`QAD-T49`..`T51`, [cr-arkilaunch-coupons.md](cr-arkilaunch-coupons.md))
+
+| QAD-T# | Test | What it proves | PRD/BRD trace |
+|--------|------|----------------|----------------|
+| QAD-T49 | Rent-only discount | A coupon lowers the booking invoice's rent line and total; the consumable-deposit line is unchanged; a retry with the same code is the same invoice, one use; re-pricing an issued invoice expires its open PayMongo session | PRD-F2 / US-08 |
+| QAD-T50 | Coupon rules | Expired, inactive, used-up and unknown codes all answer `coupon_invalid`; a once-per-company code refuses the company's second booking with `coupon_used` and rolls the claim back; one coupon per invoice | PRD-F2 / US-08 |
+| QAD-T51 | Coupon isolation | Tenant B cannot list or redeem Tenant A's coupons; the same code in two tenants never collides (RLS) | RFC-1 |
+
 ---
 
 ## 4. Automation vs. Manual Testing

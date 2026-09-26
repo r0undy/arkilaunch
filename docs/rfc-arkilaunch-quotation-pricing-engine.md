@@ -232,6 +232,8 @@ discount             = discount_type == 'percent' ? quote_subtotal * (discount_v
 quote_total          = round2( max(0, quote_subtotal - discount) )
 ```
 
+*Addendum ([cr-arkilaunch-coupons.md](cr-arkilaunch-coupons.md)):* a tenant coupon applied at checkout is a second discount taken **after** the quote. It comes off `quote_total` (the rent line of the booking invoice), `coupon_discount = round2( min(quote_total, percent ? quote_total * value/100 : value) )`, and never off the deposit. The quote itself is not changed.
+
 **Rounding rule:** monetary outputs round to 2 decimals (PHP centavos), **half-up**, applied at the item subtotal and at the quote total. Intermediate values stay full-precision (the `NUMERIC` columns above); only the two named outputs round. This keeps the sum of rounded line items equal to the rounded total within a defined tolerance (see QAD `QAD-T46`, §7 below).
 
 **Diesel-price resolution order** (deterministic; the chosen value and its provenance are snapshotted):
