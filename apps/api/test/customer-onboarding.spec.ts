@@ -188,6 +188,7 @@ describe('Customer onboarding', () => {
       quotes.create(adminCtx, {
         customerId: acme.id,
         projectSiteId: site.id,
+        rentalId: randomUUID(),
         discount: { type: 'none', value: 0 },
         items: [{ equipmentTypeId: randomUUID(), rateCardId: randomUUID(), quantity: 1, estimatedHours: 1, mobilizationKm: 0, demobilizationKm: 0 }],
       }),

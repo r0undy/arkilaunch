@@ -51,13 +51,10 @@ export type EquipmentQuoteItem = z.infer<typeof EquipmentQuoteItemSchema>;
 export const QuoteRequestSchema = z.object({
   customerId: z.string().uuid(),
   projectSiteId: z.string().uuid(),
-  // The booking this quote prices. Optional so a quote can still be drawn
-  // up cold; a customer can only accept one that is tied to a booking.
-  rentalId: z.string().uuid().optional(),
+  // The booking this quote prices. Every quote belongs to a booking: prices
+  // come from the standard price book, never a quote drawn up per company.
+  rentalId: z.string().uuid(),
   discount: DiscountSchema,
-  // Omitted: the company default from billing settings.
-  mobilizationPhp: PhpAmount.optional(),
-  demobilizationPhp: PhpAmount.optional(),
   items: z.array(QuoteItemInputSchema).min(1),
 });
 export type QuoteRequest = z.infer<typeof QuoteRequestSchema>;

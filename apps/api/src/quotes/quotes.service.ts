@@ -7,6 +7,7 @@ import {
   equipment,
   equipmentAssignments,
   equipmentTypes,
+  negotiationMessages,
   rateCards,
   getBillingSettings,
   quotationItems,
@@ -62,6 +63,30 @@ export interface QuoteResponse {
   // Filled by GET /quotes/:id for the printable quote.
   createdAt?: string;
   customerName?: string;
+}
+
+type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
+type QuoteState = { rentalId: string | null; status: string; createdAt: Date };
+
+// Whether staff may re-quote a booking's latest quote. A draft is still
+// staff's own; a declined quote, or one the customer answered in the
+// booking's thread after it was issued, is in negotiation. Otherwise the
+// price book's quote stands.
+export async function inNegotiation(tx: Tx, quote: QuoteState): Promise<boolean> {
+  if (quote.status === 'rejected' || quote.status === 'draft') return true;
+  if (quote.status !== 'approved' || !quote.rentalId) return false;
+  const [message] = await tx
+    .select({ id: negotiationMessages.id })
+    .from(negotiationMessages)
+    .where(
+      and(
+        eq(negotiationMessages.rentalId, quote.rentalId),
+        eq(negotiationMessages.authorRole, 'customer'),
+        gt(negotiationMessages.createdAt, quote.createdAt),
+      ),
+    )
+    .limit(1);
+  return Boolean(message);
 }
 
 function toLineItems(priced: PricedQuote): QuoteResponse['lineItems'] {
@@ -124,27 +149,26 @@ export class QuotesService {
       await requireVerifiedCompany(tx, body.customerId);
       let revision = 1;
       let parentQuotationId: string | null = null;
-      if (body.rentalId) {
-        const [rental] = await tx.select().from(rentals).where(eq(rentals.id, body.rentalId)).limit(1);
-        if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
-        if (rental.customerId !== body.customerId) {
-          throw new ConflictException({ error: 'quote_customer_mismatch' });
-        }
-        const [latest] = await tx
-          .select()
-          .from(quotations)
-          .where(eq(quotations.rentalId, body.rentalId))
-          .orderBy(desc(quotations.createdAt))
-          .limit(1);
-        if (latest?.status === 'accepted') throw new ConflictException({ error: 'quote_already_accepted' });
-        if (latest) {
-          revision = latest.revision + 1;
-          parentQuotationId = latest.id;
-          await tx
-            .update(quotations)
-            .set({ status: 'superseded' })
-            .where(and(eq(quotations.rentalId, body.rentalId), inArray(quotations.status, ['draft', 'approved', 'rejected'])));
-        }
+      const [rental] = await tx.select().from(rentals).where(eq(rentals.id, body.rentalId)).limit(1);
+      if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
+      if (rental.customerId !== body.customerId) {
+        throw new ConflictException({ error: 'quote_customer_mismatch' });
+      }
+      const [latest] = await tx
+        .select()
+        .from(quotations)
+        .where(eq(quotations.rentalId, body.rentalId))
+        .orderBy(desc(quotations.createdAt))
+        .limit(1);
+      if (latest?.status === 'accepted') throw new ConflictException({ error: 'quote_already_accepted' });
+      if (latest) {
+        await this.requireNegotiation(tx, latest);
+        revision = latest.revision + 1;
+        parentQuotationId = latest.id;
+        await tx
+          .update(quotations)
+          .set({ status: 'superseded' })
+          .where(and(eq(quotations.rentalId, body.rentalId), inArray(quotations.status, ['draft', 'approved', 'rejected'])));
       }
 
       const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body);
@@ -154,7 +178,7 @@ export class QuotesService {
         .values({
           tenantId: ctx.tenantId,
           customerId: body.customerId,
-          rentalId: body.rentalId ?? null,
+          rentalId: body.rentalId,
           revision,
           parentQuotationId,
           status: 'draft',
@@ -286,6 +310,8 @@ export class QuotesService {
     return withTenantTx(ctx, async (tx) => {
       const [parent] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
       if (!parent) throw new NotFoundException({ error: 'quote_not_found' });
+      if (parent.status === 'accepted') throw new ConflictException({ error: 'quote_already_accepted' });
+      await this.requireNegotiation(tx, parent);
       await requireVerifiedCompany(tx, body.customerId);
 
       const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body);
@@ -428,6 +454,13 @@ export class QuotesService {
       if (quotation.rentalId) await notifyStaff(tx, ctx.tenantId, 'quote_declined', { rental_id: quotation.rentalId });
       return { id: quotationId, status: 'rejected' };
     });
+  }
+
+  // A booking's quote comes from the standard price book. Staff may only
+  // re-quote it in a negotiation: the customer declined it, or wrote in the
+  // booking's thread since it was issued. Otherwise the price book stands.
+  private async requireNegotiation(tx: Tx, quote: QuoteState) {
+    if (!(await inNegotiation(tx, quote))) throw new ConflictException({ error: 'quote_not_in_negotiation' });
   }
 
   // A staff-agreed line price is a manual override of the engine, so it is

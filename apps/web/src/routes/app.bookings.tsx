@@ -219,9 +219,13 @@ function BookingSide({ booking }: { booking: BookingDetailResponse }) {
         ) : (
           <p className="text-sm text-text-muted">Not quoted yet.</p>
         )}
-        {booking.status !== 'cancelled' && quote?.status !== 'accepted' && (
-          <Link to="/app/quotes" search={{ bookingId: booking.id, customerId: booking.customerId }}>
-            <Button variant="primary">{quote ? 'Send a revised quote' : 'Quote this booking'}</Button>
+        {quote && quote.status === 'approved' && !quote.inNegotiation && (
+          <p className="text-sm text-text-muted">Priced from the price book and sent. You can revise it once the customer negotiates.</p>
+        )}
+        {/* No quote: the price book could not price it (no rate card), so staff quote it once. */}
+        {booking.status !== 'cancelled' && (!quote || quote.inNegotiation) && (
+          <Link to="/app/quotes" search={{ bookingId: booking.id }}>
+            <Button variant="primary">{quote ? 'Revise quote' : 'Quote this booking'}</Button>
           </Link>
         )}
         {quote && (

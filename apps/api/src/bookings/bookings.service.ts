@@ -36,7 +36,7 @@ import type {
 } from '@arkilaunch/shared';
 import { bookingDays, minBookingHours } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
-import { QuotesService } from '../quotes/quotes.service.js';
+import { QuotesService, inNegotiation } from '../quotes/quotes.service.js';
 import {
   availabilityBlockers,
   findAvailableAlternatives,
@@ -376,6 +376,7 @@ export class BookingsService {
               status: quotation.status,
               totalPhp: quotation.totalPhp !== null ? Number(quotation.totalPhp) : null,
               createdAt: quotation.createdAt,
+              inNegotiation: await inNegotiation(tx, quotation),
             }
           : null,
         invoices: invoiceRows.map((invoice) => ({

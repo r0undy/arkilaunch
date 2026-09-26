@@ -1,4 +1,4 @@
-import { createRoute } from '@tanstack/react-router';
+import { createRoute, Link } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
@@ -14,7 +14,7 @@ import { useToast } from '../components/toast.js';
 import { TruckThread } from '../components/truck-thread.js';
 import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
 
-const settingsQuery = {
+export const settingsQuery = {
   queryKey: ['truck-settings'] as const,
   queryFn: () => apiGet<TruckSettings>('/truck-settings'),
 };
@@ -27,7 +27,7 @@ const requestsQuery = {
   queryFn: () => apiGet<TruckRequestResponse[]>('/truck-requests'),
 };
 
-function SettingsEditor({ initial }: { initial: TruckSettings }) {
+export function SettingsEditor({ initial }: { initial: TruckSettings }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [base, setBase] = useState(String(initial.baseFeePhp));
@@ -148,7 +148,7 @@ function TollFee({ toll, onSaved, onRemove }: { toll: TollRateResponse; onSaved:
   );
 }
 
-function TollsEditor() {
+export function TollsEditor() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const tolls = useQuery(tollsQuery);
@@ -412,14 +412,17 @@ function RequestRow({ r }: { r: TruckRequestResponse }) {
 }
 
 function TruckAdminPage() {
-  const settings = useQuery(settingsQuery);
   const requests = useQuery(requestsQuery);
   return (
     <div className="flex flex-col gap-6 px-4 py-6 sm:px-6">
       <h1 className="font-display text-2xl font-semibold text-text">Self-loading truck</h1>
-      {settings.data && <SettingsEditor initial={settings.data} />}
-      <TollsEditor />
-      {settings.isError && <p className="text-sm text-error">{apiErrorText(settings.error)}</p>}
+      <p className="text-sm text-text-muted">
+        Truck fees, extra charges and tolls are set once for every client in{' '}
+        <Link to="/app/quotes" className="underline">
+          Quotes, under Trucking
+        </Link>
+        .
+      </p>
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-lg font-semibold text-text">Requests</h2>
         {requests.data?.length === 0 && <p className="text-sm text-text-muted">No truck requests yet.</p>}

@@ -313,7 +313,7 @@ export class PricingEngineService {
   async priceQuote(
     tx: Tx,
     tenantId: string,
-    request: Pick<QuoteRequest, 'items' | 'discount' | 'mobilizationPhp' | 'demobilizationPhp'>,
+    request: Pick<QuoteRequest, 'items' | 'discount'>,
     region = 'NCR',
   ): Promise<PricedQuote> {
     const diesel = await this.resolveDieselAndParams(tx, tenantId, region);
@@ -322,9 +322,11 @@ export class PricingEngineService {
     for (const item of request.items) {
       pricedItems.push(await this.priceItem(tx, tenantId, diesel, item, settings.dailyHours));
     }
-    // Omitted: the company default every quote starts with.
-    const mobilizationPhp = round2HalfUp(request.mobilizationPhp ?? settings.mobilizationPhp);
-    const demobilizationPhp = round2HalfUp(request.demobilizationPhp ?? settings.demobilizationPhp);
+    // Equipment rental's fixed mobilization/demobilization from the price
+    // book; the same for every client, never set per quote. A negotiated
+    // reduction goes through the discount.
+    const mobilizationPhp = round2HalfUp(settings.mobilizationPhp);
+    const demobilizationPhp = round2HalfUp(settings.demobilizationPhp);
     const totals = this.applyDiscount(pricedItems, request.discount, mobilizationPhp + demobilizationPhp);
     return { items: pricedItems, diesel, mobilizationPhp, demobilizationPhp, ...totals };
   }
