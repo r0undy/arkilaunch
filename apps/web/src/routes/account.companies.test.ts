@@ -27,7 +27,7 @@ describe('setupSteps', () => {
     const both = [
       {
         kycStatus: 'approved',
-        documents: [{ documentType: 'government_id' }, { documentType: 'company_registration' }],
+        documents: [{ documentType: 'government_id' }, { documentType: 'selfie_with_id' }, { documentType: 'company_registration' }],
       },
     ];
     expect(done(both, 1)).toHaveLength(4);

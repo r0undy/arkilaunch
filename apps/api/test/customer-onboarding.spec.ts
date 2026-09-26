@@ -18,6 +18,10 @@ import { PaymentsService } from '../src/payments/payments.service.js';
 import { QuotesService } from '../src/quotes/quotes.service.js';
 import { PricingEngineService } from '../src/quotes/pricing-engine.service.js';
 import { EventsService } from '../src/events/events.service.js';
+
+// What a reviewer ticks before approving: the PhilSys QR verified on
+// PhilSys Check, the selfie matches the ID, the holder may act for the company.
+const IDENTITY = { philsysVerified: true, selfieMatches: true, holderAuthorized: true } as const;
 import { JwtService } from '@nestjs/jwt';
 
 // Customer prerequisites CR: a stranger signs up, adds a company and a
@@ -151,6 +155,8 @@ describe('Customer onboarding', () => {
       `${tenantId}/test/id.jpg`,
       Buffer.from('not-really-an-image'),
     );
+    await companies.addDocument(ctx, acme.id, 'selfie_with_id', `${tenantId}/test/selfie.jpg`, Buffer.from('not-really-an-image'));
+    const acmeSec = await companies.addDocument(ctx, acme.id, 'sec_certificate', `${tenantId}/test/sec.jpg`, Buffer.from('not-really-an-image'));
     const site = await companies.createSite(ctx, {
       customerId: acme.id,
       line1: 'Lot 4 Ortigas Ave',
@@ -194,8 +200,8 @@ describe('Customer onboarding', () => {
       }),
     ).rejects.toMatchObject({ response: { error: 'company_not_verified' } });
     const queue = await companies.listForReview(adminCtx, 'pending');
-    expect(queue.find((c) => c.id === acme.id)?.documents).toHaveLength(1);
-    await companies.decide(adminCtx, acme.id, { decision: 'approved' });
+    expect(queue.find((c) => c.id === acme.id)?.documents).toHaveLength(3);
+    await companies.decide(adminCtx, acme.id, { decision: 'approved', identity: IDENTITY, registryChecked: [acmeSec.id], cureDocuments: [] });
 
     const booking = await bookings.create(ctx, {
       customerId: acme.id,
@@ -292,7 +298,7 @@ describe('Customer onboarding', () => {
       (await companies.listForReview(otherTenantCtx, 'pending')).map((c) => c.id),
     ).not.toContain(mine.id);
     await expect(
-      companies.decide(otherTenantCtx, mine.id, { decision: 'approved' }),
+      companies.decide(otherTenantCtx, mine.id, { decision: 'approved', identity: IDENTITY, registryChecked: [], cureDocuments: [] }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
@@ -592,6 +598,20 @@ describe('Customer onboarding', () => {
       return { companyId: company.id, documentId: doc.id };
     }
 
+    // A submitted company: National ID (with the name the customer
+    // confirmed), a selfie holding it, and an SEC certificate.
+    async function completeCompany(name: string) {
+      const { companyId, documentId } = await companyWithRegistration(name);
+      await companies.addDocument(reviewCtx, companyId, 'government_id', `storage://fixtures/${randomUUID()}.jpg`, bytes, {
+        firstName: 'Maria',
+        middleName: 'Reyes',
+        lastName: 'Santos',
+        idNumber: '1234-5678-9012-3456',
+      });
+      await companies.addDocument(reviewCtx, companyId, 'selfie_with_id', `storage://fixtures/${randomUUID()}.jpg`, bytes);
+      return { companyId, secId: documentId };
+    }
+
     it('reads the document onto the row without deciding anything', async () => {
       const { companyId, documentId } = await companyWithRegistration('Reviewme Corp', 'company_registration');
       const service = reviewer({
@@ -650,26 +670,29 @@ describe('Customer onboarding', () => {
       }
     });
 
-    it('writes the corrections the reviewer confirmed when approving', async () => {
-      const { companyId, documentId } = await companyWithRegistration('Typo Corp');
-      await companies.decide(adminCtx, companyId, {
-        decision: 'approved',
-        companyName: 'Typo Construction Corporation',
-        tin: '123-456-789',
-        secNumber: 'CS202312345',
-        registryChecked: [documentId],
-      });
-      const approved = (await companies.listForReview(adminCtx, 'approved')).find(
-        (c) => c.id === companyId,
-      );
-      expect(approved?.companyName).toBe('Typo Construction Corporation');
-      expect(approved?.tin).toBe('123-456-789');
-      expect(approved?.secNumber).toBe('CS202312345');
-      expect(approved?.documents[0]?.registryChecked).toBe(true);
+    it('approves exactly what the customer submitted, after the identity checks', async () => {
+      const { companyId, secId } = await completeCompany('As Sent Corp');
+      // No identity checks, no approval.
+      await expect(
+        companies.decide(adminCtx, companyId, { decision: 'approved', registryChecked: [secId], cureDocuments: [] }),
+      ).rejects.toMatchObject({ response: { error: 'identity_checks_required' } });
+      await companies.decide(adminCtx, companyId, { decision: 'approved', identity: IDENTITY, registryChecked: [secId], cureDocuments: [] });
+      const approved = (await companies.listForReview(adminCtx, 'approved')).find((c) => c.id === companyId);
+      expect(approved?.companyName).toBe('As Sent Corp');
+      expect(approved?.tin).toBe('111-222-333');
+      expect(approved?.rejection).toBeNull();
+      expect(approved?.documents.find((d) => d.id === secId)?.registryChecked).toBe(true);
+    });
+
+    it('refuses approval without the ID, the selfie and a registration', async () => {
+      const { companyId, documentId } = await companyWithRegistration('Half Done Corp');
+      await expect(
+        companies.decide(adminCtx, companyId, { decision: 'approved', identity: IDENTITY, registryChecked: [documentId], cureDocuments: [] }),
+      ).rejects.toMatchObject({ response: { error: 'documents_incomplete' } });
     });
 
     it('refuses approval until every SEC/BIR/DTI paper is ticked as checked on its registry', async () => {
-      const { companyId, documentId } = await companyWithRegistration('Unchecked Corp');
+      const { companyId, secId: documentId } = await completeCompany('Unchecked Corp');
       const dti = await companies.addDocument(
         reviewCtx,
         companyId,
@@ -678,12 +701,15 @@ describe('Customer onboarding', () => {
         bytes,
       );
       await expect(
-        companies.decide(adminCtx, companyId, { decision: 'approved', registryChecked: [documentId] }),
+        companies.decide(adminCtx, companyId, { decision: 'approved', identity: IDENTITY, registryChecked: [documentId], cureDocuments: [] }),
       ).rejects.toMatchObject({
         response: { error: 'registry_check_required', documentTypes: ['dti_certificate'] },
       });
-      // Rejecting needs no registry check.
-      await companies.decide(adminCtx, companyId, { decision: 'rejected' });
+      // Rejecting needs no registry check, only a reason.
+      await expect(companies.decide(adminCtx, companyId, { decision: 'rejected', registryChecked: [], cureDocuments: [] })).rejects.toMatchObject({
+        response: { error: 'rejection_reason_required' },
+      });
+      await companies.decide(adminCtx, companyId, { decision: 'rejected', reason: 'dti_expired', registryChecked: [], cureDocuments: [] });
       const rejected = (await companies.listForReview(adminCtx, 'rejected')).find((c) => c.id === companyId);
       expect(rejected?.documents.find((d) => d.id === dti.id)?.registryChecked).toBe(false);
     });
@@ -726,16 +752,32 @@ describe('Customer onboarding', () => {
       expect((await read()).customer.id_number).toBe('1234-5678-9012-3457');
     });
 
-    it('leaves the company alone when the reviewer rejects it', async () => {
-      const { companyId } = await companyWithRegistration('Reject Corp');
+    it('records the reason and the papers that cure it when the reviewer rejects', async () => {
+      const { companyId } = await completeCompany('Reject Corp');
       await companies.decide(adminCtx, companyId, {
         decision: 'rejected',
-        companyName: 'Should Not Be Written',
+        reason: 'sec_not_in_good_standing',
+        note: 'Check with SEC shows it suspended since 2024.',
+        registryChecked: [],
+        cureDocuments: [],
       });
-      const rejected = (await companies.listForReview(adminCtx, 'rejected')).find(
-        (c) => c.id === companyId,
-      );
+      const rejected = (await companies.listForReview(adminCtx, 'rejected')).find((c) => c.id === companyId);
       expect(rejected?.companyName).toBe('Reject Corp');
+      expect(rejected?.rejection).toMatchObject({
+        reason: 'sec_not_in_good_standing',
+        note: 'Check with SEC shows it suspended since 2024.',
+        cureDocuments: ['sec_good_standing', 'sec_gis'],
+        final: false,
+      });
+    });
+
+    it('keeps a fraudulent rejection final: no uploads, no reapplying', async () => {
+      const { companyId } = await completeCompany('Forged Corp');
+      await companies.decide(adminCtx, companyId, { decision: 'rejected', reason: 'fraudulent', registryChecked: [], cureDocuments: [] });
+      await expect(
+        companies.addDocument(reviewCtx, companyId, 'sec_certificate', `storage://fixtures/${randomUUID()}.jpg`, bytes),
+      ).rejects.toMatchObject({ response: { error: 'rejection_final' } });
+      await expect(companies.reapply(reviewCtx, companyId)).rejects.toMatchObject({ response: { error: 'rejection_final' } });
     });
 
     it('refuses a document that belongs to another company', async () => {
@@ -765,7 +807,7 @@ describe('Customer onboarding', () => {
       expect(doc.status).toBe('needs_review');
     });
 
-    it('locks a submitted company until the reviewer unlocks a field, and keeps it pending', async () => {
+    it('locks a submitted company; a rejection opens the cure, and reapplying sends it back', async () => {
       const service = reviewer({ tin: { value: '111-222-333', confidence: 0.95 } });
       const company = await service.createCompany(reviewCtx, {
         companyName: 'Locked Corp',
@@ -776,6 +818,7 @@ describe('Customer onboarding', () => {
       const upload = (type: string) =>
         service.addDocument(reviewCtx, company.id, type, `storage://fixtures/${randomUUID()}.jpg`, bytes);
       await upload('government_id');
+      await upload('selfie_with_id');
       await upload('bir_cor');
 
       // Submitted: nothing is editable and nothing can be replaced.
@@ -783,37 +826,45 @@ describe('Customer onboarding', () => {
         ConflictException,
       );
       await expect(upload('bir_cor')).rejects.toBeInstanceOf(ConflictException);
+      await expect(service.reapply(reviewCtx, company.id)).rejects.toMatchObject({ response: { error: 'not_rejected' } });
 
-      const commented = await service.comment(adminCtx, company.id, {
-        comment: 'The TIN is one digit off, and the 2303 is cut off.',
-        unlock: ['tin', 'bir_cor'],
+      await service.decide(adminCtx, company.id, {
+        decision: 'rejected',
+        reason: 'bir_registration_invalid',
+        note: 'The 2303 is from 2015 and the TIN is not on ORUS.',
+        registryChecked: [],
+        cureDocuments: [],
       });
-      expect(commented.kycStatus).toBe('pending');
 
-      // Only what was unlocked, once each.
-      await expect(
-        service.updateCompany(reviewCtx, company.id, { billingAddress: '1 Other St, Cebu City' }),
-      ).rejects.toBeInstanceOf(ConflictException);
+      // Reapplying needs every cure paper uploaded since the rejection.
+      await expect(service.reapply(reviewCtx, company.id)).rejects.toMatchObject({
+        response: { error: 'cure_documents_missing', documentTypes: ['bir_cor', 'business_permit'] },
+      });
       const fixed = await service.updateCompany(reviewCtx, company.id, { tin: '111-222-444' });
       expect(fixed.tin).toBe('111-222-444');
-      expect(fixed.kycStatus).toBe('pending');
-      expect(fixed.unlockedFields).toEqual(['bir_cor']);
       await upload('bir_cor');
-      await expect(upload('bir_cor')).rejects.toBeInstanceOf(ConflictException);
+      await upload('business_permit');
+      const reapplied = await service.reapply(reviewCtx, company.id);
+      expect(reapplied.kycStatus).toBe('pending');
+      // The reviewer still sees what it was rejected for.
+      expect(reapplied.rejection?.reason).toBe('bir_registration_invalid');
 
       // The replaced 2303 no longer counts; the queue shows one of each.
       const [queued] = (await service.listForReview(adminCtx, 'pending')).filter((c) => c.id === company.id);
-      expect(queued?.documents.map((d) => d.documentType).sort()).toEqual(['bir_cor', 'government_id']);
-      expect(queued?.reviewComment).toBe('The TIN is one digit off, and the 2303 is cut off.');
-      expect(queued?.unlockedFields).toEqual([]);
+      expect(queued?.documents.map((d) => d.documentType).sort()).toEqual([
+        'bir_cor',
+        'business_permit',
+        'government_id',
+        'selfie_with_id',
+      ]);
 
       const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
       try {
         const [note] = await sql`
           select payload from notifications
-          where notification_type = 'company_review_comment' and (payload->>'company_id') = ${company.id}
+          where notification_type = 'company_rejected' and (payload->>'customer_id') = ${company.id}
         `;
-        expect(note).toBeDefined();
+        expect(note).toMatchObject({ payload: { reason: 'bir_registration_invalid' } });
       } finally {
         await sql.end();
       }
@@ -821,32 +872,34 @@ describe('Customer onboarding', () => {
       // Approval only needs the live 2303 ticked, not the superseded one.
       await service.decide(adminCtx, company.id, {
         decision: 'approved',
+        identity: IDENTITY,
         registryChecked: queued!.documents.filter((d) => d.documentType === 'bir_cor').map((d) => d.id),
+        cureDocuments: [],
       });
+      const [approved] = (await service.listForReview(adminCtx, 'approved')).filter((c) => c.id === company.id);
+      expect(approved?.rejection).toBeNull();
     });
 
-    it('writes the reviewer-confirmed name onto the customer account only on approval', async () => {
+    it('writes the name the customer confirmed off the ID onto their account only on approval', async () => {
       const service = reviewer({
         first_name: { value: 'MARIA', confidence: 0.95 },
         last_name: { value: 'SANTOS', confidence: 0.95 },
       });
-      const company = await service.createCompany(reviewCtx, {
-        companyName: 'Named Corp',
-        tin: '111-222-333',
-        billingAddress: '12 Yard Road, Cebu City',
-        contactMobile: '0917 000 0000',
-      });
+      const { companyId, secId } = await completeCompany('Named Corp');
+      const company = { id: companyId };
 
       const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
       try {
+        // Earlier approvals in this block wrote the same login's name.
+        await sql`update users set first_name = null, middle_name = null, last_name = null where id = ${reviewCtx.userId}`;
         const before = await sql`select first_name from users where id = ${reviewCtx.userId}`;
         expect((before[0] as { first_name: string | null }).first_name).toBeNull();
 
         await service.decide(adminCtx, company.id, {
           decision: 'approved',
-          firstName: 'Maria',
-          middleName: 'Reyes',
-          lastName: 'Santos',
+          identity: IDENTITY,
+          registryChecked: [secId],
+          cureDocuments: [],
         });
 
         const after =

@@ -24,7 +24,6 @@ import {
   CompanyUpdateDto,
   CompanyDecisionDto,
   CompanyDocumentUploadDto,
-  CompanyReviewCommentDto,
   CompanyReviewQueryDto,
   CustomerSiteCreateDto,
   KycScanRequestDto,
@@ -192,13 +191,15 @@ export class CustomersController {
     return this.customers.readDocument(req.ctx, id, documentId, bytes);
   }
 
-  // A comment to the customer that unlocks what it names; status unchanged.
-  @Patch('customers/:id/review')
-  @RequirePermission('quote:approve')
-  comment(@Param('id') id: string, @Body() body: CompanyReviewCommentDto, @Req() req: CtxRequest) {
-    return this.customers.comment(req.ctx, id, body);
+  // After a rejection: the cure papers are uploaded, back to the queue.
+  @Post('me/companies/:id/reapply')
+  @RequirePermission('booking:create')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  reapply(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.customers.reapply(req.ctx, id);
   }
 
+  // Approve or reject; the reviewer never edits what the customer sent.
   @Patch('customers/:id/kyc')
   @RequirePermission('quote:approve')
   decide(@Param('id') id: string, @Body() body: CompanyDecisionDto, @Req() req: CtxRequest) {

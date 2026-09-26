@@ -20,11 +20,21 @@ export const customers = pgTable(
     secNumber: text('sec_number'),
     billingAddress: text('billing_address'),
     kycStatus: text('kyc_status').notNull().default('pending'), // pending, approved, rejected
-    // A reviewer's note to the customer on a pending company, and the fields
-    // and document types it unlocks for them to fix. Everything else stays
-    // read-only while the company waits for review.
+    // Retired (0054): the review is approve-or-reject now; nothing is
+    // unlocked for piecemeal fixes. Kept so old rows still read.
     reviewComment: text('review_comment'),
     unlockedFields: jsonb('unlocked_fields').$type<string[]>().notNull().default([]),
+    // 0054: the latest rejection -- a KYC_REJECTION_REASONS code, the
+    // reviewer's note and the papers that cure it. Kept while a reapplied
+    // company is pending (the reviewer sees what it was rejected for),
+    // cleared on approval.
+    rejectionReason: text('rejection_reason'),
+    rejectionNote: text('rejection_note'),
+    cureDocuments: jsonb('cure_documents').$type<string[]>().notNull().default([]),
+    rejectedAt: timestamp('rejected_at', { withTimezone: true }),
+    // The reviewer's identity checks at approval (PhilSys QR verified,
+    // selfie matches, holder authorized), with who and when.
+    identityChecks: jsonb('identity_checks'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [tenantIsolationPolicy(),
