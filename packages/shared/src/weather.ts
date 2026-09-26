@@ -118,3 +118,11 @@ export const SiteForecastResponseSchema = z.object({
   fetchedAt: z.string().datetime(),
 });
 export type SiteForecastResponse = z.infer<typeof SiteForecastResponseSchema>;
+
+// GET /me/forecast. A general area forecast for a customer with no site of
+// their own yet (no company, no order), so the rail is never empty.
+export interface AreaForecastResponse {
+  area: string;
+  days: z.infer<typeof DailyForecastSchema>[];
+  fetchedAt: string;
+}

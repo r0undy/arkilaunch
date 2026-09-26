@@ -1,8 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Surface } from './surface.js';
-import { Button } from './button.js';
-import { EmptyState } from './empty-state.js';
 import { Skeleton } from './skeleton.js';
 import { LoadError } from './load-error.js';
 import { getAccessToken } from '../lib/auth-client.js';
@@ -28,11 +26,15 @@ function unavailableReason(error: unknown): string | null {
   return String((payload as { reason: unknown }).reason);
 }
 
-function ForecastRows({ siteId }: { siteId: string }) {
-  const forecast = useQuery(forecastQueries.site(siteId));
+function ForecastRows({ siteId }: { siteId?: string }) {
+  const siteForecast = useQuery({ ...forecastQueries.site(siteId ?? ''), enabled: Boolean(siteId) });
+  const areaForecast = useQuery({ ...forecastQueries.area(), enabled: !siteId });
+  const forecast = siteId ? siteForecast : areaForecast;
 
   if (forecast.isPending) return <Skeleton label="Loading the forecast" rows={2} />;
-  if (forecast.isError) {
+  // A response without a week in it is treated as unavailable, never as
+  // an empty (calm-looking) one.
+  if (forecast.isError || !Array.isArray(forecast.data?.days)) {
     const reason = unavailableReason(forecast.error);
     // Configuration, not a hiccup: say so plainly and offer no retry.
     if (reason === 'flag_disabled' || reason === 'no_adapter') {
@@ -102,31 +104,29 @@ function WeatherRail() {
     <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
       <h2 className={heading}>Weather insights</h2>
       {sites.isPending && <Skeleton label="Loading your sites" rows={2} />}
-      {sites.isError && (
-        <LoadError message="Your sites could not be loaded." onRetry={() => sites.refetch()} />
+      {/* No company or site yet (or the sites cannot be read): the general
+          forecast, so the rail is never empty for a customer with no order. */}
+      {(sites.isError || (sites.isSuccess && !site)) && (
+        <>
+          <p className="text-sm text-text-muted">Metro Manila · general forecast</p>
+          <ForecastRows />
+          <p className="text-xs text-text-muted">
+            <Link to="/account/applications" className="underline">
+              Add your project site
+            </Link>{' '}
+            to see its own forecast.
+          </p>
+        </>
       )}
       {sites.isSuccess &&
-        (site ? (
+        site && (
           <>
             <p className="text-sm text-text-muted">
               {site.line1}, {site.city}
             </p>
             <ForecastRows siteId={site.id} />
           </>
-        ) : (
-          <EmptyState
-            title="No project site yet"
-            description="Add the site you are delivering to and its forecast shows up here."
-            action={
-              // Sites are added from a company (CompanyCard's SiteDialog), so
-              // this points at the company list rather than the cart -- the
-              // cart can add one too, but only once there is a booking in it.
-              <Link to="/account/applications">
-                <Button variant="secondary">Add a site</Button>
-              </Link>
-            }
-          />
-        ))}
+        )}
     </Surface>
   );
 }

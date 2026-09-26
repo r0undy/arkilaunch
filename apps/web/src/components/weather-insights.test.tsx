@@ -116,13 +116,14 @@ describe('WeatherInsights', () => {
     unmount();
   });
 
-  it('asks a customer with no site to add one', async () => {
+  it('shows a general forecast to a customer with no site, and asks them to add one', async () => {
     setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
     stub({ sites: [] });
     const { unmount } = await renderRoute('/equipment');
 
     const rail = await screen.findByRole('complementary', { name: 'Weather insights' });
-    await waitFor(() => expect(rail).toHaveTextContent(/no project site yet/i));
+    await waitFor(() => expect(rail).toHaveTextContent(/general forecast/i));
+    expect(rail).toHaveTextContent(/add your project site/i);
     unmount();
   });
 

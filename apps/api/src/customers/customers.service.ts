@@ -40,6 +40,7 @@ import {
   type CompanyReviewResponse,
   type DocumentIntelligencePort,
   type KycScanResponse,
+  type AreaForecastResponse,
   type SiteEquipmentWeatherResponse,
 } from '@arkilaunch/shared';
 import { KYC_MODEL_ID, NATIONAL_ID_MODEL_ID } from '@arkilaunch/document-intelligence';
@@ -624,10 +625,20 @@ export class CustomersService {
       return row;
     });
 
-    const latitude = Number(site.latitude);
-    const longitude = Number(site.longitude);
+    return { siteId, ...(await this.forecastAt(Number(site.latitude), Number(site.longitude))) };
+  }
+
+  // GET /me/forecast. Metro Manila, where most of the yard's work is, for a
+  // customer with no site yet: the same cached, honest-when-unavailable
+  // forecast as a site's, labelled as a general one.
+  async areaForecast(ctx: RequestContext): Promise<AreaForecastResponse> {
+    assertCustomer(ctx);
+    return { area: 'Metro Manila', ...(await this.forecastAt(14.5995, 120.9842)) };
+  }
+
+  private async forecastAt(latitude: number, longitude: number): Promise<{ days: DailyForecast[]; fetchedAt: string }> {
     const cached = readForecastCache(latitude, longitude);
-    if (cached) return { siteId, days: cached.days, fetchedAt: cached.fetchedAt };
+    if (cached) return { days: cached.days, fetchedAt: cached.fetchedAt };
 
     let days;
     try {
@@ -644,7 +655,7 @@ export class CustomersService {
 
     const fetchedAt = new Date().toISOString();
     writeForecastCache(latitude, longitude, days, fetchedAt);
-    return { siteId, days, fetchedAt };
+    return { days, fetchedAt };
   }
 
   // GET /me/sites/:id/equipment-weather. The weather level of each machine

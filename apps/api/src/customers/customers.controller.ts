@@ -172,6 +172,14 @@ export class CustomersController {
   // same role set, need seeding in two places, and add nothing -- the
   // isolation here is the ownership check, not the permission. Throttled
   // because each miss is an upstream call against a metered free tier.
+  // General forecast when the customer has no site of their own yet.
+  @Get('me/forecast')
+  @RequirePermission('booking:read')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  areaForecast(@Req() req: CtxRequest) {
+    return this.customers.areaForecast(req.ctx);
+  }
+
   @Get('me/sites/:id/forecast')
   @RequirePermission('booking:read')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
