@@ -25,8 +25,9 @@ export interface CheckoutOptions {
   label?: string;
   methods?: CheckoutMethod[];
   // The tenant's PayMongo child account (org_...): the net amount is
-  // routed there with split_payment.transfer_to (cr-arkilaunch-paymongo-linked-accounts.md).
-  transferTo: string;
+  // routed there with split_payment.transfer_to. Absent = collected on the
+  // parent account (cr-arkilaunch-paymongo-linked-accounts.md).
+  transferTo?: string;
   successUrl: string;
   cancelUrl: string;
 }

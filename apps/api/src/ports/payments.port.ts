@@ -61,7 +61,7 @@ export class PayMongoAdapter implements PaymentsPort {
       // Rides onto the payment PayMongo creates, so payment.* webhooks
       // resolve our invoice (verified on a live test payment).
       metadata: { invoice_id: invoiceId },
-      split_payment: { transfer_to: options.transferTo },
+      ...(options.transferTo ? { split_payment: { transfer_to: options.transferTo } } : {}),
     });
     return { id: body.data.id, checkoutUrl: body.data.attributes.checkout_url };
   }

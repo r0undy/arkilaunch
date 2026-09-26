@@ -206,22 +206,24 @@ export class PaymentsService {
     });
   }
 
-  // The one way an online checkout starts, for every invoice kind. The
-  // money goes to the tenant's own PayMongo child account; a tenant with
-  // none linked yet is cash-only, so ArkiLaunch never holds its money.
+  // The one way an online checkout starts, for every invoice kind. A tenant
+  // linked to a PayMongo child account is paid there (split_payment); an
+  // unlinked one is collected on ArkiLaunch's own (parent) account.
+  // TODO(paymongo-child-accounts): once companies can be linked as PayMongo
+  // children, make unlinked tenants cash-only again (throw
+  // online_payment_unavailable) so ArkiLaunch never holds tenant money.
   private async startOnline(tx: Tx, ctx: RequestContext, c: OnlineCheckout) {
     const [tenant] = await tx
       .select({ paymongoAccountId: tenants.paymongoAccountId })
       .from(tenants)
       .where(eq(tenants.id, ctx.tenantId))
       .limit(1);
-    if (!tenant?.paymongoAccountId) throw new ConflictException({ error: 'online_payment_unavailable' });
 
     const returnTo = checkoutReturnOrigin(c.origin);
     const session = await this.paymentsPort.createCheckoutSession(c.amount, c.invoiceId, {
       label: c.label,
       ...(c.method ? { methods: [c.method] } : {}),
-      transferTo: tenant.paymongoAccountId,
+      ...(tenant?.paymongoAccountId ? { transferTo: tenant.paymongoAccountId } : {}),
       successUrl: `${returnTo}/account/checkout/success?invoice=${c.invoiceId}`,
       cancelUrl: `${returnTo}/account/checkout/failed?invoice=${c.invoiceId}`,
     });

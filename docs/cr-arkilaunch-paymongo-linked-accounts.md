@@ -49,7 +49,11 @@ End-to-end with the real API (non-split session): a real signed `checkout_sessio
 
 `tenants.paymongo_account_id` (+ CHECK `^org_[A-Za-z0-9]+$`), `tenants_set_paymongo_account`, `tenants_get_paymongo_account`, `payments.provider_payment_id` (unique), `payments_find_tenant_by_provider_payment` (refund-webhook pre-tenant lookup). All SECURITY DEFINER functions are single-purpose, `search_path`-pinned, REVOKE PUBLIC / GRANT app_authenticated.
 
-## 6. Open items
+## 6. Interim: parent-collects mode (2026-09-26)
+
+Only one PayMongo account exists, so no company can be linked yet. Until then an **unlinked company's checkout is collected on ArkiLaunch's parent account** (no `split_payment`), and linked companies get the split. `TODO(paymongo-child-accounts)` in `payments.service.ts` `startOnline`: restore cash-only for unlinked companies once linking is available, so ArkiLaunch stops holding tenant money.
+
+## 7. Open items
 
 - **Split routing unverified end to end:** needs one real child linked via dashboard invite. Then pay a storefront checkout and confirm the funds land in the child's wallet, and that a refund on a split payment reverses correctly. If `split_payment` misbehaves, fall back to acting as the child (`Account-ID` header, per-child webhook).
 - **Deploy (Azure dev):** set GitHub secrets `PAYMONGO_SECRET_KEY` / `PAYMONGO_WEBHOOK_SECRET` (a webhook registered for the dev API URL), then `enable_payments = true` in `infra/terraform/environments/dev/terraform.tfvars`.

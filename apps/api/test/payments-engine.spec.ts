@@ -1,10 +1,10 @@
 import type { QuotesService } from '../src/quotes/quotes.service.js';
 import { describe, expect, it, beforeAll } from 'vitest';
 import { createHmac } from 'node:crypto';
-import { ConflictException, ForbiddenException, HttpException } from '@nestjs/common';
+import { ForbiddenException, HttpException } from '@nestjs/common';
 import postgres from 'postgres';
 import { invoices, payments, rentals, setTenantPaymongoAccount, withTenantTx } from '@arkilaunch/db';
-import { StubPaymentsAdapter, type RequestContext } from '@arkilaunch/shared';
+import { StubPaymentsAdapter, type PaymentsPort, type RequestContext } from '@arkilaunch/shared';
 import { eq } from 'drizzle-orm';
 import { PaymentsService } from '../src/payments/payments.service.js';
 import { BookingsService } from '../src/bookings/bookings.service.js';
@@ -286,13 +286,23 @@ describe('PaymentsService (PRD-F2)', () => {
     expect(rows.some((row) => row.status === 'refunded')).toBe(false);
   });
 
-  it('a tenant with no linked PayMongo account is cash-only', async () => {
-    const bookingId = await createBooking(10);
+  it('routes to the linked child account, else collects on the parent account', async () => {
+    const seen: (string | undefined)[] = [];
+    const stub = new StubPaymentsAdapter();
+    const adapter: PaymentsPort = {
+      createCheckoutSession: async (amount, invoiceId, options) => {
+        seen.push(options.transferTo);
+        return stub.createCheckoutSession(amount, invoiceId);
+      },
+      getCheckoutSession: (id) => stub.getCheckoutSession(id),
+      refund: (id) => stub.refund(id),
+    };
+    const service = new PaymentsService(adapter, events);
+    await service.checkout(customerCtxA, await createBooking(10));
     await setTenantPaymongoAccount(customerCtxA.tenantId, customerCtxA.userId, null);
     try {
-      await expect(payments_.checkout(customerCtxA, bookingId)).rejects.toThrow(ConflictException);
-      const cash = await payments_.checkout(customerCtxA, bookingId, { cash: true });
-      expect(cash).toMatchObject({ checkoutUrl: null, cash: true });
+      await service.checkout(customerCtxA, await createBooking(12));
+      expect(seen).toEqual(['org_testA', undefined]);
     } finally {
       await setTenantPaymongoAccount(customerCtxA.tenantId, customerCtxA.userId, 'org_testA');
     }
