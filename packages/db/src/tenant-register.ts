@@ -311,6 +311,25 @@ export async function setTenantBrandingImage(
   }
 }
 
+// Platform admin links a company to its PayMongo child account (0053).
+// NULL unlinks it; that company is cash-only again.
+export async function setTenantPaymongoAccount(
+  tenantId: string,
+  actorUserId: string,
+  accountId: string | null,
+): Promise<void> {
+  try {
+    await db.execute(sql`select tenants_set_paymongo_account(${tenantId}, ${actorUserId}, ${accountId})`);
+  } catch (err) {
+    rethrowCompanyNotFound(err);
+  }
+}
+
+export async function getTenantPaymongoAccount(tenantId: string): Promise<string | null> {
+  const rows = await db.execute<{ id: string | null }>(sql`select tenants_get_paymongo_account(${tenantId}) as id`);
+  return rows[0]?.id ?? null;
+}
+
 // The branding form's current values for any tenant (owner/admin reads its
 // own; platform admin reads the company it is editing).
 export async function getTenantBranding(

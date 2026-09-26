@@ -19,6 +19,7 @@ import {
 import type { RequestContext } from '@arkilaunch/shared';
 import { EdtrService } from '../src/edtr/edtr.service.js';
 import { EventsService } from '../src/events/events.service.js';
+import { ensurePaidDeposit } from './paid-deposit.js';
 
 // QAD-T26 ("deduction without reconciliation": 409, deducts nothing) and
 // QAD-T40 ("0% reconciliation discrepancy before deduction"), which the
@@ -41,6 +42,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
   // A second rental with NO quotation/rental_contracts chain, so the
   // no-deposit fallback cap has something to be tested against.
   let uncappedRentalId: string;
+  let unpaidRentalId: string;
   let uncappedEquipmentId: string;
 
   // Own date range, disjoint from every other suite's. Vitest runs spec
@@ -58,6 +60,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     noEvidence: '2021-06-05',
     modelSourced: '2021-06-06',
     uncapped: '2021-06-07',
+    unpaid: '2021-06-08',
   };
 
   beforeAll(async () => {
@@ -173,7 +176,21 @@ describe('the money path: no deduction without a passing reconciliation', () => 
         })
         .returning();
       uncappedRentalId = noDeposit!.id;
+
+      // Never paid: no deposit/booking invoice is ever settled for it.
+      const [unpaid] = await tx
+        .insert(rentals)
+        .values({
+          tenantId: adminCtx.tenantId,
+          customerId: (customerRow as { id: string }).id,
+          projectSiteId: (siteRow as { id: string }).id,
+          status: 'active',
+          startDate: new Date('2020-01-01T00:00:00Z'),
+        })
+        .returning();
+      unpaidRentalId = unpaid!.id;
     });
+    await ensurePaidDeposit(adminCtx, rentalId, uncappedRentalId);
   });
 
   // An already-extracted paper counterpart carrying a manual-transcription
@@ -493,6 +510,33 @@ describe('the money path: no deduction without a passing reconciliation', () => 
   // tenant's minimum deposit (what checkout collects for that case); since
   // phase 7 the part past it becomes an unbilled accrual for the weekly
   // invoice rather than a refusal, so the deposit itself never goes below 0.
+  it('refuses to deduct from a deposit that was never paid, and writes nothing', async () => {
+    await insertTranscribedPaperCounterpart(DATES.unpaid, 6, 1, unpaidRentalId);
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId: unpaidRentalId,
+      equipmentId,
+      reportDate: DATES.unpaid,
+      lineItems: { hoursActive: 6, hoursIdle: 1 },
+    });
+    const polled = await edtr.get(adminCtx, digital.id);
+    expect(polled.reconciliation?.status).toBe('matched');
+
+    await expect(
+      edtr.approve(adminCtx, digital.id, {
+        reconciliationId: polled.reconciliation!.id,
+        adjustments: { hoursActive: 6, hoursIdle: 1 },
+      }),
+    ).rejects.toMatchObject({ response: { error: 'deposit_not_paid' } });
+    const deductions = await withTenantTx(adminCtx, (tx) =>
+      tx
+        .select()
+        .from(invoicesTable)
+        .where(and(eq(invoicesTable.rentalId, unpaidRentalId), eq(invoicesTable.invoiceType, 'deposit_deduction'))),
+    );
+    expect(deductions).toHaveLength(0);
+  });
+
   it('caps a deduction on a rental with no configured deposit, accruing the rest', async () => {
     await insertTranscribedPaperCounterpart(
       DATES.uncapped,

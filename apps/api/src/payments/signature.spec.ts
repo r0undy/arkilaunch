@@ -26,6 +26,15 @@ describe('verifyPaymongoSignature', () => {
     expect(verifyPaymongoSignature(rawBody, header, secret, { live: false, nowSeconds: now })).toBe(true);
   });
 
+  // The exact shape a live test-mode delivery carries (captured 2026-09-26):
+  // `li` present but empty. Checking li there rejected every sandbox event.
+  it('test-mode delivery (empty li) verifies only against te', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const header = `t=${now},te=${sign(now, rawBody)},li=`;
+    expect(verifyPaymongoSignature(rawBody, header, secret, { live: false, nowSeconds: now })).toBe(true);
+    expect(verifyPaymongoSignature(rawBody, header, secret, { nowSeconds: now })).toBe(false);
+  });
+
   it('QAD-T28: rejects a tampered body even with a valid-looking signature', () => {
     const now = Math.floor(Date.now() / 1000);
     const liveSig = sign(now, rawBody);

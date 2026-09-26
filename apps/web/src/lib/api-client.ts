@@ -79,6 +79,11 @@ export async function apiDelete(path: string): Promise<void> {
 export function apiErrorText(error: unknown): string {
   if (error instanceof ApiError) {
     const code = error.message;
+    // A rental company not yet linked to PayMongo takes cash only
+    // (booking, truck and weekly-invoice checkouts all answer this).
+    if (code === 'online_payment_unavailable') {
+      return 'This rental company does not take online payment yet. Choose cash at the office instead.';
+    }
     if (code && !/^request_failed_/.test(code)) {
       const words = code.replace(/_/g, ' ');
       return words.charAt(0).toUpperCase() + words.slice(1) + '.';

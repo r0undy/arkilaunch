@@ -8,6 +8,7 @@ import { EdtrService } from '../src/edtr/edtr.service.js';
 import { KycService } from '../src/kyc/kyc.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import type { StorageService } from '../src/storage/storage.service.js';
+import { ensurePaidDeposit } from './paid-deposit.js';
 
 // KycService now fetches the document via a signed download URL before
 // calling port.analyze(); a data: URL lets native fetch() resolve it without
@@ -44,6 +45,7 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
     equipmentId = (equipment as { id: string }).id;
     customerId = (customer as { id: string }).id;
     await sql.end();
+    await ensurePaidDeposit(ctx, rentalId);
   });
 
   // AI-01 (QAD-T33): instruction text embedded in an uploaded document is

@@ -4,7 +4,7 @@ import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { PaymentsService } from './payments.service.js';
-import { CheckoutRequestDto } from './dto.js';
+import { CheckoutRequestDto, RefundRequestDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -25,7 +25,7 @@ export class PaymentsController {
   @RequirePermission('payment:checkout')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   checkout(@Param('id') id: string, @Body() body: CheckoutRequestDto, @Req() req: CtxRequest) {
-    return this.payments.checkout(req.ctx, id, body);
+    return this.payments.checkout(req.ctx, id, body, req.headers.origin);
   }
 }
 
@@ -39,14 +39,32 @@ export class TruckPaymentsController {
   @RequirePermission('payment:checkout')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   checkoutTruck(@Param('id') id: string, @Body() body: CheckoutRequestDto, @Req() req: CtxRequest) {
-    return this.payments.checkoutTruck(req.ctx, id, body);
+    return this.payments.checkoutTruck(req.ctx, id, body, req.headers.origin);
   }
 
   @Post('me/invoices/:id/checkout')
   @RequirePermission('payment:checkout')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   checkoutInvoice(@Param('id') id: string, @Body() body: CheckoutRequestDto, @Req() req: CtxRequest) {
-    return this.payments.checkoutInvoice(req.ctx, id, body);
+    return this.payments.checkoutInvoice(req.ctx, id, body, req.headers.origin);
+  }
+
+  // The success page's server-side check with PayMongo (any invoice kind
+  // the customer owns). Throttled: each call is an outbound PayMongo read.
+  @Post('me/invoices/:id/confirm-payment')
+  @RequirePermission('payment:checkout')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  confirmPayment(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.payments.confirmPayment(req.ctx, id);
+  }
+
+  // Same staff as cash receipts (quote:approve) issue refunds, of the
+  // invoice's paid online payment.
+  @Post('invoices/:id/refund')
+  @RequirePermission('quote:approve')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  refund(@Param('id') id: string, @Body() body: RefundRequestDto, @Req() req: CtxRequest) {
+    return this.payments.refund(req.ctx, id, body);
   }
 
   // quote:approve: the staff who agree prices are the ones who take cash.

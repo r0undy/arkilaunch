@@ -632,6 +632,22 @@ export class EdtrService {
       // Lock the rental so two pairs approved at once can't both read the
       // same balance and over-draw the deposit.
       await tx.select({ id: rentals.id }).from(rentals).where(eq(rentals.id, record.rentalId)).for('update');
+      // A deduction draws on money actually held: the rental's deposit (or
+      // booking invoice, which carries the deposit line) must be paid --
+      // online via PayMongo or a staff-recorded cash receipt. The ledger
+      // alone only knows what was *required* (cr-arkilaunch-paymongo-linked-accounts.md).
+      const [depositPaid] = await tx
+        .select({ id: invoices.id })
+        .from(invoices)
+        .where(
+          and(
+            eq(invoices.rentalId, record.rentalId),
+            inArray(invoices.invoiceType, ['deposit', 'booking']),
+            eq(invoices.status, 'paid'),
+          ),
+        )
+        .limit(1);
+      if (!depositPaid) throw new ConflictException({ error: 'deposit_not_paid' });
       const ledger = await resolveDepositLedger(tx, record.rentalId, ctx.tenantId);
       const balanceBefore = round2HalfUp(Math.max(0, ledger.depositRequired - ledger.totalDeducted));
       const split = splitDeduction(balanceBefore, deductedAmount);

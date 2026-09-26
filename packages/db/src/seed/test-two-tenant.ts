@@ -41,10 +41,13 @@ async function main() {
     .onConflictDoNothing();
 
   for (const slug of ['test-tenant-a', 'test-tenant-b']) {
+    const paymongoAccountId = `org_test${slug.slice(-1).toUpperCase()}`;
     const [tenant] = await db
       .insert(schema.tenants)
-      .values({ legalName: `Test Tenant ${slug.slice(-1).toUpperCase()}`, slug, status: 'active' })
-      .onConflictDoUpdate({ target: schema.tenants.slug, set: { status: 'active' } })
+      // Linked to a (fake) PayMongo child so online checkout is offered;
+      // an unlinked tenant is cash-only (migration 0053).
+      .values({ legalName: `Test Tenant ${slug.slice(-1).toUpperCase()}`, slug, status: 'active', paymongoAccountId })
+      .onConflictDoUpdate({ target: schema.tenants.slug, set: { status: 'active', paymongoAccountId } })
       .returning();
     if (!tenant) continue;
 

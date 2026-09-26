@@ -32,3 +32,24 @@ export async function findTenantByInvoiceIdForWebhook(
     invoiceStatus: row.invoice_status,
   };
 }
+
+// The refund webhook's pre-tenant lookup (migration 0053): a refund event
+// carries PayMongo's pay_... id, not our invoice metadata.
+export async function findTenantByProviderPaymentIdForWebhook(
+  providerPaymentId: string,
+): Promise<PaymentInvoiceLookupRow | undefined> {
+  const rows = await db.execute<{
+    tenant_id: string;
+    invoice_id: string;
+    rental_id: string | null;
+    invoice_status: string;
+  }>(sql`select * from payments_find_tenant_by_provider_payment(${providerPaymentId})`);
+  const row = rows[0];
+  if (!row) return undefined;
+  return {
+    tenantId: row.tenant_id,
+    invoiceId: row.invoice_id,
+    rentalId: row.rental_id,
+    invoiceStatus: row.invoice_status,
+  };
+}

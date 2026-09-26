@@ -142,13 +142,3 @@ variable "paymongo_webhook_secret" {
   default   = ""
 }
 
-variable "paymongo_success_url" {
-  type    = string
-  default = ""
-}
-
-variable "paymongo_cancel_url" {
-  type    = string
-  default = ""
-}
-
