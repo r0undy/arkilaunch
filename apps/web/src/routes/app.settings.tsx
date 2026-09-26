@@ -42,7 +42,7 @@ const rateCardsListQuery = (limit: number, offset: number) => ({
     ),
 });
 
-function RateCardForm() {
+export function RateCardForm() {
   const queryClient = useQueryClient();
   const equipmentTypes = useQuery(referenceQueries.equipmentTypes());
   const [equipmentTypeId, setEquipmentTypeId] = useState('');
@@ -199,7 +199,7 @@ function RetireAction({ id, label }: { id: string; label: string }) {
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DEFAULT_CALENDAR: TenantCalendar = { openTime: '07:00', closeTime: '17:00', openDays: [1, 2, 3, 4, 5, 6], blackouts: [] };
 
-// Business hours + holidays/blackouts. Bookings must start and end inside
+// Office hours + holidays/blackouts. Bookings must start and end inside
 // them; the customer's date pickers grey the closed days.
 function BusinessCalendarForm() {
   const toast = useToast();
@@ -221,14 +221,15 @@ function BusinessCalendarForm() {
     onSuccess: () => {
       setDraft(null);
       void queryClient.invalidateQueries({ queryKey: ['tenant-calendar'] });
-      toast.success('Business hours saved');
+      toast.success('Office hours saved');
     },
-    onError: (e) => toast.error('Could not save business hours', apiErrorText(e)),
+    onError: (e) => toast.error('Could not save office hours', apiErrorText(e)),
   });
 
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Business hours">
-      <h2 className="font-display text-base font-semibold text-text">Business hours and holidays</h2>
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Office hours">
+      <h2 className="font-display text-base font-semibold text-text">Office hours and holidays</h2>
+      <p className="text-sm text-text-muted">Pickup and return must be on an office day within these hours. A rental can run through closed days, like Saturday to Monday.</p>
       {saved.data === null && !draft && (
         <p className="text-sm text-text-muted">Not set: bookings are accepted any day, any time.</p>
       )}
@@ -290,7 +291,7 @@ function BusinessCalendarForm() {
           disabled={cal.closeTime <= cal.openTime}
           onClick={() => save.mutate()}
         >
-          Save business hours
+          Save office hours
         </Button>
       </div>
     </Surface>
@@ -334,9 +335,7 @@ function BillingSettingsForm() {
         <Input label="Minimum deposit (PHP)" type="number" min="0" step="0.01" numeric value={String(current.minDepositPhp)} onChange={(e) => edit({ minDepositPhp: Number(e.target.value) })} />
         <Input label="Deposit (% of rented hours)" type="number" min="0" max="100" step="0.5" numeric hint="Prepaid and consumed by EDTR hours, not refunded. 50 on a 50-hour rental prepays 25 hours. 0 uses the minimum deposit only." value={String(current.depositPct)} onChange={(e) => edit({ depositPct: Number(e.target.value) })} />
         <Input label="Low-balance warning (%)" type="number" min="0" max="100" step="1" numeric hint="Warns you and the customer when this much deposit is left." value={String(current.lowBalancePct)} onChange={(e) => edit({ lowBalancePct: Number(e.target.value) })} />
-        <Input label="Mobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Self-loader delivery on every new quote. You can change it per quote." value={String(current.mobilizationPhp)} onChange={(e) => edit({ mobilizationPhp: Number(e.target.value) })} />
         <Input label="Minimum rental hours" type="number" min="0" step="1" numeric hint="Customers cannot book fewer hours than this. 0 means only the chosen dates count." value={String(current.minHours)} onChange={(e) => edit({ minHours: Number(e.target.value) })} />
-        <Input label="Demobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Pick-up at the end of the hire, on every new quote." value={String(current.demobilizationPhp)} onChange={(e) => edit({ demobilizationPhp: Number(e.target.value) })} />
       </div>
       <div>
         <Button variant="primary" loading={save.isPending} disabled={!draft} onClick={() => save.mutate()}>
@@ -344,6 +343,175 @@ function BillingSettingsForm() {
         </Button>
       </div>
     </Surface>
+  );
+}
+
+// Equipment rental's fixed mobilization and demobilization: the same for
+// every client, on every booking's quote. Trucking has no mob/demob (it is
+// the trip). Saved with the rest of the billing settings.
+export function RentalFeesForm() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const saved = useQuery({ queryKey: ['billing-settings'], queryFn: () => apiGet<BillingSettings>('/pricing/billing-settings') });
+  const [draft, setDraft] = useState<BillingSettings | null>(null);
+  const current = draft ?? saved.data;
+  const save = useMutation({
+    mutationFn: () => apiPut('/pricing/billing-settings', current),
+    onSuccess: () => {
+      setDraft(null);
+      void queryClient.invalidateQueries({ queryKey: ['billing-settings'] });
+      toast.success('Mobilization fees saved', 'New quotes use them from now on.');
+    },
+    onError: (e) => toast.error('Could not save the fees', apiErrorText(e)),
+  });
+  if (!current) return null;
+  const edit = (patch: Partial<BillingSettings>) => setDraft({ ...current, ...patch });
+  return (
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Mobilization and demobilization">
+      <div>
+        <h2 className="font-display text-base font-semibold text-text">Mobilization and demobilization</h2>
+        <p className="text-sm text-text-muted">Fixed fees added to every equipment rental quote. Not charged on trucking.</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Input label="Mobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Delivery of the machine to the site." value={String(current.mobilizationPhp)} onChange={(e) => edit({ mobilizationPhp: Number(e.target.value) })} />
+        <Input label="Demobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Pick-up at the end of the hire." value={String(current.demobilizationPhp)} onChange={(e) => edit({ demobilizationPhp: Number(e.target.value) })} />
+      </div>
+      <div>
+        <Button variant="primary" loading={save.isPending} disabled={!draft} onClick={() => save.mutate()}>
+          Save fees
+        </Button>
+      </div>
+    </Surface>
+  );
+}
+
+// The operating inputs every equipment line is priced with: operator and
+// maintenance per hour, fuel burn, transport per km and the buffer. The
+// transport and fuel-per-km figures also price trucking trips.
+export function PricingParametersForm() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<PricingParametersRow | null>('/pricing/parameters') });
+  const [draft, setDraft] = useState<Record<string, string> | null>(null);
+  const fields = [
+    ['operatorHourlyPhp', 'Operator (PHP per hour)'],
+    ['maintenanceHourlyPhp', 'Maintenance (PHP per hour)'],
+    ['fuelLPerHour', 'Fuel burn (L per hour)'],
+    ['fuelLPerKm', 'Fuel burn (L per km)'],
+    ['transportPhpPerKm', 'Transport (PHP per km)'],
+    ['bufferPct', 'Buffer (%)'],
+  ] as const;
+  const fromSaved = (p: PricingParametersRow | null | undefined): Record<string, string> =>
+    Object.fromEntries(
+      fields.map(([key]) => {
+        const raw = p?.[key];
+        if (raw == null) return [key, ''];
+        return [key, key === 'bufferPct' ? String(Number(raw) * 100) : String(Number(raw))];
+      }),
+    );
+  const current = draft ?? fromSaved(params.data);
+  const save = useMutation({
+    mutationFn: () =>
+      apiPost('/pricing/parameters', {
+        region: params.data?.region ?? 'NCR',
+        operatorHourlyPhp: Number(current.operatorHourlyPhp),
+        maintenanceHourlyPhp: Number(current.maintenanceHourlyPhp),
+        fuelLPerHour: Number(current.fuelLPerHour),
+        fuelLPerKm: Number(current.fuelLPerKm),
+        transportPhpPerKm: Number(current.transportPhpPerKm),
+        bufferPct: Number(current.bufferPct) / 100,
+        // Keep the company's own diesel price, if one is set.
+        ...(params.data?.dieselOverridePhp
+          ? { dieselOverridePhp: Number(params.data.dieselOverridePhp), dieselOverrideDate: new Date().toISOString().slice(0, 10) }
+          : {}),
+      }),
+    onSuccess: () => {
+      setDraft(null);
+      void queryClient.invalidateQueries({ queryKey: ['pricing-parameters'] });
+      toast.success('Operating costs saved', 'New quotes use them from now on.');
+    },
+    onError: (e) => toast.error('Could not save operating costs', apiErrorText(e)),
+  });
+  const incomplete = fields.some(([key]) => current[key] === '');
+  return (
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Operating costs">
+      <div>
+        <h2 className="font-display text-base font-semibold text-text">Operating costs</h2>
+        <p className="text-sm text-text-muted">Added to each machine&apos;s rent on every quote. Transport and fuel per km also price trucking trips.</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {fields.map(([key, label]) => (
+          <Input
+            key={key}
+            label={label}
+            type="number"
+            min="0"
+            {...(key === 'bufferPct' ? { max: '100' } : {})}
+            step="0.01"
+            numeric
+            value={current[key] ?? ''}
+            onChange={(e) => setDraft({ ...current, [key]: e.target.value })}
+          />
+        ))}
+      </div>
+      <div>
+        <Button variant="primary" loading={save.isPending} disabled={!draft || incomplete} onClick={() => save.mutate()}>
+          Save operating costs
+        </Button>
+      </div>
+    </Surface>
+  );
+}
+
+// Every live rate card, by equipment type, with its retire action.
+export function RateCardsPanel() {
+  const [offset, setOffset] = useState(0);
+  // The table showed a UUID stub where the form's own dropdown already had
+  // the readable name; same source, now used in both places.
+  const equipmentTypes = useQuery(referenceQueries.equipmentTypes());
+  const typeName = (id: string): string =>
+    (equipmentTypes.data ?? []).find((type) => type.id === id)?.name ?? 'Unknown type';
+
+  const columns: TableColumn<RateCardRow>[] = [
+    {
+      header: 'Equipment type',
+      cell: (row) => (row.equipmentId ? `${typeName(row.equipmentTypeId)} (one unit)` : typeName(row.equipmentTypeId)),
+    },
+    { header: 'Charged', cell: (row) => formatRateType(row.rateType) },
+    { header: 'Rate', cell: (row) => formatPeso(row.rateValue), align: 'right' },
+    { header: 'In use since', cell: (row) => formatDate(row.effectiveFrom) },
+    {
+      header: '',
+      align: 'right',
+      cell: (row) => (
+        <RetireAction
+          id={row.id}
+          label={`${typeName(row.equipmentTypeId)} (${formatRateType(row.rateType).toLowerCase()})`}
+        />
+      ),
+    },
+  ];
+
+  return (
+    <DataPanel
+      title="Rate cards"
+      options={rateCardsListQuery(PAGE_SIZE, offset)}
+      emptyTitle="No rate cards yet"
+      emptyDescription="Add a rate card above to make an equipment type quotable."
+      isEmpty={(data) => data.total === 0}
+      render={(data) => (
+        <div>
+          <Table columns={columns} rows={data.items} rowKey={(row) => row.id} />
+          <Pagination
+            offset={offset}
+            limit={PAGE_SIZE}
+            total={data.total}
+            onOffsetChange={setOffset}
+            noun="rate cards"
+          />
+        </div>
+      )}
+    />
   );
 }
 
@@ -375,7 +543,7 @@ const DIESEL_SOURCE: Record<string, string> = {
 // The national diesel price quotes charge fuel at (refreshed from GasWatch
 // PH every Monday, or now with the button), and this company's own price,
 // which wins while it is set and less than the staleness window old.
-function DieselPriceForm() {
+export function DieselPriceForm() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const latest = useQuery({ queryKey: ['diesel-price'], queryFn: () => apiGet<DieselReading | null>('/pricing/diesel-price') });
@@ -457,63 +625,15 @@ function DieselPriceForm() {
 }
 
 function SettingsPage() {
-  const [offset, setOffset] = useState(0);
-  // The table showed a UUID stub where the form's own dropdown already had
-  // the readable name; same source, now used in both places.
-  const equipmentTypes = useQuery(referenceQueries.equipmentTypes());
-  const typeName = (id: string): string =>
-    (equipmentTypes.data ?? []).find((type) => type.id === id)?.name ?? 'Unknown type';
-
-  const columns: TableColumn<RateCardRow>[] = [
-    {
-      header: 'Equipment type',
-      cell: (row) => (row.equipmentId ? `${typeName(row.equipmentTypeId)} (one unit)` : typeName(row.equipmentTypeId)),
-    },
-    { header: 'Charged', cell: (row) => formatRateType(row.rateType) },
-    { header: 'Rate', cell: (row) => formatPeso(row.rateValue), align: 'right' },
-    { header: 'In use since', cell: (row) => formatDate(row.effectiveFrom) },
-    {
-      header: '',
-      align: 'right',
-      cell: (row) => (
-        <RetireAction
-          id={row.id}
-          label={`${typeName(row.equipmentTypeId)} (${formatRateType(row.rateType).toLowerCase()})`}
-        />
-      ),
-    },
-  ];
-
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="Administration"
-        title="Rate cards"
-        description="What each kind of machine is charged at, and from when."
+        title="Settings"
+        description="Office hours, deposits and billing. Prices live in Quotes, the standard price book."
       />
       <BusinessCalendarForm />
       <BillingSettingsForm />
-      <DieselPriceForm />
-      <RateCardForm />
-      <DataPanel
-        title="Rate cards"
-        options={rateCardsListQuery(PAGE_SIZE, offset)}
-        emptyTitle="No rate cards yet"
-        emptyDescription="Add a rate card above to make an equipment type quotable."
-        isEmpty={(data) => data.total === 0}
-        render={(data) => (
-          <div>
-            <Table columns={columns} rows={data.items} rowKey={(row) => row.id} />
-            <Pagination
-              offset={offset}
-              limit={PAGE_SIZE}
-              total={data.total}
-              onOffsetChange={setOffset}
-              noun="rate cards"
-            />
-          </div>
-        )}
-      />
     </div>
   );
 }

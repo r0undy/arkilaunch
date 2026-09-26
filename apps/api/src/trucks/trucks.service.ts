@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
-import { negotiationMessages, notifications, tollRates, truckRequests, truckSettings, withTenantTx } from '@arkilaunch/db';
+import { negotiationMessages, notifications, projectSites, tollRates, truckRequests, truckSettings, withTenantTx } from '@arkilaunch/db';
 import {
   PH_CLASS3_TOLLS,
   PH_TOLLS_AS_OF,
@@ -21,6 +21,8 @@ import {
 } from '@arkilaunch/shared';
 import { PricingEngineService } from '../quotes/pricing-engine.service.js';
 import { notifyStaff } from '../common/notify-customer.js';
+import { ownCustomers } from '../common/customer-scope.js';
+import { requireSiteProof } from '../common/site-proof.js';
 import { roadDistanceKm } from './route-distance.js';
 
 type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
@@ -51,6 +53,7 @@ function toResponse(row: typeof truckRequests.$inferSelect): TruckRequestRespons
     capPhp: num(row.capPhp),
     callRequestedAt: row.callRequestedAt?.toISOString() ?? null,
     callConfirmedAt: row.callConfirmedAt?.toISOString() ?? null,
+    projectSiteId: row.projectSiteId,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -184,6 +187,13 @@ export class TrucksService {
   async create(ctx: RequestContext, body: TruckRequestCreate): Promise<TruckRequestResponse> {
     const km = await roadDistanceKm(body.pickup, body.dropoff, pins(body));
     return withTenantTx(ctx, async (tx) => {
+      // Only one of the caller's own sites, and only once it has its proof.
+      const own = (await ownCustomers(tx, ctx)).map((row) => row.id);
+      const [site] = own.length
+        ? await tx.select({ id: projectSites.id }).from(projectSites).where(and(eq(projectSites.id, body.projectSiteId), inArray(projectSites.customerId, own))).limit(1)
+        : [];
+      if (!site) throw new NotFoundException({ error: 'project_site_not_found' });
+      await requireSiteProof(tx, site.id);
       const price = await this.price(tx, ctx.tenantId, km);
       const [row] = await tx
         .insert(truckRequests)
@@ -203,6 +213,7 @@ export class TrucksService {
           pickupLng: body.pickupLng !== undefined ? String(body.pickupLng) : null,
           dropoffLat: body.dropoffLat !== undefined ? String(body.dropoffLat) : null,
           dropoffLng: body.dropoffLng !== undefined ? String(body.dropoffLng) : null,
+          projectSiteId: site.id,
         })
         .returning();
       await notifyStaff(tx, ctx.tenantId, 'truck_requested', { truck_request_id: row!.id });

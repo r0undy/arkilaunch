@@ -33,7 +33,7 @@ describe('OpenMeteoAdapter', () => {
     expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.open-meteo.com/v1/forecast');
     expect(calledUrl.searchParams.get('latitude')).toBe('14.676');
     expect(calledUrl.searchParams.get('longitude')).toBe('121.0437');
-    expect(calledUrl.searchParams.get('current')).toBe('temperature_2m,wind_speed_10m,precipitation,weather_code');
+    expect(calledUrl.searchParams.get('current')).toBe('temperature_2m,wind_speed_10m,precipitation,weather_code,wind_gusts_10m,relative_humidity_2m');
     expect(calledUrl.searchParams.get('temperature_unit')).toBe('celsius');
     expect(calledUrl.searchParams.get('wind_speed_unit')).toBe('kmh');
     expect(calledUrl.searchParams.get('precipitation_unit')).toBe('mm');

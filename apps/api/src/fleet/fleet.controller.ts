@@ -29,6 +29,7 @@ import {
   RuntimeCorrectionDto,
   UtilizationQueryDto,
   MaintenanceWindowCreateDto,
+  MaintenanceWindowExtendDto,
   AvailabilityQueryDto,
   TenantCalendarDto,
 } from './dto.js';
@@ -123,6 +124,37 @@ export class FleetController {
   @RequirePermission('fleet:manage')
   createMaintenanceWindow(@Param('id') id: string, @Body() body: MaintenanceWindowCreateDto, @Req() req: CtxRequest) {
     return this.fleet.createMaintenanceWindow(req.ctx, id, body);
+  }
+
+  // Remove a schedule (a duplicate, or to start a fresh plan).
+  @Delete('equipment/:id/maintenance-schedules/:scheduleId')
+  @RequirePermission('fleet:manage')
+  deleteSchedule(@Param('id') id: string, @Param('scheduleId') scheduleId: string, @Req() req: CtxRequest) {
+    return this.fleet.deleteSchedule(req.ctx, id, scheduleId);
+  }
+
+  @Patch('equipment/:id/maintenance-windows/:windowId')
+  @RequirePermission('fleet:manage')
+  extendMaintenanceWindow(
+    @Param('id') id: string,
+    @Param('windowId') windowId: string,
+    @Body() body: MaintenanceWindowExtendDto,
+    @Req() req: CtxRequest,
+  ) {
+    return this.fleet.extendMaintenanceWindow(req.ctx, id, windowId, body);
+  }
+
+  // Blocks ending within two days, for the admin's extend-or-release cue.
+  @Get('equipment/maintenance-windows/ending-soon')
+  @RequirePermission(...STAFF_READ)
+  windowsEndingSoon(@Req() req: CtxRequest) {
+    return this.fleet.windowsEndingSoon(req.ctx);
+  }
+
+  @Get('equipment/:id/report')
+  @RequirePermission(...STAFF_READ)
+  report(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.fleet.report(req.ctx, id);
   }
 
   @Delete('equipment/:id/maintenance-windows/:windowId')

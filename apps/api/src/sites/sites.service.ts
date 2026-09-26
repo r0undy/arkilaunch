@@ -17,6 +17,7 @@ import {
   WEATHER_STALE_AFTER_MINUTES,
   type DeploymentCreateRequest,
   type IncidentListQuery,
+  type SiteEquipmentWeatherResponse,
   type SiteListQuery,
   type IncidentListResponse,
   type RequestContext,
@@ -36,6 +37,7 @@ import {
   findAvailableAlternatives,
 } from '../common/equipment-availability.js';
 import { countRows } from '../common/count-rows.js';
+import { latestEquipmentWeather } from '../common/equipment-weather.js';
 
 // Upper bound on the active-alert scan behind GET /weather/advisories.
 // One row per site is returned after the JS dedupe; this caps the rows
@@ -499,6 +501,17 @@ export class SitesService {
     });
   }
 
+  // GET /sites/:id/equipment-weather (staff): each machine's PAGASA-style
+  // level from the latest poll. No reading yet reads as no data -- stale,
+  // no machines -- never as an all-clear.
+  async equipmentWeather(ctx: RequestContext, siteId: string): Promise<SiteEquipmentWeatherResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [site] = await tx.select({ id: projectSites.id }).from(projectSites).where(eq(projectSites.id, siteId)).limit(1);
+      if (!site) throw new NotFoundException({ error: 'project_site_not_found' });
+      return latestEquipmentWeather(tx, siteId);
+    });
+  }
+
   // GET /api/v1/incidents?projectSiteId=... (S14 Liability Incident Log).
   // No new table: reads the `events` rows jobs/src/weather-poll.ts already
   // writes on a new-or-worsening severity crossing (SDD §4 "auto-logs a
@@ -511,7 +524,9 @@ export class SitesService {
           ? ['weather_liability_incident']
           : query.kind === 'discrepancy'
             ? ['edtr_weather_discrepancy']
-            : ['weather_liability_incident', 'edtr_weather_discrepancy'];
+            : query.kind === 'used_despite_warning'
+              ? ['equipment_used_despite_warning']
+              : ['weather_liability_incident', 'edtr_weather_discrepancy', 'equipment_used_despite_warning'];
       const conditions: SQL[] = [inArray(events.name, names)];
       if (query.projectSiteId) {
         conditions.push(sql`${events.properties} ->> 'project_site_id' = ${query.projectSiteId}`);
@@ -554,8 +569,14 @@ export class SitesService {
           date?: string;
           half?: string;
           system?: unknown;
+          level?: string;
+          reasons?: string[];
+          hours_active?: number;
+          warned_at?: string;
+          equipment_id?: string;
         };
         const discrepancy = row.name === 'edtr_weather_discrepancy';
+        const ignored = row.name === 'equipment_used_despite_warning';
         const site = properties.project_site_id
           ? siteById.get(properties.project_site_id)
           : undefined;
@@ -564,11 +585,17 @@ export class SitesService {
           projectSiteId: properties.project_site_id ?? null,
           siteCity: site?.city ?? null,
           siteProvince: site?.province ?? null,
-          severity: discrepancy ? 'high' : (properties.severity ?? null),
-          observed: (discrepancy ? properties.system : properties.observed) ?? null,
+          severity: discrepancy || ignored ? 'high' : (properties.severity ?? null),
+          observed: (discrepancy ? properties.system : ignored ? { reasons: properties.reasons ?? [] } : properties.observed) ?? null,
           occurredAt: row.occurredAt,
-          kind: discrepancy ? ('discrepancy' as const) : ('weather' as const),
-          detail: discrepancy ? discrepancyDetail(properties.rule, properties.date, properties.half) : null,
+          kind: ignored ? ('used_despite_warning' as const) : discrepancy ? ('discrepancy' as const) : ('weather' as const),
+          detail: ignored
+            ? `${properties.hours_active ?? '?'} h logged on ${properties.date ?? 'that day'} on a machine warned to STOP WORK${
+                properties.warned_at ? ` at ${new Date(properties.warned_at).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' })}` : ''
+              }${properties.reasons?.length ? `: ${properties.reasons.join('; ')}` : ''}.`
+            : discrepancy
+              ? discrepancyDetail(properties.rule, properties.date, properties.half)
+              : null,
         };
       });
       return { items, total };

@@ -1,8 +1,8 @@
 import { createRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import type { ReactElement } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { EquipmentResponse } from '@arkilaunch/shared';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { EquipmentResponse, MaintenanceWindowEndingSoon } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { equipmentQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
@@ -17,7 +17,7 @@ import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { EquipmentFormModal } from '../components/equipment-form-modal.js';
 import { MaintenanceModal } from '../components/maintenance-modal.js';
 import { useToast } from '../components/toast.js';
-import { apiDelete, apiErrorText } from '../lib/api-client.js';
+import { apiDelete, apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { getCurrentRole } from '../lib/guards.js';
 
 const STATUS_META: Record<string, { tone: StatusTone; label: string; icon: ReactElement }> = {
@@ -88,6 +88,51 @@ function RetireAction({ equipment }: { equipment: EquipmentResponse }) {
   );
 }
 
+// Blocked dates free the unit on their own once they end; this is the one
+// cue before that happens, so an admin who needs longer extends in time.
+function BlocksEndingSoon({ manageable }: { manageable: boolean }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const soon = useQuery({
+    queryKey: ['maintenance-windows', 'ending-soon'],
+    queryFn: () => apiGet<MaintenanceWindowEndingSoon[]>('/equipment/maintenance-windows/ending-soon'),
+    refetchInterval: 10 * 60_000,
+  });
+  const extend = useMutation({
+    mutationFn: (w: MaintenanceWindowEndingSoon) =>
+      apiPatch(`/equipment/${w.equipmentId}/maintenance-windows/${w.windowId}`, {
+        endsAt: new Date(new Date(w.endsAt).getTime() + 86_400_000).toISOString(),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['maintenance-windows', 'ending-soon'] });
+      void queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      toast.success('Block extended by a day');
+    },
+    onError: (e) => toast.error('Could not extend the block', apiErrorText(e)),
+  });
+  if (!soon.data || soon.data.length === 0) return null;
+  return (
+    <div role="status" className="flex flex-col gap-1 rounded-md border border-warning px-3 py-2 text-sm">
+      {soon.data.map((w) => {
+        const hours = Math.max(0, Math.round((new Date(w.endsAt).getTime() - Date.now()) / 3_600_000));
+        return (
+          <div key={w.windowId} className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-text">
+              <strong>{w.model}</strong> <span className="text-text-muted">({w.serialNo})</span> is free for booking again in{' '}
+              {hours < 24 ? `${hours} h` : `${Math.ceil(hours / 24)} days`}
+            </span>
+            {manageable && (
+              <Button variant="secondary" loading={extend.isPending && extend.variables?.windowId === w.windowId} onClick={() => extend.mutate(w)}>
+                Extend +1 day
+              </Button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function InventoryPage() {
   const [offset, setOffset] = useState(0);
   // null = closed. 'create' = the add modal. An object = editing that unit.
@@ -109,6 +154,7 @@ function InventoryPage() {
           ) : null
         }
       />
+      <BlocksEndingSoon manageable={manageable} />
       <DataPanel
         title="Equipment"
         options={equipmentQueries.list(PAGE_SIZE, offset)}
@@ -157,7 +203,7 @@ function InventoryPage() {
                           Edit
                         </Button>
                         <Button variant="secondary" onClick={() => setServicing(eq)}>
-                          Maintenance
+                          Report &amp; maintenance
                         </Button>
                         <RetireAction equipment={eq} />
                       </div>

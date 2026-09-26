@@ -382,6 +382,10 @@ jobs:
       SUPABASE_URL: http://localhost:54321
       SUPABASE_SERVICE_ROLE_KEY: ci_throwaway_not_a_secret
       SUPABASE_STORAGE_BUCKET_EQUIPMENT: equipment-photos
+      # The whole browser suite shares one loopback IP; at the real 30/min
+      # public catalog limit the later specs read 429 instead of the tenant
+      # and catalog (catalog.controller.ts).
+      PUBLIC_CATALOG_THROTTLE_LIMIT: "2000"
       # scripts/dev-cert.mjs is not run here, so vite serves plain HTTP and
       # the config's https:// default would only find ERR_EMPTY_RESPONSE.
       # This also keeps the page and auth-client.ts's absolute

@@ -9,10 +9,16 @@ const DAYS_AHEAD = 60;
 const REASON: Record<string, string> = {
   assignment: 'Booked',
   maintenance: 'Maintenance',
-  closed: 'Closed',
-  holiday: 'Holiday',
+  closed: 'Office closed',
+  holiday: 'Office closed (holiday)',
   operator: 'No operator',
 };
+
+// Office closed (a closed weekday or a holiday) stops pickup and return
+// only: a rental may run through it, e.g. Saturday to Monday. Everything
+// else means the unit itself is taken that day.
+const OFFICE_CLOSED = new Set(['closed', 'holiday']);
+const isTaken = (reason: string | null | undefined) => Boolean(reason) && !OFFICE_CLOSED.has(reason!);
 
 // Local YYYY-MM-DD. The API speaks Manila dates.
 // ponytail: assumes the browser is on Manila time (every customer today);
@@ -44,14 +50,19 @@ export function useAvailability(equipmentId: string, end?: string) {
 }
 
 // The first unavailable day the window touches, or null. Also checks the
-// pickup/return times against business hours.
+// pickup/return times against office hours.
 export function availabilityProblem(data: AvailabilityResponse | undefined, startIso: string, endIso: string): string | null {
   if (!data || !startIso || !endIso) return null;
   const start = new Date(startIso);
   const end = new Date(endIso);
   const first = localDate(start);
   const last = localDate(end);
-  const taken = data.days.find((d) => !d.available && d.date >= first && d.date <= last);
+  const edge = data.days.find((d) => !d.available && (d.date === first || d.date === last));
+  if (edge) {
+    const what = edge.date === first ? 'Pickup' : 'Return';
+    return `${what} on ${edge.date} is not possible (${(REASON[edge.reason ?? ''] ?? 'taken').toLowerCase()}).`;
+  }
+  const taken = data.days.find((d) => !d.available && isTaken(d.reason) && d.date > first && d.date < last);
   if (taken) return `${taken.date} is not available (${(REASON[taken.reason ?? ''] ?? 'taken').toLowerCase()}).`;
   if (data.hours) {
     const hm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -116,8 +127,13 @@ export function RangeCalendar({
   const spanStart = anchor ?? first;
   const spanEnd = anchor ? (hover && hover >= anchor ? hover : anchor) : last;
 
+  // A return that would run the rental through a booked or maintenance day
+  // starts a new pickup instead; office-closed days in between are fine.
+  const spansTaken = (from: string, to: string) =>
+    cells.some((d) => d > from && d < to && isTaken(byDate.get(d)?.reason ?? null));
+
   function pick(date: string) {
-    if (anchor && date >= anchor) {
+    if (anchor && date >= anchor && !spansTaken(anchor, date)) {
       onRange(anchor, date);
       setAnchor(null);
     } else {
@@ -129,6 +145,7 @@ export function RangeCalendar({
   const title = new Date(`${monthStart}T00:00:00`).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
   const hours = visible.data?.hours;
   const span = first && last ? daysBetween(first, last) : 0;
+  const nextFree = (visible.data?.days ?? []).find((d) => d.available && d.date >= today)?.date;
   return (
     <div className="flex flex-col gap-3 rounded-md border border-border p-3">
       <div className="flex items-center justify-between">
@@ -161,11 +178,13 @@ export function RangeCalendar({
         ))}
         {cells.map((date) => {
           const info = byDate.get(date);
-          const taken = info ? !info.available : false;
-          const disabled = date < today || taken;
+          const unavailable = info ? !info.available : false;
+          const taken = unavailable && isTaken(info?.reason);
+          const closed = unavailable && !taken;
+          const disabled = date < today || unavailable;
           const inSpan = Boolean(spanStart) && date >= spanStart && date <= spanEnd;
           const edge = date === spanStart || date === spanEnd;
-          const reason = taken ? (REASON[info?.reason ?? ''] ?? 'Taken') : '';
+          const reason = unavailable ? (REASON[info?.reason ?? ''] ?? 'Taken') : '';
           return (
             <button
               key={date}
@@ -181,7 +200,16 @@ export function RangeCalendar({
                 'min-h-10 text-sm tabular-nums transition-colors',
                 date.slice(0, 7) === month ? '' : 'opacity-40',
                 disabled
-                  ? `cursor-not-allowed text-text-muted ${taken ? 'line-through' : ''}`
+                  ? [
+                      'cursor-not-allowed',
+                      taken
+                        ? `rounded-sm text-text-muted line-through ${info?.reason === 'maintenance' ? 'bg-warning/15' : 'bg-error/10'}`
+                        : closed
+                          ? inSpan
+                            ? 'bg-accent/10 text-text-muted'
+                            : 'text-text-muted/60'
+                          : 'text-text-muted/50',
+                    ].join(' ')
                   : edge
                     ? 'rounded-sm bg-accent font-semibold text-white'
                     : inSpan
@@ -202,11 +230,22 @@ export function RangeCalendar({
               ? `${prettyDate(first)} to ${prettyDate(last)} · ${span} ${span === 1 ? 'day' : 'days'}`
               : 'Pick the pickup date.'}
         </span>
-        <span>
-          <span className="line-through">12</span> unavailable
-          {hours ? ` · open ${hours.openTime}–${hours.closeTime}` : ''}
-        </span>
+        {nextFree && !first && <span className="font-medium text-text">Next available: {prettyDate(nextFree)}</span>}
       </div>
+      <ul aria-label="Legend" className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-muted">
+        <li className="flex items-center gap-1.5">
+          <span aria-hidden className="h-3 w-3 rounded-sm bg-error/10" />
+          <span className="line-through">Booked</span>
+        </li>
+        <li className="flex items-center gap-1.5">
+          <span aria-hidden className="h-3 w-3 rounded-sm bg-warning/15" />
+          <span className="line-through">Maintenance</span>
+        </li>
+        <li className="flex items-center gap-1.5">
+          <span aria-hidden className="h-3 w-3 rounded-sm border border-border" />
+          Office closed{hours ? ` · open ${hours.openTime}–${hours.closeTime}` : ''} (can rent through, not pick up or return)
+        </li>
+      </ul>
     </div>
   );
 }

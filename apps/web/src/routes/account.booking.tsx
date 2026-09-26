@@ -13,6 +13,7 @@ import { CheckIcon, ClockIcon } from '../components/icons.js';
 import { Input } from '../components/input.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { useToast } from '../components/toast.js';
+import { MyEquipmentWeather } from '../components/equipment-weather.js';
 import { apiErrorText, apiPatch, apiPost } from '../lib/api-client.js';
 import { formatDate, formatPeso, formatStatus, shortCode } from '../lib/format.js';
 
@@ -474,6 +475,7 @@ function BookingDetailPage() {
         isEmpty={(data) => !data?.id}
         render={(data) => <BookingDetail booking={data} />}
       />
+      {booking.data && (status === 'active' || status === 'confirmed') && <MyEquipmentWeather siteId={booking.data.projectSiteId} />}
     </div>
   );
 }

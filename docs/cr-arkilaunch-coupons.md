@@ -37,9 +37,9 @@
 - `PaymentsPort.expireCheckoutSession` added (the stub is a no-op).
 - Checkout summary: an issued booking invoice is shown at its stored amount, so a coupon applied earlier shows. The weekly-invoice Pay button no longer navigates to the stub's `about:blank`.
 
-## 4. Migration 0054
+## 4. Migration 0057
 
-`0054_coupons.sql` (hand-authored, additive, idempotent):
+`0057_coupons.sql` (hand-authored, additive, idempotent):
 - `coupons`: tenant-scoped; `UNIQUE (tenant_id, code)`; CHECKs on code shape, discount type/value, max_uses > 0.
 - `coupon_redemptions`: tenant-scoped; `UNIQUE (invoice_id)`; `discount_php > 0`.
 

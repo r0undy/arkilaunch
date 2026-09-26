@@ -291,7 +291,7 @@ export const depositAccruals = pgTable(
   ],
 );
 
-// 0054: a rental company's coupon codes (cr-arkilaunch-coupons.md). Code is
+// 0057: a rental company's coupon codes (cr-arkilaunch-coupons.md). Code is
 // stored upper-case; redeemed_count is bumped by one guarded UPDATE at
 // checkout (payments/coupons.ts), never read-then-written.
 export const coupons = pgTable(

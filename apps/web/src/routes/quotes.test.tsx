@@ -5,15 +5,18 @@ import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken } from '../lib/auth-client.js';
 
-// Preview and Create draft used to be two sibling buttons under a long form,
-// with the priced result printed below it: you committed to a draft without
-// the figures necessarily on screen, and a failure arrived as a JSON dump.
-// The preview is now the decision point, and it carries Create in its footer.
+// Quotes is the standard price book for every client; a booking's quote is
+// only rebuilt here while the customer negotiates. The preview is the
+// decision point, and it carries Create in its footer.
 
-const CUSTOMER = { id: 'cust-1', companyName: 'Almara Construction' };
 const EQUIPMENT_TYPE = { id: 'et-1', name: 'Excavator 20T' };
 const RATE_CARD = { id: 'rc-1', equipmentTypeId: 'et-1', equipmentId: null, rateType: 'daily', currency: 'PHP', rateValue: '20000' };
-const SITE = { id: 'site-1', city: 'Taguig', province: 'NCR', latitude: 14.5, longitude: 121 };
+const BOOKING_ID = '11111111-1111-4111-8111-111111111111';
+const BOOKING = {
+  id: BOOKING_ID, status: 'pending', projectSiteId: 'site-1', customerId: 'cust-1',
+  items: [{ equipmentId: 'eq-1', start: '2026-10-01T00:00:00Z', end: '2026-10-02T00:00:00Z', status: 'reserved' }],
+  quotation: { id: 'quote-0', revision: 1, status: 'approved', totalPhp: 53000, createdAt: '2026-09-27T00:00:00Z', inNegotiation: true },
+};
 
 const PREVIEW = {
   status: 'draft',
@@ -42,10 +45,16 @@ function stubFetch(onQuotes?: (url: string) => Response) {
       const u = String(url);
       const json = (v: unknown) =>
         Promise.resolve(new Response(JSON.stringify(v), { status: 200 }));
-      if (u.includes('/reference/customers')) return json([CUSTOMER]);
       if (u.includes('/reference/equipment-types')) return json([EQUIPMENT_TYPE]);
       if (u.includes('/reference/rate-cards')) return json([RATE_CARD]);
-      if (u.includes('/reference/project-sites')) return json([SITE]);
+      if (u.includes('/pricing/billing-settings')) return json({ dailyHours: 8, minDepositPhp: 0, lowBalancePct: 20, depositPct: 0, mobilizationPhp: 15000, demobilizationPhp: 12000, minHours: 0 });
+      if (u.includes('/pricing/parameters')) return json(null);
+      if (u.includes('/pricing/diesel-price')) return json(null);
+      if (u.includes('/rate-cards')) return json({ items: [], total: 0 });
+      if (u.includes('/truck-settings')) return json({ baseFeePhp: 2500, driverFeePhp: 1500, extras: [], formula: null, rangePct: 10, region: 'NCR' });
+      if (u.includes('/toll-rates')) return json([]);
+      if (u.includes(`/bookings/${BOOKING_ID}`)) return json(BOOKING);
+      if (u.includes('/quotes/quote-0')) return json({ ...PREVIEW, id: 'quote-0', status: 'approved' });
       if (u.includes('/quotes')) {
         if (onQuotes) return Promise.resolve(onQuotes(u));
         return json(u.endsWith('/preview') ? PREVIEW : { ...PREVIEW, id: 'quote-1' });
@@ -66,19 +75,36 @@ afterEach(() => {
 });
 
 describe('Quotes', () => {
-  it('opens the priced quote over the form, and creates the draft from its footer', async () => {
+  it('is the standard price book: rental with its fixed mob/demob, trucking in its own tab', async () => {
     stubFetch();
     await renderRoute('/app/quotes');
+
+    expect(await screen.findByRole('tab', { name: 'Equipment rental' })).toHaveAttribute('aria-selected', 'true');
+    // No quote is drawn up per company any more.
+    expect(screen.queryByLabelText('Customer')).not.toBeInTheDocument();
+    expect(await screen.findByLabelText('Mobilization (PHP)')).toHaveValue(15000);
+    expect(screen.getByLabelText('Demobilization (PHP)')).toHaveValue(12000);
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Trucking' }));
+    expect(await screen.findByRole('heading', { name: 'Truck pricing' })).toBeInTheDocument();
+    // Mob/demob is rental only.
+    expect(screen.queryByLabelText('Mobilization (PHP)')).not.toBeInTheDocument();
+  });
+
+  it('revises a booking in negotiation: preview over the form, draft from its footer', async () => {
+    stubFetch();
+    await renderRoute(`/app/quotes?bookingId=${BOOKING_ID}`);
+
+    expect(await screen.findByRole('heading', { name: 'Revise quote' })).toBeInTheDocument();
+    // Transport is the price book's, not set per quote.
+    expect(screen.queryByLabelText('Mobilization (PHP)')).not.toBeInTheDocument();
 
     const priceIt = await screen.findByRole('button', { name: 'Preview price' });
     await waitFor(() => expect(priceIt).toBeEnabled());
     await userEvent.click(priceIt);
 
     const dialog = await screen.findByRole('dialog');
-    // The machine being priced reads by name; the column used to print a
-    // slice of its UUID.
     expect(dialog).toHaveTextContent('Excavator 20T');
-    // Charged in the card's own unit, the same way the customer reads it.
     expect(dialog).toHaveTextContent('/day × 1 day');
     expect(dialog).toHaveTextContent('Operator overtime');
     expect(dialog).toHaveTextContent('Mobilization');
@@ -86,15 +112,14 @@ describe('Quotes', () => {
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create draft' }));
 
-    // The draft is acknowledged and the dialog gets out of the way.
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(await screen.findByText('Draft quote created')).toBeInTheDocument();
+    expect(await screen.findByText('Revised quote drafted')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
   });
 
   it('reports a rejected quote as a sentence rather than a JSON dump', async () => {
     stubFetch(() => new Response(JSON.stringify({ error: 'rate_card_expired' }), { status: 400 }));
-    await renderRoute('/app/quotes');
+    await renderRoute(`/app/quotes?bookingId=${BOOKING_ID}`);
 
     const priceIt = await screen.findByRole('button', { name: 'Preview price' });
     await waitFor(() => expect(priceIt).toBeEnabled());

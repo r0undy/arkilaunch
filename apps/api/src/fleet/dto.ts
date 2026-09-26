@@ -7,6 +7,7 @@ import {
   MaintenanceScheduleCreateRequestSchema,
   RuntimeCorrectionRequestSchema,
   MaintenanceWindowCreateRequestSchema,
+  MaintenanceWindowExtendRequestSchema,
   AvailabilityQuerySchema,
   TenantCalendarSchema,
   UtilizationQuerySchema,
@@ -26,3 +27,4 @@ export class RuntimeCorrectionDto extends createZodDto(RuntimeCorrectionRequestS
 export class MaintenanceWindowCreateDto extends createZodDto(MaintenanceWindowCreateRequestSchema) {}
 export class AvailabilityQueryDto extends createZodDto(AvailabilityQuerySchema) {}
 export class TenantCalendarDto extends createZodDto(TenantCalendarSchema) {}
+export class MaintenanceWindowExtendDto extends createZodDto(MaintenanceWindowExtendRequestSchema) {}

@@ -131,11 +131,11 @@ function CompanyForm({ company }: { company: CompanyResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const verified = company.kycStatus === 'approved';
-  // A submitted company waiting on review takes only what the reviewer
-  // unlocked; otherwise TIN and SEC lock once verified.
+  // A submitted company waiting on review is read-only; otherwise TIN and
+  // SEC lock once verified.
   const waiting = isWaitingForReview(company);
   const editable = (field: string) =>
-    waiting ? company.unlockedFields.includes(field) : field === 'billingAddress' || !verified;
+    !waiting && (field === 'billingAddress' || !verified);
   const [tin, setTin] = useState(company.tin ?? '');
   const [secNumber, setSecNumber] = useState(company.secNumber ?? '');
   const [billingAddress, setBillingAddress] = useState(company.billingAddress ?? '');

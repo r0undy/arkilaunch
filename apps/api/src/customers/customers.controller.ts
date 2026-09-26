@@ -24,10 +24,10 @@ import {
   CompanyUpdateDto,
   CompanyDecisionDto,
   CompanyDocumentUploadDto,
-  CompanyReviewCommentDto,
   CompanyReviewQueryDto,
   CustomerSiteCreateDto,
   KycScanRequestDto,
+  SiteDocumentUploadDto,
 } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
@@ -118,6 +118,38 @@ export class CustomersController {
     return this.customers.createSite(req.ctx, body);
   }
 
+  // Proof a site is real and theirs: a site photo plus a permit, NTP,
+  // title/lease or barangay clearance. Same validation and bucket as KYC.
+  @Post('me/sites/:id/documents')
+  @RequirePermission('booking:create')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  async addSiteDocument(
+    @Param('id') id: string,
+    @Body() body: SiteDocumentUploadDto,
+    @UploadedFile() file: MulterFile | undefined,
+    @Req() req: CtxRequest,
+  ) {
+    const validated = validateUpload(file);
+    const key = this.storage.buildObjectKey(req.ctx.tenantId, validated.extension);
+    await this.storage.uploadObject(kycBucket(), key, file!.buffer, validated.contentType);
+    return this.customers.addSiteDocument(req.ctx, id, body.documentType, key);
+  }
+
+  // Staff open a booking's or truck trip's site proof before confirming it.
+  @Get('sites/:id/documents')
+  @RequirePermission('quote:approve')
+  listSiteDocuments(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.customers.listSiteDocuments(req.ctx, id);
+  }
+
+  @Get('sites/:id/documents/:documentId/url')
+  @RequirePermission('quote:approve')
+  async siteDocumentUrl(@Param('id') id: string, @Param('documentId') documentId: string, @Req() req: CtxRequest) {
+    const key = await this.customers.siteDocumentKey(req.ctx, id, documentId);
+    return { url: await this.storage.createSignedDownloadUrl(kycBucket(), key) };
+  }
+
   // The customer's own thumbnail for the company card (Figma 251:1945).
   // Same 300s signed URL as the staff route, but gated on booking:read and
   // on owning the company -- see ownDocumentKey().
@@ -140,6 +172,14 @@ export class CustomersController {
   // same role set, need seeding in two places, and add nothing -- the
   // isolation here is the ownership check, not the permission. Throttled
   // because each miss is an upstream call against a metered free tier.
+  // General forecast when the customer has no site of their own yet.
+  @Get('me/forecast')
+  @RequirePermission('booking:read')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  areaForecast(@Req() req: CtxRequest) {
+    return this.customers.areaForecast(req.ctx);
+  }
+
   @Get('me/sites/:id/forecast')
   @RequirePermission('booking:read')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
@@ -147,7 +187,14 @@ export class CustomersController {
     return this.customers.siteForecast(req.ctx, id);
   }
 
-  @Get('customers/review')
+  // Each of the caller's machines on their site, with its weather level.
+  @Get('me/sites/:id/equipment-weather')
+  @RequirePermission('booking:read')
+  equipmentWeather(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.customers.siteEquipmentWeather(req.ctx, id);
+  }
+
+    @Get('customers/review')
   @RequirePermission('quote:approve')
   listForReview(@Query() query: CompanyReviewQueryDto, @Req() req: CtxRequest) {
     return this.customers.listForReview(req.ctx, query.kycStatus);
@@ -192,13 +239,15 @@ export class CustomersController {
     return this.customers.readDocument(req.ctx, id, documentId, bytes);
   }
 
-  // A comment to the customer that unlocks what it names; status unchanged.
-  @Patch('customers/:id/review')
-  @RequirePermission('quote:approve')
-  comment(@Param('id') id: string, @Body() body: CompanyReviewCommentDto, @Req() req: CtxRequest) {
-    return this.customers.comment(req.ctx, id, body);
+  // After a rejection: the cure papers are uploaded, back to the queue.
+  @Post('me/companies/:id/reapply')
+  @RequirePermission('booking:create')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  reapply(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.customers.reapply(req.ctx, id);
   }
 
+  // Approve or reject; the reviewer never edits what the customer sent.
   @Patch('customers/:id/kyc')
   @RequirePermission('quote:approve')
   decide(@Param('id') id: string, @Body() body: CompanyDecisionDto, @Req() req: CtxRequest) {

@@ -1,4 +1,4 @@
-import { index, boolean, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, boolean, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 import { projectSites } from './rentals.js';
@@ -41,5 +41,30 @@ export const notifications = pgTable(
   },
   (table) => [tenantIsolationPolicy(),
     index('notifications_tenant_id_idx').on(table.tenantId),
+  ],
+);
+
+// 0056: PAGASA warnings in force for a province, recorded by staff as PAGASA
+// issues them (TCWS bulletin, rainfall and thunderstorm advisories) --
+// PAGASA publishes no machine-readable feed. The weather poll reads the one
+// for a site's province into every machine's level until valid_until.
+export const pagasaAdvisories = pgTable(
+  'pagasa_advisories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    province: text('province').notNull(),
+    tcws: integer('tcws').notNull().default(0), // 0 = no signal, 1-5
+    rainfall: text('rainfall').notNull().default('none'), // none | yellow | orange | red
+    thunderstorm: boolean('thunderstorm').notNull().default(false),
+    note: text('note'),
+    validUntil: timestamp('valid_until', { withTimezone: true }).notNull(),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [tenantIsolationPolicy(),
+    index('pagasa_advisories_tenant_id_idx').on(table.tenantId),
   ],
 );

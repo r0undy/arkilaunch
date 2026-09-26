@@ -50,7 +50,7 @@ describe('Coupons at checkout', () => {
     const [customerUser] = await sql`select id from users where tenant_id = ${tenantId} and email = 'customer@test-tenant-a.test'`;
     const [adminUser] = await sql`select id from users where tenant_id = ${tenantId} and id <> ${(customerUser as { id: string }).id} limit 1`;
     const [userB] = await sql`select id from users where tenant_id = ${(tenantB as { id: string }).id} limit 1`;
-    const [site] = await sql`select id from project_sites where tenant_id = ${tenantId} limit 1`;
+    const [site] = await sql`select id from project_sites where tenant_id = ${tenantId} and customer_id is null order by created_at limit 1`;
     const [unit] = await sql`select id from equipment where tenant_id = ${tenantId} and serial_no = 'test-tenant-a-serial-booking-001'`;
     const [rateCard] = await sql`select id, equipment_type_id from rate_cards where tenant_id = ${tenantId} and equipment_id is null and rate_type = 'hourly' and (effective_to is null or effective_to > now()) order by effective_from limit 1`;
 
@@ -103,7 +103,8 @@ describe('Coupons at checkout', () => {
     return new Date(Date.UTC(2032, 8, 1 + offset, hour, 0, 0)).toISOString();
   }
 
-  // A booking with an accepted quote, ready to pay.
+  // A booking with an accepted quote, ready to pay. The price book quotes a
+  // booking the moment it is made; staff quote by hand only when it could not.
   async function acceptedBooking() {
     const offset = nextDay++;
     const created = await bookings.create(customerCtx, {
@@ -113,14 +114,17 @@ describe('Coupons at checkout', () => {
     });
     await bookings.confirmCall(adminCtx, created.id);
     const detail = await bookings.get(customerCtx, created.id);
-    const quote = await quotes.create(adminCtx, {
-      customerId: detail.customerId,
-      projectSiteId: siteId,
-      rentalId: created.id,
-      discount: { type: 'none', value: 0 },
-      items: [{ equipmentTypeId, rateCardId, quantity: 1, estimatedHours: 8, mobilizationKm: 5, demobilizationKm: 5 }],
-    });
-    await quotes.approve(adminCtx, quote.id);
+    let quote = detail.quotation?.status === 'approved' ? await quotes.get(adminCtx, detail.quotation.id) : null;
+    if (!quote) {
+      quote = await quotes.create(adminCtx, {
+        customerId: detail.customerId,
+        projectSiteId: siteId,
+        rentalId: created.id,
+        discount: { type: 'none', value: 0 },
+        items: [{ equipmentTypeId, rateCardId, quantity: 1, estimatedHours: 8, mobilizationKm: 5, demobilizationKm: 5 }],
+      });
+      await quotes.approve(adminCtx, quote.id);
+    }
     await quotes.accept(customerCtx, quote.id);
     const [contract] = await withTenantTx(adminCtx, (tx) =>
       tx.select().from(rentalContracts).where(eq(rentalContracts.quotationId, quote.id)),

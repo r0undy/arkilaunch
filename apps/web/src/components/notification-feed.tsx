@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryOptions } from '@tanstack/react-query';
-import type { NotificationListResponse, NotificationResponse } from '@arkilaunch/shared';
+import { WEATHER_LEVEL_INFO, type NotificationListResponse, type NotificationResponse } from '@arkilaunch/shared';
 import { apiGet, apiPatch } from '../lib/api-client.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
@@ -95,9 +95,39 @@ export function describeNotification(type: string, payload: unknown): Described 
         }
       : {
           title: 'Company not verified',
-          body: `${name} could not be verified. Contact the rental team to fix it.`,
-          action: { label: 'View company', to: '/account/companies', params: {} },
+          body:
+            typeof p.reason_label === 'string'
+              ? `${name}: ${p.reason_label}. Open it to see which documents fix this, then reapply.`
+              : `${name} could not be verified. Contact the rental team to fix it.`,
+          action: {
+            label: 'View company',
+            to: '/account/companies/$companyId',
+            params: { companyId: String(p.customer_id ?? '') },
+          },
         };
+  }
+  if (type === 'equipment_weather_warning' || type === 'equipment_weather_alert') {
+    const level = typeof p.level === 'string' && p.level in WEATHER_LEVEL_INFO ? (p.level as keyof typeof WEATHER_LEVEL_INFO) : 'caution';
+    const info = WEATHER_LEVEL_INFO[level];
+    const name = typeof p.equipment_name === 'string' ? p.equipment_name : 'A machine';
+    const why = Array.isArray(p.reasons) && p.reasons.length ? ` ${(p.reasons as string[]).join('; ')}.` : '';
+    const bookingId = String(p.rental_id ?? '');
+    return {
+      title: `${info.label.toUpperCase()}: ${name}`,
+      body: type === 'equipment_weather_warning' ? `${why} ${info.action} ${info.tagalog}`.trim() : `${name} on a customer site is at ${info.label}.${why}`,
+      action:
+        type === 'equipment_weather_warning'
+          ? { label: 'Open booking', to: '/account/bookings/$bookingId', params: { bookingId } }
+          : { label: 'Open booking', to: '/app/bookings/$bookingId', params: { bookingId } },
+    };
+  }
+  if (type === 'company_reapplied') {
+    const name = typeof p.company_name === 'string' ? p.company_name : 'A company';
+    return {
+      title: 'Registration resubmitted',
+      body: `${name} uploaded new documents after a rejection and needs a fresh decision.`,
+      action: { label: 'Review', to: '/app/registration/pending', params: {} },
+    };
   }
   if (type === 'truck_requested' || (type === 'call_requested' && typeof p.truck_request_id === 'string')) {
     return {

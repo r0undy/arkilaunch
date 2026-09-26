@@ -109,6 +109,9 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
       status: z.string(),
       totalPhp: z.number().nullable(),
       createdAt: z.coerce.date(),
+      // Staff may re-quote only now: the customer declined this quote or
+      // wrote in the thread since it was issued (or it is still a draft).
+      inNegotiation: z.boolean().optional(),
     })
     .nullable(),
   // resolveDepositLedger's view: required is null when no contract exists.

@@ -59,7 +59,7 @@ describe('Customer journey', () => {
     const [customerUser] = await sql`select id from users where tenant_id = ${tenantId} and email = 'customer@test-tenant-a.test'`;
     const [adminUser] = await sql`select id from users where tenant_id = ${tenantId} and id <> ${(customerUser as { id: string }).id} limit 1`;
     const [userB] = await sql`select id from users where tenant_id = ${(tenantB as { id: string }).id} limit 1`;
-    const [site] = await sql`select id from project_sites where tenant_id = ${tenantId} limit 1`;
+    const [site] = await sql`select id from project_sites where tenant_id = ${tenantId} and customer_id is null order by created_at limit 1`;
     const [unit] = await sql`select id from equipment where tenant_id = ${tenantId} and serial_no = 'test-tenant-a-serial-booking-001'`;
     const [rateCard] = await sql`select id, equipment_type_id from rate_cards where tenant_id = ${tenantId} and equipment_id is null and rate_type = 'hourly' and (effective_to is null or effective_to > now()) order by effective_from limit 1`;
 
@@ -136,13 +136,27 @@ describe('Customer journey', () => {
     expect(await notificationTypes(booking.id)).toContain('quote_ready');
   });
 
+
+  // A booking is quoted from the price book the moment it is made; staff
+  // quote by hand only when that could not price it (no rate card).
+  async function priceBookQuote(bookingId: string, customerId: string) {
+    const detail = await bookings.get(adminCtx, bookingId);
+    if (detail.quotation?.status === 'approved') return quotes.get(adminCtx, detail.quotation.id);
+    const quote = await quotes.create(adminCtx, quoteBody(bookingId, customerId));
+    await quotes.approve(adminCtx, quote.id);
+    return quote;
+  }
+
   it('negotiates, accepts, and charges the accepted quote plus the deposit exactly once', async () => {
     const booking = await book(0);
 
-    // Staff quote it; approving tells the customer.
-    const first = await quotes.create(adminCtx, quoteBody(booking.id, booking.customerId));
-    await quotes.approve(adminCtx, first.id);
+    // The price book quotes it at once; the customer is told.
+    const first = await priceBookQuote(booking.id, booking.customerId);
     expect(await notificationTypes(booking.id)).toContain('quote_ready');
+    // Staff may not re-quote until the customer negotiates.
+    await expect(quotes.create(adminCtx, quoteBody(booking.id, booking.customerId, 50))).rejects.toMatchObject({
+      response: { error: 'quote_not_in_negotiation' },
+    });
 
     // Paying before agreeing the price is refused.
     await expect(payments.checkout(customerCtx, booking.id)).rejects.toMatchObject({
@@ -159,10 +173,12 @@ describe('Customer journey', () => {
     ]);
     expect(await notificationTypes(booking.id)).toContain('negotiation_reply');
 
-    // The revised quote supersedes the first, which can no longer be taken.
+    // In negotiation now: the revised quote supersedes the first, which can
+    // no longer be taken.
+    const undiscounted = await quotes.preview(adminCtx, quoteBody(booking.id, booking.customerId));
     const second = await quotes.create(adminCtx, quoteBody(booking.id, booking.customerId, 50));
     expect(second.revision).toBe(first.revision + 1);
-    expect(second.total).toBeCloseTo(first.total - 50, 2);
+    expect(second.total).toBeCloseTo(undiscounted.total - 50, 2);
     await expect(quotes.accept(customerCtx, first.id)).rejects.toMatchObject({ response: { error: 'quote_not_open' } });
     await quotes.approve(adminCtx, second.id);
     await quotes.accept(customerCtx, second.id);

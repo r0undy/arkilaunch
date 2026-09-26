@@ -1,17 +1,24 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
 import {
   auditLogs,
+  customers,
   db,
   edtr,
   edtrLineItems,
   equipment,
+  equipmentAssignments,
+  events,
   getBillingSettings,
   invoices,
   maintenanceLogs,
   maintenanceSchedules,
   maintenanceWindows,
   payments,
+  pricingParameters,
+  quotationItems,
+  quotations,
+  rentals,
   tenantCalendar,
   withTenantTx,
 } from '@arkilaunch/db';
@@ -27,6 +34,9 @@ import type {
   MaintenanceLogCreateRequest,
   MaintenanceScheduleCreateRequest,
   MaintenanceWindowCreateRequest,
+  MaintenanceWindowEndingSoon,
+  MaintenanceWindowExtendRequest,
+  EquipmentReportResponse,
   AvailabilityQuery,
   AvailabilityResponse,
   TenantCalendar,
@@ -501,6 +511,182 @@ export class FleetService {
         entityId: created.id,
       });
       return { id: created.id };
+    });
+  }
+
+  // DELETE /equipment/:id/maintenance-schedules/:scheduleId. An admin
+  // clears a duplicate or starts a fresh plan. Past service logs stay (they
+  // are history) and just lose their link to the removed schedule.
+  async deleteSchedule(ctx: RequestContext, equipmentId: string, scheduleId: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(maintenanceSchedules)
+        .where(and(eq(maintenanceSchedules.id, scheduleId), eq(maintenanceSchedules.equipmentId, equipmentId)))
+        .limit(1);
+      if (!existing) throw new NotFoundException({ error: 'maintenance_schedule_not_found' });
+      await tx.update(maintenanceLogs).set({ scheduleId: null }).where(eq(maintenanceLogs.scheduleId, scheduleId));
+      await tx.delete(maintenanceSchedules).where(eq(maintenanceSchedules.id, scheduleId));
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'DELETE',
+        entity: 'maintenance_schedules',
+        entityId: scheduleId,
+        reason: existing.task ?? 'general service',
+      });
+      return { id: scheduleId };
+    });
+  }
+
+  // PATCH /equipment/:id/maintenance-windows/:windowId. Extend (or shorten)
+  // a block; it still frees on its own once the new end passes.
+  async extendMaintenanceWindow(ctx: RequestContext, equipmentId: string, windowId: string, body: MaintenanceWindowExtendRequest) {
+    return withTenantTx(ctx, async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(maintenanceWindows)
+        .where(and(eq(maintenanceWindows.id, windowId), eq(maintenanceWindows.equipmentId, equipmentId)))
+        .limit(1);
+      if (!existing) throw new NotFoundException({ error: 'maintenance_window_not_found' });
+      const endsAt = new Date(body.endsAt);
+      if (endsAt <= existing.startsAt) throw new ConflictException({ error: 'ends_before_start' });
+      await tx.update(maintenanceWindows).set({ endsAt }).where(eq(maintenanceWindows.id, windowId));
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'maintenance_windows',
+        entityId: windowId,
+        reason: `ends ${existing.endsAt.toISOString()} -> ${endsAt.toISOString()}`,
+      });
+      return { id: windowId, endsAt: endsAt.toISOString() };
+    });
+  }
+
+  // GET /equipment/maintenance-windows/ending-soon. Blocks in force or
+  // starting that end within two days: the admin's cue to extend.
+  async windowsEndingSoon(ctx: RequestContext): Promise<MaintenanceWindowEndingSoon[]> {
+    return withTenantTx(ctx, async (tx) => {
+      const now = new Date();
+      const soon = new Date(now.getTime() + 2 * 86_400_000);
+      const rows = await tx
+        .select({ windowId: maintenanceWindows.id, equipmentId: equipment.id, model: equipment.model, serialNo: equipment.serialNo, endsAt: maintenanceWindows.endsAt })
+        .from(maintenanceWindows)
+        .innerJoin(equipment, eq(equipment.id, maintenanceWindows.equipmentId))
+        .where(and(gt(maintenanceWindows.endsAt, now), lte(maintenanceWindows.endsAt, soon), lte(maintenanceWindows.startsAt, soon)))
+        .orderBy(maintenanceWindows.endsAt);
+      return rows.map((row) => ({ ...row, endsAt: row.endsAt.toISOString() }));
+    });
+  }
+
+  // GET /equipment/:id/report. Built from what is already recorded: EDTR
+  // hours (not failed), the tenant's fuel burn per hour, the unit's
+  // assignments with their accepted quote line, maintenance logs and
+  // blocks, and the weather events that name it.
+  async report(ctx: RequestContext, equipmentId: string): Promise<EquipmentReportResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [unit] = await tx.select().from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
+      if (!unit) throw new NotFoundException({ error: 'equipment_not_found' });
+
+      const since = new Date();
+      since.setMonth(since.getMonth() - 5, 1);
+      const month = sql<string>`to_char(${edtr.reportDate}, 'YYYY-MM')`;
+      const hourRows = await tx
+        .select({ month, hours: sql<string>`coalesce(sum(${edtrLineItems.hoursActive}), 0)` })
+        .from(edtrLineItems)
+        .innerJoin(edtr, eq(edtr.id, edtrLineItems.edtrId))
+        .where(and(eq(edtr.equipmentId, equipmentId), ne(edtr.status, 'hard_failed'), gte(edtr.reportDate, since.toISOString().slice(0, 10))))
+        .groupBy(month);
+      const [allHours] = await tx
+        .select({ hours: sql<string>`coalesce(sum(${edtrLineItems.hoursActive}), 0)` })
+        .from(edtrLineItems)
+        .innerJoin(edtr, eq(edtr.id, edtrLineItems.edtrId))
+        .where(and(eq(edtr.equipmentId, equipmentId), ne(edtr.status, 'hard_failed')));
+      const [params] = await tx.select({ fuel: pricingParameters.fuelLPerHour }).from(pricingParameters).orderBy(desc(pricingParameters.effectiveFrom)).limit(1);
+      const fuel = params ? Number(params.fuel) : null;
+      const litres = (hours: number) => (fuel === null ? null : round2HalfUp(hours * fuel));
+
+      const byMonth = new Map(hourRows.map((row) => [row.month, Number(row.hours)]));
+      const months: EquipmentReportResponse['months'] = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(d.getMonth() - i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const hours = round2HalfUp(byMonth.get(key) ?? 0);
+        months.push({ month: key, hours, fuelLitres: litres(hours) });
+      }
+
+      const assignments = await tx
+        .select({ rentalId: rentals.id, companyName: customers.companyName, start: equipmentAssignments.start, end: equipmentAssignments.end, status: rentals.status })
+        .from(equipmentAssignments)
+        .innerJoin(rentals, eq(rentals.id, equipmentAssignments.rentalId))
+        .leftJoin(customers, eq(customers.id, rentals.customerId))
+        .where(and(eq(equipmentAssignments.equipmentId, equipmentId), ne(equipmentAssignments.status, 'cancelled')))
+        .orderBy(desc(equipmentAssignments.start));
+      // What the unit was quoted on each rental: its type's line on the
+      // accepted quote, per unit.
+      const rentalIds = assignments.map((a) => a.rentalId);
+      const quoteLines = rentalIds.length
+        ? await tx
+            .select({ rentalId: quotations.rentalId, subtotal: quotationItems.subtotalPhp, quantity: quotationItems.quantity })
+            .from(quotationItems)
+            .innerJoin(quotations, eq(quotations.id, quotationItems.quotationId))
+            .where(and(inArray(quotations.rentalId, rentalIds), eq(quotations.status, 'accepted'), eq(quotationItems.equipmentTypeId, unit.equipmentTypeId)))
+        : [];
+      const revenueFor = (rentalId: string) => {
+        const line = quoteLines.find((q) => q.rentalId === rentalId);
+        return line ? round2HalfUp(Number(line.subtotal) / Math.max(1, line.quantity)) : null;
+      };
+      const rentalRows = assignments.map((a) => ({
+        rentalId: a.rentalId,
+        companyName: a.companyName,
+        start: a.start.toISOString(),
+        end: a.end?.toISOString() ?? null,
+        status: a.status,
+        revenuePhp: revenueFor(a.rentalId),
+      }));
+
+      const logs = await tx
+        .select({ performedAt: maintenanceLogs.performedAt, notes: maintenanceLogs.notes, task: maintenanceSchedules.task })
+        .from(maintenanceLogs)
+        .leftJoin(maintenanceSchedules, eq(maintenanceSchedules.id, maintenanceLogs.scheduleId))
+        .where(eq(maintenanceLogs.equipmentId, equipmentId))
+        .orderBy(desc(maintenanceLogs.performedAt));
+      const windows = await tx.select().from(maintenanceWindows).where(eq(maintenanceWindows.equipmentId, equipmentId)).orderBy(desc(maintenanceWindows.startsAt)).limit(10);
+      const now = new Date();
+
+      const count = async (name: string) => {
+        const [row] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(events)
+          .where(and(eq(events.name, name), sql`${events.properties} ->> 'equipment_id' = ${equipmentId}`));
+        return row?.n ?? 0;
+      };
+
+      const totalHours = round2HalfUp(Number(allHours?.hours ?? 0));
+      return {
+        equipmentId,
+        model: unit.model,
+        serialNo: unit.serialNo,
+        runtimeHours: Number(unit.runtimeHours),
+        fuelLPerHour: fuel,
+        months,
+        totals: {
+          hours: totalHours,
+          fuelLitres: litres(totalHours),
+          rentals: rentalRows.length,
+          revenuePhp: round2HalfUp(rentalRows.reduce((sum, row) => sum + (row.revenuePhp ?? 0), 0)),
+        },
+        rentals: rentalRows.slice(0, 10),
+        maintenance: {
+          services: logs.length,
+          lastServiceAt: logs[0]?.performedAt.toISOString() ?? null,
+          recent: logs.slice(0, 5).map((log) => ({ performedAt: log.performedAt.toISOString(), task: log.task, notes: log.notes })),
+          blocks: windows.map((w) => ({ startsAt: w.startsAt.toISOString(), endsAt: w.endsAt.toISOString(), notes: w.notes, current: w.startsAt <= now && w.endsAt > now })),
+        },
+        weather: { warnings: await count('equipment_weather_warning'), usedDespiteWarning: await count('equipment_used_despite_warning') },
+      };
     });
   }
 

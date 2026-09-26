@@ -262,3 +262,41 @@ export const FinancialReportResponseSchema = z.object({
   depositDeducted: z.number(),
 });
 export type FinancialReportResponse = z.infer<typeof FinancialReportResponseSchema>;
+
+// PATCH /equipment/:id/maintenance-windows/:windowId. Push a block's end
+// out (or pull it in); the unit frees on its own once the end passes.
+export const MaintenanceWindowExtendRequestSchema = z.object({
+  endsAt: z.string().datetime({ offset: true }),
+});
+export type MaintenanceWindowExtendRequest = z.infer<typeof MaintenanceWindowExtendRequestSchema>;
+
+// GET /equipment/maintenance-windows/ending-soon: blocks that end within
+// two days, so the admin can extend one before the unit reopens to bookings.
+export interface MaintenanceWindowEndingSoon {
+  windowId: string;
+  equipmentId: string;
+  model: string;
+  serialNo: string;
+  endsAt: string;
+}
+
+// GET /equipment/:id/report. One unit's working life at a glance: hours
+// and fuel by month, rentals and what they were quoted, maintenance and
+// blocks, and weather warnings. Kept small on purpose.
+export interface EquipmentReportResponse {
+  equipmentId: string;
+  model: string;
+  serialNo: string;
+  runtimeHours: number;
+  fuelLPerHour: number | null;
+  months: { month: string; hours: number; fuelLitres: number | null }[];
+  totals: { hours: number; fuelLitres: number | null; rentals: number; revenuePhp: number };
+  rentals: { rentalId: string; companyName: string | null; start: string; end: string | null; status: string; revenuePhp: number | null }[];
+  maintenance: {
+    services: number;
+    lastServiceAt: string | null;
+    recent: { performedAt: string; task: string | null; notes: string | null }[];
+    blocks: { startsAt: string; endsAt: string; notes: string | null; current: boolean }[];
+  };
+  weather: { warnings: number; usedDespiteWarning: number };
+}

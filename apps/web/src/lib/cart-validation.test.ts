@@ -23,8 +23,7 @@ function company(id: string, kycStatus: string): CompanyResponse {
     firstName: null,
     middleName: null,
     lastName: null,
-    reviewComment: null,
-    unlockedFields: [],
+    rejection: null,
     documents: [],
     createdAt: new Date('2026-09-01T00:00:00.000Z'),
   };
