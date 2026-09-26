@@ -21,6 +21,7 @@ import {
 import {
   PaymongoEventEnvelopeSchema,
   type CheckoutRequest,
+  type InvoiceAmountUpdate,
   type PaymentsPort,
   type RefundRequest,
   type RequestContext,
@@ -56,6 +57,10 @@ const WEBHOOK_SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
 // The booking invoice's rent line starts with this; a coupon finds and
 // lowers that line (the other line is the consumable deposit).
 const RENT_LINE_PREFIX = 'Equipment rental';
+
+// The invoices a customer checks out; weekly and deposit_deduction invoices
+// are ledger-derived (hours x rate) and are never hand-priced.
+const ADJUSTABLE_INVOICE_TYPES = new Set(['booking', 'deposit', 'truck']);
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -285,25 +290,7 @@ export class PaymentsService {
       throw new ConflictException({ error: 'coupon_already_applied' });
     }
 
-    const pending = await tx
-      .select()
-      .from(payments)
-      .where(and(eq(payments.invoiceId, invoice.id), eq(payments.status, 'pending')));
-    for (const payment of pending) {
-      if (payment.method === 'cash' || !payment.providerRef) continue;
-      // Paid but not yet settled (webhook in flight): let it settle, do not re-price.
-      if ((await this.paymentsPort.getCheckoutSession(payment.providerRef)).paid) {
-        throw new ConflictException({ error: 'payment_in_progress' });
-      }
-      // An already-expired session refuses to expire again; either way it can no longer be paid.
-      await this.paymentsPort.expireCheckoutSession(payment.providerRef).catch(() => undefined);
-    }
-    if (pending.length > 0) {
-      await tx
-        .update(payments)
-        .set({ status: 'failed' })
-        .where(and(eq(payments.invoiceId, invoice.id), eq(payments.status, 'pending')));
-    }
+    await this.closePendingPayments(tx, invoice.id);
 
     const { coupon, discountPhp } = await claimCoupon(tx, code, customerId, rentAmount);
     const [rentLine] = await tx
@@ -338,6 +325,88 @@ export class PaymentsService {
     return repriced;
   }
 
+  // Before an issued invoice is re-priced, nothing may still be payable at
+  // the old amount: pending payments are marked failed and their PayMongo
+  // sessions expired (settleOnlinePayment would refuse the mismatch, leaving
+  // money collected against nothing). A session PayMongo already reports
+  // paid (webhook in flight) blocks the re-price instead.
+  private async closePendingPayments(tx: Tx, invoiceId: string) {
+    const pending = await tx
+      .select()
+      .from(payments)
+      .where(and(eq(payments.invoiceId, invoiceId), eq(payments.status, 'pending')));
+    for (const payment of pending) {
+      if (payment.method === 'cash' || !payment.providerRef) continue;
+      if ((await this.paymentsPort.getCheckoutSession(payment.providerRef)).paid) {
+        throw new ConflictException({ error: 'payment_in_progress' });
+      }
+      // An already-expired session refuses to expire again; either way it can no longer be paid.
+      await this.paymentsPort.expireCheckoutSession(payment.providerRef).catch(() => undefined);
+    }
+    if (pending.length > 0) {
+      await tx
+        .update(payments)
+        .set({ status: 'failed' })
+        .where(and(eq(payments.invoiceId, invoiceId), eq(payments.status, 'pending')));
+    }
+  }
+
+  // POST /invoices/:id/amount (staff, quote:approve). Lowers what an unpaid
+  // checkout invoice charges -- a goodwill price, a correction, or a small
+  // live test charge. Never raises it: the customer agreed to the price
+  // they saw. The cut comes off the rent line first and the consumable
+  // deposit last, each line noting it; audit-logged with old -> new and why.
+  // ponytail: a cut into the deposit line does not lower the contract's
+  // deposit_required, so the ledger still credits the full deposit.
+  async adjustAmount(ctx: RequestContext, invoiceId: string, body: InvoiceAmountUpdate) {
+    return withTenantTx(ctx, async (tx) => {
+      const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+      if (!invoice) throw new NotFoundException({ error: 'invoice_not_found' });
+      if (invoice.status !== 'issued') throw new ConflictException({ error: 'invoice_not_payable', status: invoice.status });
+      if (!ADJUSTABLE_INVOICE_TYPES.has(invoice.invoiceType)) {
+        throw new ConflictException({ error: 'invoice_not_adjustable', invoiceType: invoice.invoiceType });
+      }
+      const current = Number(invoice.amount);
+      const target = round2(body.amountPhp);
+      if (target > current) throw new ConflictException({ error: 'amount_above_invoice', amountPhp: current });
+      if (target === current) return { invoiceId, amountPhp: current };
+
+      await this.closePendingPayments(tx, invoiceId);
+
+      const lines = await tx.select().from(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, invoiceId));
+      const depositLast = (d: string) => (d.startsWith('Consumable deposit') ? 1 : 0);
+      lines.sort((a, b) => depositLast(a.description) - depositLast(b.description));
+      let cut = round2(current - target);
+      for (const line of lines) {
+        const take = Math.min(cut, Number(line.amount));
+        if (take <= 0) continue;
+        const after = round2(Number(line.amount) - take);
+        await tx
+          .update(invoiceLineItems)
+          .set({
+            amount: String(after),
+            // Checkout lines are quantity 1; keep unit price x quantity = amount.
+            unitPrice: String(round2(after / Number(line.quantity || 1))),
+            description: `${line.description}, adjusted by staff -PHP ${take.toFixed(2)}`,
+          })
+          .where(eq(invoiceLineItems.id, line.id));
+        cut = round2(cut - take);
+      }
+
+      await tx.update(invoices).set({ amount: String(target) }).where(eq(invoices.id, invoiceId));
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'invoices',
+        entityId: invoiceId,
+        reason: `amount PHP ${current.toFixed(2)} -> PHP ${target.toFixed(2)}: ${body.reason}`,
+      });
+      await this.events.emit(ctx, 'invoice_amount_adjusted', { invoice_id: invoiceId });
+      return { invoiceId, amountPhp: target };
+    });
+  }
+
   // The one way an online checkout starts, for every invoice kind. A tenant
   // linked to a PayMongo child account is paid there (split_payment); an
   // unlinked one is collected on ArkiLaunch's own (parent) account.
@@ -345,6 +414,8 @@ export class PaymentsService {
   // children, make unlinked tenants cash-only again (throw
   // online_payment_unavailable) so ArkiLaunch never holds tenant money.
   private async startOnline(tx: Tx, ctx: RequestContext, c: OnlineCheckout) {
+    // PayMongo: "Total amount must be between 1.00 and 999,999,999.99".
+    if (c.amount < 1) throw new ConflictException({ error: 'amount_below_minimum', minimumPhp: 1 });
     const [tenant] = await tx
       .select({ paymongoAccountId: tenants.paymongoAccountId })
       .from(tenants)

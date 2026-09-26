@@ -69,6 +69,14 @@ export const RefundRequestSchema = z.object({
 });
 export type RefundRequest = z.infer<typeof RefundRequestSchema>;
 
+// POST /invoices/:id/amount (staff): lower an unpaid checkout invoice.
+// PHP 1.00 is PayMongo's smallest checkout total; a reason is audit-logged.
+export const InvoiceAmountUpdateSchema = z.object({
+  amountPhp: z.number().finite().min(1).max(99_999_999.99),
+  reason: z.string().trim().min(3).max(200),
+});
+export type InvoiceAmountUpdate = z.infer<typeof InvoiceAmountUpdateSchema>;
+
 // PATCH /tenants/:id/paymongo-account (platform admin). null unlinks.
 export const PaymongoAccountUpdateSchema = z.object({
   accountId: z

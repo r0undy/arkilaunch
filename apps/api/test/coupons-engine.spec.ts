@@ -245,6 +245,36 @@ describe('Coupons at checkout', () => {
     expect(redemptions.map((r) => r.invoiceId)).toEqual([checkout.invoiceId]);
   });
 
+  it('lets staff lower an unpaid invoice to PHP 5: rent first, deposit last, old session closed, never raised', async () => {
+    const booking = await acceptedBooking();
+    const first = await paymentsService.checkout(customerCtx, booking.id, { method: 'gcash' });
+    const before = await invoiceLines(first.invoiceId);
+
+    await expect(
+      paymentsService.adjustAmount(adminCtx, first.invoiceId, { amountPhp: before.amount + 1, reason: 'raise it' }),
+    ).rejects.toMatchObject({ response: { error: 'amount_above_invoice' } });
+
+    await paymentsService.adjustAmount(adminCtx, first.invoiceId, { amountPhp: 5, reason: 'capstone live test' });
+    const after = await invoiceLines(first.invoiceId);
+    expect(after.amount).toBe(5);
+    // The whole rent went before the deposit was touched.
+    expect(after.rent).toBe(0);
+    expect(after.deposit).toBeCloseTo(5, 2);
+
+    const rows = await withTenantTx(adminCtx, (tx) => tx.select().from(payments).where(eq(payments.invoiceId, first.invoiceId)));
+    const old = rows.find((row) => 'paymentId' in first && row.id === first.paymentId);
+    expect(old?.status).toBe('failed');
+    expect(expired).toContain(old?.providerRef);
+
+    // The customer's next checkout charges the new amount.
+    const again = await paymentsService.checkout(customerCtx, booking.id, { method: 'gcash' });
+    expect(again.invoiceId).toBe(first.invoiceId);
+    const [payment] = await withTenantTx(adminCtx, (tx) =>
+      tx.select().from(payments).where(eq(payments.id, 'paymentId' in again ? again.paymentId : '')),
+    );
+    expect(Number(payment?.amount)).toBe(5);
+  });
+
   it("keeps one tenant's coupons invisible to another", async () => {
     const code = `ISO${run}`;
     await couponsService.create(adminCtx, { code, discountType: 'fixed', discountValue: 10, oncePerCustomer: false });
