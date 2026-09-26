@@ -10,6 +10,7 @@ import type {
   BookingListResponse,
   CatalogEquipment,
   CatalogEquipmentListResponse,
+  CatalogStandardPricing,
   CatalogTestimonialListResponse,
   EquipmentListResponse,
   FinancialReportResponse,
@@ -71,6 +72,12 @@ export const catalogQueries = {
       queryKey: ['catalog', 'testimonials'] as const,
       queryFn: () => apiGet<CatalogTestimonialListResponse>('/catalog/testimonials'),
     }),
+  // The storefront's standard fees for the public rates page.
+  pricing: () =>
+    queryOptions({
+      queryKey: ['catalog', 'pricing'] as const,
+      queryFn: () => apiGet<CatalogStandardPricing>('/catalog/pricing'),
+    }),
 };
 
 export const sitesQueries = {
@@ -126,6 +133,8 @@ export const bookingsQueries = {
 
 // Wire shape of QuotesService.get/preview/create (apps/api/src/quotes/quotes.service.ts).
 export interface QuoteLine {
+  // quotation_items id; /quotes/:id/revise keys agreed prices on it.
+  id?: string;
   kind: 'equipment' | 'custom';
   description?: string;
   equipmentTypeId: string | null;

@@ -8,6 +8,7 @@ import { CloseIcon, MenuIcon } from './icons.js';
 
 const LINKS = [
   { label: 'Equipments', to: '/equipment' },
+  { label: 'Rates', to: '/rates' },
   { label: 'Contact', to: '/contact' },
 ];
 

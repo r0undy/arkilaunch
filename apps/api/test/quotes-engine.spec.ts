@@ -285,8 +285,10 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     expect(Math.abs(priced.subtotal - priced.total)).toBeLessThanOrEqual(0.01); // no discount applied
   });
 
-  // QAD-T47: revision integrity.
-  it('QAD-T47: /revise creates revision n+1, links the parent, and leaves the parent unchanged', async () => {
+  // QAD-T47 (revision integrity) now runs on a booked, negotiated quote in
+  // customer-journey.spec.ts: /revise only answers a negotiation. Here: a
+  // quote not tied to a booking has no negotiation to answer.
+  it('QAD-T47: /revise refuses a quote with no booking to negotiate', async () => {
     const original = await quotes.create(ctxA, {
       customerId: customerIdA,
       projectSiteId: '00000000-0000-0000-0000-000000000000',
@@ -294,19 +296,9 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
       items: itemsFor(rateCardIdA, equipmentTypeIdA),
     });
 
-    const revised = await quotes.revise(ctxA, original.id, {
-      customerId: customerIdA,
-      projectSiteId: '00000000-0000-0000-0000-000000000000',
-      discount: { type: 'fixed', value: 500 },
-      items: itemsFor(rateCardIdA, equipmentTypeIdA),
+    await expect(quotes.revise(ctxA, original.id, { discount: { type: 'fixed', value: 500 }, agreedPrices: [] })).rejects.toMatchObject({
+      response: { error: 'quote_not_linked_to_booking' },
     });
-
-    expect(revised.revision).toBe(2);
-    expect(revised.total).toBe(original.total - 500);
-
-    const parentAfter = await quotes.get(ctxA, original.id);
-    expect(parentAfter.status).toBe('superseded');
-    expect(parentAfter.total).toBe(original.total); // parent's numbers are unchanged
   });
 
   // QAD-T48: authz/isolation -- Tenant A cannot read Tenant B's quote (RLS).

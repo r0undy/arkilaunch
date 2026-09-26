@@ -298,7 +298,7 @@ export class PricingEngineService {
   // Subtotal = the lines plus the flat mobilization/demobilization; the
   // discount comes off that.
   applyDiscount(
-    items: PricedItem[],
+    items: ReadonlyArray<Pick<PricedItem, 'subtotalPhp'>>,
     discount: Discount,
     transportPhp = 0,
   ): { subtotalPhp: number; discountPhp: number; totalPhp: number } {
@@ -313,7 +313,7 @@ export class PricingEngineService {
   async priceQuote(
     tx: Tx,
     tenantId: string,
-    request: Pick<QuoteRequest, 'items' | 'discount' | 'mobilizationPhp' | 'demobilizationPhp'>,
+    request: Pick<QuoteRequest, 'items' | 'discount'>,
     region = 'NCR',
   ): Promise<PricedQuote> {
     const diesel = await this.resolveDieselAndParams(tx, tenantId, region);
@@ -322,9 +322,9 @@ export class PricingEngineService {
     for (const item of request.items) {
       pricedItems.push(await this.priceItem(tx, tenantId, diesel, item, settings.dailyHours));
     }
-    // Omitted: the company default every quote starts with.
-    const mobilizationPhp = round2HalfUp(request.mobilizationPhp ?? settings.mobilizationPhp);
-    const demobilizationPhp = round2HalfUp(request.demobilizationPhp ?? settings.demobilizationPhp);
+    // The admin's fixed fees; never set per quote.
+    const mobilizationPhp = round2HalfUp(settings.mobilizationPhp);
+    const demobilizationPhp = round2HalfUp(settings.demobilizationPhp);
     const totals = this.applyDiscount(pricedItems, request.discount, mobilizationPhp + demobilizationPhp);
     return { items: pricedItems, diesel, mobilizationPhp, demobilizationPhp, ...totals };
   }

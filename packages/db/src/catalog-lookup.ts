@@ -193,3 +193,34 @@ export async function listEquipmentTypeNames(): Promise<string[]> {
   const rows = await db.execute<{ name: string }>(sql`select name from catalog_list_categories()`);
   return rows.map((r) => r.name);
 }
+
+// GET /catalog/pricing (@Public). The storefront's standard fees for the
+// public rates page (migration 0054): fixed mobilization/demobilization on
+// equipment rental, and the trucking fees. null for an unknown or inactive
+// slug. Per-equipment rates come from catalog_list_equipment.
+export interface CatalogStandardPricingRow {
+  mobilizationPhp: number;
+  demobilizationPhp: number;
+  truckBaseFeePhp: number;
+  truckDriverFeePhp: number;
+  transportPhpPerKm: number;
+}
+
+export async function getCatalogStandardPricingForSlug(slug: string): Promise<CatalogStandardPricingRow | null> {
+  const rows = await db.execute<{
+    mobilization_php: string;
+    demobilization_php: string;
+    truck_base_fee_php: string;
+    truck_driver_fee_php: string;
+    transport_php_per_km: string;
+  }>(sql`select * from catalog_standard_pricing(${slug})`);
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    mobilizationPhp: Number(row.mobilization_php),
+    demobilizationPhp: Number(row.demobilization_php),
+    truckBaseFeePhp: Number(row.truck_base_fee_php),
+    truckDriverFeePhp: Number(row.truck_driver_fee_php),
+    transportPhpPerKm: Number(row.transport_php_per_km),
+  };
+}

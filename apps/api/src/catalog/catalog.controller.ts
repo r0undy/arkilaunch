@@ -38,6 +38,13 @@ export class CatalogController {
     return this.catalog.getEquipment(slug, id);
   }
 
+  // Standard fees for the public rates page (standard-pricing CR).
+  @Get('pricing')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  getPricing(@StorefrontSlug() slug: string) {
+    return this.catalog.getStandardPricing(slug);
+  }
+
   @Get('testimonials')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   listTestimonials(@StorefrontSlug() slug: string) {

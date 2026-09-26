@@ -6,19 +6,16 @@ import { requireRole } from '../lib/guards.js';
 import { apiDelete, apiErrorText, apiGet, apiPost, apiPut } from '../lib/api-client.js';
 import type { TenantCalendar } from '@arkilaunch/shared';
 import { equipmentQueries, referenceQueries } from '../lib/queries.js';
-import { DataPanel } from '../components/data-panel.js';
-import { Table, type TableColumn } from '../components/table.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
 import { PageHeader } from '../components/page-header.js';
-import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { useToast } from '../components/toast.js';
-import { formatDate, formatPeso, formatRateType } from '../lib/format.js';
+import { formatDate, formatPeso } from '../lib/format.js';
 
-interface RateCardRow {
+export interface RateCardRow {
   id: string;
   equipmentTypeId: string;
   equipmentId: string | null;
@@ -34,7 +31,7 @@ interface RateCardListResponse {
   total: number;
 }
 
-const rateCardsListQuery = (limit: number, offset: number) => ({
+export const rateCardsListQuery = (limit: number, offset: number) => ({
   queryKey: ['rate-cards', limit, offset] as const,
   queryFn: () =>
     apiGet<RateCardListResponse>(
@@ -42,7 +39,7 @@ const rateCardsListQuery = (limit: number, offset: number) => ({
     ),
 });
 
-function RateCardForm() {
+export function RateCardForm() {
   const queryClient = useQueryClient();
   const equipmentTypes = useQuery(referenceQueries.equipmentTypes());
   const [equipmentTypeId, setEquipmentTypeId] = useState('');
@@ -152,7 +149,7 @@ function RateCardForm() {
   );
 }
 
-function RetireAction({ id, label }: { id: string; label: string }) {
+export function RetireAction({ id, label }: { id: string; label: string }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
@@ -297,7 +294,7 @@ function BusinessCalendarForm() {
   );
 }
 
-interface BillingSettings {
+export interface BillingSettings {
   dailyHours: number;
   minDepositPhp: number;
   lowBalancePct: number;
@@ -334,9 +331,7 @@ function BillingSettingsForm() {
         <Input label="Minimum deposit (PHP)" type="number" min="0" step="0.01" numeric value={String(current.minDepositPhp)} onChange={(e) => edit({ minDepositPhp: Number(e.target.value) })} />
         <Input label="Deposit (% of rented hours)" type="number" min="0" max="100" step="0.5" numeric hint="Prepaid and consumed by EDTR hours, not refunded. 50 on a 50-hour rental prepays 25 hours. 0 uses the minimum deposit only." value={String(current.depositPct)} onChange={(e) => edit({ depositPct: Number(e.target.value) })} />
         <Input label="Low-balance warning (%)" type="number" min="0" max="100" step="1" numeric hint="Warns you and the customer when this much deposit is left." value={String(current.lowBalancePct)} onChange={(e) => edit({ lowBalancePct: Number(e.target.value) })} />
-        <Input label="Mobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Self-loader delivery on every new quote. You can change it per quote." value={String(current.mobilizationPhp)} onChange={(e) => edit({ mobilizationPhp: Number(e.target.value) })} />
         <Input label="Minimum rental hours" type="number" min="0" step="1" numeric hint="Customers cannot book fewer hours than this. 0 means only the chosen dates count." value={String(current.minHours)} onChange={(e) => edit({ minHours: Number(e.target.value) })} />
-        <Input label="Demobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Pick-up at the end of the hire, on every new quote." value={String(current.demobilizationPhp)} onChange={(e) => edit({ demobilizationPhp: Number(e.target.value) })} />
       </div>
       <div>
         <Button variant="primary" loading={save.isPending} disabled={!draft} onClick={() => save.mutate()}>
@@ -354,7 +349,7 @@ interface DieselReading {
 }
 
 // Pricing parameters as the API returns them (numeric columns are strings).
-interface PricingParametersRow {
+export interface PricingParametersRow {
   region: string;
   operatorHourlyPhp: string;
   maintenanceHourlyPhp: string;
@@ -363,6 +358,7 @@ interface PricingParametersRow {
   fuelLPerKm: string;
   transportPhpPerKm: string;
   dieselOverridePhp: string | null;
+  dieselOverrideDate?: string | null;
 }
 
 const DIESEL_SOURCE: Record<string, string> = {
@@ -375,7 +371,7 @@ const DIESEL_SOURCE: Record<string, string> = {
 // The national diesel price quotes charge fuel at (refreshed from GasWatch
 // PH every Monday, or now with the button), and this company's own price,
 // which wins while it is set and less than the staleness window old.
-function DieselPriceForm() {
+export function DieselPriceForm() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const latest = useQuery({ queryKey: ['diesel-price'], queryFn: () => apiGet<DieselReading | null>('/pricing/diesel-price') });
@@ -456,64 +452,14 @@ function DieselPriceForm() {
   );
 }
 
+// Company-wide settings. Everything that sets a price (rate cards, diesel,
+// formula inputs, mobilization, trucking) is on the standard pricing page.
 function SettingsPage() {
-  const [offset, setOffset] = useState(0);
-  // The table showed a UUID stub where the form's own dropdown already had
-  // the readable name; same source, now used in both places.
-  const equipmentTypes = useQuery(referenceQueries.equipmentTypes());
-  const typeName = (id: string): string =>
-    (equipmentTypes.data ?? []).find((type) => type.id === id)?.name ?? 'Unknown type';
-
-  const columns: TableColumn<RateCardRow>[] = [
-    {
-      header: 'Equipment type',
-      cell: (row) => (row.equipmentId ? `${typeName(row.equipmentTypeId)} (one unit)` : typeName(row.equipmentTypeId)),
-    },
-    { header: 'Charged', cell: (row) => formatRateType(row.rateType) },
-    { header: 'Rate', cell: (row) => formatPeso(row.rateValue), align: 'right' },
-    { header: 'In use since', cell: (row) => formatDate(row.effectiveFrom) },
-    {
-      header: '',
-      align: 'right',
-      cell: (row) => (
-        <RetireAction
-          id={row.id}
-          label={`${typeName(row.equipmentTypeId)} (${formatRateType(row.rateType).toLowerCase()})`}
-        />
-      ),
-    },
-  ];
-
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        eyebrow="Administration"
-        title="Rate cards"
-        description="What each kind of machine is charged at, and from when."
-      />
+      <PageHeader eyebrow="Administration" title="Settings" description="Business hours, deposits and billing." />
       <BusinessCalendarForm />
       <BillingSettingsForm />
-      <DieselPriceForm />
-      <RateCardForm />
-      <DataPanel
-        title="Rate cards"
-        options={rateCardsListQuery(PAGE_SIZE, offset)}
-        emptyTitle="No rate cards yet"
-        emptyDescription="Add a rate card above to make an equipment type quotable."
-        isEmpty={(data) => data.total === 0}
-        render={(data) => (
-          <div>
-            <Table columns={columns} rows={data.items} rowKey={(row) => row.id} />
-            <Pagination
-              offset={offset}
-              limit={PAGE_SIZE}
-              total={data.total}
-              onOffsetChange={setOffset}
-              noun="rate cards"
-            />
-          </div>
-        )}
-      />
     </div>
   );
 }

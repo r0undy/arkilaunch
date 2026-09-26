@@ -26,6 +26,7 @@ const FOOTER_COLUMNS: { title: string; links: { label: string; to: FooterTo }[] 
   {
     title: 'Resources',
     links: [
+      { label: 'Rates', to: '/rates' },
       { label: 'Contact', to: '/contact' },
       { label: 'Help center', to: '/help' },
       { label: 'Terms of service', to: '/terms' },

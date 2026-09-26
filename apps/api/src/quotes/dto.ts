@@ -1,7 +1,8 @@
 import { createZodDto } from 'nestjs-zod';
-import { QuoteRequestSchema } from '@arkilaunch/shared';
+import { QuoteRequestSchema, QuoteReviseSchema } from '@arkilaunch/shared';
 
-// Zod at the boundary (AGENTS.md "Always"). preview/create/revise share one
-// request shape (RFC-3 §3: "/revise ... same body as create... re-prices").
+// Zod at the boundary (AGENTS.md "Always"). preview prices a full request;
+// revise only takes agreed line prices and a discount (standard-pricing CR).
 // approve takes no body (it only transitions status by :id).
 export class QuoteRequestDto extends createZodDto(QuoteRequestSchema) {}
+export class QuoteReviseDto extends createZodDto(QuoteReviseSchema) {}

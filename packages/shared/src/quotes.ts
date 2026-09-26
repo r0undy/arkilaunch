@@ -55,12 +55,25 @@ export const QuoteRequestSchema = z.object({
   // up cold; a customer can only accept one that is tied to a booking.
   rentalId: z.string().uuid().optional(),
   discount: DiscountSchema,
-  // Omitted: the company default from billing settings.
-  mobilizationPhp: PhpAmount.optional(),
-  demobilizationPhp: PhpAmount.optional(),
+  // No mobilization/demobilization here: every quote carries the tenant's
+  // fixed fees from billing settings (docs/cr-arkilaunch-standard-pricing.md).
   items: z.array(QuoteItemInputSchema).min(1),
 });
 export type QuoteRequest = z.infer<typeof QuoteRequestSchema>;
+
+// A negotiation revision: staff may only set an agreed price on existing
+// lines and a discount. Strict, so a body that tries to move mobilization,
+// add lines or change rates is rejected rather than silently ignored.
+export const QuoteReviseSchema = z
+  .object({
+    discount: DiscountSchema,
+    agreedPrices: z
+      .array(z.object({ itemId: z.string().uuid(), subtotalPhp: PhpAmount }).strict())
+      .max(100)
+      .default([]),
+  })
+  .strict();
+export type QuoteRevise = z.infer<typeof QuoteReviseSchema>;
 
 export type RentUnit = 'hourly' | 'daily' | 'monthly';
 export const DAYS_PER_MONTH = 30;

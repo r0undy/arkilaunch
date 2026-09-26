@@ -175,6 +175,17 @@ export const CatalogTestimonialListResponseSchema = z.object({
 });
 export type CatalogTestimonialListResponse = z.infer<typeof CatalogTestimonialListResponseSchema>;
 
+// GET /catalog/pricing: the storefront's standard fees for potential
+// clients (standard-pricing CR). Trucking has no mobilization/demobilization.
+export const CatalogStandardPricingSchema = z.object({
+  mobilizationPhp: z.number(),
+  demobilizationPhp: z.number(),
+  truckBaseFeePhp: z.number(),
+  truckDriverFeePhp: z.number(),
+  transportPhpPerKm: z.number(),
+});
+export type CatalogStandardPricing = z.infer<typeof CatalogStandardPricingSchema>;
+
 // --- Response schemas (egress allowlists). ---
 
 export const EquipmentResponseSchema = z.object({

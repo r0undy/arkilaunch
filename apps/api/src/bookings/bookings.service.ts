@@ -203,13 +203,18 @@ export class BookingsService {
       return { id: rental.id, status: rental.status, trackerUrl: `/orders/${rental.id}` };
     });
 
-    // Priced straight off the rate cards once the booking is committed, so
-    // the customer sees a total now. Never fails the booking: without a rate
-    // card or pricing set up, staff quote it by hand as before.
+    // Priced straight off the standard pricing once the booking is committed,
+    // so the customer sees a total now. Never fails the booking: when a rate
+    // card or pricing input is missing, staff are told to finish the setup
+    // and re-run the standard quote (POST /quotes/auto/:rentalId).
+    let quoted = false;
     try {
-      await this.quotes.autoQuoteBooking(ctx, booked.id);
+      quoted = (await this.quotes.autoQuoteBooking(ctx, booked.id)) !== null;
     } catch (err) {
-      console.error(`auto-quote failed for booking ${booked.id}; left for a manual quote.`, err);
+      console.error(`auto-quote failed for booking ${booked.id}.`, err);
+    }
+    if (!quoted) {
+      await withTenantTx(ctx, (tx) => notifyStaff(tx, ctx.tenantId, 'quote_pending_setup', { rental_id: booked.id }));
     }
     return booked;
   }
