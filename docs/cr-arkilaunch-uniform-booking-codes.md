@@ -4,7 +4,7 @@
 **Project:** ArkiLaunch
 **Date:** 2026-09-27
 **Version:** 0.1
-**Status:** `Applied` (code); migration 0058 waits for `make migrate` on each environment
+**Status:** `Applied` (code); migration 0058 applied to the shared Supabase dev database 2026-09-27 (dry-run in a rolled-back transaction first); other environments pick it up from the `deploy.yml` migrate step
 **Trigger doc:** [build-arkilaunch.md](build-arkilaunch.md) §5.1 Brownfield Change Workflow; admin feedback 2026-09-27 (item 1 of 6)
 **Docs touched by this record:** [sdd-arkilaunch.md](sdd-arkilaunch.md) §3 catalog (`booking_code_counters`, `rentals.code`, `truck_requests.code`), §4 (booking, truck, invoice and payment responses gain the code; PayMongo description + metadata), [index.md](index.md) §2
 

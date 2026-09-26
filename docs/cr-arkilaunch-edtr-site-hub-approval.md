@@ -4,7 +4,7 @@
 **Project:** ArkiLaunch
 **Date:** 2026-09-27
 **Version:** 0.1
-**Status:** `Applied` (code); migration 0059 waits for `make migrate` on each environment
+**Status:** `Applied` (code); migration 0059 applied to the shared Supabase dev database 2026-09-27 (dry-run in a rolled-back transaction first); other environments pick it up from the `deploy.yml` migrate step
 **Trigger doc:** [build-arkilaunch.md](build-arkilaunch.md) §5.1 Brownfield Change Workflow; admin feedback 2026-09-27 (item 2 of 6)
 **Docs touched by this record:** [rfc-arkilaunch-ocr-edtr-reconciliation.md](rfc-arkilaunch-ocr-edtr-reconciliation.md) §2/§3 (office log as the second log; hour categories; what approval writes), [prd-arkilaunch.md](prd-arkilaunch.md) PRD-F3 US-01/US-02 (timekeeper submits only; admin approves), [sdd-arkilaunch.md](sdd-arkilaunch.md) §3 (`edtr_line_items` columns), §4 (site hub + review endpoints), [index.md](index.md) §2
 

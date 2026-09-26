@@ -10,6 +10,7 @@ import {
   invoices,
   projectSites,
   quotations,
+  rateCards,
   rentalContracts,
   rentals,
   withTenantTx,
@@ -75,6 +76,17 @@ describe('EDTR site hub approval', () => {
         })
         .returning();
       equipmentId = unit!.id;
+      // A unit-level card (it overrides the type's) in force for the whole
+      // test span, so the priced approval does not depend on the shared
+      // type cards other specs supersede.
+      await tx.insert(rateCards).values({
+        tenantId,
+        equipmentTypeId: (card as { equipment_type_id: string }).equipment_type_id,
+        equipmentId,
+        rateType: 'hourly',
+        rateValue: '1000',
+        effectiveFrom: new Date('2020-01-01T00:00:00+08:00'),
+      });
       const [rental] = await tx
         .insert(rentals)
         .values({
