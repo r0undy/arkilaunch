@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { QuotesService } from './quotes.service.js';
-import { QuoteRequestDto } from './dto.js';
+import { QuoteRequestDto, QuoteReviseDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -20,16 +20,21 @@ export class QuotesController {
     return this.quotes.preview(req.ctx, body);
   }
 
-  @Post()
+  // No POST /quotes: quotes are never hand-built per company. Each booking
+  // is auto-quoted off the standard pricing, and staff change a quote only
+  // through /revise once the customer has opened a negotiation. This re-runs
+  // the standard quote for a booking the auto-quote could not price yet
+  // (a rate card or pricing input was missing).
+  @Post('auto/:rentalId')
   @RequirePermission('quote:create')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  create(@Body() body: QuoteRequestDto, @Req() req: CtxRequest) {
-    return this.quotes.create(req.ctx, body);
+  auto(@Param('rentalId', ParseUUIDPipe) rentalId: string, @Req() req: CtxRequest) {
+    return this.quotes.requoteBooking(req.ctx, rentalId);
   }
 
   @Post(':id/revise')
   @RequirePermission('quote:create')
-  revise(@Param('id') id: string, @Body() body: QuoteRequestDto, @Req() req: CtxRequest) {
+  revise(@Param('id') id: string, @Body() body: QuoteReviseDto, @Req() req: CtxRequest) {
     return this.quotes.revise(req.ctx, id, body);
   }
 

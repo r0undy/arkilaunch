@@ -324,12 +324,22 @@ export class TrucksService {
   }
 
   // Staff accept a price, which the truck invoice then charges. Re-agreeing
-  // is allowed until the request is paid.
+  // is allowed until the request is paid. The standard price (the request's
+  // own computed total) can always be accepted; any other number only once
+  // the customer has opened a negotiation in the thread (standard-pricing CR).
   async agree(ctx: RequestContext, id: string, pricePhp: number): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
       const request = await this.visibleRequest(tx, ctx, id);
       if (request.status === 'cancelled' || request.status === 'paid') {
         throw new ConflictException({ error: 'truck_request_closed', status: request.status });
+      }
+      if (pricePhp !== (request.price as { totalPhp: number }).totalPhp) {
+        const [opened] = await tx
+          .select({ id: negotiationMessages.id })
+          .from(negotiationMessages)
+          .where(and(eq(negotiationMessages.truckRequestId, id), eq(negotiationMessages.authorRole, 'customer')))
+          .limit(1);
+        if (!opened) throw new ConflictException({ error: 'negotiation_required' });
       }
       const [updated] = await tx
         .update(truckRequests)

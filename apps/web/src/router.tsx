@@ -7,6 +7,7 @@ import { indexRoute } from './routes/index.js';
 import { equipmentRoute } from './routes/equipment.js';
 import { equipmentDetailRoute } from './routes/equipment.$equipmentId.js';
 import { contactRoute } from './routes/contact.js';
+import { ratesRoute } from './routes/rates.js';
 import { helpRoute } from './routes/help.js';
 import { termsRoute } from './routes/terms.js';
 import { privacyRoute } from './routes/privacy.js';
@@ -106,7 +107,7 @@ const accountCompaniesRedirectRoute = createRoute({
 export const routeTree = rootRoute.addChildren([
   // `/` renders per host: ArkiLaunch landing or the tenant storefront home.
   indexRoute,
-  publicLayoutRoute.addChildren([contactRoute, helpRoute, termsRoute, privacyRoute]),
+  publicLayoutRoute.addChildren([contactRoute, ratesRoute, helpRoute, termsRoute, privacyRoute]),
   // Same paths as before -- only the chrome changes, and only by auth state.
   storefrontLayoutRoute.addChildren([equipmentRoute, equipmentDetailRoute]),
   authLayoutRoute.addChildren([loginRoute, signupRoute, registerRoute, registerCompanyRoute, registerPendingRoute, activateRoute]),

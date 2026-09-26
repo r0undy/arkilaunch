@@ -1,55 +1,38 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken } from '../lib/auth-client.js';
 
-// Preview and Create draft used to be two sibling buttons under a long form,
-// with the priced result printed below it: you committed to a draft without
-// the figures necessarily on screen, and a failure arrived as a JSON dump.
-// The preview is now the decision point, and it carries Create in its footer.
+// The Quotes tab is the standard pricing every client pays
+// (docs/cr-arkilaunch-standard-pricing.md): no per-company builder, the
+// inputs grouped by the service they price, and the fixed mobilization /
+// demobilization saved as tenant settings rather than typed per quote.
 
-const CUSTOMER = { id: 'cust-1', companyName: 'Almara Construction' };
-const EQUIPMENT_TYPE = { id: 'et-1', name: 'Excavator 20T' };
-const RATE_CARD = { id: 'rc-1', equipmentTypeId: 'et-1', equipmentId: null, rateType: 'daily', currency: 'PHP', rateValue: '20000' };
-const SITE = { id: 'site-1', city: 'Taguig', province: 'NCR', latitude: 14.5, longitude: 121 };
-
-const PREVIEW = {
-  status: 'draft',
-  dieselPrice: 62.4,
-  dieselPriceDate: '2026-09-20',
-  priceStale: false,
-  lineItems: [
-    {
-      kind: 'equipment', equipmentTypeId: 'et-1', rateCardId: 'rc-1', quantity: 1, estimatedHours: 8,
-      rentParts: [{ rateType: 'daily', ratePhp: 20000, count: 1 }], rent: 20000, hourlyRate: 2500,
-      operatingCost: 20000, buffer: 0, subtotal: 20000,
-    },
-    { kind: 'custom', description: 'Operator overtime', equipmentTypeId: null, rateCardId: null, quantity: 2, estimatedHours: 0, rentParts: [], rent: 0, hourlyRate: 0, operatingCost: 0, buffer: 0, subtotal: 3000 },
-  ],
-  mobilization: 15000,
-  demobilization: 15000,
-  subtotal: 53000,
-  discount: 0,
-  total: 53000,
+const BILLING = { dailyHours: 8, minDepositPhp: 5000, lowBalancePct: 20, depositPct: 0, mobilizationPhp: 15000, demobilizationPhp: 12000, minHours: 0 };
+const PARAMS = {
+  region: 'NCR', operatorHourlyPhp: '150.00', maintenanceHourlyPhp: '80.00', bufferPct: '0.1000', fuelLPerHour: '10.000',
+  fuelLPerKm: '0.300', transportPhpPerKm: '45.00', dieselOverridePhp: null,
 };
+const TRUCK = { baseFeePhp: 2000, driverFeePhp: 800, extras: [], formula: null, rangePct: 10, region: 'NCR' };
 
-function stubFetch(onQuotes?: (url: string) => Response) {
+let calls: Array<{ url: string; method: string; body: unknown }> = [];
+
+function stubFetch() {
+  calls = [];
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockImplementation((url: string) => {
+    vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       const u = String(url);
-      const json = (v: unknown) =>
-        Promise.resolve(new Response(JSON.stringify(v), { status: 200 }));
-      if (u.includes('/reference/customers')) return json([CUSTOMER]);
-      if (u.includes('/reference/equipment-types')) return json([EQUIPMENT_TYPE]);
-      if (u.includes('/reference/rate-cards')) return json([RATE_CARD]);
-      if (u.includes('/reference/project-sites')) return json([SITE]);
-      if (u.includes('/quotes')) {
-        if (onQuotes) return Promise.resolve(onQuotes(u));
-        return json(u.endsWith('/preview') ? PREVIEW : { ...PREVIEW, id: 'quote-1' });
-      }
+      const method = init?.method ?? 'GET';
+      calls.push({ url: u, method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      const json = (v: unknown) => Promise.resolve(new Response(JSON.stringify(v), { status: 200 }));
+      if (u.includes('/pricing/billing-settings')) return json(BILLING);
+      if (u.includes('/pricing/parameters')) return json(PARAMS);
+      if (u.includes('/pricing/diesel-price')) return json(null);
+      if (u.includes('/truck-settings')) return json(TRUCK);
+      if (u.includes('/rate-cards')) return json({ items: [], total: 0 });
       return json([]);
     }),
   );
@@ -65,43 +48,31 @@ afterEach(() => {
   setAccessToken(null);
 });
 
-describe('Quotes', () => {
-  it('opens the priced quote over the form, and creates the draft from its footer', async () => {
+describe('Quotes (standard pricing)', () => {
+  it('groups the inputs by service and has no per-company builder', async () => {
     stubFetch();
     await renderRoute('/app/quotes');
 
-    const priceIt = await screen.findByRole('button', { name: 'Preview price' });
-    await waitFor(() => expect(priceIt).toBeEnabled());
-    await userEvent.click(priceIt);
-
-    const dialog = await screen.findByRole('dialog');
-    // The machine being priced reads by name; the column used to print a
-    // slice of its UUID.
-    expect(dialog).toHaveTextContent('Excavator 20T');
-    // Charged in the card's own unit, the same way the customer reads it.
-    expect(dialog).toHaveTextContent('/day × 1 day');
-    expect(dialog).toHaveTextContent('Operator overtime');
-    expect(dialog).toHaveTextContent('Mobilization');
-    expect(dialog).toHaveTextContent('53000.00');
-
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Create draft' }));
-
-    // The draft is acknowledged and the dialog gets out of the way.
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(await screen.findByText('Draft quote created')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Equipment rental' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Trucking' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('Mobilization (PHP)')).toHaveValue(15000);
+    expect(screen.getByLabelText('Demobilization (PHP)')).toHaveValue(12000);
+    expect(await screen.findByLabelText('Transport (PHP per km)')).toHaveValue(45);
+    expect(screen.queryByLabelText(/customer/i)).not.toBeInTheDocument();
   });
 
-  it('reports a rejected quote as a sentence rather than a JSON dump', async () => {
-    stubFetch(() => new Response(JSON.stringify({ error: 'rate_card_expired' }), { status: 400 }));
+  it('saves mobilization as the fixed tenant fee, keeping the other billing settings', async () => {
+    stubFetch();
     await renderRoute('/app/quotes');
 
-    const priceIt = await screen.findByRole('button', { name: 'Preview price' });
-    await waitFor(() => expect(priceIt).toBeEnabled());
-    await userEvent.click(priceIt);
+    const mob = await screen.findByLabelText('Mobilization (PHP)');
+    await userEvent.clear(mob);
+    await userEvent.type(mob, '18000');
+    const section = mob.closest('[aria-label="Mobilization and demobilization"]') as HTMLElement;
+    await userEvent.click(section.querySelector('button')!);
 
-    expect(await screen.findByText('Could not price that quote')).toBeInTheDocument();
-    expect(screen.getByText('Rate card expired.')).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.url.includes('/pricing/billing-settings'))).toBe(true));
+    const put = calls.find((c) => c.method === 'PUT')!;
+    expect(put.body).toMatchObject({ ...BILLING, mobilizationPhp: 18000, demobilizationPhp: 12000 });
   });
 });

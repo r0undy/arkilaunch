@@ -4,6 +4,7 @@ import postgres from 'postgres';
 import { and, eq } from 'drizzle-orm';
 import {
   equipmentAssignments,
+  getBillingSettings,
   invoiceLineItems,
   invoices,
   notifications,
@@ -12,7 +13,7 @@ import {
   rentals,
   withTenantTx,
 } from '@arkilaunch/db';
-import { StubPaymentsAdapter, type RequestContext } from '@arkilaunch/shared';
+import { QuoteReviseSchema, StubPaymentsAdapter, type RequestContext } from '@arkilaunch/shared';
 import { BookingsService } from '../src/bookings/bookings.service.js';
 import { PaymentsService } from '../src/payments/payments.service.js';
 import { QuotesService } from '../src/quotes/quotes.service.js';
@@ -47,6 +48,7 @@ describe('Customer journey', () => {
   let equipmentId: string;
   let rateCardId: string;
   let equipmentTypeId: string;
+  let companyId: string;
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL_DIRECT;
@@ -59,6 +61,9 @@ describe('Customer journey', () => {
     const [customerUser] = await sql`select id from users where tenant_id = ${tenantId} and email = 'customer@test-tenant-a.test'`;
     const [adminUser] = await sql`select id from users where tenant_id = ${tenantId} and id <> ${(customerUser as { id: string }).id} limit 1`;
     const [userB] = await sql`select id from users where tenant_id = ${(tenantB as { id: string }).id} limit 1`;
+    // Other specs link this customer to more companies; book as the first
+    // verified one so bookings.create never has to ask which.
+    const [company] = await sql`select id from customers where user_id = ${(customerUser as { id: string }).id} and kyc_status = 'approved' order by created_at limit 1`;
     const [site] = await sql`select id from project_sites where tenant_id = ${tenantId} limit 1`;
     const [unit] = await sql`select id from equipment where tenant_id = ${tenantId} and serial_no = 'test-tenant-a-serial-booking-001'`;
     const [rateCard] = await sql`select id, equipment_type_id from rate_cards where tenant_id = ${tenantId} and equipment_id is null and rate_type = 'hourly' and (effective_to is null or effective_to > now()) order by effective_from limit 1`;
@@ -67,6 +72,7 @@ describe('Customer journey', () => {
     adminCtx = { tenantId, userId: (adminUser as { id: string }).id, role: 'admin' };
     otherTenantCtx = { tenantId: (tenantB as { id: string }).id, userId: (userB as { id: string }).id, role: 'admin' };
     siteId = (site as { id: string }).id;
+    companyId = (company as { id: string }).id;
     equipmentId = (unit as { id: string }).id;
     rateCardId = (rateCard as { id: string }).id;
     equipmentTypeId = (rateCard as { equipment_type_id: string }).equipment_type_id;
@@ -100,6 +106,7 @@ describe('Customer journey', () => {
 
   async function book(offset: number, days = 1) {
     const created = await bookings.create(customerCtx, {
+      customerId: companyId,
       projectSiteId: siteId,
       siteContact: 'Marcus Thorne 0917 000 0000',
       items: [{ equipmentId, start: day(offset, 8), end: day(offset + days - 1, 17) }],
@@ -242,6 +249,54 @@ describe('Customer journey', () => {
 
     const [row] = await withTenantTx(adminCtx, (tx) => tx.select().from(quotations).where(eq(quotations.id, quote.id)));
     expect(row?.status).toBe('approved');
+    await bookings.cancel(customerCtx, booking.id);
+  });
+
+  // Standard pricing CR: the auto quote carries the tenant's fixed
+  // mobilization/demobilization, and staff change it only once the customer
+  // negotiates -- agreed line prices and a discount, nothing else (QAD-T47).
+  it('revises a standard quote only after the customer negotiates, keeping mobilization fixed', async () => {
+    const booking = await book(28);
+    const detail = await bookings.get(customerCtx, booking.id);
+    const original = await quotes.get(adminCtx, detail.quotation!.id);
+    const settings = await withTenantTx(adminCtx, (tx) => getBillingSettings(tx, adminCtx.tenantId));
+    expect(original.mobilization).toBe(settings.mobilizationPhp);
+    expect(original.demobilization).toBe(settings.demobilizationPhp);
+
+    // No negotiation yet: staff cannot touch the price.
+    await expect(quotes.revise(adminCtx, original.id, { discount: { type: 'fixed', value: 100 }, agreedPrices: [] })).rejects.toMatchObject({
+      response: { error: 'negotiation_required' },
+    });
+    // The boundary schema refuses a mobilization change outright.
+    expect(QuoteReviseSchema.safeParse({ discount: { type: 'none', value: 0 }, mobilizationPhp: 0 }).success).toBe(false);
+
+    await bookings.postMessage(customerCtx, booking.id, { body: 'Can you do better?', offerPhp: original.total - 500 });
+    const line = original.lineItems[0]!;
+    const agreed = Math.max(0, line.subtotal - 300);
+    const revised = await quotes.revise(adminCtx, original.id, {
+      discount: { type: 'fixed', value: 200 },
+      agreedPrices: [{ itemId: line.id!, subtotalPhp: agreed }],
+    });
+
+    expect(revised.revision).toBe(original.revision + 1);
+    expect(revised.mobilization).toBe(original.mobilization);
+    expect(revised.demobilization).toBe(original.demobilization);
+    expect(revised.lineItems[0]!.subtotal).toBe(agreed);
+    expect(revised.total).toBeCloseTo(original.total - (line.subtotal - agreed) - 200, 2);
+
+    // The parent's numbers are unchanged; only its status flips.
+    const parentAfter = await quotes.get(adminCtx, original.id);
+    expect(parentAfter.status).toBe('superseded');
+    expect(parentAfter.total).toBe(original.total);
+
+    await bookings.cancel(customerCtx, booking.id);
+  });
+
+  it('re-quotes from standard pricing only a booking with no open quote', async () => {
+    const booking = await book(30);
+    await expect(quotes.requoteBooking(adminCtx, booking.id)).rejects.toMatchObject({
+      response: { error: 'booking_already_quoted' },
+    });
     await bookings.cancel(customerCtx, booking.id);
   });
 });

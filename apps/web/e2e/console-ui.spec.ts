@@ -25,23 +25,16 @@ test.describe('console design pass', () => {
     await expect(payments).toHaveAttribute('aria-selected', 'false');
   });
 
-  test('a quote is priced in a dialog before anything is saved', async ({ page }) => {
+  // Standard pricing CR: the Quotes tab sets one price for every client,
+  // grouped by service; there is no per-company quote builder.
+  test('the quotes tab is the standard pricing, grouped by service', async ({ page }) => {
     await signIn(page);
 
     await page.goto('/app/quotes');
-    const priceIt = page.getByRole('button', { name: 'Preview price' });
-    await expect(priceIt).toBeEnabled();
-    await priceIt.click();
-
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByText('Diesel price')).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Create draft' })).toBeVisible();
-
-    // Escape closes it and nothing was created.
-    await page.keyboard.press('Escape');
-    await expect(dialog).toBeHidden();
-    await expect(page.getByRole('heading', { name: 'Draft quote' })).toBeHidden();
+    await expect(page.getByRole('heading', { name: 'Equipment rental' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Trucking' })).toBeVisible();
+    await expect(page.getByLabel('Mobilization (PHP)')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Preview price' })).toBeHidden();
   });
 
   test('the field-log queue pages rather than dumping every row', async ({ page }) => {

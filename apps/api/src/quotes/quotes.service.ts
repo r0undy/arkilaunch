@@ -9,17 +9,18 @@ import {
   equipmentTypes,
   rateCards,
   getBillingSettings,
+  negotiationMessages,
   quotationItems,
   quotations,
   rentalContracts,
   rentals,
   withTenantTx,
 } from '@arkilaunch/db';
-import { DAYS_PER_MONTH, quoteExpiresAt, type QuoteRequest, type RentPart, type RequestContext } from '@arkilaunch/shared';
+import { DAYS_PER_MONTH, quoteExpiresAt, type QuoteRequest, type QuoteRevise, type RentPart, type RequestContext } from '@arkilaunch/shared';
 import { ownsCustomer, requireVerifiedCompany } from '../common/customer-scope.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { EventsService } from '../events/events.service.js';
-import { PricingEngineService, type PricedQuote } from './pricing-engine.service.js';
+import { PricingEngineService, round2HalfUp, type PricedQuote } from './pricing-engine.service.js';
 
 // RFC-3 §3: the API returns camelCase (matching this codebase's existing
 // AuthTokens/JwtClaims convention in packages/shared), not the RFC's
@@ -35,6 +36,8 @@ export interface QuoteResponse {
   priceStale: boolean;
   currency: 'PHP';
   lineItems: Array<{
+    // The stored quotation_items id; unset on a preview. /revise keys on it.
+    id?: string;
     kind: 'equipment' | 'custom';
     // A custom line's own text; unset on equipment lines.
     description?: string;
@@ -281,71 +284,115 @@ export class QuotesService {
     }
   }
 
-  // POST /quotes/:id/revise: fresh snapshot, supersede the parent (RFC-3 §3).
-  async revise(ctx: RequestContext, quotationId: string, body: QuoteRequest): Promise<QuoteResponse> {
-    return withTenantTx(ctx, async (tx) => {
+  // POST /quotes/auto/:rentalId: staff re-run the standard quote for a
+  // booking the auto-quote could not price (pricing was incomplete). Only
+  // for a booking with no open quote, so it can never undercut a
+  // negotiated revision.
+  async requoteBooking(ctx: RequestContext, rentalId: string): Promise<QuoteResponse> {
+    const open = await withTenantTx(ctx, async (tx) => {
+      const [rental] = await tx.select({ id: rentals.id }).from(rentals).where(eq(rentals.id, rentalId)).limit(1);
+      if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
+      const [quote] = await tx
+        .select({ id: quotations.id })
+        .from(quotations)
+        .where(and(eq(quotations.rentalId, rentalId), inArray(quotations.status, ['draft', 'approved', 'accepted'])))
+        .limit(1);
+      return quote;
+    });
+    if (open) throw new ConflictException({ error: 'booking_already_quoted' });
+    const quote = await this.autoQuoteBooking(ctx, rentalId);
+    if (!quote) throw new UnprocessableEntityException({ error: 'standard_pricing_incomplete' });
+    return quote;
+  }
+
+  // POST /quotes/:id/revise: the negotiation answer (standard-pricing CR).
+  // Only once the customer has opened a negotiation (a message in the
+  // booking's thread, or declining the quote), and only agreed line prices
+  // and a discount: lines, rates and the fixed mobilization/demobilization
+  // are copied from the parent unchanged. The parent's numbers stay as they
+  // were (QAD-T47); only its status flips to superseded.
+  async revise(ctx: RequestContext, quotationId: string, body: QuoteRevise): Promise<QuoteResponse> {
+    const revisedId = await withTenantTx(ctx, async (tx) => {
       const [parent] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
       if (!parent) throw new NotFoundException({ error: 'quote_not_found' });
-      await requireVerifiedCompany(tx, body.customerId);
+      if (!['draft', 'approved', 'rejected'].includes(parent.status)) {
+        throw new ConflictException({ error: 'quote_not_open', status: parent.status });
+      }
+      if (!parent.rentalId) throw new ConflictException({ error: 'quote_not_linked_to_booking' });
+      const [opened] = await tx
+        .select({ id: negotiationMessages.id })
+        .from(negotiationMessages)
+        .where(and(eq(negotiationMessages.rentalId, parent.rentalId), eq(negotiationMessages.authorRole, 'customer')))
+        .limit(1);
+      if (!opened && parent.status !== 'rejected') throw new ConflictException({ error: 'negotiation_required' });
 
-      const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body);
+      const parentItems = await tx.select().from(quotationItems).where(eq(quotationItems.quotationId, parent.id));
+      const agreed = new Map(body.agreedPrices.map((p) => [p.itemId, p.subtotalPhp]));
+      for (const itemId of agreed.keys()) {
+        if (!parentItems.some((item) => item.id === itemId)) throw new UnprocessableEntityException({ error: 'quote_item_not_found', itemId });
+      }
+      const items = parentItems.map((item) => {
+        const price = agreed.get(item.id);
+        if (price === undefined) return item;
+        const inputs = item.pricingInputs as Record<string, unknown>;
+        const computed = inputs.computed_subtotal_php ?? Number(item.subtotalPhp);
+        return {
+          ...item,
+          subtotalPhp: String(round2HalfUp(price)),
+          pricingInputs: { ...inputs, agreed_subtotal_php: round2HalfUp(price), computed_subtotal_php: computed },
+        };
+      });
+      const mobilization = Number(parent.mobilizationPhp) + Number(parent.demobilizationPhp);
+      const totals = this.pricingEngine.applyDiscount(
+        items.map((item) => ({ subtotalPhp: Number(item.subtotalPhp) })),
+        body.discount,
+        mobilization,
+      );
 
       const [revised] = await tx
         .insert(quotations)
         .values({
           tenantId: ctx.tenantId,
-          customerId: body.customerId,
+          customerId: parent.customerId,
           rentalId: parent.rentalId,
           revision: parent.revision + 1,
           status: 'draft',
-          dieselPriceSnapshot: String(priced.diesel.pricePhp),
-          priceStale: String(priced.diesel.stale),
-          dieselPriceReadingId: priced.diesel.readingId,
-          dieselPriceDate: priced.diesel.observedDate,
-          dieselPriceSource: priced.diesel.source,
-          pricingParamsId: priced.diesel.pricingParamsId,
+          dieselPriceSnapshot: parent.dieselPriceSnapshot,
+          priceStale: parent.priceStale,
+          dieselPriceReadingId: parent.dieselPriceReadingId,
+          dieselPriceDate: parent.dieselPriceDate,
+          dieselPriceSource: parent.dieselPriceSource,
+          pricingParamsId: parent.pricingParamsId,
           parentQuotationId: parent.id,
           discountType: body.discount.type,
           discountValue: String(body.discount.value),
-          mobilizationPhp: String(priced.mobilizationPhp),
-          demobilizationPhp: String(priced.demobilizationPhp),
-          subtotalPhp: String(priced.subtotalPhp),
-          totalPhp: String(priced.totalPhp),
+          mobilizationPhp: parent.mobilizationPhp,
+          demobilizationPhp: parent.demobilizationPhp,
+          subtotalPhp: String(totals.subtotalPhp),
+          totalPhp: String(totals.totalPhp),
         })
         .returning();
       if (!revised) throw new Error('revised quotation insert returned no row');
 
       await tx.insert(quotationItems).values(
-        priced.items.map((item) => ({
-          tenantId: ctx.tenantId,
-          quotationId: revised.id,
-          kind: item.kind,
-          description: item.description,
-          equipmentTypeId: item.equipmentTypeId,
-          rateCardId: item.rateCardId,
-          quantity: item.quantity,
-          mobilizationKm: String(item.mobilizationKm),
-          demobilizationKm: String(item.demobilizationKm),
-          estimatedHours: String(item.estimatedHours),
-          pricingInputs: item.pricingInputs,
-          hourlyRatePhp: String(item.hourlyRatePhp),
-          operatingCostPhp: String(item.operatingCostPhp),
-          mobilizationCostPhp: String(item.mobilizationCostPhp),
-          demobilizationCostPhp: String(item.demobilizationCostPhp),
-          bufferPhp: String(item.bufferPhp),
-          subtotalPhp: String(item.subtotalPhp),
-        })),
+        items.map(({ id: _id, ...item }) => ({ ...item, quotationId: revised.id })),
       );
 
-      await this.auditAgreedPrices(tx, ctx, revised.id, body);
-      const printableUrl = `/app/quotes/${revised.id}/print`;
-      await tx.update(quotations).set({ printableUrl }).where(eq(quotations.id, revised.id));
-
-      // The parent's numbers are unchanged (QAD-T47); only its status flips.
+      if (agreed.size > 0) {
+        await tx.insert(auditLogs).values({
+          tenantId: ctx.tenantId,
+          actorId: ctx.userId,
+          action: 'UPDATE',
+          entity: 'quotations',
+          entityId: revised.id,
+          reason: `agreed price on ${agreed.size} line(s): ${[...agreed].map(([id, php]) => `${id}=${php}`).join(', ')}`,
+        });
+      }
+      await tx.update(quotations).set({ printableUrl: `/app/quotes/${revised.id}/print` }).where(eq(quotations.id, revised.id));
       await tx.update(quotations).set({ status: 'superseded' }).where(eq(quotations.id, parent.id));
-
-      return this.toResponse(revised.id, revised.revision, 'draft', priced, printableUrl);
+      return revised.id;
     });
+    return this.get(ctx, revisedId);
   }
 
   // POST /quotes/:id/approve: draft -> approved, locks the snapshot (RFC-3 §3).
@@ -501,6 +548,7 @@ export class QuotesService {
         lineItems: items.map(({ item, typeName }) => {
           const inputs = item.pricingInputs as { rent_php?: number; rent_parts?: RentPart[] };
           return {
+            id: item.id,
             kind: item.kind === 'custom' ? ('custom' as const) : ('equipment' as const),
             ...(item.description ? { description: item.description } : {}),
             equipmentTypeId: item.equipmentTypeId,

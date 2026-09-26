@@ -94,7 +94,7 @@ export const BillingSettingsSchema = z.object({
   lowBalancePct: z.number().finite().min(0).max(100),
   // Deposit as a percent of the quote total; 0 = flat minDepositPhp only.
   depositPct: z.number().finite().min(0).max(100).default(0),
-  // Flat transport every new quote starts with; the admin can change it per quote.
+  // Fixed transport fees on every equipment rental quote; never changed per quote.
   mobilizationPhp: z.number().finite().min(0).max(99_999_999.99).default(0),
   demobilizationPhp: z.number().finite().min(0).max(99_999_999.99).default(0),
   // Fewest hours a booking may ask for; 0 = only the date span applies.

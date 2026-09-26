@@ -13,6 +13,7 @@ import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { NegotiationThread } from '../components/negotiation-thread.js';
 import { EdtrSheetCard } from '../components/edtr-sheet-card.js';
+import { QuoteRevise, StandardQuoteButton } from '../components/quote-revise.js';
 import { useToast } from '../components/toast.js';
 import { formatDate, formatPeso, formatStatus, shortCode, siteName } from '../lib/format.js';
 
@@ -219,10 +220,9 @@ function BookingSide({ booking }: { booking: BookingDetailResponse }) {
         ) : (
           <p className="text-sm text-text-muted">Not quoted yet.</p>
         )}
-        {booking.status !== 'cancelled' && quote?.status !== 'accepted' && (
-          <Link to="/app/quotes" search={{ bookingId: booking.id, customerId: booking.customerId }}>
-            <Button variant="primary">{quote ? 'Send a revised quote' : 'Quote this booking'}</Button>
-          </Link>
+        {booking.status !== 'cancelled' && !quote && <StandardQuoteButton bookingId={booking.id} />}
+        {booking.status !== 'cancelled' && quote && ['draft', 'approved', 'rejected'].includes(quote.status) && (
+          <QuoteRevise bookingId={booking.id} quoteId={quote.id} />
         )}
         {quote && (
           <Link to="/app/quotes/$quoteId/print" params={{ quoteId: quote.id }}>

@@ -68,6 +68,32 @@ describe('Truck checkout gates', () => {
     expect(paid).toMatchObject({ cash: true });
   });
 
+  // Standard pricing CR: staff can always accept the standard price, but a
+  // different number needs the customer to have opened a negotiation.
+  it('agrees a non-standard truck price only after the customer negotiates', async () => {
+    const [row] = await withTenantTx(customerCtx, (tx) =>
+      tx
+        .insert(truckRequests)
+        .values({
+          tenantId: customerCtx.tenantId,
+          requestedBy: customerCtx.userId,
+          pickup: 'Pasig City',
+          dropoff: 'Makati City',
+          scheduledFor: new Date(Date.now() + 86_400_000),
+          estimatedKm: '12',
+          price: { km: 12, lines: [], totalPhp: 1000 },
+        })
+        .returning(),
+    );
+    const id = row!.id;
+
+    await expect(trucks.agree(adminCtx, id, 900)).rejects.toMatchObject({ response: { error: 'negotiation_required' } });
+    expect((await trucks.agree(adminCtx, id, 1000)).agreedPricePhp).toBe(1000);
+
+    await trucks.postMessage(customerCtx, id, { body: 'Can you do 900?', offerPhp: 900 });
+    expect((await trucks.agree(adminCtx, id, 900)).agreedPricePhp).toBe(900);
+  });
+
   it('loads the PH Class 3 toll matrix once, and keeps an admin-edited fee on reload', async () => {
     await trucks.loadPhTolls(adminCtx);
     const loaded = (await trucks.listTolls(adminCtx)).filter((t) => t.expressway);

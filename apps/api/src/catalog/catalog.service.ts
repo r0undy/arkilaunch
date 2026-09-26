@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   getCatalogEquipmentForSlug,
+  getCatalogStandardPricingForSlug,
   getCatalogTenantForSlug,
   listCatalogEquipmentForSlug,
   listCatalogTenants,
@@ -10,8 +11,10 @@ import {
 import {
   CatalogEquipmentListResponseSchema,
   CatalogEquipmentSchema,
+  CatalogStandardPricingSchema,
   CatalogTestimonialListResponseSchema,
   type CatalogEquipment,
+  type CatalogStandardPricing,
   type CatalogTenant,
   type CatalogTenantListQuery,
   type CatalogTenantListResponse,
@@ -71,5 +74,13 @@ export class CatalogService {
   async listTestimonials(slug: string): Promise<CatalogTestimonialListResponse> {
     const items = await listCatalogTestimonialsForSlug(slug);
     return CatalogTestimonialListResponseSchema.parse({ items });
+  }
+
+  // The standard fees every client pays (standard-pricing CR), for the
+  // public rates page. Same active-tenant-only function posture.
+  async getStandardPricing(slug: string): Promise<CatalogStandardPricing> {
+    const row = await getCatalogStandardPricingForSlug(slug);
+    if (!row) throw new NotFoundException({ error: 'tenant_not_found' });
+    return CatalogStandardPricingSchema.parse(row);
   }
 }
