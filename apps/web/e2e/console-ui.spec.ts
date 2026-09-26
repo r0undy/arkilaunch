@@ -33,12 +33,12 @@ test.describe('console design pass', () => {
 
     await page.goto('/app/quotes');
     await expect(page.getByRole('tab', { name: 'Equipment rental' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByLabel('Mobilization (PHP)')).toBeVisible();
+    await expect(page.getByLabel('Mobilization (PHP)', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Customer')).toHaveCount(0);
 
     await page.getByRole('tab', { name: 'Trucking' }).click();
     await expect(page.getByRole('heading', { name: 'Truck pricing' })).toBeVisible();
-    await expect(page.getByLabel('Mobilization (PHP)')).toHaveCount(0);
+    await expect(page.getByLabel('Mobilization (PHP)', { exact: true })).toHaveCount(0);
   });
 
   test('the field-log queue pages rather than dumping every row', async ({ page }) => {

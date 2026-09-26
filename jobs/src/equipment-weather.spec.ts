@@ -64,12 +64,14 @@ describe('per-equipment weather (warning -> used despite warning)', () => {
     await jobClient.end();
   });
 
-  it('judges each machine on its own: gusts stop the crane, not the roller', async () => {
+  it('judges each machine on its own: gusts stop the crane; the roller is only limited', async () => {
     const { db, client } = makeJobDb();
     const levels = await evaluateSiteEquipment(db, tenantId, siteId, { tempC: 30, windKph: 30, gustKph: 55, precipMm: 0, code: 2, humidityPct: 60 });
     await client.end();
     expect(levels.equipment.find((m) => m.equipmentId === craneId)?.level).toBe('stop_work');
-    expect(levels.equipment.find((m) => m.equipmentId === rollerId)?.level).toBe('normal');
+    // 55 km/h gusts also read as a PAGASA Signal No. 1 (39-61 km/h): that
+    // limits a roller (Caution) but stops lifting outright.
+    expect(levels.equipment.find((m) => m.equipmentId === rollerId)?.level).toBe('caution');
     expect(levels.level).toBe('stop_work');
   });
 
