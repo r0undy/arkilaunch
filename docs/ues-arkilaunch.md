@@ -137,7 +137,7 @@ Each row has a stable **ID** (`UES-E1`, `UES-E2`, ...), never renumbered. GTM pr
 |----|------|---------------------------------|-------|
 | UES-F1 | Team salary (capstone; sweat equity) | 0 (base case) | Modeled at 0; real market cost stress-tested below. This is the single biggest hidden cost |
 | UES-F2 | Supabase (Postgres + Storage + Auth baseline) | ~1,450 | ~USD 25 Pro plan; flat platform baseline |
-| UES-F3 | Persistent backend host (cron + async OCR workers) | ~2,320 | ~USD 40; Vercel serverless cannot run the scheduler/workers (SCRUTINY G-6), so a persistent host is required |
+| UES-F3 | Persistent backend host (cron + async OCR workers) | ~2,320 | ~USD 40; serverless hosting cannot run the scheduler/workers (SCRUTINY G-6), so a persistent host is required |
 | UES-F4 | Open-Meteo commercial plan | **~0** (2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md`: real adapter shipped against the FREE tier for the pilot; the ~2,030/mo commercial-plan figure below is superseded, not deleted -- the non-commercial-use restriction is an accepted, open exposure, and this line reverts to ~2,030 the moment that changes) | ~USD 35 flat. The free tier is non-commercial only ([SCRUTINY FC-7](scrutiny-arkilaunch.md)), so a paid plan is real. Flat today; converts to step-COGS as sites scale (see UES-E2) |
 | UES-F5 | Other SaaS (domain, transactional email, monitoring, diesel-price source) | ~1,500 | Diesel source cost is a TBD (SCRUTINY G-3, RFC-3) |
 | | **Total fixed overhead (base, sweat-equity)** | **~7,300** | Excludes any team salary |
