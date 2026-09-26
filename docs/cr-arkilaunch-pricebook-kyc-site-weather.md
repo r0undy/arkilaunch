@@ -165,3 +165,23 @@ All three are additive. Run `pnpm db:migrate`.
 - **Rain rate** reads Open-Meteo's current precipitation as the past-hour amount the PAGASA colours are defined on. If it is actually a shorter interval, the levels under-read rain. **Verify against Open-Meteo's `current` semantics before relying on the Red/Orange stop rules.**
 - **Thresholds are defaults drawn from common crane-manufacturer wind limits, the PAGASA rainfall/TCWS/heat-index scales and DOLE OSH practice.** They are not engineering sign-off for any specific machine. They are constants in one file, not a per-tenant setting.
 - **Site proof is required only going forward.** Existing customer sites without proof will refuse new bookings and truck trips until the customer uploads it.
+
+## 6. Follow-up (2026-09-27, stacked branch)
+
+- **PAGASA input is automated.** The staff-entered advisory panel and its endpoints are removed. Each poll estimates the PAGASA-equivalent wind signal (2022 TCWS bands on the stronger of wind and gust), rainfall colour and thunderstorm from the site's own reading (`estimatePagasa`), and the screens label it as an estimate. `pagasa_advisories` stays in place, unused. This supersedes the "PAGASA input is manual" line in §5, and it has its own limit: a point reading cannot see a signal PAGASA raises ahead of a storm's arrival.
+- **Truck service lives under Bookings.** Admin Bookings lists equipment rentals and truck requests together, each tagged by service, with filters. `/app/trucks` redirects to the truck filter.
+- **Per-equipment report** (`GET /equipment/:id/report`). It covers:
+  - hours and fuel (hours × fuel L/h) for six months;
+  - rentals with their quoted amount;
+  - maintenance services and blocks;
+  - weather warnings.
+
+  It sits in a Report tab kept to four tiles plus folded detail.
+- **Maintenance:**
+  - schedules can be removed, and past logs are kept;
+  - blocks can be extended by a day;
+  - Inventory flags blocks ending within two days.
+
+  Blocks already free the unit on their own after the end date.
+- **Customer weather without an order:** a general Metro Manila forecast (`GET /me/forecast`) instead of an empty rail.
+- **Reported errors:** registration pending/verified, and My bookings tabs. Both trace to migrations 0054–0056 not being applied to the database: every query selecting `customers` or `truck_requests` asks for a column that does not exist yet. The fix is `pnpm db:migrate`, not a code change.
