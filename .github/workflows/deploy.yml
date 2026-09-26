@@ -1,6 +1,8 @@
 name: Deploy
 
-# push to `dev` -> deploy the dev environment. `.github/workflows/ci.yml`'s
+# push to `dev` -> deploy the dev environment: the backend (image, migrations,
+# terraform apply), then the web app to Cloudflare Workers at arkilaunch.app
+# (docs/cr-arkilaunch-cloudflare-frontend.md). `.github/workflows/ci.yml`'s
 # lint/typecheck/test/build gate is unchanged and still runs on every PR --
 # this workflow only builds/deploys.
 #
@@ -139,3 +141,36 @@ jobs:
           TF_VAR_jwt_public_key: ${{ secrets.JWT_PUBLIC_KEY }}
           TF_VAR_paymongo_secret_key: ${{ secrets.PAYMONGO_SECRET_KEY }}
           TF_VAR_paymongo_webhook_secret: ${{ secrets.PAYMONGO_WEBHOOK_SECRET }}
+
+  # Static Vite build served by an assets-only Worker (apps/web/wrangler.jsonc)
+  # on arkilaunch.app + *.arkilaunch.app. After `deploy` so the frontend never
+  # ships ahead of the API it calls, and after the apply that points the API's
+  # CORS (WEB_ORIGIN / PLATFORM_DOMAIN) at this host. Only `dev` exists today;
+  # prod's host is decided when prod is provisioned.
+  web:
+    if: github.event_name == 'push'
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # VITE_* is inlined at build time, so the API URL has to be here, not
+      # on the Worker. Absolute (the ACA ingress FQDN + /api/v1): there is no
+      # same-origin /api proxy in front of the static assets.
+      - run: pnpm --filter @arkilaunch/shared build && pnpm --filter @arkilaunch/web build
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+
+      - run: pnpm --filter @arkilaunch/web exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
