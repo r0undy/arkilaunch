@@ -2,10 +2,10 @@ import { createRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
-import type { InvoiceSummaryResponse } from '@arkilaunch/shared';
+import { REFUND_REASONS, type InvoiceSummaryResponse, type RefundReason } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { invoicesQueries } from '../lib/queries.js';
-import { apiErrorText, apiPost } from '../lib/api-client.js';
+import { ApiError, apiErrorText, apiPost } from '../lib/api-client.js';
 import { Button } from '../components/button.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { useToast } from '../components/toast.js';
@@ -14,6 +14,8 @@ import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Modal } from '../components/modal.js';
+import { Input } from '../components/input.js';
+import { Select } from '../components/select.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { CheckIcon, AlertIcon, ClockIcon } from '../components/icons.js';
 import {
@@ -82,6 +84,7 @@ export function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) 
         ))}
       </dl>
       {invoice.status === 'issued' && <RecordCash invoice={invoice} />}
+      {invoice.status === 'paid' && invoice.invoiceType !== 'deposit_deduction' && <RefundPayment invoice={invoice} />}
     </div>
   );
 }
@@ -118,6 +121,75 @@ function RecordCash({ invoice }: { invoice: InvoiceSummaryResponse }) {
         onCancel={() => setConfirming(false)}
       />
     </>
+  );
+}
+
+const REASON_LABELS: Record<RefundReason, string> = {
+  requested_by_customer: 'Requested by the customer',
+  duplicate: 'Duplicate payment',
+  fraudulent: 'Fraudulent',
+  others: 'Other',
+};
+
+// Online payments only: PayMongo returns the money to the customer's
+// wallet, bank or card. The refund shows on the ledger once PayMongo
+// confirms it (webhook), not when this is clicked. Cash goes back by hand.
+function RefundPayment({ invoice }: { invoice: InvoiceSummaryResponse }) {
+  const toast = useToast();
+  const [amount, setAmount] = useState(String(invoice.amount));
+  const [reason, setReason] = useState<RefundReason>('requested_by_customer');
+  const [confirming, setConfirming] = useState(false);
+  const value = Number(amount);
+  const invalid = !(value > 0 && value <= invoice.amount);
+  const refund = useMutation({
+    mutationFn: () => apiPost(`/invoices/${invoice.id}/refund`, { amountPhp: value, reason }),
+    onSuccess: () => {
+      toast.success('Refund requested', 'PayMongo is processing it. It appears on the invoice once it clears.');
+      setConfirming(false);
+    },
+    onError: (e) =>
+      toast.error(
+        'Not refunded',
+        e instanceof ApiError && e.message === 'payment_not_refundable'
+          ? 'This invoice was not paid online. Return cash payments by hand.'
+          : apiErrorText(e),
+      ),
+  });
+  return (
+    <div className="flex flex-col gap-3 border-t border-border pt-3">
+      <Input
+        label="Refund amount (PHP)"
+        type="number"
+        numeric
+        min={0.01}
+        max={invoice.amount}
+        step="0.01"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        error={amount !== '' && invalid ? `Between ${formatPeso(0.01)} and ${formatPeso(invoice.amount)}` : undefined}
+      />
+      <Select label="Reason" value={reason} onChange={(e) => setReason(e.target.value as RefundReason)}>
+        {REFUND_REASONS.map((r) => (
+          <option key={r} value={r}>
+            {REASON_LABELS[r]}
+          </option>
+        ))}
+      </Select>
+      <Button variant="secondary" disabled={invalid} onClick={() => setConfirming(true)}>
+        Refund through PayMongo
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        title="Refund payment"
+        body={`Refund ${formatPeso(value)} to the customer through PayMongo? This cannot be undone.`}
+        confirmLabel="Refund"
+        pending={refund.isPending}
+        onConfirm={async () => {
+          await refund.mutateAsync();
+        }}
+        onCancel={() => setConfirming(false)}
+      />
+    </div>
   );
 }
 

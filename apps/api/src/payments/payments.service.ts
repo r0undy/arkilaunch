@@ -471,16 +471,19 @@ export class PaymentsService {
     });
   }
 
-  // POST /payments/:id/refund (staff). Asks PayMongo to refund; the
+  // POST /invoices/:id/refund (staff). Asks PayMongo to refund the
+  // invoice's paid online payment (cash goes back by hand); the
   // `refunded` row is written when PayMongo's payment.refund.updated says
   // it succeeded, never here, so the ledger only shows money that moved.
-  async refund(ctx: RequestContext, paymentId: string, body: RefundRequest) {
+  async refund(ctx: RequestContext, invoiceId: string, body: RefundRequest) {
     return withTenantTx(ctx, async (tx) => {
-      const [payment] = await tx.select().from(payments).where(eq(payments.id, paymentId)).limit(1);
-      if (!payment) throw new NotFoundException({ error: 'payment_not_found' });
-      if (payment.status !== 'paid' || !payment.providerPaymentId) {
-        throw new ConflictException({ error: 'payment_not_refundable' });
-      }
+      const [payment] = await tx
+        .select()
+        .from(payments)
+        .where(and(eq(payments.invoiceId, invoiceId), eq(payments.status, 'paid')))
+        .orderBy(desc(payments.createdAt))
+        .limit(1);
+      if (!payment?.providerPaymentId) throw new ConflictException({ error: 'payment_not_refundable' });
       const amount = body.amountPhp ?? Number(payment.amount);
       if (amount > Number(payment.amount)) throw new ConflictException({ error: 'refund_exceeds_payment' });
       // Audit first: if PayMongo then refuses, the throw rolls this back.

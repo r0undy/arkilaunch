@@ -264,6 +264,28 @@ describe('PaymentsService (PRD-F2)', () => {
     expect(rental?.status).toBe('confirmed');
   });
 
+  it('a refund is asked of PayMongo only for a paid online payment, never above it', async () => {
+    const bookingId = await createBooking(11);
+    const result = await payments_.checkout(customerCtxA, bookingId);
+    if (!('paymentId' in result)) throw new Error('expected a card checkout');
+
+    await expect(payments_.refund(customerCtxA, result.invoiceId, { reason: 'requested_by_customer' })).rejects.toMatchObject({
+      response: { error: 'payment_not_refundable' },
+    });
+    await deliver(await sessionPaidEvent(result.invoiceId));
+    const full = Number((await withTenantTx(customerCtxA, (tx) => tx.select().from(invoices).where(eq(invoices.id, result.invoiceId))))[0]?.amount);
+    await expect(
+      payments_.refund(customerCtxA, result.invoiceId, { amountPhp: full + 1, reason: 'others' }),
+    ).rejects.toMatchObject({ response: { error: 'refund_exceeds_payment' } });
+    expect(await payments_.refund(customerCtxA, result.invoiceId, { amountPhp: 100, reason: 'others' })).toMatchObject({
+      refundId: `stub_ref_pay_${result.invoiceId}`,
+      status: 'pending',
+    });
+    // Nothing on the ledger until PayMongo says the refund succeeded.
+    const rows = await withTenantTx(customerCtxA, (tx) => tx.select().from(payments).where(eq(payments.invoiceId, result.invoiceId)));
+    expect(rows.some((row) => row.status === 'refunded')).toBe(false);
+  });
+
   it('a tenant with no linked PayMongo account is cash-only', async () => {
     const bookingId = await createBooking(10);
     await setTenantPaymongoAccount(customerCtxA.tenantId, customerCtxA.userId, null);

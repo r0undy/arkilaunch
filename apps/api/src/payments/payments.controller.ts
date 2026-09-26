@@ -58,8 +58,9 @@ export class TruckPaymentsController {
     return this.payments.confirmPayment(req.ctx, id);
   }
 
-  // Same staff as cash receipts (quote:approve) issue refunds.
-  @Post('payments/:id/refund')
+  // Same staff as cash receipts (quote:approve) issue refunds, of the
+  // invoice's paid online payment.
+  @Post('invoices/:id/refund')
   @RequirePermission('quote:approve')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   refund(@Param('id') id: string, @Body() body: RefundRequestDto, @Req() req: CtxRequest) {

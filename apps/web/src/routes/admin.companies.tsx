@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CompanyStatus, PlatformCompany, PlatformCompanyListResponse } from '@arkilaunch/shared';
 import { adminLayoutRoute } from './_admin.js';
 import { DataPanel } from '../components/data-panel.js';
@@ -53,6 +53,76 @@ function BrandingAction({ company }: { company: PlatformCompany }) {
       </Button>
       <Modal open={open} onClose={() => setOpen(false)} title={`${company.legalName} branding`} size="lg">
         {open && <BrandingForm basePath={`/tenants/${company.tenantId}`} />}
+      </Modal>
+    </>
+  );
+}
+
+// Online payments go to the company's own PayMongo account, a child of
+// ArkiLaunch's. The company signs up through ArkiLaunch's PayMongo invite
+// (Settings > Invitations) and does PayMongo's own verification; its org_
+// id is pasted here. Until then its customers can only pay cash.
+function PaymongoForm({ company, onDone }: { company: PlatformCompany; onDone: () => void }) {
+  const toast = useToast();
+  const path = `/tenants/${company.tenantId}/paymongo-account`;
+  const current = useQuery({ queryKey: ['tenants', company.tenantId, 'paymongo'], queryFn: () => apiGet<{ accountId: string | null }>(path) });
+  const [draft, setDraft] = useState<string | null>(null);
+  const value = draft ?? current.data?.accountId ?? '';
+  const valid = /^org_[A-Za-z0-9]+$/.test(value.trim());
+  const save = useMutation({
+    mutationFn: (accountId: string | null) => apiPatch<{ accountId: string | null }>(path, { accountId }),
+    onSuccess: (data) => {
+      toast.success(data.accountId ? 'PayMongo account linked' : 'PayMongo account unlinked');
+      void current.refetch();
+      onDone();
+    },
+    onError: (e) => toast.error('Not saved', apiErrorText(e)),
+  });
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valid) save.mutate(value.trim());
+      }}
+    >
+      <p className="text-sm text-text-muted">
+        {current.data?.accountId
+          ? 'Online payments go straight to this account.'
+          : 'Not linked: customers of this company can only pay cash at the office.'}
+      </p>
+      <Input
+        label="PayMongo account id"
+        placeholder="org_..."
+        value={value}
+        onChange={(e) => setDraft(e.target.value)}
+        error={value !== '' && !valid ? 'Starts with org_ followed by letters and numbers' : undefined}
+        hint="From PayMongo: Settings > Linked accounts, once the company has finished onboarding."
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" variant="primary" disabled={!valid} loading={save.isPending}>
+          Save
+        </Button>
+        {current.data?.accountId && (
+          <Button type="button" variant="secondary" disabled={save.isPending} onClick={() => save.mutate(null)}>
+            Unlink
+          </Button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+function PaymongoAction({ company }: { company: PlatformCompany }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="secondary" size="field" onClick={() => setOpen(true)}>
+        Payments<span className="sr-only"> for {company.legalName}</span>
+      </Button>
+      <Modal open={open} onClose={() => setOpen(false)} title={`${company.legalName} online payments`} size="sm">
+        {open && <PaymongoForm company={company} onDone={() => setOpen(false)} />}
       </Modal>
     </>
   );
@@ -143,6 +213,7 @@ const COLUMNS: TableColumn<PlatformCompany>[] = [
           Open site<span className="sr-only"> for {row.legalName} (opens in a new tab)</span>
         </a>
         <BrandingAction company={row} />
+        <PaymongoAction company={row} />
         <StatusAction company={row} />
       </span>
     ),
