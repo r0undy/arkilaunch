@@ -4,7 +4,7 @@ import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { PaymentsService } from './payments.service.js';
-import { CheckoutRequestDto, CouponPreviewRequestDto, RefundRequestDto } from './dto.js';
+import { CheckoutRequestDto, CouponPreviewRequestDto, InvoiceAmountUpdateDto, RefundRequestDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -74,6 +74,14 @@ export class TruckPaymentsController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   refund(@Param('id') id: string, @Body() body: RefundRequestDto, @Req() req: CtxRequest) {
     return this.payments.refund(req.ctx, id, body);
+  }
+
+  // quote:approve: the staff who agree prices lower one (audit-logged).
+  @Post('invoices/:id/amount')
+  @RequirePermission('quote:approve')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  adjustAmount(@Param('id') id: string, @Body() body: InvoiceAmountUpdateDto, @Req() req: CtxRequest) {
+    return this.payments.adjustAmount(req.ctx, id, body);
   }
 
   // quote:approve: the staff who agree prices are the ones who take cash.

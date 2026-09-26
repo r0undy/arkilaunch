@@ -75,3 +75,17 @@ Both tables use ENABLE + FORCE RLS and the RFC-1 §3 `tenant_isolation` policy. 
 - No platform-wide coupons and no coupons on truck, weekly or deposit-only invoices.
 - No coupon stacking. The staff quote discount (RFC-3) still applies first; the coupon comes off the resulting rent.
 - The expire endpoint's error on an already-expired session is ignored. That call has not been exercised against the live API.
+
+## 8. Follow-up (2026-09-27): staff change an unpaid invoice's amount
+
+A 99.9% coupon still left the consumable deposit, so the charge stayed large. Staff now have a direct control.
+
+- **`POST /api/v1/invoices/:id/amount {amountPhp, reason}`** (`quote:approve`, the staff who agree prices and take cash). It works on an **issued** `booking`, `deposit` or `truck` invoice. The UI is "Change amount" in the invoice panel at `/app/payments`.
+- **Lower only.** The amount can never go above the current one (`409 amount_above_invoice`), because the customer agreed to the price they saw. The floor is **PHP 1.00**, PayMongo's smallest checkout total, which was probed live: a 0 total is refused with "Total amount must be between 1.00 and 999,999,999.99".
+- **Rent comes off first.** The cut is taken from the rent line first and the consumable deposit last. Each line notes `adjusted by staff -PHP X`. A cut that reaches the deposit line does **not** lower the contract's `deposit_required`, so the ledger still credits the full deposit. This is a deliberate staff decision.
+- **Pending payments are closed.** Like a coupon re-price, pending payments are marked `failed` and their PayMongo sessions expired. The customer's next checkout charges the new amount.
+- **Audit-logged.** Each change writes `audit_logs` `UPDATE invoices` with the reason `amount PHP old -> PHP new: <reason>`.
+- **Online checkout floor.** Online checkout under PHP 1.00, e.g. after a 100% coupon on a zero-deposit invoice, now answers `409 amount_below_minimum` instead of a 500.
+- **Test:** QAD-T52, in `coupons-engine.spec.ts`.
+
+A real peso leaves a GCash wallet only in PayMongo **live** mode. That needs an activated account, the live key and a live webhook in the `dev` GitHub environment. Test mode simulates the GCash page.
