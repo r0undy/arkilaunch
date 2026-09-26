@@ -1,5 +1,5 @@
 import { Fragment, useState, type ReactNode } from 'react';
-import type { CompanyDocumentReadResponse, CompanyReviewResponse, KycRejectionReason, RegistryDocumentType } from '@arkilaunch/shared';
+import type { CompanyReviewResponse, KycRejectionReason, RegistryDocumentType } from '@arkilaunch/shared';
 import {
   cureDocumentsFor,
   hasRequiredCompanyDocuments,
@@ -21,7 +21,7 @@ import { Surface } from '../components/surface.js';
 import { Modal } from '../components/modal.js';
 import { useToast } from '../components/toast.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
+import { apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { companiesQueries } from '../lib/queries.js';
 import { formatDate, formatStatus } from '../lib/format.js';
 import { DOC_LABELS } from '../components/company-card.js';
@@ -174,8 +174,6 @@ function CompanyReviewCard({
   deciding: boolean;
   onPreviewDocument: (companyId: string, documentId: string) => void;
 }) {
-  const toast = useToast();
-  const queryClient = useQueryClient();
   const byType = (type: string) => company.documents.find((doc) => doc.documentType === type);
   const registration = company.documents.find((doc) => isPrimaryRegistration(doc.documentType));
   const nationalId = byType('government_id');
@@ -201,25 +199,6 @@ function CompanyReviewCard({
       return next;
     });
 
-  // A fresh OCR pass, as evidence beside what the customer typed.
-  const readDocument = useMutation({
-    mutationFn: (documentId: string) =>
-      apiPost<CompanyDocumentReadResponse>(`/customers/${company.id}/documents/${documentId}/read`, {}),
-    onSuccess: async (result) => {
-      if (!result.extractionAvailable) {
-        toast.error('Could not read the document', 'Document extraction is not switched on in this environment.');
-        return;
-      }
-      await queryClient.invalidateQueries({ queryKey: ['customers', 'review'] });
-    },
-    onError: (err) => toast.error('Could not read the document', apiErrorText(err)),
-  });
-  const reread = (doc: ReviewDocument | undefined, label: string) =>
-    doc && (
-      <Button variant="ghost" loading={readDocument.isPending && readDocument.variables === doc.id} onClick={() => readDocument.mutate(doc.id)}>
-        Re-read {label}
-      </Button>
-    );
 
   const previous = company.rejection;
 
@@ -274,7 +253,6 @@ function CompanyReviewCard({
               <h3 id={`reg-${company.id}`} className="font-medium text-text">
                 Registration, as submitted
               </h3>
-              {reread(registration, 'registration')}
             </div>
             <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
               <Submitted label="Registered name" value={company.companyName} scanned={registration?.ocr.company_name} />
@@ -303,7 +281,6 @@ function CompanyReviewCard({
               <h3 id={`id-${company.id}`} className="font-medium text-text">
                 Identity
               </h3>
-              {reread(nationalId, 'National ID')}
             </div>
             {!nationalId && <p className="text-sm text-text-muted">No National ID uploaded.</p>}
             {!selfie && <p className="text-sm text-text-muted">No selfie with the ID uploaded.</p>}

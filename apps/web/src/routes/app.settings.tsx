@@ -199,7 +199,7 @@ function RetireAction({ id, label }: { id: string; label: string }) {
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DEFAULT_CALENDAR: TenantCalendar = { openTime: '07:00', closeTime: '17:00', openDays: [1, 2, 3, 4, 5, 6], blackouts: [] };
 
-// Business hours + holidays/blackouts. Bookings must start and end inside
+// Office hours + holidays/blackouts. Bookings must start and end inside
 // them; the customer's date pickers grey the closed days.
 function BusinessCalendarForm() {
   const toast = useToast();
@@ -221,14 +221,15 @@ function BusinessCalendarForm() {
     onSuccess: () => {
       setDraft(null);
       void queryClient.invalidateQueries({ queryKey: ['tenant-calendar'] });
-      toast.success('Business hours saved');
+      toast.success('Office hours saved');
     },
-    onError: (e) => toast.error('Could not save business hours', apiErrorText(e)),
+    onError: (e) => toast.error('Could not save office hours', apiErrorText(e)),
   });
 
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Business hours">
-      <h2 className="font-display text-base font-semibold text-text">Business hours and holidays</h2>
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Office hours">
+      <h2 className="font-display text-base font-semibold text-text">Office hours and holidays</h2>
+      <p className="text-sm text-text-muted">Pickup and return must be on an office day within these hours. A rental can run through closed days, like Saturday to Monday.</p>
       {saved.data === null && !draft && (
         <p className="text-sm text-text-muted">Not set: bookings are accepted any day, any time.</p>
       )}
@@ -290,7 +291,7 @@ function BusinessCalendarForm() {
           disabled={cal.closeTime <= cal.openTime}
           onClick={() => save.mutate()}
         >
-          Save business hours
+          Save office hours
         </Button>
       </div>
     </Surface>
@@ -629,7 +630,7 @@ function SettingsPage() {
       <PageHeader
         eyebrow="Administration"
         title="Settings"
-        description="Business hours, deposits and billing. Prices live in Quotes, the standard price book."
+        description="Office hours, deposits and billing. Prices live in Quotes, the standard price book."
       />
       <BusinessCalendarForm />
       <BillingSettingsForm />

@@ -149,10 +149,13 @@ export async function dayAvailability(
     const local = manila(new Date(dayStart));
     const date = local.toISOString().slice(0, 10);
     let reason: AvailabilityBlocker | null = null;
-    if (cal?.blackouts.some((b) => b.date === date)) reason = 'holiday';
-    else if (cal && !cal.openDays.includes(local.getUTCDay())) reason = 'closed';
-    else if (holds.some((h) => touches(h.start, h.end, dayStart))) reason = 'assignment';
+    // Taken outranks office-closed: a closed day only stops pickup and
+    // return (calendarBlocker), while a booked or maintenance day stops a
+    // rental running through it.
+    if (holds.some((h) => touches(h.start, h.end, dayStart))) reason = 'assignment';
     else if (windows.some((w) => touches(w.startsAt, w.endsAt, dayStart))) reason = 'maintenance';
+    else if (cal?.blackouts.some((b) => b.date === date)) reason = 'holiday';
+    else if (cal && !cal.openDays.includes(local.getUTCDay())) reason = 'closed';
     out.push({ date, available: reason === null, reason });
   }
   return {
