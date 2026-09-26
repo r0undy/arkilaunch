@@ -495,6 +495,7 @@ function CartPage() {
                   {companySites.map((site) => (
                     <option key={site.id} value={site.id}>
                       {site.line1}, {site.city}
+                      {site.proofComplete ? '' : ' (site proof needed)'}
                     </option>
                   ))}
                 </Select>

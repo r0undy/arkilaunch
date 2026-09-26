@@ -27,6 +27,7 @@ import {
   CompanyReviewQueryDto,
   CustomerSiteCreateDto,
   KycScanRequestDto,
+  SiteDocumentUploadDto,
 } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
@@ -115,6 +116,38 @@ export class CustomersController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   createSite(@Body() body: CustomerSiteCreateDto, @Req() req: CtxRequest) {
     return this.customers.createSite(req.ctx, body);
+  }
+
+  // Proof a site is real and theirs: a site photo plus a permit, NTP,
+  // title/lease or barangay clearance. Same validation and bucket as KYC.
+  @Post('me/sites/:id/documents')
+  @RequirePermission('booking:create')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  async addSiteDocument(
+    @Param('id') id: string,
+    @Body() body: SiteDocumentUploadDto,
+    @UploadedFile() file: MulterFile | undefined,
+    @Req() req: CtxRequest,
+  ) {
+    const validated = validateUpload(file);
+    const key = this.storage.buildObjectKey(req.ctx.tenantId, validated.extension);
+    await this.storage.uploadObject(kycBucket(), key, file!.buffer, validated.contentType);
+    return this.customers.addSiteDocument(req.ctx, id, body.documentType, key);
+  }
+
+  // Staff open a booking's or truck trip's site proof before confirming it.
+  @Get('sites/:id/documents')
+  @RequirePermission('quote:approve')
+  listSiteDocuments(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.customers.listSiteDocuments(req.ctx, id);
+  }
+
+  @Get('sites/:id/documents/:documentId/url')
+  @RequirePermission('quote:approve')
+  async siteDocumentUrl(@Param('id') id: string, @Param('documentId') documentId: string, @Req() req: CtxRequest) {
+    const key = await this.customers.siteDocumentKey(req.ctx, id, documentId);
+    return { url: await this.storage.createSignedDownloadUrl(kycBucket(), key) };
   }
 
   // The customer's own thumbnail for the company card (Figma 251:1945).

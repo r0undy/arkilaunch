@@ -203,6 +203,22 @@ describe('Customer onboarding', () => {
     expect(queue.find((c) => c.id === acme.id)?.documents).toHaveLength(3);
     await companies.decide(adminCtx, acme.id, { decision: 'approved', identity: IDENTITY, registryChecked: [acmeSec.id], cureDocuments: [] });
 
+    // Verified, but the site has not shown it is real: no job on it yet.
+    await expect(
+      bookings.create(ctx, { customerId: acme.id, projectSiteId: site.id, items: [{ equipmentId, ...window(0) }] }),
+    ).rejects.toMatchObject({ response: { error: 'site_proof_required' } });
+    expect((await companies.listSites(ctx))[0]?.proofComplete).toBe(false);
+    await companies.addSiteDocument(ctx, site.id, 'site_photo', `${tenantId}/test/site.jpg`);
+    // A photo alone is not proof; it needs a permit, NTP, title/lease or clearance.
+    expect((await companies.listSites(ctx))[0]?.proofComplete).toBe(false);
+    await companies.addSiteDocument(ctx, site.id, 'building_permit', `${tenantId}/test/permit.jpg`);
+    expect((await companies.listSites(ctx))[0]?.proofComplete).toBe(true);
+    // Staff see the same proof from the booking.
+    expect((await companies.listSiteDocuments(adminCtx, site.id)).documents.map((d) => d.documentType).sort()).toEqual([
+      'building_permit',
+      'site_photo',
+    ]);
+
     const booking = await bookings.create(ctx, {
       customerId: acme.id,
       projectSiteId: site.id,

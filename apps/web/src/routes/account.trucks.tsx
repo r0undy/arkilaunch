@@ -13,6 +13,8 @@ import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { TruckThread } from '../components/truck-thread.js';
+import { Select } from '../components/select.js';
+import { customerSitesQueries } from '../lib/queries.js';
 import {
   EMPTY_LOCATION,
   LocationPicker,
@@ -104,6 +106,10 @@ function TrucksPage() {
     if (place) setPlace(place);
   }
   const mine = useQuery(myTruckRequestsQuery);
+  // The project site the trip serves: staff open its proof before the job.
+  const sites = useQuery(customerSitesQueries.mine());
+  const [siteId, setSiteId] = useState('');
+  const chosenSite = (sites.data ?? []).find((site) => site.id === siteId);
 
   const ready = pickup !== '' && dropoff !== '';
   const estimate = useMutation({
@@ -117,6 +123,7 @@ function TrucksPage() {
         ...pinBody,
         scheduledFor: new Date(when).toISOString(),
         ...(fullNotes ? { notes: fullNotes } : {}),
+        projectSiteId: siteId,
       }),
     onSuccess: () => {
       toast.success('Truck requested', 'The rental team will confirm the distance and final price.');
@@ -194,11 +201,29 @@ function TrucksPage() {
         </div>
         <Input label="Pickup date and time" type="datetime-local" value={when} min={toLocalInput(new Date().toISOString())} onChange={(e) => setWhen(e.target.value)} {...(when && new Date(when) <= new Date() ? { error: 'Pick a time in the future.' } : {})} />
         <Input label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <div className="sm:col-span-2">
+          <Select
+            id="truck-site"
+            label="Project site this trip serves"
+            value={siteId}
+            onChange={(e) => setSiteId(e.target.value)}
+            {...(chosenSite && !chosenSite.proofComplete
+              ? { error: 'This site needs its proof first (a site photo and a permit, NTP, title or clearance). Add it under your company.' }
+              : {})}
+          >
+            <option value="">{(sites.data ?? []).length === 0 ? 'Add a project site under your company first' : 'Choose a site...'}</option>
+            {(sites.data ?? []).map((site) => (
+              <option key={site.id} value={site.id}>
+                {site.line1}, {site.city}{site.proofComplete ? '' : ' (proof needed)'}
+              </option>
+            ))}
+          </Select>
+        </div>
         <div className="flex flex-wrap gap-3 sm:col-span-2">
           <Button variant="secondary" disabled={!ready} loading={estimate.isPending} onClick={() => estimate.mutate()}>
             Get estimate
           </Button>
-          <Button disabled={!ready || !when || new Date(when) <= new Date()} loading={submit.isPending} onClick={() => submit.mutate()}>
+          <Button disabled={!ready || !when || new Date(when) <= new Date() || !chosenSite?.proofComplete} loading={submit.isPending} onClick={() => submit.mutate()}>
             Request truck
           </Button>
         </div>

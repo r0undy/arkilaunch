@@ -317,9 +317,43 @@ export const CustomerSiteCreateSchema = z.object({
 });
 export type CustomerSiteCreate = z.infer<typeof CustomerSiteCreateSchema>;
 
+// Proof a project site is real and the customer may work there, required
+// before it can take a booking or a truck trip: a photo of the site taken
+// there, plus one paper tying the company to it. Staff open them from the
+// booking and the truck request.
+export const SITE_PROOF_TYPES = ['building_permit', 'ntp_or_contract', 'lot_title_or_lease', 'barangay_clearance'] as const;
+export const SITE_DOCUMENT_TYPES = ['site_photo', ...SITE_PROOF_TYPES] as const;
+export type SiteDocumentType = (typeof SITE_DOCUMENT_TYPES)[number];
+export const SITE_DOCUMENT_LABELS: Record<SiteDocumentType, string> = {
+  site_photo: 'Photo of the site',
+  building_permit: 'Building or excavation permit',
+  ntp_or_contract: 'Notice to Proceed or construction contract',
+  lot_title_or_lease: 'Land title, lease or owner\'s authorization',
+  barangay_clearance: 'Barangay clearance for the works',
+};
+export const SiteDocumentUploadSchema = z.object({ documentType: z.enum(SITE_DOCUMENT_TYPES) });
+export type SiteDocumentUpload = z.infer<typeof SiteDocumentUploadSchema>;
+
+export function hasSiteProof(documents: { documentType: string }[]): boolean {
+  return (
+    documents.some((d) => d.documentType === 'site_photo') &&
+    documents.some((d) => (SITE_PROOF_TYPES as readonly string[]).includes(d.documentType))
+  );
+}
+
+export const SiteDocumentSchema = z.object({
+  id: z.string().uuid(),
+  documentType: z.string(),
+  status: z.string(),
+  createdAt: z.coerce.date(),
+});
+export type SiteDocument = z.infer<typeof SiteDocumentSchema>;
+
 export const CustomerSiteResponseSchema = z.object({
   id: z.string().uuid(),
   customerId: z.string().uuid(),
+  documents: z.array(SiteDocumentSchema),
+  proofComplete: z.boolean(),
   line1: z.string().nullable(),
   barangay: z.string().nullable(),
   city: z.string().nullable(),

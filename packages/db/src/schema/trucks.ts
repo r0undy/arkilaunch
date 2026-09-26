@@ -56,6 +56,10 @@ export const truckRequests = pgTable(
     callRequestedAt: timestamp('call_requested_at', { withTimezone: true }),
     callConfirmedAt: timestamp('call_confirmed_at', { withTimezone: true }),
     callConfirmedBy: uuid('call_confirmed_by').references(() => users.id),
+    // 0055: the customer's project site this trip serves, so staff can open
+    // its proof documents. FK in SQL (project_sites lives in rentals.ts,
+    // which imports this file). Null on requests made before 0055.
+    projectSiteId: uuid('project_site_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

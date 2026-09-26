@@ -15,6 +15,7 @@ import {
   kycDocuments,
   notifications,
   projectSites,
+  siteDocuments,
   users,
   withTenantTx,
   type db,
@@ -62,6 +63,7 @@ import type {
 import { ownCustomers, ownsCustomer } from '../common/customer-scope.js';
 import { EventsService } from '../events/events.service.js';
 import { notifyStaff } from '../common/notify-customer.js';
+import { siteDocumentsFor, siteProofComplete } from '../common/site-proof.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -546,7 +548,51 @@ export class CustomersService {
         .innerJoin(addresses, eq(addresses.id, projectSites.addressId))
         .where(inArray(projectSites.customerId, ids))
         .orderBy(desc(projectSites.createdAt));
-      return rows.map(({ site, address }) => toSite(site, address));
+      const docs = await siteDocumentsFor(tx, rows.map(({ site }) => site.id));
+      return rows.map(({ site, address }) => toSite(site, address, docs.get(site.id)));
+    });
+  }
+
+  // POST /me/sites/:id/documents. The file is validated and in storage
+  // (controller); this records it against a site of a company the caller
+  // owns. A person looks at it; it is never sent to OCR.
+  async addSiteDocument(ctx: RequestContext, siteId: string, documentType: string, fileUri: string) {
+    assertCustomer(ctx);
+    return withTenantTx(ctx, async (tx) => {
+      const ids = (await ownCustomers(tx, ctx)).map((row) => row.id);
+      const [site] = ids.length
+        ? await tx.select().from(projectSites).where(and(eq(projectSites.id, siteId), inArray(projectSites.customerId, ids))).limit(1)
+        : [];
+      if (!site) throw new NotFoundException({ error: 'site_not_found' });
+      const [row] = await tx
+        .insert(siteDocuments)
+        .values({ tenantId: ctx.tenantId, projectSiteId: siteId, documentType, fileUri, uploadedBy: ctx.userId })
+        .returning();
+      if (!row) throw new Error('site_documents insert returned no row');
+      const docs = (await siteDocumentsFor(tx, [siteId])).get(siteId) ?? [];
+      return { id: row.id, documentType: row.documentType, status: row.status, createdAt: row.createdAt, proofComplete: siteProofComplete(docs) };
+    });
+  }
+
+  // GET /sites/:id/documents (staff). What a booking's or truck trip's site
+  // carries as proof, for staff to open before confirming the job.
+  async listSiteDocuments(ctx: RequestContext, siteId: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const docs = (await siteDocumentsFor(tx, [siteId])).get(siteId) ?? [];
+      return { projectSiteId: siteId, documents: docs, proofComplete: siteProofComplete(docs) };
+    });
+  }
+
+  // The storage key for a signed URL, re-read under RLS, never from the client.
+  async siteDocumentKey(ctx: RequestContext, siteId: string, documentId: string): Promise<string> {
+    return withTenantTx(ctx, async (tx) => {
+      const [doc] = await tx
+        .select()
+        .from(siteDocuments)
+        .where(and(eq(siteDocuments.id, documentId), eq(siteDocuments.projectSiteId, siteId)))
+        .limit(1);
+      if (!doc) throw new NotFoundException({ error: 'document_not_found' });
+      return doc.fileUri;
     });
   }
 
@@ -1021,10 +1067,13 @@ function documentReads(doc: typeof kycDocuments.$inferSelect) {
 function toSite(
   site: typeof projectSites.$inferSelect,
   address: typeof addresses.$inferSelect,
+  documents: CustomerSiteResponse['documents'] = [],
 ): CustomerSiteResponse {
   return {
     id: site.id,
     customerId: site.customerId!,
+    documents,
+    proofComplete: siteProofComplete(documents),
     line1: address.line1,
     barangay: address.barangay,
     city: address.city,

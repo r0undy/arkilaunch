@@ -318,3 +318,30 @@ export const bookingChangeRequests = pgTable(
     check('booking_change_requests_extend_end_chk', sql`${t.kind} <> 'extend' OR ${t.requestedEnd} IS NOT NULL`),
   ],
 );
+
+// 0055: proof a customer's project site is real and theirs to work on -- a
+// photo taken there plus a permit, NTP/contract, title/lease or barangay
+// clearance. Required before the site takes a booking or a truck trip;
+// staff open them (signed URL) from the booking and the truck request.
+export const siteDocuments = pgTable(
+  'site_documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    projectSiteId: uuid('project_site_id')
+      .notNull()
+      .references(() => projectSites.id),
+    documentType: text('document_type').notNull(), // SITE_DOCUMENT_TYPES
+    fileUri: text('file_uri').notNull(), // Supabase Storage key, signed-URL access only
+    status: text('status').notNull().default('pending'), // pending | verified | rejected
+    uploadedBy: uuid('uploaded_by').references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    tenantIsolationPolicy(),
+    index('site_documents_tenant_id_idx').on(t.tenantId),
+    index('site_documents_project_site_id_idx').on(t.projectSiteId),
+  ],
+);

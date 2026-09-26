@@ -12,6 +12,7 @@ import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { TruckThread } from '../components/truck-thread.js';
+import { SiteProofAdmin } from '../components/site-proof.js';
 import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
 
 export const settingsQuery = {
@@ -351,6 +352,7 @@ function RequestRow({ r }: { r: TruckRequestResponse }) {
         </p>
         {r.notes && <p className="text-sm text-text-muted">{r.notes}</p>}
         {r.capPhp !== null && <p className="text-xs text-text-muted">Customer cap {formatPeso(r.capPhp)}</p>}
+        {r.projectSiteId && <SiteProofAdmin siteId={r.projectSiteId} />}
         {open && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-text-muted">

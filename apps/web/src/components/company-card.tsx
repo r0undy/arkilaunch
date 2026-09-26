@@ -16,6 +16,7 @@ import { Button } from './button.js';
 import { StatusPill, type StatusTone } from './status-pill.js';
 import { AlertIcon, CheckIcon, ClockIcon } from './icons.js';
 import { SiteDialog } from './site-dialog.js';
+import { SiteProofStatus } from './site-proof.js';
 
 // The full detail of one company: verification state, its KYC documents and
 // what is still missing, and the project sites it delivers to. Lifted out of
@@ -218,9 +219,12 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
         <h3 className={heading}>Project sites</h3>
         {mine.length === 0 && <p className="text-text-muted">No sites yet.</p>}
         {mine.map((site) => (
-          <p key={site.id} className="text-text">
-            {site.line1}, {site.city}, {site.province}
-          </p>
+          <div key={site.id} className="flex flex-col gap-1">
+            <p className="text-text">
+              {site.line1}, {site.city}, {site.province}
+            </p>
+            <SiteProofStatus site={site} />
+          </div>
         ))}
         <Button variant="secondary" className="self-start" onClick={() => setSiteOpen(true)}>
           Add a site
