@@ -44,7 +44,7 @@ $$;--> statement-breakpoint
 -- app_authenticated under the same tenant GUC as the booking row itself, so
 -- RLS keeps one tenant from ever touching another's counter.
 CREATE OR REPLACE FUNCTION booking_code_assign() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SECURITY INVOKER AS $$
 DECLARE
   svc text := CASE TG_TABLE_NAME WHEN 'rentals' THEN 'rental' ELSE 'truck' END;
   prefix text := CASE TG_TABLE_NAME WHEN 'rentals' THEN 'EQR' ELSE 'TRK' END;
@@ -65,7 +65,7 @@ END
 $$;--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION booking_code_immutable() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SECURITY INVOKER AS $$
 BEGIN
   IF NEW.code IS DISTINCT FROM OLD.code THEN
     RAISE EXCEPTION 'booking code % cannot be changed', OLD.code USING ERRCODE = 'check_violation';
@@ -143,7 +143,7 @@ LANGUAGE sql IMMUTABLE AS $$
 $$;--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION notification_booking_ref() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SECURITY INVOKER AS $$
 DECLARE
   p jsonb := NEW.payload;
   rid uuid;
