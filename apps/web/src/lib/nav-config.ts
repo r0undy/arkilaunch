@@ -87,7 +87,6 @@ export const APP_NAV: NavGroup[] = [
       { label: 'Dashboard', to: '/app', icon: LayoutDashboard, exact: true },
       { label: 'Bookings', to: '/app/bookings', icon: ShoppingCart },
       { label: 'Quotes', to: '/app/quotes', icon: FileText },
-      { label: 'Truck service', to: '/app/trucks', icon: Truck },
       { label: 'Field logs', to: '/app/ocr', icon: ClipboardList },
       { label: 'Sites and deployment', to: '/app/deployment', icon: MapPin },
     ],

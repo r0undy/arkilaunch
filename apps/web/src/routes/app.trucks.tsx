@@ -1,9 +1,8 @@
-import { createRoute, Link } from '@tanstack/react-router';
+import { createRoute, redirect } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
-import { requireRole } from '../lib/guards.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
 import { formatDate, formatPeso, formatStatus } from '../lib/format.js';
 import { PriceBreakdown } from './account.trucks.js';
@@ -23,7 +22,7 @@ const tollsQuery = {
   queryKey: ['toll-rates'] as const,
   queryFn: () => apiGet<TollRateResponse[]>('/toll-rates'),
 };
-const requestsQuery = {
+export const requestsQuery = {
   queryKey: ['truck-requests'] as const,
   queryFn: () => apiGet<TruckRequestResponse[]>('/truck-requests'),
 };
@@ -304,7 +303,7 @@ function TollPicker({ tolls, value, onChange }: { tolls: TollRateResponse[]; val
 
 const OTHER = '__other__';
 
-function RequestRow({ r }: { r: TruckRequestResponse }) {
+export function RequestRow({ r }: { r: TruckRequestResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const tolls = useQuery(tollsQuery);
@@ -342,7 +341,7 @@ function RequestRow({ r }: { r: TruckRequestResponse }) {
   const open = r.status !== 'cancelled' && r.status !== 'paid';
 
   return (
-    <Surface radius="md" elevation="sm" className="grid gap-4 p-4 lg:grid-cols-[1fr_320px]">
+    <Surface id={`truck-${r.id}`} radius="md" elevation="sm" className="grid scroll-mt-20 gap-4 p-4 lg:grid-cols-[1fr_320px]">
       <div className="flex min-w-0 flex-col gap-2">
         <p className="text-sm font-medium text-text">
           {r.pickup} → {r.dropoff}
@@ -413,30 +412,12 @@ function RequestRow({ r }: { r: TruckRequestResponse }) {
   );
 }
 
-function TruckAdminPage() {
-  const requests = useQuery(requestsQuery);
-  return (
-    <div className="flex flex-col gap-6 px-4 py-6 sm:px-6">
-      <h1 className="font-display text-2xl font-semibold text-text">Self-loading truck</h1>
-      <p className="text-sm text-text-muted">
-        Truck fees, extra charges and tolls are set once for every client in{' '}
-        <Link to="/app/quotes" className="underline">
-          Quotes, under Trucking
-        </Link>
-        .
-      </p>
-      <section className="flex flex-col gap-3">
-        <h2 className="font-display text-lg font-semibold text-text">Requests</h2>
-        {requests.data?.length === 0 && <p className="text-sm text-text-muted">No truck requests yet.</p>}
-        {requests.data?.map((r) => <RequestRow key={r.id} r={r} />)}
-      </section>
-    </div>
-  );
-}
-
 export const appTrucksRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/trucks',
-  beforeLoad: requireRole('admin'),
-  component: TruckAdminPage,
+  // Truck requests now live under Bookings (service = truck); old links
+  // and notifications land there.
+  beforeLoad: () => {
+    throw redirect({ to: '/app/bookings', search: { service: 'truck' } });
+  },
 });
