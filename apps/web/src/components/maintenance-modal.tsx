@@ -10,10 +10,21 @@ import { Input } from './input.js';
 import { Select } from './select.js';
 import { Button } from './button.js';
 import { useToast } from './toast.js';
+import { ConfirmDialog } from './confirm-dialog.js';
+import { EquipmentReport } from './equipment-report.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 
-// The maintenance view of one machine: per-task schedules, logging a service
-// (which resets that task's next_due), and a manual hour-meter correction.
+// One machine's report and maintenance: the report (hours, fuel, rentals,
+// history) first, then per-task schedules, logging a service (which resets
+// that task's next_due), blocked dates, and a manual hour-meter correction.
+
+const DAY = 86_400_000;
+
+// How long until a block ends, for the "ends soon" cue (null = not soon).
+export function endsSoon(endsAt: string | Date, now = Date.now()): number | null {
+  const left = new Date(endsAt).getTime() - now;
+  return left > 0 && left <= 2 * DAY ? Math.ceil(left / DAY) : null;
+}
 export function MaintenanceModal({
   equipment,
   onClose,
@@ -39,6 +50,31 @@ export function MaintenanceModal({
   const [winEnd, setWinEnd] = useState('');
   const [winNotes, setWinNotes] = useState('');
   const winInvalid = !winStart || !winEnd || new Date(winEnd) <= new Date(winStart);
+  const [tab, setTab] = useState<'report' | 'maintenance'>('report');
+  const [removing, setRemoving] = useState<{ id: string; name: string } | null>(null);
+
+  // A duplicate schedule, or a fresh plan: remove it. Past services stay.
+  const removeSchedule = useMutation({
+    mutationFn: (scheduleId: string) => apiDelete(`/equipment/${equipment.id}/maintenance-schedules/${scheduleId}`),
+    onSuccess: () => {
+      refresh();
+      setRemoving(null);
+      toast.success('Schedule removed', 'Past service logs are kept.');
+    },
+    onError: (error) => toast.error('Could not remove that schedule', apiErrorText(error)),
+  });
+
+  // Push a block's end out by a day; it frees on its own after the end.
+  const extendWindow = useMutation({
+    mutationFn: ({ id, endsAt }: { id: string; endsAt: Date }) =>
+      apiPatch(`/equipment/${equipment.id}/maintenance-windows/${id}`, { endsAt: endsAt.toISOString() }),
+    onSuccess: () => {
+      refresh();
+      void queryClient.invalidateQueries({ queryKey: ['maintenance-windows', 'ending-soon'] });
+      toast.success('Block extended by a day');
+    },
+    onError: (error) => toast.error('Could not extend the block', apiErrorText(error)),
+  });
 
   // Maintenance date windows: bookings cannot land on them.
   const addWindow = useMutation({
@@ -110,10 +146,30 @@ export function MaintenanceModal({
     <Modal
       open
       onClose={onClose}
-      title="Maintenance"
-      description={`${equipment.model} (${equipment.serialNo})`}
+      title={equipment.model}
+      description={`Serial ${equipment.serialNo}`}
       size="lg"
     >
+      <div role="tablist" aria-label="Equipment" className="mb-4 flex gap-1 border-b border-border">
+        {(['report', 'maintenance'] as const).map((id) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={[
+              '-mb-px border-b-2 px-4 py-2 text-sm font-semibold',
+              tab === id ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text',
+            ].join(' ')}
+          >
+            {id === 'report' ? 'Report' : 'Maintenance'}
+          </button>
+        ))}
+      </div>
+      {tab === 'report' ? (
+        <EquipmentReport equipmentId={equipment.id} />
+      ) : (
       <div className="flex flex-col gap-6">
         <p className="text-sm text-text">
           Hour meter:{' '}
@@ -146,13 +202,18 @@ export function MaintenanceModal({
                       {s.nextDue !== null ? `, next due at ${s.nextDue} h` : ''}
                     </p>
                   </div>
-                  <Button
-                    variant="secondary"
-                    onClick={() => logService.mutate(s.id)}
-                    loading={logService.isPending && logService.variables === s.id}
-                  >
-                    Log service
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => logService.mutate(s.id)}
+                      loading={logService.isPending && logService.variables === s.id}
+                    >
+                      Log service
+                    </Button>
+                    <Button variant="ghost" onClick={() => setRemoving({ id: s.id, name })}>
+                      Remove
+                    </Button>
+                  </div>
                 </li>
               );
             })}
@@ -216,17 +277,35 @@ export function MaintenanceModal({
                 key={w.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border p-3 text-sm text-text"
               >
-                <span>
+                <span className="flex flex-wrap items-center gap-2">
                   {new Date(w.startsAt).toLocaleString()} to {new Date(w.endsAt).toLocaleString()}
                   {w.notes ? ` · ${w.notes}` : ''}
+                  {new Date(w.endsAt).getTime() <= Date.now() ? (
+                    <span className="text-xs text-text-muted">ended · unit is free again</span>
+                  ) : (
+                    endsSoon(w.endsAt) !== null && (
+                      <span className="rounded-full border border-warning px-2 text-xs text-text">ends in {endsSoon(w.endsAt)} day(s)</span>
+                    )
+                  )}
                 </span>
-                <Button
-                  variant="secondary"
-                  onClick={() => removeWindow.mutate(w.id)}
-                  loading={removeWindow.isPending && removeWindow.variables === w.id}
-                >
-                  Remove
-                </Button>
+                <span className="flex gap-2">
+                  {new Date(w.endsAt).getTime() > Date.now() && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => extendWindow.mutate({ id: w.id, endsAt: new Date(new Date(w.endsAt).getTime() + DAY) })}
+                      loading={extendWindow.isPending && extendWindow.variables?.id === w.id}
+                    >
+                      +1 day
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    onClick={() => removeWindow.mutate(w.id)}
+                    loading={removeWindow.isPending && removeWindow.variables === w.id}
+                  >
+                    Remove
+                  </Button>
+                </span>
               </li>
             ))}
           </ul>
@@ -273,6 +352,24 @@ export function MaintenanceModal({
           </div>
         </section>
       </div>
+      )}
+      <ConfirmDialog
+        open={removing !== null}
+        title="Remove this schedule?"
+        tone="danger"
+        confirmLabel="Remove it"
+        pending={removeSchedule.isPending}
+        body={
+          <p>
+            <strong>{removing?.name}</strong> stops counting hours. Past service logs are kept. Add a new schedule to start a
+            fresh plan.
+          </p>
+        }
+        onConfirm={() => {
+          if (removing) removeSchedule.mutate(removing.id);
+        }}
+        onCancel={() => setRemoving(null)}
+      />
     </Modal>
   );
 }
