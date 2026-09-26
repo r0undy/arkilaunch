@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { PlatformThrottlerGuard } from './common/throttler/platform-throttler.guard.js';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module.js';
 import { HealthModule } from './health/health.module.js';
 import { TenantsModule } from './tenants/tenants.module.js';
@@ -56,7 +55,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard.js';
     CustomersModule,
   ],
   providers: [
-    { provide: APP_GUARD, useClass: PlatformThrottlerGuard },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: TenantContextGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },

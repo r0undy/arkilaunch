@@ -20,6 +20,7 @@ import {
 } from '@arkilaunch/db';
 import { eq } from 'drizzle-orm';
 import { notifyStaff } from '../common/notify-customer.js';
+import { verifyTurnstile } from '../common/turnstile.js';
 import type {
   CustomerSignup,
   AuthTokens,
@@ -60,6 +61,12 @@ const TWO_FA_ENFORCED_ROLE = 'timekeeper';
 // per-tenant lockout table.
 const LOGIN_LOCKOUT_THRESHOLD = 5;
 const LOGIN_LOCKOUT_WINDOW_MS = 15 * 60_000;
+// Turnstile CR: from this many failures (per email OR per IP, same window)
+// a login must carry a Turnstile token. Below it a normal sign-in never sees
+// the widget. Per-IP catches stuffing that tries one password per email.
+// ponytail: in-process per replica, like the lockout; move both to Postgres
+// if replicas stop being a handful.
+const LOGIN_CAPTCHA_THRESHOLD = 2;
 
 interface LoginAttemptState {
   failCount: number;
@@ -76,6 +83,7 @@ interface TwoFaChallengePayload {
 @Injectable()
 export class AuthService {
   private readonly loginAttempts = new Map<string, LoginAttemptState>();
+  private readonly ipLoginAttempts = new Map<string, LoginAttemptState>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -87,20 +95,31 @@ export class AuthService {
   // Almara admin signs in on almara.<domain>, the platform_admin on the bare
   // domain. The wrong host gets the same invalid_credentials as a bad
   // password, so a host reveals nothing about which tenants an email is in.
-  async login({ email, password }: LoginRequest, tenantSlug: string): Promise<AuthTokens | TwoFaChallenge> {
+  async login(
+    { email, password }: LoginRequest,
+    tenantSlug: string,
+    ip?: string,
+    turnstileToken?: string,
+  ): Promise<AuthTokens | TwoFaChallenge> {
     const normalizedEmail = email.toLowerCase();
     this.assertNotLockedOut(normalizedEmail);
+    if (
+      this.failCount(this.loginAttempts, normalizedEmail) >= LOGIN_CAPTCHA_THRESHOLD ||
+      (ip && this.failCount(this.ipLoginAttempts, ip) >= LOGIN_CAPTCHA_THRESHOLD)
+    ) {
+      await verifyTurnstile(turnstileToken, ip);
+    }
 
     const user = await findUserByEmailForAuth(normalizedEmail, tenantSlug);
     // Same error for bad email, bad password (RFC-1 §3): no user-enumeration signal.
     if (!user || user.status !== 'active') {
-      this.recordLoginFailure(normalizedEmail);
+      this.recordLoginFailure(normalizedEmail, ip);
       throw new UnauthorizedException('invalid_credentials');
     }
 
     const passwordOk = await verify(user.passwordHash, password);
     if (!passwordOk) {
-      this.recordLoginFailure(normalizedEmail);
+      this.recordLoginFailure(normalizedEmail, ip);
       throw new UnauthorizedException('invalid_credentials');
     }
 
@@ -291,14 +310,24 @@ export class AuthService {
     }
   }
 
-  private recordLoginFailure(email: string): void {
+  private recordLoginFailure(email: string, ip: string | undefined): void {
+    this.bump(this.loginAttempts, email);
+    if (ip) this.bump(this.ipLoginAttempts, ip);
+  }
+
+  private bump(attempts: Map<string, LoginAttemptState>, key: string): void {
     const now = Date.now();
-    const state = this.loginAttempts.get(email);
+    const state = attempts.get(key);
     if (!state || now - state.windowStart > LOGIN_LOCKOUT_WINDOW_MS) {
-      this.loginAttempts.set(email, { failCount: 1, windowStart: now });
+      attempts.set(key, { failCount: 1, windowStart: now });
     } else {
       state.failCount += 1;
     }
+  }
+
+  private failCount(attempts: Map<string, LoginAttemptState>, key: string): number {
+    const state = attempts.get(key);
+    return state && Date.now() - state.windowStart <= LOGIN_LOCKOUT_WINDOW_MS ? state.failCount : 0;
   }
 
   private async hasTotpEnrolled(tenantId: string, userId: string, role: string): Promise<boolean> {

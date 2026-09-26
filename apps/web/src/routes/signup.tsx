@@ -5,12 +5,15 @@ import { registerCustomer } from '../lib/auth-client.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Surface } from '../components/surface.js';
+import { captchaError, Turnstile, TURNSTILE_SITE_KEY } from '../components/turnstile.js';
 import { onlyOn } from '../lib/guards.js';
 import { platformOrigin } from '../lib/host.js';
 
 export const MIN_PASSWORD = 10;
 
 export function signupError(code: string): string {
+  const captcha = captchaError(code);
+  if (captcha) return captcha;
   if (code === 'email_taken') return 'That email already has an account. Log in instead.';
   if (code === 'signup_unavailable') return 'Sign-up is not open on this site yet.';
   return 'We could not create your account. Check the details and try again.';
@@ -28,19 +31,25 @@ function SignupPage() {
   const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
+  const waitingOnCaptcha = Boolean(TURNSTILE_SITE_KEY) && !captcha;
 
   const mismatch = confirm.length > 0 && confirm !== password;
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (mismatch || !accepted) return;
+    if (mismatch || !accepted || waitingOnCaptcha) return;
     setBusy(true);
     setError(null);
     try {
-      await registerCustomer({ email, password, acceptedTerms: true });
+      await registerCustomer({ email, password, acceptedTerms: true }, captcha);
       await navigate({ to: '/account/companies/new' });
     } catch (err) {
       setError(signupError(err instanceof Error ? err.message : ''));
+      // The token was spent on this attempt; get a fresh one.
+      setCaptcha(null);
+      setCaptchaKey((k) => k + 1);
     } finally {
       setBusy(false);
     }
@@ -88,12 +97,13 @@ function SignupPage() {
             <Link to="/privacy" className="underline">Privacy Policy</Link>, and I am of legal age.
           </span>
         </label>
+        <Turnstile key={captchaKey} onToken={setCaptcha} />
         {error && (
           <p role="alert" className="text-sm text-error">
             {error}
           </p>
         )}
-        <Button type="submit" className="w-full" loading={busy} disabled={mismatch || !accepted}>
+        <Button type="submit" className="w-full" loading={busy} disabled={mismatch || !accepted || waitingOnCaptcha}>
           Create account
         </Button>
         <p className="text-center text-sm text-text-muted">

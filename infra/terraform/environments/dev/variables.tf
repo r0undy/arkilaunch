@@ -60,6 +60,12 @@ variable "enable_payments" {
   default = false
 }
 
+# Turnstile CR: on, the API refuses to boot without turnstile_secret_key.
+variable "enable_turnstile" {
+  type    = bool
+  default = false
+}
+
 variable "jwt_access_token_ttl" {
   type    = string
   default = "600" # seconds; see apps/api/src/auth/auth.service.ts's JWT_ACCESS_TOKEN_TTL read
@@ -137,6 +143,12 @@ variable "paymongo_secret_key" {
 }
 
 variable "paymongo_webhook_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "turnstile_secret_key" {
   type      = string
   sensitive = true
   default   = ""

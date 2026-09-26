@@ -1,7 +1,8 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Headers, HttpCode, HttpStatus, Ip, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator.js';
 import { LoginTenantSlug, StorefrontSlug } from '../common/decorators/tenant-slug.decorator.js';
+import { TURNSTILE_HEADER, TurnstileGuard } from '../common/turnstile.js';
 import { AuthService } from './auth.service.js';
 import { ForgotPasswordDto, LoginDto, RefreshDto, UserActivateDto, Verify2faDto } from './dto.js';
 import { CustomerSignupDto } from '../customers/dto.js';
@@ -17,15 +18,23 @@ import { CustomerSignupDto } from '../customers/dto.js';
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
+  // Turnstile only after repeated failures (AuthService.login), so a
+  // normal sign-in never sees the widget.
   @Post('login')
-  login(@Body() body: LoginDto, @LoginTenantSlug() tenantSlug: string) {
-    return this.auth.login(body, tenantSlug);
+  login(
+    @Body() body: LoginDto,
+    @LoginTenantSlug() tenantSlug: string,
+    @Ip() ip: string,
+    @Headers(TURNSTILE_HEADER) turnstileToken?: string,
+  ) {
+    return this.auth.login(body, tenantSlug, ip, turnstileToken);
   }
 
   // Customer self-signup (customer prerequisites CR). Throttled hard: it
   // is an unauthenticated write that spends an argon2 hash.
   @Post('register-customer')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @UseGuards(TurnstileGuard)
   registerCustomer(@Body() body: CustomerSignupDto, @StorefrontSlug() tenantSlug: string) {
     return this.auth.registerCustomer(body, tenantSlug);
   }
@@ -35,6 +44,7 @@ export class AuthController {
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @UseGuards(TurnstileGuard)
   forgotPassword(@Body() body: ForgotPasswordDto, @LoginTenantSlug() tenantSlug: string) {
     return this.auth.forgotPassword(body, tenantSlug);
   }
