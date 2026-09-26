@@ -79,7 +79,7 @@ function OrderSummary({ booking }: { booking: BookingDetailResponse }) {
           </div>
         )}
         <div className="flex items-center justify-between gap-3">
-          <span className="text-text-muted">Refundable deposit</span>
+          <span className="text-text-muted">Consumable deposit</span>
           <span className="font-mono text-text">{due.deposit === null ? 'Set at payment' : formatPeso(due.deposit)}</span>
         </div>
       </div>

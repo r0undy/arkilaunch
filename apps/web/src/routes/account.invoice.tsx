@@ -50,7 +50,9 @@ function PayWeekly({ invoiceId }: { invoiceId: string }) {
     setPending(cash ? 'cash' : 'online');
     try {
       const res = await apiPost<{ checkoutUrl: string | null }>(`/me/invoices/${invoiceId}/checkout`, cash ? { cash: true } : {});
-      if (res.checkoutUrl) window.location.assign(res.checkoutUrl);
+      // Only follow a real payment page; the stub adapter answers "about:blank?...".
+      if (res.checkoutUrl && /^https?:\/\//i.test(res.checkoutUrl)) window.location.assign(res.checkoutUrl);
+      else if (res.checkoutUrl) toast.error('Online payment is off', 'Online payment is not switched on in this environment, so nothing was charged.');
       else toast.success('Pay at the office', 'Staff will mark this invoice paid when they receive the cash.');
     } catch (err) {
       toast.error('Could not start the payment', apiErrorText(err));

@@ -181,7 +181,7 @@ export class PaymentsService {
             {
               tenantId: ctx.tenantId,
               invoiceId: invoice.id,
-              description: 'Refundable security deposit',
+              description: 'Consumable deposit (prepaid hours)',
               unitPrice: String(depositAmount),
               amount: String(depositAmount),
             },

@@ -61,7 +61,8 @@ function BrandingAction({ company }: { company: PlatformCompany }) {
 // Online payments go to the company's own PayMongo account, a child of
 // ArkiLaunch's. The company signs up through ArkiLaunch's PayMongo invite
 // (Settings > Invitations) and does PayMongo's own verification; its org_
-// id is pasted here. Until then its customers can only pay cash.
+// id is pasted here. Until then online payments land on ArkiLaunch's own
+// (parent) account.
 function PaymongoForm({ company, onDone }: { company: PlatformCompany; onDone: () => void }) {
   const toast = useToast();
   const path = `/tenants/${company.tenantId}/paymongo-account`;
