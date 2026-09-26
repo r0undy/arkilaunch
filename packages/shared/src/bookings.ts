@@ -67,12 +67,32 @@ export const BookingSummaryResponseSchema = z.object({
 });
 export type BookingSummaryResponse = z.infer<typeof BookingSummaryResponseSchema>;
 
-// GET /bookings/:id/edtr-sheet: the pre-printed EDTR v2 header.
+// GET /bookings/:id/edtr-sheet: the pre-printed EDTR header
+// (v3: cr-arkilaunch-edtr-v3-sheet.md). Built server-side; the tenant is
+// the verified JWT's, never the caller's (RFC-1).
 export interface EdtrSheetContext {
   rentalId: string;
   chargeTo: string;
   projectLocation: string;
-  equipment: { id: string; type: string; model: string; serialNo: string }[];
+  equipment: {
+    id: string;
+    type: string;
+    model: string;
+    serialNo: string;
+    // v3: the unit's own span on this booking and its crew.
+    start?: string;
+    end?: string | null;
+    operatorName?: string | null;
+    // The last approved hour-meter end reading, pre-printed as the week's start.
+    lastHourMeter?: number | null;
+  }[];
+  // v3 header.
+  bookingCode?: string;
+  customerName?: string;
+  siteRep?: string | null;
+  rentalStart?: string;
+  rentalEnd?: string | null;
+  tenant?: { name: string; address: string; contact: string; logoUrl: string | null };
 }
 
 // Paging, same shape as the users/invoices/equipment lists. GET /bookings

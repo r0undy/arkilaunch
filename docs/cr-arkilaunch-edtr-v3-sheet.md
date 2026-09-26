@@ -4,7 +4,7 @@
 **Project:** ArkiLaunch
 **Date:** 2026-09-27
 **Version:** 0.1
-**Status:** `Draft` (code in progress)
+**Status:** `Applied` (code)
 **Trigger doc:** [build-arkilaunch.md](build-arkilaunch.md) §5.1 Brownfield Change Workflow; admin feedback 2026-09-27 (item 6 of 6)
 **Docs touched by this record:** [rfc-arkilaunch-ocr-edtr-reconciliation.md](rfc-arkilaunch-ocr-edtr-reconciliation.md) §3 (sheet layout / parser contract), extends [cr-arkilaunch-edtr-v2-weather.md](cr-arkilaunch-edtr-v2-weather.md), [index.md](index.md) §2
 
@@ -33,14 +33,19 @@
 
 ## 3. Parser contract
 
-- QR prefix `ARKI-EDTR3:` marks a v3 sheet; the payload is otherwise unchanged (`rental:equipment:week`, no tenant, RFC-1).
-- New header labels `RUNNING HRS`, `IDLE HRS`, `BREAKDOWN HRS`, `WEATHER HRS`, `OTHER HRS`, `METER START`, `METER END`. On a v3 sheet `hoursActive` = RUNNING (not TOTAL), and `TOTAL` becomes a cross-check.
+- QR prefix `ARKI-EDTR3:` names the form version for people and tools; the payload is otherwise unchanged (`rental:equipment:week`, no tenant, RFC-1). The worker reads the layout, not the QR, so the parser detects v3 by the `RUNNING HRS` column.
+- New header labels `RUNNING HRS`, `IDLE HRS`, `BREAKDOWN HRS`, `WEATHER HRS`, `OTHER HRS`, `METER START`, `METER END`. On a v3 sheet `hoursActive` = RUNNING (not TOTAL). The IN/OUT times are checked against TOTAL (time on duty), and a blank hour cell on a filled row is 0.
+- **Unfilled v3 rows are skipped**, not failed: a row whose DAY cell says OUTSIDE RENTAL, or whose writable cells are all blank. v2 kept failing the whole sheet on a dated row with no total, which a pre-printed week with one idle Sunday would always hit. A worked day the scan misses entirely shows as **Missing** in the site hub, so it is not lost silently. A filled row whose RUNNING cannot be read still fails the sheet.
 - **v2 sheets keep parsing unchanged** during the transition: no `RUNNING HRS` column means v2 semantics.
+- The OCR worker writes the v3 categories and meter readings to `edtr_line_items`, with `validateDayEntry` flags.
 - `EdtrSheetContext` gains `bookingCode`, `customerName`, `siteRep`, `rentalStart`/`rentalEnd`, per-unit `operatorName` and `lastHourMeter`, and `tenant { name, address, contact, logoUrl }`. Built server-side (tenant from the JWT, RFC-1).
 
 ## 4. Tests
 
-`packages/shared/src/edtr-sheet.spec.ts`: v3 columns, v2 back-compat, an outside-rental hatch row left blank. `packages/shared/src/edtr.spec.ts`: `classifyHours` and `validateDayEntry`.
+- `packages/shared/src/edtr-sheet.spec.ts`: v3 columns, blank and outside-rental rows skipped, an unreadable RUNNING still fails, v2 unchanged.
+- `packages/shared/src/edtr-hours.spec.ts`: `classifyHours` and `validateDayEntry`.
+- `apps/web/src/lib/edtr-sheet.test.ts`: every parser label printed, outside-rental hatching, Letter/Legal page constant, file name, sheet numbering, and a contract round trip (the printed header as a layout table parses back into the v3 fields).
+- Rendered Letter and Legal sheets were inspected visually; column labels and digit combs are sized to their cells, so Letter's narrower columns do not collide.
 
 ## 5. Deliberately not claimed
 
