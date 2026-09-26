@@ -2,12 +2,12 @@ import { isTenantSlug } from '@arkilaunch/shared';
 
 // Which app this hostname serves. The bare platform domain (and plain
 // localhost in dev) is ArkiLaunch itself; one label in front of it is a
-// tenant: `almara.localhost:5173` in dev, `almara.arkilaunch.tech` in prod.
+// tenant: `almara.localhost:5173` in dev, `almara.arkilaunch.app` in prod.
 // Reserved or malformed labels fall back to the platform rather than
 // resolving to a tenant that cannot exist.
 export type HostKind = { kind: 'platform' } | { kind: 'tenant'; slug: string };
 
-const PLATFORM_DOMAIN = import.meta.env.VITE_PLATFORM_DOMAIN ?? 'arkilaunch.tech';
+const PLATFORM_DOMAIN = import.meta.env.VITE_PLATFORM_DOMAIN ?? 'arkilaunch.app';
 const ROOT_DOMAINS = ['localhost', PLATFORM_DOMAIN];
 
 export function resolveHost(hostname: string): HostKind {
