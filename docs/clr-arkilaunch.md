@@ -54,7 +54,7 @@ One row per processing activity, modeled on GDPR Article 30 and NPC record-keepi
 | Security & audit logging | PRD-F7 / `audit_logs` (append-only, immutable) | Prove who did what; cross-tenant denial logging | Actor id, action, entity, entity id, timestamp | All users | None external | None | Immutable, long-lived (accountability) | Legal obligation / legitimate interest (security) |
 | Diesel-price ingestion | PRD-F1 / snapshot into `quotations.diesel_price_snapshot` (RFC-3) | Index quotes to live diesel price | **Public, non-PII commodity pricing** from the DOE price-watch | None (no personal data) | DOE public price-watch (source), if the RFC-3 scrape option is chosen | Inbound public data | Snapshot per versioned quotation (reproducibility) | Not personal data; RA 10175 lawful-access posture registered (flag E5) |
 | Product analytics / telemetry | PRD §5.6 / first-party `events` table on Supabase Postgres, resolved in [OPS §2](ops-arkilaunch.md) (not PostHog; no new sub-processor added) | Wire BRD-M# metrics | Event names + identifiers only; **no PII in property values, no raw SEC/TIN, no card/account numbers, no ID images** (PRD §5.6 naming rule) | Users | None external; sink is first-party Supabase Postgres, already a named sub-processor | Same PH/EU-residency posture as the primary DB (no new residency question) | Rolling analytics window, same retention as the primary DB | Legitimate interest |
-| Application logs | SDD §7 / structured logs (Winston / Nest Logger), sink resolved in [OPS §2](ops-arkilaunch.md): Azure Monitor / Log Analytics (API + Jobs), Vercel logs (frontend), Supabase logs (DB/Storage) | Ops + debugging | Structured app logs; identifiers only, no PII values, no secrets (password hash / TOTP never logged) | Users (indirect) | Azure Monitor / Log Analytics; Vercel; Supabase (all already named sub-processors) | Keep in-region | 30 to 90 days (SDD §7) | Legitimate interest (operations) |
+| Application logs | SDD §7 / structured logs (Winston / Nest Logger), sink resolved in [OPS §2](ops-arkilaunch.md): Azure Monitor / Log Analytics (API + Jobs), Cloudflare Workers logs (frontend), Supabase logs (DB/Storage) | Ops + debugging | Structured app logs; identifiers only, no PII values, no secrets (password hash / TOTP never logged) | Users (indirect) | Azure Monitor / Log Analytics; Cloudflare; Supabase (all already named sub-processors; frontend host since 2026-09-27, CR: cloudflare-frontend) | Keep in-region | 30 to 90 days (SDD §7) | Legitimate interest (operations) |
 
 **Sensitivity flags** (any Yes pulls the row into Section 3):
 
@@ -195,7 +195,7 @@ Presence-check only. Nothing is drafted yet; counsel drafts and reviews the actu
 
 ## 6. App Store / Platform Compliance
 
-**Not applicable in V1.** ArkiLaunch ships as a responsive web application (React SPA on Vercel), mobile-first for the timekeeper console and the customer portal, but it is **not submitted to the Apple App Store or Google Play**. No native app package, no store data-safety forms.
+**Not applicable in V1.** ArkiLaunch ships as a responsive web application (React SPA on Cloudflare Workers), mobile-first for the timekeeper console and the customer portal, but it is **not submitted to the Apple App Store or Google Play**. No native app package, no store data-safety forms.
 
 | Item | Status | Evidence link |
 |------|--------|---------------|

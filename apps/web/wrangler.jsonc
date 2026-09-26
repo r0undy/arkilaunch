@@ -1,0 +1,19 @@
+// Assets-only Cloudflare Worker serving the Vite build (docs/cr-arkilaunch-cloudflare-frontend.md).
+// A Worker, not Pages: Pages custom domains cannot be wildcards, and tenant
+// storefronts live at {slug}.arkilaunch.app (lib/host.ts). The wildcard route
+// needs a proxied `*` DNS record in the zone (AAAA 100::); the apex record is
+// created by the custom domain on deploy. Deployed by .github/workflows/deploy.yml.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "arkilaunch-web",
+  "compatibility_date": "2026-09-27",
+  "assets": {
+    "directory": "./dist",
+    // Unknown paths get index.html so TanStack Router resolves deep links.
+    "not_found_handling": "single-page-application"
+  },
+  "routes": [
+    { "pattern": "arkilaunch.app", "custom_domain": true },
+    { "pattern": "*.arkilaunch.app/*", "zone_name": "arkilaunch.app" }
+  ]
+}

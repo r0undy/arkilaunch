@@ -34,7 +34,7 @@ To run the code: copy `.env.example` to `.env` (Supabase pooler connection strin
 
 This repo does not vendor the FMD engine's own tooling (`fmd/scripts/*.py`); doc validation and materialization here are done by hand, per [docs/index.md](docs/index.md) §4.
 
-**Stack (pinned, verified 2026-07-25):** React 19.2 + Vite 8, NestJS 11.1 on Node 24 LTS, Drizzle ORM + Supabase Postgres, Azure AI Document Intelligence (OCR), PayMongo (payments), Open-Meteo (weather, **free tier** since 2026-08-20), Azure Container Apps + Vercel + Cloudflare. See [BUILD §3](docs/build-arkilaunch.md), including the divergence table.
+**Stack (pinned, verified 2026-07-25):** React 19.2 + Vite 8, NestJS 11.1 on Node 24 LTS, Drizzle ORM + Supabase Postgres, Azure AI Document Intelligence (OCR), PayMongo (payments), Open-Meteo (weather, **free tier** since 2026-08-20), Azure Container Apps + Cloudflare (Workers static frontend at arkilaunch.app, DNS, edge). See [BUILD §3](docs/build-arkilaunch.md), including the divergence table.
 
 ## What it does
 

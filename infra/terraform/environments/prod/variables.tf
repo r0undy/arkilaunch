@@ -12,13 +12,13 @@ variable "image_tag" {
 
 variable "web_origin" {
   type        = string
-  description = "CORS origin for the prod frontend (production Vercel domain)."
+  description = "CORS origin for the prod frontend (its Cloudflare host)."
 }
 
 variable "platform_domain" {
   type        = string
   description = "Root domain; tenant storefronts at https://{slug}.<domain> are allowed by the API's CORS."
-  default     = "arkilaunch.tech"
+  default     = "arkilaunch.app"
 }
 
 variable "supabase_url" {

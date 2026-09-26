@@ -42,7 +42,7 @@ The system that must not fail is the trusted-billing loop: scan an EDTR, reconci
 |-------|---------|----------------|-------|
 | Unit | **Vitest** (NestJS default harness) | Pricing math, reconciliation tolerance logic, confidence-gate branching, RBAC permission resolution, Zod schema validation. Includes the **OCR extraction-accuracy harness** (per-field accuracy against a labeled golden set, target >= 90.06%, BRD-M2). | Engineer (write alongside code) |
 | Integration | Vitest + real Postgres (Docker Compose, prod-mirrored schema) | The money chain end to end at the service layer: **OCR to billing to reconciliation to deduction**; weather poll writing `weather_alerts` and auto-logging a liability incident; **Postgres RLS** denying cross-tenant rows under the request-scoped GUC. | Engineer |
-| System | Staging (Vercel + ACA revision + Supabase staging) | Full stack against sandbox Azure DI, PayMongo test, Open-Meteo. Includes a **throttled 3 to 5 Mbps** run of EDTR upload and quote generation on a cheap-Android profile. | QA |
+| System | Staging (Cloudflare Worker frontend + ACA revision + Supabase staging) | Full stack against sandbox Azure DI, PayMongo test, Open-Meteo. Includes a **throttled 3 to 5 Mbps** run of EDTR upload and quote generation on a cheap-Android profile. | QA |
 | API contract | **Postman / Newman** collection in CI | Every Must-Have endpoint contract (SDD §4): request/response shape, status codes, the 409 discrepancy path, the 202 async path, webhook signature rejection. | Engineer / QA |
 | E2E | **Playwright** | The two money paths as a real browser session: OCR to reconciliation to deduction, and quote to PayMongo checkout to webhook status, each in happy, sad, and abuse form. | Engineer / QA |
 | UAT | ISO/IEC 25010 questionnaire (5-point Likert), see §8 | Functional suitability and the other seven characteristics judged by real users; feeds BRD-M5. | QA / product |
@@ -52,7 +52,7 @@ The system that must not fail is the trusted-billing loop: scan an EDTR, reconci
 
 ## 2. Test Environments & Data
 
-**Staging URL:** `https://staging.arkilaunch.app` (Vercel frontend, ACA staging API revision, Supabase staging project, behind Cloudflare).
+**Staging URL:** `https://staging.arkilaunch.app` (Cloudflare Workers frontend, ACA staging API revision, Supabase staging project, behind Cloudflare). Pilot reality: `dev` is staging and is served at `https://arkilaunch.app` (CR: cloudflare-frontend).
 
 > **Deviation (`cr-arkilaunch-pilot-honesty.md` §2.3, 2026-08-13):** Terraform defines only `dev` and `prod`; no third `staging` environment exists. For a single-tenant pilot with fewer than ten daily users, a third environment triples upkeep for no proportionate gain. The existing `dev` environment is designated as staging and is the safe home for the live-DB isolation suite (`cross-tenant-isolation-suite` in `.github/workflows/ci.yml`, gated on `vars.RUN_LIVE_DB_TESTS`), which must never run against prod because `pnpm db:seed:test` writes fixture tenants.
 **Test credentials:** Stored in the team password manager under "ArkiLaunch QA Accounts" (never committed). One admin (Rhea proxy), one owner, one timekeeper (2FA-enrolled), one customer, one platform admin, per seeded tenant.

@@ -17,7 +17,7 @@
 
 ## 1. Architectural Vision & Principles
 
-**Architecture style:** Three-tier web application. A React single-page app on Vercel edge, a persistent NestJS API plus scheduled workers on Azure Container Apps, and managed PostgreSQL plus object storage on Supabase. It is a modular monolith on the API side (clean NestJS module boundaries per feature), not microservices; the pilot serves one anchor tenant and a shared-schema pooled multi-tenant model, so a distributed topology would add cost without buying anything at this scale.
+**Architecture style:** Three-tier web application. A React single-page app served as static assets by a Cloudflare Worker (arkilaunch.app + `*.arkilaunch.app` tenant storefronts), a persistent NestJS API plus scheduled workers on Azure Container Apps, and managed PostgreSQL plus object storage on Supabase. It is a modular monolith on the API side (clean NestJS module boundaries per feature), not microservices; the pilot serves one anchor tenant and a shared-schema pooled multi-tenant model, so a distributed topology would add cost without buying anything at this scale.
 
 **Guiding principles:**
 - **Back-end the paper, do not replace the field.** OCR the existing handwritten EDTR and reconcile it against a second independent log before any money moves. Digital entry is the primary path where a timekeeper will use it; OCR is the paper fallback (scrutiny §4).
@@ -39,7 +39,7 @@
 
 ```mermaid
 graph TD
-    subgraph ClientTier["Client tier (Vercel edge)"]
+    subgraph ClientTier["Client tier (Cloudflare Workers static assets)"]
         FE["React 19.2 + Vite 8 SPA<br/>TanStack Router v1 / Query v5<br/>Tailwind, Zod, native fetch<br/>Playwright build-time prerender on public routes only"]
     end
     subgraph EdgeTier["Edge and security"]
@@ -79,11 +79,11 @@ graph TD
 | Layer | Technology | Responsibility |
 |-------|------------|----------------|
 | Client | React 19.2 + Vite 8, TanStack Router v1 + Query v5, Tailwind, Zod, native fetch | Role-aware SPA (admin/owner/timekeeper/customer/platform); client-side image compression and resumable upload queue; printable quote output; never sees another tenant's data. Serves PRD-F1, F2, F3, F4, F5, F6, F7, F8 screens. |
-| Edge / Gateway | Cloudflare (WAF, L3/L4/L7 DDoS), Vercel edge for static delivery | TLS 1.3 termination at the edge, WAF rules, DDoS absorption, bot mitigation on the public booking portal (`/t/:tenantSlug`). |
+| Edge / Gateway | Cloudflare (WAF, L3/L4/L7 DDoS, DNS), Cloudflare Workers static assets for frontend delivery | TLS 1.3 termination at the edge, WAF rules, DDoS absorption, bot mitigation on the public booking portal (`/t/:tenantSlug`). |
 | API | NestJS 11.1 on Node 24 LTS (Azure Container Apps, persistent) | REST API, Passport-JWT identity authority, RBAC guard, per-request tenant transaction that sets the RLS GUC, PayMongo session creation and webhook verification, Azure DI extraction dispatch. Serves every PRD-F#. |
 | Service / Compute | ACA Jobs (cron) on Node 24 | Weather poll per active site (PRD-F5), PM-threshold notifications (PRD-F4), diesel-price refresh (PRD-F1), async OCR + reconciliation workers (PRD-F3). Guards overlapping runs via replica/parallelism limit or an advisory lock. |
 | Data | Supabase managed PostgreSQL + Supabase Storage; Drizzle ORM | Multi-tenant relational store with RLS by `tenant_id`; Storage holds EDTR and KYC image blobs behind short-TTL signed URLs. Not used as the session-auth authority. |
-| Infrastructure | Vercel (frontend), Azure Container Apps (API + Jobs), Supabase (DB + Storage), Cloudflare (edge); external Azure DI, PayMongo, Open-Meteo, diesel source | Hosting, private DB networking, static egress IPs, secrets in env, CI/CD from `dev`/`staging`/`main`. Detailed in §6. |
+| Infrastructure | Cloudflare Workers (frontend), Azure Container Apps (API + Jobs), Supabase (DB + Storage), Cloudflare (edge); external Azure DI, PayMongo, Open-Meteo, diesel source | Hosting, private DB networking, static egress IPs, secrets in env, CI/CD from `dev`/`staging`/`main`. Detailed in §6. |
 
 ---
 
@@ -802,7 +802,7 @@ sequenceDiagram
 **Data protection:**
 - PII / sensitive data: KYC and ID document images are sensitive personal information under RA 10173. Data minimization at capture, short-TTL signed URLs, retention limits, and region residency (SE Asia target); no PII (raw SEC/TIN, card/account numbers, ID images) in logs or analytics property values. Detail in the CLR.
 - Payments: PayMongo hosted checkout keeps card/account data out of our boundary entirely (no PAN/account stored; PCI-DSS L1 on PayMongo's side). We store only the returned `provider_ref` and status.
-- Secrets management: environment variables per platform (Vercel, Azure Container Apps, Supabase); never committed. Azure DI keys, PayMongo secret, Open-Meteo key, DB creds live in env only.
+- Secrets management: environment variables per platform (GitHub Environments for the Cloudflare deploy token and the frontend's build-time `VITE_*` values, Azure Container Apps, Supabase); never committed. Azure DI keys, PayMongo secret, Open-Meteo key, DB creds live in env only.
 - Input validation: Zod schemas on all API inputs (shared with the client where practical); Drizzle parameterized queries (no string-built SQL).
 - Webhooks: PayMongo signature verified before body processing; idempotency on `provider_ref` UNIQUE.
 - Transport: HTTPS everywhere, TLS 1.3 terminated at Cloudflare; private networking to the DB; static egress IPs; WAF and L3/L4/L7 DDoS at the edge.
@@ -811,14 +811,14 @@ sequenceDiagram
 
 ## 6. Infrastructure, CI/CD & Deployment
 
-**Hosting:** Vercel (React frontend), Azure Container Apps (persistent NestJS API + ACA Jobs cron/workers), Supabase (PostgreSQL + Storage), Cloudflare (WAF + DDoS + TLS 1.3). This corrects the naive "backend on Vercel serverless" reading: serverless cannot run the scheduler or the async OCR/reconciliation workers (scrutiny G-6), so the backend is a persistent host and Vercel keeps the frontend only.
+**Hosting:** Cloudflare Workers static assets (React frontend, `apps/web/wrangler.jsonc`, deployed by `deploy.yml`'s `web` job; CR: cloudflare-frontend), Azure Container Apps (persistent NestJS API + ACA Jobs cron/workers), Supabase (PostgreSQL + Storage), Cloudflare (WAF + DDoS + TLS 1.3). This corrects the naive "backend on serverless" reading: serverless cannot run the scheduler or the async OCR/reconciliation workers (scrutiny G-6), so the backend is a persistent host and the edge serves the static frontend only.
 
-**Public-route prerendering (CR: frontend-storefront-shell).** The frontend is a client-rendered SPA, but `build-arkilaunch.md` §5.2 requires public marketing/booking pages to be crawlable HTML, not an empty client shell. Rather than adopting SSR (which would replace the pinned Vite/TanStack Router stack), the deploy pipeline runs a Playwright-driven prerender step (`apps/web/scripts/prerender.mjs`) after `vite build`: it serves the built `dist/`, visits each public route (`/`, `/equipment`, `/equipment/:id` for the current catalog fixtures, `/contact`, `/help`, `/terms`, `/privacy`), and writes the rendered `outerHTML` back to `dist/<route>/index.html` with `noindex` swapped for `index, follow`, a canonical link, Open Graph tags, and (on `/` only) `Organization` + `SoftwareApplication` JSON-LD. Every other route (`/app/*`, `/account/*`, `/field/*`, `/platform`) is never prerendered and keeps serving the default `dist/index.html` shell, which carries `noindex, nofollow` -- Vercel's static-file lookup serves the specific prerendered file where one exists (via `vercel.json`'s catch-all rewrite to `/index.html`, which static files take priority over) and falls back to the noindexed SPA shell everywhere else. This is deliberately a build script, not a new SSR framework: zero new dependencies (Playwright is already a devDependency for e2e), and no change to the pinned stack in §1.
+**Public-route prerendering (CR: frontend-storefront-shell).** The frontend is a client-rendered SPA, but `build-arkilaunch.md` §5.2 requires public marketing/booking pages to be crawlable HTML, not an empty client shell. Rather than adopting SSR (which would replace the pinned Vite/TanStack Router stack), the deploy pipeline runs a Playwright-driven prerender step (`apps/web/scripts/prerender.mjs`) after `vite build`: it serves the built `dist/`, visits each public route (`/`, `/equipment`, `/equipment/:id` for the current catalog fixtures, `/contact`, `/help`, `/terms`, `/privacy`), and writes the rendered `outerHTML` back to `dist/<route>/index.html` with `noindex` swapped for `index, follow`, a canonical link, Open Graph tags, and (on `/` only) `Organization` + `SoftwareApplication` JSON-LD. Every other route (`/app/*`, `/account/*`, `/field/*`, `/platform`) is never prerendered and keeps serving the default `dist/index.html` shell, which carries `noindex, nofollow` -- Workers static assets serve the specific prerendered file where one exists and fall back to the noindexed SPA shell everywhere else (`not_found_handling: "single-page-application"` in `apps/web/wrangler.jsonc`; a matching static file always wins over the fallback). This is deliberately a build script, not a new SSR framework: zero new dependencies (Playwright is already a devDependency for e2e), and no change to the pinned stack in §1.
 
 **Environments:**
 - `dev`: Local Docker Compose (Postgres + API) mirroring the prod schema; feature branches off `dev`. Azure DI, PayMongo, Open-Meteo run against sandbox/test keys.
-- `staging`: `staging` branch deploys to a Vercel preview + an ACA staging revision + a Supabase staging project. Full integration, including PayMongo test webhooks and Playwright E2E.
-- `prod`: `main` branch deploys to Vercel production + ACA production + the production Supabase project, behind Cloudflare. Anchor tenant (Almara) only during the pilot, module by module behind per-feature flags.
+- `staging`: `staging` branch deploys the frontend Worker + an ACA staging revision + a Supabase staging project. (Pilot reality: `dev` is staging, served at `https://arkilaunch.app`; CR: pilot-honesty, cloudflare-frontend.) Full integration, including PayMongo test webhooks and Playwright E2E.
+- `prod`: `main` branch deploys the frontend to Cloudflare Workers (prod host decided when prod is provisioned) + ACA production + the production Supabase project, behind Cloudflare. Anchor tenant (Almara) only during the pilot, module by module behind per-feature flags.
 
 **CI/CD:** GitHub Actions on push/PR: lint, type-check, Vitest unit, Drizzle migration check (expand/contract compatibility), Postman/Newman API suite, Playwright E2E on the two load-bearing flows (OCR to reconciliation to deduction; quote to payment, including sad and abuse paths). Merge to `staging` deploys staging; a tagged release on `main` deploys prod. The CI pipeline is the single source of truth for what is live (feeds the §9 rollback).
 

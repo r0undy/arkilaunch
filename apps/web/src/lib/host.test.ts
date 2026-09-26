@@ -5,12 +5,12 @@ describe('resolveHost', () => {
   it('treats bare hosts as the platform', () => {
     expect(resolveHost('localhost')).toEqual({ kind: 'platform' });
     expect(resolveHost('127.0.0.1')).toEqual({ kind: 'platform' });
-    expect(resolveHost('arkilaunch.tech')).toEqual({ kind: 'platform' });
+    expect(resolveHost('arkilaunch.app')).toEqual({ kind: 'platform' });
   });
 
   it('maps one label to a tenant', () => {
     expect(resolveHost('almara.localhost')).toEqual({ kind: 'tenant', slug: 'almara' });
-    expect(resolveHost('Almara.ArkiLaunch.tech')).toEqual({ kind: 'tenant', slug: 'almara' });
+    expect(resolveHost('Almara.ArkiLaunch.app')).toEqual({ kind: 'tenant', slug: 'almara' });
     expect(resolveHost('test-tenant-a.localhost')).toEqual({ kind: 'tenant', slug: 'test-tenant-a' });
   });
 
@@ -19,6 +19,6 @@ describe('resolveHost', () => {
     expect(resolveHost('arkilaunch-platform.localhost')).toEqual({ kind: 'platform' });
     expect(resolveHost('a.b.localhost')).toEqual({ kind: 'platform' });
     expect(resolveHost('-bad.localhost')).toEqual({ kind: 'platform' });
-    expect(resolveHost('evil-arkilaunch.tech')).toEqual({ kind: 'platform' });
+    expect(resolveHost('evil-arkilaunch.app')).toEqual({ kind: 'platform' });
   });
 });
