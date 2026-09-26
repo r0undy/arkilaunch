@@ -10,6 +10,7 @@ import {
   PHILSYS_CHECK_URL,
   REGISTRY_LINKS,
   TIN_REGEX,
+  sameValue,
 } from '@arkilaunch/shared';
 import { createRoute } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
@@ -38,47 +39,66 @@ const ID_DETAILS: { key: string; label: string }[] = [
   { key: 'address', label: 'Address' },
 ];
 
-// "Did the customer change it": a scan and a typed value differ in case,
-// spaces and dashes without saying anything different.
-const sameValue = (a: string, b: string) =>
-  a.replace(/[^a-z0-9]/gi, '').toLowerCase() === b.replace(/[^a-z0-9]/gi, '').toLowerCase();
-
-// The port keys on this paper where what the customer entered (confirmed at
-// upload, or the TIN / SEC number on the company) differs from the scan.
-// For those the scan's read % says nothing about the value in front of the
-// reviewer, so it is replaced by an "Edited by customer" tag.
-function editedKeys(company: CompanyReviewResponse, doc: ReviewDocument): string[] {
-  const entered: Record<string, string> = {
-    ...(company.tin ? { tin: company.tin } : {}),
-    ...(company.secNumber ? { sec_number: company.secNumber } : {}),
-    ...doc.customer,
-  };
-  return Object.keys(entered).filter((key) => doc.ocr[key] && !sameValue(entered[key]!, doc.ocr[key]!));
-}
-
-function EditedTag({ scanned }: { scanned?: string | undefined }) {
-  return (
-    <span className="inline-flex flex-wrap items-center gap-1 text-xs">
-      <span className="rounded-sm border border-warning px-1.5 text-text">Edited by customer</span>
-      {scanned !== undefined && <span className="text-text-muted">scan read "{scanned}"</span>}
-    </span>
-  );
-}
-
-// One submitted value, read-only, with what the upload-time scan read
-// beside it. The reviewer judges it; they never change it.
+// One submitted value, read-only, shown once. When it differs from what
+// the upload-time scan read, a quiet "scan: …" hint says so; the score's
+// checklist carries the judgement (cr-arkilaunch-registration-scoring.md).
 function Submitted({ label, value, scanned }: { label: string; value: string | null | undefined; scanned?: string | undefined }) {
   const differs = Boolean(value && scanned && !sameValue(value, scanned));
   return (
     <>
       <dt className="text-text-muted">{label}</dt>
-      <dd className="flex flex-wrap items-center gap-2 break-words text-text">
+      <dd className="flex flex-wrap items-baseline gap-2 break-words text-text">
         {value || 'Not given'}
-        {differs ? <EditedTag scanned={scanned} /> : scanned && value && <span className="text-xs text-text-muted">matches the scan</span>}
+        {differs && <span className="text-xs text-text-muted">scan: {scanned}</span>}
       </dd>
     </>
   );
 }
+
+const BAND_META = {
+  high: { label: 'High', className: 'border-success text-success' },
+  medium: { label: 'Medium', className: 'border-warning text-text' },
+  low: { label: 'Low', className: 'border-error text-error' },
+} as const;
+
+// The advisory score as a small pill; click for the per-check breakdown.
+export function ScorePill({ score }: { score: NonNullable<CompanyReviewResponse['score']> }) {
+  const [open, setOpen] = useState(false);
+  const meta = BAND_META[score.band];
+  return (
+    <div className="flex flex-col items-end gap-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${meta.className}`}
+      >
+        <span className="font-mono">{score.score}%</span> · {meta.label}
+        <span className="sr-only"> confidence. {open ? 'Hide' : 'Show'} the checks</span>
+      </button>
+      {open && (
+        <ul className="flex w-full max-w-md flex-col gap-1 rounded-md border border-border p-3 text-left text-sm">
+          {score.checks.map((c) => (
+            <li key={c.id} className="flex gap-2">
+              <span aria-hidden className={c.status === 'pass' ? 'text-success' : c.status === 'warn' ? 'text-warning' : 'text-error'}>
+                {c.status === 'pass' ? '✓' : '!'}
+              </span>
+              <span>
+                <span className="font-medium text-text">{c.label}</span>
+                <span className="sr-only"> ({c.status})</span>
+                <span className="block text-xs text-text-muted">{c.reason}</span>
+              </span>
+            </li>
+          ))}
+          <li className="pt-1 text-xs text-text-muted">Advisory only: you decide.</li>
+        </ul>
+      )}
+    </div>
+  );
+}
+
+const groupHeading = 'font-medium text-text';
+const dlClass = 'grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr]';
 
 function Check({ checked, onChange, children }: { checked: boolean; onChange: (on: boolean) => void; children: ReactNode }) {
   return (
@@ -152,6 +172,20 @@ function RegistryCheck({
   );
 }
 
+// A document opens full size; its read confidence rides along, quietly.
+function DocButton({ doc, onOpen }: { doc: ReviewDocument; onOpen: () => void }) {
+  return (
+    <Button variant="secondary" onClick={onOpen}>
+      {DOC_LABELS[doc.documentType] ?? formatStatus(doc.documentType)}
+      {doc.confidence !== null && (
+        <span className={doc.confidence < 0.7 ? 'text-error' : 'text-text-muted'}>
+          &nbsp;&middot; {Math.round(doc.confidence * 100)}%
+        </span>
+      )}
+    </Button>
+  );
+}
+
 type IdentityChecks = { philsysVerified: boolean; selfieMatches: boolean; holderAuthorized: boolean };
 const NO_CHECKS: IdentityChecks = { philsysVerified: false, selfieMatches: false, holderAuthorized: false };
 
@@ -204,11 +238,12 @@ function CompanyReviewCard({
 
   return (
     <Surface radius="md" elevation="sm" role="group" aria-label={company.companyName} className="flex flex-col gap-4 p-5">
-      <div>
-        <h2 className="font-display text-lg font-semibold text-text">{company.companyName}</h2>
-        <p className="text-sm text-text-muted">
-          {company.billingAddress ?? '--'} &middot; added {formatDate(company.createdAt)}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-display text-lg font-semibold text-text">{company.companyName}</h2>
+          <p className="text-sm text-text-muted">Applied {formatDate(company.createdAt)}</p>
+        </div>
+        {company.score && <ScorePill score={company.score} />}
       </div>
 
       {previous && company.kycStatus === 'pending' && (
@@ -225,43 +260,57 @@ function CompanyReviewCard({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {company.documents.length === 0 && <p className="text-sm text-text-muted">No documents uploaded yet.</p>}
-        {company.documents.map((doc) => (
-          <Button key={doc.id} variant="secondary" onClick={() => onPreviewDocument(company.id, doc.id)}>
-            {DOC_LABELS[doc.documentType] ?? formatStatus(doc.documentType)}
-            {editedKeys(company, doc).length > 0 ? (
-              <>
-                &nbsp;&middot;&nbsp;
-                <EditedTag />
-              </>
-            ) : (
-              doc.confidence !== null && (
-                <span className={doc.confidence < 0.85 ? 'text-error' : 'text-text-muted'}>
-                  &nbsp;&middot; {Math.round(doc.confidence * 100)}%
-                </span>
-              )
-            )}
-          </Button>
-        ))}
-      </div>
+      <section aria-labelledby={`co-${company.id}`} className="flex flex-col gap-2">
+        <h3 id={`co-${company.id}`} className={groupHeading}>
+          Company
+        </h3>
+        <dl className={dlClass}>
+          <Submitted label="Registered name" value={company.companyName} scanned={registration?.ocr.company_name} />
+          {(bir || company.tin) && <Submitted label="TIN" value={company.tin} scanned={(bir ?? registration)?.ocr.tin} />}
+          {(sec || company.secNumber) && <Submitted label="SEC registration number" value={company.secNumber} scanned={sec?.ocr.sec_number} />}
+          {registration?.ocr.registered_address && <Submitted label="Registered address" value={registration.ocr.registered_address} />}
+          {registration?.ocr.registration_date && <Submitted label="Registration date" value={registration.ocr.registration_date} />}
+          <Submitted label="Billing address" value={company.billingAddress} />
+        </dl>
+      </section>
+
+      <section aria-labelledby={`cp-${company.id}`} className="flex flex-col gap-2">
+        <h3 id={`cp-${company.id}`} className={groupHeading}>
+          Contact person
+        </h3>
+        <dl className={dlClass}>
+          <Submitted
+            label="Name"
+            value={
+              [company.firstName, company.lastName].filter(Boolean).join(' ') ||
+              [nationalId?.customer.first_name ?? nationalId?.ocr.first_name, nationalId?.customer.last_name ?? nationalId?.ocr.last_name]
+                .filter(Boolean)
+                .join(' ')
+            }
+          />
+          <Submitted label="Mobile" value={company.contactPhone ?? null} />
+        </dl>
+      </section>
 
       {decidable && (
         <>
           <section aria-labelledby={`reg-${company.id}`} className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 id={`reg-${company.id}`} className="font-medium text-text">
-                Registration, as submitted
-              </h3>
+            <h3 id={`reg-${company.id}`} className={groupHeading}>
+              Business documents
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {company.documents.length === 0 && <p className="text-sm text-text-muted">No documents uploaded yet.</p>}
+              {company.documents
+                .filter((doc) => doc.documentType !== 'government_id' && doc.documentType !== 'selfie_with_id')
+                .map((doc) => (
+                  <DocButton key={doc.id} doc={doc} onOpen={() => onPreviewDocument(company.id, doc.id)} />
+                ))}
             </div>
-            <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
-              <Submitted label="Registered name" value={company.companyName} scanned={registration?.ocr.company_name} />
-              {(bir || company.tin) && <Submitted label="TIN" value={company.tin} scanned={(bir ?? registration)?.ocr.tin} />}
-              {(sec || company.secNumber) && <Submitted label="SEC registration number" value={company.secNumber} scanned={sec?.ocr.sec_number} />}
-              {dti && <Submitted label="DTI business name number" value={dtiNumber} scanned={dti.ocr.dti_number} />}
-              {registration?.ocr.registered_address && <Submitted label="Registered address" value={registration.ocr.registered_address} />}
-              {registration?.ocr.registration_date && <Submitted label="Registration date" value={registration.ocr.registration_date} />}
-            </dl>
+            {dti && (
+              <dl className={dlClass}>
+                <Submitted label="DTI business name number" value={dtiNumber} scanned={dti.ocr.dti_number} />
+              </dl>
+            )}
             <div className="grid gap-3 sm:grid-cols-3">
               {registryDocs.map((doc) => (
                 <RegistryCheck
@@ -278,9 +327,16 @@ function CompanyReviewCard({
 
           <section aria-labelledby={`id-${company.id}`} className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 id={`id-${company.id}`} className="font-medium text-text">
-                Identity
+              <h3 id={`id-${company.id}`} className={groupHeading}>
+                ID document
               </h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[nationalId, selfie]
+                .filter((doc): doc is ReviewDocument => Boolean(doc))
+                .map((doc) => (
+                  <DocButton key={doc.id} doc={doc} onOpen={() => onPreviewDocument(company.id, doc.id)} />
+                ))}
             </div>
             {!nationalId && <p className="text-sm text-text-muted">No National ID uploaded.</p>}
             {!selfie && <p className="text-sm text-text-muted">No selfie with the ID uploaded.</p>}
