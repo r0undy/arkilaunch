@@ -6,7 +6,7 @@ import { Button } from '../components/button.js';
 import { Modal } from '../components/modal.js';
 import { hasRequiredCompanyDocuments } from '@arkilaunch/shared';
 import { bookingsQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
-import { AlertIcon, CheckIcon } from '../components/icons.js';
+import { CheckIcon } from '../components/icons.js';
 
 export interface SetupStep {
   label: string;
@@ -66,21 +66,19 @@ function SetupChecklist() {
         type="button"
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-between gap-3 rounded-md border border-warning/60 bg-warning/10 px-4 py-3 text-left text-sm text-text hover:border-warning"
+        className="relative flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface px-4 py-3 text-left text-sm text-text hover:border-accent"
       >
-        <span className="flex items-center gap-3">
-          <span
-            aria-hidden="true"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-warning/25 text-warning"
-          >
-            <AlertIcon />
-          </span>
-          <span>
-            <span className="font-semibold">
-              {todo.length} step{todo.length === 1 ? '' : 's'} left
-            </span>{' '}
-            <span className="text-text-muted">before you can pay for bookings</span>
-          </span>
+        <span
+          aria-hidden="true"
+          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-warning text-xs font-bold text-white"
+        >
+          !
+        </span>
+        <span>
+          <span className="font-semibold">
+            {todo.length} step{todo.length === 1 ? '' : 's'} left
+          </span>{' '}
+          <span className="text-text-muted">before you can pay for bookings</span>
         </span>
         <span aria-hidden="true" className="text-accent">
           ›
