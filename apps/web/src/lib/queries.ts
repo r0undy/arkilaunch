@@ -104,6 +104,8 @@ export const couponsQueries = {
     }),
 };
 
+export const MY_TRUCK_REQUESTS = ['me', 'truck-requests'] as const;
+
 // Staff truck queue (cr-arkilaunch-console-polish.md). Every key starts
 // with 'truck-requests', so invalidating that prefix refreshes them all.
 export const trucksQueries = {
@@ -120,6 +122,24 @@ export const trucksQueries = {
     queryOptions({
       queryKey: ['truck-requests', id, 'route'] as const,
       queryFn: () => apiGet<TruckRoute>(`/truck-requests/${id}/route`),
+      staleTime: Infinity,
+      retry: false,
+    }),
+  // The customer's own requests, one page at a time. Every key starts with
+  // MY_TRUCK_REQUESTS, so invalidating that refreshes every page.
+  mine: (limit: number, offset: number, q = '', status?: 'open' | 'closed') =>
+    queryOptions({
+      queryKey: [...MY_TRUCK_REQUESTS, limit, offset, q, status ?? 'all'] as const,
+      queryFn: () =>
+        apiGet<TruckRequestListResponse>(
+          `/me/truck-requests?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}${status ? `&status=${status}` : ''}`,
+        ),
+    }),
+  // The same line for the customer's own request.
+  myRoute: (id: string) =>
+    queryOptions({
+      queryKey: ['my-truck-route', id] as const,
+      queryFn: () => apiGet<TruckRoute>(`/me/truck-requests/${id}/route`),
       staleTime: Infinity,
       retry: false,
     }),

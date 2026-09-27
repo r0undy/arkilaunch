@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { bookingCodeSearchPrefix, type BookingSummaryResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
-import { bookingsQueries } from '../lib/queries.js';
+import { bookingsQueries, trucksQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
@@ -11,7 +11,7 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { formatStatus, siteName } from '../lib/format.js';
 import { Button } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
-import { myTruckRequestsQuery, TruckRequestCard } from './account.trucks.js';
+import { TruckRequestCard } from '../components/truck-trip.js';
 
 type Service = 'rental' | 'truck';
 const SERVICES: { id: Service; label: string }[] = [
@@ -133,7 +133,7 @@ function MyBookingsPage() {
 
 function TruckBookings({ codePrefix }: { codePrefix: string }) {
   const [offset, setOffset] = useState(0);
-  const mine = useQuery(myTruckRequestsQuery(PAGE_SIZE, offset, codePrefix));
+  const mine = useQuery(trucksQueries.mine(PAGE_SIZE, offset, codePrefix));
   if (mine.isPending) return <p className="text-sm text-text-muted">Loading truck bookings...</p>;
   if (mine.isError)
     return <p className="text-sm text-error">Truck bookings could not be loaded.</p>;

@@ -14,17 +14,16 @@ async function pickLocation(page: Page, label: string, city: string) {
   await page.getByLabel(`${label} city or municipality`).selectOption({ label: city });
 }
 
-// One trip map places both pins: pick which, then click a little east of
-// the Manila centre (west is the bay). Works on the 3D map and on the flat
-// fallback a browser without WebGL gets.
+// The map is the booking screen: pick which pin, then tap right of the
+// centre (clear of the floating panel on desktop, east of the bay). Works
+// on the 3D map and on the flat fallback a browser without WebGL gets.
 async function dropPin(page: Page, which: 'Pickup' | 'Drop-off', dx: number) {
-  await page.getByRole('radio', { name: which }).click();
+  await page.getByRole('radio', { name: which, exact: true }).click();
   const map = page.getByRole('application').first();
   await map.scrollIntoViewIfNeeded();
   const box = (await map.boundingBox())!;
-  await map.click({ position: { x: box.width / 2 + dx, y: box.height / 2 } });
-  const printed = which === 'Pickup' ? /A pickup:\s*\d/ : /B drop-off:\s*\d/;
-  await expect(page.getByText(printed).first()).toBeVisible({ timeout: 30_000 });
+  const x = Math.min(box.width * 0.7 + dx, box.width - 20);
+  await map.click({ position: { x, y: box.height / 3 } });
 }
 
 test.describe('self-loading truck', () => {
@@ -34,16 +33,15 @@ test.describe('self-loading truck', () => {
     await signInAsCustomer(customer);
     await customer.goto('/account/trucks');
 
-    // Nothing to estimate until both cities are chosen.
-    await expect(customer.getByRole('button', { name: 'Get estimate' })).toBeDisabled();
+    // Two taps: the route and price load with no button to press.
+    await dropPin(customer, 'Pickup', 0);
+    await dropPin(customer, 'Drop-off', 60);
+    await expect(customer.getByText(/₱[\d,.]+ – ₱[\d,.]+/).first()).toBeVisible({ timeout: 30_000 });
+    // The typed address waits under Advanced search.
+    await customer.getByText('Advanced search').click();
     await pickLocation(customer, 'Pickup location', 'City of Mandaluyong');
     await pickLocation(customer, 'Drop-off location', 'City of Muntinlupa');
     await customer.getByLabel('Pickup street or landmark (optional)').fill('SM Megamall loading bay');
-    await dropPin(customer, 'Pickup', 40);
-    await dropPin(customer, 'Drop-off', 80);
-    await customer.getByRole('button', { name: 'Get estimate' }).click();
-    await expect(customer.getByText(/Estimate for about [\d.]+ km by road/)).toBeVisible({ timeout: 30_000 });
-    await expect(customer.getByText(/₱[\d,.]+ – ₱[\d,.]+/).first()).toBeVisible();
     await expect(customer.getByText(/Near-point estimate; tolls and route may change the final price, never above ₱[\d,.]+ without your OK\./).first()).toBeVisible();
 
     const note = `e2e ${Date.now()}`;
@@ -56,11 +54,11 @@ test.describe('self-loading truck', () => {
     await customer.getByRole('button', { name: 'Request truck' }).click();
     await expect(customer.getByText('Truck requested')).toBeVisible({ timeout: 30_000 });
 
-    // The customer asks for the confirming call, then counter-offers.
-    const card = customer.getByRole('group').filter({ hasText: note });
+    // The new trip opens in its drawer: the customer asks for the
+    // confirming call, then counter-offers.
+    const card = customer.getByRole('dialog').filter({ hasText: note });
     await card.getByRole('button', { name: 'Request call' }).click();
     await expect(card.getByText(/Call requested/)).toBeVisible();
-    await card.getByRole('button', { name: 'Negotiate price' }).click();
     await card.getByLabel('Message').fill(`Can you do 4321? ${note}`);
     await card.getByLabel('Offer (PHP, optional)').fill('4321');
     await card.getByRole('button', { name: 'Send' }).click();
@@ -92,8 +90,10 @@ test.describe('self-loading truck', () => {
     // The customer finds it under My Bookings > Self-loading truck, agreed.
     await customer.goto('/account/bookings');
     await customer.getByRole('tab', { name: 'Self-loading truck' }).click();
-    const booked = customer.getByRole('group').filter({ hasText: note });
-    await expect(booked.getByText('₱4,321.00').first()).toBeVisible();
+    const trip = customer.getByRole('button', { name: new RegExp(`^Trip ${code}`) });
+    await expect(trip.getByText('₱4,321.00')).toBeVisible();
+    await trip.click();
+    const booked = customer.getByRole('dialog', { name: code });
     // Above the estimate's cap only the customer can lift it.
     const approve = booked.getByRole('button', { name: /^Approve / });
     if (await approve.isVisible()) await approve.click();
@@ -110,7 +110,7 @@ test.describe('self-loading truck', () => {
 
     await customer.goto('/account/bookings');
     await customer.getByRole('tab', { name: 'Self-loading truck' }).click();
-    await expect(customer.getByRole('group').filter({ hasText: note }).getByText(/Paid/)).toBeVisible();
+    await expect(customer.getByRole('button', { name: new RegExp(`^Trip ${code}`) }).getByText('Paid')).toBeVisible();
 
     const overflow = await customer.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

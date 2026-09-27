@@ -28,13 +28,14 @@ export function toPinAddress(address: NominatimAddress): PinAddress {
 }
 
 // ponytail: OSM's public Nominatim (keyless, 1 request/second policy). A
-// pin drop or drag is one call and the previous one is aborted; move to a
-// hosted geocoder if traffic grows.
-let inflight: AbortController | null = null;
-export async function reverseGeocode(lat: number, lng: number): Promise<PinAddress | null> {
-  inflight?.abort();
+// pin drop or drag is one call and the previous one for the same `key` (the
+// pickup or the drop-off) is aborted; move to a hosted geocoder if traffic
+// grows.
+const inflight = new Map<string, AbortController>();
+export async function reverseGeocode(lat: number, lng: number, key = 'pin'): Promise<PinAddress | null> {
+  inflight.get(key)?.abort();
   const controller = new AbortController();
-  inflight = controller;
+  inflight.set(key, controller);
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&lat=${lat}&lon=${lng}`;
     const res = await fetch(url, { signal: controller.signal, headers: { 'Accept-Language': 'en' } });
@@ -45,7 +46,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<PinAddre
     // Offline, aborted by a newer pin, or rate-limited: the fields stay as typed.
     return null;
   } finally {
-    if (inflight === controller) inflight = null;
+    if (inflight.get(key) === controller) inflight.delete(key);
   }
 }
 

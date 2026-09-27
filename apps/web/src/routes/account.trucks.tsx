@@ -1,72 +1,42 @@
-import { createRoute, useNavigate } from '@tanstack/react-router';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { LatLng } from '../components/pin-map.js';
-import { RouteMap, type Which } from '../components/route-map.js';
+import { createRoute } from '@tanstack/react-router';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Suspense, useState } from 'react';
+import { LocateFixed, X } from 'lucide-react';
+import type { TruckEstimateResponse, TruckRequestResponse } from '@arkilaunch/shared';
+import { PinMap, type LatLng } from '../components/pin-map.js';
+import { formatDrive, hasWebGL, pinned, TripCanvas, type Which } from '../components/route-map.js';
 import { matchPhLocation, reverseGeocode } from '../lib/reverse-geocode.js';
-import { useState } from 'react';
-import type { TruckEstimateResponse, TruckPrice, TruckRequestListResponse, TruckRequestResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
-import { apiErrorText, apiGet, apiPost } from '../lib/api-client.js';
-import { formatPeso, formatStatus } from '../lib/format.js';
+import { apiErrorText, apiPost } from '../lib/api-client.js';
 import { toLocalInput } from './equipment.js';
 import { Surface } from '../components/surface.js';
 import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
-import { TruckThread } from '../components/truck-thread.js';
 import { Select } from '../components/select.js';
-import { BookingCode } from '../components/booking-code.js';
-import { customerSitesQueries } from '../lib/queries.js';
+import { Tabs } from '../components/tabs.js';
+import { customerSitesQueries, MY_TRUCK_REQUESTS, trucksQueries } from '../lib/queries.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
-import {
-  EMPTY_LOCATION,
-  LocationPicker,
-  locationLabel,
-  type PhLocation,
-} from '../components/location-picker.js';
+import { EstimateRange, PriceBreakdown, TruckRequestCard } from '../components/truck-trip.js';
+import { EMPTY_LOCATION, LocationPicker, locationLabel, type PhLocation } from '../components/location-picker.js';
 
-// The customer's own requests, one page at a time. Every key starts with
-// MY_TRUCK_REQUESTS, so invalidating that refreshes every page.
-export const MY_TRUCK_REQUESTS = ['me', 'truck-requests'] as const;
-export const myTruckRequestsQuery = (limit: number, offset: number, q = '') => ({
-  queryKey: [...MY_TRUCK_REQUESTS, limit, offset, q] as const,
-  queryFn: () =>
-    apiGet<TruckRequestListResponse>(
-      `/me/truck-requests?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}`,
-    ),
-});
+// Map-first truck booking (cr-arkilaunch-truck-map-booking.md): tap the
+// pickup, tap the drop-off, and the road route and price load on their own.
+// The address pickers wait under "Advanced search".
 
-// low-high band and the cap note shown with every estimate.
-export function EstimateRange({ price, capPhp }: { price: TruckPrice; capPhp?: number | null }) {
-  if (price.lowPhp === undefined || price.highPhp === undefined) return null;
-  const cap = capPhp ?? price.highPhp;
-  return (
-    <div className="flex flex-col gap-1">
-      <p className="font-mono text-base font-semibold tabular-nums text-text">
-        {formatPeso(price.lowPhp)} – {formatPeso(price.highPhp)}
-      </p>
-      <p className="text-xs text-text-muted">
-        Near-point estimate; tolls and route may change the final price, never above {formatPeso(cap)} without your OK.
-      </p>
-    </div>
-  );
+interface Side {
+  pin: LatLng | null;
+  place: PhLocation;
+  detail: string;
 }
+const EMPTY_SIDE: Side = { pin: null, place: EMPTY_LOCATION, detail: '' };
 
-export function PriceBreakdown({ price }: { price: TruckPrice }) {
-  return (
-    <dl className="flex flex-col gap-1 text-sm">
-      {price.lines.map((l) => (
-        <div key={l.label} className="flex justify-between gap-4">
-          <dt className="min-w-0 text-text-muted">{l.label}</dt>
-          <dd className="shrink-0 font-mono tabular-nums text-text">{formatPeso(l.amountPhp)}</dd>
-        </div>
-      ))}
-      <div className="mt-1 flex justify-between gap-4 border-t border-border pt-2 font-semibold">
-        <dt className="text-text">Total</dt>
-        <dd className="font-mono tabular-nums text-text">{formatPeso(price.totalPhp)}</dd>
-      </div>
-    </dl>
-  );
+// What the request is saved under: street/barangay and city when known,
+// else the coordinates. Staff read this label.
+function sideLabel(s: Side): string {
+  const text = [s.detail.trim(), locationLabel(s.place)].filter(Boolean).join(', ');
+  if (text) return text.slice(0, 300);
+  return s.pin ? `Pinned ${pinned(s.pin)}` : '';
 }
 
 function tomorrowMorning() {
@@ -76,66 +46,117 @@ function tomorrowMorning() {
   return toLocalInput(d.toISOString());
 }
 
+type Tab = 'book' | 'requests';
+
 function TrucksPage() {
+  const [tab, setTab] = useState<Tab>('book');
+  const [justCreated, setJustCreated] = useState<string | null>(null);
+  const active = useQuery(trucksQueries.mine(1, 0, '', 'open'));
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h1 className="font-display text-2xl font-semibold text-text">Self-loading truck</h1>
+        <p className="text-sm text-text-muted">
+          Tap the pickup, then the drop-off. The price comes from the road route; the rental team confirms the
+          final kilometres before you pay.
+        </p>
+      </div>
+      <Tabs
+        label="Truck"
+        value={tab}
+        onChange={setTab}
+        items={[
+          { id: 'book', label: 'Book a truck' },
+          { id: 'requests', label: 'Your requests', badge: active.data?.total ?? null },
+        ]}
+      />
+      <div role="tabpanel">
+        {tab === 'book' ? (
+          <BookTrip
+            onCreated={(r) => {
+              setJustCreated(r.id);
+              setTab('requests');
+            }}
+          />
+        ) : (
+          <YourRequests openId={justCreated} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+const pinPadding = () =>
+  window.matchMedia?.('(min-width: 1024px)').matches ? { top: 64, bottom: 48, right: 64, left: 440 } : 48;
+
+function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const [sides, setSides] = useState<Record<Which, Side>>({ pickup: EMPTY_SIDE, dropoff: EMPTY_SIDE });
+  const [placing, setPlacing] = useState<Which>('pickup');
   const [notes, setNotes] = useState('');
-  const [pickupAt, setPickupAt] = useState<PhLocation>(EMPTY_LOCATION);
-  const [dropoffAt, setDropoffAt] = useState<PhLocation>(EMPTY_LOCATION);
-  const [pickupDetail, setPickupDetail] = useState('');
-  const [dropoffDetail, setDropoffDetail] = useState('');
-  const [pickupPin, setPickupPin] = useState<LatLng | null>(null);
-  const [dropoffPin, setDropoffPin] = useState<LatLng | null>(null);
-  // Exact pins go straight to the router; without them the city is geocoded.
-  const pinBody = {
-    ...(pickupPin ? { pickupLat: pickupPin.lat, pickupLng: pickupPin.lng } : {}),
-    ...(dropoffPin ? { dropoffLat: dropoffPin.lat, dropoffLng: dropoffPin.lng } : {}),
-  };
-  const pickup = locationLabel(pickupAt);
-  const dropoff = locationLabel(dropoffAt);
-  // Street/landmark ride along in the notes: the estimate routes between
-  // city centres and the admin confirms the real km (CR truck-booking).
-  const fullNotes = [
-    pickupDetail.trim() && `Pickup: ${pickupDetail.trim()}`,
-    dropoffDetail.trim() && `Drop-off: ${dropoffDetail.trim()}`,
-    notes.trim(),
-  ]
-    .filter(Boolean)
-    .join('\n');
   const [when, setWhen] = useState(tomorrowMorning);
-
-  // A pin fills the street/barangay line and, when the names line up, the
-  // region/province/city pickers; everything stays editable.
-  async function fillFromPin(at: LatLng, setDetail: (v: string) => void, setPlace: (v: PhLocation) => void) {
-    const found = await reverseGeocode(at.lat, at.lng);
-    if (!found) return;
-    const detail = [found.street, found.barangay && `Brgy. ${found.barangay}`].filter(Boolean).join(', ');
-    if (detail) setDetail(detail);
-    const place = matchPhLocation(found);
-    if (place) setPlace(place);
-  }
-  // One map places both pins; each fills its own side's address fields.
-  function placePin(which: Which, at: LatLng) {
-    estimate.reset();
-    if (which === 'pickup') {
-      setPickupPin(at);
-      void fillFromPin(at, setPickupDetail, setPickupAt);
-    } else {
-      setDropoffPin(at);
-      void fillFromPin(at, setDropoffDetail, setDropoffAt);
-    }
-  }
-  const [offset, setOffset] = useState(0);
-  const mine = useQuery(myTruckRequestsQuery(PAGE_SIZE, offset));
-  // The project site the trip serves: staff open its proof before the job.
+  const [locating, setLocating] = useState(false);
   const sites = useQuery(customerSitesQueries.mine());
   const [siteId, setSiteId] = useState('');
   const chosenSite = (sites.data ?? []).find((site) => site.id === siteId);
+  const gl = hasWebGL();
 
-  const ready = pickup !== '' && dropoff !== '';
-  const estimate = useMutation({
-    mutationFn: () => apiPost<TruckEstimateResponse>('/me/truck-requests/estimate', { pickup, dropoff, ...pinBody }),
+  const update = (which: Which, patch: Partial<Side>) => setSides((s) => ({ ...s, [which]: { ...s[which], ...patch } }));
+
+  // A pin fills the street/barangay and, when the names line up, the
+  // region/province/city pickers; everything stays editable.
+  async function placePin(which: Which, at: LatLng) {
+    update(which, { pin: at });
+    if (which === 'pickup' && !sides.dropoff.pin) setPlacing('dropoff');
+    const found = await reverseGeocode(at.lat, at.lng, which);
+    if (!found) return;
+    const detail = [found.street, found.barangay && `Brgy. ${found.barangay}`].filter(Boolean).join(', ');
+    const place = matchPhLocation(found);
+    update(which, { detail, ...(place ? { place } : {}) });
+  }
+
+  function locateMe() {
+    if (!navigator.geolocation) {
+      toast.error('Location unavailable', 'This browser cannot share its location.');
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        void placePin('pickup', { lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      () => {
+        setLocating(false);
+        toast.error('Location unavailable', 'Allow location access, or tap the map instead.');
+      },
+      { enableHighAccuracy: true, timeout: 10_000 },
+    );
+  }
+
+  const pickup = sideLabel(sides.pickup);
+  const dropoff = sideLabel(sides.dropoff);
+  const a = sides.pickup.pin;
+  const b = sides.dropoff.pin;
+  const pinBody = {
+    ...(a ? { pickupLat: a.lat, pickupLng: a.lng } : {}),
+    ...(b ? { dropoffLat: b.lat, dropoffLng: b.lng } : {}),
+  };
+  const ready = pickup.length >= 5 && dropoff.length >= 5;
+
+  // Pins drive the route, so a pin (not its slowly arriving address) keys
+  // the estimate; without a pin the typed place does.
+  const estimate = useQuery({
+    queryKey: ['truck-estimate', a ? pinned(a) : pickup, b ? pinned(b) : dropoff],
+    queryFn: () => apiPost<TruckEstimateResponse>('/me/truck-requests/estimate', { pickup, dropoff, ...pinBody }),
+    enabled: ready,
+    staleTime: Infinity,
+    retry: false,
+    placeholderData: keepPreviousData,
   });
+  const route = estimate.data?.route ?? null;
+
   const submit = useMutation({
     mutationFn: () =>
       apiPost<TruckRequestResponse>('/me/truck-requests', {
@@ -143,78 +164,158 @@ function TrucksPage() {
         dropoff,
         ...pinBody,
         scheduledFor: new Date(when).toISOString(),
-        ...(fullNotes ? { notes: fullNotes } : {}),
+        ...(notes.trim() ? { notes: notes.trim() } : {}),
         projectSiteId: siteId,
       }),
-    onSuccess: () => {
+    onSuccess: (r) => {
       toast.success('Truck requested', 'The rental team will confirm the distance and final price.');
-      setPickupAt(EMPTY_LOCATION);
-      setDropoffAt(EMPTY_LOCATION);
-      setPickupDetail('');
-      setDropoffDetail('');
-      setPickupPin(null);
-      setDropoffPin(null);
+      setSides({ pickup: EMPTY_SIDE, dropoff: EMPTY_SIDE });
+      setPlacing('pickup');
       setNotes('');
-      estimate.reset();
-      setOffset(0);
       void queryClient.invalidateQueries({ queryKey: MY_TRUCK_REQUESTS });
+      onCreated(r);
     },
     onError: (e) => toast.error('Request not sent', apiErrorText(e)),
   });
 
+  const whenError = when && new Date(when) <= new Date() ? 'Pick a time in the future.' : undefined;
+  const hint = !a ? 'Tap the map to set your pickup' : !b ? 'Now tap your drop-off' : null;
+
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-text">Self-loading truck</h1>
-        <p className="text-sm text-text-muted">
-          Move equipment or materials between two points. The price is estimated from the road distance;
-          the rental team confirms the final kilometres before you are charged.
-        </p>
+    <div className="relative flex flex-col lg:block">
+      <div className="relative h-[60dvh] min-h-[420px] overflow-hidden rounded-md border border-border bg-surface-sunk lg:h-[calc(100dvh-14rem)] lg:min-h-[600px]">
+        {gl ? (
+          <Suspense fallback={<p className="p-4 text-sm text-text-muted">Loading the map...</p>}>
+            <TripCanvas
+              mode="edit"
+              pickup={a}
+              dropoff={b}
+              placing={placing}
+              onPlace={(which, at) => void placePin(which, at)}
+              line={route?.line ?? null}
+              label="Trip map: tap to place the selected pin, drag a pin to move it"
+              labels={{ pickup: sides.pickup.detail || undefined, dropoff: sides.dropoff.detail || undefined }}
+              fitPadding={pinPadding()}
+              hint={hint}
+            />
+          </Suspense>
+        ) : (
+          <PinMap
+            label={placing === 'pickup' ? 'Pickup pin' : 'Drop-off pin'}
+            value={sides[placing].pin}
+            onChange={(at) => void placePin(placing, at)}
+          />
+        )}
+        <button
+          type="button"
+          onClick={locateMe}
+          disabled={locating}
+          className="absolute bottom-8 right-3 z-10 inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm font-semibold text-text shadow-md hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:opacity-60"
+        >
+          <LocateFixed aria-hidden className="h-4 w-4" />
+          {locating ? 'Locating...' : 'Use my location'}
+        </button>
       </div>
 
-      <Surface radius="md" elevation="sm" className="grid gap-4 p-4 sm:grid-cols-2 sm:p-6">
-        <div className="flex flex-col gap-2">
-          <LocationPicker
-            label="Pickup location"
-            value={pickupAt}
-            onChange={(next) => {
-              setPickupAt(next);
-              estimate.reset();
-            }}
-          />
+      <Surface
+        radius="md"
+        elevation="md"
+        className="relative z-10 -mt-4 flex flex-col gap-4 rounded-t-xl p-4 lg:absolute lg:bottom-4 lg:left-4 lg:top-4 lg:mt-0 lg:w-[400px] lg:overflow-y-auto lg:rounded-md"
+      >
+        <div role="radiogroup" aria-label="Pin to place" className="flex flex-col gap-1">
+          {(['pickup', 'dropoff'] as const).map((which) => {
+            const side = sides[which];
+            const selected = placing === which;
+            const name = which === 'pickup' ? 'Pickup' : 'Drop-off';
+            const text = sideLabel(side);
+            return (
+              <div key={which} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={name}
+                  onClick={() => setPlacing(which)}
+                  className={[
+                    'flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-md border px-3 text-left',
+                    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+                    selected ? 'border-text bg-surface-sunk' : 'border-border hover:bg-surface-sunk',
+                  ].join(' ')}
+                >
+                  <span
+                    aria-hidden
+                    className={[
+                      'grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold',
+                      which === 'pickup' ? 'bg-primary text-on-primary' : 'bg-accent text-white',
+                    ].join(' ')}
+                  >
+                    {which === 'pickup' ? 'A' : 'B'}
+                  </span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">{name}</span>
+                    <span className={['truncate text-sm', text ? 'text-text' : 'text-text-muted'].join(' ')}>
+                      {text || (selected ? 'Tap the map' : 'Not set')}
+                    </span>
+                  </span>
+                </button>
+                {text && (
+                  <button
+                    type="button"
+                    aria-label={`Clear ${name.toLowerCase()}`}
+                    onClick={() => {
+                      update(which, EMPTY_SIDE);
+                      setPlacing(which);
+                    }}
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-text-muted hover:bg-surface-sunk hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring"
+                  >
+                    <X aria-hidden className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {ready && (
+          <div aria-live="polite" className="flex flex-col gap-2 border-t border-border pt-4">
+            {estimate.isError ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p role="alert" className="text-sm text-error">
+                  {apiErrorText(estimate.error)}
+                </p>
+                <Button variant="secondary" loading={estimate.isFetching} onClick={() => void estimate.refetch()}>
+                  Try again
+                </Button>
+              </div>
+            ) : !estimate.data || estimate.isFetching ? (
+              <p className="text-sm text-text-muted">Finding the fastest route...</p>
+            ) : (
+              <>
+                <p className="font-mono text-sm font-semibold tabular-nums text-text">
+                  {route ? formatDrive(route) : `~${estimate.data.km} km by road`}
+                </p>
+                {!route && a && b && (
+                  <p className="text-xs text-text-muted">The road route is unavailable right now; the line is as the crow flies.</p>
+                )}
+                <EstimateRange price={estimate.data} />
+                <details>
+                  <summary className="cursor-pointer text-sm text-text-muted">Breakdown</summary>
+                  <PriceBreakdown price={estimate.data} />
+                </details>
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3 border-t border-border pt-4">
           <Input
-            label="Pickup street or landmark (optional)"
-            value={pickupDetail}
-            onChange={(e) => setPickupDetail(e.target.value)}
+            label="Pickup date and time"
+            type="datetime-local"
+            value={when}
+            min={toLocalInput(new Date().toISOString())}
+            onChange={(e) => setWhen(e.target.value)}
+            {...(whenError ? { error: whenError } : {})}
           />
-        </div>
-        <div className="flex flex-col gap-2">
-          <LocationPicker
-            label="Drop-off location"
-            value={dropoffAt}
-            onChange={(next) => {
-              setDropoffAt(next);
-              estimate.reset();
-            }}
-          />
-          <Input
-            label="Drop-off street or landmark (optional)"
-            value={dropoffDetail}
-            onChange={(e) => setDropoffDetail(e.target.value)}
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <RouteMap
-            mode="edit"
-            pickup={pickupPin}
-            dropoff={dropoffPin}
-            route={estimate.data?.route ?? null}
-            onChange={placePin}
-          />
-        </div>
-        <Input label="Pickup date and time" type="datetime-local" value={when} min={toLocalInput(new Date().toISOString())} onChange={(e) => setWhen(e.target.value)} {...(when && new Date(when) <= new Date() ? { error: 'Pick a time in the future.' } : {})} />
-        <Input label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        <div className="sm:col-span-2">
           <Select
             id="truck-site"
             label="Project site this trip serves"
@@ -227,165 +328,90 @@ function TrucksPage() {
             <option value="">{(sites.data ?? []).length === 0 ? 'Add a project site under your company first' : 'Choose a site...'}</option>
             {(sites.data ?? []).map((site) => (
               <option key={site.id} value={site.id}>
-                {site.line1}, {site.city}{site.proofComplete ? '' : ' (proof needed)'}
+                {site.line1}, {site.city}
+                {site.proofComplete ? '' : ' (proof needed)'}
               </option>
             ))}
           </Select>
-        </div>
-        <div className="flex flex-wrap gap-3 sm:col-span-2">
-          <Button variant="secondary" disabled={!ready} loading={estimate.isPending} onClick={() => estimate.mutate()}>
-            Get estimate
-          </Button>
-          <Button disabled={!ready || !when || new Date(when) <= new Date() || !chosenSite?.proofComplete} loading={submit.isPending} onClick={() => submit.mutate()}>
+          <Button
+            className="w-full"
+            disabled={!ready || !when || Boolean(whenError) || !chosenSite?.proofComplete}
+            loading={submit.isPending}
+            onClick={() => submit.mutate()}
+          >
             Request truck
           </Button>
         </div>
-        {estimate.isError && (
-          <p role="alert" className="text-sm text-error sm:col-span-2">
-            {apiErrorText(estimate.error)}
-          </p>
-        )}
-        {estimate.data && (
-          <div className="sm:col-span-2" aria-live="polite">
-            <p className="mb-2 text-sm font-medium text-text">
-              Estimate for about {estimate.data.km} km by road
-            </p>
-            <EstimateRange price={estimate.data} />
-            <details className="mt-2">
-              <summary className="cursor-pointer text-sm text-text-muted">Breakdown</summary>
-              <PriceBreakdown price={estimate.data} />
-            </details>
-          </div>
-        )}
-      </Surface>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="font-display text-lg font-semibold text-text">Your requests</h2>
-        {mine.data?.total === 0 && <p className="text-sm text-text-muted">No truck requests yet.</p>}
-        {mine.data?.items.map((r) => (
-          <TruckRequestCard key={r.id} request={r} />
-        ))}
-        {mine.data && (
-          <Pagination offset={offset} limit={PAGE_SIZE} total={mine.data.total} onOffsetChange={setOffset} noun="requests" />
-        )}
-      </section>
+        <details className="border-t border-border pt-3">
+          <summary className="cursor-pointer text-sm font-semibold text-text">Advanced search</summary>
+          <div className="mt-3 flex flex-col gap-4">
+            {(['pickup', 'dropoff'] as const).map((which) => {
+              const name = which === 'pickup' ? 'Pickup' : 'Drop-off';
+              return (
+                <div key={which} className="flex flex-col gap-2">
+                  <LocationPicker label={`${name} location`} value={sides[which].place} onChange={(place) => update(which, { place })} />
+                  <Input
+                    label={`${name} street or landmark (optional)`}
+                    value={sides[which].detail}
+                    onChange={(e) => update(which, { detail: e.target.value })}
+                  />
+                </div>
+              );
+            })}
+            <Input label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+        </details>
+      </Surface>
     </div>
   );
 }
 
-// One truck request as the customer sees it: route, price, the
-// negotiation thread, and payment once the rental team accepts a price.
-export function TruckRequestCard({ request: r }: { request: TruckRequestResponse }) {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: MY_TRUCK_REQUESTS });
-  const call = useMutation({ mutationFn: () => apiPost(`/me/truck-requests/${r.id}/request-call`, {}), onSuccess: refresh });
-  const approve = useMutation({ mutationFn: () => apiPost(`/me/truck-requests/${r.id}/approve-price`, {}), onSuccess: refresh });
-  const overCap = r.agreedPricePhp !== null && r.capPhp !== null && r.agreedPricePhp > r.capPhp;
-  const pay = useMutation({
-    mutationFn: (cash: boolean) =>
-      apiPost<{ checkoutUrl: string | null; invoiceId: string }>(
-        `/me/truck-requests/${r.id}/checkout`,
-        cash ? { cash: true } : {},
-      ),
-    onSuccess: (data) => {
-      if (data.checkoutUrl && /^https?:\/\//i.test(data.checkoutUrl)) {
-        window.location.assign(data.checkoutUrl);
-        return;
-      }
-      void navigate({ to: '/account/invoices/$invoiceId', params: { invoiceId: data.invoiceId } });
-    },
-  });
-  const closed = r.status === 'cancelled' || r.status === 'paid';
-
+function YourRequests({ openId }: { openId: string | null }) {
+  const [status, setStatus] = useState<'open' | 'closed'>('open');
+  const [offset, setOffset] = useState(0);
+  const list = useQuery(trucksQueries.mine(PAGE_SIZE, offset, '', status));
   return (
-    <Surface
-      radius="md"
-      elevation="sm"
-      role="group"
-      aria-label={`Truck request ${r.pickup} to ${r.dropoff}`}
-      className="flex flex-col gap-2 p-4"
-    >
-      <BookingCode code={r.code} />
-      <p className="text-sm font-medium text-text">
-        {r.pickup} → {r.dropoff}
-      </p>
-      {r.notes && <p className="whitespace-pre-line text-sm text-text-muted">{r.notes}</p>}
-      <p className="text-xs text-text-muted">
-        {new Date(r.scheduledFor).toLocaleString()} · {formatStatus(r.status)} ·{' '}
-        {r.confirmedKm !== null ? `${r.confirmedKm} km confirmed` : `about ${r.estimatedKm} km`}
-      </p>
-      {r.agreedPricePhp !== null ? (
-        <p className="font-mono text-sm font-semibold tabular-nums text-text">
-          {formatPeso(r.agreedPricePhp)}
-          <span className="font-sans font-normal text-text-muted"> agreed</span>
-        </p>
-      ) : (
-        <p className="font-mono text-sm font-semibold tabular-nums text-text">
-          {formatPeso(r.price.totalPhp)}
-          {r.confirmedKm === null && <span className="font-sans font-normal text-text-muted"> estimated</span>}
-        </p>
-      )}
-      {r.agreedPricePhp === null && <EstimateRange price={r.price} capPhp={r.capPhp} />}
-      {!closed && (
-        <p className="text-xs text-text-muted">
-          {r.callConfirmedAt
-            ? 'Confirmed by phone.'
-            : r.callRequestedAt
-              ? 'Call requested. The rental team will ring you to confirm before payment.'
-              : 'The rental team confirms every truck by phone before you pay.'}
-        </p>
-      )}
-      <div className="flex flex-wrap gap-2">
-        {!closed && (
-          <Button variant="secondary" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-            {open ? 'Hide negotiation' : 'Negotiate price'}
-          </Button>
-        )}
-        {!closed && !r.callConfirmedAt && (
-          <Button variant="secondary" loading={call.isPending} onClick={() => call.mutate()}>
-            {r.callRequestedAt ? 'Request call again' : 'Request call'}
-          </Button>
-        )}
-        {r.status === 'agreed' && overCap && (
-          <Button loading={approve.isPending} onClick={() => approve.mutate()}>
-            Approve {formatPeso(r.agreedPricePhp!)}
-          </Button>
-        )}
-        {r.status === 'agreed' && r.callConfirmedAt && !overCap && (
-          <>
-            <Button loading={pay.isPending && pay.variables === false} onClick={() => pay.mutate(false)}>
-              Pay online
-            </Button>
-            <Button
-              variant="secondary"
-             
-              loading={pay.isPending && pay.variables === true}
-              onClick={() => pay.mutate(true)}
-            >
-              Pay cash at the office
-            </Button>
-          </>
-        )}
+    <div className="flex flex-col gap-4">
+      <div role="radiogroup" aria-label="Show" className="inline-flex w-fit rounded-md border border-border p-0.5">
+        {(['open', 'closed'] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            role="radio"
+            aria-checked={status === s}
+            onClick={() => {
+              setStatus(s);
+              setOffset(0);
+            }}
+            className={[
+              'min-h-9 rounded-sm px-4 text-sm font-semibold',
+              'focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
+              status === s ? 'bg-text text-text-inverse' : 'text-text-muted hover:text-text',
+            ].join(' ')}
+          >
+            {s === 'open' ? 'Active' : 'Past'}
+          </button>
+        ))}
       </div>
-      {r.status === 'agreed' && overCap && (
-        <p className="text-sm text-text-muted">
-          The agreed price is above the {formatPeso(r.capPhp!)} cap from your estimate. Approve it to pay.
-        </p>
-      )}
-      {(call.isError || approve.isError) && (
+      {list.isPending && <p className="text-sm text-text-muted">Loading your trips...</p>}
+      {list.isError && (
         <p role="alert" className="text-sm text-error">
-          {apiErrorText(call.error ?? approve.error)}
+          {apiErrorText(list.error)}
         </p>
       )}
-      {pay.isError && (
-        <p role="alert" className="text-sm text-error">
-          {apiErrorText(pay.error)}
-        </p>
+      {list.data?.total === 0 && (
+        <p className="text-sm text-text-muted">{status === 'open' ? 'No active trips. Book one on the map.' : 'No past trips yet.'}</p>
       )}
-      {open && <TruckThread base={`/me/truck-requests/${r.id}`} />}
-    </Surface>
+      <div className="grid gap-3 xl:grid-cols-2">
+        {list.data?.items.map((r) => (
+          <TruckRequestCard key={r.id} request={r} initiallyOpen={r.id === openId} />
+        ))}
+      </div>
+      {list.data && list.data.total > 0 && (
+        <Pagination offset={offset} limit={PAGE_SIZE} total={list.data.total} onOffsetChange={setOffset} noun="trips" />
+      )}
+    </div>
   );
 }
 
