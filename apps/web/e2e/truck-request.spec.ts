@@ -110,7 +110,7 @@ test.describe('self-loading truck', () => {
 
     await customer.goto('/account/bookings');
     await customer.getByRole('tab', { name: 'Self-loading truck' }).click();
-    await expect(customer.getByRole('button', { name: new RegExp(`^Trip ${code}`) }).getByText('Paid')).toBeVisible();
+    await expect(customer.getByRole('button', { name: new RegExp(`^Trip ${code}`) }).getByText('Paid', { exact: true })).toBeVisible();
 
     const overflow = await customer.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
