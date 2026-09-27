@@ -132,9 +132,11 @@ function RescheduleCard({ bookingId }: { bookingId: string }) {
 function CallCard({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const [asking, setAsking] = useState(false);
   const confirm = useMutation({
     mutationFn: () => apiPost(`/bookings/${booking.id}/call-confirmed`, {}),
     onSuccess: () => {
+      setAsking(false);
       void queryClient.invalidateQueries({ queryKey: bookingsQueries.detail(booking.id).queryKey });
       toast.success('Confirmed by phone', 'The customer can now pay.');
     },
@@ -151,10 +153,20 @@ function CallCard({ booking }: { booking: BookingDetailResponse }) {
             : 'Call the customer before they pay.'}
       </p>
       {!booking.callConfirmedAt && booking.status !== 'cancelled' && (
-        <Button variant="secondary" loading={confirm.isPending} onClick={() => confirm.mutate()}>
+        <Button variant="secondary" loading={confirm.isPending} onClick={() => setAsking(true)}>
           Confirmed by phone
         </Button>
       )}
+      <ConfirmDialog
+        open={asking}
+        tone="approve"
+        title="Mark as confirmed by phone?"
+        body={<p>Only once you have spoken to the customer: it opens checkout for this booking.</p>}
+        confirmLabel="Yes, we spoke"
+        pending={confirm.isPending}
+        onConfirm={() => confirm.mutate()}
+        onCancel={() => setAsking(false)}
+      />
     </Surface>
   );
 }

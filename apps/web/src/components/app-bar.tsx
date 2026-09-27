@@ -128,7 +128,7 @@ function NotificationBell({
       >
         <BellIcon aria-hidden="true" className="h-5 w-5" />
         {unreadCount !== null && unreadCount > 0 && (
-          <span className="rounded-full bg-primary px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-text">
+          <span className="rounded-full bg-primary px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-on-primary">
             {unreadCount}
           </span>
         )}
@@ -334,7 +334,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             <ShoppingCart aria-hidden="true" className="h-5 w-5" />
             <span className="hidden sm:inline">Cart</span>
             {cartCount > 0 && (
-              <span className="rounded-full bg-primary px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-text">
+              <span className="rounded-full bg-primary px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-on-primary">
                 {cartCount}
               </span>
             )}

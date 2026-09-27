@@ -12,7 +12,7 @@ import {
   TIN_REGEX,
   sameValue,
 } from '@arkilaunch/shared';
-import { createRoute } from '@tanstack/react-router';
+import { createRoute, useNavigate } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { PageHeader } from '../components/page-header.js';
@@ -21,6 +21,8 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { StatusBadge } from '../components/status-badge.js';
 import { Button } from '../components/button.js';
 import { Modal } from '../components/modal.js';
+import { ConfirmDialog } from '../components/confirm-dialog.js';
+import { Tabs } from '../components/tabs.js';
 import { useToast } from '../components/toast.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
@@ -589,12 +591,14 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ companyId: string; documentId: string } | null>(null);
   const [rejecting, setRejecting] = useState<CompanyReviewResponse | null>(null);
+  const [approving, setApproving] = useState<{ company: CompanyReviewResponse; body: Record<string, unknown> } | null>(null);
   const open = query.data?.items.find((c) => c.id === openId) ?? null;
 
   const decide = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) => apiPatch(`/customers/${id}/kyc`, body),
     onSuccess: async (_d, { body }) => {
       setRejecting(null);
+      setApproving(null);
       setOpenId(null);
       await queryClient.invalidateQueries({ queryKey: ['customers', 'review'] });
       toast.success(body.decision === 'approved' ? 'Company verified' : 'Company rejected', 'The customer has been notified.');
@@ -637,13 +641,30 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
             decidable={kycStatus === 'pending'}
             deciding={decide.isPending}
             onApprove={(registryChecked, identity) =>
-              decide.mutate({ id: open.id, body: { decision: 'approved', registryChecked, identity } })
+              setApproving({ company: open, body: { decision: 'approved', registryChecked, identity } })
             }
             onReject={() => setRejecting(open)}
             onPreviewDocument={(companyId, documentId) => setPreview({ companyId, documentId })}
           />
         )}
       </Modal>
+      <ConfirmDialog
+        open={approving !== null}
+        tone="approve"
+        title="Verify this company?"
+        body={
+          <p>
+            <strong>{approving?.company.companyName}</strong> is cleared to book and pay, exactly as submitted. The customer is
+            notified.
+          </p>
+        }
+        confirmLabel="Verify company"
+        pending={decide.isPending}
+        onConfirm={() => {
+          if (approving) decide.mutate({ id: approving.company.id, body: approving.body });
+        }}
+        onCancel={() => setApproving(null)}
+      />
       {rejecting && (
         <RejectDialog
           company={rejecting}
@@ -664,30 +685,51 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   );
 }
 
+type Queue = 'pending' | 'approved';
+const QUEUE_PATH: Record<Queue, '/app/registration/pending' | '/app/registration/verified'> = {
+  pending: '/app/registration/pending',
+  approved: '/app/registration/verified',
+};
+
+// One page, two tabs: each keeps its own URL so a link to either still works.
+function RegistrationsPage({ kycStatus }: { kycStatus: Queue }) {
+  const navigate = useNavigate();
+  const waiting = useQuery(companiesQueries.review('pending', 1, 0));
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="Customers"
+        title="Registrations"
+        description={
+          kycStatus === 'pending'
+            ? 'Approve or reject what each customer submitted. You check it; you never edit it. A rejection tells the customer which documents fix it, and they reapply.'
+            : 'Customer companies cleared to book and pay.'
+        }
+      />
+      <Tabs
+        label="Registration status"
+        items={[
+          { id: 'pending', label: 'Pending', badge: waiting.data?.total ?? null },
+          { id: 'approved', label: 'Verified' },
+        ]}
+        value={kycStatus}
+        onChange={(next) => void navigate({ to: QUEUE_PATH[next] })}
+      />
+      <CompanyQueue key={kycStatus} kycStatus={kycStatus} />
+    </div>
+  );
+}
+
 export const appRegistrationPendingRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/registration/pending',
   beforeLoad: requireRole('admin'),
-  component: () => (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        eyebrow="Registration"
-        title="Registration pending"
-        description="Approve or reject what each customer submitted. You check it; you never edit it. A rejection tells the customer which documents fix it, and they reapply."
-      />
-      <CompanyQueue kycStatus="pending" />
-    </div>
-  ),
+  component: () => <RegistrationsPage kycStatus="pending" />,
 });
 
 export const appRegistrationVerifiedRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/registration/verified',
   beforeLoad: requireRole('admin'),
-  component: () => (
-    <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Registration" title="Registration verified" description="Customer companies cleared to pay." />
-      <CompanyQueue kycStatus="approved" />
-    </div>
-  ),
+  component: () => <RegistrationsPage kycStatus="approved" />,
 });

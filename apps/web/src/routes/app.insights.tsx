@@ -9,8 +9,10 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon, WrenchIcon } from '../components/icons.js';
 import { useQuery } from '@tanstack/react-query';
-import { equipmentQueries } from '../lib/queries.js';
+import { equipmentQueries, fleetUtilizationPct } from '../lib/queries.js';
+import { StatTile } from '../components/stat-tile.js';
 import { formatHours, formatInvoiceType, formatPeso, shortCode } from '../lib/format.js';
+import { TrendingUp } from 'lucide-react';
 
 // The utilization report identifies a unit only by id. Rather than print a
 // UUID stub in the column a yard manager reads first, look the machine up in
@@ -55,7 +57,7 @@ function InsightsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Billing"
+        eyebrow="Overview"
         title="Reports"
         description="How hard the fleet is working, and what it has earned."
       />
@@ -64,9 +66,21 @@ function InsightsPage() {
         options={reportQueries.snapshot()}
         emptyTitle="No insights yet"
         emptyDescription="Utilization and financial reports appear once the fleet has activity."
+        emptyIcon={TrendingUp}
         isEmpty={() => false}
         render={(data) => (
           <div className="flex flex-col gap-8">
+            {/* The four numbers an owner opens this page for, before any table. */}
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <StatTile label="Invoiced" value={formatPeso(data.financial.invoiced.total)} />
+              <StatTile label="Paid" value={formatPeso(data.financial.paid)} />
+              <StatTile label="Deposit deducted" value={formatPeso(data.financial.depositDeducted)} />
+              <StatTile
+                label="Fleet utilization"
+                value={fleetUtilizationPct(data.utilization)?.toFixed(1).concat('%') ?? null}
+                hint={`${data.utilization.fleet.length} machines`}
+              />
+            </div>
             <div>
               <h2 className="mb-3 font-display text-base font-semibold text-text">
                 Fleet utilization
@@ -104,32 +118,6 @@ function InsightsPage() {
                 rows={Object.entries(data.financial.invoiced.byType)}
                 rowKey={(row) => row[0]}
               />
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-md border border-border-strong bg-surface px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
-                    Total invoiced
-                  </p>
-                  <p className="font-mono text-xl tabular-nums text-text">
-                    {formatPeso(data.financial.invoiced.total)}
-                  </p>
-                </div>
-                <div className="rounded-md border border-border-strong bg-surface px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
-                    Paid
-                  </p>
-                  <p className="font-mono text-xl tabular-nums text-text">
-                    {formatPeso(data.financial.paid)}
-                  </p>
-                </div>
-                <div className="rounded-md border border-border-strong bg-surface px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
-                    Deposit deducted
-                  </p>
-                  <p className="font-mono text-xl tabular-nums text-text">
-                    {formatPeso(data.financial.depositDeducted)}
-                  </p>
-                </div>
-              </div>
             </div>
           </div>
         )}

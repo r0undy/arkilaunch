@@ -82,8 +82,14 @@ describe('Quotes', () => {
     expect(await screen.findByRole('tab', { name: 'Equipment rental' })).toHaveAttribute('aria-selected', 'true');
     // No quote is drawn up per company any more.
     expect(screen.queryByLabelText('Customer')).not.toBeInTheDocument();
-    expect(await screen.findByLabelText('Mobilization (PHP)')).toHaveValue(15000);
-    expect(screen.getByLabelText('Demobilization (PHP)')).toHaveValue(12000);
+    // Read at a glance on the card; the inputs are one Edit away, in a modal.
+    const fees = await screen.findByRole('group', { name: 'Mobilization and demobilization' });
+    expect(fees).toHaveTextContent(/15,000/);
+    await userEvent.click(screen.getByRole('button', { name: 'Edit mobilization fees' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Mobilization and demobilization' });
+    expect(within(dialog).getByLabelText('Mobilization (PHP)')).toHaveValue(15000);
+    expect(within(dialog).getByLabelText('Demobilization (PHP)')).toHaveValue(12000);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 
     await userEvent.click(screen.getByRole('tab', { name: 'Trucking' }));
     expect(await screen.findByRole('heading', { name: 'Truck pricing' })).toBeInTheDocument();

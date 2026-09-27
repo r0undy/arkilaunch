@@ -85,6 +85,7 @@ test.describe('self-loading truck', () => {
     await admin.getByRole('dialog', { name: 'Accept this price?' }).getByRole('button', { name: 'Accept price' }).click();
     await expect(admin.getByText('Price accepted')).toBeVisible();
     await drawer.getByRole('button', { name: 'Confirmed by phone' }).click();
+    await admin.getByRole('dialog', { name: 'Mark as confirmed by phone?' }).getByRole('button', { name: 'Yes, we spoke' }).click();
     await expect(admin.getByText('Confirmed by phone').first()).toBeVisible();
 
     // The customer finds it under My Bookings > Self-loading truck, agreed.

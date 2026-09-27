@@ -308,7 +308,7 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
           </Select>
           <p className="text-sm text-text-muted">
             Hire rates are not set here. Every machine of a category is priced by its{' '}
-            <Link to="/app/settings" className="text-accent underline">
+            <Link to="/app/quotes" className="text-accent underline">
               rate card
             </Link>
             , which is what quotes are calculated from.

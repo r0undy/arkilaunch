@@ -11,6 +11,7 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { CheckIcon, AlertIcon, XCircleIcon } from '../components/icons.js';
 import { formatSeverity, siteName } from '../lib/format.js';
+import { MapPin } from 'lucide-react';
 
 const SEVERITY_META: Record<string, { tone: StatusTone; icon: ReactElement }> = {
   none: { tone: 'weather-clear', icon: <CheckIcon /> },
@@ -51,15 +52,16 @@ function DeploymentPage() {
       {/* Outside DataPanel: the header belongs to the page, not to the
           response, so it stays put while the table is loading or empty. */}
       <PageHeader
-        eyebrow="Dispatch"
-        title="Sites and deployment"
+        eyebrow="Operations"
+        title="Sites"
         description="Where your machines are working, and the weather over each site."
       />
       <DataPanel
-        title="Sites and deployment"
+        title="Sites"
         options={sitesQueries.list(PAGE_SIZE, offset)}
         emptyTitle="No project sites yet"
         emptyDescription="Add a project site to deploy equipment to it."
+        emptyIcon={MapPin}
         isEmpty={(data) => data.total === 0}
         render={(data) => (
           <Table

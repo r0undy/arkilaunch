@@ -11,6 +11,7 @@ import { Select } from './select.js';
 import { Button } from './button.js';
 import { useToast } from './toast.js';
 import { ConfirmDialog } from './confirm-dialog.js';
+import { Tabs } from './tabs.js';
 import { EquipmentReport } from './equipment-report.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 
@@ -50,12 +51,15 @@ export function MaintenanceModal({
   const [winEnd, setWinEnd] = useState('');
   const [winNotes, setWinNotes] = useState('');
   const winInvalid = !winStart || !winEnd || new Date(winEnd) <= new Date(winStart);
-  const [tab, setTab] = useState<'report' | 'maintenance'>('report');
+  const [tab, setTab] = useState<'report' | 'schedules' | 'dates'>('report');
   const [removing, setRemoving] = useState<{ id: string; name: string } | null>(null);
+  const [unblocking, setUnblocking] = useState<{ id: string; span: string } | null>(null);
+  const [correcting, setCorrecting] = useState(false);
 
   // A duplicate schedule, or a fresh plan: remove it. Past services stay.
   const removeSchedule = useMutation({
-    mutationFn: (scheduleId: string) => apiDelete(`/equipment/${equipment.id}/maintenance-schedules/${scheduleId}`),
+    mutationFn: (scheduleId: string) =>
+      apiDelete(`/equipment/${equipment.id}/maintenance-schedules/${scheduleId}`),
     onSuccess: () => {
       refresh();
       setRemoving(null);
@@ -67,7 +71,9 @@ export function MaintenanceModal({
   // Push a block's end out by a day; it frees on its own after the end.
   const extendWindow = useMutation({
     mutationFn: ({ id, endsAt }: { id: string; endsAt: Date }) =>
-      apiPatch(`/equipment/${equipment.id}/maintenance-windows/${id}`, { endsAt: endsAt.toISOString() }),
+      apiPatch(`/equipment/${equipment.id}/maintenance-windows/${id}`, {
+        endsAt: endsAt.toISOString(),
+      }),
     onSuccess: () => {
       refresh();
       void queryClient.invalidateQueries({ queryKey: ['maintenance-windows', 'ending-soon'] });
@@ -94,8 +100,13 @@ export function MaintenanceModal({
     onError: (error) => toast.error('Could not block those dates', apiErrorText(error)),
   });
   const removeWindow = useMutation({
-    mutationFn: (windowId: string) => apiDelete(`/equipment/${equipment.id}/maintenance-windows/${windowId}`),
-    onSuccess: () => refresh(),
+    mutationFn: (windowId: string) =>
+      apiDelete(`/equipment/${equipment.id}/maintenance-windows/${windowId}`),
+    onSuccess: () => {
+      refresh();
+      setUnblocking(null);
+      toast.success('Dates unblocked', 'Bookings can use them again.');
+    },
     onError: (error) => toast.error('Could not remove those dates', apiErrorText(error)),
   });
 
@@ -135,6 +146,7 @@ export function MaintenanceModal({
       refresh();
       setRuntime('');
       setReason('');
+      setCorrecting(false);
       toast.success('Hour meter corrected', 'The change and its reason are in the audit log.');
     },
     onError: (error) => toast.error('Could not correct the hour meter', apiErrorText(error)),
@@ -150,209 +162,266 @@ export function MaintenanceModal({
       description={`Serial ${equipment.serialNo}`}
       size="lg"
     >
-      <div role="tablist" aria-label="Equipment" className="mb-4 flex gap-1 border-b border-border">
-        {(['report', 'maintenance'] as const).map((id) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className={[
-              '-mb-px border-b-2 px-4 py-2 text-sm font-semibold',
-              tab === id ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text',
-            ].join(' ')}
-          >
-            {id === 'report' ? 'Report' : 'Maintenance'}
-          </button>
-        ))}
+      <div className="mb-4">
+        <Tabs
+          label="Equipment"
+          items={[
+            { id: 'report', label: 'Report' },
+            { id: 'schedules', label: 'Schedules', badge: data?.schedules.length ?? null },
+            { id: 'dates', label: 'Blocked dates', badge: data?.windows.length ?? null },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
       </div>
-      {tab === 'report' ? (
-        <EquipmentReport equipmentId={equipment.id} />
-      ) : (
-      <div className="flex flex-col gap-6">
-        <p className="text-sm text-text">
-          Hour meter:{' '}
-          <strong className="font-mono tabular-nums">{data ? data.runtimeHours : '…'} h</strong>
-        </p>
+      {tab === 'report' && <EquipmentReport equipmentId={equipment.id} />}
+      {tab === 'schedules' && (
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-sm bg-surface-sunk px-3 py-2">
+            <p className="text-sm text-text">
+              Hour meter:{' '}
+              <strong className="font-mono tabular-nums">{data ? data.runtimeHours : '…'} h</strong>
+            </p>
+            <Button variant="ghost" onClick={() => setCorrecting(true)}>
+              Correct hour meter
+            </Button>
+          </div>
 
-        <section className="flex flex-col gap-3" aria-label="Schedules">
-          <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
-            Schedules
-          </h3>
-          {data && data.schedules.length === 0 && (
-            <p className="text-sm text-text-muted">No schedules yet.</p>
-          )}
-          <ul className="flex flex-col gap-2">
-            {data?.schedules.map((s) => {
-              const name = s.task ?? 'General service';
-              const warn =
-                s.hoursSinceService !== null && s.hoursSinceService >= s.hoursInterval * 0.9;
-              return (
+          <section className="flex flex-col gap-3" aria-label="Schedules">
+            <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+              Schedules
+            </h3>
+            {data && data.schedules.length === 0 && (
+              <p className="text-sm text-text-muted">No schedules yet.</p>
+            )}
+            <ul className="flex flex-col gap-2">
+              {data?.schedules.map((s) => {
+                const name = s.task ?? 'General service';
+                const warn =
+                  s.hoursSinceService !== null && s.hoursSinceService >= s.hoursInterval * 0.9;
+                return (
+                  <li
+                    key={s.id}
+                    aria-label={name}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border p-3"
+                  >
+                    <div className="text-sm">
+                      <p className="font-medium text-text">{name}</p>
+                      <p className={warn ? 'text-error' : 'text-text-muted'}>
+                        <span data-testid="hours-since">{s.hoursSinceService ?? '—'}</span> h since
+                        service, every {s.hoursInterval} h
+                        {s.nextDue !== null ? `, next due at ${s.nextDue} h` : ''}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() => logService.mutate(s.id)}
+                        loading={logService.isPending && logService.variables === s.id}
+                      >
+                        Log service
+                      </Button>
+                      <Button variant="ghost" onClick={() => setRemoving({ id: s.id, name })}>
+                        Remove
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+              Add schedule
+            </h3>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Select
+                label="Preset"
+                value={preset}
+                onChange={(e) => {
+                  setPreset(e.target.value);
+                  const found = MAINTENANCE_PRESETS.find((p) => p.task === e.target.value);
+                  if (found) {
+                    setTask(found.task);
+                    setHoursInterval(String(found.hoursInterval));
+                  }
+                }}
+              >
+                {MAINTENANCE_PRESETS.map((p) => (
+                  <option key={p.task} value={p.task}>
+                    {p.task} ({p.hoursInterval} h)
+                  </option>
+                ))}
+                <option value="">Custom</option>
+              </Select>
+              <Input label="Task" value={task} onChange={(e) => setTask(e.target.value)} />
+              <Input
+                label="Interval (hours)"
+                type="number"
+                value={interval}
+                onChange={(e) => setHoursInterval(e.target.value)}
+              />
+            </div>
+            <div>
+              <Button
+                variant="primary"
+                onClick={() => addSchedule.mutate()}
+                loading={addSchedule.isPending}
+                disabled={!task.trim() || !(Number(interval) > 0)}
+              >
+                Add schedule
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
+      {tab === 'dates' && (
+        <div className="flex flex-col gap-6">
+          <section className="flex flex-col gap-3" aria-label="Maintenance dates">
+            <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+              Maintenance dates
+            </h3>
+            {data && data.windows.length === 0 && (
+              <p className="text-sm text-text-muted">No dates blocked.</p>
+            )}
+            <ul className="flex flex-col gap-2">
+              {data?.windows.map((w) => (
                 <li
-                  key={s.id}
-                  aria-label={name}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border p-3"
+                  key={w.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border p-3 text-sm text-text"
                 >
-                  <div className="text-sm">
-                    <p className="font-medium text-text">{name}</p>
-                    <p className={warn ? 'text-error' : 'text-text-muted'}>
-                      <span data-testid="hours-since">{s.hoursSinceService ?? '—'}</span> h since
-                      service, every {s.hoursInterval} h
-                      {s.nextDue !== null ? `, next due at ${s.nextDue} h` : ''}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
+                  <span className="flex flex-wrap items-center gap-2">
+                    {new Date(w.startsAt).toLocaleString()} to {new Date(w.endsAt).toLocaleString()}
+                    {w.notes ? ` · ${w.notes}` : ''}
+                    {new Date(w.endsAt).getTime() <= Date.now() ? (
+                      <span className="text-xs text-text-muted">ended · unit is free again</span>
+                    ) : (
+                      endsSoon(w.endsAt) !== null && (
+                        <span className="rounded-full border border-warning px-2 text-xs text-text">
+                          ends in {endsSoon(w.endsAt)} day(s)
+                        </span>
+                      )
+                    )}
+                  </span>
+                  <span className="flex gap-2">
+                    {new Date(w.endsAt).getTime() > Date.now() && (
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          extendWindow.mutate({
+                            id: w.id,
+                            endsAt: new Date(new Date(w.endsAt).getTime() + DAY),
+                          })
+                        }
+                        loading={extendWindow.isPending && extendWindow.variables?.id === w.id}
+                      >
+                        +1 day
+                      </Button>
+                    )}
                     <Button
-                      variant="secondary"
-                      onClick={() => logService.mutate(s.id)}
-                      loading={logService.isPending && logService.variables === s.id}
+                      variant="ghost"
+                      onClick={() =>
+                        setUnblocking({
+                          id: w.id,
+                          span: `${new Date(w.startsAt).toLocaleString()} to ${new Date(w.endsAt).toLocaleString()}`,
+                        })
+                      }
                     >
-                      Log service
-                    </Button>
-                    <Button variant="ghost" onClick={() => setRemoving({ id: s.id, name })}>
                       Remove
                     </Button>
-                  </div>
+                  </span>
                 </li>
-              );
-            })}
-          </ul>
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
-            Add schedule
-          </h3>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Select
-              label="Preset"
-              value={preset}
-              onChange={(e) => {
-                setPreset(e.target.value);
-                const found = MAINTENANCE_PRESETS.find((p) => p.task === e.target.value);
-                if (found) {
-                  setTask(found.task);
-                  setHoursInterval(String(found.hoursInterval));
-                }
-              }}
-            >
-              {MAINTENANCE_PRESETS.map((p) => (
-                <option key={p.task} value={p.task}>
-                  {p.task} ({p.hoursInterval} h)
-                </option>
               ))}
-              <option value="">Custom</option>
-            </Select>
-            <Input label="Task" value={task} onChange={(e) => setTask(e.target.value)} />
-            <Input
-              label="Interval (hours)"
-              type="number"
-              value={interval}
-              onChange={(e) => setHoursInterval(e.target.value)}
-            />
-          </div>
-          <div>
-            <Button
-              variant="primary"
-              onClick={() => addSchedule.mutate()}
-              loading={addSchedule.isPending}
-              disabled={!task.trim() || !(Number(interval) > 0)}
-            >
-              Add schedule
-            </Button>
-          </div>
-        </section>
-
-        <section className="flex flex-col gap-3" aria-label="Maintenance dates">
-          <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
-            Maintenance dates
-          </h3>
-          {data && data.windows.length === 0 && (
-            <p className="text-sm text-text-muted">No dates blocked.</p>
-          )}
-          <ul className="flex flex-col gap-2">
-            {data?.windows.map((w) => (
-              <li
-                key={w.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border p-3 text-sm text-text"
+            </ul>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Input
+                label="From"
+                type="datetime-local"
+                value={winStart}
+                onChange={(e) => setWinStart(e.target.value)}
+              />
+              <Input
+                label="Until"
+                type="datetime-local"
+                value={winEnd}
+                onChange={(e) => setWinEnd(e.target.value)}
+              />
+              <Input
+                label="Note (optional)"
+                value={winNotes}
+                onChange={(e) => setWinNotes(e.target.value)}
+              />
+            </div>
+            <div>
+              <Button
+                variant="secondary"
+                onClick={() => addWindow.mutate()}
+                loading={addWindow.isPending}
+                disabled={winInvalid}
               >
-                <span className="flex flex-wrap items-center gap-2">
-                  {new Date(w.startsAt).toLocaleString()} to {new Date(w.endsAt).toLocaleString()}
-                  {w.notes ? ` · ${w.notes}` : ''}
-                  {new Date(w.endsAt).getTime() <= Date.now() ? (
-                    <span className="text-xs text-text-muted">ended · unit is free again</span>
-                  ) : (
-                    endsSoon(w.endsAt) !== null && (
-                      <span className="rounded-full border border-warning px-2 text-xs text-text">ends in {endsSoon(w.endsAt)} day(s)</span>
-                    )
-                  )}
-                </span>
-                <span className="flex gap-2">
-                  {new Date(w.endsAt).getTime() > Date.now() && (
-                    <Button
-                      variant="secondary"
-                      onClick={() => extendWindow.mutate({ id: w.id, endsAt: new Date(new Date(w.endsAt).getTime() + DAY) })}
-                      loading={extendWindow.isPending && extendWindow.variables?.id === w.id}
-                    >
-                      +1 day
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    onClick={() => removeWindow.mutate(w.id)}
-                    loading={removeWindow.isPending && removeWindow.variables === w.id}
-                  >
-                    Remove
-                  </Button>
-                </span>
-              </li>
-            ))}
-          </ul>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Input label="From" type="datetime-local" value={winStart} onChange={(e) => setWinStart(e.target.value)} />
-            <Input label="Until" type="datetime-local" value={winEnd} onChange={(e) => setWinEnd(e.target.value)} />
-            <Input label="Note (optional)" value={winNotes} onChange={(e) => setWinNotes(e.target.value)} />
-          </div>
-          <div>
-            <Button variant="secondary" onClick={() => addWindow.mutate()} loading={addWindow.isPending} disabled={winInvalid}>
-              Block dates
+                Block dates
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
+      <Modal
+        open={correcting}
+        onClose={() => setCorrecting(false)}
+        title="Correct hour meter"
+        description="For a replaced or misread meter. The change and its reason go in the audit log."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCorrecting(false)}>
+              Cancel
             </Button>
-          </div>
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
-            Correct hour meter
-          </h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Input
-              label="Meter reading (hours)"
-              type="number"
-              step="0.01"
-              value={runtime}
-              onChange={(e) => setRuntime(e.target.value)}
-            />
-            <Input
-              label="Reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Meter replaced"
-            />
-          </div>
-          <div>
             <Button
-              variant="secondary"
               onClick={() => correct.mutate()}
               loading={correct.isPending}
-              disabled={runtime.trim() === '' || !(Number(runtime) >= 0) || reason.trim().length < 3}
+              disabled={
+                runtime.trim() === '' || !(Number(runtime) >= 0) || reason.trim().length < 3
+              }
             >
               Save reading
             </Button>
-          </div>
-        </section>
-      </div>
-      )}
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Input
+            label="Meter reading (hours)"
+            type="number"
+            step="0.01"
+            numeric
+            value={runtime}
+            onChange={(e) => setRuntime(e.target.value)}
+          />
+          <Input
+            label="Reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Meter replaced"
+          />
+        </div>
+      </Modal>
+      <ConfirmDialog
+        open={unblocking !== null}
+        title="Unblock these dates?"
+        tone="danger"
+        confirmLabel="Unblock dates"
+        pending={removeWindow.isPending}
+        body={
+          <p>
+            Bookings can land on <strong>{unblocking?.span}</strong> again.
+          </p>
+        }
+        onConfirm={() => {
+          if (unblocking) removeWindow.mutate(unblocking.id);
+        }}
+        onCancel={() => setUnblocking(null)}
+      />
       <ConfirmDialog
         open={removing !== null}
         title="Remove this schedule?"
@@ -361,8 +430,8 @@ export function MaintenanceModal({
         pending={removeSchedule.isPending}
         body={
           <p>
-            <strong>{removing?.name}</strong> stops counting hours. Past service logs are kept. Add a new schedule to start a
-            fresh plan.
+            <strong>{removing?.name}</strong> stops counting hours. Past service logs are kept. Add
+            a new schedule to start a fresh plan.
           </p>
         }
         onConfirm={() => {

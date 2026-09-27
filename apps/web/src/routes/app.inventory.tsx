@@ -19,6 +19,7 @@ import { MaintenanceModal } from '../components/maintenance-modal.js';
 import { useToast } from '../components/toast.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { getCurrentRole } from '../lib/guards.js';
+import { Boxes } from 'lucide-react';
 
 const STATUS_META: Record<string, { tone: StatusTone; label: string; icon: ReactElement }> = {
   available: { tone: 'fleet-available', label: 'Available', icon: <CheckIcon /> },
@@ -160,6 +161,7 @@ function InventoryPage() {
         options={equipmentQueries.list(PAGE_SIZE, offset)}
         emptyTitle="No equipment yet"
         emptyDescription="Add equipment to the fleet to see it listed here."
+        emptyIcon={Boxes}
         isEmpty={(data) => data.items.length === 0}
         render={(data) => (
           <div>
