@@ -121,6 +121,15 @@ describe('the money path: no deduction without a passing reconciliation', () => 
           select id from edtr_reconciliations
           where edtr_id = any(${ids}) or counterpart_edtr_id = any(${ids})
         )`;
+      // A prior run's over-the-deposit approval leaves an accrual citing
+      // its reconciliation (also RESTRICT), so a re-run against the same
+      // database would otherwise stop right here.
+      await sql`
+        delete from deposit_accruals
+        where reconciliation_id in (
+          select id from edtr_reconciliations
+          where edtr_id = any(${ids}) or counterpart_edtr_id = any(${ids})
+        )`;
       await sql`delete from edtr_reconciliations where edtr_id = any(${ids}) or counterpart_edtr_id = any(${ids})`;
       await sql`delete from edtr_line_items where edtr_id = any(${ids})`;
       await sql`delete from edtr where id = any(${ids})`;
@@ -245,20 +254,27 @@ describe('the money path: no deduction without a passing reconciliation', () => 
   // edtr-engine.spec.ts's own approvals and fail intermittently. The
   // description written at edtr.service.ts:446 embeds the reconciliation
   // id, which makes the count exact and immune to anything else running.
+  // Counted by the invoice_line_items.reconciliation_id FK -- the evidence
+  // link approve() writes and findEdtrEvidence() reads -- not by the UUID
+  // appearing in the description. The description is for people and now
+  // reads "EQR-2026-0001 · model · date · hours"
+  // (cr-arkilaunch-uniform-booking-codes.md), so matching text would
+  // silently count nothing.
   const deductionInvoiceCount = async (reconciliationId: string): Promise<number> => {
     const rows = await withTenantTx(adminCtx, (tx) =>
       tx
-        .select({ description: invoiceLineItems.description })
+        .select({ id: invoiceLineItems.id })
         .from(invoiceLineItems)
         .innerJoin(invoicesTable, eq(invoiceLineItems.invoiceId, invoicesTable.id))
         .where(
           and(
             eq(invoicesTable.rentalId, rentalId),
             eq(invoicesTable.invoiceType, 'deposit_deduction'),
+            eq(invoiceLineItems.reconciliationId, reconciliationId),
           ),
         ),
     );
-    return rows.filter((row) => row.description.includes(reconciliationId)).length;
+    return rows.length;
   };
 
   const storedAdjustments = async (reconciliationId: string): Promise<Record<string, unknown>> => {

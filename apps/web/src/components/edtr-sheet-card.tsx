@@ -16,8 +16,9 @@ function thisMonday(): string {
   return localDate(d);
 }
 
-// EDTR v2 sheet for one unit and week, pre-printed from the booking, or the
-// blank fallback. The renderer (and pdf-lib) load only on click.
+// EDTR v3 sheet for one unit and week, pre-printed from the booking, or the
+// blank fallback (docs/cr-arkilaunch-edtr-v3-sheet.md). The renderer (and
+// pdf-lib) load only on click.
 export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; printable: boolean }) {
   const toast = useToast();
   const context = useQuery({
@@ -29,6 +30,7 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
   const [equipmentId, setEquipmentId] = useState('');
   const [week, setWeek] = useState(thisMonday);
   const [busy, setBusy] = useState<string | null>(null);
+  const [page, setPage] = useState<'legal' | 'letter'>('legal');
   const units = context.data?.equipment ?? [];
   const unit = equipmentId || units[0]?.id || '';
 
@@ -40,12 +42,13 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
       const d = new Date(`${week}T00:00:00`);
       d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
       const companyName = me.data?.tenantName ?? '';
+      const logo = await sheet.logoDataUri(context.data?.tenant?.logoUrl);
       const input =
         blank || !context.data
-          ? { companyName }
-          : { context: context.data, equipmentId: unit, weekStart: localDate(d), companyName };
-      const png = await sheet.svgToPng(sheet.buildEdtrSheetSvg(input));
-      sheet.downloadBlob(kind === 'png' ? png : await sheet.pngToPdf(png), sheet.edtrSheetFilename(input, kind));
+          ? { companyName, page, logoDataUri: logo }
+          : { context: context.data, equipmentId: unit, weekStart: localDate(d), companyName, page, logoDataUri: logo };
+      const png = await sheet.svgToPng(sheet.buildEdtrSheetSvg(input), page);
+      sheet.downloadBlob(kind === 'png' ? png : await sheet.pngToPdf(png, page), sheet.edtrSheetFilename(input, kind));
     } catch (e) {
       toast.error('Could not build the sheet', apiErrorText(e));
     } finally {
@@ -59,7 +62,8 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
       {printable && units.length > 0 ? (
         <>
           <p className="text-sm text-text-muted">
-            Pre-printed for one unit and one week (Mon to Sun), with a QR code. Print at 100% on A4 landscape.
+            Pre-printed for one unit and one week (Mon to Sun), with the booking code and a QR code. Print at 100%,
+            landscape, on the paper size chosen below.
           </p>
           {units.length > 1 && (
             <Select label="Unit" value={unit} onChange={(e) => setEquipmentId(e.target.value)}>
@@ -85,6 +89,10 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
           {printable && context.isPending ? 'Loading...' : 'A pre-printed sheet is available once a machine is assigned and the booking is paid.'}
         </p>
       )}
+      <Select label="Paper" value={page} onChange={(e) => setPage(e.target.value === 'letter' ? 'letter' : 'legal')}>
+        <option value="legal">Legal (8.5 x 14 in), recommended</option>
+        <option value="letter">Letter (8.5 x 11 in)</option>
+      </Select>
       <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
         <span className="text-text-muted">Blank sheet:</span>
         <Button variant="ghost" loading={busy === 'blank-pdf'} onClick={() => void download('pdf', true)}>

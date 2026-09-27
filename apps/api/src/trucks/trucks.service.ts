@@ -1,7 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, like } from 'drizzle-orm';
 import { negotiationMessages, notifications, projectSites, tollRates, truckRequests, truckSettings, withTenantTx } from '@arkilaunch/db';
 import {
+  bookingCodeSearchPrefix,
   PH_CLASS3_TOLLS,
   PH_TOLLS_AS_OF,
   priceTruckTrip,
@@ -14,6 +15,7 @@ import {
   type RequestContext,
   type TruckEstimateRequest,
   type TruckPrice,
+  type TruckCrew,
   type TruckRequestCreate,
   type TruckRequestResponse,
   type TruckRequestStatus,
@@ -41,6 +43,7 @@ function pins(body: TruckEstimateRequest) {
 function toResponse(row: typeof truckRequests.$inferSelect): TruckRequestResponse {
   return {
     id: row.id,
+    code: row.code,
     pickup: row.pickup,
     dropoff: row.dropoff,
     scheduledFor: row.scheduledFor.toISOString(),
@@ -54,6 +57,8 @@ function toResponse(row: typeof truckRequests.$inferSelect): TruckRequestRespons
     callRequestedAt: row.callRequestedAt?.toISOString() ?? null,
     callConfirmedAt: row.callConfirmedAt?.toISOString() ?? null,
     projectSiteId: row.projectSiteId,
+    driverName: row.driverName,
+    helperName: row.helperName,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -222,12 +227,19 @@ export class TrucksService {
   }
 
   // A customer sees only their own requests; staff see the tenant's queue.
-  list(ctx: RequestContext, scope: 'mine' | 'all'): Promise<TruckRequestResponse[]> {
+  // `q` narrows to a TRK- code, exactly or by prefix, as GET /bookings does.
+  list(ctx: RequestContext, scope: 'mine' | 'all', q?: string): Promise<TruckRequestResponse[]> {
     return withTenantTx(ctx, async (tx) => {
+      const codePrefix = q ? bookingCodeSearchPrefix(q) : null;
       const rows = await tx
         .select()
         .from(truckRequests)
-        .where(scope === 'mine' ? eq(truckRequests.requestedBy, ctx.userId) : undefined)
+        .where(
+          and(
+            scope === 'mine' ? eq(truckRequests.requestedBy, ctx.userId) : undefined,
+            codePrefix ? like(truckRequests.code, `${codePrefix}%`) : undefined,
+          ),
+        )
         .orderBy(desc(truckRequests.createdAt))
         .limit(100);
       return rows.map(toResponse);
@@ -336,6 +348,19 @@ export class TrucksService {
 
   // Staff accept a price, which the truck invoice then charges. Re-agreeing
   // is allowed until the request is paid.
+  // Names the driver and helper on a trip; shown in the site hub.
+  async setCrew(ctx: RequestContext, id: string, crew: TruckCrew): Promise<TruckRequestResponse> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx
+        .update(truckRequests)
+        .set({ driverName: crew.driverName || null, helperName: crew.helperName || null })
+        .where(eq(truckRequests.id, id))
+        .returning();
+      if (!row) throw new NotFoundException({ error: 'truck_request_not_found' });
+      return toResponse(row);
+    });
+  }
+
   async agree(ctx: RequestContext, id: string, pricePhp: number): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
       const request = await this.visibleRequest(tx, ctx, id);

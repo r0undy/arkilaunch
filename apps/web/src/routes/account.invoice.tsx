@@ -92,11 +92,10 @@ function InvoiceDetail({ invoice }: { invoice: InvoiceDetailResponse }) {
           <div className="flex flex-col gap-3">
             <SummaryRow label="Invoice type" value={formatInvoiceType(invoice.invoiceType)} />
             <SummaryRow label="Reference" value={shortCode('invoice', invoice.id)} />
-            {invoice.truckRequestId ? (
-              <SummaryRow label="Truck request" value={shortCode('booking', invoice.truckRequestId)} />
-            ) : (
-              <SummaryRow label="Rental" value={invoice.rentalId ? shortCode('rental', invoice.rentalId) : '--'} />
-            )}
+            <SummaryRow
+              label={invoice.truckRequestId ? 'Truck service' : 'Equipment rental'}
+              value={invoice.bookingCode ?? '--'}
+            />
             <SummaryRow label="Due" value={formatDate(invoice.dueDate)} />
           </div>
           {invoice.invoiceType === 'weekly' && invoice.status === 'issued' && <PayWeekly invoiceId={invoice.id} />}

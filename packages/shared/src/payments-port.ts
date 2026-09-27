@@ -23,6 +23,9 @@ export type CheckoutMethod = (typeof CHECKOUT_METHODS)[number];
 
 export interface CheckoutOptions {
   label?: string;
+  // EQR-… / TRK-… (cr-arkilaunch-uniform-booking-codes.md): leads the line
+  // the customer sees on PayMongo and rides in metadata.booking_code.
+  bookingCode?: string;
   methods?: CheckoutMethod[];
   // The tenant's PayMongo child account (org_...): the net amount is
   // routed there with split_payment.transfer_to. Absent = collected on the

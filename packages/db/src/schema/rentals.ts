@@ -78,6 +78,10 @@ export const rentals = pgTable(
     projectSiteId: uuid('project_site_id')
       .notNull()
       .references(() => projectSites.id),
+    // 0058: EQR-YYYY-NNNN, assigned by the booking_code_assign trigger and
+    // immutable after. The sql`NULL` default only makes Drizzle leave the
+    // column out of an INSERT; the trigger refuses a supplied code.
+    code: text('code').notNull().default(sql`NULL`),
     status: text('status').notNull().default('draft'),
     // Figma 168:1982 "Logistics & Delivery": who meets the truck and how to
     // get it on site. Free text the customer types at the cart.

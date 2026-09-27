@@ -1,8 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { createZodDto } from 'nestjs-zod';
 import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
+import { DeploymentReturnSchema, TimekeeperAssignRequestSchema, type RequestContext } from '@arkilaunch/shared';
 import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
 import { SitesService } from './sites.service.js';
+import { SiteHubService } from './site-hub.service.js';
 import {
   DeploymentCreateDto,
   IncidentListQueryDto,
@@ -10,6 +12,9 @@ import {
   SiteListQueryDto,
   SiteUpdateDto,
 } from './dto.js';
+
+class TimekeeperAssignDto extends createZodDto(TimekeeperAssignRequestSchema) {}
+class DeploymentReturnDto extends createZodDto(DeploymentReturnSchema) {}
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -20,7 +25,34 @@ type CtxRequest = Request & { ctx: RequestContext };
 // with no data-entry permission is denied).
 @Controller()
 export class SitesController {
-  constructor(private readonly sites: SitesService) {}
+  constructor(
+    private readonly sites: SitesService,
+    private readonly hubs: SiteHubService,
+  ) {}
+
+  // The site hub (cr-arkilaunch-edtr-site-hub-approval.md §7). Staff who
+  // manage sites or read reports; not the timekeeper, who submits only.
+  @Get('sites/:id/hub')
+  @RequirePermission('site:manage', 'report:read')
+  hub(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.hubs.hub(req.ctx, id);
+  }
+
+  @Post('sites/:id/timekeepers')
+  @RequirePermission('site:manage')
+  assignTimekeeper(@Param('id') id: string, @Body() body: TimekeeperAssignDto, @Req() req: CtxRequest) {
+    return this.hubs.setTimekeeper(req.ctx, id, body.userId, true);
+  }
+
+  @Delete('sites/:id/timekeepers/:userId')
+  @RequirePermission('site:manage')
+  unassignTimekeeper(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+    @Req() req: CtxRequest,
+  ) {
+    return this.hubs.setTimekeeper(req.ctx, id, userId, false);
+  }
 
   @Get('sites')
   @RequirePermission(...STAFF_READ)
@@ -57,9 +89,10 @@ export class SitesController {
   returnDeployment(
     @Param('id') id: string,
     @Param('assignmentId') assignmentId: string,
+    @Body() body: DeploymentReturnDto,
     @Req() req: CtxRequest,
   ) {
-    return this.sites.returnDeployment(req.ctx, id, assignmentId);
+    return this.sites.returnDeployment(req.ctx, id, assignmentId, body);
   }
 
   @Get('sites/:id/weather')

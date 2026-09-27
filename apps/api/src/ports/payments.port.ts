@@ -43,13 +43,16 @@ export class PayMongoAdapter implements PaymentsPort {
 
   async createCheckoutSession(amountPhp: number, invoiceId: string, options: CheckoutOptions): Promise<CheckoutSession> {
     const label = options.label ?? 'Rental deposit';
+    // The customer reads the booking code on PayMongo's page and receipt,
+    // the same reference every other screen shows.
+    const name = options.bookingCode ? `${options.bookingCode} · ${label}` : label;
     const body = await this.call<{ data: { id: string; attributes: { checkout_url: string } } }>('POST', '/checkout_sessions', {
       line_items: [
         {
           amount: Math.round(amountPhp * 100),
           currency: 'PHP',
-          description: `${label} (invoice ${invoiceId})`,
-          name: label,
+          description: `${name} (invoice ${invoiceId})`,
+          name,
           quantity: 1,
         },
       ],
@@ -57,10 +60,10 @@ export class PayMongoAdapter implements PaymentsPort {
       payment_method_types: options.methods ?? [...CHECKOUT_METHODS],
       success_url: options.successUrl,
       cancel_url: options.cancelUrl,
-      description: `${label} for invoice ${invoiceId}`,
+      description: `${name} for invoice ${invoiceId}`,
       // Rides onto the payment PayMongo creates, so payment.* webhooks
       // resolve our invoice (verified on a live test payment).
-      metadata: { invoice_id: invoiceId },
+      metadata: { invoice_id: invoiceId, ...(options.bookingCode ? { booking_code: options.bookingCode } : {}) },
       ...(options.transferTo ? { split_payment: { transfer_to: options.transferTo } } : {}),
     });
     return { id: body.data.id, checkoutUrl: body.data.attributes.checkout_url };

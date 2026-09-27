@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from '@tanstack/react-router';
+import { Link, useRouterState } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryOptions } from '@tanstack/react-query';
 import { WEATHER_LEVEL_INFO, type NotificationListResponse, type NotificationResponse } from '@arkilaunch/shared';
@@ -32,6 +32,8 @@ function payloadLines(payload: unknown): string[] {
   if (!payload || typeof payload !== 'object') return [];
   return Object.entries(payload as Record<string, unknown>)
     .filter(([, value]) => value !== null && typeof value !== 'object')
+    // The booking code names the booking; its raw ids add nothing.
+    .filter(([key]) => !('booking_code' in (payload as object)) || !key.endsWith('_id'))
     .map(([key, value]) => {
       const label = formatStatus(key);
       if (key.endsWith('_id') && typeof value === 'string') {
@@ -47,11 +49,147 @@ function payloadLines(payload: unknown): string[] {
 interface Described {
   title: string;
   body: string;
-  action?: { label: string; to: string; params: Record<string, string> };
+  action?: { label: string; to: string; params: Record<string, string>; search?: Record<string, string> };
 }
 
-export function describeNotification(type: string, payload: unknown): Described | null {
+// Which console the feed is mounted in: the same notification type links to
+// the admin's screen or the customer's.
+export type FeedArea = 'app' | 'account' | 'field' | 'admin';
+
+export function feedAreaOf(pathname: string): FeedArea {
+  const first = pathname.split('/')[1];
+  return first === 'account' || first === 'field' || first === 'admin' ? first : 'app';
+}
+
+// Staff open a booking in the drawer by its code; the full page is the
+// fallback for a row that somehow has no code.
+function staffBooking(p: Record<string, unknown>, label = 'Open booking'): NonNullable<Described['action']> {
+  const code = typeof p.booking_code === 'string' ? p.booking_code : null;
+  if (code) return { label, to: '/app/bookings', params: {}, search: { open: code } };
+  const rentalId = typeof p.rental_id === 'string' ? p.rental_id : null;
+  return rentalId
+    ? { label, to: '/app/bookings/$bookingId', params: { bookingId: rentalId } }
+    : { label, to: '/app/bookings', params: {} };
+}
+
+// Staff-side types (written by notifyStaff). Every one has a destination
+// (cr-arkilaunch-uniform-booking-codes.md, admin feedback item 4).
+function describeForStaff(type: string, p: Record<string, unknown>): Described | null {
+  const ref = typeof p.booking_code === 'string' ? p.booking_code : 'a booking';
+  const trip = typeof p.truck_request_id === 'string';
+  switch (type) {
+    case 'booking_requested':
+      return { title: 'New booking', body: `${ref} was requested.`, action: staffBooking(p) };
+    case 'truck_requested':
+      return { title: 'New truck request', body: `${ref}: a customer requested a self-loading truck.`, action: staffBooking(p) };
+    case 'call_requested':
+      return {
+        title: 'Call requested',
+        body: `The customer on ${ref} asked for a call${trip ? '' : ' before paying'}.`,
+        action: staffBooking(p),
+      };
+    case 'customer_message': {
+      const offer = typeof p.offer_php === 'number' ? ` with an offer of ${formatPeso(p.offer_php)}` : '';
+      return { title: 'Customer message', body: `The customer replied on ${ref}${offer}.`, action: staffBooking(p, 'Open conversation') };
+    }
+    case 'quote_accepted':
+    case 'quote_declined':
+      return {
+        title: type === 'quote_accepted' ? 'Quote accepted' : 'Quote declined',
+        body: `The customer ${type === 'quote_accepted' ? 'accepted' : 'declined'} the quote on ${ref}.`,
+        action: staffBooking(p),
+      };
+    case 'change_request_submitted':
+      return {
+        title: 'Change request',
+        body: `The customer asked to ${p.kind === 'cancel' ? 'cancel' : 'extend'} ${ref}.`,
+        action: staffBooking(p, 'Review request'),
+      };
+    case 'deposit_low':
+      return {
+        title: 'Deposit running low',
+        body: `${ref} has ${formatPeso(p.balance_php as number)} left of its ${formatPeso(p.deposit_php as number)} deposit.`,
+        action: staffBooking(p),
+      };
+    case 'payment_paid':
+    case 'payment_received':
+    case 'payment_failed':
+    case 'payment_refunded':
+    case 'payment_disputed':
+    case 'payment_amount_mismatch': {
+      const what: Record<string, string> = {
+        payment_paid: 'was paid',
+        payment_received: 'was paid',
+        payment_failed: 'failed',
+        payment_refunded: 'was refunded',
+        payment_disputed: 'is disputed',
+        payment_amount_mismatch: 'came in at a different amount than the invoice',
+      };
+      return {
+        title: type === 'payment_amount_mismatch' ? 'Payment amount mismatch' : `Payment ${type.slice('payment_'.length)}`,
+        body: `An online payment on ${ref} ${what[type]}.`,
+        action: { label: 'Open payments', to: '/app/payments', params: {} },
+      };
+    }
+    case 'edtr_submitted':
+      return {
+        title: 'Field log submitted',
+        body: `A timekeeper submitted ${typeof p.report_date === 'string' ? p.report_date : 'a day'} on ${ref}. It is waiting for approval.`,
+        action:
+          typeof p.project_site_id === 'string'
+            ? { label: 'Review in site hub', to: '/app/deployment/$siteId', params: { siteId: p.project_site_id }, search: { tab: 'logs' } }
+            : { label: 'Open field logs', to: '/app/ocr', params: {} },
+      };
+    case 'maintenance_due':
+    case 'maintenance_warning':
+      return {
+        title: type === 'maintenance_due' ? 'Maintenance due' : 'Maintenance coming up',
+        body: `A machine${typeof p.runtime_hours === 'number' ? ` at ${p.runtime_hours} running hours` : ''} is ${type === 'maintenance_due' ? 'due' : 'close to'} its service.`,
+        action: { label: 'Open inventory', to: '/app/inventory', params: {} },
+      };
+    case 'weather_advisory':
+      return { title: 'Weather advisory', body: 'A site is under a weather advisory.', action: { label: 'Open incidents', to: '/app/incidents', params: {} } };
+    default:
+      return null;
+  }
+}
+
+// The timekeeper's feed: their submissions' outcomes and site weather.
+function describeForField(type: string, p: Record<string, unknown>): Described | null {
+  const day = typeof p.report_date === 'string' ? p.report_date : 'a day';
+  const ref = typeof p.booking_code === 'string' ? ` on ${p.booking_code}` : '';
+  const toDashboard = { label: 'Open dashboard', to: '/field', params: {} };
+  switch (type) {
+    case 'edtr_approved':
+      return { title: 'Field log approved', body: `The office approved ${day}${ref}.`, action: toDashboard };
+    case 'edtr_needs_correction':
+      return {
+        title: 'Correction needed',
+        body: `The office asked you to correct ${day}${ref}${typeof p.reason === 'string' ? `: ${p.reason}` : ''}. Submit it again.`,
+        action: { ...toDashboard, label: 'Resubmit' },
+      };
+    case 'edtr_rejected':
+      return {
+        title: 'Field log rejected',
+        body: `The office rejected ${day}${ref}${typeof p.reason === 'string' ? `: ${p.reason}` : ''}.`,
+        action: toDashboard,
+      };
+    case 'edtr_review':
+      return { title: 'Field logs to check', body: 'A field log needs your attention.', action: toDashboard };
+    case 'weather_advisory':
+      return { title: 'Weather advisory', body: 'One of your sites is under a weather advisory.', action: { label: 'View sites', to: '/field/deployment', params: {} } };
+    default:
+      return null;
+  }
+}
+
+export function describeNotification(type: string, payload: unknown, area: FeedArea = 'app'): Described | null {
   const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+  if (area === 'field') return describeForField(type, p);
+  if (area === 'app' || area === 'admin') {
+    const staff = describeForStaff(type, p);
+    if (staff) return staff;
+  }
   if (type === 'password_reset_requested') {
     const email = typeof p.email === 'string' ? p.email : 'A user';
     return {
@@ -129,37 +267,38 @@ export function describeNotification(type: string, payload: unknown): Described 
       action: { label: 'Review', to: '/app/registration/pending', params: {} },
     };
   }
-  if (type === 'truck_requested' || (type === 'call_requested' && typeof p.truck_request_id === 'string')) {
-    return {
-      title: type === 'truck_requested' ? 'New truck request' : 'Call requested',
-      body: type === 'truck_requested' ? 'A customer requested a self-loading truck.' : 'A customer asked for a call about their truck request.',
-      action: { label: 'Open trucks', to: '/app/trucks', params: {} },
-    };
-  }
-  if ((type === 'negotiation_reply' || type === 'customer_message') && typeof p.truck_request_id === 'string') {
-    const staffSide = type === 'customer_message';
+  // A customer's truck trip: every update opens their truck requests.
+  if (typeof p.truck_request_id === 'string') {
+    const code = typeof p.booking_code === 'string' ? p.booking_code : 'your truck request';
     const offer = typeof p.offer_php === 'number' ? ` with an offer of ${formatPeso(p.offer_php)}` : '';
-    return {
-      title: staffSide ? 'Customer message' : 'Negotiation update',
-      body: staffSide
-        ? `A customer replied on a truck request${offer}.`
-        : `The rental team replied on your truck request${offer}.`,
-      action: staffSide
-        ? { label: 'Open trucks', to: '/app/trucks', params: {} }
-        : { label: 'Open truck requests', to: '/account/trucks', params: {} },
+    const bodies: Record<string, string> = {
+      negotiation_reply: `The rental team replied on ${code}${offer}.`,
+      call_confirmed: `${code} is confirmed by phone. You can pay for it now.`,
+      payment_received: `${code} is paid.`,
+      payment_failed: `The payment for ${code} did not go through. Nothing was charged.`,
+      payment_refunded: `A refund was issued on ${code}.`,
     };
-  }
-  if ((type === 'payment_paid' || type === 'payment_failed' || type === 'payment_disputed') && typeof p.rental_id !== 'string') {
-    const what = type === 'payment_paid' ? 'was paid' : type === 'payment_failed' ? 'failed' : 'is disputed';
     return {
-      title: `Payment ${type.slice('payment_'.length)}`,
-      body: `An online payment ${what}.`,
-      action: { label: 'Open payments', to: '/app/payments', params: {} },
+      title: formatStatus(type),
+      body: bodies[type] ?? `${code} was updated.`,
+      action: { label: 'Open truck requests', to: '/account/trucks', params: {} },
     };
   }
   const rentalId = typeof p.rental_id === 'string' ? p.rental_id : null;
-  if (!rentalId) return null;
-  const ref = shortCode('booking', rentalId);
+  if (!rentalId) {
+    // A payment keyed only by its invoice still has somewhere to go.
+    if (typeof p.invoice_id === 'string' && type.startsWith('payment_')) {
+      return {
+        title: formatStatus(type),
+        body: 'An update on one of your payments.',
+        action: { label: 'View invoice', to: '/account/invoices/$invoiceId', params: { invoiceId: p.invoice_id } },
+      };
+    }
+    return null;
+  }
+  // booking_code is added to every booking notification by the database
+  // (migration 0058), including rows written before it.
+  const ref = typeof p.booking_code === 'string' ? p.booking_code : 'your booking';
   const toNegotiation = { to: '/account/negotiation/$bookingId', params: { bookingId: rentalId } };
   const toBooking = { to: '/account/bookings/$bookingId', params: { bookingId: rentalId } };
   switch (type) {
@@ -242,6 +381,15 @@ export function describeNotification(type: string, payload: unknown): Described 
         body: `Booking ${ref} used hours past its deposit: ${formatPeso(p.amount_php as number)} is due.`,
         action: { label: 'View invoice', to: '/account/invoices/$invoiceId', params: { invoiceId: String(p.invoice_id) } },
       };
+    case 'daily_log_approved':
+      return {
+        title: 'Daily log approved',
+        body: `${typeof p.report_date === 'string' ? p.report_date : 'A day'} on booking ${ref} was approved and is on your booking page.`,
+        action: { label: 'View daily logs', ...toBooking },
+      };
+    case 'quote_accepted':
+    case 'quote_declined':
+      return { title: formatStatus(type), body: `Booking ${ref} was updated.`, action: { label: 'View booking', ...toBooking } };
     case 'change_request_resolved':
       return {
         title: p.decision === 'approved' ? 'Request approved' : 'Request declined',
@@ -253,20 +401,19 @@ export function describeNotification(type: string, payload: unknown): Described 
   }
 }
 
-function NotificationRow({ notification }: { notification: NotificationResponse }) {
+function NotificationRow({ notification, area }: { notification: NotificationResponse; area: FeedArea }) {
   const queryClient = useQueryClient();
   const isUnread = notification.status === 'unread';
   const when = formatRelativeTime(new Date(notification.createdAt).toISOString());
-  const described = describeNotification(notification.notificationType, notification.payload);
+  const described = describeNotification(notification.notificationType, notification.payload, area);
 
   const markRead = useMutation({
     mutationFn: () => apiPatch(`/notifications/${notification.id}/read`, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
-  return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-4 last:border-b-0">
-      <div className="flex min-w-0 items-start gap-3">
+  const content = (
+    <>
         <span
           aria-hidden="true"
           className={[
@@ -296,17 +443,29 @@ function NotificationRow({ notification }: { notification: NotificationResponse 
             ))
           )}
           {described?.action && (
-            <Link
-              to={described.action.to}
-              params={described.action.params}
-              onClick={() => isUnread && markRead.mutate()}
-              className="mt-2 inline-block"
-            >
-              <Button variant="primary">{described.action.label}</Button>
-            </Link>
+            <span className="mt-1 inline-block text-sm font-semibold text-accent">
+              {described.action.label} <span aria-hidden="true">→</span>
+            </span>
           )}
         </div>
-      </div>
+    </>
+  );
+
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-4 last:border-b-0">
+      {described?.action ? (
+        <Link
+          to={described.action.to}
+          params={described.action.params}
+          {...(described.action.search ? { search: described.action.search } : {})}
+          onClick={() => isUnread && markRead.mutate()}
+          className="-m-2 flex min-w-0 flex-1 items-start gap-3 rounded-md p-2 hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring"
+        >
+          {content}
+        </Link>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-start gap-3">{content}</div>
+      )}
 
       <div className="flex shrink-0 items-center gap-3">
         <span className="text-right text-sm text-text-muted" title={when?.absolute}>
@@ -336,6 +495,7 @@ export function NotificationFeed() {
   // way back up a long feed. Every other list in the console pages through
   // the same server limit/offset; this one now does too.
   const [offset, setOffset] = useState(0);
+  const area = feedAreaOf(useRouterState({ select: (s) => s.location.pathname }));
   const query = useQuery(notificationQueries.list(PAGE_SIZE, offset));
   const queryClient = useQueryClient();
   const markAll = useMutation({
@@ -384,7 +544,7 @@ export function NotificationFeed() {
       </div>
       <div>
         {query.data.items.map((item) => (
-          <NotificationRow key={item.id} notification={item} />
+          <NotificationRow key={item.id} notification={item} area={area} />
         ))}
       </div>
       <Pagination

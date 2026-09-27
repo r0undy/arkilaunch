@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { RentalRef } from '../lib/reference-client.js';
-import { formatStatus, shortCode } from '../lib/format.js';
+import { formatStatus } from '../lib/format.js';
 import { Button } from './button.js';
 import { EmptyState } from './empty-state.js';
 import { Input } from './input.js';
@@ -39,7 +39,7 @@ export function DeploymentScanList({
     const needle = search.trim().toLowerCase();
     if (!needle) return rentals;
     return rentals.filter((rental) =>
-      `${rentalLabel(rental)} ${shortCode('rental', rental.id)}`.toLowerCase().includes(needle),
+      `${rental.code} ${rentalLabel(rental)}`.toLowerCase().includes(needle),
     );
   }, [rentals, rentalLabel, search]);
 
@@ -77,7 +77,7 @@ export function DeploymentScanList({
                 <div className="flex flex-col">
                   <span className="font-medium text-text">{rentalLabel(rental)}</span>
                   <span className="text-sm text-text-muted">
-                    {formatStatus(rental.status)} - {shortCode('rental', rental.id)}
+                    <span className="font-mono">{rental.code}</span> · {formatStatus(rental.status)}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">

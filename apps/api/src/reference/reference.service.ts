@@ -74,9 +74,13 @@ export class ReferenceService {
       tx
         .select({
           id: rentals.id,
+          code: rentals.code,
           customerId: rentals.customerId,
           projectSiteId: rentals.projectSiteId,
           status: rentals.status,
+          // The capture form's date picker mirrors the server's span rule.
+          startDate: rentals.startDate,
+          endDate: rentals.endDate,
         })
         .from(rentals),
     );

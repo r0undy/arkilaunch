@@ -319,7 +319,7 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
         {unavailable && (
           <p role="alert" className="text-sm text-error">
             Online payment is not switched on in this environment, so nothing was charged. The booking
-            stays {formatStatus(booking.status).toLowerCase()} as {shortCode('booking', booking.id)}.
+            stays {formatStatus(booking.status).toLowerCase()} as {booking.code}.
           </p>
         )}
 

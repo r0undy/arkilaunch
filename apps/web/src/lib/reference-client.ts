@@ -23,9 +23,15 @@ export interface RateCardRef {
 }
 export interface RentalRef {
   id: string;
+  // EQR-YYYY-NNNN, the booking code shown everywhere a rental is named.
+  code: string;
   customerId: string;
   projectSiteId: string;
   status: string;
+  // The booking's own dates; the server's span check (a unit's assignment
+  // window, else these) is what actually decides.
+  startDate?: string;
+  endDate?: string | null;
 }
 export interface CustomerRef {
   id: string;

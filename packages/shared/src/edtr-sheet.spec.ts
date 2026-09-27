@@ -210,3 +210,80 @@ describe('resolveSheetDate', () => {
     expect(resolveSheetDate('', '2026-03-06')).toBeNull();
   });
 });
+
+// EDTR v3 (docs/cr-arkilaunch-edtr-v3-sheet.md): the printed header of the
+// v3 grid, one hour column per cause plus the hour meter.
+const V3_HEADER = [
+  ['DATE', 'DAY', 'AM', '', 'PM', '', 'OVERTIME', '', 'TOTAL HOURS', 'RUNNING HRS', 'IDLE HRS', 'BREAKDOWN HRS', 'WEATHER HRS', 'OTHER HRS', 'METER START', 'METER END', 'INITIAL'],
+  ['', '', 'IN', 'OUT', 'IN', 'OUT', 'IN', 'OUT', '', '', '', '', '', '', '', '', ''],
+];
+
+function v3Table(dataRows: string[][]): ExtractedTable {
+  const rows = [...V3_HEADER, ...dataRows];
+  return {
+    rowCount: rows.length,
+    columnCount: V3_HEADER[0]!.length,
+    cells: rows.flatMap((row, rowIndex) =>
+      row.map((content, columnIndex) => ({ rowIndex, columnIndex, content, confidence: 0.99 })),
+    ),
+  };
+}
+
+describe('parseEdtrSheet v3', () => {
+  it('bills RUNNING HRS, keeps each downtime cause, and checks IN/OUT against TOTAL', () => {
+    const result = parseEdtrSheet(
+      [
+        v3Table([
+          ['03/02', 'MON', '07:00', '12:00', '13:00', '17:00', '', '', '9', '6', '1', '2', '', '', '1200.5', '1206.5', 'JR'],
+        ]),
+      ],
+      CAPTURE,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [day] = result.days;
+    expect(day!.hoursActive).toBe(6);
+    expect(day!.totalMismatch).toBe(false);
+    expect(day!.v3).toEqual({
+      total: 9,
+      running: 6,
+      idle: 1,
+      breakdown: 2,
+      weather: 0,
+      other: 0,
+      meterStart: 1200.5,
+      meterEnd: 1206.5,
+    });
+  });
+
+  it('skips a day marked outside the rental and a day left blank, instead of failing the sheet', () => {
+    const blank = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+    const result = parseEdtrSheet(
+      [
+        v3Table([
+          ['03/01', 'OUTSIDE RENTAL', ...blank],
+          ['03/02', 'MON', '07:00', '11:00', '', '', '', '', '4', '4', '', '', '', '', '', '', ''],
+          ['03/03', 'TUE', ...blank],
+        ]),
+      ],
+      CAPTURE,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.days.map((d) => d.reportDate)).toEqual(['2026-03-02']);
+  });
+
+  it('still refuses a filled v3 row whose running hours cannot be read', () => {
+    const result = parseEdtrSheet(
+      [v3Table([['03/02', 'MON', '07:00', '11:00', '', '', '', '', '4', '?!', '', '', '', '', '', '', '']])],
+      CAPTURE,
+    );
+    expect(result).toEqual({ ok: false, reason: 'unreadable_total_hours:2026-03-02' });
+  });
+
+  it('leaves a v2 sheet exactly as before: no v3 block, TOTAL is the reading', () => {
+    const result = parseEdtrSheet([table([['03/01', '07:00', '11:00', '', '', '', '', '4', '']])], CAPTURE);
+    expect(result.ok && result.days[0]!.v3).toBeUndefined();
+    expect(result.ok && result.days[0]!.hoursActive).toBe(4);
+  });
+});

@@ -20,6 +20,7 @@ describe('PayMongoAdapter', () => {
     const fetchMock = stubFetch({ data: { id: 'cs_1', attributes: { checkout_url: 'https://checkout.paymongo.com/1' } } });
     const session = await new PayMongoAdapter('sk_test_x').createCheckoutSession(1234.56, 'inv-1', {
       label: 'Rental deposit',
+      bookingCode: 'EQR-2026-0001',
       methods: ['gcash'],
       transferTo: 'org_child',
       successUrl: 'https://almara.example.com/account/checkout/success?invoice=inv-1',
@@ -34,7 +35,8 @@ describe('PayMongoAdapter', () => {
     expect(attrs.line_items[0].amount).toBe(123456);
     expect(attrs.payment_method_types).toEqual(['gcash']);
     expect(attrs.split_payment).toEqual({ transfer_to: 'org_child' });
-    expect(attrs.metadata).toEqual({ invoice_id: 'inv-1' });
+    expect(attrs.metadata).toEqual({ invoice_id: 'inv-1', booking_code: 'EQR-2026-0001' });
+    expect(attrs.line_items[0].name).toBe('EQR-2026-0001 · Rental deposit');
     expect(attrs.success_url).toContain('almara.example.com');
   });
 

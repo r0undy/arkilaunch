@@ -4,7 +4,7 @@ import { quoteExpiresAt, type BookingDetailResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, quotesQueries } from '../lib/queries.js';
 import { ApiError, apiErrorText, apiPost } from '../lib/api-client.js';
-import { formatDate, formatPeso, shortCode } from '../lib/format.js';
+import { formatDate, formatPeso } from '../lib/format.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { Button } from '../components/button.js';
@@ -169,7 +169,7 @@ function NegotiationPage({ bookingId }: { bookingId: string }) {
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="Negotiation"
-        title={`Booking ${shortCode('booking', bookingId)}`}
+        title={booking.data ? `Booking ${booking.data.code}` : 'Booking'}
         description="Agree the price with the rental team before you pay."
         actions={
           <Link to="/account/bookings/$bookingId" params={{ bookingId }}>
@@ -205,17 +205,15 @@ function NegotiationChatRoute() {
 // the revised quote the team sends after it.
 function NegotiationCallRoute() {
   const { bookingId } = accountNegotiationCallRoute.useParams();
+  const booking = useBooking(bookingId);
+  const code = booking.data?.code;
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        eyebrow="Negotiation"
-        title="Negotiate by phone"
-        description={`Booking ${shortCode('booking', bookingId)}`}
-      />
+      <PageHeader eyebrow="Negotiation" title="Negotiate by phone" {...(code ? { description: `Booking ${code}` } : {})} />
       <Surface radius="md" elevation="sm" className="flex max-w-xl flex-col gap-3 p-6">
         <p className="text-sm text-text">
           Call the rental team on the number on our contact page and quote your booking reference{' '}
-          <span className="font-mono font-semibold">{shortCode('booking', bookingId)}</span>.
+          <span className="font-mono font-semibold">{code ?? '(loading)'}</span>.
         </p>
         <p className="text-sm text-text-muted">
           Whatever you agree on the call comes back here as a revised quote for you to accept, so

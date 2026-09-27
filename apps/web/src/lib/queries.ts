@@ -18,6 +18,8 @@ import type {
   IncidentListResponse,
   InvoiceDetailResponse,
   InvoiceListResponse,
+  EdtrDetailResponse,
+  SiteHubResponse,
   SiteListResponse,
   UserSelfResponse,
   UtilizationReportResponse,
@@ -81,6 +83,12 @@ export const sitesQueries = {
       queryKey: ['sites', limit, offset] as const,
       queryFn: () => apiGet<SiteListResponse>(`/sites?limit=${limit}&offset=${offset}`),
     }),
+  // The site hub (cr-arkilaunch-edtr-site-hub-approval.md).
+  hub: (siteId: string) =>
+    queryOptions({
+      queryKey: ['sites', siteId, 'hub'] as const,
+      queryFn: () => apiGet<SiteHubResponse>(`/sites/${siteId}/hub`),
+    }),
 };
 
 export const couponsQueries = {
@@ -114,10 +122,14 @@ export const incidentsQueries = {
 };
 
 export const bookingsQueries = {
-  list: (limit = PAGE_SIZE, offset = 0) =>
+  // `q` narrows to booking codes starting with it (EQR-2026-00…).
+  list: (limit = PAGE_SIZE, offset = 0, q = '') =>
     queryOptions({
-      queryKey: ['bookings', limit, offset] as const,
-      queryFn: () => apiGet<BookingListResponse>(`/bookings?limit=${limit}&offset=${offset}`),
+      queryKey: ['bookings', limit, offset, q] as const,
+      queryFn: () =>
+        apiGet<BookingListResponse>(
+          `/bookings?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}`,
+        ),
     }),
   detail: (bookingId: string) =>
     queryOptions({
@@ -166,6 +178,7 @@ export interface QuoteDetail {
   total: number;
   createdAt?: string;
   customerName?: string;
+  bookingCode?: string;
 }
 
 export const quotesQueries = {
@@ -249,7 +262,7 @@ export const edtrQueries = {
   detail: (id: string) =>
     queryOptions({
       queryKey: ['edtr', id] as const,
-      queryFn: () => apiGet<unknown>(`/edtr/${id}`),
+      queryFn: () => apiGet<EdtrDetailResponse>(`/edtr/${id}`),
     }),
 };
 

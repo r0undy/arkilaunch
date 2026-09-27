@@ -25,6 +25,7 @@ import {
   DTI_REGEX,
   ExtractionUnavailableError,
   hasRequiredCompanyDocuments,
+  scoreRegistration,
   normalizePcn,
   normalizeTin,
   PHILSYS_PCN_REGEX,
@@ -723,7 +724,7 @@ export class CustomersService {
         .where(eq(customers.kycStatus, kycStatus))
         .orderBy(desc(customers.createdAt))
         .limit(100);
-      return withDocuments(tx, rows, true);
+      return withScores(tx, await withDocuments(tx, rows, true));
     });
   }
 
@@ -1067,6 +1068,69 @@ async function withDocuments(
         ...(withReads ? documentReads(doc) : {}),
       })),
   }));
+}
+
+// Adds the applicant's mobile and the advisory score to each company under
+// review (cr-arkilaunch-registration-scoring.md). Duplicates are the one
+// input only the database knows: another company in THIS tenant (RLS) with
+// the same TIN, the same PCN on its National ID, or the same mobile.
+async function withScores(tx: Tx, companies: CompanyReviewResponse[]): Promise<CompanyReviewResponse[]> {
+  if (companies.length === 0) return companies;
+  const [allCompanies, phones, ids] = await Promise.all([
+    tx.select({ id: customers.id, tin: customers.tin }).from(customers),
+    tx
+      .select({ customerId: customerContacts.customerId, value: customerContacts.contactValue })
+      .from(customerContacts)
+      .where(eq(customerContacts.contactType, 'phone')),
+    tx
+      .select({ customerId: kycDocuments.customerId, payload: kycDocuments.ocrPayload })
+      .from(kycDocuments)
+      .where(and(eq(kycDocuments.documentType, 'government_id'), ne(kycDocuments.status, 'superseded'))),
+  ]);
+  const digits = (s: string) => s.replace(/\D/g, '');
+  const holders = (entries: { customerId: string; key: string }[]) => {
+    const map = new Map<string, Set<string>>();
+    for (const e of entries) {
+      if (!e.key) continue;
+      const set = map.get(e.key) ?? new Set<string>();
+      set.add(e.customerId);
+      map.set(e.key, set);
+    }
+    return map;
+  };
+  const byTin = holders(allCompanies.map((c) => ({ customerId: c.id, key: c.tin ? digits(c.tin) : '' })));
+  const byPhone = holders(phones.map((p) => ({ customerId: p.customerId, key: digits(p.value).slice(-10) })));
+  const pcnOf = (payload: unknown) => {
+    const p = (payload as Record<string, unknown> | null) ?? {};
+    const v = p.customer_id_number ?? p.id_number;
+    return typeof v === 'string' ? digits(v) : '';
+  };
+  const byPcn = holders(ids.map((d) => ({ customerId: d.customerId, key: pcnOf(d.payload) })));
+  const shared = (map: Map<string, Set<string>>, key: string, self: string) =>
+    !!key && [...(map.get(key) ?? [])].some((other) => other !== self);
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
+
+  return companies.map((company) => {
+    const phone = phones.find((p) => p.customerId === company.id)?.value ?? null;
+    const idDoc = company.documents.find((d) => d.documentType === 'government_id');
+    const pcn = idDoc ? digits(idDoc.customer.id_number ?? idDoc.ocr.id_number ?? '') : '';
+    return {
+      ...company,
+      contactPhone: phone,
+      score: scoreRegistration({
+        companyName: company.companyName,
+        tin: company.tin,
+        secNumber: company.secNumber,
+        documents: company.documents,
+        today,
+        duplicates: {
+          tin: shared(byTin, company.tin ? digits(company.tin) : '', company.id),
+          pcn: shared(byPcn, pcn, company.id),
+          mobile: shared(byPhone, phone ? digits(phone).slice(-10) : '', company.id),
+        },
+      }),
+    };
+  });
 }
 
 // A company's current documents: a re-upload leaves the one it replaced

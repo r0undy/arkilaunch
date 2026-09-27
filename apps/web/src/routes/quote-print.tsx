@@ -35,6 +35,11 @@ function QuotePrintPage() {
         </div>
         <div className="text-right text-sm text-text">
           <p className="font-mono">{shortCode('quote', q.id)} &middot; revision {q.revision}</p>
+          {q.bookingCode && (
+            <p>
+              For booking <span className="font-mono font-semibold">{q.bookingCode}</span>
+            </p>
+          )}
           {q.createdAt && <p>Issued {formatDate(q.createdAt)}</p>}
           {q.createdAt && <p>Valid until {formatDate(quoteExpiresAt(q.createdAt))}</p>}
         </div>

@@ -400,6 +400,20 @@
       "when": 1790400018000,
       "tag": "0057_coupons",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1790400019000,
+      "tag": "0058_booking_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1790400020000,
+      "tag": "0059_edtr_hour_categories",
+      "breakpoints": true
     }
   ]
 }

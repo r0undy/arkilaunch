@@ -301,6 +301,27 @@ export const CompanyReviewResponseSchema = CompanyResponseSchema.extend({
       registryChecked: z.boolean(),
     }),
   ),
+  // The applicant's mobile, for the Contact person group.
+  contactPhone: z.string().nullable().optional(),
+  // Advisory confidence (cr-arkilaunch-registration-scoring.md). Decides
+  // nothing; the reviewer does.
+  score: z
+    .object({
+      score: z.number(),
+      band: z.enum(['high', 'medium', 'low']),
+      checks: z.array(
+        z.object({
+          id: z.string(),
+          label: z.string(),
+          weight: z.number(),
+          credit: z.number(),
+          status: z.enum(['pass', 'warn', 'fail']),
+          hard: z.boolean(),
+          reason: z.string(),
+        }),
+      ),
+    })
+    .optional(),
 });
 export type CompanyReviewResponse = z.infer<typeof CompanyReviewResponseSchema>;
 

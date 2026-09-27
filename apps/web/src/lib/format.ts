@@ -7,8 +7,6 @@
 // ---------------------------------------------------------------- short codes
 
 const CODE_PREFIXES = {
-  rental: 'RNT',
-  booking: 'BKG',
   invoice: 'INV',
   equipment: 'EQP',
   site: 'STE',

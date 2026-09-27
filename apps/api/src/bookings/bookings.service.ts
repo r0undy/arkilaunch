@@ -1,10 +1,13 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, like, ne, type SQL } from 'drizzle-orm';
 import {
   addresses,
   auditLogs,
   bookingChangeRequests,
   customers,
+  edtr,
+  edtrLineItems,
+  edtrReconciliations,
   equipment,
   equipmentTypes,
   equipmentAssignments,
@@ -16,6 +19,8 @@ import {
   quotations,
   rentals,
   resolveDepositLedger,
+  tenants,
+  users,
   withTenantTx,
   type db,
 } from '@arkilaunch/db';
@@ -34,7 +39,7 @@ import type {
   RequestContext,
   RescheduleSuggestion,
 } from '@arkilaunch/shared';
-import { bookingDays, minBookingHours } from '@arkilaunch/shared';
+import { bookingCodeSearchPrefix, bookingDays, minBookingHours } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { QuotesService, inNegotiation } from '../quotes/quotes.service.js';
 import { requireSiteProof } from '../common/site-proof.js';
@@ -45,6 +50,8 @@ import {
   overlappingAssignments,
 } from '../common/equipment-availability.js';
 import { ownCustomers, ownsCustomer, requireVerifiedCompany } from '../common/customer-scope.js';
+import { loadFieldLogs, personName } from '../common/field-logs.js';
+import { publicPhotoUrl } from '../fleet/fleet.service.js';
 import { countRows } from '../common/count-rows.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 
@@ -203,7 +210,7 @@ export class BookingsService {
         await notifyStaff(tx, ctx.tenantId, 'booking_requested', { rental_id: rental.id, item_count: body.items.length });
       }
 
-      return { id: rental.id, status: rental.status, trackerUrl: `/orders/${rental.id}` };
+      return { id: rental.id, code: rental.code, status: rental.status, trackerUrl: `/orders/${rental.id}` };
     });
 
     // Priced straight off the rate cards once the booking is committed, so
@@ -224,12 +231,17 @@ export class BookingsService {
     return withTenantTx(ctx, async (tx) => {
       // The role branch was always correct; it was the BOUND that was
       // missing, on both branches (audit-api-surface.md #5).
-      let where;
+      const conditions: SQL[] = [];
       if (ctx.role === 'customer') {
         const own = await ownCustomers(tx, ctx);
         if (own.length === 0) return { items: [], total: 0 };
-        where = inArray(rentals.customerId, own.map((row) => row.id));
+        conditions.push(inArray(rentals.customerId, own.map((row) => row.id)));
       }
+      // Only letters, digits and hyphens survive bookingCodeSearchPrefix,
+      // so the LIKE pattern carries no wildcard the caller chose.
+      const codePrefix = query.q ? bookingCodeSearchPrefix(query.q) : null;
+      if (codePrefix) conditions.push(like(rentals.code, `${codePrefix}%`));
+      const where = conditions.length ? and(...conditions) : undefined;
       const rows = await tx
         .select()
         .from(rentals)
@@ -255,6 +267,7 @@ export class BookingsService {
           const site = siteById.get(row.projectSiteId);
           return {
             id: row.id,
+            code: row.code,
             status: row.status,
             projectSiteId: row.projectSiteId,
             siteCity: site?.city ?? null,
@@ -283,17 +296,77 @@ export class BookingsService {
         .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
         .where(eq(projectSites.id, rental.projectSiteId))
         .limit(1);
-      const machines = await tx
-        .select({ id: equipment.id, type: equipmentTypes.name, model: equipment.model, serialNo: equipment.serialNo })
+      const machineRows = await tx
+        .select({
+          id: equipment.id,
+          type: equipmentTypes.name,
+          model: equipment.model,
+          serialNo: equipment.serialNo,
+          start: equipmentAssignments.start,
+          end: equipmentAssignments.end,
+          operatorUserId: equipmentAssignments.operatorUserId,
+        })
         .from(equipmentAssignments)
         .innerJoin(equipment, eq(equipment.id, equipmentAssignments.equipmentId))
         .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipment.equipmentTypeId))
-        .where(eq(equipmentAssignments.rentalId, id));
+        .where(and(eq(equipmentAssignments.rentalId, id), ne(equipmentAssignments.status, 'cancelled')));
+      const operatorIds = machineRows.map((m) => m.operatorUserId).filter((u): u is string => !!u);
+      const operators = operatorIds.length
+        ? await tx
+            .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email })
+            .from(users)
+            .where(inArray(users.id, operatorIds))
+        : [];
+      const operatorById = new Map(operators.map((o) => [o.id, personName(o)]));
+      // Pre-printed "hour meter at start of week": the unit's last
+      // approved end reading, from the field logs (RLS-scoped).
+      const meters = machineRows.length
+        ? await tx
+            .select({ equipmentId: edtr.equipmentId, end: edtrLineItems.hourMeterEnd, reportDate: edtr.reportDate })
+            .from(edtrLineItems)
+            .innerJoin(edtr, eq(edtr.id, edtrLineItems.edtrId))
+            .innerJoin(edtrReconciliations, eq(edtrReconciliations.edtrId, edtr.id))
+            .where(
+              and(
+                inArray(edtr.equipmentId, machineRows.map((m) => m.id)),
+                eq(edtrReconciliations.status, 'approved'),
+                isNotNull(edtrLineItems.hourMeterEnd),
+              ),
+            )
+            .orderBy(desc(edtr.reportDate))
+        : [];
+      const lastMeter = new Map<string, number>();
+      for (const m of meters) if (!lastMeter.has(m.equipmentId)) lastMeter.set(m.equipmentId, Number(m.end));
+      const [tenant] = await tx.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1);
       return {
         rentalId: id,
         chargeTo: customer?.companyName ?? '',
         projectLocation: [site?.line, site?.city, site?.province].filter(Boolean).join(', '),
-        equipment: machines,
+        equipment: machineRows.map((m) => ({
+          id: m.id,
+          type: m.type,
+          model: m.model,
+          serialNo: m.serialNo,
+          start: m.start.toISOString(),
+          end: m.end?.toISOString() ?? null,
+          operatorName: m.operatorUserId ? (operatorById.get(m.operatorUserId) ?? null) : null,
+          lastHourMeter: lastMeter.get(m.id) ?? null,
+        })),
+        bookingCode: rental.code,
+        customerName: customer?.companyName ?? '',
+        siteRep: rental.siteContact,
+        rentalStart: rental.startDate.toISOString(),
+        rentalEnd: rental.endDate?.toISOString() ?? null,
+        ...(tenant
+          ? {
+              tenant: {
+                name: tenant.legalName,
+                address: [tenant.address, tenant.city, tenant.province].filter(Boolean).join(', '),
+                contact: [tenant.phone, tenant.contactEmail].filter(Boolean).join(' · '),
+                logoUrl: publicPhotoUrl(tenant.logoKey),
+              },
+            }
+          : {}),
       };
     });
   }
@@ -305,10 +378,22 @@ export class BookingsService {
     return withTenantTx(ctx, async (tx) => {
       const rental = await this.visibleRental(tx, ctx, id);
 
-      const assignments = await tx
-        .select()
+      const assignmentRows = await tx
+        .select({
+          assignment: equipmentAssignments,
+          typeName: equipmentTypes.name,
+          model: equipment.model,
+          serialNo: equipment.serialNo,
+        })
         .from(equipmentAssignments)
+        .innerJoin(equipment, eq(equipment.id, equipmentAssignments.equipmentId))
+        .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipment.equipmentTypeId))
         .where(eq(equipmentAssignments.rentalId, id));
+      const [customer] = await tx
+        .select({ companyName: customers.companyName })
+        .from(customers)
+        .where(eq(customers.id, rental.customerId))
+        .limit(1);
       const [quotation] = await tx
         .select()
         .from(quotations)
@@ -334,6 +419,15 @@ export class BookingsService {
         .where(eq(projectSites.id, rental.projectSiteId))
         .limit(1);
       const ledger = await resolveDepositLedger(tx, id, ctx.tenantId);
+      const logs = await loadFieldLogs(tx, [id]);
+      const unitName = new Map(logs.units.map((u) => [u.equipmentId, `${u.name} (SN ${u.serialNo})`]));
+      const fieldLogs = {
+        ...logs.totals,
+        pending: ctx.role === 'customer' ? 0 : logs.totals.pending,
+        days: logs.days
+          .filter((d) => d.status === 'approved' && d.hours)
+          .map((d) => ({ date: d.date, equipmentName: unitName.get(d.equipmentId) ?? 'Machine', hours: d.hours! })),
+      };
       const changeRows = await tx
         .select()
         .from(bookingChangeRequests)
@@ -342,12 +436,14 @@ export class BookingsService {
 
       return {
         id: rental.id,
+        code: rental.code,
         status: rental.status,
         projectSiteId: rental.projectSiteId,
         siteCity: site?.city ?? null,
         siteProvince: site?.province ?? null,
         trackerUrl: `/orders/${rental.id}`,
         customerId: rental.customerId,
+        customerName: customer?.companyName ?? null,
         siteContact: rental.siteContact,
         siteNotes: rental.siteNotes,
         callRequestedAt: rental.callRequestedAt,
@@ -366,8 +462,9 @@ export class BookingsService {
           status: row.status,
           createdAt: row.createdAt,
         })),
-        items: assignments.map((assignment) => ({
+        items: assignmentRows.map(({ assignment, typeName, model, serialNo }) => ({
           equipmentId: assignment.equipmentId,
+          equipmentName: `${typeName} · ${model} · SN ${serialNo}`,
           start: assignment.start,
           end: assignment.end,
           status: assignment.status,
@@ -395,6 +492,7 @@ export class BookingsService {
           status: payment.status,
           providerRef: payment.providerRef,
         })),
+        fieldLogs,
       };
     });
   }

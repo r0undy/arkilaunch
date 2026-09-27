@@ -1,14 +1,14 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { BookingSummaryResponse } from '@arkilaunch/shared';
+import { bookingCodeSearchPrefix, type BookingSummaryResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
-import { formatStatus, shortCode, siteName } from '../lib/format.js';
+import { formatStatus, siteName } from '../lib/format.js';
 import { Button } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { myTruckRequestsQuery, TruckRequestCard } from './account.trucks.js';
@@ -36,7 +36,7 @@ const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
         <span className="text-text">
           {row.siteCity ?? row.siteProvince ?? siteName({ id: row.projectSiteId })}
         </span>
-        <span className="font-mono text-xs text-text-muted">{shortCode('booking', row.id)}</span>
+        <span className="font-mono text-xs text-text-muted">{row.code}</span>
       </div>
     ),
   },
@@ -68,12 +68,25 @@ function MyBookingsPage() {
   // Both services follow the same steps (request, negotiate, pay); one tab
   // each keeps their different columns from sharing one table.
   const [service, setService] = useState<Service>('rental');
+  const [search, setSearch] = useState('');
+  const codePrefix = bookingCodeSearchPrefix(search) ?? '';
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="My bookings"
         description="Everything you have rented or booked, and where it stands."
+      />
+      <input
+        type="search"
+        value={search}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setOffset(0);
+        }}
+        placeholder="Find by booking code (EQR-2026-0001)"
+        aria-label="Find a booking by code"
+        className="min-h-10 w-full max-w-md rounded-md border border-border bg-surface px-3 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
       />
       <div role="tablist" aria-label="Service" className="flex gap-1 border-b border-border">
         {SERVICES.map((entry) => (
@@ -95,11 +108,11 @@ function MyBookingsPage() {
         ))}
       </div>
       {service === 'truck' ? (
-        <TruckBookings />
+        <TruckBookings codePrefix={codePrefix} />
       ) : (
         <DataPanel
           title="My bookings"
-          options={bookingsQueries.list(PAGE_SIZE, offset)}
+          options={bookingsQueries.list(PAGE_SIZE, offset, codePrefix)}
           emptyTitle="No bookings yet"
           emptyDescription="Rent your first piece of equipment to see it tracked here."
           isEmpty={(data) => data.total === 0}
@@ -121,8 +134,11 @@ function MyBookingsPage() {
   );
 }
 
-function TruckBookings() {
-  const mine = useQuery(myTruckRequestsQuery);
+function TruckBookings({ codePrefix }: { codePrefix: string }) {
+  const mine = useQuery({
+    ...myTruckRequestsQuery,
+    select: (rows) => (codePrefix ? rows.filter((r) => r.code.startsWith(codePrefix)) : rows),
+  });
   if (mine.isPending) return <p className="text-sm text-text-muted">Loading truck bookings...</p>;
   if (mine.isError)
     return <p className="text-sm text-error">Truck bookings could not be loaded.</p>;

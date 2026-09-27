@@ -5,6 +5,8 @@ import { apiGet, apiPost, apiPostForm } from '../lib/api-client.js';
 import type { EquipmentRef, RentalRef } from '../lib/reference-client.js';
 import { explainEdtrError } from '../lib/edtr-error.js';
 import { formatDate, formatHours, formatStatus, shortCode } from '../lib/format.js';
+import { manilaDate } from '@arkilaunch/shared';
+import { EMPTY_HOURS, HourFields, toLineItems, type HourFieldValues } from './hour-fields.js';
 import { Button } from './button.js';
 import { CaptureField } from './capture-field.js';
 import { Input } from './input.js';
@@ -51,6 +53,12 @@ export interface CaptureModalProps {
   initialRentalId?: string;
   /** Open straight on the scanner rather than the typed-entry form. */
   initialSource?: 'digital_entry' | 'paper_ocr';
+  /**
+   * The timekeeper's form (cr-arkilaunch-edtr-site-hub-approval.md): scan +
+   * typed hours, sent to the office as Pending. No source choice and no
+   * read-back of the log, which only staff may read.
+   */
+  submitOnly?: boolean;
 }
 
 export function CaptureModal({
@@ -63,13 +71,13 @@ export function CaptureModal({
   toast,
   initialRentalId,
   initialSource = 'digital_entry',
+  submitOnly = false,
 }: CaptureModalProps) {
   const [source, setSource] = useState<'digital_entry' | 'paper_ocr'>(initialSource);
   const [rentalId, setRentalId] = useState(initialRentalId ?? '');
   const [equipmentId, setEquipmentId] = useState('');
   const [reportDate, setReportDate] = useState('');
-  const [hoursActive, setHoursActive] = useState('8');
-  const [hoursIdle, setHoursIdle] = useState('0');
+  const [hours, setHours] = useState<HourFieldValues>({ ...EMPTY_HOURS, running: '8' });
   const [scanFile, setScanFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -146,31 +154,34 @@ export function CaptureModal({
     setSubmitting(true);
     try {
       let res: EdtrCaptureResponse;
+      const lineItems = toLineItems(hours);
+      if (!lineItems && !(source === 'paper_ocr' && ocrPipeline)) {
+        throw new Error('Enter the running hours, and only numbers of zero or more.');
+      }
       if (source === 'digital_entry') {
         res = await apiPost<EdtrCaptureResponse>('/edtr', {
           source: 'digital_entry',
           rentalId,
           equipmentId,
           reportDate,
-          lineItems: { hoursActive: Number(hoursActive), hoursIdle: Number(hoursIdle) },
+          lineItems,
         });
       } else {
         // Multipart carries strings only, so transcribed hours travel as a
         // JSON-encoded field the API decodes back into an object.
-        const transcribed =
-          !ocrPipeline && hoursActive !== '' && hoursIdle !== ''
-            ? {
-                lineItems: JSON.stringify({
-                  hoursActive: Number(hoursActive),
-                  hoursIdle: Number(hoursIdle),
-                }),
-              }
-            : {};
+        const transcribed = !ocrPipeline && lineItems ? { lineItems: JSON.stringify(lineItems) } : {};
         res = await apiPostForm<EdtrCaptureResponse>(
           '/edtr',
           { source: 'paper_ocr', rentalId, equipmentId, reportDate, ...transcribed },
           scanFile ?? undefined,
         );
+      }
+      if (submitOnly) {
+        // The timekeeper cannot read logs back; the office reviews it.
+        toast.success('Sent to the office', `${formatDate(reportDate)} is pending approval.`);
+        onCaptured();
+        handleClose();
+        return;
       }
       setPollUrl(res.pollUrl);
       toast.success(
@@ -215,7 +226,7 @@ export function CaptureModal({
       }
     >
       <form onSubmit={capture} className="flex flex-col gap-4">
-        <fieldset className="flex flex-col gap-2">
+        <fieldset className={submitOnly ? 'hidden' : 'flex flex-col gap-2'}>
           <legend className="mb-1 text-sm font-medium text-text">How was it recorded?</legend>
           <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
             <label className="flex min-h-11 items-center gap-2 text-text">
@@ -253,7 +264,7 @@ export function CaptureModal({
           {rentals.length === 0 && <option value="">No rentals available</option>}
           {rentals.map((r) => (
             <option key={r.id} value={r.id}>
-              {rentalLabel(r)} ({shortCode('rental', r.id)})
+              {r.code} · {rentalLabel(r)}
             </option>
           ))}
         </Select>
@@ -280,6 +291,13 @@ export function CaptureModal({
           value={reportDate}
           onChange={(e) => setReportDate(e.target.value)}
           required
+          {...(rental?.startDate ? { min: manilaDate(rental.startDate) } : {})}
+          {...(rental?.endDate ? { max: manilaDate(rental.endDate) } : {})}
+          hint={
+            rental?.startDate
+              ? `Within the rental: ${formatDate(rental.startDate)} to ${rental.endDate ? formatDate(rental.endDate) : 'open'}`
+              : undefined
+          }
         />
 
         {source === 'paper_ocr' && (
@@ -299,28 +317,7 @@ export function CaptureModal({
           />
         )}
 
-        {!(source === 'paper_ocr' && ocrPipeline) && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            numeric
-            id="hoursActive"
-            label="Hours working"
-            type="number"
-            step="0.25"
-            value={hoursActive}
-            onChange={(e) => setHoursActive(e.target.value)}
-          />
-          <Input
-            numeric
-            id="hoursIdle"
-            label="Hours idle"
-            type="number"
-            step="0.25"
-            value={hoursIdle}
-            onChange={(e) => setHoursIdle(e.target.value)}
-          />
-        </div>
-        )}
+        {!(source === 'paper_ocr' && ocrPipeline) && <HourFields value={hours} onChange={setHours} idPrefix="capture" />}
         {source === 'paper_ocr' && !ocrPipeline && (
           <p className="-mt-2 text-sm text-text-muted">
             Type the hours exactly as written on the sheet. The photo is kept either way, so the

@@ -46,6 +46,7 @@ import { adminLayoutRoute } from './routes/_admin.js';
 import { appIndexRoute } from './routes/app.index.js';
 import { appInventoryRoute } from './routes/app.inventory.js';
 import { appDeploymentRoute } from './routes/app.deployment.js';
+import { appSiteHubRoute } from './routes/app.site-hub.js';
 import { appInsightsRoute } from './routes/app.insights.js';
 import { appIncidentsRoute } from './routes/app.incidents.js';
 import { appPaymentsRoute } from './routes/app.payments.js';
@@ -140,6 +141,7 @@ export const routeTree = rootRoute.addChildren([
     appBookingRoute,
     appInventoryRoute,
     appDeploymentRoute,
+    appSiteHubRoute,
     appInsightsRoute,
     appIncidentsRoute,
     appPaymentsRoute,
