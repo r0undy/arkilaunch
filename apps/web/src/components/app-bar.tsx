@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { parseBookingCode } from '@arkilaunch/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { describeNotification, feedAreaOf, notificationQueries } from './notification-feed.js';
+import { describeNotification, feedAreaOf, NotificationIcon, notificationQueries } from './notification-feed.js';
 import { apiPatch } from '../lib/api-client.js';
 import { formatStatus } from '../lib/format.js';
 import { Search, ShoppingCart } from 'lucide-react';
@@ -150,7 +150,9 @@ function NotificationBell({
             {latest.data?.items.map((n) => {
               const described = describeNotification(n.notificationType, n.payload, area);
               const body = (
-                <>
+                <div className="flex items-start gap-3">
+                  <NotificationIcon type={n.notificationType} unread={n.status === 'unread'} className="h-8 w-8" />
+                  <div className="min-w-0">
                   <p className="flex items-center gap-2 text-sm font-semibold text-text">
                     {n.status === 'unread' && (
                       <span
@@ -163,7 +165,8 @@ function NotificationBell({
                   {described && (
                     <p className="line-clamp-2 text-xs text-text-muted">{described.body}</p>
                   )}
-                </>
+                  </div>
+                </div>
               );
               return (
                 <li key={n.id} className="border-b border-border last:border-b-0">
