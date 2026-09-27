@@ -278,7 +278,7 @@ describe('Coupons at checkout', () => {
   it("keeps one tenant's coupons invisible to another", async () => {
     const code = `ISO${run}`;
     await couponsService.create(adminCtx, { code, discountType: 'fixed', discountValue: 10, oncePerCustomer: false });
-    const listB = await couponsService.list(otherTenantCtx);
+    const listB = (await couponsService.list(otherTenantCtx, 100, 0)).items;
     expect(listB.some((c) => c.code === code)).toBe(false);
     // Tenant B can create the same code for itself; they never collide.
     await couponsService.create(otherTenantCtx, { code, discountType: 'fixed', discountValue: 10, oncePerCustomer: false });

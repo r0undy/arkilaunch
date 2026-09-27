@@ -199,7 +199,7 @@ describe('Customer onboarding', () => {
         items: [{ equipmentTypeId: randomUUID(), rateCardId: randomUUID(), quantity: 1, estimatedHours: 1, mobilizationKm: 0, demobilizationKm: 0 }],
       }),
     ).rejects.toMatchObject({ response: { error: 'company_not_verified' } });
-    const queue = await companies.listForReview(adminCtx, 'pending');
+    const queue = (await companies.listForReview(adminCtx, 'pending')).items;
     expect(queue.find((c) => c.id === acme.id)?.documents).toHaveLength(3);
     await companies.decide(adminCtx, acme.id, { decision: 'approved', identity: IDENTITY, registryChecked: [acmeSec.id], cureDocuments: [] });
 
@@ -311,7 +311,7 @@ describe('Customer onboarding', () => {
 
     // Tenant B's staff see nothing of tenant A's queue.
     expect(
-      (await companies.listForReview(otherTenantCtx, 'pending')).map((c) => c.id),
+      (await companies.listForReview(otherTenantCtx, 'pending')).items.map((c) => c.id),
     ).not.toContain(mine.id);
     await expect(
       companies.decide(otherTenantCtx, mine.id, { decision: 'approved', identity: IDENTITY, registryChecked: [], cureDocuments: [] }),
@@ -644,7 +644,7 @@ describe('Customer onboarding', () => {
 
       const [company] = await companies
         .listForReview(adminCtx, 'pending')
-        .then((all) => all.filter((c) => c.id === companyId));
+        .then((all) => all.items.filter((c) => c.id === companyId));
       expect(company?.kycStatus).toBe('pending'); // unchanged by reading
       expect(company?.companyName).toBe('Reviewme Corp'); // not overwritten by OCR
     });
@@ -693,7 +693,7 @@ describe('Customer onboarding', () => {
         companies.decide(adminCtx, companyId, { decision: 'approved', registryChecked: [secId], cureDocuments: [] }),
       ).rejects.toMatchObject({ response: { error: 'identity_checks_required' } });
       await companies.decide(adminCtx, companyId, { decision: 'approved', identity: IDENTITY, registryChecked: [secId], cureDocuments: [] });
-      const approved = (await companies.listForReview(adminCtx, 'approved')).find((c) => c.id === companyId);
+      const approved = (await companies.listForReview(adminCtx, 'approved')).items.find((c) => c.id === companyId);
       expect(approved?.companyName).toBe('As Sent Corp');
       expect(approved?.tin).toBe('111-222-333');
       expect(approved?.rejection).toBeNull();
@@ -726,7 +726,7 @@ describe('Customer onboarding', () => {
         response: { error: 'rejection_reason_required' },
       });
       await companies.decide(adminCtx, companyId, { decision: 'rejected', reason: 'dti_expired', registryChecked: [], cureDocuments: [] });
-      const rejected = (await companies.listForReview(adminCtx, 'rejected')).find((c) => c.id === companyId);
+      const rejected = (await companies.listForReview(adminCtx, 'rejected')).items.find((c) => c.id === companyId);
       expect(rejected?.documents.find((d) => d.id === dti.id)?.registryChecked).toBe(false);
     });
 
@@ -750,7 +750,7 @@ describe('Customer onboarding', () => {
         { firstName: 'Juan', lastName: 'Dela Cruz', idNumber: '1234-5678-9012-3457', sex: 'M' },
       );
       const read = async () =>
-        (await companies.listForReview(adminCtx, 'pending'))
+        (await companies.listForReview(adminCtx, 'pending')).items
           .find((c) => c.id === company.id)!
           .documents.find((d) => d.id === doc.id)!;
 
@@ -777,7 +777,7 @@ describe('Customer onboarding', () => {
         registryChecked: [],
         cureDocuments: [],
       });
-      const rejected = (await companies.listForReview(adminCtx, 'rejected')).find((c) => c.id === companyId);
+      const rejected = (await companies.listForReview(adminCtx, 'rejected')).items.find((c) => c.id === companyId);
       expect(rejected?.companyName).toBe('Reject Corp');
       expect(rejected?.rejection).toMatchObject({
         reason: 'sec_not_in_good_standing',
@@ -866,7 +866,7 @@ describe('Customer onboarding', () => {
       expect(reapplied.rejection?.reason).toBe('bir_registration_invalid');
 
       // The replaced 2303 no longer counts; the queue shows one of each.
-      const [queued] = (await service.listForReview(adminCtx, 'pending')).filter((c) => c.id === company.id);
+      const [queued] = (await service.listForReview(adminCtx, 'pending')).items.filter((c) => c.id === company.id);
       expect(queued?.documents.map((d) => d.documentType).sort()).toEqual([
         'bir_cor',
         'business_permit',
@@ -892,7 +892,7 @@ describe('Customer onboarding', () => {
         registryChecked: queued!.documents.filter((d) => d.documentType === 'bir_cor').map((d) => d.id),
         cureDocuments: [],
       });
-      const [approved] = (await service.listForReview(adminCtx, 'approved')).filter((c) => c.id === company.id);
+      const [approved] = (await service.listForReview(adminCtx, 'approved')).items.filter((c) => c.id === company.id);
       expect(approved?.rejection).toBeNull();
     });
 

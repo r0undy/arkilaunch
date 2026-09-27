@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { UuidParamPipe } from '../common/uuid-param.pipe.js';
 import { CouponsService } from './coupons.service.js';
-import { CouponCreateDto, CouponUpdateDto } from './dto.js';
+import { CouponCreateDto, CouponListQueryDto, CouponUpdateDto } from './dto.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -16,8 +16,8 @@ export class CouponsController {
 
   @Get()
   @RequirePermission('pricing:manage')
-  list(@Req() req: CtxRequest) {
-    return this.coupons.list(req.ctx);
+  list(@Query() query: CouponListQueryDto, @Req() req: CtxRequest) {
+    return this.coupons.list(req.ctx, query.limit, query.offset);
   }
 
   @Post()

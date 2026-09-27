@@ -197,7 +197,7 @@ export class CustomersController {
     @Get('customers/review')
   @RequirePermission('quote:approve')
   listForReview(@Query() query: CompanyReviewQueryDto, @Req() req: CtxRequest) {
-    return this.customers.listForReview(req.ctx, query.kycStatus);
+    return this.customers.listForReview(req.ctx, query.kycStatus, query.limit, query.offset);
   }
 
   // A 300s signed URL; the key is re-read from the row under RLS, never

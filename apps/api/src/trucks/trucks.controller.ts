@@ -11,16 +11,19 @@ import {
   TruckEstimateRequestSchema,
   TruckKmConfirmSchema,
   TruckRequestCreateSchema,
+  TruckRequestListQuerySchema,
   TruckSettingsSchema,
   type RequestContext,
 } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
+import { UuidParamPipe } from '../common/uuid-param.pipe.js';
 import { TrucksService } from './trucks.service.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
 class TruckEstimateDto extends createZodDto(TruckEstimateRequestSchema) {}
 class TruckRequestCreateDto extends createZodDto(TruckRequestCreateSchema) {}
+class TruckRequestListQueryDto extends createZodDto(TruckRequestListQuerySchema) {}
 class TruckKmConfirmDto extends createZodDto(TruckKmConfirmSchema) {}
 class TruckAgreeDto extends createZodDto(TruckAgreeSchema) {}
 class TruckCrewDto extends createZodDto(TruckCrewSchema) {}
@@ -53,8 +56,8 @@ export class TrucksController {
 
   @Get('me/truck-requests')
   @RequirePermission('booking:read')
-  mine(@Query('q') q: string | undefined, @Req() req: CtxRequest) {
-    return this.trucks.list(req.ctx, 'mine', typeof q === 'string' ? q.slice(0, 40) : undefined);
+  mine(@Query() query: TruckRequestListQueryDto, @Req() req: CtxRequest) {
+    return this.trucks.list(req.ctx, 'mine', query);
   }
 
   @Post('me/truck-requests/:id/cancel')
@@ -102,8 +105,17 @@ export class TrucksController {
 
   @Get('truck-requests')
   @RequirePermission('pricing:manage')
-  all(@Query('q') q: string | undefined, @Req() req: CtxRequest) {
-    return this.trucks.list(req.ctx, 'all', typeof q === 'string' ? q.slice(0, 40) : undefined);
+  all(@Query() query: TruckRequestListQueryDto, @Req() req: CtxRequest) {
+    return this.trucks.list(req.ctx, 'all', query);
+  }
+
+  // Routes against the public OSRM demo server, so it is throttled like
+  // the customer estimate.
+  @Get('truck-requests/:id/route')
+  @RequirePermission('pricing:manage')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  route(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+    return this.trucks.route(req.ctx, id);
   }
 
   @Patch('truck-requests/:id/km')

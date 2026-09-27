@@ -124,6 +124,12 @@ export interface CouponResponse {
   createdAt: string;
 }
 
+// GET /coupons: newest first, paged.
+export interface CouponListResponse {
+  items: CouponResponse[];
+  total: number;
+}
+
 export interface CouponPreviewResponse {
   code: string;
   discountPhp: number;

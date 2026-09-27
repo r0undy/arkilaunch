@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { FORMULA_BASE_VARS, FormulaError, evaluateFormula, formulaVarName } from './formula.js';
+import { PaginationQuerySchema } from './pagination.js';
 
 // Self-loading truck service. The per-km and fuel inputs are the tenant's
 // existing pricing parameters and diesel price (the same ones every equipment
@@ -97,6 +98,18 @@ export interface TruckPrice {
   highPhp?: number;
 }
 
+// The road route between two pins, for drawing on a map: [lng, lat] pairs
+// (GeoJSON order), simplified by the router. An estimate, like the km.
+export interface TruckRoute {
+  km: number;
+  minutes: number;
+  line: [number, number][];
+}
+
+// POST /me/truck-requests/estimate. `route` is null when the router gave
+// no geometry.
+export type TruckEstimateResponse = TruckPrice & { route: TruckRoute | null };
+
 export const TollRateCreateSchema = z
   .object({ name: z.string().trim().min(1).max(80), feePhp: z.number().nonnegative().max(1_000_000) })
   .strict();
@@ -184,6 +197,21 @@ export function priceTruckTrip({ km, settings, perKmPhp, fuelLPerKm, dieselPhp, 
 
 export const TRUCK_REQUEST_STATUSES = ['estimated', 'km_confirmed', 'agreed', 'paid', 'cancelled'] as const;
 export type TruckRequestStatus = (typeof TRUCK_REQUEST_STATUSES)[number];
+// Nothing left to do on these: the rest are "open".
+export const CLOSED_TRUCK_STATUSES: readonly TruckRequestStatus[] = ['paid', 'cancelled'];
+
+// GET /truck-requests and /me/truck-requests. `q` finds a TRK- code by
+// prefix, as GET /bookings does; `status` splits open from closed.
+export const TruckRequestListQuerySchema = PaginationQuerySchema.extend({
+  q: z.string().trim().max(40).optional(),
+  status: z.enum(['open', 'closed']).optional(),
+});
+export type TruckRequestListQuery = z.infer<typeof TruckRequestListQuerySchema>;
+
+export interface TruckRequestListResponse {
+  items: TruckRequestResponse[];
+  total: number;
+}
 
 export interface TruckRequestResponse {
   id: string;
@@ -209,5 +237,10 @@ export interface TruckRequestResponse {
   // Crew on the trip (0059); null until staff name them.
   driverName: string | null;
   helperName: string | null;
+  // The exact map pins, when the customer dropped them (0037).
+  pickupLat: number | null;
+  pickupLng: number | null;
+  dropoffLat: number | null;
+  dropoffLng: number | null;
   createdAt: string;
 }

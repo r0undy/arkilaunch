@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaginationQuerySchema } from './pagination.js';
 import { DTI_REGEX, PHILSYS_PCN_REGEX, SEC_REGEX } from './kyc.js';
 
 // Customer prerequisites CR: self-signup, companies (Figma 582:3946 "Add
@@ -325,6 +326,12 @@ export const CompanyReviewResponseSchema = CompanyResponseSchema.extend({
 });
 export type CompanyReviewResponse = z.infer<typeof CompanyReviewResponseSchema>;
 
+// GET /customers/review: one page of the queue plus its unpaged total.
+export interface CompanyReviewListResponse {
+  items: CompanyReviewResponse[];
+  total: number;
+}
+
 export const CustomerSiteCreateSchema = z.object({
   customerId: z.string().uuid(),
   line1: z.string().trim().min(3).max(300),
@@ -386,7 +393,7 @@ export const CustomerSiteResponseSchema = z.object({
 export type CustomerSiteResponse = z.infer<typeof CustomerSiteResponseSchema>;
 
 // Staff verification queue.
-export const CompanyReviewQuerySchema = z.object({
+export const CompanyReviewQuerySchema = PaginationQuerySchema.extend({
   kycStatus: z.enum(['pending', 'approved', 'rejected']).default('pending'),
 });
 // PATCH /customers/:id/kyc. Approve or reject, nothing in between: the
