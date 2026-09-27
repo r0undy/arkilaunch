@@ -2,8 +2,9 @@
 
 /*
  * Yardboard token layer. Mirrors docs/dsd-arkilaunch.md §2 (DESIGN.md's materialized copy)
- * exactly: Primitive -> Semantic -> Component tiering (§2.0), plus the Marketing-tier
- * amendment (CR: dsd-marketing-tier). Edit the DSD, not this file's structure, when the
+ * exactly: Primitive -> Semantic -> Component tiering (§2.0). Shape, type and elevation
+ * follow the AWS reference (CR: aws-design-language, docs/assets/reference/aws.design.md);
+ * every color is still Yardboard's. Edit the DSD, not this file's structure, when the
  * design system changes; this file is the code-side half of that same contract.
  *
  * Theme (light/dark) is toggled by [data-theme] on the root; default is light.
@@ -93,16 +94,15 @@
   --yb-recon-failed: var(--slate-700);
   --yb-recon-approved: var(--teal-700);
 
-  /* Elevation (§2.5): border-first, low blur, no backdrop-filter */
-  --yb-shadow-sm: 0 1px 2px rgb(16 21 27 / 10%);
-  --yb-shadow-md: 0 2px 6px rgb(16 21 27 / 14%);
-  --yb-shadow-lg: 0 6px 20px rgb(16 21 27 / 22%);
-  --yb-modal-scrim: rgb(16 21 27 / 55%);
+  /* The top bar and footer (§2.1): steel, the near-black AWS runs its nav on. */
+  --yb-color-nav: var(--steel-900);
 
-  /* Corner radius (§3): deliberately tight, no fully-rounded surfaces */
-  --yb-radius-sm: 4px;
-  --yb-radius-md: 6px;
-  --yb-radius-lg: 8px;
+  /* Elevation (§2.5): cards rest on their border; lift is for hover and menus.
+     sm is a zero shadow, not `none`, so it still composes with ring utilities. */
+  --yb-shadow-sm: 0 0 #0000;
+  --yb-shadow-md: 1px 1px 20px rgb(0 0 0 / 10%);
+  --yb-shadow-lg: 1px 1px 24px rgb(0 0 0 / 25%);
+  --yb-modal-scrim: rgb(16 21 27 / 55%);
 }
 
 /* ---- Night-yard dark theme override (§2.1) ---- */
@@ -159,25 +159,44 @@
 }
 
 @theme {
-  /* Fonts (§2.3). Body/heading share one IBM Plex Sans variable file (wght 100-700);
-     display/label use the static Condensed 600 cut; data uses static Mono 500;
-     the marketing accent-serif is Instrument Serif italic, marketing tier only. */
+  /* Fonts (§2.3). One sans for every heading and paragraph; data uses static Mono 500
+     (the gauge rule). Display is the sans until the Inter switch retires it. */
   --font-sans: 'IBM Plex Sans', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-display: 'IBM Plex Sans Condensed', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'IBM Plex Sans', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', 'Roboto Mono', ui-monospace, monospace;
-  --font-serif-accent: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+
+  /* Type scale (§2.3), the AWS reference's tiers. text-base and text-sm are already
+     its body-md (16/24) and body-sm (14/20). Headings stop at weight 500. */
+  --text-display-xl: 2.5rem;
+  --text-display-xl--line-height: 2.75rem;
+  --text-display-xl--font-weight: 500;
+  --text-display-lg: 2rem;
+  --text-display-lg--line-height: 2.5rem;
+  --text-display-lg--font-weight: 500;
+  --text-display-md: 1.75rem;
+  --text-display-md--line-height: 2.25rem;
+  --text-display-md--font-weight: 500;
+  --text-heading-lg: 1.25rem;
+  --text-heading-lg--line-height: 1.75rem;
+  --text-heading-lg--font-weight: 500;
+  --text-heading-md: 1.125rem;
+  --text-heading-md--line-height: 1.5rem;
+  --text-heading-md--font-weight: 500;
+  --text-body-lg: 1.125rem;
+  --text-body-lg--line-height: 1.625rem;
 
   /* Wide breakpoint (§3): control-room dashboards, wide fleet tables.
      Mobile 360px and tablet 768px / desktop 1024px already match Tailwind's
      default baseline / md / lg breakpoints exactly, so only "wide" needs adding. */
   --breakpoint-wide: 1440px;
 
-  /* Shell max-width shared by Console app content and the Marketing wrapper (§3). */
-  --container-shell: 1440px;
+  /* Public page content width (§3); the signed-in app keeps its own 1440px cap. */
+  --container-shell: 1280px;
 
   /* Console colors (indirection to the theme/tier custom properties above, so
      switching [data-theme]/[data-tier] repaints these utilities without a rebuild). */
   --color-bg: var(--yb-color-bg);
+  --color-nav: var(--yb-color-nav);
   --color-surface: var(--yb-color-surface);
   --color-surface-sunk: var(--yb-color-surface-sunk);
   --color-border: var(--yb-color-border);
@@ -226,16 +245,20 @@
   --shadow-mk-card: var(--yb-shadow-mk-card);
   --shadow-mk-nav: var(--yb-shadow-mk-nav);
 
-  /* Radius */
-  --radius-sm: var(--yb-radius-sm);
-  --radius-md: var(--yb-radius-md);
-  --radius-lg: var(--yb-radius-lg);
+  /* Radius (§3), the AWS reference's scale: 4 tags, 8 nav tiles and small items,
+     16 cards and dialogs, 24 feature cards, 40 every button. Text inputs are square;
+     that one knob is --radius-input. */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-input: 0px;
   --radius-mk-sm: var(--yb-radius-mk-sm);
   --radius-mk-md: var(--yb-radius-mk-md);
   --radius-mk-lg: var(--yb-radius-mk-lg);
   --radius-mk-xl: var(--yb-radius-mk-xl);
   --radius-mk-container: var(--yb-radius-mk-container);
-  --radius-pill: 999px;
+  --radius-pill: 40px;
 
   /* Note: the §3 spacing scale (--space-1 4px ... --space-12 48px) and the marketing
      128px section rhythm both land exactly on Tailwind's default 0.25rem spacing
@@ -254,29 +277,11 @@
 }
 
 @font-face {
-  font-family: 'IBM Plex Sans Condensed';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/ibm-plex-sans-condensed-600.woff2') format('woff2');
-}
-
-@font-face {
   font-family: 'IBM Plex Mono';
   font-style: normal;
   font-weight: 500;
   font-display: swap;
   src: url('/fonts/ibm-plex-mono-500.woff2') format('woff2');
-}
-
-/* Marketing accent only; not preloaded (DSD §2.3) so a console route that never
-   renders .font-serif-accent never fetches it. */
-@font-face {
-  font-family: 'Instrument Serif';
-  font-style: italic;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/instrument-serif-italic-400.woff2') format('woff2');
 }
 
 /* Tenant font (DSD §2.3, CR: tenant-brand-kit). Only a tenant that picks Inter
@@ -325,12 +330,6 @@
     outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
-}
-
-@utility font-serif-accent {
-  font-family: var(--font-serif-accent);
-  font-style: italic;
-  letter-spacing: -0.01em;
 }
 
 /* Reduced motion (§5, §6): every non-essential transition/animation collapses to an

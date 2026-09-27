@@ -15,8 +15,8 @@ export interface StatTileProps {
 
 export function StatTile({ label, value, hint, action }: StatTileProps) {
   return (
-    <Surface radius="md" elevation="sm" className={['relative flex min-w-0 flex-col gap-1 p-4', action ? 'hover:bg-surface-sunk focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus-ring' : ''].join(' ')}>
-      <p className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">{label}</p>
+    <Surface radius="md" elevation="sm" className={['relative flex min-w-0 flex-col gap-1 p-4', action ? 'transition-shadow hover:shadow-md focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus-ring' : ''].join(' ')}>
+      <p className="text-sm font-medium text-text-muted">{label}</p>
       <p className="font-mono text-2xl font-medium tabular-nums text-text [overflow-wrap:anywhere] xl:text-3xl">{value ?? '--'}</p>
       {hint && <p className="text-sm text-text-muted">{hint}</p>}
       {action && <div className="mt-auto pt-1 text-sm font-semibold text-accent [&_a]:after:absolute [&_a]:after:inset-0 [&_a]:after:content-[''] [&_a]:focus-visible:outline-none">{action}</div>}

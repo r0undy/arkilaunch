@@ -55,14 +55,14 @@ export function Tabs<T extends string>({ label, items, value, onChange }: TabsPr
             onClick={() => onChange(item.id)}
             onKeyDown={(event) => onKeyDown(event, index)}
             className={[
-              '-mb-px inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-semibold',
+              '-mb-px inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium',
               'focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
               selected ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text',
             ].join(' ')}
           >
             {item.label}
             {item.badge ? (
-              <span className="rounded-sm bg-surface-sunk px-1.5 py-0.5 font-mono text-xs tabular-nums text-text">
+              <span className="rounded-xs bg-surface-sunk px-1.5 py-0.5 font-mono text-xs tabular-nums text-text">
                 {item.badge}
               </span>
             ) : null}
