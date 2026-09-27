@@ -439,9 +439,11 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   const [km, setKm] = useState(String(r.confirmedKm ?? r.estimatedKm));
   useEffect(() => setKm(String(r.confirmedKm ?? r.estimatedKm)), [r.confirmedKm, r.estimatedKm]);
   const refresh = () => void queryClient.invalidateQueries({ queryKey: TRUCK_REQUESTS });
+  const [confirmingCall, setConfirmingCall] = useState(false);
   const callConfirm = useMutation({
     mutationFn: () => apiPost<TruckRequestResponse>(`/truck-requests/${r.id}/call-confirmed`, {}),
     onSuccess: () => {
+      setConfirmingCall(false);
       refresh();
       toast.success('Confirmed by phone');
     },
@@ -492,7 +494,7 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
           </p>
           {!r.callConfirmedAt && (
             <div>
-              <Button variant="secondary" loading={callConfirm.isPending} onClick={() => callConfirm.mutate()}>
+              <Button variant="secondary" loading={callConfirm.isPending} onClick={() => setConfirmingCall(true)}>
                 Confirmed by phone
               </Button>
             </div>
@@ -542,6 +544,16 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
           )}
         </section>
       )}
+      <ConfirmDialog
+        open={confirmingCall}
+        tone="approve"
+        title="Mark as confirmed by phone?"
+        body={<p>Only once you have spoken to the customer: it opens payment for this trip.</p>}
+        confirmLabel="Yes, we spoke"
+        pending={callConfirm.isPending}
+        onConfirm={() => callConfirm.mutate()}
+        onCancel={() => setConfirmingCall(false)}
+      />
       <ConfirmDialog
         open={asking}
         tone="approve"

@@ -5,6 +5,7 @@ import { apiDelete, apiErrorText, apiGet, apiPatch, apiPostForm } from '../lib/a
 import { MAX_UPLOAD_BYTES, prepareUpload } from '../lib/image-compression.js';
 import { onPrimaryFor } from '../lib/tenant.js';
 import { Button } from './button.js';
+import { ConfirmDialog } from './confirm-dialog.js';
 import { Input } from './input.js';
 import { Surface } from './surface.js';
 import { useToast } from './toast.js';
@@ -80,6 +81,7 @@ function ImageField({
     onError: (e) => toast.error(`Could not remove the ${label.toLowerCase()}`, apiErrorText(e)),
   });
   const inputId = `branding-${kind}`;
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   return (
     <div className="flex flex-col gap-2">
       <label htmlFor={inputId} className="text-sm font-medium text-text">
@@ -112,10 +114,23 @@ function ImageField({
           className="max-w-full text-sm text-text-muted file:mr-3 file:min-h-10 file:rounded-sm file:border file:border-border-strong file:bg-surface file:px-3 file:text-sm file:font-semibold file:text-text"
         />
         {url && (
-          <Button variant="ghost" loading={remove.isPending} onClick={() => remove.mutate()}>
+          <Button variant="ghost" loading={remove.isPending} onClick={() => setConfirmingRemove(true)}>
             Remove
           </Button>
         )}
+        <ConfirmDialog
+          open={confirmingRemove}
+          tone="danger"
+          title={`Remove the ${label.toLowerCase()}?`}
+          body={<p>Your storefront and emails stop showing it straight away. You can upload another at any time.</p>}
+          confirmLabel="Remove it"
+          pending={remove.isPending}
+          onConfirm={async () => {
+            await remove.mutateAsync().catch(() => undefined);
+            setConfirmingRemove(false);
+          }}
+          onCancel={() => setConfirmingRemove(false)}
+        />
       </div>
       <p className="text-sm text-text-muted">{hint}</p>
     </div>

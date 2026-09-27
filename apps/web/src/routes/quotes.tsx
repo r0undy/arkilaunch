@@ -15,6 +15,7 @@ import { Surface } from '../components/surface.js';
 import { PageHeader } from '../components/page-header.js';
 import { GaugeReadout } from '../components/gauge-readout.js';
 import { Modal } from '../components/modal.js';
+import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { QuoteLines } from '../components/quote-lines.js';
 import { useToast } from '../components/toast.js';
 import { DieselPriceForm, PricingParametersForm, RateCardsPanel, RentalFeesForm } from './app.settings.js';
@@ -121,6 +122,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
   // Create draft in its own footer.
   const [previewOpen, setPreviewOpen] = useState(false);
   const [busy, setBusy] = useState<'preview' | 'create' | 'approve' | null>(null);
+  const [confirmingApprove, setConfirmingApprove] = useState(false);
   const [quoteId, setQuoteId] = useState<string | null>(null);
 
   const cardsFor = (typeId: string) => rateCards.filter((rc) => rc.equipmentTypeId === typeId);
@@ -419,7 +421,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
             <Button
               type="button"
               variant="approve"
-              onClick={approve}
+              onClick={() => setConfirmingApprove(true)}
               loading={busy === 'approve'}
               disabled={result.status === 'approved'}
             >
@@ -453,6 +455,24 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
       >
         {result && <QuoteFigures quote={result} />}
       </Modal>
+      <ConfirmDialog
+        open={confirmingApprove}
+        tone="approve"
+        title="Approve and send this quote?"
+        body={
+          <p>
+            The customer is notified and can accept the revised total of{' '}
+            <span className="font-mono font-semibold tabular-nums">{result ? formatPeso(result.total) : ''}</span>.
+          </p>
+        }
+        confirmLabel="Approve and send"
+        pending={busy === 'approve'}
+        onConfirm={async () => {
+          await approve();
+          setConfirmingApprove(false);
+        }}
+        onCancel={() => setConfirmingApprove(false)}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { createRoute, useNavigate } from '@tanstack/react-router';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
 import { apiGet, apiPost } from '../lib/api-client.js';
@@ -12,7 +12,6 @@ import {
   formatPeso,
   formatStatus,
   shortCode,
-  weekStart,
 } from '../lib/format.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
@@ -76,6 +75,14 @@ function statusPill(status: string): { tone: StatusTone; icon: ReactNode } {
   return { tone: 'recon-review', icon: <ClockIcon className="h-4 w-4" aria-hidden /> };
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function addDaysIso(iso: string, days: number): string {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function EdtrPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -93,10 +100,20 @@ function EdtrPage() {
   const [approving, setApproving] = useState<EdtrListItem | null>(null);
 
   const [offset, setOffset] = useState(0);
+  // A new filter starts from its first page.
+  useEffect(() => setOffset(0), [search.equipment, search.week]);
+  // Deep links from the dashboard's "Needs you" rows: one machine-week. The
+  // filter goes to the API, so the pager counts the filtered rows rather than
+  // filtering whichever page happened to load.
+  const filters = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+  if (search.equipment) filters.set('equipmentId', search.equipment);
+  if (search.week) {
+    filters.set('from', search.week);
+    filters.set('to', addDaysIso(search.week, 6));
+  }
   const queue = useQuery({
-    queryKey: ['edtr', PAGE_SIZE, offset] as const,
-    queryFn: () =>
-      apiGet<{ items: EdtrListItem[]; total: number }>(`/edtr?limit=${PAGE_SIZE}&offset=${offset}`),
+    queryKey: ['edtr', PAGE_SIZE, offset, search.equipment ?? '', search.week ?? ''] as const,
+    queryFn: () => apiGet<{ items: EdtrListItem[]; total: number }>(`/edtr?${filters.toString()}`),
   });
 
   const equipmentById = useMemo(
@@ -113,14 +130,7 @@ function EdtrPage() {
     void queryClient.invalidateQueries({ queryKey: ['edtr'] });
   }
 
-  // Deep links from the dashboard's "Needs you" rows: one machine-week.
-  // ponytail: filters the loaded page only; move to API params if the
-  // queue routinely spans more than one page.
-  const items = (queue.data?.items ?? []).filter(
-    (row) =>
-      (!search.equipment || row.equipmentId === search.equipment) &&
-      (!search.week || weekStart(row.reportDate) === search.week),
-  );
+  const items = queue.data?.items ?? [];
   const filtered = Boolean(search.equipment || search.week);
 
   function rentalName(rentalId: string): string {
@@ -529,9 +539,11 @@ function ApproveModal({ item, machine, onClose, onApproved, toast }: ApproveModa
 export const edtrRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/ocr',
+  // Shapes the API accepts (uuid, YYYY-MM-DD); anything else is dropped
+  // rather than turned into a 400.
   validateSearch: (search: Record<string, unknown>): { equipment?: string; week?: string } => ({
-    ...(typeof search.equipment === 'string' ? { equipment: search.equipment } : {}),
-    ...(typeof search.week === 'string' ? { week: search.week } : {}),
+    ...(typeof search.equipment === 'string' && UUID.test(search.equipment) ? { equipment: search.equipment } : {}),
+    ...(typeof search.week === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(search.week) ? { week: search.week } : {}),
   }),
   component: EdtrPage,
 });

@@ -129,6 +129,7 @@ function UserActions({ user }: { user: UserRow }) {
   const [pendingRole, setPendingRole] = useState<AssignableRole | null>(null);
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const [confirmingReactivate, setConfirmingReactivate] = useState(false);
   const toast = useToast();
 
   const changeRole = useMutation({
@@ -214,7 +215,7 @@ function UserActions({ user }: { user: UserRow }) {
         <Button
           variant="secondary"
           size="field"
-          onClick={() => reactivate.mutate()}
+          onClick={() => setConfirmingReactivate(true)}
           loading={reactivate.isPending}
         >
           Reactivate
@@ -277,6 +278,24 @@ function UserActions({ user }: { user: UserRow }) {
           setConfirmingDeactivate(false);
         }}
         onCancel={() => setConfirmingDeactivate(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmingReactivate}
+        title="Restore this person's access?"
+        tone="approve"
+        confirmLabel="Restore access"
+        pending={reactivate.isPending}
+        body={
+          <p>
+            <strong>{user.email}</strong> can sign in again as {formatRole(user.roleName).toLowerCase()}.
+          </p>
+        }
+        onConfirm={() => {
+          reactivate.mutate();
+          setConfirmingReactivate(false);
+        }}
+        onCancel={() => setConfirmingReactivate(false)}
       />
 
       <ConfirmDialog
