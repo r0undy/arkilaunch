@@ -38,7 +38,7 @@ function LandingPage() {
   return (
     <div className="flex flex-col gap-16 px-4 py-12 sm:px-8 lg:gap-24 lg:py-20">
       <section className="grid items-center gap-10 lg:grid-cols-2">
-        <div className="flex flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-5">
           <h1 className="text-display-lg text-text lg:text-display-xl">Industrial fleet management &amp; rentals</h1>
           <p className="max-w-xl text-body-lg text-text-muted">
             {tenant?.tagline ??

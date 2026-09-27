@@ -169,7 +169,7 @@ function AddressPreview() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex w-full flex-col gap-4 rounded-lg border border-border bg-surface p-8 shadow-md">
+    <form onSubmit={onSubmit} className="flex w-full min-w-0 flex-col gap-4 rounded-lg border border-border bg-surface p-5 shadow-md sm:p-8">
       <h2 className="text-heading-lg text-text">Your storefront address</h2>
       <p className="truncate font-mono text-sm text-text-muted" aria-live="polite">
         https://<strong className="text-text">{label}</strong>.{PLATFORM_DOMAIN}
@@ -209,7 +209,7 @@ function PlatformLanding() {
       </header>
       <main id="main" className="mx-auto flex w-full max-w-shell flex-1 flex-col gap-16 px-4 py-12 sm:px-8 lg:gap-24 lg:py-20">
         <section className="grid items-center gap-10 lg:grid-cols-2">
-          <div className="flex flex-col gap-5">
+          <div className="flex min-w-0 flex-col gap-5">
           <h1 className="text-display-lg text-text lg:text-display-xl">
             Launch your equipment rental business
           </h1>
