@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TenantBranding, TenantBrandingUpdateRequest } from '@arkilaunch/shared';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPostForm } from '../lib/api-client.js';
 import { MAX_UPLOAD_BYTES, prepareUpload } from '../lib/image-compression.js';
-import { onPrimaryFor } from '../lib/tenant.js';
+import { onPrimaryFor } from '../lib/brand.js';
 import { Button } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { Input } from './input.js';

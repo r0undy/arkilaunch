@@ -1,5 +1,6 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { storefrontLayoutRoute } from './_storefront.js';
 import { Button } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
@@ -13,6 +14,8 @@ import { Skeleton } from '../components/skeleton.js';
 import { LoadError } from '../components/load-error.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
 import { getAccessToken } from '../lib/auth-client.js';
+import { pageTitle } from '../lib/brand.js';
+import { useTenantName } from '../lib/tenant.js';
 
 function EquipmentDetailPage() {
   const { equipmentId } = equipmentDetailRoute.useParams();
@@ -28,6 +31,14 @@ function EquipmentDetailPage() {
     error,
     refetch,
   } = useQuery(catalogQueries.equipmentDetail(equipmentId));
+
+  // __root leaves this page's title alone; the model makes it specific, the
+  // same title the edge Worker writes (lib/brand.ts).
+  const tenantName = useTenantName();
+  useEffect(() => {
+    const title = equipment && tenantName ? pageTitle(`/equipment/${equipmentId}`, tenantName, equipment.model) : null;
+    if (title) document.title = title;
+  }, [equipment, tenantName, equipmentId]);
 
   if (isPending) {
     return <Skeleton label="Loading equipment" rows={2} className="px-6 py-10 sm:px-10" />;

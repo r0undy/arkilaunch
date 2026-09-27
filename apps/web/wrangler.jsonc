@@ -1,16 +1,30 @@
-// Assets-only Cloudflare Worker serving the Vite build (docs/cr-arkilaunch-cloudflare-frontend.md).
+// Cloudflare Worker serving the Vite build (docs/cr-arkilaunch-cloudflare-frontend.md).
 // A Worker, not Pages: Pages custom domains cannot be wildcards, and tenant
 // storefronts live at {slug}.arkilaunch.app (lib/host.ts). The wildcard route
 // needs a proxied `*` DNS record in the zone (AAAA 100::); the apex record is
 // created by the custom domain on deploy. Deployed by .github/workflows/deploy.yml.
+//
+// worker/index.ts writes each tenant's SEO head, favicon and first-paint
+// brand into the shell (docs/cr-arkilaunch-tenant-brand-kit.md). Built files
+// under /assets and /fonts skip it and stay free static requests.
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "arkilaunch-web",
+  "main": "worker/index.ts",
   "compatibility_date": "2026-09-27",
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     // Unknown paths get index.html so TanStack Router resolves deep links.
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Patterns also turn off navigate-header detection, so crawlers (which
+    // send none) reach the Worker too.
+    "run_worker_first": ["/*", "!/assets/*", "!/fonts/*"]
+  },
+  "vars": {
+    "PLATFORM_DOMAIN": "arkilaunch.app",
+    // Local default; deploy.yml passes the real one with --var.
+    "API_BASE_URL": "http://localhost:3000/api/v1"
   },
   "routes": [
     { "pattern": "arkilaunch.app", "custom_domain": true },

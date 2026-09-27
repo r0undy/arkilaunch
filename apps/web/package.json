@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "prerender": "node scripts/prerender.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && wrangler types worker/worker-configuration.d.ts && tsc -p worker/tsconfig.json",
     "test": "vitest run",
     "e2e": "playwright test"
   },

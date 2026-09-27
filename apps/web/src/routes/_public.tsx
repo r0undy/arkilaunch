@@ -2,9 +2,10 @@ import { createRoute, Link, Outlet, type LinkProps } from '@tanstack/react-route
 import type { ReactNode } from 'react';
 import { rootRoute } from './__root.js';
 import { onlyOn } from '../lib/guards.js';
-import { useTenantName } from '../lib/tenant.js';
+import { useTenant } from '../lib/tenant.js';
 import { FloatingNav } from '../components/floating-nav.js';
 import { SkipLink } from '../components/skip-link.js';
+import { FacebookIcon } from '../components/icons.js';
 
 type FooterTo = NonNullable<LinkProps['to']>;
 
@@ -47,7 +48,8 @@ const FOOTER_COLUMNS: { title: string; links: { label: string; to: FooterTo }[] 
 // looking (see routes/_storefront.tsx). The footer markup stays here, in one
 // place, rather than being copied into a second shell.
 export function MarketingChrome({ children }: { children: ReactNode }) {
-  const tenantName = useTenantName();
+  const tenant = useTenant();
+  const tenantName = tenant?.name ?? '';
   return (
     <div data-tier="marketing" className="flex min-h-screen flex-col bg-bg-mk-frame">
       <SkipLink />
@@ -58,10 +60,27 @@ export function MarketingChrome({ children }: { children: ReactNode }) {
       <footer className="bg-surface-mk">
         <div className="mx-auto flex max-w-shell flex-col gap-8 px-6 py-12 sm:flex-row sm:justify-between">
           <div>
-            <p className="font-display text-lg font-semibold text-ink-mk">{tenantName}</p>
+            <p className="flex items-center gap-3 font-display text-lg font-semibold text-ink-mk">
+              {tenant?.logoUrl && <img src={tenant.logoUrl} alt="" className="h-10 w-auto max-w-[140px] object-contain" />}
+              {tenantName}
+            </p>
             <p className="mt-2 text-sm text-text-muted">
               {tenantName} &copy; 2026. All rights reserved. Powered by ArkiLaunch.
             </p>
+            {tenant?.facebookUrl && (
+              <div className="mt-4">
+                <p className="text-sm font-semibold text-ink-mk">Follow us</p>
+                <a
+                  href={tenant.facebookUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-flex min-h-11 items-center gap-2 text-sm text-text-muted hover:text-text"
+                >
+                  <FacebookIcon className="h-5 w-5" />
+                  Facebook
+                </a>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">
             {FOOTER_COLUMNS.map((col) => (

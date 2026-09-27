@@ -12,6 +12,11 @@ import { edtrQueries, notificationsQueries } from '../lib/queries.js';
 import { StatusPill } from './status-pill.js';
 import { applicationsListQuery } from './application-actions.js';
 import { AlertIcon, BellIcon, LogOutIcon } from './icons.js';
+import { useHeaderColor, useTenant } from '../lib/tenant.js';
+
+// On a tenant-colored bar (DSD §2.1) the controls inherit its black or white
+// text; on the default bar they keep the muted-to-ink hover.
+const QUIET = 'text-text-muted hover:text-text';
 
 export interface AppBarProps {
   tenantLabel: string;
@@ -39,9 +44,11 @@ export interface AppBarProps {
 function NotificationBell({
   unreadCount,
   seeMorePath,
+  tone,
 }: {
   unreadCount: number | null;
   seeMorePath: string;
+  tone: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -78,7 +85,7 @@ function NotificationBell({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : 'Notifications'}
-        className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm text-text-muted hover:text-text"
+        className={`flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm ${tone}`}
       >
         <BellIcon aria-hidden="true" className="h-5 w-5" />
         {unreadCount !== null && unreadCount > 0 && (
@@ -193,15 +200,24 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   const reviewQueueCount = isPlatformAdmin ? (applications.data?.total ?? null) : (edtrList.data?.total ?? null);
   const reviewQueueLabel = isPlatformAdmin ? 'Applications' : 'Review queue';
 
+  const bar = useHeaderColor();
+  const tenant = useTenant();
+  const mark = tenant?.iconUrl ?? tenant?.logoUrl;
+  const ink = bar ? '' : 'text-text';
+  const tone = bar ? 'hover:opacity-80' : QUIET;
+
   return (
-    <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2 sm:gap-4 sm:px-4">
+    <header
+      style={bar ?? undefined}
+      className={`sticky top-0 z-40 flex min-h-14 items-center justify-between gap-2 border-b border-border px-3 py-2 sm:gap-4 sm:px-4 ${bar ? '' : 'bg-surface'}`}
+    >
       <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         {onMenuClick && (
           <button
             type="button"
             onClick={onMenuClick}
             aria-label="Toggle navigation"
-            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-sm text-text lg:hidden"
+            className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-sm lg:hidden ${ink}`}
           >
             <svg
               viewBox="0 0 20 20"
@@ -216,17 +232,21 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
         )}
         <Link
           to={homeHref()}
-          className="flex min-w-0 items-center gap-2 font-display text-base font-semibold text-text"
+          className={`flex min-w-0 items-center gap-2 font-display text-base font-semibold ${ink}`}
           aria-label={`${tenantLabel} home`}
         >
-          {/* The tenant's initial on its own primary: the mark leads the bar
-              (BRAND.md) even for a tenant with no uploaded logo. */}
-          <span
-            aria-hidden
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary font-display text-sm font-semibold text-on-primary"
-          >
-            {tenantLabel.trim().charAt(0).toUpperCase() || 'A'}
-          </span>
+          {/* The mark leads the bar (BRAND.md): the tenant's icon, else its
+              logo, else its initial on its own primary. */}
+          {mark ? (
+            <img src={mark} alt="" className="h-8 w-auto max-w-[120px] shrink-0 object-contain" />
+          ) : (
+            <span
+              aria-hidden
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary font-display text-sm font-semibold text-on-primary"
+            >
+              {tenantLabel.trim().charAt(0).toUpperCase() || 'A'}
+            </span>
+          )}
           <span className="truncate">{tenantLabel}</span>
         </Link>
       </div>
@@ -281,7 +301,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             // "Cart, 3 items" read aloud beats a bare "3", and the empty cart
             // still needs a name to be reachable at all.
             aria-label={cartCount > 0 ? `Cart, ${cartCount} items` : 'Cart, empty'}
-            className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm px-2 text-sm font-medium text-text-muted hover:text-text sm:gap-2 sm:px-3"
+            className={`flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm px-2 text-sm font-medium sm:gap-2 sm:px-3 ${tone}`}
           >
             <ShoppingCart aria-hidden="true" className="h-5 w-5" />
             <span className="hidden sm:inline">Cart</span>
@@ -293,7 +313,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
           </Link>
         )}
 
-        <NotificationBell unreadCount={unreadCount} seeMorePath={notificationsPath} />
+        <NotificationBell unreadCount={unreadCount} seeMorePath={notificationsPath} tone={tone} />
 
         {/* Icon-only on a phone. Under real mobile emulation the layout
             viewport is 320px, not the 360px a desktop-sized window reports,
@@ -306,7 +326,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             window.location.assign('/login');
           }}
           aria-label="Sign out"
-          className="flex min-h-11 min-w-11 items-center justify-center gap-2 whitespace-nowrap rounded-sm px-2 text-sm font-medium text-text-muted hover:text-text sm:px-3"
+          className={`flex min-h-11 min-w-11 items-center justify-center gap-2 whitespace-nowrap rounded-sm px-2 text-sm font-medium sm:px-3 ${tone}`}
         >
           <LogOutIcon aria-hidden="true" className="h-5 w-5 sm:hidden" />
           <span className="hidden sm:inline">Sign out</span>
