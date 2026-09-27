@@ -658,15 +658,14 @@ export function RateCardsPanel() {
 
   const columns: TableColumn<RateCardRow>[] = [
     {
-      header: 'Equipment type',
+      header: 'Equipment type', kind: 'text',
       cell: (row) => (row.equipmentId ? `${typeName(row.equipmentTypeId)} (one unit)` : typeName(row.equipmentTypeId)),
     },
-    { header: 'Charged', cell: (row) => formatRateType(row.rateType) },
-    { header: 'Rate', cell: (row) => formatPeso(row.rateValue), align: 'right' },
-    { header: 'In use since', cell: (row) => formatDate(row.effectiveFrom) },
+    { header: 'Charged', kind: 'text', cell: (row) => formatRateType(row.rateType) },
+    { header: 'Rate', kind: 'money', cell: (row) => formatPeso(row.rateValue) },
+    { header: 'In use since', kind: 'date', cell: (row) => formatDate(row.effectiveFrom) },
     {
-      header: 'Actions',
-      align: 'right',
+      header: 'Actions', kind: 'action',
       cell: (row) => (
         <RetireAction
           id={row.id}

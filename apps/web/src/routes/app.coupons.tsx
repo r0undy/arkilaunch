@@ -154,15 +154,15 @@ function ActiveToggle({ coupon }: { coupon: CouponResponse }) {
 }
 
 const COLUMNS: TableColumn<CouponResponse>[] = [
-  { header: 'Code', cell: (c) => <span className="font-mono text-text">{c.code}</span> },
-  { header: 'Discount', cell: discountText },
+  { header: 'Code', kind: 'text', cell: (c) => <span className="font-mono text-text">{c.code}</span> },
+  { header: 'Discount', kind: 'text', cell: discountText },
   {
-    header: 'Uses',
+    header: 'Uses', kind: 'number',
     cell: (c) => `${c.redeemedCount}${c.maxUses ? ` of ${c.maxUses}` : ''}${c.oncePerCustomer ? ', once per company' : ''}`,
   },
-  { header: 'Expires', cell: (c) => (c.expiresAt ? formatDate(c.expiresAt) : 'Never') },
-  { header: 'Status', cell: (c) => <StatusBadge status={c.active ? 'active' : 'inactive'} label={c.active ? 'Active' : 'Off'} /> },
-  { header: 'Actions', cell: (c) => <ActiveToggle coupon={c} />, align: 'right' },
+  { header: 'Expires', kind: 'date', cell: (c) => (c.expiresAt ? formatDate(c.expiresAt) : 'Never') },
+  { header: 'Status', kind: 'status', cell: (c) => <StatusBadge status={c.active ? 'active' : 'inactive'} label={c.active ? 'Active' : 'Off'} /> },
+  { header: 'Actions', kind: 'action', cell: (c) => <ActiveToggle coupon={c} /> },
 ];
 
 function CouponsPage() {

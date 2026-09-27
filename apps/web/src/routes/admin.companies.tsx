@@ -176,7 +176,7 @@ function StatusAction({ company }: { company: PlatformCompany }) {
 
 const COLUMNS: TableColumn<PlatformCompany>[] = [
   {
-    header: 'Company',
+    header: 'Company', kind: 'text',
     cell: (row) => {
       const origin = tenantOrigin(row.slug);
       return (
@@ -194,15 +194,15 @@ const COLUMNS: TableColumn<PlatformCompany>[] = [
       );
     },
   },
-  { header: 'Status', cell: (row) => <StatusBadge status={row.status} /> },
-  { header: 'People', cell: (row) => row.usersCount },
-  { header: 'Customers', cell: (row) => row.customersCount },
-  { header: 'Equipment', cell: (row) => row.equipmentCount },
-  { header: 'Rentals', cell: (row) => row.rentalsCount },
-  { header: 'Collected', cell: (row) => formatPeso(row.revenuePaid) },
-  { header: 'Joined', cell: (row) => formatDate(row.createdAt) },
+  { header: 'Status', kind: 'status', cell: (row) => <StatusBadge status={row.status} /> },
+  { header: 'People', kind: 'number', cell: (row) => row.usersCount },
+  { header: 'Customers', kind: 'number', cell: (row) => row.customersCount },
+  { header: 'Equipment', kind: 'number', cell: (row) => row.equipmentCount },
+  { header: 'Rentals', kind: 'number', cell: (row) => row.rentalsCount },
+  { header: 'Collected', kind: 'money', cell: (row) => formatPeso(row.revenuePaid) },
+  { header: 'Joined', kind: 'date', cell: (row) => formatDate(row.createdAt) },
   {
-    header: 'Actions',
+    header: 'Actions', kind: 'action',
     cell: (row) => (
       <span className="flex flex-wrap gap-2">
         <a

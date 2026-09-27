@@ -23,14 +23,14 @@ import { formatDate, formatPeso, formatStatus, siteName } from '../lib/format.js
 // drawer, where the negotiation and every action live.
 
 const RENTAL_COLUMNS: TableColumn<BookingSummaryResponse>[] = [
-  { header: 'Booking', cell: (b) => <BookingCode code={b.code} /> },
-  { header: 'Site', cell: (b) => b.siteCity ?? b.siteProvince ?? siteName({ id: b.projectSiteId }) },
-  { header: 'Status', cell: (b) => <StatusBadge status={b.status} /> },
+  { header: 'Booking', kind: 'text', cell: (b) => <BookingCode code={b.code} /> },
+  { header: 'Site', kind: 'text', cell: (b) => b.siteCity ?? b.siteProvince ?? siteName({ id: b.projectSiteId }) },
+  { header: 'Status', kind: 'status', cell: (b) => <StatusBadge status={b.status} /> },
 ];
 
 const TRUCK_COLUMNS: TableColumn<TruckRequestResponse>[] = [
   {
-    header: 'Booking',
+    header: 'Booking', kind: 'text',
     cell: (t) => (
       <div className="flex flex-col">
         <BookingCode code={t.code} />
@@ -39,16 +39,16 @@ const TRUCK_COLUMNS: TableColumn<TruckRequestResponse>[] = [
     ),
   },
   {
-    header: 'Route',
+    header: 'Route', kind: 'text',
     cell: (t) => (
       <span className="line-clamp-2 max-w-md">
         {t.pickup} → {t.dropoff}
       </span>
     ),
   },
-  { header: 'Km', align: 'right', cell: (t) => t.confirmedKm ?? `~${t.estimatedKm}` },
-  { header: 'Price', align: 'right', cell: (t) => formatPeso(t.agreedPricePhp ?? t.price.totalPhp) },
-  { header: 'Status', cell: (t) => <StatusBadge status={t.status} /> },
+  { header: 'Km', kind: 'number', cell: (t) => t.confirmedKm ?? `~${t.estimatedKm}` },
+  { header: 'Price', kind: 'money', cell: (t) => formatPeso(t.agreedPricePhp ?? t.price.totalPhp) },
+  { header: 'Status', kind: 'status', cell: (t) => <StatusBadge status={t.status} /> },
 ];
 
 // ?open=EQR-2026-0001 deep-links the drawer (notifications, the site hub,

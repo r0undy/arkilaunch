@@ -25,6 +25,7 @@ import { PageHeader } from '../components/page-header.js';
 import { Tabs } from '../components/tabs.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
+import { Table, type TableColumn } from '../components/table.js';
 import { SiteEquipmentWeather } from '../components/equipment-weather.js';
 import { useToast } from '../components/toast.js';
 
@@ -499,47 +500,67 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
   );
 }
 
-function Equipment({ hub }: { hub: SiteHubResponse }) {
+function Equipment({ hub, siteId }: { hub: SiteHubResponse; siteId: string }) {
+  const columns: TableColumn<FieldLogUnit>[] = [
+    {
+      header: 'Machine',
+      kind: 'text',
+      width: '26%',
+      cell: (u) => (
+        <span className="flex flex-col">
+          <Link
+            to="/app/ocr"
+            search={{ site: siteId, equipment: u.equipmentId }}
+            className="font-medium text-accent hover:underline"
+          >
+            {u.name}
+          </Link>
+          <span className="font-mono text-xs text-text-muted">SN {u.serialNo}</span>
+        </span>
+      ),
+    },
+    {
+      header: 'Booking',
+      kind: 'text',
+      width: '18%',
+      cell: (u) => (
+        <Link to="/app/bookings" search={{ open: u.bookingCode }} className="hover:underline">
+          <BookingCode code={u.bookingCode} />
+        </Link>
+      ),
+    },
+    {
+      header: 'On site',
+      kind: 'date',
+      width: '22%',
+      cell: (u) => `${formatDate(u.span.from)} – ${u.span.to ? formatDate(u.span.to) : 'open'}`,
+    },
+    { header: 'Operator', kind: 'text', width: '16%', cell: (u) => u.operatorName ?? '--' },
+    {
+      header: 'Hour meter',
+      kind: 'number',
+      width: '18%',
+      cell: (u) => (
+        <>
+          {u.lastMeterReading !== null ? u.lastMeterReading.toFixed(1) : '--'}
+          <span className="block font-sans text-xs text-text-muted">{u.runtimeHours.toFixed(1)} h run total</span>
+        </>
+      ),
+    },
+  ];
   return (
-    <Surface radius="md" elevation="sm" className="overflow-x-auto p-4">
-      <table className="w-full min-w-[640px] text-sm">
-        <thead>
-          <tr className="text-left text-text-muted">
-            <th className="p-2">Machine</th>
-            <th className="p-2">Booking</th>
-            <th className="p-2">On site</th>
-            <th className="p-2">Operator</th>
-            <th className="p-2 text-right">Hour meter</th>
-          </tr>
-        </thead>
-        <tbody>
-          {hub.units.map((u) => (
-            <tr key={`${u.rentalId}-${u.equipmentId}`} className="border-t border-border">
-              <td className="p-2">
-                <span className="text-text">{u.name}</span>
-                <span className="block font-mono text-xs text-text-muted">SN {u.serialNo}</span>
-              </td>
-              <td className="p-2 font-mono">{u.bookingCode}</td>
-              <td className="p-2">
-                {formatDate(u.span.from)} – {u.span.to ? formatDate(u.span.to) : 'open'}
-              </td>
-              <td className="p-2">{u.operatorName ?? '--'}</td>
-              <td className="p-2 text-right font-mono">
-                {u.lastMeterReading !== null ? u.lastMeterReading.toFixed(1) : '--'}
-                <span className="block text-xs text-text-muted">{u.runtimeHours.toFixed(1)} h run total</span>
-              </td>
-            </tr>
-          ))}
-          {hub.units.length === 0 && (
-            <tr>
-              <td colSpan={5} className="p-2 text-text-muted">
-                No machines deployed here.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </Surface>
+    <div className="flex flex-col gap-2">
+      <p className="text-sm text-text-muted">
+        {hub.units.length} machine{hub.units.length === 1 ? '' : 's'} at this site. Click a machine for its field logs,
+        or a booking code to open the booking.
+      </p>
+      <Table
+        columns={columns}
+        rows={hub.units}
+        rowKey={(u) => `${u.rentalId}-${u.equipmentId}`}
+        empty="No machines deployed here."
+      />
+    </div>
   );
 }
 
@@ -725,7 +746,7 @@ function SiteHubPage() {
         <div role="tabpanel">
           {tab === 'overview' && <Overview hub={hub.data} today={today} />}
           {tab === 'logs' && <DailyLogs hub={hub.data} today={today} siteId={siteId} />}
-          {tab === 'equipment' && <Equipment hub={hub.data} />}
+          {tab === 'equipment' && <Equipment hub={hub.data} siteId={siteId} />}
           {tab === 'personnel' && <Personnel hub={hub.data} siteId={siteId} />}
           {tab === 'documents' && <Documents hub={hub.data} />}
         </div>

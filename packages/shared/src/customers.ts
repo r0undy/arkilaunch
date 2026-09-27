@@ -14,11 +14,12 @@ export const CustomerSignupSchema = z.object({
 });
 export type CustomerSignup = z.infer<typeof CustomerSignupSchema>;
 
-// Loose PH TIN shape: 9 or 12 digits, dashes optional (000-000-000[-000]).
+// Loose PH TIN shape: 9, 12 or 14 digits, dashes optional
+// (000-000-000[-000 | -00000]).
 const TinSchema = z
   .string()
   .trim()
-  .regex(/^\d{3}-?\d{3}-?\d{3}(-?\d{3})?$/, 'TIN is 9 or 12 digits');
+  .regex(/^\d{3}-?\d{3}-?\d{3}(-?\d{3}|-?\d{5})?$/, 'TIN is 9, 12 or 14 digits');
 
 export const CompanyCreateSchema = z.object({
   companyName: z.string().trim().min(2).max(200),
@@ -246,6 +247,10 @@ export const KycScanResponseSchema = z.object({
   // the upload-time gate bounces the document.
   confidence: z.number().nullable(),
   extractionAvailable: z.boolean(),
+  // false: the text did not read as the SEC certificate or BIR 2303 it was
+  // scanned as (wrong paper, or the page is not all in the photo). null when
+  // there was nothing to judge, or the paper is not one of those two.
+  layoutRecognized: z.boolean().nullable(),
 });
 export type KycScanResponse = z.infer<typeof KycScanResponseSchema>;
 

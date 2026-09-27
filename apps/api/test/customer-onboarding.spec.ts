@@ -482,13 +482,16 @@ describe('Customer onboarding', () => {
       expect(sec.suggestions).toMatchObject({
         companyName: 'Almara Construction Corporation',
         secNumber: 'CS202312345',
-        address: '12 Yard Road, Cebu City',
+        // An SEC certificate prints only the SEC's own address.
+        address: null,
         tin: null,
         dtiNumber: null,
       });
       // The address is free text and does not drag legibility down.
       expect(sec.confidence).toBeCloseTo(0.9);
       expect(sec.extractionAvailable).toBe(true);
+      // No page text came back to judge the paper by.
+      expect(sec.layoutRecognized).toBeNull();
 
       const bir = await service.scanDocument(seededCustomerCtx, 'bir_cor', bytes);
       // Normalised into the canonical dashed TIN.
@@ -553,7 +556,51 @@ describe('Customer onboarding', () => {
     },
         confidence: null,
         extractionAvailable: false,
+        layoutRecognized: null,
       });
+    });
+
+    // Page text shaped like prebuilt-layout's read of a real eSPARC
+    // certificate (identifiers synthetic): the label parser beats the
+    // query, which read the SEC letterhead and the RA 11232 date.
+    const secText = [
+      'REPUBLIC OF THE PHILIPPINES SECURITIES AND EXCHANGE COMMISSION 3/F Newtown Square, Navy Base Road, Baguio City',
+      'COMPANY REG. NO .: 2022090000001-02',
+      'CERTIFICATE OF INCORPORATION',
+      'This is to certify that the Articles of Incorporation and By Laws of:',
+      'BENGUET HIGHLANDS FARMERS ASSOCIATION INC.',
+      'were duly approved by the Commission on this date, which took effect on February 23, 2019.',
+      'IN WITNESS WHEREOF, I have hereunto set my hand at Baguio City, Philippines, this day of 16 September Two Thousand Twenty Two.',
+    ].join('\n');
+    const withText = (content: string) => {
+      const words = [...content.matchAll(/\S+/g)].map((m) => ({ offset: m.index, length: m[0].length, confidence: 0.98 }));
+      return new CustomersService(
+        events,
+        new FixtureDocumentIntelligenceAdapter({
+          fields: {
+            company_name: { value: 'BENGUET HIGHLANDS FARMERS ASSOCIATION INC.', confidence: 0.6 },
+            registered_address: { value: '3/F Newtown Square, Navy Base Road, Baguio City', confidence: 0.97 },
+            registration_date: { value: 'February 23, 2019', confidence: 0.65 },
+          },
+          text: { content, words, lines: [] },
+        }),
+      );
+    };
+
+    it('reads an SEC certificate by its labels: the reg no. the query missed, no letterhead address', async () => {
+      const scan = await withText(secText).scanDocument(seededCustomerCtx, 'sec_certificate', bytes);
+      expect(scan.layoutRecognized).toBe(true);
+      expect(scan.suggestions).toMatchObject({
+        companyName: 'BENGUET HIGHLANDS FARMERS ASSOCIATION INC.',
+        secNumber: '2022090000001-02',
+        address: null,
+      });
+      expect(scan.confidence).toBeCloseTo(0.98);
+    });
+
+    it('warns when the paper is not the one it was scanned as', async () => {
+      const scan = await withText(secText).scanDocument(seededCustomerCtx, 'bir_cor', bytes);
+      expect(scan.layoutRecognized).toBe(false);
     });
 
     it('writes nothing: no document row, no verification decision', async () => {

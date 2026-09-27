@@ -1,4 +1,4 @@
-import { createRoute, useNavigate } from '@tanstack/react-router';
+import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
@@ -12,9 +12,12 @@ import {
   formatPeso,
   formatStatus,
   shortCode,
+  siteName,
 } from '../lib/format.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
+import { Select } from '../components/select.js';
+import { BookingCode } from '../components/booking-code.js';
 import { Surface } from '../components/surface.js';
 import { Modal } from '../components/modal.js';
 import { CaptureModal } from '../components/capture-modal.js';
@@ -76,6 +79,18 @@ function statusPill(status: string): { tone: StatusTone; icon: ReactNode } {
   return { tone: 'recon-review', icon: <ClockIcon className="h-4 w-4" aria-hidden /> };
 }
 
+function MatchText({ row }: { row: EdtrListItem }) {
+  if (!row.reconciliation) return <span className="text-text-muted">--</span>;
+  const { status, deltaHours, tolerance } = row.reconciliation;
+  if (status === 'approved') return <span className="text-text-muted">Billed</span>;
+  if (deltaHours === null) return <>{matchLabel(status)}</>;
+  return (
+    <span className={deltaHours > tolerance ? 'text-error' : 'text-text'}>
+      {matchLabel(status)} ({formatHours(deltaHours)} apart)
+    </span>
+  );
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function addDaysIso(iso: string, days: number): string {
@@ -94,15 +109,17 @@ function EdtrPage() {
     equipmentList,
     rentals,
     rentalLabel,
+    sites,
     error: refError,
   } = useScanDeployments();
 
   const [captureOpen, setCaptureOpen] = useState(false);
   const [approving, setApproving] = useState<EdtrListItem | null>(null);
+  const [viewing, setViewing] = useState<EdtrListItem | null>(null);
 
   const [offset, setOffset] = useState(0);
   // A new filter starts from its first page.
-  useEffect(() => setOffset(0), [search.equipment, search.week]);
+  useEffect(() => setOffset(0), [search.site, search.equipment, search.week]);
   // Deep links from the dashboard's "Needs you" rows: one machine-week. The
   // filter goes to the API, so the pager counts the filtered rows rather than
   // filtering whichever page happened to load.
@@ -131,69 +148,87 @@ function EdtrPage() {
     void queryClient.invalidateQueries({ queryKey: ['edtr'] });
   }
 
-  const items = queue.data?.items ?? [];
-  const filtered = Boolean(search.equipment || search.week);
+  // Equipment and week filter on the server; the site is not an API
+  // filter, so it narrows the loaded page. One site runs many machines:
+  // pick the site, then the machine list narrows to the ones logged there.
+  // ponytail: move site to an API param if a site's queue spans pages.
+  const rentalById = useMemo(() => new Map(rentals.map((r) => [r.id, r])), [rentals]);
+  const siteOf = (rentalId: string) => rentalById.get(rentalId)?.projectSiteId;
+  const all = queue.data?.items ?? [];
+  const siteOptions = [...new Set(all.map((row) => siteOf(row.rentalId)).filter((id): id is string => !!id))];
+  const equipmentOptions = [
+    ...new Set(
+      all.filter((row) => !search.site || siteOf(row.rentalId) === search.site).map((row) => row.equipmentId),
+    ),
+  ];
+  const items = all.filter((row) => !search.site || siteOf(row.rentalId) === search.site);
+  const filtered = Boolean(search.site || search.equipment || search.week);
+
+  function setFilter(next: { site?: string | undefined; equipment?: string | undefined }) {
+    void navigate({
+      to: '/app/ocr',
+      search: {
+        ...(next.site ? { site: next.site } : {}),
+        ...(next.equipment ? { equipment: next.equipment } : {}),
+      },
+    });
+  }
 
   function rentalName(rentalId: string): string {
-    const rental = rentals.find((r) => r.id === rentalId);
+    const rental = rentalById.get(rentalId);
     return rental ? `${rental.code} · ${rentalLabel(rental)}` : 'Rental not in your list';
   }
 
+  function siteLabel(siteId: string | undefined): string {
+    const site = sites.find((x) => x.id === siteId);
+    return site ? siteName(site) : 'Unknown site';
+  }
+
+  // Every rental group renders its own table; fixed widths keep their
+  // columns on the same lines down the page.
   const columns: TableColumn<EdtrListItem>[] = [
-              {
-                header: 'Machine',
-                cell: (row) => (
-                  <div className="flex flex-col">
-                    <span className="text-text">{machineName(row.equipmentId)}</span>
-                    <span className="font-mono text-xs text-text-muted">
-                      {shortCode('log', row.id)}
-                    </span>
-                  </div>
-                ),
-              },
-              { header: 'Day worked', cell: (row) => formatDate(row.reportDate) },
-              { header: 'Recorded', cell: (row) => formatLogSource(row.source) },
-              {
-                header: 'Status',
-                cell: (row) => {
-                  const pill = statusPill(row.status);
-                  return (
-                    <StatusPill
-                      tone={pill.tone}
-                      icon={pill.icon}
-                      label={formatStatus(row.status)}
-                    />
-                  );
-                },
-              },
-              {
-                header: 'Match',
-                cell: (row) => {
-                  if (!row.reconciliation) return <span className="text-text-muted">--</span>;
-                  const { status, deltaHours } = row.reconciliation;
-                  if (status === 'approved') return <span className="text-text-muted">Billed</span>;
-                  if (deltaHours === null) return matchLabel(status);
-                  return (
-                    <span
-                      className={
-                        deltaHours > row.reconciliation.tolerance ? 'text-error' : 'text-text'
-                      }
-                    >
-                      {matchLabel(status)} ({formatHours(deltaHours)} apart)
-                    </span>
-                  );
-                },
-              },
-              {
-                header: '',
-                align: 'right',
-                cell: (row) =>
-                  row.reconciliation && APPROVABLE.has(row.reconciliation.status) ? (
-                    <Button variant="approve" size="field" onClick={() => setApproving(row)}>
-                      Review and bill
-                    </Button>
-                  ) : null,
-              },
+    {
+      header: 'Machine',
+      kind: 'text',
+      width: '28%',
+      cell: (row) => (
+        <div className="flex min-w-0 flex-col">
+          <button
+            type="button"
+            onClick={() => setViewing(row)}
+            className="truncate text-left font-medium text-accent hover:underline"
+          >
+            {machineName(row.equipmentId)}
+          </button>
+          <span className="font-mono text-xs text-text-muted">{shortCode('log', row.id)}</span>
+        </div>
+      ),
+    },
+    { header: 'Day worked', kind: 'date', width: '13%', cell: (row) => formatDate(row.reportDate) },
+    { header: 'Recorded', kind: 'text', width: '13%', cell: (row) => formatLogSource(row.source) },
+    {
+      header: 'Status',
+      kind: 'status',
+      width: '14%',
+      cell: (row) => {
+        const pill = statusPill(row.status);
+        return <StatusPill tone={pill.tone} icon={pill.icon} label={formatStatus(row.status)} />;
+      },
+    },
+    { header: 'Match', kind: 'text', width: '18%', cell: (row) => <MatchText row={row} /> },
+    {
+      header: 'Actions',
+      kind: 'action',
+      width: '14%',
+      cell: (row) =>
+        row.reconciliation && APPROVABLE.has(row.reconciliation.status) ? (
+          <Button variant="approve" size="field" onClick={() => setApproving(row)}>
+            Review and bill
+          </Button>
+        ) : (
+          <span className="text-text-muted">--</span>
+        ),
+    },
   ];
 
   return (
@@ -223,9 +258,43 @@ function EdtrPage() {
         </Surface>
       )}
 
+      {queue.isSuccess && all.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:max-w-2xl">
+          <Select
+            label="Site"
+            value={search.site ?? ''}
+            onChange={(e) => setFilter({ site: e.target.value || undefined })}
+          >
+            <option value="">All sites ({siteOptions.length})</option>
+            {siteOptions.map((id) => (
+              <option key={id} value={id}>
+                {siteLabel(id)}
+              </option>
+            ))}
+          </Select>
+          <Select
+            label="Equipment"
+            value={search.equipment ?? ''}
+            onChange={(e) => setFilter({ site: search.site, equipment: e.target.value || undefined })}
+          >
+            <option value="">
+              All equipment{search.site ? ' at this site' : ''} ({equipmentOptions.length})
+            </option>
+            {equipmentOptions.map((id) => (
+              <option key={id} value={id}>
+                {machineName(id)}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+
       {filtered && (
         <p className="text-sm text-text-muted">
-          Showing one machine for the week of {formatDate(search.week)}.{' '}
+          Showing {items.length} log{items.length === 1 ? '' : 's'}
+          {search.site ? ` at ${siteLabel(search.site)}` : ''}
+          {search.equipment ? ` for ${machineName(search.equipment)}` : ''}
+          {search.week ? ` in the week of ${formatDate(search.week)}` : ''}.{' '}
           <button
             type="button"
             className="font-medium text-accent hover:underline"
@@ -274,8 +343,10 @@ function EdtrPage() {
                 key={rentalId}
                 rentalId={rentalId}
                 label={rentalName(rentalId)}
+                siteId={siteOf(rentalId)}
                 rows={rows}
                 columns={columns}
+                onOpen={setViewing}
               />
             ))}
           </div>
@@ -301,6 +372,22 @@ function EdtrPage() {
         onCaptured={onCaptured}
         toast={toast}
       />
+
+      {viewing && (
+        <FieldLogDrawer
+          item={viewing}
+          machine={machineName(viewing.equipmentId)}
+          serialNo={equipmentById.get(viewing.equipmentId)?.serialNo}
+          bookingCode={rentalById.get(viewing.rentalId)?.code}
+          siteId={siteOf(viewing.rentalId)}
+          siteLabel={siteLabel(siteOf(viewing.rentalId))}
+          onClose={() => setViewing(null)}
+          onReview={() => {
+            setApproving(viewing);
+            setViewing(null);
+          }}
+        />
+      )}
 
       {approving && (
         <ApproveModal
@@ -338,13 +425,17 @@ interface DepositSummary {
 function RentalGroup({
   rentalId,
   label,
+  siteId,
   rows,
   columns,
+  onOpen,
 }: {
   rentalId: string;
   label: string;
+  siteId: string | undefined;
   rows: EdtrListItem[];
   columns: TableColumn<EdtrListItem>[];
+  onOpen: (row: EdtrListItem) => void;
 }) {
   const ledger = useQuery({
     queryKey: ['edtr', 'deposit', rentalId] as const,
@@ -354,7 +445,19 @@ function RentalGroup({
   return (
     <details open className="rounded-md border border-border" data-testid="rental-group">
       <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3">
-        <span className="font-semibold text-text">{label}</span>
+        <span className="flex flex-wrap items-center gap-3">
+          <span className="font-semibold text-text">{label}</span>
+          {siteId && (
+            <Link
+              to="/app/deployment/$siteId"
+              params={{ siteId }}
+              search={{ tab: 'logs' }}
+              className="text-sm font-medium text-accent hover:underline"
+            >
+              Open site
+            </Link>
+          )}
+        </span>
         <span className="flex flex-wrap gap-4 text-sm text-text-muted">
           <span>
             {rows.length} log{rows.length === 1 ? '' : 's'}
@@ -373,8 +476,103 @@ function RentalGroup({
           )}
         </span>
       </summary>
-      <Table rows={rows} rowKey={(row) => row.id} columns={columns} />
+      <Table
+        rows={rows}
+        rowKey={(row) => row.id}
+        columns={columns}
+        onRowClick={onOpen}
+        rowLabel={(row) => `Open field log ${shortCode('log', row.id)}`}
+      />
     </details>
+  );
+}
+
+const drawerHeading = 'font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
+
+// One field log, read without leaving the queue (DSD drawer rule): what was
+// recorded, how it matched, and where it belongs -- the booking and the site
+// are links, the bill action hands off to the approve modal.
+function FieldLogDrawer({
+  item,
+  machine,
+  serialNo,
+  bookingCode,
+  siteId,
+  siteLabel,
+  onClose,
+  onReview,
+}: {
+  item: EdtrListItem;
+  machine: string;
+  serialNo: string | undefined;
+  bookingCode: string | undefined;
+  siteId: string | undefined;
+  siteLabel: string;
+  onClose: () => void;
+  onReview: () => void;
+}) {
+  const pill = statusPill(item.status);
+  const canBill = !!item.reconciliation && APPROVABLE.has(item.reconciliation.status);
+  const rows: [string, ReactNode][] = [
+    ['Machine', serialNo ? `${machine} · SN ${serialNo}` : machine],
+    ['Day worked', formatDate(item.reportDate)],
+    ['Recorded', formatLogSource(item.source)],
+    ['Status', <StatusPill key="s" tone={pill.tone} icon={pill.icon} label={formatStatus(item.status)} />],
+    ['Match', <MatchText key="m" row={item} />],
+    [
+      'Tolerance',
+      item.reconciliation ? <span className="font-mono tabular-nums">{formatHours(item.reconciliation.tolerance)}</span> : '--',
+    ],
+    ['Booking', bookingCode ? <BookingCode key="b" code={bookingCode} copyable /> : '--'],
+    [
+      'Site',
+      siteId ? (
+        <Link
+          key="site"
+          to="/app/deployment/$siteId"
+          params={{ siteId }}
+          search={{ tab: 'equipment' }}
+          className="font-medium text-accent hover:underline"
+        >
+          {siteLabel}
+        </Link>
+      ) : (
+        siteLabel
+      ),
+    ],
+  ];
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      placement="right"
+      size="md"
+      title={`Field log ${shortCode('log', item.id)}`}
+      description={machine}
+      footer={
+        <div className="flex flex-wrap justify-end gap-2">
+          {bookingCode && (
+            <Link to="/app/bookings" search={{ open: bookingCode }}>
+              <Button variant="ghost">Open booking</Button>
+            </Link>
+          )}
+          {canBill && (
+            <Button variant="approve" onClick={onReview}>
+              Review and bill
+            </Button>
+          )}
+        </div>
+      }
+    >
+      <dl className="grid grid-cols-[8rem_1fr] gap-x-4 gap-y-3 text-sm">
+        {rows.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className={drawerHeading}>{label}</dt>
+            <dd className="text-text">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </Modal>
   );
 }
 
@@ -551,9 +749,10 @@ export const edtrRoute = createRoute({
   path: '/app/ocr',
   // Shapes the API accepts (uuid, YYYY-MM-DD); anything else is dropped
   // rather than turned into a 400.
-  validateSearch: (search: Record<string, unknown>): { equipment?: string; week?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { site?: string; equipment?: string; week?: string } => ({
+    ...(typeof search.site === 'string' && UUID.test(search.site) ? { site: search.site } : {}),
     ...(typeof search.equipment === 'string' && UUID.test(search.equipment) ? { equipment: search.equipment } : {}),
-    ...(typeof search.week === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(search.week) ? { week: search.week } : {}),
+    ...(typeof search.week === 'string' && /^d{4}-d{2}-d{2}$/.test(search.week) ? { week: search.week } : {}),
   }),
   component: EdtrPage,
 });

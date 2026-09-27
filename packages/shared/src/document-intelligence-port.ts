@@ -61,6 +61,43 @@ export interface ExtractedTable {
   cells: ExtractedTableCell[];
 }
 
+// A recognised word or line as a span of DocumentText.content.
+export interface DocumentTextWord {
+  offset: number;
+  length: number;
+  // Floored to 0 when absent or out of range, never defaulted to 1.
+  confidence: number;
+}
+
+export interface DocumentTextLine {
+  offset: number;
+  length: number;
+  page: number;
+  // [x1,y1,...,x4,y4] in 0..1 of the page, like BoundingRegion.
+  polygon: number[];
+}
+
+// The page text prebuilt-layout read, for parsers that anchor on the
+// printed labels themselves (packages/shared/src/kyc-certificate.ts).
+// In-memory only: it is never persisted, since a whole certificate or ID
+// is more than any field we keep from it.
+export interface DocumentText {
+  content: string;
+  words: DocumentTextWord[];
+  lines: DocumentTextLine[];
+}
+
+// Lowest confidence among the words overlapping [start, end) of content.
+// No overlapping word floors to 0, so an unlocatable value routes to a
+// human rather than passing a gate.
+export function spanConfidence(words: DocumentTextWord[], start: number, end: number): number {
+  let min = Number.POSITIVE_INFINITY;
+  for (const w of words) {
+    if (w.offset < end && w.offset + w.length > start) min = Math.min(min, w.confidence);
+  }
+  return Number.isFinite(min) ? min : 0;
+}
+
 export interface DocumentExtractionResult {
   fields: Record<string, ExtractedField>;
   // Optional so every existing caller (KYC, and the fixture adapters) is
@@ -69,6 +106,8 @@ export interface DocumentExtractionResult {
   // Almara sheet is a 22-row timesheet and not a set of document-level
   // fields -- see docs/cr-arkilaunch-edtr-real-form.md.
   tables?: ExtractedTable[];
+  // Optional for the same reason; the KYC certificate parser reads it.
+  text?: DocumentText;
 }
 
 // Azure AI Document Intelligence is extraction only -- it never decides,

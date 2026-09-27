@@ -261,6 +261,17 @@ function CompanyReviewCard({
         </div>
       )}
 
+      {registration?.ocr.layout === 'unrecognized' && (
+        <div role="note" className="rounded-md border border-warning px-3 py-2 text-sm">
+          <p className="font-medium text-text">
+            The {DOC_LABELS[registration.documentType] ?? 'registration'} did not read as one.
+          </p>
+          <p className="text-text-muted">
+            It may be the wrong paper, or the page is cut off. Open it and check before relying on what was read.
+          </p>
+        </div>
+      )}
+
       <section aria-labelledby={`co-${company.id}`} className="flex flex-col gap-2">
         <h3 id={`co-${company.id}`} className={groupHeading}>
           Company
@@ -567,7 +578,7 @@ function scoreText(company: CompanyReviewResponse) {
 
 const COLUMNS: TableColumn<CompanyReviewResponse>[] = [
   {
-    header: 'Company',
+    header: 'Company', kind: 'text',
     cell: (c) => (
       <div className="flex flex-col">
         <span className="font-medium text-text">{c.companyName}</span>
@@ -575,10 +586,10 @@ const COLUMNS: TableColumn<CompanyReviewResponse>[] = [
       </div>
     ),
   },
-  { header: 'Applied', cell: (c) => formatDate(c.createdAt) },
-  { header: 'Documents', align: 'right', cell: (c) => c.documents.length },
-  { header: 'Score', align: 'right', cell: scoreText },
-  { header: 'Status', cell: (c) => <StatusBadge status={c.kycStatus} /> },
+  { header: 'Applied', kind: 'date', cell: (c) => formatDate(c.createdAt) },
+  { header: 'Documents', kind: 'number', cell: (c) => c.documents.length },
+  { header: 'Score', kind: 'number', cell: scoreText },
+  { header: 'Status', kind: 'status', cell: (c) => <StatusBadge status={c.kycStatus} /> },
 ];
 
 // The queue as a table; a row opens the full review in a drawer, where the
