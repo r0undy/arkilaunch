@@ -4,7 +4,7 @@
 **Project:** ArkiLaunch
 **Date:** 2026-09-28
 **Version:** 0.1
-**Status:** `In progress` (stacked branches `feat/aws-look`, `-font`, `-shell`, `-public`, `-pages`)
+**Status:** `Applied` (stacked branches `feat/aws-look`, `-font`, `-shell`, `-public`, `-pages`)
 **Trigger doc:** [build-arkilaunch.md](build-arkilaunch.md) §5.1 (owner request: "make the vibes of the entire system look like AWS, keep the colors")
 **Reference:** [assets/reference/aws.design.md](assets/reference/aws.design.md)
 **Docs touched by this record:** [dsd-arkilaunch.md](dsd-arkilaunch.md) §0, §1, §2, §3, §4, §5, §7 (materialized into `DESIGN.md`, `BRAND.md`), [index.md](index.md) §1/§2
@@ -35,3 +35,10 @@ No color value changes. The top bar uses the existing steel `#10151B`.
 
 - Dark theme (tokens exist, nothing toggles them).
 - A page-level split panel or help panel.
+
+## 5. Verification
+
+- Web unit tests: 317 pass. API tenant self-serve spec: pass. Typecheck clean (web + worker).
+- Migration 0061 reviewed by migration-rls-guardian: PASS (widens one CHECK, no table, no RLS change). Not yet applied to the hosted dev database; `deploy.yml` migrates on deploy.
+- E2E against the hosted dev data: desktop 41 pass, mobile 16 pass. The failures, `kyc-review-crop` (customer crop) and `company-documents`, fail the same way on `dev` before this change (stale against the pricebook-kyc flow); `truck-request` waits on a "Demo Customer Site" seed row the hosted data lacks.
+- Screenshot QA at 1440px and 390px for admin, owner, customer, timekeeper, the storefront, the platform landing and sign-in.
