@@ -34,7 +34,9 @@ export type KycConfirmRequest = z.infer<typeof KycConfirmRequestSchema>;
 // registration number pattern is approximate here (exact format needs a
 // CLR-level confirmation against current SEC issuance conventions) --
 // flagged rather than asserted as authoritative.
-export const TIN_REGEX = /^\d{3}-\d{3}-\d{3}(-\d{3})?$/;
+// The branch code is 3 digits on older CORs and 5 on the ones BIR now
+// issues (000-000-000-00000; eBIRForms widened it under RMC 36-2026).
+export const TIN_REGEX = /^\d{3}-\d{3}-\d{3}(-\d{3}|-\d{5})?$/;
 // SEC registration numbers as issued over the years: a letter prefix
 // (A, AS, CS, CN, PG, ...) plus digits, optionally with a dash after the
 // year digits (AS094-008814), or the eSPARC-era all-digit number with an
@@ -58,8 +60,25 @@ function regroupDigits(value: string, groupings: number[][]): string {
   let at = 0;
   return groups.map((n) => digits.slice(at, (at += n))).join('-');
 }
-export const normalizeTin = (value: string) => regroupDigits(value, [[3, 3, 3], [3, 3, 3, 3]]);
+export const normalizeTin = (value: string) => regroupDigits(value, [[3, 3, 3], [3, 3, 3, 3], [3, 3, 3, 5]]);
 export const normalizePcn = (value: string) => regroupDigits(value, [[4, 4, 4, 4]]);
+
+// One TIN however it is written: the same 9-digit base, and the same branch
+// with a missing branch read as the head office (000 = 00000).
+export function sameTin(a: string, b: string): boolean {
+  const split = (v: string) => {
+    const d = v.replace(/\D/g, '');
+    return [d.slice(0, 9), Number(d.slice(9) || '0')] as const;
+  };
+  const [baseA, branchA] = split(a);
+  const [baseB, branchB] = split(b);
+  return baseA.length === 9 && baseA === baseB && branchA === branchB;
+}
+
+// SEC numbers are typed and OCR'd with stray spaces ("CS 2023 10876",
+// "2022090068683 - 02"); the printed number has none.
+export const normalizeSecNumber = (value: string) =>
+  value.trim().toUpperCase().replace(/\s*-\s*/g, '-').replace(/\s+/g, '');
 
 // The public registries an admin checks a parsed number against. None of
 // them take a value in the URL, and each searches differently (checked in

@@ -3,7 +3,9 @@ import {
   DTI_REGEX,
   matchBand,
   normalizePcn,
+  normalizeSecNumber,
   normalizeTin,
+  sameTin,
   PHILSYS_PCN_REGEX,
   SEC_REGEX,
   TIN_REGEX,
@@ -75,5 +77,25 @@ describe('normalizeTin / normalizePcn', () => {
     expect(normalizeTin(' 12-34 ')).toBe('12-34');
     expect(TIN_REGEX.test(normalizeTin('1234567890'))).toBe(false);
     expect(normalizePcn('1234')).toBe('1234');
+  });
+});
+
+describe('5-digit branch codes, sameTin, normalizeSecNumber', () => {
+  it('accepts and regroups a 14-digit TIN', () => {
+    expect(TIN_REGEX.test('123-456-789-00000')).toBe(true);
+    expect(normalizeTin('12345678900000')).toBe('123-456-789-00000');
+    expect(TIN_REGEX.test('123-456-789-0000')).toBe(false);
+  });
+
+  it('treats a missing branch as the head office', () => {
+    expect(sameTin('123-456-789', '123-456-789-000')).toBe(true);
+    expect(sameTin('123-456-789-000', '123456789 00000')).toBe(true);
+    expect(sameTin('123-456-789-001', '123-456-789-000')).toBe(false);
+    expect(sameTin('123-456-780', '123-456-789')).toBe(false);
+  });
+
+  it('removes the spaces OCR and people put in an SEC number', () => {
+    expect(normalizeSecNumber(' cs 2019 12345 ')).toBe('CS201912345');
+    expect(normalizeSecNumber('2022090068683 - 02')).toBe('2022090068683-02');
   });
 });

@@ -27,7 +27,10 @@ import {
   hasRequiredCompanyDocuments,
   scoreRegistration,
   normalizePcn,
+  normalizeSecNumber,
   normalizeTin,
+  parseCertificateDate,
+  parseRegistrationCertificate,
   PHILSYS_PCN_REGEX,
   REGISTRY_DOCUMENT_TYPES,
   SEC_REGEX,
@@ -40,6 +43,7 @@ import {
   type KycRejectionReason,
   type CompanyReviewListResponse,
   type CompanyReviewResponse,
+  type DocumentExtractionResult,
   type DocumentIntelligencePort,
   type KycScanResponse,
   type AreaForecastResponse,
@@ -143,8 +147,10 @@ type ReadField = keyof typeof READ_FIELDS;
 // these, so a SEC certificate never prefills a TIN it does not carry.
 const SCAN_FIELDS: Record<string, ReadField[]> = {
   government_id: ['firstName', 'middleName', 'lastName', 'idNumber', 'birthDate', 'sex', 'address'],
-  sec_certificate: ['companyName', 'secNumber', 'registeredAddress', 'registrationDate'],
-  bir_cor: ['companyName', 'tin', 'registeredAddress'],
+  // No address: an SEC certificate prints only the SEC's own letterhead
+  // address, which a read used to hand back as the company's.
+  sec_certificate: ['companyName', 'secNumber', 'registrationDate'],
+  bir_cor: ['companyName', 'tin', 'registeredAddress', 'registrationDate'],
   dti_certificate: ['companyName', 'dtiNumber', 'registeredAddress'],
   company_registration: ['companyName', 'tin', 'secNumber', 'registeredAddress', 'registrationDate'],
 };
@@ -153,7 +159,7 @@ const SCAN_FIELDS: Record<string, ReadField[]> = {
 // a staff read reports it as invalid instead.
 const FIELD_FORMAT: Partial<Record<ReadField, { normalize?: (v: string) => string; re: RegExp }>> = {
   tin: { normalize: normalizeTin, re: TIN_REGEX },
-  secNumber: { re: SEC_REGEX },
+  secNumber: { normalize: normalizeSecNumber, re: SEC_REGEX },
   dtiNumber: { re: DTI_REGEX },
   idNumber: { normalize: normalizePcn, re: PHILSYS_PCN_REGEX },
 };
@@ -185,7 +191,33 @@ function normalizeDate(value: string): string {
 function normalizeRead(field: ReadField, value: string): string {
   if (field === 'sex') return normalizeSex(value);
   if (field === 'birthDate') return normalizeDate(value);
+  // Printed as 11/25/2013 or "24th day of April, Twenty Twenty Three";
+  // anything else is shown to the reviewer as read.
+  if (field === 'registrationDate') return parseCertificateDate(value) ?? value.trim();
+  if (field === 'companyName' || field === 'registeredAddress') return value.replace(/\s+/g, ' ').trim();
   return FIELD_FORMAT[field]?.normalize?.(value) ?? value.trim();
+}
+
+type CertificateLayout = 'sec_coi' | 'bir_2303' | 'unrecognized';
+
+// One read of a document. For an SEC certificate or a BIR 2303 the label
+// parser (packages/shared/src/kyc-certificate.ts) is primary and queryFields
+// fill only what it did not find; every other paper is queryFields alone.
+// `layout` is null when there is no page text to judge the paper by, and
+// 'unrecognized' when the text is not the paper it was uploaded as.
+function readCertificate(
+  documentType: string,
+  result: DocumentExtractionResult,
+): { fields: DocumentExtractionResult['fields']; layout: CertificateLayout | null } {
+  if (!result.text || (documentType !== 'sec_certificate' && documentType !== 'bir_cor')) {
+    return { fields: result.fields, layout: null };
+  }
+  const parsed = parseRegistrationCertificate(documentType, result.text);
+  const fallback = { ...result.fields };
+  // On a recognised SEC certificate the query's date is not evidence: it
+  // read the Revised Corporation Code's effectivity date on real ones.
+  if (parsed.layout === 'sec_coi') delete fallback.registration_date;
+  return { fields: { ...fallback, ...parsed.fields }, layout: parsed.layout ?? 'unrecognized' };
 }
 
 // What the customer typed on the upload, stored as customer_* keys beside
@@ -264,12 +296,14 @@ export class CustomersService {
         doc_type: 'kyc_scan',
         reason: error.reason,
       });
-      return { suggestions, confidence: null, extractionAvailable: false };
+      return { suggestions, confidence: null, extractionAvailable: false, layoutRecognized: null };
     }
+    const { fields, layout } = readCertificate(documentType, result);
     const confidences: number[] = [];
     for (const field of SCAN_FIELDS[documentType] ?? []) {
-      const read = result.fields[READ_FIELDS[field]];
-      if (!read) continue;
+      const read = fields[READ_FIELDS[field]];
+      // The form takes no registration date; the staff read keeps it.
+      if (!read || (field !== 'registeredAddress' && !(field in suggestions))) continue;
       if (!LEGIBILITY_EXCLUDED.has(field)) confidences.push(read.confidence);
       const value = normalizeRead(field, read.value);
       if (FIELD_FORMAT[field] && !FIELD_FORMAT[field].re.test(value)) continue;
@@ -280,6 +314,7 @@ export class CustomersService {
       suggestions,
       confidence: confidences.length > 0 ? Math.min(...confidences) : null,
       extractionAvailable: true,
+      layoutRecognized: layout === null ? null : layout !== 'unrecognized',
     };
   }
 
@@ -414,10 +449,13 @@ export class CustomersService {
       };
     }
 
-    const ocrPayload: Record<string, unknown> = {};
+    const { fields, layout } = readCertificate(documentType, result);
+    // Which paper the text read as, so the reviewer is told when an upload
+    // is not the SEC certificate or 2303 it claims to be.
+    const ocrPayload: Record<string, unknown> = layout ? { layout } : {};
     const confidences: number[] = [];
     for (const [field, key] of Object.entries(READ_FIELDS) as [ReadField, string][]) {
-      const read = result.fields[key];
+      const read = fields[key];
       // Only what this paper prints: one model serves all three
       // certificates, and its low-confidence guess at a TIN on an SEC
       // certificate is neither evidence nor a legibility signal.

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { hasRequiredCompanyDocuments, isPrimaryRegistration } from './customers.js';
-import { PHILSYS_PCN_REGEX, SEC_REGEX, TIN_REGEX, normalizePcn, normalizeTin } from './kyc.js';
+import { PHILSYS_PCN_REGEX, SEC_REGEX, TIN_REGEX, normalizePcn, normalizeSecNumber, normalizeTin, sameTin } from './kyc.js';
 
 // Advisory confidence for a company registration under review
 // (cr-arkilaunch-registration-scoring.md). Pure: the API adds the one fact
@@ -137,7 +137,12 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
     }
   }
   const disagreeing = pairs.filter((p) =>
-    FUZZY_KEYS.has(p.key) ? nameSimilarity(p.typed, p.scanned) < FUZZY_MATCH : !sameValue(p.typed, p.scanned),
+    FUZZY_KEYS.has(p.key)
+      ? nameSimilarity(p.typed, p.scanned) < FUZZY_MATCH
+      : // 123-456-789 and 123-456-789-000 are the same head-office TIN.
+        p.key === 'tin'
+        ? !sameTin(p.typed, p.scanned)
+        : !sameValue(p.typed, p.scanned),
   );
   checks.push({
     id: 'agreement',
@@ -158,7 +163,7 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
   const pcn = id ? (id.customer.id_number ?? id.ocr.id_number) : undefined;
   const invalid: string[] = [];
   if (input.tin && !TIN_REGEX.test(normalizeTin(input.tin))) invalid.push('TIN');
-  if (input.secNumber && !SEC_REGEX.test(input.secNumber.trim())) invalid.push('SEC number');
+  if (input.secNumber && !SEC_REGEX.test(normalizeSecNumber(input.secNumber))) invalid.push('SEC number');
   if (pcn && !PHILSYS_PCN_REGEX.test(normalizePcn(pcn))) invalid.push('PCN');
   const anyNumber = !!(input.tin || input.secNumber || pcn);
   checks.push({
@@ -208,18 +213,24 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
   // 6. Document quality.
   const complete = hasRequiredCompanyDocuments(input.documents);
   const weak = input.documents.filter((d) => d.confidence !== null && d.confidence < 0.7);
+  // The scan could not read the registration as the paper it was uploaded
+  // as (kyc-certificate.ts): as doubtful as an illegible one.
+  const unrecognized = input.documents.some((d) => isPrimaryRegistration(d.documentType) && d.ocr.layout === 'unrecognized');
+  const legible = weak.length === 0 && !unrecognized;
   checks.push({
     id: 'doc_quality',
     label: 'Documents complete and legible',
     weight: 10,
-    credit: (complete ? 0.6 : 0) + (weak.length === 0 ? 0.4 : 0),
-    status: complete && weak.length === 0 ? 'pass' : complete ? 'warn' : 'fail',
+    credit: (complete ? 0.6 : 0) + (legible ? 0.4 : 0),
+    status: complete && legible ? 'pass' : complete ? 'warn' : 'fail',
     hard: false,
     reason: !complete
       ? 'Missing the ID, the selfie with it, or a BIR 2303 / SEC certificate.'
-      : weak.length
-        ? `${weak.length} document${weak.length === 1 ? '' : 's'} read below 70%.`
-        : 'All required documents present and legible.',
+      : unrecognized
+        ? 'The registration did not read as a BIR 2303 / SEC certificate.'
+        : weak.length
+          ? `${weak.length} document${weak.length === 1 ? '' : 's'} read below 70%.`
+          : 'All required documents present and legible.',
   });
 
   let score = Math.round(checks.reduce((s, c) => s + c.weight * clamp01(c.credit), 0));

@@ -3,6 +3,7 @@ import {
   type DocumentExtractionResult,
   type DocumentIntelligencePort,
   type BoundingRegion,
+  type DocumentText,
   type ExtractedField,
   type ExtractedTable,
 } from '@arkilaunch/shared';
@@ -106,6 +107,7 @@ interface AzurePage {
   width?: number;
   height?: number;
   words?: AzureWord[];
+  lines?: AzureLine[];
 }
 
 interface AzureWord {
@@ -113,10 +115,16 @@ interface AzureWord {
   span?: AzureSpan;
 }
 
+interface AzureLine {
+  polygon?: number[];
+  spans?: AzureSpan[];
+}
+
 interface AzureAnalyzeOperation {
   status: 'notStarted' | 'running' | 'succeeded' | 'failed';
   error?: { code?: string; message?: string };
   analyzeResult?: {
+    content?: string;
     pages?: AzurePage[];
     documents?: Array<{ fields?: Record<string, AzureAnalyzeField> }>;
     tables?: AzureAnalyzeTable[];
@@ -179,7 +187,12 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
     }
 
     const tables = mapTables(analyzeResult.tables, analyzeResult.pages);
-    return { fields: this.mapFields(request, analyzeResult), ...(tables.length > 0 ? { tables } : {}) };
+    const text = mapText(analyzeResult.content, analyzeResult.pages);
+    return {
+      fields: this.mapFields(request, analyzeResult),
+      ...(tables.length > 0 ? { tables } : {}),
+      ...(text ? { text } : {}),
+    };
   }
 
   private async startAnalyze(request: ModelRequest, imageStream: Buffer): Promise<string> {
@@ -363,6 +376,36 @@ function mapTables(
           return out;
         }),
     }));
+}
+
+// The page text with every word and line as a span of it. Line polygons are
+// scaled into 0..1 of their page; a line without a usable polygon, span or
+// page size is left out rather than placed somewhere it is not. Word
+// confidence floors to 0 by the same rule as cellConfidence.
+function mapText(content: string | undefined, pages: AzurePage[] | undefined): DocumentText | undefined {
+  if (!content) return undefined;
+  const words: DocumentText['words'] = [];
+  const lines: DocumentText['lines'] = [];
+  (pages ?? []).forEach((page, index) => {
+    for (const w of page.words ?? []) {
+      const { offset, length } = w.span ?? {};
+      if (typeof offset !== 'number' || typeof length !== 'number') continue;
+      const c = w.confidence;
+      words.push({ offset, length, confidence: typeof c === 'number' && Number.isFinite(c) && c >= 0 && c <= 1 ? c : 0 });
+    }
+    const { width, height } = page;
+    if (!width || !height) return;
+    for (const line of page.lines ?? []) {
+      const { offset, length } = line.spans?.[0] ?? {};
+      const polygon = line.polygon;
+      if (typeof offset !== 'number' || typeof length !== 'number') continue;
+      if (!polygon || polygon.length < 8 || polygon.length % 2 !== 0) continue;
+      const scaled = polygon.map((v, i) => (i % 2 === 0 ? v / width : v / height));
+      if (scaled.some((n) => !Number.isFinite(n))) continue;
+      lines.push({ offset, length, page: page.pageNumber ?? index + 1, polygon: scaled });
+    }
+  });
+  return { content, words, lines };
 }
 
 function extractValue(field: AzureAnalyzeField): string | null {
