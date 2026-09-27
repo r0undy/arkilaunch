@@ -33,12 +33,18 @@ function withPhotoUrl<T extends { photoUri: string | null }>(row: T): T {
 // still-onboarding slug simply has nothing to serve.
 @Injectable()
 export class CatalogService {
-  // Public branding for the host's storefront (migration 0051).
+  // Public branding for the host's storefront (migrations 0051, 0060).
   async getTenant(slug: string): Promise<CatalogTenant> {
     const tenant = await getCatalogTenantForSlug(slug);
     if (!tenant) throw new NotFoundException({ error: 'tenant_not_found' });
-    const { logoKey, heroKey, ...rest } = tenant;
-    return { ...rest, logoUrl: publicPhotoUrl(logoKey), heroUrl: publicPhotoUrl(heroKey) };
+    const { logoKey, heroKey, iconKey, ...rest } = tenant;
+    return {
+      ...rest,
+      font: rest.font === 'inter' ? 'inter' : null,
+      logoUrl: publicPhotoUrl(logoKey),
+      heroUrl: publicPhotoUrl(heroKey),
+      iconUrl: publicPhotoUrl(iconKey),
+    };
   }
 
   // The platform directory: active rental companies, public columns only.

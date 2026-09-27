@@ -21,11 +21,15 @@ export const tenants = pgTable(
     slug: text('slug').notNull().unique(),
     status: text('status').notNull().default('onboarding'), // onboarding, active, suspended
     kycState: text('kyc_state').notNull().default('unverified'), // unverified, submitted, verified
-    // Public storefront branding (migration 0051). Written only through
-    // tenants_update_branding / tenants_set_branding_image.
+    // Public storefront branding (migrations 0051, 0060). Written only
+    // through tenants_update_branding / tenants_set_branding_image.
     logoKey: text('logo_key'),
     heroKey: text('hero_key'),
+    iconKey: text('icon_key'),
     primaryColor: text('primary_color'), // #rrggbb, CHECK in 0051
+    headerColor: text('header_color'), // #rrggbb, CHECK in 0060
+    font: text('font'), // 'inter' or NULL (IBM Plex), CHECK in 0060
+    facebookUrl: text('facebook_url'), // https Facebook page, CHECK in 0060
     tagline: text('tagline'),
     about: text('about'),
     phone: text('phone'),

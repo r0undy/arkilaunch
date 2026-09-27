@@ -7,16 +7,23 @@ import { onPrimaryFor } from '../lib/tenant.js';
 import { Button } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { Input } from './input.js';
+import { Select } from './select.js';
 import { Surface } from './surface.js';
 import { useToast } from './toast.js';
 
 const DEFAULT_PRIMARY = '#f2a100';
+// What the storefront bar shows with no header color (--paper-100).
+const DEFAULT_HEADER = '#f5f2eb';
+const HEX = /^#[0-9a-f]{6}$/i;
 
 type Draft = { [K in keyof TenantBrandingUpdateRequest]: string };
 
 function toDraft(b: TenantBranding): Draft {
   return {
     primaryColor: b.primaryColor ?? '',
+    headerColor: b.headerColor ?? '',
+    font: b.font ?? '',
+    facebookUrl: b.facebookUrl ?? '',
     tagline: b.tagline ?? '',
     about: b.about ?? '',
     phone: b.phone ?? '',
@@ -31,6 +38,9 @@ function toRequest(d: Draft): TenantBrandingUpdateRequest {
   const orNull = (v: string) => (v.trim() === '' ? null : v.trim());
   return {
     primaryColor: orNull(d.primaryColor.toLowerCase()),
+    headerColor: orNull(d.headerColor.toLowerCase()),
+    font: d.font === 'inter' ? 'inter' : null,
+    facebookUrl: orNull(d.facebookUrl),
     tagline: d.tagline.trim(),
     about: orNull(d.about),
     phone: orNull(d.phone),
@@ -60,7 +70,7 @@ function ImageField({
   hint: string;
   url: string | null;
   basePath: string;
-  kind: 'logo' | 'hero';
+  kind: 'logo' | 'hero' | 'icon';
   onChanged: () => void;
 }) {
   const toast = useToast();
@@ -92,9 +102,11 @@ function ImageField({
           src={url}
           alt={`Current ${label.toLowerCase()}`}
           className={
-            kind === 'logo'
-              ? 'h-16 w-auto max-w-[200px] object-contain'
-              : 'aspect-[3/1] w-full max-w-md rounded-sm object-cover'
+            kind === 'hero'
+              ? 'aspect-[3/1] w-full max-w-md rounded-sm object-cover'
+              : kind === 'icon'
+                ? 'size-16 rounded-sm object-contain'
+                : 'h-16 w-auto max-w-[200px] object-contain'
           }
         />
       ) : (
@@ -137,6 +149,49 @@ function ImageField({
   );
 }
 
+// A picker plus a hex field for one color. An empty hex means no override;
+// the picker then shows what the storefront uses instead.
+function ColorField({
+  id,
+  label,
+  hint,
+  value,
+  fallback,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  value: string;
+  fallback: string;
+  onChange: (hex: string) => void;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-start">
+      <div className="flex flex-col gap-1">
+        <label htmlFor={id} className="text-sm font-medium text-text">
+          {label}
+        </label>
+        <input
+          id={id}
+          type="color"
+          value={HEX.test(value) ? value.toLowerCase() : fallback}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-11 w-20 cursor-pointer rounded-sm border border-border-strong bg-surface"
+        />
+      </div>
+      <Input
+        label={`${label} (hex)`}
+        value={value}
+        placeholder={fallback}
+        pattern="#[0-9a-fA-F]{6}"
+        onChange={(e) => onChange(e.target.value)}
+        hint={hint}
+      />
+    </div>
+  );
+}
+
 // The company's public storefront branding. `basePath` is /tenants/me for
 // the company's own owner/admin, /tenants/{id} for a platform admin. The
 // legal name is shown but never editable (the API rejects it too).
@@ -170,7 +225,9 @@ export function BrandingForm({ basePath }: { basePath: string }) {
   if (!saved.data || !current) return null;
 
   const edit = (patch: Partial<Draft>) => setDraft({ ...current, ...patch });
-  const primary = /^#[0-9a-f]{6}$/i.test(current.primaryColor) ? current.primaryColor.toLowerCase() : DEFAULT_PRIMARY;
+  const primary = HEX.test(current.primaryColor) ? current.primaryColor.toLowerCase() : DEFAULT_PRIMARY;
+  const header = HEX.test(current.headerColor) ? current.headerColor.toLowerCase() : null;
+  const mark = saved.data.iconUrl ?? saved.data.logoUrl;
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -181,25 +238,28 @@ export function BrandingForm({ basePath }: { basePath: string }) {
     <div className="flex flex-col gap-5">
       <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Preview">
         <h2 className="font-display text-base font-semibold text-text">Preview</h2>
-        <div className="flex flex-wrap items-center gap-4 rounded-sm border border-border p-4">
-          {saved.data.logoUrl && (
-            <img src={saved.data.logoUrl} alt="" className="h-10 w-auto max-w-[140px] object-contain" />
-          )}
-          <div className="flex min-w-0 flex-1 flex-col">
-            <span className="font-display text-lg font-semibold text-text">{saved.data.legalName}</span>
-            <span className="text-sm text-text-muted">{current.tagline || 'Your tagline'}</span>
-          </div>
-          <span
-            className="inline-flex min-h-10 items-center rounded-sm px-4 text-sm font-semibold"
-            style={{ backgroundColor: primary, color: onPrimaryFor(primary) }}
+        <div className="overflow-hidden rounded-sm border border-border">
+          <div
+            className={['flex items-center gap-3 px-4 py-3', header ? '' : 'text-text'].join(' ')}
+            style={header ? { backgroundColor: header, color: onPrimaryFor(header) } : undefined}
           >
-            Rent now
-          </span>
+            {mark && <img src={mark} alt="" className="h-8 w-auto max-w-[120px] object-contain" />}
+            <span className="font-display text-lg font-semibold">{saved.data.legalName}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-4 border-t border-border p-4">
+            <span className="min-w-0 flex-1 text-sm text-text-muted">{current.tagline || 'Your tagline'}</span>
+            <span
+              className="inline-flex min-h-10 items-center rounded-sm px-4 text-sm font-semibold"
+              style={{ backgroundColor: primary, color: onPrimaryFor(primary) }}
+            >
+              Rent now
+            </span>
+          </div>
         </div>
       </Surface>
 
       <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Images">
-        <h2 className="font-display text-base font-semibold text-text">Logo and hero image</h2>
+        <h2 className="font-display text-base font-semibold text-text">Logo, icon and hero image</h2>
         <div className="grid gap-6 md:grid-cols-2">
           <ImageField
             label="Logo"
@@ -210,13 +270,23 @@ export function BrandingForm({ basePath }: { basePath: string }) {
             onChanged={refresh}
           />
           <ImageField
-            label="Hero image"
-            hint="Optional. A wide photo shown at the top of your storefront."
-            url={saved.data.heroUrl}
+            label="Icon"
+            hint="Square PNG, 180px or larger. Your browser tab icon and the mark in the top bar; your logo is used until you add one."
+            url={saved.data.iconUrl}
             basePath={basePath}
-            kind="hero"
+            kind="icon"
             onChanged={refresh}
           />
+          <div className="md:col-span-2">
+            <ImageField
+              label="Hero image"
+              hint="Optional. A wide photo shown at the top of your storefront."
+              url={saved.data.heroUrl}
+              basePath={basePath}
+              kind="hero"
+              onChanged={refresh}
+            />
+          </div>
         </div>
       </Surface>
 
@@ -230,28 +300,32 @@ export function BrandingForm({ basePath }: { basePath: string }) {
             disabled
             hint="Your registered name can't be changed here."
           />
-          <div className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-start">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="branding-color" className="text-sm font-medium text-text">
-                Brand color
-              </label>
-              <input
-                id="branding-color"
-                type="color"
-                value={primary}
-                onChange={(e) => edit({ primaryColor: e.target.value })}
-                className="h-11 w-20 cursor-pointer rounded-sm border border-border-strong bg-surface"
-              />
-            </div>
-            <Input
-              label="Brand color (hex)"
-              value={current.primaryColor}
-              placeholder={DEFAULT_PRIMARY}
-              pattern="#[0-9a-fA-F]{6}"
-              onChange={(e) => edit({ primaryColor: e.target.value })}
-              hint="Used for buttons and highlights. Leave empty for the ArkiLaunch default."
-            />
-          </div>
+          <ColorField
+            id="branding-color"
+            label="Brand color"
+            value={current.primaryColor}
+            fallback={DEFAULT_PRIMARY}
+            onChange={(primaryColor) => edit({ primaryColor })}
+            hint="Used for buttons and highlights. Leave empty for the ArkiLaunch default."
+          />
+          <ColorField
+            id="branding-header-color"
+            label="Header color"
+            value={current.headerColor}
+            fallback={DEFAULT_HEADER}
+            onChange={(headerColor) => edit({ headerColor })}
+            hint="The bar across the top of your storefront and workspace. Leave empty to keep the default."
+          />
+          <Select
+            id="branding-font"
+            label="Font"
+            value={current.font}
+            onChange={(e) => edit({ font: e.target.value })}
+            hint="Headings and text on your storefront and workspace. Figures always keep the monospace face."
+          >
+            <option value="">IBM Plex (ArkiLaunch default)</option>
+            <option value="inter">Inter</option>
+          </Select>
           <Input
             label="Tagline"
             required
@@ -301,6 +375,15 @@ export function BrandingForm({ basePath }: { basePath: string }) {
               value={current.province}
               onChange={(e) => edit({ province: e.target.value })}
               hint="Customers can filter the ArkiLaunch directory by province."
+            />
+            <Input
+              label="Facebook page"
+              type="url"
+              maxLength={300}
+              value={current.facebookUrl}
+              placeholder="https://www.facebook.com/yourpage"
+              onChange={(e) => edit({ facebookUrl: e.target.value })}
+              hint="Shown as a Follow us link in your storefront footer."
             />
           </div>
           <div>
