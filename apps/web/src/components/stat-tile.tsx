@@ -15,9 +15,9 @@ export interface StatTileProps {
 
 export function StatTile({ label, value, hint, action }: StatTileProps) {
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-1 p-4">
+    <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-1 p-4">
       <p className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">{label}</p>
-      <p className="font-mono text-3xl font-medium tabular-nums text-text">{value ?? '--'}</p>
+      <p className="font-mono text-2xl font-medium tabular-nums text-text [overflow-wrap:anywhere] xl:text-3xl">{value ?? '--'}</p>
       {hint && <p className="text-sm text-text-muted">{hint}</p>}
       {action && <div className="mt-auto pt-1 text-sm font-semibold text-accent">{action}</div>}
     </Surface>

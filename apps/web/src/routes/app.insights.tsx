@@ -71,7 +71,7 @@ function InsightsPage() {
         render={(data) => (
           <div className="flex flex-col gap-8">
             {/* The four numbers an owner opens this page for, before any table. */}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <StatTile label="Invoiced" value={formatPeso(data.financial.invoiced.total)} />
               <StatTile label="Paid" value={formatPeso(data.financial.paid)} />
               <StatTile label="Deposit deducted" value={formatPeso(data.financial.depositDeducted)} />

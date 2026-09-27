@@ -29,7 +29,7 @@ export function SidebarShell({ navGroups, tenantLabel, children }: SidebarShellP
             screen reader. */}
         <aside
           aria-label="Sidebar"
-          className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-60 shrink-0 overflow-y-auto border-r border-border bg-surface-sunk px-3 py-6 lg:block"
+          className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-60 shrink-0 flex-col overflow-y-auto overflow-x-hidden [scrollbar-width:thin] [scrollbar-color:var(--color-border)_transparent] border-r border-border bg-surface-sunk px-3 py-6 lg:flex"
         >
           <NavGroupList groups={navGroups} pathname={pathname} />
         </aside>

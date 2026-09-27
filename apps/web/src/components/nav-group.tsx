@@ -106,7 +106,7 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
   // One nav, so the landmark count stays one; the pinned groups sit at its
   // foot (mt-auto) when the column has room to spare.
   return (
-    <nav className="flex min-h-full flex-col gap-5">
+    <nav className="flex flex-1 flex-col gap-5">
       {listed.map((group) => renderGroup(group, true))}
       {pinned.length > 0 && (
         <div className="mt-auto flex flex-col gap-5 border-t border-border pt-4">
