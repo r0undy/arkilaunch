@@ -7,6 +7,7 @@ import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { Button } from '../components/button.js';
 import { formatHours, formatInvoiceType, formatPeso, shortCode } from '../lib/format.js';
+import { CalendarRange } from 'lucide-react';
 
 // The utilization report identifies a unit only by id, same as the Insights
 // screen -- look the machine up in the fleet list that screen already caches
@@ -174,6 +175,7 @@ function WeeklyBillingPage() {
         options={reportQueries.snapshot()}
         emptyTitle="Nothing billed this period"
         emptyDescription="No machine recorded hours and no invoice was raised in the reporting window."
+        emptyIcon={CalendarRange}
         isEmpty={(data) => data.utilization.fleet.length === 0 && data.financial.invoiced.total === 0}
         render={(data) => <Statement snapshot={data} />}
       />

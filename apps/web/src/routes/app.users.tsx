@@ -18,6 +18,7 @@ import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Modal } from '../components/modal.js';
 import { StatusBadge } from '../components/status-badge.js';
+import { Users } from 'lucide-react';
 
 interface UserRow {
   id: string;
@@ -333,7 +334,7 @@ function ManageUsersPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        eyebrow="Administration"
+        eyebrow="Settings"
         title="People"
         description="Manage teammates, roles, and access."
         actions={<Button onClick={() => setInviting(true)}>Invite a user</Button>}
@@ -344,6 +345,7 @@ function ManageUsersPage() {
         options={usersListQuery(PAGE_SIZE, offset)}
         emptyTitle="No users yet"
         emptyDescription="Invite your first teammate."
+        emptyIcon={Users}
         isEmpty={(data) => data.total === 0}
         render={(data) => (
           <Table

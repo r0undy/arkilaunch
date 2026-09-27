@@ -704,7 +704,7 @@ function SiteHubPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Sites and deployment"
+        eyebrow="Sites"
         title={hub.data ? hub.data.site.address || 'Project site' : 'Project site'}
         {...(hub.data?.site.customerName ? { description: hub.data.site.customerName } : {})}
         actions={

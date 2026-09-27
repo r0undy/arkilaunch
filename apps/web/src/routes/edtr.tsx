@@ -23,6 +23,7 @@ import { PageHeader } from '../components/page-header.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { AlertIcon, CheckIcon, ClockIcon, XCircleIcon } from '../components/icons.js';
 import { EmptyState } from '../components/empty-state.js';
+import { ClipboardList } from 'lucide-react';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { useToast } from '../components/toast.js';
@@ -198,7 +199,7 @@ function EdtrPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Billing"
+        eyebrow="Operations"
         title="Field logs"
         description="Each day's hours, recorded twice and matched before anything is billed."
         actions={
@@ -248,7 +249,15 @@ function EdtrPage() {
 
       {queue.isSuccess &&
         (items.length === 0 ? (
+          filtered ? (
+            <EmptyState
+              icon={ClipboardList}
+              title="Nothing left here"
+              description="No field logs for this machine and week. They may already be billed."
+            />
+          ) : (
           <EmptyState
+            icon={ClipboardList}
             title="No field logs yet"
             description="Record the first one to start matching hours against the deposit."
             action={
@@ -257,6 +266,7 @@ function EdtrPage() {
               </Button>
             }
           />
+          )
         ) : (
           <div className="flex flex-col gap-3">
             {groupByRental(items).map(([rentalId, rows]) => (

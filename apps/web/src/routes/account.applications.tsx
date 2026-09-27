@@ -56,7 +56,7 @@ function RegistrationThumbnail({ company }: { company: CompanyResponse }) {
   });
 
   const frame =
-    'h-24 w-32 shrink-0 overflow-hidden rounded-mk-sm border border-border bg-surface-mk';
+    'h-24 w-32 shrink-0 overflow-hidden rounded-sm border border-border bg-surface';
   if (!doc || url.isError || !url.data) {
     return (
       <div className={`${frame} flex items-center justify-center p-2`}>
@@ -159,7 +159,7 @@ function ApplicationsPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search companies"
           aria-label="Search companies"
-          className="min-h-11 w-full rounded-mk-sm border border-border bg-surface-mk px-4 py-2 text-base text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          className="min-h-11 w-full rounded-sm border border-border bg-surface px-4 py-2 text-base text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
         />
         <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
           {TABS.map((tab) => (
@@ -172,7 +172,7 @@ function ApplicationsPage() {
                 'min-h-11 w-full rounded-pill border px-4 py-2 text-sm font-medium transition-colors sm:w-auto',
                 status === tab.value
                   ? 'border-primary bg-primary text-on-primary'
-                  : 'border-border bg-surface-mk text-text-muted hover:text-text',
+                  : 'border-border bg-surface text-text-muted hover:text-text',
               ].join(' ')}
             >
               {tab.label}

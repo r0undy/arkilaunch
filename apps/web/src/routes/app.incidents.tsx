@@ -8,6 +8,7 @@ import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { formatDateTime, formatSeverity, shortCode } from '../lib/format.js';
+import { TriangleAlert } from 'lucide-react';
 
 const COLUMNS: TableColumn<IncidentResponse>[] = [
   { header: 'Occurred', cell: (row) => formatDateTime(row.occurredAt) },
@@ -41,8 +42,8 @@ function IncidentsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Billing"
-        title="Incident log"
+        eyebrow="Operations"
+        title="Incidents"
         description="Weather and liability events recorded against your sites, timekeeper weather reports the site readings contradict, and machines used after a Stop work warning."
       />
       <div role="group" aria-label="Filter incidents" className="flex flex-wrap gap-2">
@@ -65,10 +66,11 @@ function IncidentsPage() {
         ))}
       </div>
       <DataPanel
-        title="Incident log"
+        title="Incidents"
         options={incidentsQueries.list(PAGE_SIZE, offset, kind)}
         emptyTitle="No incidents logged"
         emptyDescription="Weather and liability incidents will appear here as they are auto-logged or recorded."
+        emptyIcon={TriangleAlert}
         isEmpty={(data) => data.total === 0}
         render={(data) => (
           <Table
