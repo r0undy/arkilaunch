@@ -60,6 +60,15 @@ export class TrucksController {
     return this.trucks.list(req.ctx, 'mine', query);
   }
 
+  // The customer's own trip on the map; route() limits a customer to
+  // requests they made.
+  @Get('me/truck-requests/:id/route')
+  @RequirePermission('booking:read')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  myRoute(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+    return this.trucks.route(req.ctx, id);
+  }
+
   @Post('me/truck-requests/:id/cancel')
   @RequirePermission('booking:create')
   cancel(@Param('id') id: string, @Req() req: CtxRequest) {

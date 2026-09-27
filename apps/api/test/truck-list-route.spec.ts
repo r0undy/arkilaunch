@@ -85,6 +85,14 @@ describe('Truck request list and route', () => {
     await expect(trucks.route(adminCtx, ids[1]!)).rejects.toMatchObject({ response: { error: 'truck_pins_missing' } });
   });
 
+  // GET /me/truck-requests/:id/route: a customer passes the ownership check
+  // on their own request (and hits the pin check), never on someone else's.
+  it("routes only the customer's own request", async () => {
+    await expect(trucks.route(customerCtx, ids[1]!)).rejects.toMatchObject({ response: { error: 'truck_pins_missing' } });
+    const otherCustomer: RequestContext = { ...adminCtx, role: 'customer' };
+    await expect(trucks.route(otherCustomer, ids[0]!)).rejects.toMatchObject({ response: { error: 'truck_request_not_found' } });
+  });
+
   it('parses the OSRM route into km, minutes and a [lng, lat] line', () => {
     const route = parseOsrm({
       code: 'Ok',

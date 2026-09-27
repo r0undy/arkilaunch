@@ -207,7 +207,7 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
         </p>
         {pickup && dropoff ? (
           <>
-            <RouteMap mode="view" pickup={pickup} dropoff={dropoff} route={route.data ?? null} className="h-72" />
+            <RouteMap pickup={pickup} dropoff={dropoff} route={route.data ?? null} className="h-72" />
             {route.isError && (
               <p className="text-xs text-text-muted">The road route is unavailable; the pins are joined in a straight line.</p>
             )}
