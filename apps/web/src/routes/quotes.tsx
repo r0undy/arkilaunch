@@ -55,13 +55,6 @@ const PRICE_BOOK_TABS: Array<{ id: PriceBookTab; label: string }> = [
   { id: 'trucking', label: 'Trucking' },
 ];
 
-const RENTAL_SECTIONS = [
-  { id: 'rental-fees', label: 'Mobilization and fees' },
-  { id: 'operating-costs', label: 'Operating costs' },
-  { id: 'diesel', label: 'Diesel' },
-  { id: 'rate-cards', label: 'Rate cards' },
-];
-
 // The standard price book: one set of prices for every client and prospect.
 // Equipment rental is rate cards + operating costs + the fixed mobilization
 // and demobilization; trucking is its per-trip fees, extras and tolls. A
@@ -73,33 +66,18 @@ function PriceBook() {
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="Billing"
-        title="Quotes"
+        title="Price book"
         description="The standard prices every client and prospect is quoted. A booking gets its quote from these at once; you only revise one when the customer negotiates."
       />
       <Tabs label="Service" items={PRICE_BOOK_TABS} value={tab} onChange={setTab} />
       {tab === 'rental' ? (
         <>
-          {/* Four long forms: a jump list so the rate cards at the bottom
-              are one click away. */}
-          <nav aria-label="Price book sections" className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            {RENTAL_SECTIONS.map((section) => (
-              <a key={section.id} href={`#${section.id}`} className="font-semibold text-accent hover:underline">
-                {section.label}
-              </a>
-            ))}
-          </nav>
-          <section id="rental-fees" className="scroll-mt-20">
+          <div className="grid gap-5 lg:grid-cols-2">
             <RentalFeesForm />
-          </section>
-          <section id="operating-costs" className="scroll-mt-20">
-            <PricingParametersForm />
-          </section>
-          <section id="diesel" className="scroll-mt-20">
             <DieselPriceForm />
-          </section>
-          <section id="rate-cards" className="scroll-mt-20">
-            <RateCardsPanel />
-          </section>
+          </div>
+          <PricingParametersForm />
+          <RateCardsPanel />
         </>
       ) : (
         <>
