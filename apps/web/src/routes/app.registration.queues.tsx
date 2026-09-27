@@ -16,9 +16,10 @@ import { createRoute } from '@tanstack/react-router';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { PageHeader } from '../components/page-header.js';
-import { EmptyState } from '../components/empty-state.js';
+import { Table, type TableColumn } from '../components/table.js';
+import { PAGE_SIZE, Pagination } from '../components/pagination.js';
+import { StatusBadge } from '../components/status-badge.js';
 import { Button } from '../components/button.js';
-import { Surface } from '../components/surface.js';
 import { Modal } from '../components/modal.js';
 import { useToast } from '../components/toast.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -237,14 +238,12 @@ function CompanyReviewCard({
   const previous = company.rejection;
 
   return (
-    <Surface radius="md" elevation="sm" role="group" aria-label={company.companyName} className="flex flex-col gap-4 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="font-display text-lg font-semibold text-text">{company.companyName}</h2>
-          <p className="text-sm text-text-muted">Applied {formatDate(company.createdAt)}</p>
+    <div role="group" aria-label={company.companyName} className="flex flex-col gap-4">
+      {company.score && (
+        <div className="flex justify-start">
+          <ScorePill score={company.score} />
         </div>
-        {company.score && <ScorePill score={company.score} />}
-      </div>
+      )}
 
       {previous && company.kycStatus === 'pending' && (
         <div role="note" className="rounded-md border border-warning px-3 py-2 text-sm">
@@ -393,7 +392,7 @@ function CompanyReviewCard({
           </p>
         </>
       )}
-    </Surface>
+    </div>
   );
 }
 
@@ -560,49 +559,91 @@ function DocumentPreviewModal({
   );
 }
 
+function scoreText(company: CompanyReviewResponse) {
+  return company.score ? `${company.score.score}% · ${BAND_META[company.score.band].label}` : '--';
+}
+
+const COLUMNS: TableColumn<CompanyReviewResponse>[] = [
+  {
+    header: 'Company',
+    cell: (c) => (
+      <div className="flex flex-col">
+        <span className="font-medium text-text">{c.companyName}</span>
+        {c.rejection && c.kycStatus === 'pending' && <span className="text-xs text-text-muted">Reapplied after a rejection</span>}
+      </div>
+    ),
+  },
+  { header: 'Applied', cell: (c) => formatDate(c.createdAt) },
+  { header: 'Documents', align: 'right', cell: (c) => c.documents.length },
+  { header: 'Score', align: 'right', cell: scoreText },
+  { header: 'Status', cell: (c) => <StatusBadge status={c.kycStatus} /> },
+];
+
+// The queue as a table; a row opens the full review in a drawer, where the
+// reviewer checks the registries and the ID and decides.
 function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const query = useQuery(companiesQueries.review(kycStatus));
+  const [offset, setOffset] = useState(0);
+  const query = useQuery(companiesQueries.review(kycStatus, PAGE_SIZE, offset));
+  const [openId, setOpenId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ companyId: string; documentId: string } | null>(null);
   const [rejecting, setRejecting] = useState<CompanyReviewResponse | null>(null);
+  const open = query.data?.items.find((c) => c.id === openId) ?? null;
 
   const decide = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) => apiPatch(`/customers/${id}/kyc`, body),
     onSuccess: async (_d, { body }) => {
       setRejecting(null);
+      setOpenId(null);
       await queryClient.invalidateQueries({ queryKey: ['customers', 'review'] });
       toast.success(body.decision === 'approved' ? 'Company verified' : 'Company rejected', 'The customer has been notified.');
     },
     onError: (err) => toast.error('Could not record the decision', apiErrorText(err)),
   });
 
-  if (query.isPending) return <p className="text-sm text-text-muted">Loading...</p>;
-  if (query.isError) return <p className="text-sm text-error">{apiErrorText(query.error)}</p>;
-  if (query.data.length === 0) {
-    return (
-      <EmptyState
-        title={kycStatus === 'pending' ? 'Nothing waiting' : 'No verified companies yet'}
-        description={kycStatus === 'pending' ? 'Companies customers add appear here for review.' : 'Companies you approve appear here.'}
-      />
-    );
-  }
-
   return (
     <div className="flex flex-col gap-3">
-      {query.data.map((company) => (
-        <CompanyReviewCard
-          key={company.id}
-          company={company}
-          decidable={kycStatus === 'pending'}
-          deciding={decide.isPending}
-          onApprove={(registryChecked, identity) =>
-            decide.mutate({ id: company.id, body: { decision: 'approved', registryChecked, identity } })
-          }
-          onReject={() => setRejecting(company)}
-          onPreviewDocument={(companyId, documentId) => setPreview({ companyId, documentId })}
-        />
-      ))}
+      {query.isError && <p className="text-sm text-error">{apiErrorText(query.error)}</p>}
+      <Table
+        columns={COLUMNS}
+        rows={query.data?.items ?? []}
+        rowKey={(c) => c.id}
+        onRowClick={(c) => setOpenId(c.id)}
+        rowLabel={(c) => `Review ${c.companyName}`}
+        empty={
+          query.isPending
+            ? 'Loading...'
+            : kycStatus === 'pending'
+              ? 'Nothing waiting. Companies customers add appear here for review.'
+              : 'No verified companies yet. Companies you approve appear here.'
+        }
+        footer={
+          <Pagination offset={offset} limit={PAGE_SIZE} total={query.data?.total ?? 0} onOffsetChange={setOffset} noun="companies" busy={query.isFetching} />
+        }
+      />
+      <Modal
+        open={open !== null}
+        onClose={() => setOpenId(null)}
+        placement="right"
+        size="lg"
+        title={open?.companyName ?? 'Company'}
+        {...(open ? { description: `Applied ${formatDate(open.createdAt)}` } : {})}
+      >
+        {open && (
+          <CompanyReviewCard
+            key={open.id}
+            company={open}
+            decidable={kycStatus === 'pending'}
+            deciding={decide.isPending}
+            onApprove={(registryChecked, identity) =>
+              decide.mutate({ id: open.id, body: { decision: 'approved', registryChecked, identity } })
+            }
+            onReject={() => setRejecting(open)}
+            onPreviewDocument={(companyId, documentId) => setPreview({ companyId, documentId })}
+          />
+        )}
+      </Modal>
       {rejecting && (
         <RejectDialog
           company={rejecting}

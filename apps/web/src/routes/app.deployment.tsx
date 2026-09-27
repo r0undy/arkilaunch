@@ -62,16 +62,12 @@ function DeploymentPage() {
         emptyDescription="Add a project site to deploy equipment to it."
         isEmpty={(data) => data.total === 0}
         render={(data) => (
-          <div>
-            <Table columns={COLUMNS} rows={data.items} rowKey={(row) => row.id} />
-            <Pagination
-              offset={offset}
-              limit={PAGE_SIZE}
-              total={data.total}
-              onOffsetChange={setOffset}
-              noun="sites"
-            />
-          </div>
+          <Table
+            columns={COLUMNS}
+            rows={data.items}
+            rowKey={(row) => row.id}
+            footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="sites" />}
+          />
         )}
       />
     </div>

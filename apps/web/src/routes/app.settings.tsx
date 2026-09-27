@@ -15,6 +15,7 @@ import { Surface } from '../components/surface.js';
 import { PageHeader } from '../components/page-header.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
+import { Modal } from '../components/modal.js';
 import { useToast } from '../components/toast.js';
 import { formatDate, formatPeso, formatRateType } from '../lib/format.js';
 
@@ -42,7 +43,8 @@ const rateCardsListQuery = (limit: number, offset: number) => ({
     ),
 });
 
-export function RateCardForm() {
+// Adding a rate card, in a dialog opened from the rate card list.
+function RateCardModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const equipmentTypes = useQuery(referenceQueries.equipmentTypes());
   const [equipmentTypeId, setEquipmentTypeId] = useState('');
@@ -63,6 +65,7 @@ export function RateCardForm() {
       }),
     onSuccess: () => {
       setRateValue('');
+      onClose();
       queryClient.invalidateQueries({ queryKey: ['rate-cards'] });
     },
     onError: () => setError('Could not create this rate card.'),
@@ -75,10 +78,24 @@ export function RateCardForm() {
   }
 
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
-      <h2 className="font-display text-base font-semibold text-text">Add a rate card</h2>
-      <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-3">
-        <div className="min-w-48">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add a rate card"
+      description="What an equipment type (or one unit of it) rents for. It is quotable at once."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="new-rate-card" loading={create.isPending} disabled={create.isPending || !equipmentTypeId}>
+            Add rate card
+          </Button>
+        </>
+      }
+    >
+      <form id="new-rate-card" onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+        <div>
           <Select
             label="Equipment type"
             id="rate-equipment-type"
@@ -99,7 +116,7 @@ export function RateCardForm() {
             ))}
           </Select>
         </div>
-        <div className="min-w-48">
+        <div>
           <Select
             label="Unit (optional)"
             id="rate-equipment"
@@ -114,7 +131,7 @@ export function RateCardForm() {
             ))}
           </Select>
         </div>
-        <div className="w-36">
+        <div>
           <Select
             label="Rate type"
             id="rate-type"
@@ -126,7 +143,7 @@ export function RateCardForm() {
             <option value="monthly">Monthly</option>
           </Select>
         </div>
-        <div className="w-36">
+        <div>
           <Input
             label="Rate (PHP)"
             id="rate-value"
@@ -140,15 +157,8 @@ export function RateCardForm() {
             {...(error ? { error } : {})}
           />
         </div>
-        <Button
-          type="submit"
-          loading={create.isPending}
-          disabled={create.isPending || !equipmentTypeId}
-        >
-          Add rate card
-        </Button>
       </form>
-    </Surface>
+    </Modal>
   );
 }
 
@@ -466,6 +476,7 @@ export function PricingParametersForm() {
 // Every live rate card, by equipment type, with its retire action.
 export function RateCardsPanel() {
   const [offset, setOffset] = useState(0);
+  const [adding, setAdding] = useState(false);
   // The table showed a UUID stub where the form's own dropdown already had
   // the readable name; same source, now used in both places.
   const equipmentTypes = useQuery(referenceQueries.equipmentTypes());
@@ -481,7 +492,7 @@ export function RateCardsPanel() {
     { header: 'Rate', cell: (row) => formatPeso(row.rateValue), align: 'right' },
     { header: 'In use since', cell: (row) => formatDate(row.effectiveFrom) },
     {
-      header: '',
+      header: 'Actions',
       align: 'right',
       cell: (row) => (
         <RetireAction
@@ -493,25 +504,28 @@ export function RateCardsPanel() {
   ];
 
   return (
-    <DataPanel
-      title="Rate cards"
-      options={rateCardsListQuery(PAGE_SIZE, offset)}
-      emptyTitle="No rate cards yet"
-      emptyDescription="Add a rate card above to make an equipment type quotable."
-      isEmpty={(data) => data.total === 0}
-      render={(data) => (
-        <div>
-          <Table columns={columns} rows={data.items} rowKey={(row) => row.id} />
-          <Pagination
-            offset={offset}
-            limit={PAGE_SIZE}
-            total={data.total}
-            onOffsetChange={setOffset}
-            noun="rate cards"
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-display text-lg font-semibold text-text">Rate cards</h2>
+        <Button onClick={() => setAdding(true)}>Add rate card</Button>
+      </div>
+      <DataPanel
+        title="Rate cards"
+        options={rateCardsListQuery(PAGE_SIZE, offset)}
+        emptyTitle="No rate cards yet"
+        emptyDescription="Add a rate card to make an equipment type quotable."
+        isEmpty={(data) => data.total === 0}
+        render={(data) => (
+          <Table
+            columns={columns}
+            rows={data.items}
+            rowKey={(row) => row.id}
+            footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="rate cards" />}
           />
-        </div>
-      )}
-    />
+        )}
+      />
+      <RateCardModal open={adding} onClose={() => setAdding(false)} />
+    </div>
   );
 }
 

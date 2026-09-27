@@ -108,7 +108,8 @@ function MyBookingsPage() {
         ))}
       </div>
       {service === 'truck' ? (
-        <TruckBookings codePrefix={codePrefix} />
+        // Keyed on the search, so a new search starts back on page 1.
+        <TruckBookings key={codePrefix} codePrefix={codePrefix} />
       ) : (
         <DataPanel
           title="My bookings"
@@ -117,16 +118,12 @@ function MyBookingsPage() {
           emptyDescription="Rent your first piece of equipment to see it tracked here."
           isEmpty={(data) => data.total === 0}
           render={(data) => (
-            <div>
-              <Table columns={COLUMNS} rows={data.items} rowKey={(row) => row.id} />
-              <Pagination
-                offset={offset}
-                limit={PAGE_SIZE}
-                total={data.total}
-                onOffsetChange={setOffset}
-                noun="bookings"
-              />
-            </div>
+            <Table
+              columns={COLUMNS}
+              rows={data.items}
+              rowKey={(row) => row.id}
+              footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="bookings" />}
+            />
           )}
         />
       )}
@@ -135,14 +132,12 @@ function MyBookingsPage() {
 }
 
 function TruckBookings({ codePrefix }: { codePrefix: string }) {
-  const mine = useQuery({
-    ...myTruckRequestsQuery,
-    select: (rows) => (codePrefix ? rows.filter((r) => r.code.startsWith(codePrefix)) : rows),
-  });
+  const [offset, setOffset] = useState(0);
+  const mine = useQuery(myTruckRequestsQuery(PAGE_SIZE, offset, codePrefix));
   if (mine.isPending) return <p className="text-sm text-text-muted">Loading truck bookings...</p>;
   if (mine.isError)
     return <p className="text-sm text-error">Truck bookings could not be loaded.</p>;
-  if (mine.data.length === 0) {
+  if (mine.data.total === 0) {
     return (
       <EmptyState
         title="No truck bookings yet"
@@ -157,9 +152,10 @@ function TruckBookings({ codePrefix }: { codePrefix: string }) {
   }
   return (
     <div className="flex flex-col gap-3">
-      {mine.data.map((r) => (
+      {mine.data.items.map((r) => (
         <TruckRequestCard key={r.id} request={r} />
       ))}
+      <Pagination offset={offset} limit={PAGE_SIZE} total={mine.data.total} onOffsetChange={setOffset} noun="truck bookings" />
     </div>
   );
 }

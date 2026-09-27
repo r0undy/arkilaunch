@@ -11,12 +11,13 @@ import { PageHeader } from '../components/page-header.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { useToast } from '../components/toast.js';
-import { formatRole, formatStatus } from '../lib/format.js';
+import { formatRole } from '../lib/format.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
-import { Surface } from '../components/surface.js';
+import { Modal } from '../components/modal.js';
+import { StatusBadge } from '../components/status-badge.js';
 
 interface UserRow {
   id: string;
@@ -36,7 +37,9 @@ const usersListQuery = (limit: number, offset: number) => ({
   queryFn: () => apiGet<UserListResponse>(`/users?limit=${limit}&offset=${offset}`),
 });
 
-function InviteForm() {
+// Invite in a dialog. Once sent, the dialog stays open on the activation
+// token (there is no email provider yet), and closing it clears the form.
+function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<AssignableRole>('customer');
@@ -54,6 +57,12 @@ function InviteForm() {
       setError('Could not invite this user. Check the email is not already registered.'),
   });
 
+  function close() {
+    setActivationToken(null);
+    setError(null);
+    onClose();
+  }
+
   function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
@@ -62,10 +71,35 @@ function InviteForm() {
   }
 
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
-      <h2 className="font-display text-base font-semibold text-text">Invite a user</h2>
-      <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-3">
-        <div className="min-w-56 flex-1">
+    <Modal
+      open={open}
+      onClose={close}
+      title="Invite a user"
+      description="They get an account on your company with the role you pick."
+      size="sm"
+      footer={
+        activationToken ? (
+          <Button onClick={close}>Done</Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={close}>
+              Cancel
+            </Button>
+            <Button type="submit" form="invite-user" loading={invite.isPending}>
+              Send invite
+            </Button>
+          </>
+        )
+      }
+    >
+      {activationToken ? (
+        <p className="text-sm text-text">
+          Invite created. No email provider is wired up yet -- relay this activation token to the new user out of
+          band:{' '}
+          <code className="break-all rounded-sm bg-surface-sunk px-1.5 py-0.5 font-mono text-xs">{activationToken}</code>
+        </p>
+      ) : (
+        <form id="invite-user" onSubmit={onSubmit} className="flex flex-col gap-4">
           <Input
             label="Email address"
             id="invite-email"
@@ -75,33 +109,14 @@ function InviteForm() {
             onChange={(e) => setEmail(e.target.value)}
             {...(error ? { error } : {})}
           />
-        </div>
-        <div className="w-40">
-          <Select
-            label="Role"
-            id="invite-role"
-            value={role}
-            onChange={(e) => setRole(e.target.value as AssignableRole)}
-          >
+          <Select label="Role" id="invite-role" value={role} onChange={(e) => setRole(e.target.value as AssignableRole)}>
             <option value="customer">Customer</option>
             <option value="timekeeper">Timekeeper</option>
             <option value="admin">Admin</option>
           </Select>
-        </div>
-        <Button type="submit" loading={invite.isPending} disabled={invite.isPending}>
-          Send invite
-        </Button>
-      </form>
-      {activationToken && (
-        <p className="text-sm text-text-muted">
-          No email provider is wired up yet -- relay this activation token to the new user out of
-          band:{' '}
-          <code className="rounded-sm bg-surface-sunk px-1.5 py-0.5 font-mono text-xs">
-            {activationToken}
-          </code>
-        </p>
+        </form>
       )}
-    </Surface>
+    </Modal>
   );
 }
 
@@ -288,10 +303,11 @@ function UserActions({ user }: { user: UserRow }) {
 
 function ManageUsersPage() {
   const [offset, setOffset] = useState(0);
+  const [inviting, setInviting] = useState(false);
   const columns: TableColumn<UserRow>[] = [
     { header: 'Email', cell: (row) => row.email },
     { header: 'Role', cell: (row) => formatRole(row.roleName) },
-    { header: 'Status', cell: (row) => formatStatus(row.status) },
+    { header: 'Status', cell: (row) => <StatusBadge status={row.status} /> },
     { header: 'Actions', cell: (row) => <UserActions user={row} /> },
   ];
 
@@ -301,25 +317,22 @@ function ManageUsersPage() {
         eyebrow="Administration"
         title="People"
         description="Manage teammates, roles, and access."
+        actions={<Button onClick={() => setInviting(true)}>Invite a user</Button>}
       />
-      <InviteForm />
+      <InviteModal open={inviting} onClose={() => setInviting(false)} />
       <DataPanel
         title="Users"
         options={usersListQuery(PAGE_SIZE, offset)}
         emptyTitle="No users yet"
-        emptyDescription="Invite your first teammate above."
+        emptyDescription="Invite your first teammate."
         isEmpty={(data) => data.total === 0}
         render={(data) => (
-          <div>
-            <Table columns={columns} rows={data.items} rowKey={(row) => row.id} />
-            <Pagination
-              offset={offset}
-              limit={PAGE_SIZE}
-              total={data.total}
-              onOffsetChange={setOffset}
-              noun="people"
-            />
-          </div>
+          <Table
+            columns={columns}
+            rows={data.items}
+            rowKey={(row) => row.id}
+            footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="people" />}
+          />
         )}
       />
     </div>
