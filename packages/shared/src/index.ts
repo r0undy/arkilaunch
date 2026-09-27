@@ -30,3 +30,4 @@ export * from './users.js';
 export * from './tenants.js';
 export * from './customers.js';
 export * from './equipment-weather.js';
+export * from './notification-email.js';
