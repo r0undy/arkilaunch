@@ -104,13 +104,17 @@ export async function listCatalogTestimonialsForSlug(slug: string): Promise<Cata
 }
 
 // GET /catalog/tenant (@Public). The host tenant's public branding; null
-// for an unknown or not-yet-active slug (migrations 0048, 0051). Image
-// fields are storage keys; the API turns them into URLs.
+// for an unknown or not-yet-active slug (migrations 0048, 0051, 0060).
+// Image fields are storage keys; the API turns them into URLs.
 export interface CatalogTenantRow {
   name: string;
   logoKey: string | null;
   heroKey: string | null;
+  iconKey: string | null;
   primaryColor: string | null;
+  headerColor: string | null;
+  font: string | null;
+  facebookUrl: string | null;
   tagline: string | null;
   about: string | null;
   phone: string | null;
@@ -125,7 +129,11 @@ export async function getCatalogTenantForSlug(slug: string): Promise<CatalogTena
     name: string;
     logo_key: string | null;
     hero_key: string | null;
+    icon_key: string | null;
     primary_color: string | null;
+    header_color: string | null;
+    font: string | null;
+    facebook_url: string | null;
     tagline: string | null;
     about: string | null;
     phone: string | null;
@@ -140,7 +148,11 @@ export async function getCatalogTenantForSlug(slug: string): Promise<CatalogTena
     name: r.name,
     logoKey: r.logo_key,
     heroKey: r.hero_key,
+    iconKey: r.icon_key,
     primaryColor: r.primary_color,
+    headerColor: r.header_color,
+    font: r.font,
+    facebookUrl: r.facebook_url,
     tagline: r.tagline,
     about: r.about,
     phone: r.phone,

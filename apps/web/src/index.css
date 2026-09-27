@@ -279,6 +279,16 @@
   src: url('/fonts/instrument-serif-italic-400.woff2') format('woff2');
 }
 
+/* Tenant font (DSD §2.3, CR: tenant-brand-kit). Only a tenant that picks Inter
+   points --font-sans/--font-display at it (lib/brand.ts), so no other host
+   ever fetches this file. Latin-subset variable WOFF2, SIL OFL 1.1. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter-variable-latin.woff2') format('woff2');
+}
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;

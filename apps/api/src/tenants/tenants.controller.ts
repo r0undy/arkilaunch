@@ -34,8 +34,8 @@ import {
 type CtxRequest = Request & { ctx: RequestContext };
 type MulterFile = { buffer: Buffer; size: number; mimetype: string };
 
-function imageKind(kind: string): 'logo' | 'hero' {
-  if (kind !== 'logo' && kind !== 'hero') throw new BadRequestException({ error: 'invalid_kind' });
+function imageKind(kind: string): 'logo' | 'hero' | 'icon' {
+  if (kind !== 'logo' && kind !== 'hero' && kind !== 'icon') throw new BadRequestException({ error: 'invalid_kind' });
   return kind;
 }
 

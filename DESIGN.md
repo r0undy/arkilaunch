@@ -35,7 +35,7 @@ Palette is high-contrast by construction, verified for WCAG 2.2 AA at the pairin
 | `--color-surface-sunk` | `#ECE7DB` | Insets, code/data wells, the original-image tray in the Evidence Split View. |
 | `--color-border` | `#CFC7B6` | Dividers, input borders. 1px, deliberately visible (no hairlines). |
 | `--color-border-strong` | `#9A917E` | Table grid, section separators, gauge bezels. |
-| `--color-primary` | `#F2A100` | Primary action (signal amber). **Pairs with dark text `#10151B` only**; amber + white fails AA. A tenant storefront may override this one token with its own `primary_color` (CR: tenant-self-serve-branding); `--color-on-primary` is then picked as black or white by higher WCAG contrast. No other token is tenant-overridable. |
+| `--color-primary` | `#F2A100` | Primary action (signal amber). **Pairs with dark text `#10151B` only**; amber + white fails AA. A tenant storefront may override this one token with its own `primary_color` (CR: tenant-self-serve-branding); `--color-on-primary` is then picked as black or white by higher WCAG contrast. No other color token is tenant-overridable. A tenant may also set a **header color** (CR: tenant-brand-kit), which paints only its own top bar (storefront nav, account and staff app bar) and the browser theme color, with text picked the same way. It is a component paint, not a token: accent, status, weather and reconciliation hues are never tenant-colored. |
 | `--color-primary-hover` | `#D98C00` | Primary hover/active. |
 | `--color-accent` | `#1E5F8C` | Dispatch blue: links, active nav, focus ring, secondary action. Pairs with white text or as text on `--color-bg`. |
 | `--color-accent-hover` | `#164B6E` | Accent hover/active. |
@@ -117,6 +117,8 @@ Chosen for small-size legibility on a low-end Android and for provenance: **IBM 
 **Minimum body size:** 16px on all screens (never below; guards outdoor legibility and prevents mobile-Safari zoom). Data captions never below 13px.
 **Font loading:** self-hosted `/fonts/*.woff2`, Latin subset, `font-display: swap`, `<link rel="preload">` on the two most-used cuts (Plex Sans variable, Plex Mono 500). Total font payload budget: <= 90KB over the wire (Console tier; see marketing budget below).
 **License / fallback:** IBM Plex is SIL Open Font License 1.1 (free to self-host and embed). Fallback stack: `"IBM Plex Sans", Roboto, system-ui, -apple-system, "Segoe UI", sans-serif`; mono falls back to `"IBM Plex Mono", "Roboto Mono", ui-monospace, monospace`. Roboto is already resident on Android, so the fallback render is legible with zero download.
+
+**Tenant font (CR: tenant-brand-kit):** on its own host a tenant may choose **Inter** in place of IBM Plex Sans and Plex Sans Condensed for prose and display; weights and sizes stay as specified. IBM Plex Mono keeps every operational number (Rule 2), and the ArkiLaunch platform host stays on Plex. Inter is self-hosted like Plex: one Latin-subset variable WOFF2 (`wght` 100 to 900, SIL OFL 1.1), fetched only on a host that uses it and preloaded there in place of Plex Sans, so the budgets below hold.
 
 **Marketing typography (CR: dsd-marketing-tier)**; IBM Plex stays the type system on marketing surfaces too, not Inter; the single addition is an accent face for editorial emphasis.
 

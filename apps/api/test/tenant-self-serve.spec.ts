@@ -18,6 +18,9 @@ function jwtService(): JwtService {
 
 const branding = {
   primaryColor: '#1e5f8c',
+  headerColor: null,
+  font: null,
+  facebookUrl: null,
   tagline: 'Cranes on time',
   about: null,
   phone: '09170000000',
@@ -64,6 +67,23 @@ describe('self-serve rental company', () => {
     expect(saved).toMatchObject({ legalName: 'Self Serve Rentals', tagline: 'Cranes on time', province: 'Cebu' });
     await expect(catalog.getTenant(slug)).resolves.toMatchObject({ primaryColor: '#1e5f8c', city: 'Cebu City' });
 
+    // CR: tenant-brand-kit (migration 0060): the brand kit round-trips to the
+    // storefront, and 'icon' is an image kind the write function accepts.
+    const kit = TenantBrandingUpdateRequestSchema.parse({
+      ...branding,
+      headerColor: '#A23E01',
+      font: 'inter',
+      facebookUrl: 'https://WWW.Facebook.com/SelfServeRentals',
+    });
+    await tenants.updateBranding(ctx as never, reg.tenantId, kit);
+    await expect(catalog.getTenant(slug)).resolves.toMatchObject({
+      headerColor: '#a23e01',
+      font: 'inter',
+      facebookUrl: 'https://www.facebook.com/SelfServeRentals',
+      iconUrl: null,
+    });
+    await expect(tenants.setBrandingImage(ctx as never, reg.tenantId, 'icon', null)).resolves.toMatchObject({ iconUrl: null });
+
     const found = await catalog.listTenants({ q: 'self serve', location: 'cebu', limit: 50, offset: 0 });
     expect(found.items.map((t) => t.slug)).toContain(slug);
     const otherProvince = await catalog.listTenants({ q: 'self serve', location: 'Davao', limit: 50, offset: 0 });
@@ -86,5 +106,25 @@ describe('self-serve rental company', () => {
     expect(TenantBrandingUpdateRequestSchema.safeParse({ ...branding, legalName: 'Renamed' }).success).toBe(false);
     expect(TenantBrandingUpdateRequestSchema.safeParse({ ...branding, slug: 'renamed' }).success).toBe(false);
     expect(TenantBrandingUpdateRequestSchema.safeParse({ ...branding, primaryColor: 'red' }).success).toBe(false);
+  });
+
+  it('only takes a known font, a hex header color and an https Facebook link', () => {
+    const ok = (patch: object) => TenantBrandingUpdateRequestSchema.safeParse({ ...branding, ...patch }).success;
+    expect(ok({ headerColor: 'red' })).toBe(false);
+    expect(ok({ font: 'comic-sans' })).toBe(false);
+    // The Facebook link lands in a public href.
+    for (const facebookUrl of [
+      'javascript:alert(1)',
+      'http://facebook.com/almara',
+      'https://evil.com/facebook.com',
+      'https://facebook.com.evil.com/almara',
+      'https://notfacebook.com/almara',
+      'https://user@facebook.com/almara',
+      'https://facebook.com:8443/almara',
+    ]) {
+      expect(ok({ facebookUrl }), facebookUrl).toBe(false);
+    }
+    expect(ok({ facebookUrl: 'https://m.facebook.com/almara' })).toBe(true);
+    expect(ok({ facebookUrl: 'https://fb.com/almara' })).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import type { CatalogTenant } from '@arkilaunch/shared';
 import { apiGet } from './api-client.js';
+import { BRAND_VARS, brandVars, onPrimaryFor } from './brand.js';
 import { tenantSlug } from './host.js';
 
 // The host tenant's public branding (GET /catalog/tenant). Fetched once per
@@ -24,33 +25,45 @@ export function useTenantName(): string {
   return useTenant()?.name ?? '';
 }
 
-// WCAG relative luminance of a #rrggbb color.
-function luminance(hex: string): number {
-  const channel = (i: number) => {
-    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+// The top-bar paint for a tenant that set a header color (DSD §2.1): the
+// color and the black or white text on it. Null keeps the bar's own look.
+export function useHeaderColor(): { backgroundColor: string; color: string } | null {
+  const hex = useTenant()?.headerColor;
+  return hex ? { backgroundColor: hex, color: onPrimaryFor(hex) } : null;
 }
 
-// Text color on a tenant's primary: black or white, whichever contrasts
-// more (DSD §2.1 tenant override). Black is --steel-900's family.
-export function onPrimaryFor(hex: string): '#000000' | '#ffffff' {
-  const l = luminance(hex);
-  return (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? '#000000' : '#ffffff';
-}
-
-// Paint the tenant's primary over the theme tokens (index.css --yb-*).
-// Inline style on <html> wins over both the light and dark theme rules.
-export function applyTenantPrimary(hex: string | null | undefined): void {
-  const style = document.documentElement.style;
-  if (!hex) {
-    style.removeProperty('--yb-color-primary');
-    style.removeProperty('--yb-color-primary-hover');
-    style.removeProperty('--yb-color-on-primary');
+// Upserts one <head> tag's attribute, or removes the tag for no value.
+function setHeadTag(selector: string, create: () => HTMLElement, attr: string, value: string | null | undefined) {
+  let el = document.head.querySelector<HTMLElement>(selector);
+  if (!value) {
+    el?.remove();
     return;
   }
-  style.setProperty('--yb-color-primary', hex);
-  style.setProperty('--yb-color-primary-hover', `color-mix(in srgb, ${hex} 85%, black)`);
-  style.setProperty('--yb-color-on-primary', onPrimaryFor(hex));
+  if (!el) {
+    el = create();
+    document.head.append(el);
+  }
+  el.setAttribute(attr, value);
+}
+
+// Paint the tenant's brand over the theme tokens (index.css --yb-*, the
+// @theme fonts): inline style on <html> wins over both theme rules. Also
+// points the favicon and the browser's theme color at the tenant. The edge
+// Worker writes the same values into the HTML, so this repaints nothing on
+// a deployed host; it keeps local dev and a changed brand in step.
+export function applyTenantBrand(t: CatalogTenant): void {
+  const style = document.documentElement.style;
+  const vars = brandVars(t);
+  for (const name of BRAND_VARS) {
+    const value = vars[name];
+    if (value) style.setProperty(name, value);
+    else style.removeProperty(name);
+  }
+  setHeadTag('link[rel="icon"]', () => Object.assign(document.createElement('link'), { rel: 'icon' }), 'href', t.iconUrl ?? t.logoUrl);
+  setHeadTag(
+    'meta[name="theme-color"]',
+    () => Object.assign(document.createElement('meta'), { name: 'theme-color' }),
+    'content',
+    t.headerColor ?? t.primaryColor,
+  );
 }

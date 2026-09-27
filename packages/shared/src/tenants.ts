@@ -117,14 +117,43 @@ export type PlatformCompanyListResponse = z.infer<typeof PlatformCompanyListResp
 export const CompanyStatusUpdateRequestSchema = z.object({ status: CompanyStatusSchema }).strict();
 export type CompanyStatusUpdateRequest = z.infer<typeof CompanyStatusUpdateRequestSchema>;
 
-// Tenant branding (migration 0051). legal_name and slug are shown but never
-// writable: .strict() makes a smuggled legalName/slug/status a 400.
+// Tenant branding (migrations 0051, 0060). legal_name and slug are shown but
+// never writable: .strict() makes a smuggled legalName/slug/status a 400.
 const HEX_COLOR = /^#[0-9a-f]{6}$/;
 const optionalText = (max: number) => z.string().trim().max(max).nullable();
+
+// NULL is the design-system default (IBM Plex); DSD §2.3.
+export const TenantFontSchema = z.enum(['inter']);
+export type TenantFont = z.infer<typeof TenantFontSchema>;
+
+// The link lands in an href on a public page, so only an https URL on a
+// Facebook host passes; stored normalized (lowercase host) so the DB CHECK in
+// 0060 sees the same string.
+const FACEBOOK_HOST = /(^|\.)(facebook|fb)\.com$/;
+const FacebookUrlSchema = z
+  .string()
+  .trim()
+  .max(300)
+  .transform((value, ctx) => {
+    let url: URL | null = null;
+    try {
+      url = new URL(value);
+    } catch {
+      // not a URL; reported below
+    }
+    if (!url || url.protocol !== 'https:' || !FACEBOOK_HOST.test(url.hostname) || url.port || url.username || url.password) {
+      ctx.addIssue({ code: 'custom', message: 'Enter your Facebook page link, starting with https://' });
+      return z.NEVER;
+    }
+    return url.href;
+  });
 
 export const TenantBrandingUpdateRequestSchema = z
   .object({
     primaryColor: z.string().toLowerCase().regex(HEX_COLOR).nullable(),
+    headerColor: z.string().toLowerCase().regex(HEX_COLOR).nullable(),
+    font: TenantFontSchema.nullable(),
+    facebookUrl: FacebookUrlSchema.nullable(),
     tagline: z.string().trim().min(1).max(160),
     about: optionalText(2000),
     phone: optionalText(50),
@@ -142,7 +171,13 @@ export const TenantBrandingSchema = z.object({
   slug: z.string(),
   logoUrl: z.string().nullable(),
   heroUrl: z.string().nullable(),
+  // Square mark: favicon, app-bar mark, link-preview fallback (DSD §2.2).
+  iconUrl: z.string().nullable(),
   primaryColor: z.string().nullable(),
+  // Top bar only; not a token (DSD §2.1).
+  headerColor: z.string().nullable(),
+  font: TenantFontSchema.nullable(),
+  facebookUrl: z.string().nullable(),
   tagline: z.string().nullable(),
   about: z.string().nullable(),
   phone: z.string().nullable(),

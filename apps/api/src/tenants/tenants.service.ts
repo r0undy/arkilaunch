@@ -192,8 +192,14 @@ If you did not register, ignore this email.`,
   async getBranding(tenantId: string): Promise<TenantBranding> {
     const row = await getTenantBranding(tenantId);
     if (!row) throw new NotFoundException({ error: 'company_not_found' });
-    const { logoKey, heroKey, ...rest } = row;
-    return { ...rest, logoUrl: publicPhotoUrl(logoKey), heroUrl: publicPhotoUrl(heroKey) };
+    const { logoKey, heroKey, iconKey, ...rest } = row;
+    return {
+      ...rest,
+      font: rest.font === 'inter' ? 'inter' : null,
+      logoUrl: publicPhotoUrl(logoKey),
+      heroUrl: publicPhotoUrl(heroKey),
+      iconUrl: publicPhotoUrl(iconKey),
+    };
   }
 
   async updateBranding(ctx: RequestContext, tenantId: string, input: TenantBrandingUpdateRequest) {
@@ -220,13 +226,13 @@ If you did not register, ignore this email.`,
     return { accountId };
   }
 
-  // Logo or hero image. Key built from the target tenant id, never request
-  // input; magic bytes sniffed, and images only (the shared validator also
-  // admits PDF). Passing no file removes the image.
+  // Logo, hero or icon image. Key built from the target tenant id, never
+  // request input; magic bytes sniffed, and images only (the shared validator
+  // also admits PDF). Passing no file removes the image.
   async setBrandingImage(
     ctx: RequestContext,
     tenantId: string,
-    kind: 'logo' | 'hero',
+    kind: 'logo' | 'hero' | 'icon',
     file: { buffer: Buffer; size: number } | null,
   ) {
     let key: string | null = null;

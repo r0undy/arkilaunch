@@ -260,12 +260,15 @@ export async function activateOnboardingTenant(tenantId: string): Promise<void> 
   await db.execute(sql`select tenants_activate_onboarding(${tenantId})`);
 }
 
-// Tenant branding writes (migration 0051). The caller decides the tenant:
-// the verified JWT's tenant for owner/admin, or a platform admin's chosen
-// company. The functions never touch legal_name, slug or status and refuse
-// the platform tenant.
+// Tenant branding writes (migrations 0051, 0060). The caller decides the
+// tenant: the verified JWT's tenant for owner/admin, or a platform admin's
+// chosen company. The functions never touch legal_name, slug or status and
+// refuse the platform tenant.
 export interface TenantBrandingInput {
   primaryColor: string | null;
+  headerColor: string | null;
+  font: string | null;
+  facebookUrl: string | null;
   tagline: string | null;
   about: string | null;
   phone: string | null;
@@ -290,8 +293,8 @@ export async function updateTenantBranding(
 ): Promise<void> {
   try {
     await db.execute(
-      sql`select tenants_update_branding(${tenantId}, ${actorUserId}, ${b.primaryColor}, ${b.tagline}, ${b.about},
-        ${b.phone}, ${b.contactEmail}, ${b.address}, ${b.city}, ${b.province})`,
+      sql`select tenants_update_branding(${tenantId}, ${actorUserId}, ${b.primaryColor}, ${b.headerColor}, ${b.font},
+        ${b.tagline}, ${b.about}, ${b.phone}, ${b.contactEmail}, ${b.address}, ${b.city}, ${b.province}, ${b.facebookUrl})`,
     );
   } catch (err) {
     rethrowCompanyNotFound(err);
@@ -301,7 +304,7 @@ export async function updateTenantBranding(
 export async function setTenantBrandingImage(
   tenantId: string,
   actorUserId: string,
-  kind: 'logo' | 'hero',
+  kind: 'logo' | 'hero' | 'icon',
   key: string | null,
 ): Promise<void> {
   try {
@@ -334,13 +337,26 @@ export async function getTenantPaymongoAccount(tenantId: string): Promise<string
 // own; platform admin reads the company it is editing).
 export async function getTenantBranding(
   tenantId: string,
-): Promise<(TenantBrandingInput & { legalName: string; slug: string; logoKey: string | null; heroKey: string | null }) | null> {
+): Promise<
+  | (TenantBrandingInput & {
+      legalName: string;
+      slug: string;
+      logoKey: string | null;
+      heroKey: string | null;
+      iconKey: string | null;
+    })
+  | null
+> {
   const rows = await db.execute<{
     legal_name: string;
     slug: string;
     logo_key: string | null;
     hero_key: string | null;
+    icon_key: string | null;
     primary_color: string | null;
+    header_color: string | null;
+    font: string | null;
+    facebook_url: string | null;
     tagline: string | null;
     about: string | null;
     phone: string | null;
@@ -356,7 +372,11 @@ export async function getTenantBranding(
     slug: r.slug,
     logoKey: r.logo_key,
     heroKey: r.hero_key,
+    iconKey: r.icon_key,
     primaryColor: r.primary_color,
+    headerColor: r.header_color,
+    font: r.font,
+    facebookUrl: r.facebook_url,
     tagline: r.tagline,
     about: r.about,
     phone: r.phone,
