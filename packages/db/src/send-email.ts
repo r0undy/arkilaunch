@@ -17,6 +17,8 @@ export async function sendEmail(to: string, subject: string, text: string, html?
       subject,
       text,
       ...(html ? { html } : {}),
+      // Replies go here while the sender is Resend's shared address.
+      ...(process.env.EMAIL_REPLY_TO ? { reply_to: process.env.EMAIL_REPLY_TO } : {}),
     }),
   });
   if (!res.ok) throw new Error(`resend_failed_${res.status}`);
