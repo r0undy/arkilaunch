@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, type SQL } from 'drizzle-orm';
 import { notifications, sendEmail, withTenantTx } from '@arkilaunch/db';
-import { tenantBrand } from '../common/notify-customer.js';
+import { tenantEmailContext } from '../common/notify-customer.js';
 import { notificationEmail, renderEmailHtml } from '@arkilaunch/shared';
 import type { NotificationListQuery, NotificationListResponse, RequestContext, TestEmailRequest } from '@arkilaunch/shared';
 
@@ -70,12 +70,13 @@ export class NotificationsService {
   // One sample of a money email with this tenant's branding and made-up
   // booking data, sent right away (no notification row, nothing committed).
   async sendTestEmail(ctx: RequestContext, body: TestEmailRequest) {
-    const brand = await withTenantTx(ctx, (tx) => tenantBrand(tx));
+    const { brand, origin } = await withTenantTx(ctx, (tx) => tenantEmailContext(tx));
     const staff = body.type === 'payment_paid' || body.type === 'payment_amount_mismatch';
     const mail = notificationEmail(
       body.type,
       {
         invoiceId: '00000000-0000-4000-8000-000000000000',
+        invoiceType: body.type === 'weekly_invoice' ? 'weekly' : 'booking',
         code: 'EQR-2026-0000',
         amountPhp: 12500,
         dueDate: new Date(Date.now() + 7 * 86_400_000),
@@ -83,7 +84,7 @@ export class NotificationsService {
         truckRequestId: null,
       },
       staff ? 'staff' : 'customer',
-      process.env.WEB_ORIGIN ?? 'http://localhost:5173',
+      origin,
       { paid_centavos: 1_000_000 },
     )!;
     await sendEmail(body.to, `[Test] ${mail.subject}`, mail.text, renderEmailHtml(brand, mail.text));

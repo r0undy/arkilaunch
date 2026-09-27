@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { customers, depositAccruals, invoiceLineItems, invoices, notifications, publicPhotoUrl, rentals, sendEmail, tenants, users } from '@arkilaunch/db';
-import { notificationEmail, renderEmailHtml } from '@arkilaunch/shared';
+import { notificationEmail, renderEmailHtml, tenantWebOrigin } from '@arkilaunch/shared';
 import { makeJobDb } from './db-client.js';
 import { runInstrumentedJob } from './telemetry.js';
 
@@ -77,24 +77,24 @@ export async function runWeeklyBilling(): Promise<number> {
             notificationType: 'weekly_invoice',
             payload: { rental_id: rentalId, invoice_id: invoice.id, amount_php: amount },
           });
+          // Superuser connection: the tenant is named explicitly.
+          const [tenant] = await tx
+            .select({ name: tenants.legalName, slug: tenants.slug, logoKey: tenants.logoKey, color: tenants.primaryColor })
+            .from(tenants)
+            .where(eq(tenants.id, tenantId))
+            .limit(1);
           const email =
-            owner.email && owner.prefs?.email
+            owner.email && owner.prefs?.email && tenant
               ? notificationEmail(
                   'weekly_invoice',
-                  { invoiceId: invoice.id, code: owner.code, amountPhp: amount, dueDate: invoice.dueDate, rentalId, truckRequestId: null },
+                  { invoiceId: invoice.id, invoiceType: 'weekly', code: owner.code, amountPhp: amount, dueDate: invoice.dueDate, rentalId, truckRequestId: null },
                   'customer',
-                  process.env.WEB_ORIGIN ?? 'http://localhost:5173',
+                  tenantWebOrigin(tenant.slug, process.env.WEB_ORIGIN ?? 'http://localhost:5173', process.env.PLATFORM_DOMAIN),
                 )
               : null;
-          if (email && owner.email) {
-            // Superuser connection: the tenant is named explicitly.
-            const [brand] = await tx
-              .select({ name: tenants.legalName, logoKey: tenants.logoKey, color: tenants.primaryColor })
-              .from(tenants)
-              .where(eq(tenants.id, tenantId))
-              .limit(1);
+          if (email && owner.email && tenant) {
             const html = renderEmailHtml(
-              { name: brand?.name ?? 'ArkiLaunch', logoUrl: publicPhotoUrl(brand?.logoKey ?? null), color: brand?.color ?? null },
+              { name: tenant.name, logoUrl: publicPhotoUrl(tenant.logoKey), color: tenant.color },
               email.text,
             );
             mail = { to: owner.email, ...email, html };

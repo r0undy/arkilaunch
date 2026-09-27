@@ -13,7 +13,7 @@ import {
   truckRequests,
   users,
 } from '@arkilaunch/db';
-import { notificationEmail, renderEmailHtml, type EmailBrand, type InvoiceInfo } from '@arkilaunch/shared';
+import { notificationEmail, renderEmailHtml, tenantWebOrigin, type EmailBrand, type InvoiceInfo } from '@arkilaunch/shared';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -24,6 +24,7 @@ async function invoiceInfo(tx: Tx, payload: Record<string, unknown>): Promise<In
   const [row] = await tx
     .select({
       invoiceId: invoices.id,
+      invoiceType: invoices.invoiceType,
       amount: invoices.amount,
       dueDate: invoices.dueDate,
       rentalId: invoices.rentalId,
@@ -39,6 +40,7 @@ async function invoiceInfo(tx: Tx, payload: Record<string, unknown>): Promise<In
   if (!row) return null;
   return {
     invoiceId: row.invoiceId,
+    invoiceType: row.invoiceType,
     code: row.rentalCode ?? row.truckCode,
     amountPhp: Number(row.amount),
     dueDate: row.dueDate,
@@ -48,13 +50,18 @@ async function invoiceInfo(tx: Tx, payload: Record<string, unknown>): Promise<In
 }
 
 // The current tenant's storefront branding (RLS tenant_self scopes the row
-// to the transaction's tenant), used in the header of every email.
-export async function tenantBrand(tx: Tx): Promise<EmailBrand> {
+// to the transaction's tenant) for the email header, and its own web
+// origin, which every link in the email must use.
+export async function tenantEmailContext(tx: Tx): Promise<{ brand: EmailBrand; origin: string }> {
   const [row] = await tx
-    .select({ name: tenants.legalName, logoKey: tenants.logoKey, color: tenants.primaryColor })
+    .select({ name: tenants.legalName, slug: tenants.slug, logoKey: tenants.logoKey, color: tenants.primaryColor })
     .from(tenants)
     .limit(1);
-  return { name: row?.name ?? 'ArkiLaunch', logoUrl: publicPhotoUrl(row?.logoKey ?? null), color: row?.color ?? null };
+  const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
+  return {
+    brand: { name: row?.name ?? 'ArkiLaunch', logoUrl: publicPhotoUrl(row?.logoKey ?? null), color: row?.color ?? null },
+    origin: row ? tenantWebOrigin(row.slug, webOrigin, process.env.PLATFORM_DOMAIN) : webOrigin,
+  };
 }
 
 // Queues the email for a money event, sent once the transaction commits.
@@ -69,9 +76,11 @@ async function queueEmails(
   const to = recipients.filter((r) => r.prefs.email).map((r) => r.email);
   if (to.length === 0) return;
   const inv = await invoiceInfo(tx, payload);
-  const mail = inv && notificationEmail(type, inv, audience, process.env.WEB_ORIGIN ?? 'http://localhost:5173', payload);
+  if (!inv) return;
+  const { brand, origin } = await tenantEmailContext(tx);
+  const mail = notificationEmail(type, inv, audience, origin, payload);
   if (!mail) return;
-  const html = renderEmailHtml(await tenantBrand(tx), mail.text);
+  const html = renderEmailHtml(brand, mail.text);
   for (const address of to) afterCommit(tx, () => sendEmail(address, mail.subject, mail.text, html));
 }
 

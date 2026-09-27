@@ -1,13 +1,26 @@
 // Plain-text email for the money events (transactions and invoices). Every
 // other notification type stays in-app only, so this returns null for it.
+// Each email ends in "Label: URL", which renderEmailHtml turns into a button
+// that opens that exact invoice, booking or checkout.
 
 export interface InvoiceInfo {
   invoiceId: string;
+  invoiceType: string; // booking, deposit, weekly, truck
   code: string | null;
   amountPhp: number;
   dueDate: Date | null;
   rentalId: string | null;
   truckRequestId: string | null;
+}
+
+// A tenant's pages are served only on its own host ({slug}.<platform
+// domain>, dev: {slug}.localhost:5173); the bare domain redirects them to
+// its home page, so a link must carry the tenant's host.
+export function tenantWebOrigin(slug: string, webOrigin: string, platformDomain?: string): string {
+  if (platformDomain) return `https://${slug}.${platformDomain}`;
+  const url = new URL(webOrigin);
+  url.hostname = `${slug}.${url.hostname}`;
+  return url.origin;
 }
 
 const peso = (n: number) =>
@@ -21,19 +34,22 @@ export function notificationEmail(
   type: string,
   inv: InvoiceInfo,
   audience: 'customer' | 'staff',
-  webOrigin: string,
+  origin: string, // the tenant's web origin (tenantWebOrigin)
   payload: Record<string, unknown> = {},
   now = new Date(),
 ): { subject: string; text: string } | null {
-  const origin = () => webOrigin.replace(/\/$/, '');
+  const base = origin.replace(/\/$/, '');
   const ref = inv.code ?? 'your booking';
 
   if (audience === 'customer') {
-    const link = inv.truckRequestId
-      ? `${origin()}/account/trucks`
-      : inv.rentalId
-        ? `${origin()}/account/bookings/${inv.rentalId}`
-        : `${origin()}/account/invoices/${inv.invoiceId}`;
+    // A truck invoice has no booking page; the truck requests list is its home.
+    const invoicePage = inv.truckRequestId ? `${base}/account/trucks` : `${base}/account/invoices/${inv.invoiceId}`;
+    const retry =
+      inv.truckRequestId
+        ? `Pay again: ${base}/account/trucks`
+        : inv.rentalId && (inv.invoiceType === 'booking' || inv.invoiceType === 'deposit')
+          ? `Try again: ${base}/account/checkout/${inv.rentalId}`
+          : `Pay invoice: ${base}/account/invoices/${inv.invoiceId}`;
     switch (type) {
       case 'payment_received':
         return {
@@ -41,17 +57,17 @@ export function notificationEmail(
           text:
             `Thank you, your payment was received.\n\n` +
             `Booking: ${ref}\nAmount paid: ${peso(inv.amountPhp)}\nInvoice: ${inv.invoiceId}\nDate paid: ${day(now)}\n\n` +
-            `View it: ${link}${SIGN}`,
+            `View receipt: ${invoicePage}${SIGN}`,
         };
       case 'payment_failed':
         return {
           subject: `Payment for ${ref} did not go through`,
-          text: `Your payment of ${peso(inv.amountPhp)} for ${ref} did not go through. Nothing was charged.\n\nTry again: ${link}${SIGN}`,
+          text: `Your payment of ${peso(inv.amountPhp)} for ${ref} did not go through. Nothing was charged.\n\n${retry}${SIGN}`,
         };
       case 'payment_refunded':
         return {
           subject: `Refund issued on ${ref}`,
-          text: `A refund was issued on ${ref} (invoice ${inv.invoiceId}). It can take a few banking days to reach you.\n\nView it: ${link}${SIGN}`,
+          text: `A refund was issued on ${ref} (invoice ${inv.invoiceId}). It can take a few banking days to reach you.\n\nView invoice: ${invoicePage}${SIGN}`,
         };
       case 'weekly_invoice':
         return {
@@ -59,30 +75,34 @@ export function notificationEmail(
           text:
             `Booking ${ref} used hours past its deposit.\n\n` +
             `Amount due: ${peso(inv.amountPhp)}\n${inv.dueDate ? `Due by: ${day(inv.dueDate)}\n` : ''}Invoice: ${inv.invoiceId}\n\n` +
-            `Pay it: ${origin()}/account/invoices/${inv.invoiceId}${SIGN}`,
+            `View and pay invoice: ${base}/account/invoices/${inv.invoiceId}${SIGN}`,
         };
       default:
         return null;
     }
   }
 
-  const link = `${origin()}/app/payments`;
+  // Staff open the booking's drawer by its code (the same deep link the
+  // in-app feed uses); a mismatch is reviewed on the payments screen.
+  const booking = inv.code
+    ? `Open ${inv.code}: ${base}/app/bookings?open=${encodeURIComponent(inv.code)}`
+    : `Open payments: ${base}/app/payments`;
   switch (type) {
     case 'payment_paid':
       return {
         subject: `Paid: ${peso(inv.amountPhp)} on ${ref}`,
-        text: `An online payment of ${peso(inv.amountPhp)} on ${ref} was paid.\n\n${link}${SIGN}`,
+        text: `An online payment of ${peso(inv.amountPhp)} on ${ref} was paid.\n\n${booking}${SIGN}`,
       };
     case 'payment_failed':
       return {
         subject: `Payment failed on ${ref}`,
-        text: `An online payment of ${peso(inv.amountPhp)} on ${ref} failed.\n\n${link}${SIGN}`,
+        text: `An online payment of ${peso(inv.amountPhp)} on ${ref} failed.\n\n${booking}${SIGN}`,
       };
     case 'payment_amount_mismatch': {
       const paid = typeof payload.paid_centavos === 'number' ? peso(payload.paid_centavos / 100) : 'a different amount';
       return {
         subject: `Check payment on ${ref}: amount mismatch`,
-        text: `A payment on ${ref} came in at ${paid}, but the invoice is ${peso(inv.amountPhp)}. It was NOT applied; review it.\n\n${link}${SIGN}`,
+        text: `A payment on ${ref} came in at ${paid}, but the invoice is ${peso(inv.amountPhp)}. It was NOT applied; review it.\n\nReview payments: ${base}/app/payments${SIGN}`,
       };
     }
     default:

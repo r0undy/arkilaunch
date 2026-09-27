@@ -1,29 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { notificationEmail, renderEmailHtml, textOn, type InvoiceInfo } from './notification-email.js';
+import { notificationEmail, renderEmailHtml, tenantWebOrigin, textOn, type InvoiceInfo } from './notification-email.js';
 
 const inv: InvoiceInfo = {
   invoiceId: 'inv-1',
+  invoiceType: 'booking',
   code: 'EQR-2026-0001',
   amountPhp: 12500,
   dueDate: new Date('2026-10-04T00:00:00Z'),
   rentalId: 'r-1',
   truckRequestId: null,
 };
-const origin = 'https://arkilaunch.app/';
+const origin = 'https://almara.arkilaunch.app';
 
 describe('notificationEmail', () => {
   it('writes a receipt for a paid booking', () => {
     const mail = notificationEmail('payment_received', inv, 'customer', origin, {}, new Date('2026-09-27T04:00:00Z'));
     expect(mail?.subject).toBe('Receipt: PHP 12,500.00 paid for EQR-2026-0001');
     expect(mail?.text).toContain('Invoice: inv-1');
-    expect(mail?.text).toContain('https://arkilaunch.app/account/bookings/r-1');
+    expect(mail?.text).toContain('View receipt: https://almara.arkilaunch.app/account/invoices/inv-1');
   });
 
   it('covers the invoice, failure, refund and staff events', () => {
     expect(notificationEmail('weekly_invoice', inv, 'customer', origin)?.text).toContain('/account/invoices/inv-1');
     expect(notificationEmail('payment_failed', inv, 'customer', origin)?.text).toContain('Nothing was charged');
     expect(notificationEmail('payment_refunded', inv, 'customer', origin)).not.toBeNull();
-    expect(notificationEmail('payment_paid', inv, 'staff', origin)?.text).toContain('/app/payments');
+    expect(notificationEmail('payment_paid', inv, 'staff', origin)?.text).toContain('Open EQR-2026-0001: https://almara.arkilaunch.app/app/bookings?open=EQR-2026-0001');
     expect(notificationEmail('payment_amount_mismatch', inv, 'staff', origin, { paid_centavos: 100000 })?.text).toContain(
       'PHP 1,000.00',
     );
@@ -49,8 +50,8 @@ describe('renderEmailHtml', () => {
     expect(html).toContain('src="https://cdn.example/logo.png"');
     expect(html).toContain('background:#ffcc00');
     expect(html).toContain('Acme &lt;Rentals&gt;');
-    expect(html).toContain('href="https://arkilaunch.app/account/bookings/r-1"');
-    expect(html).toContain('>View it</a>');
+    expect(html).toContain('href="https://almara.arkilaunch.app/account/invoices/inv-1"');
+    expect(html).toContain('>View receipt</a>');
   });
 
   it('falls back to the name and a dark header without branding', () => {
@@ -63,5 +64,18 @@ describe('renderEmailHtml', () => {
   it('picks legible text on the brand color', () => {
     expect(textOn('#ffcc00')).toBe('#000000');
     expect(textOn('#1f2933')).toBe('#ffffff');
+  });
+});
+
+describe('email links', () => {
+  it('sends a failed booking payment back to its checkout, a failed weekly invoice to the invoice', () => {
+    expect(notificationEmail('payment_failed', inv, 'customer', origin)?.text).toContain('Try again: https://almara.arkilaunch.app/account/checkout/r-1');
+    const weekly = { ...inv, invoiceType: 'weekly' };
+    expect(notificationEmail('payment_failed', weekly, 'customer', origin)?.text).toContain('Pay invoice: https://almara.arkilaunch.app/account/invoices/inv-1');
+  });
+
+  it('builds the tenant host in prod and dev', () => {
+    expect(tenantWebOrigin('almara', 'https://arkilaunch.app', 'arkilaunch.app')).toBe('https://almara.arkilaunch.app');
+    expect(tenantWebOrigin('almara', 'http://localhost:5173')).toBe('http://almara.localhost:5173');
   });
 });
