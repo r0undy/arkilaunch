@@ -192,7 +192,7 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
         }}
       >
         <section className="flex flex-col gap-4">
-          <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+          <h3 className="text-sm font-medium text-text-muted">
             Basic information
           </h3>
           <Input
@@ -255,7 +255,7 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
         </section>
 
         <section className="flex flex-col gap-4">
-          <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+          <h3 className="text-sm font-medium text-text-muted">
             Technical specifications
           </h3>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -296,7 +296,7 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
         </section>
 
         <section className="flex flex-col gap-4">
-          <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+          <h3 className="text-sm font-medium text-text-muted">
             Operational details
           </h3>
           <Select label="Current status" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -316,7 +316,7 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
         </section>
 
         <section className="flex flex-col gap-4">
-          <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+          <h3 className="text-sm font-medium text-text-muted">
             Notes
           </h3>
           <label htmlFor="equipment-notes" className="sr-only">
@@ -333,7 +333,7 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
         </section>
 
         <section className="flex flex-col gap-4">
-          <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+          <h3 className="text-sm font-medium text-text-muted">
             Asset media
           </h3>
           <CaptureField

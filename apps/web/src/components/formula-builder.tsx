@@ -96,7 +96,7 @@ export function FormulaBuilder({
       </div>
 
       <div className="flex flex-col gap-2">
-        <span className="text-xs font-medium uppercase tracking-[0.04em] text-text-muted">Values</span>
+        <span className="text-sm font-medium text-text-muted">Values</span>
         <div className="flex flex-wrap gap-1.5">
           {[...Object.keys(LABELS), ...extraVars.map(([name]) => name)].map((name) => (
             <Button key={name} type="button" variant="secondary" onClick={() => append(name)}>
@@ -104,7 +104,7 @@ export function FormulaBuilder({
             </Button>
           ))}
         </div>
-        <span className="text-xs font-medium uppercase tracking-[0.04em] text-text-muted">Operators</span>
+        <span className="text-sm font-medium text-text-muted">Operators</span>
         <div className="flex flex-wrap items-end gap-1.5">
           {OPERATORS.map(([op, shown]) => (
             <Button key={op} type="button" variant="secondary" aria-label={`Insert ${shown}`} onClick={() => append(op)}>

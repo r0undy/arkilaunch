@@ -39,7 +39,7 @@ export function NegotiationThread({ bookingId, disabled = false }: { bookingId: 
 
   return (
     <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col p-0">
-      <h2 className="border-b border-border px-4 py-3 font-display text-base font-semibold text-text">
+      <h2 className="border-b border-border px-4 py-3 text-base font-semibold text-text">
         Conversation
       </h2>
 
@@ -57,11 +57,11 @@ export function NegotiationThread({ bookingId, disabled = false }: { bookingId: 
           <li
             key={message.id}
             className={[
-              'flex max-w-[85%] flex-col gap-1 rounded-md border px-3 py-2',
+'flex max-w-[85%] flex-col gap-1 rounded-md border px-3 py-2',
               message.mine ? 'self-end border-primary bg-surface-sunk' : 'self-start border-border bg-surface',
             ].join(' ')}
           >
-            <span className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+            <span className="text-sm font-medium text-text-muted">
               {message.mine ? 'You' : message.authorRole === 'staff' ? 'Rental team' : 'Customer'} &middot;{' '}
               {formatDateTime(message.createdAt)}
             </span>
@@ -88,7 +88,7 @@ export function NegotiationThread({ bookingId, disabled = false }: { bookingId: 
               maxLength={2000}
               rows={3}
               required
-              className="rounded-md border border-border bg-surface px-3 py-2 text-text"
+              className="rounded-input border border-border bg-surface px-3 py-2 text-text"
             />
           </div>
           <div className="flex flex-wrap items-end gap-3">

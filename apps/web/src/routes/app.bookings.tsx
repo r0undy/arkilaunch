@@ -101,11 +101,33 @@ function BookingsPage() {
     (openCode.service === 'truck' ? openTruck.isSuccess && !target : openRental.isSuccess && !target);
 
   const list = service === 'rental' ? rentals : trucks;
+  const finder = (
+    <div className="flex flex-col gap-1">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setOffset(0);
+            }}
+            placeholder={service === 'truck' ? 'Find a truck code (TRK-2026-0001)' : 'Find a booking code (EQR-2026-0001)'}
+            aria-label="Find a booking by code"
+            className="min-h-11 w-full max-w-md rounded-input border border-border bg-surface px-4 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          />
+          {search.trim() !== '' && !codePrefix && (
+            <p className="text-xs text-text-muted">Booking codes start with EQR- (equipment) or TRK- (truck).</p>
+          )}
+          {notFound && (
+            <p role="alert" className="text-sm text-error">
+              No booking {open} was found.
+            </p>
+          )}
+        </div>
+  );
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Operations"
         title="Bookings"
         description="Equipment rentals and truck service requests. Open one to negotiate, confirm and move it along."
         actions={
@@ -123,27 +145,6 @@ function BookingsPage() {
           { id: 'truck', label: 'Truck service', badge: openTrucks.data?.total ?? null },
         ]}
       />
-      <div className="flex flex-col gap-1">
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setOffset(0);
-          }}
-          placeholder={service === 'truck' ? 'Find a truck code (TRK-2026-0001)' : 'Find a booking code (EQR-2026-0001)'}
-          aria-label="Find a booking by code"
-          className="min-h-11 w-full max-w-md rounded-md border border-border bg-surface px-3 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-        />
-        {search.trim() !== '' && !codePrefix && (
-          <p className="text-xs text-text-muted">Booking codes start with EQR- (equipment) or TRK- (truck).</p>
-        )}
-        {notFound && (
-          <p role="alert" className="text-sm text-error">
-            No booking {open} was found.
-          </p>
-        )}
-      </div>
       <div role="tabpanel" aria-label={service === 'truck' ? 'Truck service' : 'Equipment rental'}>
         {list.isError && <p className="text-sm text-error">{apiErrorText(list.error)}</p>}
         {service === 'rental' ? (
@@ -154,9 +155,7 @@ function BookingsPage() {
             onRowClick={(b) => openDrawer(b.code)}
             rowLabel={(b) => `Open booking ${b.code}`}
             empty={rentals.isPending ? 'Loading bookings...' : codePrefix ? `No rental matches ${codePrefix}.` : 'Bookings customers request from the storefront appear here.'}
-            footer={
-              <Pagination offset={offset} limit={PAGE_SIZE} total={rentals.data?.total ?? 0} onOffsetChange={setOffset} noun="bookings" busy={rentals.isFetching} />
-            }
+            header={{ title: 'Bookings', filter: finder, count: rentals.data?.total ?? 0, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={rentals.data?.total ?? 0} onOffsetChange={setOffset} noun="bookings" busy={rentals.isFetching} /> }}
           />
         ) : (
           <Table
@@ -166,9 +165,7 @@ function BookingsPage() {
             onRowClick={(t) => openDrawer(t.code)}
             rowLabel={(t) => `Open truck request ${t.code}`}
             empty={trucks.isPending ? 'Loading truck requests...' : codePrefix ? `No truck request matches ${codePrefix}.` : 'No truck service requests yet.'}
-            footer={
-              <Pagination offset={offset} limit={PAGE_SIZE} total={trucks.data?.total ?? 0} onOffsetChange={setOffset} noun="truck requests" busy={trucks.isFetching} />
-            }
+            header={{ title: 'Truck requests', filter: finder, count: trucks.data?.total ?? 0, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={trucks.data?.total ?? 0} onOffsetChange={setOffset} noun="truck requests" busy={trucks.isFetching} /> }}
           />
         )}
       </div>
@@ -183,7 +180,6 @@ function BookingPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Bookings"
         title={booking.data ? `Booking ${booking.data.code}` : 'Booking'}
         {...(booking.data ? { description: formatStatus(booking.data.status) } : {})}
         actions={

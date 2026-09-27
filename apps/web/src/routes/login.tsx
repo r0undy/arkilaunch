@@ -130,7 +130,7 @@ function LoginPage() {
     };
     return (
       <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
-        <h1 id="forgot-heading" className="mb-1 font-display text-xl font-semibold text-text">
+        <h1 id="forgot-heading" className="mb-1 text-heading-lg text-text">
           Reset your password
         </h1>
         {forgot === 'sent' ? (
@@ -177,7 +177,7 @@ function LoginPage() {
     return (
       <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
         <form onSubmit={onVerifyCode} aria-labelledby="twofa-heading">
-          <h1 id="twofa-heading" className="mb-1 font-display text-xl font-semibold text-text">
+          <h1 id="twofa-heading" className="mb-1 text-heading-lg text-text">
             Enter your code
           </h1>
           <p className="mb-6 text-sm text-text-muted">
@@ -225,7 +225,7 @@ function LoginPage() {
   return (
     <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
       <form onSubmit={onSubmit} aria-labelledby="login-heading">
-        <h1 id="login-heading" className="mb-1 font-display text-xl font-semibold text-text">
+        <h1 id="login-heading" className="mb-1 text-heading-lg text-text">
           Sign in
         </h1>
         <p className="mb-6 text-sm text-text-muted">

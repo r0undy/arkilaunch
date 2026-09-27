@@ -316,7 +316,6 @@ function PaymentsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Billing"
         title="Invoices"
         description="Deposits taken and hours billed against them."
       />
@@ -343,7 +342,7 @@ function PaymentsPage() {
             rowKey={(row) => row.id}
             onRowClick={setSelected}
             rowLabel={(row) => `invoice ${shortCode('invoice', row.id)}`}
-            footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="invoices" />}
+            header={{ title: 'Invoices', count: data.total, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="invoices" /> }}
           />
         )}
       />

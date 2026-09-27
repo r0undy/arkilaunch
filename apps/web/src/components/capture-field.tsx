@@ -307,7 +307,7 @@ export function CaptureField({
                 <span className="absolute bottom-0 left-0 h-10 w-10 border-b-2 border-l-2 border-accent" />
                 <span className="absolute bottom-0 right-0 h-10 w-10 border-b-2 border-r-2 border-accent" />
               </div>
-              <p className="absolute inset-x-0 bottom-20 text-center text-xs uppercase tracking-wide text-white">
+              <p className="absolute inset-x-0 bottom-20 text-center text-sm tracking-wide text-white">
                 Align the sheet inside the frame
               </p>
               <div className="absolute inset-x-0 bottom-4 flex items-center justify-center gap-6">

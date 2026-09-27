@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react';
 import { LocateFixed, X } from 'lucide-react';
 import type { TruckEstimateResponse, TruckRequestResponse } from '@arkilaunch/shared';
 import { PinMap, type LatLng } from '../components/pin-map.js';
+import { PageHeader } from '../components/page-header.js';
 import { formatDrive, hasWebGL, pinned, TripCanvas, type Which } from '../components/route-map.js';
 import { matchPhLocation, reverseGeocode } from '../lib/reverse-geocode.js';
 import { accountLayoutRoute } from './_account.js';
@@ -54,13 +55,10 @@ function TrucksPage() {
   const active = useQuery(trucksQueries.mine(1, 0, '', 'open'));
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-text">Self-loading truck</h1>
-        <p className="text-sm text-text-muted">
-          Tap the pickup, then the drop-off. The price comes from the road route; the rental team confirms the
-          final kilometres before you pay.
-        </p>
-      </div>
+      <PageHeader
+        title="Self-loading truck"
+        description="Tap the pickup, then the drop-off. The price comes from the road route; the rental team confirms the final kilometres before you pay."
+      />
       <Tabs
         label="Truck"
         value={tab}
@@ -237,7 +235,7 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
                   aria-label={name}
                   onClick={() => setPlacing(which)}
                   className={[
-                    'flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-md border px-3 text-left',
+'flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-md border px-3 text-left',
                     'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
                     selected ? 'border-text bg-surface-sunk' : 'border-border hover:bg-surface-sunk',
                   ].join(' ')}
@@ -245,14 +243,14 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
                   <span
                     aria-hidden
                     className={[
-                      'grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold',
+'grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold',
                       which === 'pickup' ? 'bg-primary text-on-primary' : 'bg-accent text-white',
                     ].join(' ')}
                   >
                     {which === 'pickup' ? 'A' : 'B'}
                   </span>
                   <span className="flex min-w-0 flex-col">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">{name}</span>
+                    <span className="text-sm font-medium tracking-wide text-text-muted">{name}</span>
                     <span className={['truncate text-sm', text ? 'text-text' : 'text-text-muted'].join(' ')}>
                       {text || (selected ? 'Tap the map' : 'Not set')}
                     </span>
@@ -385,7 +383,7 @@ function YourRequests({ openId }: { openId: string | null }) {
               setOffset(0);
             }}
             className={[
-              'min-h-9 rounded-sm px-4 text-sm font-semibold',
+'min-h-9 rounded-sm px-4 text-sm font-semibold',
               'focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
               status === s ? 'bg-text text-text-inverse' : 'text-text-muted hover:text-text',
             ].join(' ')}

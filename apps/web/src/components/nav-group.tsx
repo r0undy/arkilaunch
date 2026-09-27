@@ -7,9 +7,8 @@ export interface NavGroupListProps {
   onNavigate?: () => void;
 }
 
-// A dispatch-board lamp, not an amber fill: active state is a 3px amber
-// indicator bar on the surface color, keeping amber's meaning ("primary
-// action") intact while still marking "this one" (DESIGN.md §2.1).
+// AWS side nav: the active item reads in the link color on a quiet tile, so
+// amber keeps its one meaning, "primary action" (DESIGN.md §2.1).
 /**
  * The one destination the current URL belongs to.
  *
@@ -68,7 +67,7 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
   const renderGroup = (group: NavGroup, labelled: boolean) => (
     <div key={group.title}>
       {labelled && (
-        <p className="mb-1.5 px-3 font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+        <p className="mb-1 px-3 text-sm font-medium text-text">
           {group.title}
         </p>
       )}
@@ -88,10 +87,10 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
               activeOptions={{ exact: true }}
               aria-current={isActive ? 'page' : undefined}
               className={[
-                'flex min-h-11 items-center gap-2.5 rounded-sm border-l-[3px] px-3 py-2 text-sm font-medium',
+'flex min-h-10 items-center gap-2.5 rounded-sm px-3 py-2 text-sm',
                 isActive
-                  ? 'border-primary bg-surface font-semibold text-text'
-                  : 'border-transparent text-text-muted hover:bg-surface hover:text-text',
+                  ? 'bg-surface-sunk font-medium text-accent'
+                  : 'text-text-muted hover:bg-surface-sunk hover:text-text',
               ].join(' ')}
             >
               {item.icon && <item.icon aria-hidden="true" className="h-4 w-4 shrink-0" />}
@@ -106,10 +105,10 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
   // One nav, so the landmark count stays one; the pinned groups sit at its
   // foot (mt-auto) when the column has room to spare.
   return (
-    <nav className="flex flex-1 flex-col gap-5">
+    <nav className="flex flex-1 flex-col gap-4">
       {listed.map((group) => renderGroup(group, true))}
       {pinned.length > 0 && (
-        <div className="mt-auto flex flex-col gap-5 border-t border-border pt-4">
+        <div className="mt-auto flex flex-col gap-4 border-t border-border pt-4">
           {pinned.map((group) => renderGroup(group, false))}
         </div>
       )}

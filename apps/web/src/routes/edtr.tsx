@@ -85,7 +85,7 @@ function MatchText({ row }: { row: EdtrListItem }) {
   if (status === 'approved') return <span className="text-text-muted">Billed</span>;
   if (deltaHours === null) return <>{matchLabel(status)}</>;
   return (
-    <span className={deltaHours > tolerance ? 'text-error' : 'text-text'}>
+    <span className={deltaHours > tolerance ?'text-error' : 'text-text'}>
       {matchLabel(status)} ({formatHours(deltaHours)} apart)
     </span>
   );
@@ -234,7 +234,6 @@ function EdtrPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Operations"
         title="Field logs"
         description="Each day's hours, recorded twice and matched before anything is billed."
         actions={
@@ -487,7 +486,7 @@ function RentalGroup({
   );
 }
 
-const drawerHeading = 'font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
+const drawerHeading = 'text-xs font-semibold text-text-muted';
 
 // One field log, read without leaving the queue (DSD drawer rule): what was
 // recorded, how it matched, and where it belongs -- the booking and the site

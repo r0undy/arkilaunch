@@ -83,7 +83,7 @@ export function ScorePill({ score }: { score: NonNullable<CompanyReviewResponse[
         <ul className="flex w-full max-w-md flex-col gap-1 rounded-md border border-border p-3 text-left text-sm">
           {score.checks.map((c) => (
             <li key={c.id} className="flex gap-2">
-              <span aria-hidden className={c.status === 'pass' ? 'text-success' : c.status === 'warn' ? 'text-warning' : 'text-error'}>
+              <span aria-hidden className={c.status ==='pass' ? 'text-success' : c.status === 'warn' ? 'text-warning' : 'text-error'}>
                 {c.status === 'pass' ? '✓' : '!'}
               </span>
               <span>
@@ -181,7 +181,7 @@ function DocButton({ doc, onOpen }: { doc: ReviewDocument; onOpen: () => void })
     <Button variant="secondary" onClick={onOpen}>
       {DOC_LABELS[doc.documentType] ?? formatStatus(doc.documentType)}
       {doc.confidence !== null && (
-        <span className={doc.confidence < 0.7 ? 'text-error' : 'text-text-muted'}>
+        <span className={doc.confidence < 0.7 ?'text-error' : 'text-text-muted'}>
           &nbsp;&middot; {Math.round(doc.confidence * 100)}%
         </span>
       )}
@@ -511,7 +511,7 @@ function RejectDialog({
           maxLength={1000}
           rows={2}
           placeholder="What you saw, e.g. Check with SEC lists the company as suspended."
-          className="rounded-md border border-border bg-surface px-3 py-2 text-text"
+          className="rounded-input border border-border bg-surface px-3 py-2 text-text"
         />
       </div>
     </Modal>
@@ -633,9 +633,7 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
               ? 'Nothing waiting. Companies customers add appear here for review.'
               : 'No verified companies yet. Companies you approve appear here.'
         }
-        footer={
-          <Pagination offset={offset} limit={PAGE_SIZE} total={query.data?.total ?? 0} onOffsetChange={setOffset} noun="companies" busy={query.isFetching} />
-        }
+        header={{ title: 'Companies', count: query.data?.total ?? 0, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={query.data?.total ?? 0} onOffsetChange={setOffset} noun="companies" busy={query.isFetching} /> }}
       />
       <Modal
         open={open !== null}
@@ -709,7 +707,6 @@ function RegistrationsPage({ kycStatus }: { kycStatus: Queue }) {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Customers"
         title="Registrations"
         description={
           kycStatus === 'pending'

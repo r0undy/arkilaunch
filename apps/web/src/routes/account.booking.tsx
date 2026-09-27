@@ -55,12 +55,12 @@ function MachineCard({ equipmentId }: { equipmentId: string }) {
 
   return (
     <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
-      <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">
+      <h2 className="text-sm font-medium text-text-muted">
         Machine on hire
       </h2>
       {match ? (
         <>
-          <p className="font-display text-xl font-semibold text-text">{match.model}</p>
+          <p className="text-heading-lg text-text">{match.model}</p>
           <p className="font-mono text-sm text-text-muted">
             Serial {match.serialNo} &middot; {shortCode('equipment', equipmentId)}
           </p>
@@ -70,13 +70,13 @@ function MachineCard({ equipmentId }: { equipmentId: string }) {
               strip shows what the fleet record actually knows. */}
           <dl className="grid grid-cols-2 gap-3 border-t border-border pt-3 text-sm">
             <div>
-              <dt className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+              <dt className="text-sm font-medium text-text-muted">
                 Status
               </dt>
               <dd className="text-text">{formatStatus(match.availabilityStatus)}</dd>
             </div>
             <div>
-              <dt className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+              <dt className="text-sm font-medium text-text-muted">
                 Runtime hours
               </dt>
               <dd className="font-mono text-text">{match.runtimeHours}</dd>
@@ -132,14 +132,14 @@ function Timeline({ booking }: { booking: BookingDetailResponse }) {
           <span
             aria-hidden="true"
             className={[
-              'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border',
+'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border',
               step.done ? 'border-success bg-success text-white' : 'border-border bg-surface text-text-muted',
             ].join(' ')}
           >
             {step.done ? <CheckIcon /> : null}
           </span>
           <span className="min-w-0">
-            <span className="block font-display text-xs font-semibold uppercase tracking-[0.04em] text-text">
+            <span className="block text-sm font-medium text-text">
               {step.label}
               <span className="sr-only">{step.done ? ' (done)' : ' (not yet)'}</span>
             </span>
@@ -185,7 +185,7 @@ function DepositCard({ booking }: { booking: BookingDetailResponse }) {
   const { required, totalDeducted, deductions } = booking.deposit;
   return (
     <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
-      <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Deposit</h2>
+      <h2 className="text-sm font-medium text-text-muted">Deposit</h2>
       {required === null ? (
         <p className="text-sm text-text-muted">No deposit is held against this booking yet.</p>
       ) : (
@@ -223,7 +223,7 @@ function ChangeRequests({ booking }: { booking: BookingDetailResponse }) {
   if (booking.changeRequests.length === 0) return null;
   return (
     <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-2 p-5">
-      <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Your requests</h2>
+      <h2 className="text-sm font-medium text-text-muted">Your requests</h2>
       {booking.changeRequests.map((request) => (
         <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
           <span className="text-text">
@@ -263,7 +263,7 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
             it at all. Say which it is. */}
         {booking.items.length === 0 && (
           <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-2 p-5">
-            <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">
+            <h2 className="text-sm font-medium text-text-muted">
               Machine on hire
             </h2>
             <p className="text-sm text-text-muted">
@@ -275,11 +275,11 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
 
         <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">
+            <h2 className="text-sm font-medium text-text-muted">
               {onSite ? 'Lease timeline' : paid ? 'Scheduled dates' : 'Requested dates'}
             </h2>
             {progress && (
-              <p className="font-display text-sm font-semibold text-text">
+              <p className="text-sm font-semibold text-text">
                 {progress.daysRemaining} day{progress.daysRemaining === 1 ? '' : 's'} remaining
               </p>
             )}
@@ -297,7 +297,7 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
               >
                 <div className="h-full bg-primary" style={{ width: `${progress.pct}%` }} />
               </div>
-              <p className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+              <p className="text-sm font-medium text-text-muted">
                 {progress.pct}% complete
               </p>
             </>
@@ -313,13 +313,13 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
             {first && (
               <>
                 <div>
-                  <p className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+                  <p className="text-sm font-medium text-text-muted">
                     Start date
                   </p>
                   <p className="text-text">{formatDate(first.start)}</p>
                 </div>
                 <div>
-                  <p className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+                  <p className="text-sm font-medium text-text-muted">
                     Return date
                   </p>
                   <p className="text-text">{first.end ? formatDate(first.end) : 'Open ended'}</p>
@@ -333,7 +333,7 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
       <div className="flex min-w-0 flex-col gap-4">
       {!paid ? (
         <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
-          <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Price</h2>
+          <h2 className="text-sm font-medium text-text-muted">Price</h2>
           {booking.quotation?.totalPhp != null ? (
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-text-muted">Quoted ({formatStatus(booking.quotation.status)})</span>
@@ -345,7 +345,7 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
         </Surface>
       ) : (
       <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
-        <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">
+        <h2 className="text-sm font-medium text-text-muted">
           Financial ledger
         </h2>
         {booking.quotation && (
@@ -372,10 +372,10 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
           <span className="font-mono text-text">{formatPeso(paidTotal)}</span>
         </div>
         <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
-          <span className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text">
+          <span className="text-sm font-medium text-text">
             Invoiced
           </span>
-          <span className="font-mono text-lg font-semibold text-text">
+          <span className="font-mono text-heading-md text-text">
             {formatPeso(invoiceTotal)}
           </span>
         </div>
@@ -447,7 +447,7 @@ export function FieldLogTable({ booking }: { booking: BookingDetailResponse }) {
   const h = (n: number) => n.toFixed(1);
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
-      <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Daily logs</h2>
+      <h2 className="text-sm font-medium text-text-muted">Daily logs</h2>
       <p className="text-sm text-text">
         Billed <span className="font-mono font-semibold">{h(logs.billable)} h</span> (running {h(logs.running)} h + idle{' '}
         {h(logs.idle)} h). Not billed: breakdown {h(logs.breakdown)} h, weather {h(logs.weather)} h
@@ -498,7 +498,6 @@ function BookingDetailPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="My bookings"
         title={booking.data?.code ?? 'Booking'}
         description="Where this hire stands and what it has cost."
         actions={
@@ -579,7 +578,7 @@ function ExtendRentalPage() {
       <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
         <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-4 p-6">
           <StatusPill tone="recon-review" label="Submitted" icon={<ClockIcon />} />
-          <h1 className="font-display text-2xl font-semibold text-text">Extension requested</h1>
+          <h1 className="text-display-md text-text">Extension requested</h1>
           <p className="text-sm text-text-muted">
             The rental team checks the machines are free until {formatDate(`${end}T17:00:00`)} and
             confirms. You get a notification either way; any extra charge is quoted before you pay it.
@@ -596,7 +595,7 @@ function ExtendRentalPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="My bookings" title="Extend rental" {...(booking.data ? { description: `Booking ${booking.data.code}` } : {})} />
+      <PageHeader title="Extend rental" {...(booking.data ? { description: `Booking ${booking.data.code}` } : {})} />
       <Surface radius="md" elevation="sm" className="flex max-w-xl flex-col gap-4 p-6">
         <p className="text-sm text-text-muted">
           Currently due back {currentEnd ? formatDate(currentEnd) : 'on an open date'}.

@@ -66,7 +66,6 @@ function PriceBook() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Billing"
         title="Price book"
         description="The standard prices every client and prospect is quoted. A booking gets its quote from these at once; you only revise one when the customer negotiates."
       />
@@ -285,7 +284,6 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Billing"
         title="Revise quote"
         description="The customer is negotiating. Start from the price book quote they saw and meet their offer with an agreed price or a discount."
       />
@@ -306,7 +304,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
       )}
       <Surface radius="md" elevation="sm" className="flex max-w-3xl flex-col gap-4 p-6">
         <form className="flex flex-col gap-4" onSubmit={preview}>
-          <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Lines</h2>
+          <h2 className="text-sm font-medium text-text-muted">Lines</h2>
           {lines.map((line, index) => (
             <fieldset key={line.key} className="flex flex-col gap-3 rounded-md border border-border p-4">
               <legend className="px-1 text-sm font-medium text-text">
@@ -415,7 +413,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
 
       {quoteId && result && (
         <Surface radius="md" elevation="sm" className="flex max-w-3xl flex-col gap-4 p-6">
-          <h2 className="font-display text-lg font-semibold text-text">Revised quote</h2>
+          <h2 className="text-heading-md text-text">Revised quote</h2>
           <QuoteFigures quote={result} />
           <div className="flex flex-wrap gap-2">
             <Button

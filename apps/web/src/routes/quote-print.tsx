@@ -30,7 +30,7 @@ function QuotePrintPage() {
       </div>
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
         <div>
-          <p className="font-display text-2xl font-semibold text-text">{me.data?.tenantName ?? ''}</p>
+          <p className="text-display-md text-text">{me.data?.tenantName ?? ''}</p>
           <p className="text-sm text-text-muted">Equipment rental quotation</p>
         </div>
         <div className="text-right text-sm text-text">

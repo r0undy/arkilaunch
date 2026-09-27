@@ -24,7 +24,7 @@ import { Skeleton } from '../components/skeleton.js';
 // the customer accepts or declines the quote itself. Only the accepted
 // quote's engine-priced total is ever charged.
 
-const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
+const heading = 'text-heading-md text-text';
 
 function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
   const navigate = useNavigate();
@@ -168,7 +168,6 @@ function NegotiationPage({ bookingId }: { bookingId: string }) {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Negotiation"
         title={booking.data ? `Booking ${booking.data.code}` : 'Booking'}
         description="Agree the price with the rental team before you pay."
         actions={
@@ -209,7 +208,7 @@ function NegotiationCallRoute() {
   const code = booking.data?.code;
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Negotiation" title="Negotiate by phone" {...(code ? { description: `Booking ${code}` } : {})} />
+      <PageHeader title="Negotiate by phone" {...(code ? { description: `Booking ${code}` } : {})} />
       <Surface radius="md" elevation="sm" className="flex max-w-xl flex-col gap-3 p-6">
         <p className="text-sm text-text">
           Call the rental team on the number on our contact page and quote your booking reference{' '}
@@ -261,7 +260,7 @@ function NegotiationFinalRoute() {
     <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-5">
       <StatusPill tone="recon-approved" label="Agreed" icon={<CheckIcon />} />
       <div className="text-center">
-        <h1 className="font-display text-2xl font-semibold text-text">Negotiation finalised</h1>
+        <h1 className="text-display-md text-text">Negotiation finalised</h1>
         <p className="mt-1 text-sm text-text-muted">
           These are the terms you accepted. Review them, then pay.
         </p>
@@ -271,10 +270,10 @@ function NegotiationFinalRoute() {
         <LineItems quoteId={quoteId} />
         <Row label="Consumable deposit" value={formatPeso(deposit)} />
         <div className="flex items-end justify-between gap-3 border-t border-border pt-3">
-          <span className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text">
+          <span className="text-sm font-medium text-text">
             Total due
           </span>
-          <span className="font-mono text-2xl font-semibold text-text">
+          <span className="font-mono text-display-md text-text">
             {quote.data ? formatPeso(quote.data.total + deposit) : '--'}
           </span>
         </div>

@@ -85,7 +85,7 @@ function Directory() {
 
   return (
     <section aria-labelledby="directory-title" className="flex flex-col gap-6">
-      <h2 id="directory-title" className="font-display text-2xl font-semibold text-ink-mk">
+      <h2 id="directory-title" className="text-display-md text-text lg:text-display-lg">
         Find a rental company
       </h2>
       <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto] lg:items-end">
@@ -124,20 +124,20 @@ function Directory() {
               <li key={t.slug}>
                 <a
                   href={tenantOrigin(t.slug)}
-                  className="flex h-full gap-4 rounded-sm border border-border bg-surface-mk p-5 hover:border-border-strong"
+                  className="flex h-full gap-4 rounded-md border border-border bg-surface p-5 transition-shadow hover:shadow-md"
                 >
                   {t.logoUrl ? (
                     <img src={t.logoUrl} alt="" className="size-14 shrink-0 object-contain" />
                   ) : (
                     <span
                       aria-hidden="true"
-                      className="flex size-14 shrink-0 items-center justify-center rounded-sm bg-primary font-display text-xl font-semibold text-on-primary"
+                      className="flex size-14 shrink-0 items-center justify-center rounded-sm bg-primary text-heading-lg text-on-primary"
                     >
                       {t.name.charAt(0)}
                     </span>
                   )}
                   <span className="flex min-w-0 flex-col gap-1">
-                    <span className="font-display text-lg font-semibold text-ink-mk">{t.name}</span>
+                    <span className="text-heading-md text-text">{t.name}</span>
                     {t.tagline && <span className="text-sm text-text-muted">{t.tagline}</span>}
                     {place && <span className="text-xs text-text-muted">{place}</span>}
                   </span>
@@ -169,8 +169,9 @@ function AddressPreview() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex max-w-xl flex-col gap-3 rounded-sm border border-border bg-surface-mk p-4">
-      <p className="truncate text-sm text-text-muted" aria-live="polite">
+    <form onSubmit={onSubmit} className="flex w-full min-w-0 flex-col gap-4 rounded-lg border border-border bg-surface p-5 shadow-md sm:p-8">
+      <h2 className="text-heading-lg text-text">Your storefront address</h2>
+      <p className="truncate font-mono text-sm text-text-muted" aria-live="polite">
         https://<strong className="text-text">{label}</strong>.{PLATFORM_DOMAIN}
       </p>
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -183,7 +184,7 @@ function AddressPreview() {
           onChange={(e) => setName(e.target.value)}
           placeholder="Your company name"
           maxLength={200}
-          className="min-h-11 flex-1 rounded-sm border border-border-strong bg-bg px-3 text-text"
+          className="min-h-11 flex-1 rounded-input border border-border bg-surface px-4 text-text"
         />
         <Button type="submit">Claim this address</Button>
       </div>
@@ -194,22 +195,25 @@ function AddressPreview() {
 function PlatformLanding() {
   const navigate = useNavigate();
   return (
-    <div data-tier="marketing" className="flex min-h-screen flex-col bg-bg-mk-frame">
+    <div className="flex min-h-screen flex-col bg-bg">
       <SkipLink />
-      <header className="mx-auto flex w-full max-w-shell items-center justify-between px-6 py-4">
-        <Link to="/" className="font-display text-lg font-semibold text-ink-mk">
+      <header className="sticky top-0 z-50 bg-nav text-text-inverse">
+        <div className="mx-auto flex min-h-14 w-full max-w-shell items-center justify-between px-4 sm:px-8">
+        <Link to="/" className="text-base font-medium">
           ArkiLaunch
         </Link>
-        <Link to="/login" className="text-sm font-semibold text-text hover:underline">
+        <Link to="/login" className="inline-flex min-h-11 items-center rounded-sm px-3 text-sm hover:bg-current/10">
           Sign in
         </Link>
+        </div>
       </header>
-      <main id="main" className="mx-auto flex w-full max-w-shell flex-1 flex-col gap-16 bg-bg-mk px-6 py-10 shadow-mk-inset sm:px-10">
-        <section className="flex flex-col gap-4">
-          <h1 className="max-w-2xl font-display text-[28px] font-semibold uppercase leading-[1.15] text-ink-mk sm:text-5xl lg:text-6xl">
+      <main id="main" className="mx-auto flex w-full max-w-shell flex-1 flex-col gap-16 px-4 py-12 sm:px-8 lg:gap-24 lg:py-20">
+        <section className="grid items-center gap-10 lg:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-5">
+          <h1 className="text-display-lg text-text lg:text-display-xl">
             Launch your equipment rental business
           </h1>
-          <p className="max-w-md border-l-2 border-primary pl-4 text-sm text-text-muted">
+          <p className="max-w-xl text-body-lg text-text-muted">
             Storefront, quotes, dispatch, timesheets and billing in one place, at an address with your company&apos;s
             name on it.
           </p>
@@ -219,19 +223,21 @@ function PlatformLanding() {
               Sign in
             </Button>
           </div>
+          </div>
+          {/* The hero's right half: the address a company gets, typed live. */}
           <AddressPreview />
         </section>
 
         <Directory />
 
         <section aria-labelledby="features-title" className="flex flex-col gap-6">
-          <h2 id="features-title" className="font-display text-2xl font-semibold text-ink-mk">
+          <h2 id="features-title" className="text-display-md text-text lg:text-display-lg">
             What you get
           </h2>
           <div className="grid gap-6 sm:grid-cols-2">
             {FEATURES.map((f) => (
-              <article key={f.title} className="rounded-sm border border-border bg-surface-mk p-6">
-                <h3 className="font-display text-lg font-semibold text-ink-mk">{f.title}</h3>
+              <article key={f.title} className="rounded-md border border-border bg-surface p-6 transition-shadow hover:shadow-md">
+                <h3 className="text-heading-md text-text">{f.title}</h3>
                 <p className="mt-2 text-sm text-text-muted">{f.body}</p>
               </article>
             ))}
@@ -239,22 +245,22 @@ function PlatformLanding() {
         </section>
 
         <section aria-labelledby="how-title" className="flex flex-col gap-6">
-          <h2 id="how-title" className="font-display text-2xl font-semibold text-ink-mk">
+          <h2 id="how-title" className="text-display-md text-text lg:text-display-lg">
             Open in three steps
           </h2>
           <ol className="grid gap-6 md:grid-cols-3">
             {STEPS.map((s, i) => (
               <li key={s.title} className="flex flex-col gap-2">
-                <span className="font-display text-3xl font-semibold text-primary">{i + 1}</span>
-                <h3 className="font-semibold text-text">{s.title}</h3>
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary font-mono text-base text-on-primary">{i + 1}</span>
+                <h3 className="text-heading-md text-text">{s.title}</h3>
                 <p className="text-sm text-text-muted">{s.body}</p>
               </li>
             ))}
           </ol>
         </section>
       </main>
-      <footer className="bg-surface-mk">
-        <div className="mx-auto max-w-shell px-6 py-8 text-sm text-text-muted">ArkiLaunch &copy; 2026</div>
+      <footer className="bg-nav text-text-inverse">
+        <div className="mx-auto max-w-shell px-4 py-10 text-sm text-text-inverse/70 sm:px-8">ArkiLaunch &copy; 2026</div>
       </footer>
     </div>
   );

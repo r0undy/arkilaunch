@@ -190,7 +190,7 @@ function DocumentStep({
             id="registration-type"
             value={registrationType}
             onChange={(e) => onRegistrationTypeChange(e.target.value as PrimaryRegistrationType)}
-            className="min-h-11 rounded-md border border-border bg-surface px-3 text-text"
+            className="min-h-11 rounded-input border border-border bg-surface px-3 text-text"
           >
             {REGISTRATION_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -373,7 +373,7 @@ function IdReviewStep({
           <select
             value={value.sex}
             onChange={(e) => set({ sex: e.target.value as IdDetails['sex'] })}
-            className="min-h-11 rounded-sm border border-border bg-surface px-3 text-base text-text"
+            className="min-h-11 rounded-input border border-border bg-surface px-3 text-base text-text"
           >
             <option value="">Select</option>
             <option value="M">Male</option>
@@ -514,7 +514,7 @@ function NewCompanyPage() {
   if (stage === 'id_details' && idScan) {
     return (
       <div className="flex flex-col gap-5">
-        <PageHeader eyebrow="My account" title="Add a company" description="Check your ID details." />
+        <PageHeader title="Add a company" description="Check your ID details." />
         <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
           <IdReviewStep
             scan={idScan}
@@ -535,7 +535,6 @@ function NewCompanyPage() {
     return (
       <div className="flex flex-col gap-5">
         <PageHeader
-          eyebrow="My account"
           title="Add a company"
           description="Scan the documents first; you will check the details at the end."
         />
@@ -581,7 +580,6 @@ function NewCompanyPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="My account"
         title="Add a company"
         description="Check what we read from your documents, and fix anything that is wrong."
       />
@@ -807,7 +805,7 @@ function CompanyDocumentsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Companies" title="Upload documents" />
+      <PageHeader title="Upload documents" />
       <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
         {!idOpen && !primaryOpen && !dtiOpen ? (
           <div role="status" className="flex flex-col gap-2">
@@ -891,7 +889,6 @@ function CompanyDetailPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="My account"
         title={company?.companyName ?? 'Company'}
         description="Verification, documents and the sites you deliver to."
         actions={

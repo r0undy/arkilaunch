@@ -65,7 +65,7 @@ export function StatusBadge({ status, label }: { status: string | null | undefin
   return (
     <span
       className={[
-        'inline-flex items-center gap-1 whitespace-nowrap rounded-sm border px-2 py-0.5 text-xs font-semibold',
+'inline-flex items-center gap-1 whitespace-nowrap rounded-xs border px-2 py-0.5 text-xs font-semibold',
         className,
       ].join(' ')}
     >

@@ -38,7 +38,7 @@ const TABS: { value: StatusFilter; label: string }[] = [
 function CounterTile({ value, label }: { value: number; label: string }) {
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-1 p-5">
-      <dd className="font-display text-3xl font-semibold text-text">{value}</dd>
+      <dd className="text-3xl font-semibold text-text">{value}</dd>
       <dt className="text-sm text-text-muted">{label}</dt>
     </Surface>
   );
@@ -84,19 +84,20 @@ function ApplicationCard({ company }: { company: CompanyResponse }) {
       elevation="sm"
       role="group"
       aria-label={company.companyName}
-      className="flex flex-wrap items-center gap-5 p-5"
+      className="flex flex-wrap items-center gap-5 p-5 transition-shadow hover:shadow-md"
     >
       <RegistrationThumbnail company={company} />
       <div className="flex min-w-48 flex-1 flex-col gap-2">
-        <h2 className="font-display text-lg font-semibold text-text">{company.companyName}</h2>
-        <VerificationPill status={company.kycStatus} />
-        <div className="text-sm text-text-muted">
-          <p>Registration Number:</p>
-          <p className="text-text">{company.secNumber ?? 'Not provided'}</p>
-        </div>
+        <h2 className="text-heading-md text-text">{company.companyName}</h2>
+        <span className="self-start">
+          <VerificationPill status={company.kycStatus} />
+        </span>
+        <p className="text-sm text-text-muted">
+          Registration number <span className="font-mono text-text">{company.secNumber ?? 'Not provided'}</span>
+        </p>
       </div>
       <Link to="/account/companies/$companyId" params={{ companyId: company.id }}>
-        <Button variant="primary">Manage</Button>
+        <Button variant="secondary">Manage</Button>
       </Link>
     </Surface>
   );
@@ -136,7 +137,6 @@ function ApplicationsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="My account"
         title="Company Applications"
         description="Manage and track company applications."
         actions={
@@ -159,7 +159,7 @@ function ApplicationsPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search companies"
           aria-label="Search companies"
-          className="min-h-11 w-full rounded-sm border border-border bg-surface px-4 py-2 text-base text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          className="min-h-11 w-full rounded-input border border-border bg-surface px-4 py-2 text-base text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
         />
         <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
           {TABS.map((tab) => (
@@ -169,7 +169,7 @@ function ApplicationsPage() {
               onClick={() => setStatus(tab.value)}
               aria-pressed={status === tab.value}
               className={[
-                'min-h-11 w-full rounded-pill border px-4 py-2 text-sm font-medium transition-colors sm:w-auto',
+'min-h-11 w-full rounded-pill border px-4 py-2 text-sm font-medium transition-colors sm:w-auto',
                 status === tab.value
                   ? 'border-primary bg-primary text-on-primary'
                   : 'border-border bg-surface text-text-muted hover:text-text',

@@ -188,7 +188,7 @@ export function MaintenanceModal({
           </div>
 
           <section className="flex flex-col gap-3" aria-label="Schedules">
-            <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+            <h3 className="text-sm font-medium text-text-muted">
               Schedules
             </h3>
             {data && data.schedules.length === 0 && (
@@ -207,7 +207,7 @@ export function MaintenanceModal({
                   >
                     <div className="text-sm">
                       <p className="font-medium text-text">{name}</p>
-                      <p className={warn ? 'text-error' : 'text-text-muted'}>
+                      <p className={warn ?'text-error' : 'text-text-muted'}>
                         <span data-testid="hours-since">{s.hoursSinceService ?? '—'}</span> h since
                         service, every {s.hoursInterval} h
                         {s.nextDue !== null ? `, next due at ${s.nextDue} h` : ''}
@@ -232,7 +232,7 @@ export function MaintenanceModal({
           </section>
 
           <section className="flex flex-col gap-3">
-            <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+            <h3 className="text-sm font-medium text-text-muted">
               Add schedule
             </h3>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -279,7 +279,7 @@ export function MaintenanceModal({
       {tab === 'dates' && (
         <div className="flex flex-col gap-6">
           <section className="flex flex-col gap-3" aria-label="Maintenance dates">
-            <h3 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+            <h3 className="text-sm font-medium text-text-muted">
               Maintenance dates
             </h3>
             {data && data.windows.length === 0 && (

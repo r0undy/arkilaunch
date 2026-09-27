@@ -39,11 +39,11 @@ function pinElement(letter: 'A' | 'B', label: string) {
   root.setAttribute('aria-label', label);
   Object.assign(root.style, { width: '34px', height: '46px', cursor: 'grab' });
   root.innerHTML = `
-    <div data-bubble style="position:absolute;bottom:50px;left:50%;transform:translateX(-50%);max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 8px;border-radius:4px;background:var(--yb-color-surface);color:var(--yb-color-text);font:600 12px 'IBM Plex Sans',sans-serif;box-shadow:0 1px 4px rgb(16 21 27 / 30%);display:none"></div>
+    <div data-bubble style="position:absolute;bottom:50px;left:50%;transform:translateX(-50%);max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 8px;border-radius:4px;background:var(--yb-color-surface);color:var(--yb-color-text);font:600 12px var(--font-sans);box-shadow:0 1px 4px rgb(16 21 27 / 30%);display:none"></div>
     <svg data-drop width="34" height="46" viewBox="0 0 34 46" aria-hidden="true" style="overflow:visible;display:block">
       <ellipse cx="17" cy="44" rx="7" ry="2.5" fill="rgb(16 21 27 / 35%)"/>
       <path d="M17 43C17 43 2 27 2 17A15 15 0 0 1 32 17C32 27 17 43 17 43Z" fill="${fill}" stroke="#fff" stroke-width="2.5"/>
-      <text x="17" y="21.5" text-anchor="middle" font-family="'IBM Plex Sans Condensed',sans-serif" font-size="14" font-weight="700" fill="${ink}">${letter}</text>
+      <text x="17" y="21.5" text-anchor="middle" style="font:700 14px var(--font-sans)" fill="${ink}">${letter}</text>
     </svg>`;
   if (!reducedMotion()) {
     root.querySelector('[data-drop]')?.animate(
@@ -228,7 +228,7 @@ export default function RouteMapCanvas({
         onClick={toggleTilt}
         aria-pressed={tilted}
         className={[
-          'absolute right-12 top-2.5 min-h-9 rounded-sm border px-3 text-xs font-semibold shadow-sm',
+'absolute right-12 top-2.5 min-h-9 rounded-sm border px-3 text-xs font-semibold shadow-sm',
           'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
           tilted ? 'border-text bg-text text-text-inverse' : 'border-border bg-surface text-text hover:bg-surface-sunk',
         ].join(' ')}

@@ -58,7 +58,7 @@ function RetireAction({ equipment }: { equipment: EquipmentResponse }) {
 
   return (
     <>
-      <Button variant="destructive" onClick={() => setConfirming(true)} loading={retire.isPending}>
+      <Button variant="secondary" onClick={() => setConfirming(true)} loading={retire.isPending}>
         Delete
       </Button>
       <ConfirmDialog
@@ -144,7 +144,6 @@ function InventoryPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Fleet"
         title="Equipment"
         description="Every machine in the fleet and where it stands."
         actions={
@@ -173,26 +172,26 @@ function InventoryPage() {
                     key={eq.id}
                     radius="md"
                     elevation="sm"
-                    className="flex flex-col gap-3 p-4"
+                    className="flex flex-col overflow-hidden p-0 transition-shadow hover:shadow-md"
                     // Names the card for assistive tech, and lets the e2e
                     // spec scope actions to one machine by its serial.
                     role="group"
                     aria-label={eq.serialNo}
                   >
-                    <div className="flex h-20 items-center justify-center overflow-hidden rounded-sm bg-surface-sunk p-3">
+                    <div className="flex h-44 items-center justify-center overflow-hidden bg-surface-sunk">
                       {eq.photoUrl ? (
                         <img
                           src={eq.photoUrl}
                           alt={`${eq.model}, ${eq.serialNo}`}
-                          className="max-h-full object-contain"
+                          className="h-full w-full object-cover"
                         />
                       ) : (
-                        <EquipmentSchematic typeName={eq.model} className="max-h-full" />
+                        <EquipmentSchematic typeName={eq.model} className="max-h-full p-6" />
                       )}
                     </div>
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-start justify-between gap-2 px-5 pt-4">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-text">{eq.model}</p>
+                        <p className="text-heading-md text-text">{eq.model}</p>
                         <p className="font-mono text-xs tabular-nums text-text-muted">
                           {eq.serialNo}
                         </p>
@@ -200,7 +199,7 @@ function InventoryPage() {
                       <StatusPill tone={meta.tone} label={meta.label} icon={meta.icon} />
                     </div>
                     {manageable && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="mt-auto flex flex-wrap gap-2 border-t border-border px-5 py-4">
                         <Button variant="secondary" onClick={() => setEditing(eq)}>
                           Edit
                         </Button>

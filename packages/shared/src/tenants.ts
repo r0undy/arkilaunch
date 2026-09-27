@@ -123,7 +123,7 @@ const HEX_COLOR = /^#[0-9a-f]{6}$/;
 const optionalText = (max: number) => z.string().trim().max(max).nullable();
 
 // NULL is the design-system default (IBM Plex); DSD §2.3.
-export const TenantFontSchema = z.enum(['inter']);
+export const TenantFontSchema = z.enum(['inter', 'plex']);
 export type TenantFont = z.infer<typeof TenantFontSchema>;
 
 // The link lands in an href on a public page, so only an https URL on a

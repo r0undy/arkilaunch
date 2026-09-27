@@ -2,24 +2,18 @@
 
 /*
  * Yardboard token layer. Mirrors docs/dsd-arkilaunch.md §2 (DESIGN.md's materialized copy)
- * exactly: Primitive -> Semantic -> Component tiering (§2.0), plus the Marketing-tier
- * amendment (CR: dsd-marketing-tier). Edit the DSD, not this file's structure, when the
+ * exactly: Primitive -> Semantic -> Component tiering (§2.0). Shape, type and elevation
+ * follow the AWS reference (CR: aws-design-language, docs/assets/reference/aws.design.md);
+ * every color is still Yardboard's. Edit the DSD, not this file's structure, when the
  * design system changes; this file is the code-side half of that same contract.
  *
  * Theme (light/dark) is toggled by [data-theme] on the root; default is light.
- * Surface tier (console/marketing) is toggled by [data-tier="marketing"] on a route
- * wrapper; unset (default) is Console. Marketing tokens are only defined inside
- * [data-tier="marketing"] on purpose: using one outside that scope resolves to nothing,
- * which is the point (§0 Named tiers forbids a silent cross-tier leak).
+ * One tier: every screen, public or signed-in, uses the same tokens.
  */
 
 /* Lets Tailwind's `dark:` variant key off data-theme instead of prefers-color-scheme,
    matching "Theme is toggled by data-theme on the root" (DESIGN.md §2.1). */
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
-
-/* Lets a `marketing:` variant target the Marketing tier explicitly, so component code
-   can express "only inside the marketing surface" without a manual selector. */
-@custom-variant marketing (&:where([data-tier='marketing'], [data-tier='marketing'] *));
 
 :root {
   /* ---- Primitives (raw values, no meaning; DSD §2.0) ---- */
@@ -52,9 +46,6 @@
   --sky-400: #4fa3d9;
   --slate-400: #a9b4c0;
 
-  /* marketing-only primitives (CR: dsd-marketing-tier) */
-  --ink-mk-900: #171719;
-  --glass-white-70: rgb(255 255 255 / 70%);
 }
 
 :root {
@@ -93,16 +84,15 @@
   --yb-recon-failed: var(--slate-700);
   --yb-recon-approved: var(--teal-700);
 
-  /* Elevation (§2.5): border-first, low blur, no backdrop-filter */
-  --yb-shadow-sm: 0 1px 2px rgb(16 21 27 / 10%);
-  --yb-shadow-md: 0 2px 6px rgb(16 21 27 / 14%);
-  --yb-shadow-lg: 0 6px 20px rgb(16 21 27 / 22%);
-  --yb-modal-scrim: rgb(16 21 27 / 55%);
+  /* The top bar and footer (§2.1): steel, the near-black AWS runs its nav on. */
+  --yb-color-nav: var(--steel-900);
 
-  /* Corner radius (§3): deliberately tight, no fully-rounded surfaces */
-  --yb-radius-sm: 4px;
-  --yb-radius-md: 6px;
-  --yb-radius-lg: 8px;
+  /* Elevation (§2.5): cards rest on their border; lift is for hover and menus.
+     sm is a zero shadow, not `none`, so it still composes with ring utilities. */
+  --yb-shadow-sm: 0 0 #0000;
+  --yb-shadow-md: 1px 1px 20px rgb(0 0 0 / 10%);
+  --yb-shadow-lg: 1px 1px 24px rgb(0 0 0 / 25%);
+  --yb-modal-scrim: rgb(16 21 27 / 55%);
 }
 
 /* ---- Night-yard dark theme override (§2.1) ---- */
@@ -122,62 +112,44 @@
      borders and text lift instead, per DESIGN.md §2.1. */
 }
 
-/* ---- Marketing tier (CR: dsd-marketing-tier; DSD §0 Named tiers, §2.1, §2.5, §3) ----
-   Scoped to [data-tier="marketing"] only: S1 Public Landing, S22 Catalog Browse. */
-[data-tier='marketing'] {
-  --yb-color-bg-mk-frame: var(--sand-200);
-  --yb-color-bg-mk: var(--paper-100);
-  --yb-color-surface-mk: #ffffff;
-  --yb-color-ink-mk: var(--ink-mk-900);
-  --yb-color-primary-ink: var(--amber-ink-700);
-  --yb-border-glass: var(--glass-white-70);
-
-  --yb-shadow-mk-inset: 0 1px 0 rgb(255 255 255 / 90%) inset;
-  --yb-shadow-mk-card: 0 14px 30px -18px rgb(35 36 39 / 25%);
-  --yb-shadow-mk-nav: 0 10px 30px -14px rgb(35 36 39 / 25%);
-
-  --yb-radius-mk-sm: 8px;
-  --yb-radius-mk-md: 16px;
-  --yb-radius-mk-lg: 24px;
-  --yb-radius-mk-xl: 28px;
-  --yb-radius-mk-container: 40px;
-
-  /* Re-declare the @theme aliases below (not just their --yb-*-mk sources)
-     right here in the scope where the sources are actually set. A custom
-     property's var() reference resolves using the SAME element's cascade at
-     compute time, not lazily at each use site -- @theme only declares these
-     aliases once, on :root, where --yb-color-*-mk is unset, so without this
-     re-declaration they compute to invalid (and inherit invalid) everywhere,
-     no matter what's set here. That's what made bg-ink-mk/bg-surface-mk
-     silently paint nothing (the "vanishing" filter pill). */
-  --color-bg-mk-frame: var(--yb-color-bg-mk-frame);
-  --color-bg-mk: var(--yb-color-bg-mk);
-  --color-surface-mk: var(--yb-color-surface-mk);
-  --color-ink-mk: var(--yb-color-ink-mk);
-  --color-primary-ink: var(--yb-color-primary-ink);
-  --color-border-glass: var(--yb-border-glass);
-}
-
 @theme {
-  /* Fonts (§2.3). Body/heading share one IBM Plex Sans variable file (wght 100-700);
-     display/label use the static Condensed 600 cut; data uses static Mono 500;
-     the marketing accent-serif is Instrument Serif italic, marketing tier only. */
-  --font-sans: 'IBM Plex Sans', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-display: 'IBM Plex Sans Condensed', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Fonts (§2.3). One sans for every heading and paragraph; data uses static Mono 500
+     (the gauge rule). Inter stands in for Amazon Ember; a tenant may pick Plex. */
+  --font-sans: 'Inter', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', 'Roboto Mono', ui-monospace, monospace;
-  --font-serif-accent: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+
+  /* Type scale (§2.3), the AWS reference's tiers. text-base and text-sm are already
+     its body-md (16/24) and body-sm (14/20). Headings stop at weight 500. */
+  --text-display-xl: 2.5rem;
+  --text-display-xl--line-height: 2.75rem;
+  --text-display-xl--font-weight: 500;
+  --text-display-lg: 2rem;
+  --text-display-lg--line-height: 2.5rem;
+  --text-display-lg--font-weight: 500;
+  --text-display-md: 1.75rem;
+  --text-display-md--line-height: 2.25rem;
+  --text-display-md--font-weight: 500;
+  --text-heading-lg: 1.25rem;
+  --text-heading-lg--line-height: 1.75rem;
+  --text-heading-lg--font-weight: 500;
+  --text-heading-md: 1.125rem;
+  --text-heading-md--line-height: 1.5rem;
+  --text-heading-md--font-weight: 500;
+  --text-body-lg: 1.125rem;
+  --text-body-lg--line-height: 1.625rem;
 
   /* Wide breakpoint (§3): control-room dashboards, wide fleet tables.
      Mobile 360px and tablet 768px / desktop 1024px already match Tailwind's
      default baseline / md / lg breakpoints exactly, so only "wide" needs adding. */
   --breakpoint-wide: 1440px;
 
-  /* Shell max-width shared by Console app content and the Marketing wrapper (§3). */
-  --container-shell: 1440px;
+  /* Public page content width (§3); the signed-in app keeps its own 1440px cap. */
+  --container-shell: 1280px;
 
   /* Console colors (indirection to the theme/tier custom properties above, so
-     switching [data-theme]/[data-tier] repaints these utilities without a rebuild). */
+     switching [data-theme] repaints these utilities without a rebuild). */
   --color-bg: var(--yb-color-bg);
+  --color-nav: var(--yb-color-nav);
   --color-surface: var(--yb-color-surface);
   --color-surface-sunk: var(--yb-color-surface-sunk);
   --color-border: var(--yb-color-border);
@@ -209,33 +181,20 @@
   --color-recon-failed: var(--yb-recon-failed);
   --color-recon-approved: var(--yb-recon-approved);
 
-  /* Marketing colors (only ever set inside [data-tier="marketing"] above; using one
-     of these outside that scope resolves to nothing, by design). */
-  --color-bg-mk-frame: var(--yb-color-bg-mk-frame);
-  --color-bg-mk: var(--yb-color-bg-mk);
-  --color-surface-mk: var(--yb-color-surface-mk);
-  --color-ink-mk: var(--yb-color-ink-mk);
-  --color-primary-ink: var(--yb-color-primary-ink);
-  --color-border-glass: var(--yb-border-glass);
-
   /* Elevation */
   --shadow-sm: var(--yb-shadow-sm);
   --shadow-md: var(--yb-shadow-md);
   --shadow-lg: var(--yb-shadow-lg);
-  --shadow-mk-inset: var(--yb-shadow-mk-inset);
-  --shadow-mk-card: var(--yb-shadow-mk-card);
-  --shadow-mk-nav: var(--yb-shadow-mk-nav);
 
-  /* Radius */
-  --radius-sm: var(--yb-radius-sm);
-  --radius-md: var(--yb-radius-md);
-  --radius-lg: var(--yb-radius-lg);
-  --radius-mk-sm: var(--yb-radius-mk-sm);
-  --radius-mk-md: var(--yb-radius-mk-md);
-  --radius-mk-lg: var(--yb-radius-mk-lg);
-  --radius-mk-xl: var(--yb-radius-mk-xl);
-  --radius-mk-container: var(--yb-radius-mk-container);
-  --radius-pill: 999px;
+  /* Radius (§3), the AWS reference's scale: 4 tags, 8 nav tiles and small items,
+     16 cards and dialogs, 24 feature cards, 40 every button. Text inputs are square;
+     that one knob is --radius-input. */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-input: 0px;
+  --radius-pill: 40px;
 
   /* Note: the §3 spacing scale (--space-1 4px ... --space-12 48px) and the marketing
      128px section rhythm both land exactly on Tailwind's default 0.25rem spacing
@@ -254,14 +213,6 @@
 }
 
 @font-face {
-  font-family: 'IBM Plex Sans Condensed';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/ibm-plex-sans-condensed-600.woff2') format('woff2');
-}
-
-@font-face {
   font-family: 'IBM Plex Mono';
   font-style: normal;
   font-weight: 500;
@@ -269,19 +220,9 @@
   src: url('/fonts/ibm-plex-mono-500.woff2') format('woff2');
 }
 
-/* Marketing accent only; not preloaded (DSD §2.3) so a console route that never
-   renders .font-serif-accent never fetches it. */
-@font-face {
-  font-family: 'Instrument Serif';
-  font-style: italic;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/instrument-serif-italic-400.woff2') format('woff2');
-}
-
-/* Tenant font (DSD §2.3, CR: tenant-brand-kit). Only a tenant that picks Inter
-   points --font-sans/--font-display at it (lib/brand.ts), so no other host
-   ever fetches this file. Latin-subset variable WOFF2, SIL OFL 1.1. */
+/* The platform sans (DSD §2.3, CR: aws-design-language), preloaded in index.html.
+   Latin-subset variable WOFF2, SIL OFL 1.1. IBM Plex Sans above stays for a tenant
+   that picks it (lib/brand.ts). */
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -292,24 +233,10 @@
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
-    /* The marketing-tier wrapper (data-tier="marketing") only spans
-       min-h-screen, not the full scrollable area -- rubber-band/elastic
-       overscroll past the top or bottom edge exposes html/body's own
-       background underneath it. Disabling overscroll bounce here removes
-       that "different color flashes in when you scroll too far" seam. */
+    /* No rubber-band overscroll past the page's own edges. */
     overscroll-behavior-y: none;
-  }
-
-  /* Belt-and-suspenders for browsers that still rubber-band despite
-     overscroll-behavior (Safari): match body's own background to the
-     marketing frame color whenever a marketing-tier page is on screen, so
-     any sliver that peeks through is the same color as the frame, not the
-     console tier's paper background. --sand-200 mirrors
-     --yb-color-bg-mk-frame's value (defined deeper, scoped to
-     [data-tier="marketing"], and not reachable from body/html since that's
-     an ancestor, not a descendant, of that scope). */
-  body:has([data-tier='marketing']) {
-    background-color: var(--sand-200);
+    /* The sticky 56px bar must never cover a focused element (SC 2.4.11). */
+    scroll-padding-top: 4.5rem;
   }
 
   body {
@@ -327,14 +254,8 @@
   }
 }
 
-@utility font-serif-accent {
-  font-family: var(--font-serif-accent);
-  font-style: italic;
-  letter-spacing: -0.01em;
-}
-
 /* Reduced motion (§5, §6): every non-essential transition/animation collapses to an
-   instant state change, both tiers, no exceptions. */
+   instant state change, no exceptions. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

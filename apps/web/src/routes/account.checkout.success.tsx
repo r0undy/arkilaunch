@@ -34,7 +34,7 @@ function CheckoutSuccessPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Checkout" title={paid ? 'Payment received' : 'Payment submitted'} />
+      <PageHeader title={paid ? 'Payment received' : 'Payment submitted'} />
       <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-4 p-6">
         <StatusPill
           tone={paid ? 'recon-approved' : 'recon-review'}
@@ -42,7 +42,7 @@ function CheckoutSuccessPage() {
           icon={<CheckIcon />}
         />
         <div className="flex flex-col gap-2" aria-live="polite">
-          <h2 className="font-display text-xl font-semibold text-text">
+          <h2 className="text-heading-lg text-text">
             {paid ? 'Thanks -- your payment is confirmed.' : 'Thanks -- we have your payment instruction.'}
           </h2>
           <p className="max-w-prose text-sm text-text-muted">

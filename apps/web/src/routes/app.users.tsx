@@ -185,7 +185,7 @@ function UserActions({ user }: { user: UserRow }) {
           value={user.roleName}
           disabled={changeRole.isPending}
           onChange={(e) => setPendingRole(e.target.value as AssignableRole)}
-          className="min-h-11 rounded-sm border border-border bg-surface px-2 text-sm text-text"
+          className="min-h-11 rounded-input border border-border bg-surface px-2 text-sm text-text"
         >
           {ASSIGNABLE_ROLES.map((role) => (
             <option key={role} value={role}>
@@ -223,7 +223,7 @@ function UserActions({ user }: { user: UserRow }) {
         </Button>
       ) : (
         <Button
-          variant="destructive"
+          variant="secondary"
           size="field"
           onClick={() => setConfirmingDeactivate(true)}
           loading={deactivate.isPending}
@@ -342,7 +342,6 @@ function ManageUsersPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        eyebrow="Settings"
         title="People"
         description="Manage teammates, roles, and access."
         actions={<Button onClick={() => setInviting(true)}>Invite a user</Button>}
@@ -360,7 +359,7 @@ function ManageUsersPage() {
             columns={columns}
             rows={data.items}
             rowKey={(row) => row.id}
-            footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="people" />}
+            header={{ title: 'People', count: data.total, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="people" /> }}
           />
         )}
       />

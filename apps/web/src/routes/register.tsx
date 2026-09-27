@@ -25,7 +25,7 @@ function RegisterPersonalDetailsPage() {
     <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
       <form onSubmit={onSubmit} aria-labelledby="register-heading" className="flex flex-col gap-4">
         <div>
-          <h1 id="register-heading" className="font-display text-xl font-semibold text-text">
+          <h1 id="register-heading" className="text-heading-lg text-text">
             Create account
           </h1>
           <p className="text-sm text-text-muted">Enter your details to register for the platform.</p>

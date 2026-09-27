@@ -86,7 +86,7 @@ function MyBookingsPage() {
         }}
         placeholder="Find by booking code (EQR-2026-0001)"
         aria-label="Find a booking by code"
-        className="min-h-10 w-full max-w-md rounded-md border border-border bg-surface px-3 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+        className="min-h-10 w-full max-w-md rounded-input border border-border bg-surface px-3 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
       />
       <div role="tablist" aria-label="Service" className="flex gap-1 border-b border-border">
         {SERVICES.map((entry) => (
@@ -97,7 +97,7 @@ function MyBookingsPage() {
             aria-selected={service === entry.id}
             onClick={() => setService(entry.id)}
             className={[
-              '-mb-px border-b-2 px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
+'-mb-px border-b-2 px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
               service === entry.id
                 ? 'border-primary text-text'
                 : 'border-transparent text-text-muted hover:text-text',
@@ -122,7 +122,7 @@ function MyBookingsPage() {
               columns={COLUMNS}
               rows={data.items}
               rowKey={(row) => row.id}
-              footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="bookings" />}
+              header={{ title: 'Bookings', count: data.total, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="bookings" /> }}
             />
           )}
         />

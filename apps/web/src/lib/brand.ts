@@ -23,7 +23,7 @@ export function onPrimaryFor(hex: string): '#000000' | '#ffffff' {
 
 // DSD §2.3 tenant font. Prose and display only: mono keeps every number
 // (Rule 2), so --font-mono is never swapped.
-const INTER_STACK = "'Inter', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif";
+const PLEX_STACK = "'IBM Plex Sans', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif";
 
 export type TenantBrand = Pick<CatalogTenant, 'primaryColor' | 'font'>;
 
@@ -34,7 +34,6 @@ export const BRAND_VARS = [
   '--yb-color-primary-hover',
   '--yb-color-on-primary',
   '--font-sans',
-  '--font-display',
 ] as const;
 
 // The properties a tenant's brand sets on <html>, over index.css's --yb-*
@@ -46,10 +45,7 @@ export function brandVars(t: TenantBrand | null | undefined): Partial<Record<(ty
     vars['--yb-color-primary-hover'] = `color-mix(in srgb, ${t.primaryColor} 85%, black)`;
     vars['--yb-color-on-primary'] = onPrimaryFor(t.primaryColor);
   }
-  if (t?.font === 'inter') {
-    vars['--font-sans'] = INTER_STACK;
-    vars['--font-display'] = INTER_STACK;
-  }
+  if (t?.font === 'plex') vars['--font-sans'] = PLEX_STACK;
   return vars;
 }
 

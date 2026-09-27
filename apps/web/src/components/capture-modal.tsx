@@ -226,7 +226,7 @@ export function CaptureModal({
       }
     >
       <form onSubmit={capture} className="flex flex-col gap-4">
-        <fieldset className={submitOnly ? 'hidden' : 'flex flex-col gap-2'}>
+        <fieldset className={submitOnly ?'hidden' : 'flex flex-col gap-2'}>
           <legend className="mb-1 text-sm font-medium text-text">How was it recorded?</legend>
           <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
             <label className="flex min-h-11 items-center gap-2 text-text">

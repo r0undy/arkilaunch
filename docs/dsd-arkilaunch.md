@@ -6,7 +6,7 @@
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Locked
-**Last reconciled:** 2026-08-02; marketing-tier amendment recorded via Change Record `docs/cr-arkilaunch-dsd-marketing-tier.md`, reconciled against the new `apps/web/src/index.css` token layer and console primitives
+**Last reconciled:** 2026-09-28 (CR: aws-design-language, one tier, AWS shape/type/elevation); earlier 2026-08-02; marketing-tier amendment recorded via Change Record `docs/cr-arkilaunch-dsd-marketing-tier.md`, reconciled against the new `apps/web/src/index.css` token layer and console primitives
 **PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
 **IDEA:** [idea-arkilaunch.md](idea-arkilaunch.md)
 **Mode:** Product Mode (task-first); the public catalog and landing borrow a thin Brand-Mode layer, noted where it applies.
@@ -39,7 +39,9 @@
 
 **Selected mode:** `Product Mode`. Exception: S1 Public Landing and S22 Catalog Browse carry a light Brand-Mode surface (larger type, one image-led hero) so a prospective tenant or contractor gets an impression before the task. Every authed surface (S2 to S21, S25) is strictly Product Mode.
 
-**Named tiers (CR: dsd-marketing-tier):** the Brand-Mode exception above is formalized as a second token **tier**, not just a loose exception, because it now carries its own radius scale, elevation language, and motion budget (§2 to §5). Every screen belongs to exactly one tier:
+**One tier (CR: aws-design-language, [cr-arkilaunch-aws-design-language.md](cr-arkilaunch-aws-design-language.md)):** the tier split below is retired. Every screen, public or signed-in, takes the AWS reference's shape, type and elevation (`docs/assets/reference/aws.design.md`) on Yardboard's unchanged palette; the signed-in app adds four AWS Console patterns (breadcrumbs, collapsible side nav, container headers, Flashbar).
+
+~~**Named tiers (CR: dsd-marketing-tier):**~~ the Brand-Mode exception above is formalized as a second token **tier**, not just a loose exception, because it now carries its own radius scale, elevation language, and motion budget (§2 to §5). Every screen belongs to exactly one tier:
 
 | Tier | Screens | Governs |
 |---|---|---|
@@ -63,10 +65,10 @@ A component never silently crosses tiers. The tier is set once, on a route wrapp
 | Anti-reference | Why it is forbidden here |
 |---|---|
 | **Default SaaS purple** (indigo-to-violet gradients, purple primary buttons, gradient text) | It is the category's beige. It signals "another web app" to a crew that trusts machine panels and government weather colors, and it carries zero meaning in a yard. Amber, steel, and the PAGASA scale all carry meaning; purple carries none. |
-| **Enterprise SaaS coldness** (Workday/Salesforce grey chrome, dense corporate shells, faceless stock imagery) | Rhea is one person carrying a back office, not a procurement department. Cold grey enterprise chrome reads as "built for someone else's IT budget" and breaks Rule 3 (make them part of the branding). |
+| ~~**Enterprise SaaS coldness**~~ **Retired (CR: aws-design-language).** | The owner chose the AWS console and marketing structure on purpose. What survives of this rule: the chrome stays warm (paper canvas, sand borders, amber and the tenant's own colors); cold grey neutrals are still not imported. |
 | **Dense fintech / terminal tables that assume a retina desktop** (Bloomberg-terminal density, tiny 11px rows, hairline dividers, hover-only actions) | The primary device is a cheap Android over 3 to 5 Mbps in outdoor light. Hairlines vanish, hover does not exist on touch, and 11px rows fail both legibility and WCAG 2.2 target size. Density here must survive a thumb and the sun. |
 
-**Scope note (CR: dsd-marketing-tier):** "Default SaaS purple" and "Enterprise SaaS coldness" stay absolute anti-references, everywhere, no exception. Glassmorphism and floating-card depth theater, previously banned outright, are now banned in **Console tier only** (§0 Named tiers); the Marketing tier (S1, S22) is permitted the SprintForge-derived glass nav and layered shadows under the explicit perf gate in §6, because Rhea never works from that surface on her cheap Android in the field, a first-time visitor evaluating the product does.
+**Scope note (CR: dsd-marketing-tier; amended by CR: aws-design-language):** "Default SaaS purple" stays an absolute anti-reference, everywhere; the AWS reference's spectral gradients are not adopted for that reason. Glass is now banned on every screen (the one glass nav is gone). Glassmorphism and floating-card depth theater, previously banned outright, are now banned in **Console tier only** (§0 Named tiers); the Marketing tier (S1, S22) is permitted the SprintForge-derived glass nav and layered shadows under the explicit perf gate in §6, because Rhea never works from that surface on her cheap Android in the field, a first-time visitor evaluating the product does.
 
 ---
 
@@ -183,6 +185,8 @@ Palette is high-contrast by construction, verified for WCAG 2.2 AA at the pairin
 
 Signal hues (success/warning/error/weather/recon) hold their hue in dark theme; borders and text lift to keep AA. Theme is toggled by `data-theme` on the root; default is light.
 
+> **Retired (CR: aws-design-language, 2026-09-28).** The Marketing tier is gone: every screen now uses one token system, the AWS reference's shape, type and elevation on Yardboard's colors. The block below is kept as history; nothing in code reads it.
+
 **Marketing surface tokens (CR: dsd-marketing-tier)**; scoped to `[data-tier="marketing"]` (§0, §2.0). This is the merged SprintForge shell, re-tinted warm so it reads as one brand with the console rather than a cool, separate skin. `--color-primary` (amber `#F2A100`) stays the single brand accent in this tier too; SprintForge's signature orange `#E34A32` is dropped entirely; it sat between `--weather-orange` (`#D9600A`) and `--color-error` (`#C42B1C`) and would have diluted both semantic scales.
 
 | Token | Value | Usage |
@@ -220,7 +224,9 @@ Marketing muted body text reuses the existing verified `--color-text-muted` (`#4
 
 ### 2.3 Typography
 
-Chosen for small-size legibility on a low-end Android and for provenance: **IBM Plex** has an engineering/machine heritage that fits the gauge-cluster reference, ships a true condensed sibling for the dispatch-board display voice, and a mono for the instrument readouts. Not Inter (the category slop default). Payload is controlled by self-hosted, Latin-subset WOFF2 with a Roboto/system fallback, so first paint is instant on 3 to 5 Mbps.
+**Amended (CR: aws-design-language):** **Inter** is the one sans for every heading and paragraph, standing in for the AWS reference's proprietary Amazon Ember; **IBM Plex Mono** keeps every operational number (Rule 2), standing in for Amazon Ember Mono. IBM Plex Sans Condensed and Instrument Serif are deleted; IBM Plex Sans stays self-hosted for a tenant that picks it (`tenants.font = 'plex'`, migration 0061). Headings are sentence case and stop at weight 500; nothing is uppercase. The scale is the reference's: display-xl 40/44 (public heroes only), display-lg 32/40 (page titles on desktop), display-md 28/36 (page titles on phones, section heads), heading-lg 20/28 (container and dialog titles), heading-md 18/24 (card titles), body-lg 18/26, body 16/24, small 14/20, all in `apps/web/src/index.css` `@theme`. The table below is the superseded Yardboard scale.
+
+~~Chosen for small-size legibility~~ (history:) Chosen for small-size legibility on a low-end Android and for provenance: IBM Plex has an engineering/machine heritage that fit the gauge-cluster reference. Payload is controlled by self-hosted, Latin-subset WOFF2 with a Roboto/system fallback, so first paint is instant on 3 to 5 Mbps.
 
 | Role | Font | Weight | Size | Line Height |
 |------|------|--------|------|-------------|
@@ -239,6 +245,8 @@ Chosen for small-size legibility on a low-end Android and for provenance: **IBM 
 **License / fallback:** IBM Plex is SIL Open Font License 1.1 (free to self-host and embed). Fallback stack: `"IBM Plex Sans", Roboto, system-ui, -apple-system, "Segoe UI", sans-serif`; mono falls back to `"IBM Plex Mono", "Roboto Mono", ui-monospace, monospace`. Roboto is already resident on Android, so the fallback render is legible with zero download.
 
 **Tenant font (CR: tenant-brand-kit):** on its own host a tenant may choose **Inter** in place of IBM Plex Sans and Plex Sans Condensed for prose and display; weights and sizes stay as specified. IBM Plex Mono keeps every operational number (Rule 2), and the ArkiLaunch platform host stays on Plex. Inter is self-hosted like Plex: one Latin-subset variable WOFF2 (`wght` 100 to 900, SIL OFL 1.1), fetched only on a host that uses it and preloaded there in place of Plex Sans, so the budgets below hold.
+
+> **Retired (CR: aws-design-language, 2026-09-28).** The Marketing tier is gone: every screen now uses one token system, the AWS reference's shape, type and elevation on Yardboard's colors. The block below is kept as history; nothing in code reads it.
 
 **Marketing typography (CR: dsd-marketing-tier)**; IBM Plex stays the type system on marketing surfaces too, not Inter; the single addition is an accent face for editorial emphasis, matching BRAND.md's rejection of "Inter everywhere" as the category slop default.
 
@@ -263,7 +271,7 @@ Chosen for small-size legibility on a low-end Android and for provenance: **IBM 
 
 ### 2.5 Elevation & Depth
 
-Depth is restrained and mostly done with borders, not shadow theater. Low blur radii keep it cheap to composite on a low-end GPU. Structure comes from the honest border first, shadow second.
+**Amended (CR: aws-design-language):** cards rest on their 1px border (`--shadow-sm` is a zero shadow); `--shadow-md` `1px 1px 20px rgb(0 0 0/10%)` is the hover lift on clickable cards; `--shadow-lg` `1px 1px 24px rgb(0 0 0/25%)` lifts menus and dialogs. No `backdrop-filter` anywhere. The table below is the superseded values. Depth is restrained and mostly done with borders, not shadow theater. Low blur radii keep it cheap to composite on a low-end GPU. Structure comes from the honest border first, shadow second.
 
 | Level | CSS Value | Usage |
 |-------|-----------|-------|
@@ -272,6 +280,8 @@ Depth is restrained and mostly done with borders, not shadow theater. Low blur r
 | `--shadow-lg` | `0 6px 20px rgba(16,21,27,0.22)` | Modals, the KYC review panel, image-zoom overlay. |
 
 No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the modal scrim is a flat `rgba(16,21,27,0.55)` with no blur.
+
+> **Retired (CR: aws-design-language, 2026-09-28).** The Marketing tier is gone: every screen now uses one token system, the AWS reference's shape, type and elevation on Yardboard's colors. The block below is kept as history; nothing in code reads it.
 
 **Marketing elevation (CR: dsd-marketing-tier)**; the SprintForge "shell in shell" depth language, scoped to `[data-tier="marketing"]` (S1, S22 only) and gated by §6's progressive-enhancement rules. This block does not apply to Console.
 
@@ -300,13 +310,15 @@ No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the mo
 
 **Grid:** 12-column fluid, max-width `1440px` for app content (control-room surfaces earn the width), 24px gutters on desktop. Data tables and the Evidence Split View may go full-bleed to the content edge. Mobile-first single column for the timekeeper console (S21) and customer portal (S22 to S24). Content never scrolls horizontally at the page level; wide tables scroll inside their own `overflow-x: auto` container (§4.1).
 
-**Corner radius scale (Console tier):** `--radius-sm: 4px` (chips, inputs, buttons), `--radius-md: 6px` (cards, panels), `--radius-lg: 8px` (modals). Deliberately tight; this is an instrument panel, not a pill-shaped consumer app. No fully-rounded ("rounded-everything") surfaces on Console.
+**Corner radius scale (CR: aws-design-language, every screen):** `--radius-xs: 4px` (tags, badges, status pills), `--radius-sm: 8px` (nav tiles, icon buttons, small items), `--radius-md: 16px` (cards, containers, dialogs), `--radius-lg: 24px` (feature cards, auth card, hero image), `--radius-pill: 40px` (every button), `--radius-input: 0px` (text inputs and selects, square as in the reference; the one knob if that changes). Content width: public pages 1280px (`--container-shell`), the signed-in app 1440px.
 
 **Breakpoints** (tuned to the real fleet of devices, cheap Android first):
 - Mobile: `360px` (common budget-Android width; the design baseline, not an afterthought)
 - Tablet: `768px`
 - Desktop: `1024px`
 - Wide: `1440px` (control-room dashboards, wide fleet tables)
+
+> **Retired (CR: aws-design-language, 2026-09-28).** The Marketing tier is gone: every screen now uses one token system, the AWS reference's shape, type and elevation on Yardboard's colors. The block below is kept as history; nothing in code reads it.
 
 **Marketing spatial system (CR: dsd-marketing-tier)**; scoped to `[data-tier="marketing"]`. This is the sharpest visual break from Console by design: a first-time visitor is not reading an instrument panel, so the radius and rhythm can afford to be generous. Console's 4/6/8px scale is unchanged and still governs every authed screen.
 
@@ -332,9 +344,9 @@ No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the mo
 | Destructive | `--color-error` | white | none | darkened error `#A3241A` | `--input-focus-ring`, 2px, 2px offset | 40% opacity |
 | Approve (recon) | `--color-success` | white | none | darkened `#186031` | `--input-focus-ring`, 2px, 2px offset | 40% opacity; disabled until logs match + fields resolved (S8) |
 
-**Border radius:** `--radius-sm` (4px).
+**Border radius:** `--radius-pill` (40px) (CR: aws-design-language).
 **Padding:** `12px 20px` desktop; `14px 20px` on the timekeeper console (larger for gloved/field taps).
-**Font:** IBM Plex Sans 600, 15px.
+**Font:** Inter 500, 14px (CR: aws-design-language). **Secondary** is white fill, ink text, a 1px `--color-border-strong` border (the reference's secondary), not the accent outline.
 **Min size:** 44x44px everywhere; 48x48px on the timekeeper console (S21) and any outdoor/field action (§6).
 **Focus:** `--input-focus-ring` (§2.1); never removed.
 **Loading:** label swaps to a static "Working..." with a small non-looping spinner; the button stays its own size (no layout shift). Amber primary must never go white-on-amber even while loading.
@@ -380,11 +392,21 @@ No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the mo
 
 **Tabs** (CR: console-polish); the one tablist: 44px tabs, 2px `--color-primary` underline on the selected tab, arrow keys/Home/End move and select, only the selected tab is in the Tab order, an optional mono count badge. Used by Quotes, the site hub, Bookings and the booking drawer. **Built:** `apps/web/src/components/tabs.tsx`.
 
+**Container** (CR: aws-design-language); the AWS Console container: a header row (heading-lg title, a muted `(count)`, actions right), an optional toolbar (filter left, paging right), a divider, then content. Tables render inside one (`Table header={...}`), and Summary Cards use its header. **Built:** `apps/web/src/components/container.tsx`.
+
+**Breadcrumbs** (CR: aws-design-language); `PageHeader` draws tenant > nav destination > page from the shell's nav config (the eyebrow overline is gone). Outside a shell there are none. Links in `--color-accent`, current page muted with `aria-current`.
+
+**Flashbar** (CR: aws-design-language); save and error messages are filled bars (success, error, accent; white text, >= 5.4:1) at the top of the shell's content column, sticky under the top bar; pages without a shell get a fixed top bar. Same `aria-live="polite"` and dismiss timing as the toasts they replace. **Built:** `apps/web/src/components/toast.tsx`.
+
+**Nav shell** (CR: aws-design-language); a steel (`--color-nav`) 56px top bar, text in `--color-text-inverse`, controls on 8px hover tiles; a tenant header color still paints it. The desktop side nav sits on `--color-surface`, collapses to a 56px rail ("Close navigation" / "Open navigation", remembered per browser), and marks the active item in `--color-accent` on a `--color-surface-sunk` tile, so amber means only "primary action". Phones keep the drawer.
+
 **Stat Tile** (CR: console-polish); one work-waiting figure on the dashboard: overline label, big mono number, one-line meaning, a link to the queue that acts on it. A figure that cannot load shows `--`, never a fake zero. **Built:** `apps/web/src/components/stat-tile.tsx`.
 
 **Route Map** (CR: console-polish, truck-map-booking); a truck trip on one map. Teardrop pins A (pickup, `--color-primary`) and B (drop-off, `--color-accent`) with the letter in the head, a ground shadow and an address bubble above; they drop in (not under reduced motion) and drag in edit mode. The road route is a navigation-style line: an accent core on a darker accent casing, wider as the map zooms in; a dashed straight line stands in until the road route returns. Distance and drive time in mono, labelled "(estimate)". Tilted 3D by default with a "3D" toggle, framed at the current tilt; two-finger pan on touch so the page still scrolls. Vector tiles are OpenFreeMap (keyless); MapLibre loads lazily. Under `prefers-reduced-motion` the camera jumps rather than flies. Edit mode belongs to the customer booking page, where the map is the screen: tap sets the selected pin (pickup, then drop-off), the route and price load on their own, a floating panel (left on desktop, a sheet under the map on a phone) holds the trip rows, price, time, site and Request, and the typed address pickers wait under "Advanced search". Without WebGL the page falls back to the flat Leaflet pin map. The read-only `RouteMap` in the drawers always prints the coordinates below the map, so the map is never the only record of a pin. **Built:** `apps/web/src/components/route-map.tsx` (+ `route-map-gl.tsx`), `apps/web/src/routes/account.trucks.tsx`.
 
 **Trip Card** (CR: truck-map-booking); a customer's truck request in a list: code, pickup time, A and B addresses beside their lettered dots, the price (agreed or estimated) and a Status Badge, with a five-dot stepper (Requested, Distance confirmed, Price agreed, Confirmed by call, Paid) and a "Next:" line. Each step is done on its own evidence, so a call confirmed before the price shows as done. A cancelled trip shows the badge, no stepper. The whole card is one button that opens the trip drawer: map, stepper, price and the call/approve/pay actions, notes, and the negotiation thread. **Built:** `apps/web/src/components/truck-trip.tsx`.
+
+> **Retired (CR: aws-design-language, 2026-09-28).** The Marketing tier is gone: every screen now uses one token system, the AWS reference's shape, type and elevation on Yardboard's colors. The block below is kept as history; nothing in code reads it.
 
 ### Marketing components (CR: dsd-marketing-tier)
 
@@ -438,6 +460,8 @@ Restrained by policy: the primary device is low-power, often on battery, in the 
 
 **Avoid (Console tier):** animations over 250ms in-app; any infinite loop without user intent; parallax; motion that decorates rather than reports a state change; skeleton shimmer as the default. All non-essential motion is wrapped in `@media (prefers-reduced-motion: reduce)` and reduced to an instant state swap.
 
+> **Retired (CR: aws-design-language, 2026-09-28).** The Marketing tier is gone: every screen now uses one token system, the AWS reference's shape, type and elevation on Yardboard's colors. The block below is kept as history; nothing in code reads it.
+
 **Marketing motion (CR: dsd-marketing-tier)**; scoped to `[data-tier="marketing"]`, gated by the §6 progressive-enhancement rules. The Console rule above still governs every authed screen without exception; a first-time visitor's landing page is allowed a motion budget Rhea's daily console is not.
 
 | Interaction | Duration | Easing | Notes |
@@ -467,6 +491,8 @@ Target: **WCAG 2.2 Level AA**, built for gloved hands, outdoor light, low-end An
 - **Reduced motion:** all non-essential animation collapses to an instant state change under `prefers-reduced-motion: reduce`.
 - **Consistent help (SC 3.2.6):** the account menu and support/contact affordance sit in the same app-bar position on every authed screen.
 
+> **Retired (CR: aws-design-language, 2026-09-28).** The Marketing tier is gone: every screen now uses one token system, the AWS reference's shape, type and elevation on Yardboard's colors. The block below is kept as history; nothing in code reads it.
+
 **Marketing progressive-enhancement gate (CR: dsd-marketing-tier)**; the condition that makes the §2.5/§5 marketing depth and motion additions compatible with the 3 to 5 Mbps / low-end-Android performance floor this document sets everywhere else:
 
 - **WebGL mesh** (the marketing hero's faceted mesh, wherever it is eventually implemented) loads only above the `lg` (1024px) breakpoint, only when `prefers-reduced-motion` is not set, and only after a `navigator.connection`/`deviceMemory` capability check passes; a static gradient renders otherwise. The canvas is `pointer-events: none` so it never intercepts input.
@@ -490,6 +516,8 @@ VISUAL_DENSITY:     8   (control-room, data-dense; density earned by legibility 
 
 **Chosen variant (Console):** `output-skill`
 **Reason:** ArkiLaunch is information-first and utilitarian: dispatch boards, fleet tables, reconciliation queues, printable quotes. `output-skill` matches the data-output character better than `soft-skill` (too gentle for a control room) or `minimalist-skill` (would strip the amber/PAGASA signal color that carries meaning). It is not `brutalist-skill`: the Filipino-MSME warmth and the honesty of the user's own handwriting keep it from going raw or cold. Density stays high (8) but every dense surface is disciplined by AA contrast and 44/48px targets (§6).
+
+> **Retired (CR: aws-design-language, 2026-09-28).** The Marketing tier is gone: every screen now uses one token system, the AWS reference's shape, type and elevation on Yardboard's colors. The block below is kept as history; nothing in code reads it.
 
 **Marketing dials (CR: dsd-marketing-tier)**; S1/S22 only. A first-impression surface earns a different, more expressive setting than the daily console; this is a deliberate second dial set, not a drift from the Console numbers above.
 

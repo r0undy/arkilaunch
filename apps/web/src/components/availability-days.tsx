@@ -158,7 +158,7 @@ export function RangeCalendar({
         >
           <ChevronLeft className="h-4 w-4" aria-hidden />
         </button>
-        <p className="font-display text-sm font-semibold text-text" aria-live="polite">
+        <p className="text-sm font-semibold text-text" aria-live="polite">
           {title}
         </p>
         <button
@@ -197,7 +197,7 @@ export function RangeCalendar({
               onClick={() => pick(date)}
               onMouseEnter={() => setHover(date)}
               className={[
-                'min-h-10 text-sm tabular-nums transition-colors',
+'min-h-10 text-sm tabular-nums transition-colors',
                 date.slice(0, 7) === month ? '' : 'opacity-40',
                 disabled
                   ? [

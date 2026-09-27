@@ -91,18 +91,15 @@ describe('/equipment chrome', () => {
     unmount();
   });
 
-  // The catalog's cards are built from the marketing token tier, which
-  // index.css scopes to [data-tier="marketing"]. Render them outside that
-  // attribute and every -mk utility resolves to nothing: the grid comes out
-  // unstyled, with no error anywhere. Silent, so it gets a test.
-  it('carries the marketing token tier into the signed-in shell', async () => {
+  // One token system now (CR: aws-design-language): the catalog renders
+  // straight inside the signed-in shell's main landmark, no tier wrapper.
+  it('renders the catalog inside the signed-in shell', async () => {
     setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
     stubFetch();
-    const { container, unmount } = await renderRoute('/equipment');
+    const { unmount } = await renderRoute('/equipment');
 
-    await waitFor(() => expect(container.querySelector('[data-tier="marketing"]')).not.toBeNull());
     const heading = await screen.findByRole('heading', { name: /equipment for hire/i });
-    expect(heading.closest('[data-tier="marketing"]')).not.toBeNull();
+    expect(heading.closest('main')).not.toBeNull();
     unmount();
   });
 

@@ -12,15 +12,15 @@ function FieldLayout() {
 
   return (
     <div className="flex min-h-screen flex-col bg-bg pb-20">
-      <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3">
-        <span className="font-display text-base font-semibold text-text">Operator</span>
+      <header className="flex min-h-14 items-center justify-between bg-nav px-4 py-2 text-text-inverse">
+        <span className="text-base font-medium">Operator</span>
         <button
           type="button"
           onClick={() => {
             clearTokens();
             window.location.assign('/login');
           }}
-          className="min-h-12 min-w-12 rounded-sm text-sm font-medium text-text-muted"
+          className="min-h-12 min-w-12 rounded-sm px-3 text-sm font-medium hover:bg-current/10"
         >
           Sign out
         </button>
@@ -36,8 +36,8 @@ function FieldLayout() {
               key={item.to}
               to={item.to}
               className={[
-                'flex min-h-12 flex-1 items-center justify-center text-sm font-medium',
-                active ? 'text-primary' : 'text-text-muted',
+'flex min-h-12 flex-1 items-center justify-center text-sm font-medium',
+                active ? 'border-t-2 border-primary font-semibold text-accent' : 'border-t-2 border-transparent text-text-muted',
               ].join(' ')}
             >
               {item.label}

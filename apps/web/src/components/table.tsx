@@ -1,6 +1,6 @@
 import { Fragment, useState, type MouseEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { Surface } from './surface.js';
+import { Container, type ContainerHeaderProps } from './container.js';
 
 /**
  * What a column holds, which decides its alignment everywhere (DSD §8):
@@ -36,7 +36,9 @@ export interface TableProps<T> {
   renderExpanded?: (row: T) => ReactNode;
   /** Accessible name for the expand toggle, e.g. "Show equipment at Site A". */
   expandLabel?: (row: T) => string;
-  /** Under the rows, inside the same card: the Pagination bar. */
+  /** Above the rows, inside the same card: title, count, filter and paging. */
+  header?: ContainerHeaderProps;
+  /** Under the rows, inside the same card. */
   footer?: ReactNode;
   /** Shown in place of the rows when there are none. */
   empty?: ReactNode;
@@ -52,7 +54,7 @@ const ALIGN_CLASS = { left: 'text-left', right: 'text-right', center: 'text-cent
 
 function cellClass(kind: ColumnKind): string {
   return [
-    'px-4 py-2.5 align-middle',
+    'px-4 py-3 align-middle',
     ALIGN_CLASS[columnAlign(kind)],
     kind === 'number' || kind === 'money' ? 'font-mono tabular-nums' : '',
     kind === 'date' ? 'whitespace-nowrap tabular-nums' : '',
@@ -71,6 +73,7 @@ export function Table<T>({
   rowLabel,
   renderExpanded,
   expandLabel,
+  header,
   footer,
   empty,
 }: TableProps<T>) {
@@ -88,7 +91,7 @@ export function Table<T>({
   }
 
   return (
-    <Surface radius="md" elevation="sm" className="relative overflow-hidden p-0">
+    <Container header={header} footer={footer} flush>
       <div className="overflow-x-auto">
         <table className={['w-full text-sm text-text', fixed ? 'table-fixed' : ''].join(' ')}>
           {fixed && (
@@ -100,7 +103,7 @@ export function Table<T>({
               {onRowClick && <col style={{ width: '3rem' }} />}
             </colgroup>
           )}
-          <thead className="bg-surface-sunk">
+          <thead className="bg-surface">
             <tr className="border-b border-border">
               {renderExpanded && (
                 <th scope="col" className="w-12 px-2">
@@ -112,7 +115,7 @@ export function Table<T>({
                   key={i}
                   scope="col"
                   className={[
-                    'whitespace-nowrap px-4 py-2.5 font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted',
+'whitespace-nowrap px-4 py-3 text-sm font-medium text-text',
                     ALIGN_CLASS[columnAlign(col.kind)],
                   ].join(' ')}
                 >
@@ -141,7 +144,7 @@ export function Table<T>({
                 <Fragment key={key}>
                   <tr
                     className={[
-                      'h-11 border-b border-border last:border-0',
+'h-11 border-b border-border last:border-0',
                       onRowClick ? 'group cursor-pointer hover:bg-surface-sunk' : '',
                     ].join(' ')}
                     {...(onRowClick
@@ -201,7 +204,6 @@ export function Table<T>({
           </tbody>
         </table>
       </div>
-      {footer}
-    </Surface>
+    </Container>
   );
 }

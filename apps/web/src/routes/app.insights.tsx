@@ -57,7 +57,6 @@ function InsightsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Overview"
         title="Reports"
         description="How hard the fleet is working, and what it has earned."
       />
@@ -82,7 +81,7 @@ function InsightsPage() {
               />
             </div>
             <div>
-              <h2 className="mb-3 font-display text-base font-semibold text-text">
+              <h2 className="mb-3 text-base font-semibold text-text">
                 Fleet utilization
               </h2>
               <Table
@@ -100,7 +99,7 @@ function InsightsPage() {
             </div>
 
             <div>
-              <h2 className="mb-3 font-display text-base font-semibold text-text">
+              <h2 className="mb-3 text-base font-semibold text-text">
                 Financial breakdown
               </h2>
               <Table
