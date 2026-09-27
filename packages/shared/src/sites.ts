@@ -123,3 +123,19 @@ export const IncidentListResponseSchema = z.object({
   total: z.number().int(),
 });
 export type IncidentListResponse = z.infer<typeof IncidentListResponseSchema>;
+
+// PATCH /sites/:id/deployments/:assignmentId/return. A unit whose span
+// still has unapproved or missing field-log days is refused (409
+// field_logs_incomplete) unless the admin confirms with a reason, which is
+// audit-logged (cr-arkilaunch-edtr-site-hub-approval.md).
+export const DeploymentReturnSchema = z
+  .object({
+    confirmIncompleteLogs: z.boolean().optional(),
+    reason: z.string().trim().min(3).max(500).optional(),
+  })
+  .refine((b) => !b.confirmIncompleteLogs || !!b.reason, { message: 'a reason is required', path: ['reason'] });
+export type DeploymentReturnRequest = z.infer<typeof DeploymentReturnSchema>;
+
+// POST /sites/:id/timekeepers (site hub personnel tab).
+export const TimekeeperAssignRequestSchema = z.object({ userId: z.string().uuid() });
+export type TimekeeperAssignRequest = z.infer<typeof TimekeeperAssignRequestSchema>;

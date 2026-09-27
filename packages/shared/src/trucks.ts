@@ -70,6 +70,15 @@ export type TruckRequestCreate = z.infer<typeof TruckRequestCreateSchema>;
 export const TruckAgreeSchema = z.object({ pricePhp: z.number().positive().max(100_000_000) }).strict();
 export type TruckAgree = z.infer<typeof TruckAgreeSchema>;
 
+// PATCH /truck-requests/:id/crew: who drives and loads (site hub personnel).
+export const TruckCrewSchema = z
+  .object({
+    driverName: z.string().trim().max(120).nullable(),
+    helperName: z.string().trim().max(120).nullable(),
+  })
+  .strict();
+export type TruckCrew = z.infer<typeof TruckCrewSchema>;
+
 export const TruckKmConfirmSchema = z
   .object({ km: z.number().positive().max(5000), tollRateIds: z.array(z.string().uuid()).max(20).optional() })
   .strict();
@@ -178,6 +187,8 @@ export type TruckRequestStatus = (typeof TRUCK_REQUEST_STATUSES)[number];
 
 export interface TruckRequestResponse {
   id: string;
+  // TRK-YYYY-NNNN (booking-code.ts); the same reference shape as a rental's.
+  code: string;
   pickup: string;
   dropoff: string;
   scheduledFor: string;
@@ -195,5 +206,8 @@ export interface TruckRequestResponse {
   callConfirmedAt: string | null;
   // Null on requests made before sites were required (0055).
   projectSiteId: string | null;
+  // Crew on the trip (0059); null until staff name them.
+  driverName: string | null;
+  helperName: string | null;
   createdAt: string;
 }

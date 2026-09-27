@@ -8,6 +8,7 @@ import {
   type WeatherObservation,
   documentIntelligenceAvailability,
   parseEdtrSheet,
+  validateDayEntry,
   type DocumentIntelligencePort,
   type EdtrSheetDay,
   type OcrPayload,
@@ -275,13 +276,38 @@ export async function runEdtrOcrWorker(
               edtrId = sibling!.id;
             }
 
+            // v3 sheets carry every hour category and the hour meter
+            // (cr-arkilaunch-edtr-v3-sheet.md); earlier forms have no idle
+            // column, so idle stays NULL -- not zero, nobody recorded one
+            // (migration 0017).
+            const v3 = day.v3;
+            const opt = (n: number | null | undefined) => (n == null ? null : String(n));
+            const reviewFlags = v3
+              ? validateDayEntry({
+                  running: v3.running,
+                  idle: v3.idle,
+                  breakdown: v3.breakdown,
+                  weather: v3.weather,
+                  otherDowntime: v3.other,
+                  total: v3.total,
+                  meterStart: v3.meterStart,
+                  meterEnd: v3.meterEnd,
+                  weatherAm: day.v2?.weatherAm ?? null,
+                  weatherPm: day.v2?.weatherPm ?? null,
+                })
+              : [];
             await tx.insert(edtrLineItems).values({
               tenantId: row.tenantId,
               edtrId,
               hoursActive: String(day.hoursActive),
-              // Not zero. The form has no idle column, so nobody recorded
-              // one (migration 0017).
-              hoursIdle: null,
+              hoursIdle: v3 ? opt(v3.idle) : null,
+              hoursTotal: opt(v3?.total),
+              hoursBreakdown: opt(v3?.breakdown),
+              hoursWeather: opt(v3?.weather),
+              hoursOtherDowntime: opt(v3?.other),
+              hourMeterStart: opt(v3?.meterStart),
+              hourMeterEnd: opt(v3?.meterEnd),
+              reviewFlags,
             });
 
             for (const field of ocrPayload.fields) {

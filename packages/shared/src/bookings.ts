@@ -50,6 +50,7 @@ export type BookingCreateRequest = z.infer<typeof BookingCreateRequestSchema>;
 
 export const BookingCreateResponseSchema = z.object({
   id: z.string().uuid(),
+  code: z.string(),
   status: z.string(),
   trackerUrl: z.string(),
 });
@@ -57,6 +58,8 @@ export type BookingCreateResponse = z.infer<typeof BookingCreateResponseSchema>;
 
 export const BookingSummaryResponseSchema = z.object({
   id: z.string().uuid(),
+  // EQR-YYYY-NNNN (booking-code.ts), assigned by the database.
+  code: z.string(),
   status: z.string(),
   projectSiteId: z.string().uuid(),
   siteCity: z.string().nullable(),
@@ -64,19 +67,44 @@ export const BookingSummaryResponseSchema = z.object({
 });
 export type BookingSummaryResponse = z.infer<typeof BookingSummaryResponseSchema>;
 
-// GET /bookings/:id/edtr-sheet: the pre-printed EDTR v2 header.
+// GET /bookings/:id/edtr-sheet: the pre-printed EDTR header
+// (v3: cr-arkilaunch-edtr-v3-sheet.md). Built server-side; the tenant is
+// the verified JWT's, never the caller's (RFC-1).
 export interface EdtrSheetContext {
   rentalId: string;
   chargeTo: string;
   projectLocation: string;
-  equipment: { id: string; type: string; model: string; serialNo: string }[];
+  equipment: {
+    id: string;
+    type: string;
+    model: string;
+    serialNo: string;
+    // v3: the unit's own span on this booking and its crew.
+    start?: string;
+    end?: string | null;
+    operatorName?: string | null;
+    // The last approved hour-meter end reading, pre-printed as the week's start.
+    lastHourMeter?: number | null;
+  }[];
+  // v3 header.
+  bookingCode?: string;
+  customerName?: string;
+  siteRep?: string | null;
+  rentalStart?: string;
+  rentalEnd?: string | null;
+  tenant?: { name: string; address: string; contact: string; logoUrl: string | null };
 }
 
 // Paging, same shape as the users/invoices/equipment lists. GET /bookings
 // was the one list module with no query DTO at all, so the ?limit=&offset=
 // the UI already sent was silently discarded and page 2 returned page 1
 // (audit-api-surface.md #5).
-export const BookingListQuerySchema = PaginationQuerySchema;
+// `q` finds a booking by its code, exactly or by prefix ("EQR-2026-00"),
+// case-insensitively (cr-arkilaunch-uniform-booking-codes.md). Text that
+// cannot be the start of a code is ignored rather than matching nothing.
+export const BookingListQuerySchema = PaginationQuerySchema.extend({
+  q: z.string().trim().max(40).optional(),
+});
 export type BookingListQuery = z.infer<typeof BookingListQuerySchema>;
 
 export const BookingListResponseSchema = z.object({
@@ -88,9 +116,14 @@ export type BookingListResponse = z.infer<typeof BookingListResponseSchema>;
 export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
   trackerUrl: z.string(),
   customerId: z.string().uuid(),
+  // The customer's company, for the staff drawer header. Optional so a
+  // cached response from before it existed still parses.
+  customerName: z.string().nullable().optional(),
   items: z.array(
     z.object({
       equipmentId: z.string().uuid(),
+      // "Excavator · CAT 320 · SN 123", so no screen names a unit by UUID.
+      equipmentName: z.string().optional(),
       start: z.coerce.date(),
       end: z.coerce.date().nullable(),
       status: z.string(),
@@ -147,6 +180,37 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
       providerRef: z.string().nullable(),
     }),
   ),
+  // Approved field logs (cr-arkilaunch-edtr-site-hub-approval.md): totals
+  // and each approved day. A customer never sees a pending day, and gets a
+  // pending count of 0.
+  fieldLogs: z
+    .object({
+      running: z.number(),
+      billable: z.number(),
+      idle: z.number(),
+      breakdown: z.number(),
+      weather: z.number(),
+      otherDowntime: z.number(),
+      daysApproved: z.number().int(),
+      daysInSpan: z.number().int(),
+      pending: z.number().int(),
+      downtimeDays: z.number().int(),
+      days: z.array(
+        z.object({
+          date: z.string(),
+          equipmentName: z.string(),
+          hours: z.object({
+            running: z.number(),
+            billable: z.number(),
+            idle: z.number(),
+            breakdown: z.number(),
+            weather: z.number(),
+            otherDowntime: z.number(),
+          }),
+        }),
+      ),
+    })
+    .optional(),
 });
 export type BookingDetailResponse = z.infer<typeof BookingDetailResponseSchema>;
 

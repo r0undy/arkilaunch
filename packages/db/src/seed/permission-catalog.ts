@@ -65,6 +65,7 @@ export async function seedPermissionCatalog(db: ReturnType<typeof makeServiceDb>
       'quote:read',
       'quote:approve',
       'edtr:create',
+      'edtr:read',
       'edtr:approve',
       'kyc:extract',
       'pricing:manage',
@@ -82,7 +83,7 @@ export async function seedPermissionCatalog(db: ReturnType<typeof makeServiceDb>
     // quotes) -- it was never a rule against administering one's own
     // company. Without user:manage + tenant:manage, a freshly approved
     // tenant's sole user could not invite anyone or edit tenant settings.
-    owner: ['quote:read', 'report:read', 'booking:read', 'billing:read', 'user:manage', 'tenant:manage'],
+    owner: ['quote:read', 'report:read', 'booking:read', 'billing:read', 'edtr:read', 'user:manage', 'tenant:manage'],
     timekeeper: ['edtr:create'],
     customer: ['booking:create', 'booking:read', 'payment:checkout', 'quote:read'],
   };

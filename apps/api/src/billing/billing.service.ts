@@ -19,16 +19,18 @@ import type {
   InvoiceSummaryResponse,
   RequestContext,
 } from '@arkilaunch/shared';
+import { bookingCodes, invoiceBookingRef } from '../common/booking-ref.js';
 import { countRows } from '../common/count-rows.js';
 import { customerOwnsInvoice } from '../common/customer-scope.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-function toInvoiceSummary(row: typeof invoices.$inferSelect): InvoiceSummaryResponse {
+function toInvoiceSummary(row: typeof invoices.$inferSelect, codes: Map<string, string>): InvoiceSummaryResponse {
   return {
     id: row.id,
     rentalId: row.rentalId,
     truckRequestId: row.truckRequestId,
+    bookingCode: invoiceBookingRef(row, codes)?.code ?? null,
     invoiceType: row.invoiceType,
     amount: Number(row.amount),
     status: row.status,
@@ -112,7 +114,11 @@ export class BillingService {
         .offset(query.offset);
       const total = await countRows(tx, invoices, and(...conditions));
 
-      return { items: rows.map(toInvoiceSummary), total };
+      const codes = await bookingCodes(tx, {
+        rentalIds: rows.map((row) => row.rentalId),
+        truckRequestIds: rows.map((row) => row.truckRequestId),
+      });
+      return { items: rows.map((row) => toInvoiceSummary(row, codes)), total };
     });
   }
 
@@ -143,7 +149,10 @@ export class BillingService {
       const edtrEvidence = invoice.invoiceType === 'deposit_deduction' ? await findEdtrEvidence(tx, lineItemRows) : null;
 
       return {
-        ...toInvoiceSummary(invoice),
+        ...toInvoiceSummary(
+          invoice,
+          await bookingCodes(tx, { rentalIds: [invoice.rentalId], truckRequestIds: [invoice.truckRequestId] }),
+        ),
         lineItems: lineItemRows.map((item) => ({
           id: item.id,
           description: item.description,

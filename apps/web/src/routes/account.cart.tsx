@@ -255,7 +255,11 @@ function CartPage() {
         <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-4 p-6">
           <StatusPill tone="recon-approved" label="Request sent" icon={<CheckIcon />} />
           <h1 className="font-display text-2xl font-semibold text-text">
-            Booking {shortCode('booking', booking.id)} is in
+            Booking{' '}
+            <Link to="/account/bookings/$bookingId" params={{ bookingId: booking.id }} className="font-mono underline">
+              {booking.code}
+            </Link>{' '}
+            is in
           </h1>
           <p className="text-sm text-text-muted">
             Your machines are held for those dates. Each machine is priced from its rate card
@@ -390,31 +394,40 @@ function CartPage() {
                 className="flex flex-col gap-3 rounded-md border border-border p-3"
               >
                 <div className="flex items-start gap-3">
-                  {(cartPhoto(item)) ? (
-                    <img
-                      src={cartPhoto(item)}
-                      alt=""
-                      className="h-20 w-28 shrink-0 rounded-sm border border-border object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-20 w-28 shrink-0 items-center justify-center rounded-sm border border-border bg-surface-sunk p-2 text-center text-xs text-text-muted">
-                      No photo
+                  {/* Photo, name and type open the machine's page. The dates
+                      below sit outside this link, so editing them never
+                      navigates away. */}
+                  <Link
+                    to="/equipment/$equipmentId"
+                    params={{ equipmentId: item.equipmentId }}
+                    className="flex min-w-0 flex-1 items-start gap-3 rounded-md hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring"
+                  >
+                    {(cartPhoto(item)) ? (
+                      <img
+                        src={cartPhoto(item)}
+                        alt=""
+                        className="h-20 w-28 shrink-0 rounded-sm border border-border object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-20 w-28 shrink-0 items-center justify-center rounded-sm border border-border bg-surface-sunk p-2 text-center text-xs text-text-muted">
+                        No photo
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="font-display text-lg font-semibold text-text">{item.model}</p>
+                      {/* The frame prints the yard's serial here. That column is
+                          deliberately outside the public catalog's allowlist
+                          (migration 0028), so this is the same short display code
+                          the rest of the app uses for a unit. */}
+                      <p className="text-xs uppercase tracking-[0.04em] text-text-muted">
+                        {item.equipmentTypeName ? `${item.equipmentTypeName} · ` : ''}
+                        {shortCode('equipment', item.equipmentId)}
+                      </p>
+                      <p className="mt-1 text-sm text-text-muted">
+                        {rentalDays(item)} rental {rentalDays(item) === 1 ? 'day' : 'days'}
+                      </p>
                     </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="font-display text-lg font-semibold text-text">{item.model}</p>
-                    {/* The frame prints the yard's serial here. That column is
-                        deliberately outside the public catalog's allowlist
-                        (migration 0028), so this is the same short display code
-                        the rest of the app uses for a unit. */}
-                    <p className="text-xs uppercase tracking-[0.04em] text-text-muted">
-                      {item.equipmentTypeName ? `${item.equipmentTypeName} · ` : ''}
-                      {shortCode('equipment', item.equipmentId)}
-                    </p>
-                    <p className="mt-1 text-sm text-text-muted">
-                      {rentalDays(item)} rental {rentalDays(item) === 1 ? 'day' : 'days'}
-                    </p>
-                  </div>
+                  </Link>
                   <Button
                     variant="ghost"
                     onClick={() => handleRemove(index)}

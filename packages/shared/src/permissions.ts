@@ -7,7 +7,11 @@ export const PERMISSION_CODES = [
   'quote:create',
   'quote:read',
   'quote:approve',
+  // edtr:create is the timekeeper's submit; reading the queue, a log's
+  // detail and its scan is edtr:read, staff only
+  // (cr-arkilaunch-edtr-site-hub-approval.md).
   'edtr:create',
+  'edtr:read',
   'edtr:approve',
   'kyc:extract',
   'kyc:verify',

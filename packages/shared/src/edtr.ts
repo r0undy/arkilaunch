@@ -159,6 +159,25 @@ export function evaluateGate(
   return { matched: true, reason: 'auto_accept' };
 }
 
+// --- Line items as captured (v3 categories optional so v2 clients work) ---
+const hours = z.number().finite().min(0).max(24);
+export const EdtrLineItemsInputSchema = z.object({
+  hoursActive: hours,
+  hoursIdle: hours,
+  hoursTotal: hours.nullable().optional(),
+  hoursBreakdown: hours.nullable().optional(),
+  hoursWeather: hours.nullable().optional(),
+  hoursOtherDowntime: hours.nullable().optional(),
+  downtimeNote: z.string().trim().max(500).nullable().optional(),
+  hourMeterStart: z.number().finite().min(0).max(1_000_000).nullable().optional(),
+  hourMeterEnd: z.number().finite().min(0).max(1_000_000).nullable().optional(),
+  // Read for the weather cross-check only; the tick itself is attested on
+  // the paper, not stored here.
+  weatherAm: z.string().max(4).nullable().optional(),
+  weatherPm: z.string().max(4).nullable().optional(),
+});
+export type EdtrLineItemsInput = z.infer<typeof EdtrLineItemsInputSchema>;
+
 // RFC-2 §3 `POST /api/v1/edtr`. File upload / Supabase Storage wiring is a
 // follow-up (no real Storage integration exists yet, same stubbed-pending
 // state as the Payments/Weather/DI ports); paper_ocr accepts an
@@ -178,12 +197,7 @@ export const EdtrCaptureRequestSchema = z
     equipmentId: z.string().uuid(),
     reportDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     rawFileUri: z.string().min(1).optional(),
-    lineItems: z
-      .object({
-        hoursActive: z.number().finite().min(0),
-        hoursIdle: z.number().finite().min(0),
-      })
-      .optional(),
+    lineItems: EdtrLineItemsInputSchema.optional(),
   })
   .superRefine((data, ctx) => {
     if (data.source === 'paper_ocr' && !data.rawFileUri) {
@@ -222,10 +236,7 @@ export const EdtrCaptureFieldsSchema = z
         } catch {
           return value;
         }
-      }, z.object({
-        hoursActive: z.number().finite().min(0),
-        hoursIdle: z.number().finite().min(0),
-      }))
+      }, EdtrLineItemsInputSchema)
       .optional(),
   })
   .superRefine((data, ctx) => {
@@ -235,9 +246,14 @@ export const EdtrCaptureFieldsSchema = z
   });
 export type EdtrCaptureFields = z.infer<typeof EdtrCaptureFieldsSchema>;
 
+// A reviewer's corrected figures. The v3 categories are optional so a
+// v2-era client's { hoursActive, hoursIdle } still validates.
 const AdjustmentsSchema = z.object({
   hoursActive: z.number().finite().min(0),
   hoursIdle: z.number().finite().min(0),
+  hoursBreakdown: hours.nullable().optional(),
+  hoursWeather: hours.nullable().optional(),
+  hoursOtherDowntime: hours.nullable().optional(),
 });
 
 export const EdtrApproveRequestSchema = z.object({
@@ -314,7 +330,21 @@ export const EdtrDetailResponseSchema = z.object({
   id: z.string().uuid(),
   status: z.string(),
   source: z.enum(['paper_ocr', 'digital_entry']),
-  lineItems: z.array(z.object({ hoursActive: z.number(), hoursIdle: z.number().nullable() })),
+  lineItems: z.array(
+    z.object({
+      hoursActive: z.number(),
+      hoursIdle: z.number().nullable(),
+      // v3 categories; null on a row recorded before them.
+      hoursTotal: z.number().nullable().optional(),
+      hoursBreakdown: z.number().nullable().optional(),
+      hoursWeather: z.number().nullable().optional(),
+      hoursOtherDowntime: z.number().nullable().optional(),
+      downtimeNote: z.string().nullable().optional(),
+      hourMeterStart: z.number().nullable().optional(),
+      hourMeterEnd: z.number().nullable().optional(),
+      reviewFlags: z.array(z.string()).optional(),
+    }),
+  ),
   fields: z.array(EdtrFieldResponseSchema),
   reconciliation: EdtrReconciliationResponseSchema.nullable(),
   // null for digital_entry (no extraction step at all) and for a paper row
@@ -322,3 +352,196 @@ export const EdtrDetailResponseSchema = z.object({
   extraction: EdtrExtractionResponseSchema.nullable(),
 });
 export type EdtrDetailResponse = z.infer<typeof EdtrDetailResponseSchema>;
+
+// --- Hour categories (EDTR v3, cr-arkilaunch-edtr-site-hub-approval.md) ---
+//
+// One day's hours for one unit, as recorded. `running` is hours_active
+// (engine working); `idle` is hours_idle (ready on site, the customer chose
+// not to use it). The three downtime causes are null when the source did
+// not record them at all -- every row captured before EDTR v3 -- which is
+// NOT the same as zero, exactly like hours_idle (migration 0017).
+export interface DayHours {
+  running: number;
+  idle: number | null;
+  breakdown: number | null;
+  weather: number | null;
+  otherDowntime: number | null;
+  total?: number | null;
+  meterStart?: number | null;
+  meterEnd?: number | null;
+}
+
+export interface ClassifiedHours {
+  // Hour meter, PMS and utilization.
+  running: number;
+  // What the customer is charged for.
+  billable: number;
+  // Breakdown + weather + other: never billed.
+  nonBillable: number;
+  idle: number;
+  breakdown: number;
+  weather: number;
+  otherDowntime: number;
+  // True when all three downtime causes were recorded (a v3 row). Only then
+  // is idle known to be the customer's own choice and so billable.
+  categorised: boolean;
+  // hour_meter_end - hour_meter_start, the objective check on `running`.
+  meterDelta: number | null;
+}
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+// The ONE definition of billable / running / downtime, used by the
+// deduction in approve(), the hour meter, the customer portal and every
+// dashboard total, so no two screens can disagree about what was billed.
+//
+// Idle is billed only on a categorised row. On a pre-v3 row the single idle
+// figure may include weather or breakdown time (the v2 sheet had one idle
+// column with a reason tick), so billing it would charge for downtime; such
+// a row is priced on running hours alone, exactly as before this change.
+export function classifyHours(h: DayHours): ClassifiedHours {
+  const categorised = h.breakdown !== null && h.weather !== null && h.otherDowntime !== null;
+  const idle = h.idle ?? 0;
+  const breakdown = h.breakdown ?? 0;
+  const weather = h.weather ?? 0;
+  const otherDowntime = h.otherDowntime ?? 0;
+  const meterDelta = h.meterStart != null && h.meterEnd != null ? round2(h.meterEnd - h.meterStart) : null;
+  return {
+    running: round2(h.running),
+    billable: round2(h.running + (categorised ? idle : 0)),
+    nonBillable: round2(breakdown + weather + otherDowntime),
+    idle: round2(idle),
+    breakdown: round2(breakdown),
+    weather: round2(weather),
+    otherDowntime: round2(otherDowntime),
+    categorised,
+    meterDelta,
+  };
+}
+
+// Capture-time cross-checks. Each one routes the day to a human; none
+// blocks the capture, because the signed paper is the evidence and refusing
+// it would only push the reading off the record.
+export const REVIEW_FLAGS = {
+  total_mismatch: 'Total hours do not equal running + idle + downtime',
+  weather_downtime_clear_sky: 'Weather downtime recorded on a day ticked clear',
+  meter_running_mismatch: 'Hour meter change does not match running hours',
+  meter_backwards: 'Hour meter end is below its start',
+  meter_gap: 'Hour meter start differs from the last approved reading',
+  other_without_note: 'Other downtime has no remark',
+  outside_rental: 'Date is outside the rental period',
+} as const;
+export type ReviewFlag = keyof typeof REVIEW_FLAGS;
+
+export const TOTAL_TOLERANCE_HOURS = 0.25;
+export const METER_TOLERANCE_HOURS = 0.5;
+
+export function validateDayEntry(
+  h: DayHours & {
+    downtimeNote?: string | null;
+    weatherAm?: string | null;
+    weatherPm?: string | null;
+    previousMeterEnd?: number | null;
+    outsideSpan?: boolean;
+  },
+): ReviewFlag[] {
+  const c = classifyHours(h);
+  const flags: ReviewFlag[] = [];
+  if (h.total != null && c.categorised) {
+    const parts = c.running + c.idle + c.nonBillable;
+    if (Math.abs(h.total - parts) > TOTAL_TOLERANCE_HOURS) flags.push('total_mismatch');
+  }
+  if (c.weather > 0 && h.weatherAm === 'C' && h.weatherPm === 'C') flags.push('weather_downtime_clear_sky');
+  if (c.meterDelta !== null) {
+    if (c.meterDelta < 0) flags.push('meter_backwards');
+    else if (Math.abs(c.meterDelta - c.running) > METER_TOLERANCE_HOURS) flags.push('meter_running_mismatch');
+  }
+  if (h.previousMeterEnd != null && h.meterStart != null && Math.abs(h.meterStart - h.previousMeterEnd) > 0.05) {
+    flags.push('meter_gap');
+  }
+  if (c.otherDowntime > 0 && !h.downtimeNote?.trim()) flags.push('other_without_note');
+  if (h.outsideSpan) flags.push('outside_rental');
+  return flags;
+}
+
+// --- Rental span (the dates a field log may carry) ---
+//
+// A unit's span is its assignment window on the rental, as Asia/Manila
+// calendar dates. Read live from equipment_assignments / rentals, so an
+// approved extension (which moves the end) widens it with no stored copy.
+// `to` null = open-ended.
+export interface ReportSpan {
+  from: string;
+  to: string | null;
+}
+
+export const EDTR_TIME_ZONE = 'Asia/Manila';
+
+export function manilaDate(at: Date | string): string {
+  // en-CA formats as YYYY-MM-DD.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: EDTR_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(at));
+}
+
+export function reportSpan(start: Date | string, end: Date | string | null): ReportSpan {
+  return { from: manilaDate(start), to: end === null ? null : manilaDate(end) };
+}
+
+export function isInReportSpan(reportDate: string, span: ReportSpan): boolean {
+  return reportDate >= span.from && (span.to === null || reportDate <= span.to);
+}
+
+// Every date of a span up to `until`, capped so an open-ended span cannot
+// run away.
+export function spanDates(span: ReportSpan, until: string, max = 400): string[] {
+  const last = span.to !== null && span.to < until ? span.to : until;
+  const out: string[] = [];
+  const d = new Date(`${span.from}T00:00:00Z`);
+  while (out.length < max) {
+    const iso = d.toISOString().slice(0, 10);
+    if (iso > last) break;
+    out.push(iso);
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out;
+}
+
+export function lineItemsToDayHours(li: EdtrLineItemsInput): DayHours {
+  return {
+    running: li.hoursActive,
+    idle: li.hoursIdle,
+    breakdown: li.hoursBreakdown ?? null,
+    weather: li.hoursWeather ?? null,
+    otherDowntime: li.hoursOtherDowntime ?? null,
+    total: li.hoursTotal ?? null,
+    meterStart: li.hourMeterStart ?? null,
+    meterEnd: li.hourMeterEnd ?? null,
+  };
+}
+
+// POST /api/v1/edtr/:id/review (site hub, edtr:approve). `approve` carries
+// the admin's confirmed figures, recorded as the office log (RFC-2's second
+// log); the other two need a reason.
+export const EdtrReviewRequestSchema = z
+  .object({
+    decision: z.enum(['approve', 'needs_correction', 'reject']),
+    reason: z.string().trim().max(2000).optional(),
+    hours: EdtrLineItemsInputSchema.optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.decision === 'approve' && !data.hours) {
+      ctx.addIssue({ code: 'custom', message: 'hours are required to approve', path: ['hours'] });
+    }
+    if (data.decision !== 'approve' && !data.reason) {
+      ctx.addIssue({ code: 'custom', message: 'a reason is required', path: ['reason'] });
+    }
+  });
+export type EdtrReviewRequest = z.infer<typeof EdtrReviewRequestSchema>;
+
+// A day's standing in the site hub grid.
+export const FIELD_LOG_DAY_STATUSES = ['missing', 'pending', 'needs_correction', 'approved', 'rejected'] as const;
+export type FieldLogDayStatus = (typeof FIELD_LOG_DAY_STATUSES)[number];

@@ -93,7 +93,11 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
           customerId: (customerA as { id: string }).id,
           projectSiteId: (siteA as { id: string }).id,
           status: 'active',
-          startDate: new Date('2020-01-01T00:00:00Z'),
+          // 2019, so the "no rate card in force" day below (2019-06-01) is
+          // inside the rental: a field log outside it is refused outright
+          // (cr-arkilaunch-edtr-site-hub-approval.md), which is a different
+          // guard from the one that test is about.
+          startDate: new Date('2019-01-01T00:00:00Z'),
         })
         .returning();
       depositRentalId = rental!.id;

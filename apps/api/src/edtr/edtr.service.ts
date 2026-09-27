@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -17,6 +18,7 @@ import {
   equipment,
   invoiceLineItems,
   invoices,
+  notifications,
   rateCards,
   flagUsedDespiteWarning,
   reconcileEdtr,
@@ -31,7 +33,15 @@ import {
   OCR_CORPUS_FLOOR,
   assertAccuracyGate,
   buildManualTranscriptionPayload,
+  classifyHours,
+  isInReportSpan,
   isManualTranscription,
+  lineItemsToDayHours,
+  OFFICE_LOG_NOTE,
+  validateDayEntry,
+  type ApprovedDayHours,
+  type EdtrLineItemsInput,
+  type EdtrReviewRequest,
   type EdtrApproveRequest,
   type EdtrCaptureRequest,
   type EdtrCaptureResponse,
@@ -45,6 +55,7 @@ import {
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
+import { unitReportSpan } from '../common/field-logs.js';
 import { isOcrPipelineEnabled } from '../ports/document-intelligence.port.js';
 import { round2HalfUp } from '../quotes/pricing-engine.service.js';
 
@@ -90,6 +101,58 @@ function attestedOcrAccuracyFailure(): string | null {
   return gate.passed ? null : gate.reason;
 }
 
+type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
+const num = (v: string | null) => (v === null ? null : Number(v));
+
+// The hour meter a new reading should start from: the latest APPROVED end
+// reading for this unit before the report date.
+async function lastApprovedMeterEnd(tx: Tx, equipmentId: string, beforeDate: string): Promise<number | null> {
+  const [row] = await tx
+    .select({ end: edtrLineItems.hourMeterEnd })
+    .from(edtrLineItems)
+    .innerJoin(edtr, eq(edtr.id, edtrLineItems.edtrId))
+    .innerJoin(edtrReconciliations, eq(edtrReconciliations.edtrId, edtr.id))
+    .where(
+      and(
+        eq(edtr.equipmentId, equipmentId),
+        eq(edtrReconciliations.status, 'approved'),
+        sql`${edtr.reportDate} < ${beforeDate}::date`,
+        sql`${edtrLineItems.hourMeterEnd} is not null`,
+      ),
+    )
+    .orderBy(desc(edtr.reportDate))
+    .limit(1);
+  return row ? num(row.end) : null;
+}
+
+// One line item from captured hours. The v3 categories are written only
+// when sent, so a v2 client's row keeps NULL (not recorded) there.
+async function insertLineItem(
+  tx: Tx,
+  tenantId: string,
+  edtrId: string,
+  li: EdtrLineItemsInput,
+  reviewFlags: string[],
+  notes: string | null = null,
+) {
+  const opt = (v: number | null | undefined) => (v === undefined || v === null ? null : String(v));
+  await tx.insert(edtrLineItems).values({
+    tenantId,
+    edtrId,
+    hoursActive: String(li.hoursActive),
+    hoursIdle: String(li.hoursIdle),
+    hoursTotal: opt(li.hoursTotal),
+    hoursBreakdown: opt(li.hoursBreakdown),
+    hoursWeather: opt(li.hoursWeather),
+    hoursOtherDowntime: opt(li.hoursOtherDowntime),
+    downtimeNote: li.downtimeNote?.trim() || null,
+    hourMeterStart: opt(li.hourMeterStart),
+    hourMeterEnd: opt(li.hourMeterEnd),
+    reviewFlags,
+    notes,
+  });
+}
+
 @Injectable()
 export class EdtrService {
   constructor(private readonly events: EventsService) {}
@@ -123,6 +186,16 @@ export class EdtrService {
           await this.events.emit(ctx, 'edtr_site_scope_denied', { rental_id: rental.id, project_site_id: rental.projectSiteId });
           throw new ForbiddenException({ error: 'site_not_assigned' });
         }
+      }
+
+      // A field log may only carry a date inside the unit's live rental
+      // span (its assignment window, else the rental's dates). Hard-blocked
+      // for everyone: a day outside the rental cannot be billed, so there is
+      // nothing a reviewer could approve it into
+      // (cr-arkilaunch-edtr-site-hub-approval.md).
+      const span = await unitReportSpan(tx, rental, body.equipmentId);
+      if (!isInReportSpan(body.reportDate, span)) {
+        throw new BadRequestException({ error: 'report_date_outside_rental', reportDate: body.reportDate, span });
       }
 
       // Manual transcription (cr-arkilaunch-pilot-honesty.md §2.1).
@@ -180,6 +253,7 @@ export class EdtrService {
           // so a transcription can never later be mistaken for a real
           // extraction. digital_entry keeps a null payload exactly as
           // before.
+          submittedBy: ctx.userId,
           ocrPayload:
             useManualTranscription && body.lineItems
               ? buildManualTranscriptionPayload({
@@ -198,12 +272,14 @@ export class EdtrService {
       // previously this ran only for digital_entry, which is why a paper
       // row could never enter the gate.
       if (body.lineItems) {
-        await tx.insert(edtrLineItems).values({
-          tenantId: ctx.tenantId,
-          edtrId: created.id,
-          hoursActive: String(body.lineItems.hoursActive),
-          hoursIdle: String(body.lineItems.hoursIdle),
+        const flags = validateDayEntry({
+          ...lineItemsToDayHours(body.lineItems),
+          downtimeNote: body.lineItems.downtimeNote ?? null,
+          weatherAm: body.lineItems.weatherAm ?? null,
+          weatherPm: body.lineItems.weatherPm ?? null,
+          previousMeterEnd: await lastApprovedMeterEnd(tx, body.equipmentId, body.reportDate),
         });
+        await insertLineItem(tx, ctx.tenantId, created.id, body.lineItems, flags);
         await reconcileEdtr(tx, ctx.tenantId, created.id);
         // Hours on a machine warned to stop work that day: incident log only.
         await flagUsedDespiteWarning(tx, ctx.tenantId, created.id);
@@ -214,6 +290,15 @@ export class EdtrService {
       }
 
       await this.events.emit(ctx, 'edtr_uploaded', { edtr_id: created.id, source: body.source });
+      // The office sees a timekeeper's submission waiting in its site hub.
+      if (ctx.role === 'timekeeper') {
+        await notifyStaff(tx, ctx.tenantId, 'edtr_submitted', {
+          rental_id: rental.id,
+          edtr_id: created.id,
+          project_site_id: rental.projectSiteId,
+          report_date: body.reportDate,
+        });
+      }
 
       return { id: created.id, status: finalStatus, source: body.source, pollUrl: `/api/v1/edtr/${created.id}` };
     });
@@ -328,6 +413,14 @@ export class EdtrService {
           // sheet that never recorded idle hours at all -- the same
           // fabricated reading migration 0017 exists to stop. Stays null.
           hoursIdle: item.hoursIdle === null ? null : Number(item.hoursIdle),
+          hoursTotal: num(item.hoursTotal),
+          hoursBreakdown: num(item.hoursBreakdown),
+          hoursWeather: num(item.hoursWeather),
+          hoursOtherDowntime: num(item.hoursOtherDowntime),
+          downtimeNote: item.downtimeNote,
+          hourMeterStart: num(item.hourMeterStart),
+          hourMeterEnd: num(item.hourMeterEnd),
+          reviewFlags: item.reviewFlags,
         })),
         fields,
         // Provenance, so the client cannot render a human transcription's
@@ -394,7 +487,15 @@ export class EdtrService {
   }
 
   async approve(ctx: RequestContext, edtrId: string, body: EdtrApproveRequest) {
-    return withTenantTx(ctx, async (tx) => {
+    return withTenantTx(ctx, (tx) => this.approveInTx(tx, ctx, edtrId, body));
+  }
+
+  // The approval itself, inside the caller's transaction, so the site hub's
+  // review() can write the office log and approve in ONE transaction: a gate
+  // that refuses (deposit_not_paid, rate_card_not_effective, ...) rolls the
+  // office log back with it.
+  private async approveInTx(tx: Tx, ctx: RequestContext, edtrId: string, body: EdtrApproveRequest) {
+    {
       const [record] = await tx.select().from(edtr).where(eq(edtr.id, edtrId)).limit(1);
       if (!record) throw new NotFoundException({ error: 'edtr_not_found' });
 
@@ -517,8 +618,31 @@ export class EdtrService {
       }
 
       const lineItems = await tx.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, edtrId));
-      const recordedActive = lineItems.reduce((sum, item) => sum + Number(item.hoursActive), 0);
-      const billableHoursActive = body.adjustments?.hoursActive ?? recordedActive;
+      // What is billed and what runs the hour meter, from ONE rule
+      // (classifyHours, packages/shared/src/edtr.ts). Downtime is never
+      // billed; idle is billed only on a categorised (v3) row. A pre-v3 row
+      // therefore prices on running hours alone, exactly as before, and an
+      // adjustment that does not name the categories keeps the row's own.
+      const stored = lineItems[0];
+      const adj = body.adjustments;
+      const classified = classifyHours({
+        running: adj?.hoursActive ?? lineItems.reduce((sum, item) => sum + Number(item.hoursActive), 0),
+        idle: adj ? adj.hoursIdle : stored ? num(stored.hoursIdle) : null,
+        breakdown: adj?.hoursBreakdown !== undefined ? adj.hoursBreakdown : stored ? num(stored.hoursBreakdown) : null,
+        weather: adj?.hoursWeather !== undefined ? adj.hoursWeather : stored ? num(stored.hoursWeather) : null,
+        otherDowntime:
+          adj?.hoursOtherDowntime !== undefined ? adj.hoursOtherDowntime : stored ? num(stored.hoursOtherDowntime) : null,
+      });
+      const billableHoursActive = classified.billable;
+      const runningHours = classified.running;
+      const billed: ApprovedDayHours = {
+        running: classified.running,
+        billable: classified.billable,
+        idle: classified.idle,
+        breakdown: classified.breakdown,
+        weather: classified.weather,
+        otherDowntime: classified.otherDowntime,
+      };
 
       // A reviewer's override has to reach the evidence, not just the
       // price. AdjustmentsSchema requires hoursIdle and approve() used to
@@ -537,6 +661,18 @@ export class EdtrService {
           .set({
             hoursActive: String(body.adjustments.hoursActive),
             hoursIdle: String(body.adjustments.hoursIdle),
+            ...(body.adjustments.hoursBreakdown !== undefined
+              ? { hoursBreakdown: body.adjustments.hoursBreakdown === null ? null : String(body.adjustments.hoursBreakdown) }
+              : {}),
+            ...(body.adjustments.hoursWeather !== undefined
+              ? { hoursWeather: body.adjustments.hoursWeather === null ? null : String(body.adjustments.hoursWeather) }
+              : {}),
+            ...(body.adjustments.hoursOtherDowntime !== undefined
+              ? {
+                  hoursOtherDowntime:
+                    body.adjustments.hoursOtherDowntime === null ? null : String(body.adjustments.hoursOtherDowntime),
+                }
+              : {}),
           })
           .where(eq(edtrLineItems.edtrId, edtrId));
       }
@@ -634,7 +770,12 @@ export class EdtrService {
       // or human-approved pair (RFC-2), so both halves carry that gate.
       // Lock the rental so two pairs approved at once can't both read the
       // same balance and over-draw the deposit.
-      await tx.select({ id: rentals.id }).from(rentals).where(eq(rentals.id, record.rentalId)).for('update');
+      const [lockedRental] = await tx
+        .select({ id: rentals.id, code: rentals.code })
+        .from(rentals)
+        .where(eq(rentals.id, record.rentalId))
+        .for('update');
+      const bookingCode = lockedRental?.code ?? null;
       // A deduction draws on money actually held: the rental's deposit (or
       // booking invoice, which carries the deposit line) must be paid --
       // online via PayMongo or a staff-recorded cash receipt. The ledger
@@ -684,7 +825,16 @@ export class EdtrService {
           // between a deduction and the reconciliation justifying it, parsed
           // back out with a regex (audit-db-tenant-isolation.md #3).
           reconciliationId: reconciliation.id,
-          description: `EDTR reconciliation ${reconciliation.id} (sources: ${record.id}, ${reconciliation.counterpartEdtrId ?? 'n/a'})`,
+          // What a person reads: the booking code, the machine, the day and
+          // the hours split (cr-arkilaunch-uniform-booking-codes.md).
+          description: [
+            bookingCode,
+            equipmentRow?.model ?? 'Equipment',
+            record.reportDate,
+            `${runningHours.toFixed(1)} h running${billed.idle > 0 && billableHoursActive > runningHours ? ` + ${billed.idle.toFixed(1)} h idle` : ''}`,
+          ]
+            .filter(Boolean)
+            .join(' · '),
           quantity: String(deductedHours),
           unitPrice: String(hourlyRate),
           amount: String(split.deducted),
@@ -718,15 +868,16 @@ export class EdtrService {
       // behind delta_hours) exactly on the discrepancy-resolution path
       // where "what the gate concluded vs what the human overrode" is the
       // audit question. The keys do not collide, so the merge is lossless.
+      // `billed` records the figures this approval charged, so every read
+      // model (site hub, booking rollup, portal) totals what was billed
+      // rather than re-deriving it.
       const priorAdjustments = (reconciliation.adjustments as Record<string, unknown> | null) ?? {};
       await tx
         .update(edtrReconciliations)
         .set({
           status: 'approved',
           verifiedBy: ctx.userId,
-          adjustments: body.adjustments
-            ? { ...priorAdjustments, ...body.adjustments }
-            : reconciliation.adjustments,
+          adjustments: { ...priorAdjustments, ...(body.adjustments ?? {}), billed },
         })
         .where(eq(edtrReconciliations.id, reconciliation.id));
       if (reconciliation.counterpartEdtrId) {
@@ -742,13 +893,27 @@ export class EdtrService {
       // can only run once per matched pair.
       await tx
         .update(equipment)
-        .set({ runtimeHours: sql`${equipment.runtimeHours} + ${billableHoursActive}` })
+        // RUNNING hours only: idle and downtime do not wear the engine, and
+        // the maintenance job (jobs/src/maintenance-notify.ts) raises the
+        // PMS notice from this figure.
+        .set({ runtimeHours: sql`${equipment.runtimeHours} + ${runningHours}` })
         .where(eq(equipment.id, record.equipmentId));
       await this.events.emit(ctx, 'equipment_runtime_accrued', {
         equipment_id: record.equipmentId,
-        hours_accrued: billableHoursActive,
+        hours_accrued: runningHours,
         edtr_id: record.id,
       });
+
+      // The customer's daily log is now visible on their booking page, and
+      // whoever submitted the day hears it went through.
+      const dayPayload = {
+        rental_id: record.rentalId,
+        edtr_id: record.id,
+        equipment_id: record.equipmentId,
+        report_date: record.reportDate,
+      };
+      await notifyBookingCustomer(tx, ctx.tenantId, record.rentalId, 'daily_log_approved', dayPayload);
+      await this.notifySubmitters(tx, ctx, [record.id, reconciliation.counterpartEdtrId], 'edtr_approved', dayPayload);
 
       await tx.insert(auditLogs).values({
         tenantId: ctx.tenantId,
@@ -784,6 +949,168 @@ export class EdtrService {
         },
         deposit: { balanceBefore, deducted: split.deducted, accrued: split.accrued, balanceAfter },
       };
+    }
+  }
+
+  // Tells the timekeeper(s) who recorded these logs, never the reviewer
+  // themself (the office log is theirs).
+  private async notifySubmitters(
+    tx: Tx,
+    ctx: RequestContext,
+    edtrIds: (string | null)[],
+    notificationType: string,
+    payload: Record<string, unknown>,
+  ) {
+    const ids = edtrIds.filter((id): id is string => !!id);
+    if (ids.length === 0) return;
+    const rows = await tx.select({ submittedBy: edtr.submittedBy }).from(edtr).where(inArray(edtr.id, ids));
+    const userIds = [...new Set(rows.map((r) => r.submittedBy).filter((u): u is string => !!u && u !== ctx.userId))];
+    if (userIds.length === 0) return;
+    await tx
+      .insert(notifications)
+      .values(userIds.map((userId) => ({ tenantId: ctx.tenantId, userId, notificationType, payload })));
+  }
+
+  // POST /api/v1/edtr/:id/review (site hub, cr-arkilaunch-edtr-site-hub-approval.md).
+  //
+  // approve: the admin's confirmed figures become the OFFICE LOG -- RFC-2's
+  // second, independent log -- written on the other source and pinned to
+  // this submission, then the pair reconciles through the unchanged gate
+  // and approveInTx() runs every money-path check it always has. The
+  // admin's figures ride in as adjustments, so a disagreement between the
+  // two logs is resolved by this explicit human approval (verified_by set),
+  // never auto-accepted. edtr_recon_matched_needs_counterpart_chk still
+  // holds: there is always a counterpart.
+  //
+  // needs_correction / reject: the reconciliation closes as rejected with
+  // the reason, the timekeeper is told, and a corrected resubmission is a
+  // new row for the same day.
+  async review(ctx: RequestContext, edtrId: string, body: EdtrReviewRequest) {
+    return withTenantTx(ctx, async (tx) => {
+      const [record] = await tx.select().from(edtr).where(eq(edtr.id, edtrId)).limit(1);
+      if (!record) throw new NotFoundException({ error: 'edtr_not_found' });
+      const [reconciliation] = await tx
+        .select()
+        .from(edtrReconciliations)
+        .where(eq(edtrReconciliations.edtrId, edtrId))
+        .limit(1);
+      if (!reconciliation) {
+        // A paper row still queued for the OCR worker has no hours yet.
+        throw new UnprocessableEntityException({ error: 'not_reviewable', status: record.status });
+      }
+      if (reconciliation.status === 'approved') {
+        throw new ConflictException({ error: 'already_approved', reconciliationId: reconciliation.id });
+      }
+      if (reconciliation.status === 'rejected') {
+        throw new ConflictException({ error: 'already_rejected', reconciliationId: reconciliation.id });
+      }
+      const dayPayload = {
+        rental_id: record.rentalId,
+        edtr_id: record.id,
+        equipment_id: record.equipmentId,
+        report_date: record.reportDate,
+      };
+
+      if (body.decision !== 'approve') {
+        const priorAdjustments = (reconciliation.adjustments as Record<string, unknown> | null) ?? {};
+        await tx
+          .update(edtrReconciliations)
+          .set({
+            status: 'rejected',
+            verifiedBy: ctx.userId,
+            adjustments: {
+              ...priorAdjustments,
+              rejectionReason: body.reason ?? null,
+              correction_requested: body.decision === 'needs_correction',
+            },
+          })
+          .where(eq(edtrReconciliations.id, reconciliation.id));
+        await tx.insert(auditLogs).values({
+          tenantId: ctx.tenantId,
+          actorId: ctx.userId,
+          action: 'UPDATE',
+          entity: body.decision === 'needs_correction' ? 'edtr_correction_requested' : 'edtr_reconciliations',
+          entityId: reconciliation.id,
+          reason: body.reason ?? null,
+        });
+        await this.events.emit(ctx, 'edtr_reconciliation_rejected', {
+          edtr_id: record.id,
+          reconciliation_id: reconciliation.id,
+          correction_requested: body.decision === 'needs_correction',
+        });
+        await this.notifySubmitters(
+          tx,
+          ctx,
+          [record.id],
+          body.decision === 'needs_correction' ? 'edtr_needs_correction' : 'edtr_rejected',
+          { ...dayPayload, reason: body.reason ?? null },
+        );
+        return { id: record.id, status: body.decision === 'needs_correction' ? 'needs_correction' : 'rejected' };
+      }
+
+      const hours = body.hours!;
+      if (!reconciliation.counterpartEdtrId) {
+        const officeSource = record.source === 'paper_ocr' ? 'digital_entry' : 'paper_ocr';
+        const [office] = await tx
+          .insert(edtr)
+          .values({
+            tenantId: ctx.tenantId,
+            rentalId: record.rentalId,
+            equipmentId: record.equipmentId,
+            source: officeSource,
+            reportDate: record.reportDate,
+            submittedBy: ctx.userId,
+            // A paper-side office log is the admin reading the signed sheet:
+            // recorded as a human transcription, never as model output.
+            ocrPayload:
+              officeSource === 'paper_ocr'
+                ? buildManualTranscriptionPayload({
+                    hoursActive: hours.hoursActive,
+                    hoursIdle: hours.hoursIdle,
+                    analyzedAt: new Date().toISOString(),
+                  })
+                : null,
+            status: 'extracted',
+          })
+          .returning();
+        if (!office) throw new Error('office log insert returned no row');
+        await insertLineItem(tx, ctx.tenantId, office.id, hours, [], OFFICE_LOG_NOTE);
+        await reconcileEdtr(tx, ctx.tenantId, office.id, { counterpartId: record.id });
+        const paired = await reconcileEdtr(tx, ctx.tenantId, record.id, { counterpartId: office.id });
+        if (paired.counterpartEdtrId !== office.id) {
+          throw new ConflictException({ error: 'office_log_not_paired' });
+        }
+      }
+
+      const result = await this.approveInTx(tx, ctx, record.id, {
+        reconciliationId: reconciliation.id,
+        adjustments: {
+          hoursActive: hours.hoursActive,
+          hoursIdle: hours.hoursIdle,
+          hoursBreakdown: hours.hoursBreakdown ?? null,
+          hoursWeather: hours.hoursWeather ?? null,
+          hoursOtherDowntime: hours.hoursOtherDowntime ?? null,
+        },
+      });
+      // The submission's own line item carries the confirmed meter
+      // readings and remark too (the adjustment covers the hours).
+      await tx
+        .update(edtrLineItems)
+        .set({
+          hoursTotal: hours.hoursTotal == null ? null : String(hours.hoursTotal),
+          downtimeNote: hours.downtimeNote?.trim() || null,
+          hourMeterStart: hours.hourMeterStart == null ? null : String(hours.hourMeterStart),
+          hourMeterEnd: hours.hourMeterEnd == null ? null : String(hours.hourMeterEnd),
+        })
+        .where(eq(edtrLineItems.edtrId, record.id));
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'edtr_approved_in_site_hub',
+        entityId: reconciliation.id,
+      });
+      return result;
     });
   }
 

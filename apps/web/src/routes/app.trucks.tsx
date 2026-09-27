@@ -11,6 +11,7 @@ import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { TruckThread } from '../components/truck-thread.js';
+import { BookingCode } from '../components/booking-code.js';
 import { SiteProofAdmin } from '../components/site-proof.js';
 import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
 
@@ -343,6 +344,7 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   return (
     <Surface id={`truck-${r.id}`} radius="md" elevation="sm" className="grid scroll-mt-20 gap-4 p-4 lg:grid-cols-[1fr_320px]">
       <div className="flex min-w-0 flex-col gap-2">
+        <BookingCode code={r.code} />
         <p className="text-sm font-medium text-text">
           {r.pickup} → {r.dropoff}
         </p>

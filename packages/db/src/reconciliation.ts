@@ -81,7 +81,19 @@ function hourDeltas(a: HourSums, b: HourSums): HourDeltas {
 // computed delta/status. This is redundant but not unsafe: the deduction
 // gate (RFC2-04) only ever reads the reconciliation row keyed on the EDTR
 // the admin is approving, so duplication here does not weaken the gate.
-export async function reconcileEdtr(tx: Tx, tenantId: string, edtrId: string): Promise<ReconcileResult> {
+//
+// `counterpartId` pins the pairing. The site hub's office log is written
+// FOR one specific submission (cr-arkilaunch-edtr-site-hub-approval.md), and
+// the equipment-day is not unique (audit-db-tenant-isolation.md #4), so an
+// unpinned lookup could pair the office log with an older, rejected row for
+// the same day. The pinned row must still be same equipment, same day and
+// the other source, or nothing pairs.
+export async function reconcileEdtr(
+  tx: Tx,
+  tenantId: string,
+  edtrId: string,
+  opts: { counterpartId?: string } = {},
+): Promise<ReconcileResult> {
   const [record] = await tx.select().from(edtr).where(eq(edtr.id, edtrId)).limit(1);
   if (!record) throw new Error(`edtr row ${edtrId} not found`);
 
@@ -95,6 +107,7 @@ export async function reconcileEdtr(tx: Tx, tenantId: string, edtrId: string): P
         eq(edtr.reportDate, record.reportDate),
         ne(edtr.id, record.id),
         ne(edtr.source, record.source),
+        opts.counterpartId ? eq(edtr.id, opts.counterpartId) : undefined,
       ),
     );
   const pairablStatuses = new Set(['extracted', 'reconciled', 'review']);

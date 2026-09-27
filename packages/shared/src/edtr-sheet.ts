@@ -58,6 +58,21 @@ export interface EdtrSheetDay {
     amWindow: [number, number] | null;
     pmWindow: [number, number] | null;
   };
+  // EDTR v3 (docs/cr-arkilaunch-edtr-v3-sheet.md): one hour column per
+  // cause plus the hour meter. Present only on a v3 sheet, where
+  // hoursActive is RUNNING HRS and the written TOTAL is a cross-check. A
+  // blank hour cell on a filled v3 row is 0 (the column was there to fill);
+  // an unreadable one is null.
+  v3?: {
+    total: number | null;
+    running: number;
+    idle: number | null;
+    breakdown: number | null;
+    weather: number | null;
+    other: number | null;
+    meterStart: number | null;
+    meterEnd: number | null;
+  };
 }
 
 export type EdtrSheetParse =
@@ -120,6 +135,14 @@ interface Columns {
   idleReason: number;
   weatherAm: number;
   weatherPm: number;
+  // v3 columns, -1 when absent. RUNNING HRS present = a v3 sheet.
+  day: number;
+  running: number;
+  breakdown: number;
+  weatherHrs: number;
+  other: number;
+  meterStart: number;
+  meterEnd: number;
   headerRows: number;
 }
 
@@ -172,6 +195,13 @@ function findColumns(grid: Grid): Columns | null {
     idleReason: at('IDLE REASON'),
     weatherAm: at('WEATHER AM'),
     weatherPm: at('WEATHER PM'),
+    day: at('DAY'),
+    running: at('RUNNING HRS'),
+    breakdown: at('BREAKDOWN HRS'),
+    weatherHrs: at('WEATHER HRS'),
+    other: at('OTHER HRS'),
+    meterStart: at('METER START'),
+    meterEnd: at('METER END'),
     headerRows: 2,
   };
 }
@@ -249,6 +279,36 @@ function readV2(row: string[], confidences: number[], columns: Columns): EdtrShe
   };
 }
 
+// A hour-meter reading: a plain non-negative number, no 24 h ceiling.
+function parseMeter(raw: string): number | null {
+  const t = norm(raw);
+  if (t === '') return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+// On a v3 sheet a blank hour cell in a filled row is zero: the column was
+// there to write in. Unreadable text stays null.
+function v3Hours(raw: string): number | null {
+  return norm(raw) === '' ? 0 : parseHours(raw);
+}
+
+// The v3 cells a timekeeper writes in (everything but DATE, DAY, the
+// weather ticks and the initial).
+function v3FillColumns(columns: Columns): number[] {
+  return [
+    ...columns.pairs.flat(),
+    columns.total,
+    columns.running,
+    columns.idleHours,
+    columns.breakdown,
+    columns.weatherHrs,
+    columns.other,
+    columns.meterStart,
+    columns.meterEnd,
+  ].filter((c) => c >= 0);
+}
+
 function computeHours(row: string[], pairs: Array<[number, number]>): number | null {
   let minutes = 0;
   let sawPair = false;
@@ -305,13 +365,27 @@ export function parseEdtrSheet(
     // form has ~22 rows and a week uses five.
     if (norm(rawDate) === '') continue;
 
+    const isV3 = columns.running >= 0;
+    // v3 pre-prints every date of the week. A day outside the rental says
+    // so in its DAY cell, and a day nobody worked is left blank: neither is
+    // a reading, so both are skipped rather than failing the sheet. A day
+    // skipped this way that WAS worked shows as Missing in the site hub, so
+    // it cannot be lost silently.
+    if (isV3) {
+      const dayCell = columns.day >= 0 ? norm(row[columns.day] ?? '') : '';
+      if (dayCell.includes('OUTSIDE')) continue;
+      if (v3FillColumns(columns).every((c) => norm(row[c] ?? '') === '')) continue;
+    }
+
     const reportDate = resolveSheetDate(rawDate, captureDate);
     if (!reportDate) {
       unreadableDates.push(rawDate);
       continue;
     }
 
-    const hoursActive = parseHours(row[columns.total] ?? '');
+    // v3 bills RUNNING HRS; v2 and the original form bill the written TOTAL.
+    const billedColumn = isV3 ? columns.running : columns.total;
+    const hoursActive = parseHours(row[billedColumn] ?? '');
     if (hoursActive === null) {
       // A dated row whose total cannot be read is NOT skipped. Dropping it
       // would lose a billable day silently, which is the failure this
@@ -327,16 +401,30 @@ export function parseEdtrSheet(
     const computedHours = computeHours(row, columns.pairs);
     const cellConfidences = grid.confidences[r]!;
     const v2 = readV2(row, cellConfidences, columns);
+    const cell = (c: number) => (c >= 0 ? (row[c] ?? '') : '');
+    const v3 = isV3
+      ? {
+          total: norm(cell(columns.total)) === '' ? null : parseHours(cell(columns.total)),
+          running: hoursActive,
+          idle: columns.idleHours >= 0 ? v3Hours(cell(columns.idleHours)) : null,
+          breakdown: columns.breakdown >= 0 ? v3Hours(cell(columns.breakdown)) : null,
+          weather: columns.weatherHrs >= 0 ? v3Hours(cell(columns.weatherHrs)) : null,
+          other: columns.other >= 0 ? v3Hours(cell(columns.other)) : null,
+          meterStart: parseMeter(cell(columns.meterStart)),
+          meterEnd: parseMeter(cell(columns.meterEnd)),
+        }
+      : null;
+    // v3: the IN/OUT times are time on duty, which is TOTAL, not RUNNING.
+    const onDuty = v3 ? v3.total : hoursActive;
     days.push({
       reportDate,
       hoursActive,
       computedHours,
-      totalMismatch: computedHours !== null && Math.abs(computedHours - hoursActive) > tolerance,
-      confidence: Math.min(cellConfidences[columns.date] ?? 0, cellConfidences[columns.total] ?? 0),
-      ...(grid.regions[r]![columns.total]
-        ? { boundingRegion: grid.regions[r]![columns.total]! }
-        : {}),
+      totalMismatch: computedHours !== null && onDuty !== null && Math.abs(computedHours - onDuty) > tolerance,
+      confidence: Math.min(cellConfidences[columns.date] ?? 0, cellConfidences[billedColumn] ?? 0),
+      ...(grid.regions[r]![billedColumn] ? { boundingRegion: grid.regions[r]![billedColumn]! } : {}),
       ...(v2 ? { v2 } : {}),
+      ...(v3 ? { v3 } : {}),
     });
   }
 
