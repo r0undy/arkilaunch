@@ -228,8 +228,10 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await signIn(page);
     await page.goto('/app/registration/pending');
+    // The queue is a table; the review opens in a drawer.
+    await page.getByRole('row', { name: companyName }).click({ timeout: 30_000 });
     const card = page.getByRole('group', { name: companyName });
-    await expect(card.getByRole('heading', { name: companyName })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('dialog', { name: companyName })).toBeVisible({ timeout: 30_000 });
 
     // Prefilled from what the customer confirmed; no Read click needed.
     await expect(card.getByLabel('First name')).toHaveValue('Juan');
@@ -298,6 +300,8 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     test.skip(STORAGE_UNAVAILABLE, 'needs the uploaded documents; CI has no storage behind the API');
     await signIn(page);
     await page.goto('/app/registration/pending');
+    // The queue is a table; the review opens in a drawer.
+    await page.getByRole('row', { name: companyName }).click({ timeout: 30_000 });
     const card = page.getByRole('group', { name: companyName });
     await expect(card.getByRole('textbox', { name: 'SEC registration number' })).toHaveValue('CS201912346', {
       timeout: 30_000,
