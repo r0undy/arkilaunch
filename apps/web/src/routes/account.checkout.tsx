@@ -59,12 +59,12 @@ function OrderSummary({ booking, coupon }: { booking: BookingDetailResponse; cou
 
   return (
     <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-4 p-5">
-      <h2 className="text-lg font-semibold text-text">Order summary</h2>
+      <h2 className="text-heading-md text-text">Order summary</h2>
 
       <div className="flex flex-col gap-3 border-b border-border pb-4">
         {booking.items.map((item) => (
           <div key={`${item.equipmentId}-${String(item.start)}`} className="flex flex-col">
-            <p className="text-sm font-semibold uppercase tracking-[0.04em] text-text">
+            <p className="text-sm font-medium text-text">
               {shortCode('equipment', item.equipmentId)}
             </p>
             <p className="text-sm text-text-muted">
@@ -95,10 +95,10 @@ function OrderSummary({ booking, coupon }: { booking: BookingDetailResponse; cou
       </div>
 
       <div className="flex items-end justify-between gap-3 border-t border-border pt-4">
-        <span className="text-sm font-semibold uppercase tracking-[0.04em] text-text">Total amount</span>
+        <span className="text-sm font-medium text-text">Total amount</span>
         <div className="text-right">
-          <p className="font-mono text-2xl font-semibold text-text">{total === null ? '--' : formatPeso(total)}</p>
-          <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">PHP</p>
+          <p className="font-mono text-display-md text-text">{total === null ? '--' : formatPeso(total)}</p>
+          <p className="text-sm font-medium text-text-muted">PHP</p>
         </div>
       </div>
     </Surface>
@@ -266,14 +266,14 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,380px)]">
       <fieldset className="flex min-w-0 flex-col gap-3">
-        <legend className="mb-2 text-sm font-semibold uppercase tracking-[0.04em] text-text">
+        <legend className="mb-2 text-sm font-medium text-text">
           How would you like to pay?
         </legend>
         {METHODS.map((option) => (
           <label
             key={option.id}
             className={[
-              'flex cursor-pointer items-start gap-3 rounded-md border bg-surface p-4',
+'flex cursor-pointer items-start gap-3 rounded-md border bg-surface p-4',
               method === option.id ? 'border-primary' : 'border-border hover:border-accent',
             ].join(' ')}
           >

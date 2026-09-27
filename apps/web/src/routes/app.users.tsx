@@ -185,7 +185,7 @@ function UserActions({ user }: { user: UserRow }) {
           value={user.roleName}
           disabled={changeRole.isPending}
           onChange={(e) => setPendingRole(e.target.value as AssignableRole)}
-          className="min-h-11 rounded-sm border border-border bg-surface px-2 text-sm text-text"
+          className="min-h-11 rounded-input border border-border bg-surface px-2 text-sm text-text"
         >
           {ASSIGNABLE_ROLES.map((role) => (
             <option key={role} value={role}>

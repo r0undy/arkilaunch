@@ -137,7 +137,7 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
                 <label className="flex flex-col gap-1 text-sm font-medium text-text">
                   Per
                   <select
-                    className="min-h-11 rounded-sm border border-border bg-surface px-2"
+                    className="min-h-11 rounded-input border border-border bg-surface px-2"
                     value={x.per}
                     onChange={(e) => setExtra(i, { per: e.target.value as TruckExtra['per'] })}
                   >
@@ -186,7 +186,7 @@ function TollFeeInput({ toll }: { toll: TollRateResponse }) {
       value={fee}
       onChange={(e) => setFee(e.target.value)}
       onBlur={() => Number(fee) !== toll.feePhp && fee !== '' && save.mutate()}
-      className="min-h-10 w-28 rounded-sm border border-border bg-surface px-2 text-right font-mono text-sm tabular-nums text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+      className="min-h-10 w-28 rounded-input border border-border bg-surface px-2 text-right font-mono text-sm tabular-nums text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
     />
   );
 }
@@ -265,7 +265,7 @@ export function TollsEditor() {
     <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5" aria-label="Toll rates">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-2xl">
-          <h2 className="text-base font-semibold text-text">Toll rates</h2>
+          <h2 className="text-heading-md text-text">Toll rates</h2>
           <p className="text-sm text-text-muted">
             Class 3 (large trucks) expressway fees, picked by entry and exit when you confirm a trip&apos;s km.
             Loaded fees are the TRB-approved rates effective {formatDate(PH_TOLLS_AS_OF)}; check them against the
@@ -304,7 +304,7 @@ export function TollsEditor() {
             setFind(e.target.value);
             setOffset(0);
           }}
-          className="min-h-11 w-full max-w-xs rounded-sm border border-border bg-surface px-3 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          className="min-h-11 w-full max-w-xs rounded-input border border-border bg-surface px-3 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
         />
       </div>
       {tolls.isError && <p className="text-sm text-error">{apiErrorText(tolls.error)}</p>}
@@ -475,7 +475,7 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   const open = r.status !== 'cancelled' && r.status !== 'paid';
   const overCap = r.capPhp !== null && Number(price) > r.capPhp;
   const section = 'flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0';
-  const heading = 'text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
+  const heading = 'text-heading-md text-text';
 
   return (
     <div className="flex flex-col gap-4">

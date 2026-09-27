@@ -228,7 +228,7 @@ export default function RouteMapCanvas({
         onClick={toggleTilt}
         aria-pressed={tilted}
         className={[
-          'absolute right-12 top-2.5 min-h-9 rounded-sm border px-3 text-xs font-semibold shadow-sm',
+'absolute right-12 top-2.5 min-h-9 rounded-sm border px-3 text-xs font-semibold shadow-sm',
           'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
           tilted ? 'border-text bg-text text-text-inverse' : 'border-border bg-surface text-text hover:bg-surface-sunk',
         ].join(' ')}

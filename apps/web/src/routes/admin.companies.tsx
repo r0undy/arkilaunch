@@ -32,7 +32,7 @@ function StatusBadge({ status }: { status: CompanyStatus }) {
   return (
     <span
       className={[
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold',
+'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold',
         active ? 'bg-success/15 text-text' : 'bg-surface-sunk text-text-muted',
       ].join(' ')}
     >
@@ -225,7 +225,7 @@ function Stat({ label, value, detail }: { label: string; value: string; detail?:
   return (
     <Surface className="flex flex-col gap-1 p-4">
       <span className="text-sm text-text-muted">{label}</span>
-      <span className="text-2xl font-semibold text-text">{value}</span>
+      <span className="text-display-md text-text">{value}</span>
       {detail && <span className="text-xs text-text-muted">{detail}</span>}
     </Surface>
   );

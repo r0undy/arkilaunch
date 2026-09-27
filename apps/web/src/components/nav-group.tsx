@@ -87,7 +87,7 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
               activeOptions={{ exact: true }}
               aria-current={isActive ? 'page' : undefined}
               className={[
-                'flex min-h-10 items-center gap-2.5 rounded-sm px-3 py-2 text-sm',
+'flex min-h-10 items-center gap-2.5 rounded-sm px-3 py-2 text-sm',
                 isActive
                   ? 'bg-surface-sunk font-medium text-accent'
                   : 'text-text-muted hover:bg-surface-sunk hover:text-text',

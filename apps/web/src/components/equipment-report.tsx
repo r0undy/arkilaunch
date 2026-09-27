@@ -3,13 +3,13 @@ import type { EquipmentReportResponse } from '@arkilaunch/shared';
 import { apiErrorText, apiGet } from '../lib/api-client.js';
 import { formatDate, formatPeso, formatStatus } from '../lib/format.js';
 
-const heading = 'text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
+const heading = 'text-heading-md text-text';
 
 function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="flex flex-col rounded-sm border border-border p-3">
       <span className="text-xs text-text-muted">{label}</span>
-      <span className="font-mono text-lg font-semibold tabular-nums text-text">{value}</span>
+      <span className="font-mono text-heading-md tabular-nums text-text">{value}</span>
       {hint && <span className="text-xs text-text-muted">{hint}</span>}
     </div>
   );

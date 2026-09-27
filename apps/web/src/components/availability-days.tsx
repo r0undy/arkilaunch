@@ -197,7 +197,7 @@ export function RangeCalendar({
               onClick={() => pick(date)}
               onMouseEnter={() => setHover(date)}
               className={[
-                'min-h-10 text-sm tabular-nums transition-colors',
+'min-h-10 text-sm tabular-nums transition-colors',
                 date.slice(0, 7) === month ? '' : 'opacity-40',
                 disabled
                   ? [

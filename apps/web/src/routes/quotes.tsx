@@ -304,7 +304,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
       )}
       <Surface radius="md" elevation="sm" className="flex max-w-3xl flex-col gap-4 p-6">
         <form className="flex flex-col gap-4" onSubmit={preview}>
-          <h2 className="text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Lines</h2>
+          <h2 className="text-sm font-medium text-text-muted">Lines</h2>
           {lines.map((line, index) => (
             <fieldset key={line.key} className="flex flex-col gap-3 rounded-md border border-border p-4">
               <legend className="px-1 text-sm font-medium text-text">
@@ -413,7 +413,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
 
       {quoteId && result && (
         <Surface radius="md" elevation="sm" className="flex max-w-3xl flex-col gap-4 p-6">
-          <h2 className="text-lg font-semibold text-text">Revised quote</h2>
+          <h2 className="text-heading-md text-text">Revised quote</h2>
           <QuoteFigures quote={result} />
           <div className="flex flex-wrap gap-2">
             <Button

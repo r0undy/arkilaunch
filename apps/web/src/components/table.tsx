@@ -115,7 +115,7 @@ export function Table<T>({
                   key={i}
                   scope="col"
                   className={[
-                    'whitespace-nowrap px-4 py-3 text-sm font-medium text-text',
+'whitespace-nowrap px-4 py-3 text-sm font-medium text-text',
                     ALIGN_CLASS[columnAlign(col.kind)],
                   ].join(' ')}
                 >
@@ -144,7 +144,7 @@ export function Table<T>({
                 <Fragment key={key}>
                   <tr
                     className={[
-                      'h-11 border-b border-border last:border-0',
+'h-11 border-b border-border last:border-0',
                       onRowClick ? 'group cursor-pointer hover:bg-surface-sunk' : '',
                     ].join(' ')}
                     {...(onRowClick

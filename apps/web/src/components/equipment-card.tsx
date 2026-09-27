@@ -38,14 +38,14 @@ export function EquipmentCard({
   return (
     <div
       className={[
-        'flex flex-col overflow-hidden rounded-md border border-border bg-surface transition-shadow hover:shadow-md',
+'flex flex-col overflow-hidden rounded-md border border-border bg-surface transition-shadow hover:shadow-md',
         unavailable ? 'opacity-50 grayscale' : '',
       ].join(' ')}
     >
       <div
         aria-label={imageAlt}
         className={[
-          'relative flex h-52 items-center justify-center overflow-hidden bg-surface-sunk',
+'relative flex h-52 items-center justify-center overflow-hidden bg-surface-sunk',
           imageUrl ? '' : 'p-6',
         ].join(' ')}
       >

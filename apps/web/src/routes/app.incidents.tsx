@@ -56,7 +56,7 @@ function IncidentsPage() {
               setOffset(0);
             }}
             className={[
-              'min-h-9 rounded-full border px-3 text-sm',
+'min-h-9 rounded-full border px-3 text-sm',
               kind === entry.id ? 'border-accent bg-accent text-white' : 'border-border text-text hover:border-accent',
             ].join(' ')}
           >

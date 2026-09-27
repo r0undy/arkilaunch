@@ -88,7 +88,7 @@ function ApplicationCard({ company }: { company: CompanyResponse }) {
     >
       <RegistrationThumbnail company={company} />
       <div className="flex min-w-48 flex-1 flex-col gap-2">
-        <h2 className="text-lg font-semibold text-text">{company.companyName}</h2>
+        <h2 className="text-heading-md text-text">{company.companyName}</h2>
         <VerificationPill status={company.kycStatus} />
         <div className="text-sm text-text-muted">
           <p>Registration Number:</p>
@@ -158,7 +158,7 @@ function ApplicationsPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search companies"
           aria-label="Search companies"
-          className="min-h-11 w-full rounded-sm border border-border bg-surface px-4 py-2 text-base text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          className="min-h-11 w-full rounded-input border border-border bg-surface px-4 py-2 text-base text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
         />
         <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
           {TABS.map((tab) => (
@@ -168,7 +168,7 @@ function ApplicationsPage() {
               onClick={() => setStatus(tab.value)}
               aria-pressed={status === tab.value}
               className={[
-                'min-h-11 w-full rounded-pill border px-4 py-2 text-sm font-medium transition-colors sm:w-auto',
+'min-h-11 w-full rounded-pill border px-4 py-2 text-sm font-medium transition-colors sm:w-auto',
                 status === tab.value
                   ? 'border-primary bg-primary text-on-primary'
                   : 'border-border bg-surface text-text-muted hover:text-text',

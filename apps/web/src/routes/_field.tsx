@@ -36,7 +36,7 @@ function FieldLayout() {
               key={item.to}
               to={item.to}
               className={[
-                'flex min-h-12 flex-1 items-center justify-center text-sm font-medium',
+'flex min-h-12 flex-1 items-center justify-center text-sm font-medium',
                 active ? 'border-t-2 border-primary font-semibold text-accent' : 'border-t-2 border-transparent text-text-muted',
               ].join(' ')}
             >

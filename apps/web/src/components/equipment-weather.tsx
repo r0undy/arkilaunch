@@ -22,7 +22,7 @@ const CHIP: Record<WeatherLevel, string> = {
 export function LevelChip({ level }: { level: WeatherLevel }) {
   const info = WEATHER_LEVEL_INFO[level];
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.04em] ${CHIP[level]}`}>
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${CHIP[level]}`}>
       {info.label}
     </span>
   );
@@ -125,7 +125,7 @@ export function MyEquipmentWeather({ siteId }: { siteId: string }) {
   if (!query.data) return null;
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5" aria-label="Weather for your equipment">
-      <h2 className="text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Weather for your equipment</h2>
+      <h2 className="text-sm font-medium text-text-muted">Weather for your equipment</h2>
       <EquipmentWeatherList data={query.data} />
     </Surface>
   );

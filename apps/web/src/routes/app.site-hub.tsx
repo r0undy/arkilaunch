@@ -43,7 +43,7 @@ const TAB_LABEL: Record<Tab, string> = {
   documents: 'Documents',
 };
 
-const heading = 'text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
+const heading = 'text-heading-md text-text';
 
 const STATUS_META: Record<FieldLogDayStatus, { label: string; className: string }> = {
   missing: { label: 'Missing', className: 'border border-dashed border-border text-text-muted' },
@@ -83,7 +83,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col rounded-md border border-border p-3">
       <span className="text-xs text-text-muted">{label}</span>
-      <span className="font-mono text-lg font-semibold text-text">{value}</span>
+      <span className="font-mono text-heading-md text-text">{value}</span>
     </div>
   );
 }
@@ -290,7 +290,7 @@ function ReviewPanel({
                   onChange={(e) => setReason(e.target.value)}
                   maxLength={2000}
                   rows={2}
-                  className="rounded-sm border border-border bg-surface p-2 text-base font-normal"
+                  className="rounded-input border border-border bg-surface p-2 text-base font-normal"
                 />
               </label>
             </>

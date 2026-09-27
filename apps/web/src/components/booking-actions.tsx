@@ -18,7 +18,7 @@ import { useToast } from './toast.js';
 // drawer's Actions tab and the full /app/bookings/$bookingId page. The API
 // guards every status; these cards only arrange it.
 
-const heading = 'text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
+const heading = 'text-heading-md text-text';
 
 function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();

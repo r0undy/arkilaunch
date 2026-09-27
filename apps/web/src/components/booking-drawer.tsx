@@ -20,7 +20,7 @@ import { BookingSide } from './booking-actions.js';
 // list -- overview, negotiation thread and every action, in tabs. The full
 // page (/app/bookings/$bookingId) shows the same pieces for a deep link.
 
-const heading = 'text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
+const heading = 'text-heading-md text-text';
 
 export interface Step {
   label: string;
@@ -54,7 +54,7 @@ function Stepper({ steps, cancelled }: { steps: Step[]; cancelled: boolean }) {
       {steps.map((step, i) => (
         <li key={step.label} className="flex items-center gap-2">
           {i > 0 && <span aria-hidden className="h-px w-3 bg-border" />}
-          <span className={step.done ? 'font-semibold text-text' : 'text-text-muted'}>
+          <span className={step.done ?'font-semibold text-text' : 'text-text-muted'}>
             <span aria-hidden>{step.done ? '● ' : '○ '}</span>
             {step.label}
             <span className="sr-only">{step.done ? ' (done)' : ' (not yet)'}</span>
@@ -163,7 +163,7 @@ function RentalBody({ booking }: { booking: BookingDetailResponse }) {
           {booking.invoices.map((invoice) => (
             <li key={invoice.id} className="flex flex-wrap justify-between gap-x-4">
               <span className="text-text">{formatInvoiceType(invoice.invoiceType)}</span>
-              <span className={invoice.status === 'paid' ? 'text-success' : 'text-text-muted'}>
+              <span className={invoice.status ==='paid' ? 'text-success' : 'text-text-muted'}>
                 {formatPeso(invoice.amount)} · {formatStatus(invoice.status)}
               </span>
             </li>

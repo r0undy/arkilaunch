@@ -23,7 +23,7 @@ import { SiteProofStatus } from './site-proof.js';
 // account.companies.tsx when the Figma company list (251:1945) moved to
 // /account/applications -- the list shows a summary card, this is what
 // "Manage" opens.
-const heading = 'text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
+const heading = 'text-heading-md text-text';
 export const DOC_LABELS: Record<string, string> = {
   government_id: 'Philippine National ID (PhilSys)',
   selfie_with_id: 'Selfie holding your National ID',
@@ -167,7 +167,7 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
     <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold text-text">{company.companyName}</h2>
+          <h2 className="text-heading-md text-text">{company.companyName}</h2>
           <p className="text-sm text-text-muted">
             TIN {company.tin ?? '--'} &middot; {company.billingAddress ?? '--'}
           </p>

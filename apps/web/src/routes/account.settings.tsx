@@ -8,6 +8,7 @@ import { apiErrorText, apiPatch, apiPost, apiPostForm } from '../lib/api-client.
 import { clearTokens } from '../lib/auth-client.js';
 import { companyStatusLabel } from '../lib/cart-validation.js';
 import { Surface } from '../components/surface.js';
+import { PageHeader } from '../components/page-header.js';
 import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { LoadError } from '../components/load-error.js';
@@ -26,7 +27,7 @@ function useSaveMe() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4 sm:p-6">
-      <h2 className="text-lg font-semibold text-text">{title}</h2>
+      <h2 className="text-heading-md text-text">{title}</h2>
       {children}
     </Surface>
   );
@@ -72,7 +73,7 @@ function ProfileTab({ me }: { me: UserSelfResponse }) {
           ) : (
             <span
               aria-hidden="true"
-              className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-2xl font-semibold text-text"
+              className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-display-md text-text"
             >
               {initials(me)}
             </span>
@@ -343,7 +344,7 @@ function AccountSettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold text-text">Settings</h1>
+      <PageHeader title="Settings" />
       <div role="tablist" aria-label="Settings sections" className="flex gap-1 overflow-x-auto border-b border-border">
         {TABS.map((t) => (
           <button
@@ -355,7 +356,7 @@ function AccountSettingsPage() {
             aria-controls="settings-panel"
             onClick={() => setTab(t)}
             className={[
-              'min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium',
+'min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium',
               tab === t ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text',
             ].join(' ')}
           >

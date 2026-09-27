@@ -47,7 +47,7 @@ export function Container({ header, footer, flush = false, className = '', child
   return (
     <Surface className={['relative overflow-hidden p-0', className].join(' ')} {...rest}>
       {header && <ContainerHeader {...header} />}
-      <div className={flush ? '' : 'p-5'}>{children}</div>
+      <div className={flush ?'' : 'p-5'}>{children}</div>
       {footer}
     </Surface>
   );

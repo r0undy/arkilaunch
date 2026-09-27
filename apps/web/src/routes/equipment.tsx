@@ -195,7 +195,7 @@ function EquipmentPage() {
   return (
     <div
       className={[
-        inShell ? 'grid gap-6' : 'grid gap-6 px-4 py-12 sm:px-8',
+ inShell ?'grid gap-6' : 'grid gap-6 px-4 py-12 sm:px-8',
         showWeather ? 'xl:grid-cols-[1fr_320px] xl:items-start' : '',
       ].join(' ')}
     >

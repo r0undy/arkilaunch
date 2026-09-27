@@ -55,7 +55,7 @@ export function Tabs<T extends string>({ label, items, value, onChange }: TabsPr
             onClick={() => onChange(item.id)}
             onKeyDown={(event) => onKeyDown(event, index)}
             className={[
-              '-mb-px inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium',
+'-mb-px inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium',
               'focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
               selected ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text',
             ].join(' ')}

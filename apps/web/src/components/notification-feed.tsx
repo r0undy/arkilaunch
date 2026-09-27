@@ -451,7 +451,7 @@ export function NotificationIcon({ type, unread, className = '' }: { type: strin
     <span
       aria-hidden="true"
       className={[
-        'flex shrink-0 items-center justify-center rounded-md',
+'flex shrink-0 items-center justify-center rounded-md',
         unread ? TONE_CLASS[tone] : 'bg-surface-sunk text-text-muted',
         className,
       ].join(' ')}
@@ -477,7 +477,7 @@ function NotificationRow({ notification, area }: { notification: NotificationRes
         <NotificationIcon type={notification.notificationType} unread={isUnread} className="h-11 w-11" />
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold uppercase tracking-[0.04em] text-text">
+            <span className="text-sm font-medium text-text">
               {described?.title ?? formatStatus(notification.notificationType)}
             </span>
             <span aria-hidden="true" className="h-1 w-1 rounded-full bg-border" />
@@ -580,7 +580,7 @@ export function NotificationFeed() {
   return (
     <Surface radius="md" elevation="sm" className="overflow-hidden p-0">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <h2 className="text-base font-semibold text-text">Pending items</h2>
+        <h2 className="text-heading-md text-text">Pending items</h2>
         <div className="flex items-center gap-3">
           <p className="text-sm text-text-muted">{query.data.total} in total</p>
           {query.data.items.some((item) => item.status === 'unread') && (

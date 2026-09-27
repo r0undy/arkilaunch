@@ -31,7 +31,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         aria-describedby={errorId ?? hintId}
         inputMode={numeric ? 'decimal' : inputMode}
         className={[
-          'block w-full rounded-input border bg-surface px-4 py-2.5 text-base text-text',
+'block w-full rounded-input border bg-surface px-4 py-2.5 text-base text-text',
           size === 'field' ? 'min-h-12' : 'min-h-11',
           numeric ? 'text-right font-mono tabular-nums' : '',
           error ? 'border-error' : 'border-border hover:border-border-strong',

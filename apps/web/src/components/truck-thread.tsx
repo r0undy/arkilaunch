@@ -48,7 +48,7 @@ export function TruckThread({ base }: { base: string }) {
           <li
             key={m.id}
             className={[
-              'max-w-[85%] rounded-md px-3 py-2 text-sm',
+'max-w-[85%] rounded-md px-3 py-2 text-sm',
               m.mine ? 'self-end bg-primary text-on-primary' : 'self-start bg-surface-sunk text-text',
             ].join(' ')}
           >

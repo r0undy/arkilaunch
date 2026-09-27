@@ -54,7 +54,7 @@ function RegisterCompanyDetailsPage() {
     <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
       <form onSubmit={onSubmit} aria-labelledby="register-company-heading" className="flex flex-col gap-4">
         <div>
-          <h1 id="register-company-heading" className="text-xl font-semibold text-text">
+          <h1 id="register-company-heading" className="text-heading-lg text-text">
             Company details
           </h1>
           <p className="text-sm text-text-muted">

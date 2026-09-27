@@ -34,10 +34,10 @@ function Statement({ snapshot }: { snapshot: ReportsSnapshot }) {
     <Surface radius="md" elevation="sm" className="flex flex-col gap-8 p-6">
       <div className="grid gap-6 sm:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-1">
-          <h2 className="border-b border-border pb-1 text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+          <h2 className="border-b border-border pb-1 text-sm font-medium text-text-muted">
             Billing period
           </h2>
-          <p className="pt-2 text-lg font-semibold uppercase text-text">
+          <p className="pt-2 text-lg font-medium text-text">
             {utilization.period.from} to {utilization.period.to}
           </p>
           <p className="text-sm text-text-muted">
@@ -45,10 +45,10 @@ function Statement({ snapshot }: { snapshot: ReportsSnapshot }) {
           </p>
         </div>
         <div className="flex min-w-0 flex-col gap-1">
-          <h2 className="border-b border-border pb-1 text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+          <h2 className="border-b border-border pb-1 text-sm font-medium text-text-muted">
             Fleet provider
           </h2>
-          <p className="pt-2 text-lg font-semibold uppercase text-text">
+          <p className="pt-2 text-lg font-medium text-text">
             {utilization.fleet.length} machine{utilization.fleet.length === 1 ? '' : 's'} on hire
           </p>
           <p className="text-sm text-text-muted">
@@ -58,20 +58,20 @@ function Statement({ snapshot }: { snapshot: ReportsSnapshot }) {
       </div>
 
       <div className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold uppercase text-text">
+        <h2 className="text-lg font-medium text-text">
           Itemized equipment usage
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[520px] border-collapse text-sm">
             <thead>
               <tr className="border-b-2 border-text bg-surface-sunk text-left">
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.04em] text-text">
+                <th className="px-4 py-3 text-sm font-medium text-text">
                   Equipment
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.04em] text-text">
+                <th className="px-4 py-3 text-right text-sm font-medium text-text">
                   EDTR hours
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.04em] text-text">
+                <th className="px-4 py-3 text-right text-sm font-medium text-text">
                   Utilization
                 </th>
               </tr>
@@ -103,11 +103,11 @@ function Statement({ snapshot }: { snapshot: ReportsSnapshot }) {
 
       <div className="flex flex-wrap items-end justify-between gap-6">
         <Surface radius="md" elevation="sm" className="flex flex-col gap-1 bg-surface-sunk p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+          <p className="text-sm font-medium text-text-muted">
             Weekly utilization metric
           </p>
           <p className="flex items-baseline gap-2">
-            <span className="font-mono text-2xl font-semibold text-text">
+            <span className="font-mono text-display-md text-text">
               {formatHours(totalHours)}
             </span>
             <span className="text-sm font-semibold text-text">total EDTR hours</span>
@@ -139,10 +139,10 @@ function Statement({ snapshot }: { snapshot: ReportsSnapshot }) {
             </div>
           )}
           <div className="flex items-center justify-between gap-3 border-t-2 border-text pt-3">
-            <span className="text-base font-semibold uppercase text-text">
+            <span className="text-base font-medium text-text">
               Total invoiced
             </span>
-            <span className="font-mono text-lg font-semibold text-text">
+            <span className="font-mono text-heading-md text-text">
               {formatPeso(financial.invoiced.total)}
             </span>
           </div>

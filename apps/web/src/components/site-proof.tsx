@@ -46,7 +46,7 @@ export function SiteProofFields({
           id={`${idPrefix}-proof-type`}
           value={proofType}
           onChange={(e) => onProofTypeChange(e.target.value as SiteDocumentType)}
-          className="min-h-11 rounded-md border border-border bg-surface px-3 text-text"
+          className="min-h-11 rounded-input border border-border bg-surface px-3 text-text"
         >
           {SITE_PROOF_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -143,7 +143,7 @@ export function SiteProofAdmin({ siteId }: { siteId: string }) {
   if (docs.isError) return <p className="text-sm text-error">{apiErrorText(docs.error)}</p>;
   return (
     <div className="flex flex-col gap-1 text-sm">
-      <p className={docs.data.proofComplete ? 'text-text' : 'text-error'}>
+      <p className={docs.data.proofComplete ?'text-text' : 'text-error'}>
         {docs.data.proofComplete ? 'Site proof on file' : 'Site proof incomplete'}
       </p>
       {docs.data.documents.length === 0 && <p className="text-text-muted">No documents uploaded for this site.</p>}

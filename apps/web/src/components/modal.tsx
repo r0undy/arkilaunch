@@ -111,7 +111,7 @@ export function Modal({
   return (
     <div
       className={
-        placement === 'right'
+ placement ==='right'
           ? 'fixed inset-0 z-40 flex justify-end'
           : 'fixed inset-0 z-40 flex items-end justify-center p-0 sm:items-center sm:p-4'
       }
@@ -129,7 +129,7 @@ export function Modal({
         {...(description ? { 'aria-describedby': descriptionId } : {})}
         tabIndex={-1}
         className={[
-          placement === 'right'
+ placement ==='right'
             ? 'relative flex h-dvh w-full flex-col border-l border-border bg-surface shadow-lg'
             : 'relative flex max-h-[90dvh] w-full flex-col rounded-t-md border border-border bg-surface shadow-lg sm:rounded-md',
           SIZE_CLASSES[size],

@@ -122,7 +122,7 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) 
   return (
     <div
       className={[
-        'pointer-events-auto flex w-full items-start gap-3 rounded-sm px-4 py-3 text-white shadow-md',
+'pointer-events-auto flex w-full items-start gap-3 rounded-sm px-4 py-3 text-white shadow-md',
         TONE_CLASSES[toast.tone],
       ].join(' ')}
     >

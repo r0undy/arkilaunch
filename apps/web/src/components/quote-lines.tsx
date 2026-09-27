@@ -38,7 +38,7 @@ function lineDetail(line: QuoteLine): string {
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <div className={`flex items-center justify-between gap-3 text-sm ${strong ? 'font-semibold' : ''}`}>
-      <span className={strong ? 'text-text' : 'text-text-muted'}>{label}</span>
+      <span className={strong ?'text-text' : 'text-text-muted'}>{label}</span>
       <span className="font-mono text-text">{value}</span>
     </div>
   );

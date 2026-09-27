@@ -17,6 +17,7 @@ import {
   weatherQueries,
 } from '../lib/queries.js';
 import { StatTile } from '../components/stat-tile.js';
+import { PageHeader } from '../components/page-header.js';
 import { WeatherBanner, type WeatherTone } from '../components/weather-banner.js';
 import { Surface } from '../components/surface.js';
 import { Modal } from '../components/modal.js';
@@ -70,15 +71,10 @@ function ConsoleCard({
 }) {
   return (
     <Surface radius="md" elevation="sm" className="overflow-hidden p-0">
-      <div className="flex items-stretch justify-between gap-2 bg-success text-white">
-        <div className="px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.04em]">
-          {title}
-        </div>
-        {badge && (
-          <p className="flex items-center bg-primary px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.04em] text-text">
-            {badge}
-          </p>
-        )}
+      {/* AWS container header: title left, the count right, a divider. */}
+      <div className="flex items-center justify-between gap-2 border-b border-border px-5 py-3">
+        <div className="text-heading-lg text-text">{title}</div>
+        {badge && <p className="text-sm text-text-muted">{badge}</p>}
       </div>
       {children}
     </Surface>
@@ -91,12 +87,12 @@ function ConsoleCard({
 function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'success' }) {
   return (
     <div className="flex flex-col gap-0.5 border-r border-border px-4 py-3 last:border-r-0">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-text-muted">
+      <span className="text-sm font-medium text-text-muted">
         {label}
       </span>
       <span
         className={[
-          'font-mono text-xl font-medium tabular-nums sm:text-2xl',
+'font-mono text-xl font-medium tabular-nums sm:text-2xl',
           tone === 'success' ? 'text-success' : 'text-text',
         ].join(' ')}
       >
@@ -209,17 +205,7 @@ function AdminDashboardPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-primary px-5 py-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text">
-            Control room
-          </p>
-          <h1 className="text-2xl font-semibold uppercase tracking-[0.02em] text-text">
-            Dashboard
-          </h1>
-        </div>
-        <p className="text-sm font-medium text-text">Fleet, weather, and work-queue overview.</p>
-      </div>
+      <PageHeader title="Dashboard" description="Fleet, weather, and work-queue overview." />
 
       {/* ---- The four figures worth leading with ---- */}
       <Surface radius="md" elevation="sm" className="p-0">
@@ -333,7 +319,7 @@ function AdminDashboardPage() {
       {/* ---- Everything else, one at a time ---- */}
       <ConsoleCard
         title={
-          <div role="tablist" aria-label="Secondary queues" className="-my-2.5 -ml-4 flex">
+          <div role="tablist" aria-label="Secondary queues" className="-my-3 -ml-5 flex">
             {TABS.map((entry, index) => (
               <button
                 key={entry.id}
@@ -349,8 +335,8 @@ function AdminDashboardPage() {
                 onClick={() => setTab(entry.id)}
                 onKeyDown={(event) => onTabKeyDown(event, index)}
                 className={[
-                  'px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.04em] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
-                  tab === entry.id ? 'bg-primary text-on-primary' : 'text-white hover:bg-white/15',
+'-mb-px min-h-12 border-b-2 px-5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
+                  tab === entry.id ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text',
                 ].join(' ')}
               >
                 {entry.label}
@@ -369,7 +355,7 @@ function AdminDashboardPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-text">
                   <thead>
-                    <tr className="border-b border-border text-left text-xs uppercase tracking-[0.04em] text-text-muted">
+                    <tr className="border-b border-border text-left text-sm text-text-muted">
                       <th className="px-4 py-2 font-medium">Invoice</th>
                       <th className="px-4 py-2 font-medium">Type</th>
                       <th className="px-4 py-2 text-right font-medium">Amount</th>

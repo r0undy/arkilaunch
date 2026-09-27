@@ -86,7 +86,7 @@ export function ScanReview({ detail }: ScanReviewProps) {
                 key={box.name}
                 title={box.name}
                 className={[
-                  'pointer-events-none absolute border-2',
+'pointer-events-none absolute border-2',
                   box.belowGate ? 'border-recon-review bg-recon-review/20' : 'border-recon-match',
                 ].join(' ')}
                 style={{

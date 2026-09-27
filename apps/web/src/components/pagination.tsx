@@ -81,7 +81,7 @@ export function Pagination({
                 disabled={busy}
                 onClick={() => onOffsetChange((n - 1) * limit)}
                 className={[
-                  'min-h-11 min-w-9 rounded-sm px-2 text-sm tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
+'min-h-11 min-w-9 rounded-sm px-2 text-sm tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
                   n === page ? 'font-semibold text-text underline decoration-primary decoration-2 underline-offset-8' : 'text-text-muted hover:bg-surface-sunk hover:text-text',
                 ].join(' ')}
               >

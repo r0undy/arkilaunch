@@ -58,7 +58,7 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
 
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">EDTR sheet</h2>
+      <h2 className="text-sm font-medium text-text-muted">EDTR sheet</h2>
       {printable && units.length > 0 ? (
         <>
           <p className="text-sm text-text-muted">

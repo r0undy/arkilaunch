@@ -190,7 +190,7 @@ function DocumentStep({
             id="registration-type"
             value={registrationType}
             onChange={(e) => onRegistrationTypeChange(e.target.value as PrimaryRegistrationType)}
-            className="min-h-11 rounded-md border border-border bg-surface px-3 text-text"
+            className="min-h-11 rounded-input border border-border bg-surface px-3 text-text"
           >
             {REGISTRATION_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -373,7 +373,7 @@ function IdReviewStep({
           <select
             value={value.sex}
             onChange={(e) => set({ sex: e.target.value as IdDetails['sex'] })}
-            className="min-h-11 rounded-sm border border-border bg-surface px-3 text-base text-text"
+            className="min-h-11 rounded-input border border-border bg-surface px-3 text-base text-text"
           >
             <option value="">Select</option>
             <option value="M">Male</option>

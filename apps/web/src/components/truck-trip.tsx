@@ -80,7 +80,7 @@ export function TripStepper({ request }: { request: TruckRequestResponse }) {
             <span
               aria-hidden
               className={[
-                'h-2.5 w-2.5 shrink-0 rounded-full border-2',
+'h-2.5 w-2.5 shrink-0 rounded-full border-2',
                 s.done ? 'border-success bg-success' : i === current ? 'border-accent bg-surface' : 'border-border bg-surface',
               ].join(' ')}
             />
@@ -105,7 +105,7 @@ function Dot({ which }: { which: 'A' | 'B' }) {
     <span
       aria-hidden
       className={[
-        'grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold',
+'grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold',
         which === 'A' ? 'bg-primary text-on-primary' : 'bg-accent text-white',
       ].join(' ')}
     >
@@ -135,7 +135,7 @@ export function TruckRequestCard({ request: r, initiallyOpen = false }: { reques
         onClick={() => setOpen(true)}
         aria-label={`Trip ${r.code}: ${r.pickup} to ${r.dropoff}`}
         className={[
-          'group flex w-full flex-col gap-3 rounded-md border border-border bg-surface p-4 text-left shadow-sm transition-colors',
+'group flex w-full flex-col gap-3 rounded-md border border-border bg-surface p-4 text-left shadow-sm transition-colors',
           'hover:border-text/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
         ].join(' ')}
       >
@@ -223,7 +223,7 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
       {r.status !== 'cancelled' && <TripStepper request={r} />}
 
       <section className="flex flex-col gap-2 rounded-md border border-border bg-surface-sunk p-4">
-        <p className="font-mono text-lg font-semibold tabular-nums text-text">
+        <p className="font-mono text-heading-md tabular-nums text-text">
           {formatPeso(price.amount)}
           {price.note && <span className="font-sans text-sm font-normal text-text-muted"> {price.note}</span>}
         </p>

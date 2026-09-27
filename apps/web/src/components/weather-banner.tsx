@@ -76,7 +76,7 @@ export function WeatherBanner({
   return (
     <div
       className={[
-        'flex w-full flex-wrap items-start justify-between gap-3 rounded-md px-4 py-3 text-sm',
+'flex w-full flex-wrap items-start justify-between gap-3 rounded-md px-4 py-3 text-sm',
         TONE_CLASSES[tone],
         className,
       ].join(' ')}
@@ -86,7 +86,7 @@ export function WeatherBanner({
           <Icon className="h-5 w-5 shrink-0" />
           <span className="font-semibold">{severityLabel}</span>
           {tagLabel && (
-            <span className="rounded-sm bg-black/10 px-1.5 py-0.5 text-xs font-medium uppercase tracking-[0.04em]">
+            <span className="rounded-sm bg-black/10 px-1.5 py-0.5 text-sm font-medium">
               {tagLabel}
             </span>
           )}

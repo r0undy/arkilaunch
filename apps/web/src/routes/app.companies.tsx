@@ -88,7 +88,7 @@ function CompaniesPendingPage() {
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5 border-t border-border pt-3">
-      <span className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+      <span className="text-sm font-medium text-text-muted">
         {label}
       </span>
       <span className="text-text">{value}</span>
@@ -125,7 +125,7 @@ function CompanyApplicationPage() {
       {application && (
         <div className="grid gap-4 lg:grid-cols-[1fr_minmax(260px,340px)]">
           <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
-            <h2 className="text-lg font-semibold text-text">Entity details</h2>
+            <h2 className="text-heading-md text-text">Entity details</h2>
             <DetailRow label="Company" value={application.companyName} />
             <DetailRow
               label="Representative"
@@ -139,7 +139,7 @@ function CompanyApplicationPage() {
 
           <div className="flex min-w-0 flex-col gap-4">
             <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">
+              <h2 className="text-sm font-medium text-text-muted">
                 Decision
               </h2>
               <ApplicationActions application={application} />
@@ -152,7 +152,7 @@ function CompanyApplicationPage() {
                 panel can be populated. Recorded in the alignment report
                 rather than mocked up with sample filenames. */}
             <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">
+              <h2 className="text-sm font-medium text-text-muted">
                 Compliance documents
               </h2>
               <p className="text-sm text-text-muted">

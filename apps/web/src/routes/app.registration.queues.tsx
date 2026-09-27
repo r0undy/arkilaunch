@@ -83,7 +83,7 @@ export function ScorePill({ score }: { score: NonNullable<CompanyReviewResponse[
         <ul className="flex w-full max-w-md flex-col gap-1 rounded-md border border-border p-3 text-left text-sm">
           {score.checks.map((c) => (
             <li key={c.id} className="flex gap-2">
-              <span aria-hidden className={c.status === 'pass' ? 'text-success' : c.status === 'warn' ? 'text-warning' : 'text-error'}>
+              <span aria-hidden className={c.status ==='pass' ? 'text-success' : c.status === 'warn' ? 'text-warning' : 'text-error'}>
                 {c.status === 'pass' ? '✓' : '!'}
               </span>
               <span>
@@ -181,7 +181,7 @@ function DocButton({ doc, onOpen }: { doc: ReviewDocument; onOpen: () => void })
     <Button variant="secondary" onClick={onOpen}>
       {DOC_LABELS[doc.documentType] ?? formatStatus(doc.documentType)}
       {doc.confidence !== null && (
-        <span className={doc.confidence < 0.7 ? 'text-error' : 'text-text-muted'}>
+        <span className={doc.confidence < 0.7 ?'text-error' : 'text-text-muted'}>
           &nbsp;&middot; {Math.round(doc.confidence * 100)}%
         </span>
       )}
@@ -511,7 +511,7 @@ function RejectDialog({
           maxLength={1000}
           rows={2}
           placeholder="What you saw, e.g. Check with SEC lists the company as suspended."
-          className="rounded-md border border-border bg-surface px-3 py-2 text-text"
+          className="rounded-input border border-border bg-surface px-3 py-2 text-text"
         />
       </div>
     </Modal>
