@@ -16,7 +16,8 @@ import { GaugeReadout } from '../components/gauge-readout.js';
 import { Modal } from '../components/modal.js';
 import { QuoteLines } from '../components/quote-lines.js';
 import { useToast } from '../components/toast.js';
-import { DieselPriceForm, PricingParametersForm, RateCardForm, RateCardsPanel, RentalFeesForm } from './app.settings.js';
+import { DieselPriceForm, PricingParametersForm, RateCardsPanel, RentalFeesForm } from './app.settings.js';
+import { Tabs } from '../components/tabs.js';
 import { SettingsEditor, TollsEditor, settingsQuery as truckSettingsQuery } from './app.trucks.js';
 
 // A quote line as the builder edits it: a catalog machine priced off its
@@ -53,6 +54,13 @@ const PRICE_BOOK_TABS: Array<{ id: PriceBookTab; label: string }> = [
   { id: 'trucking', label: 'Trucking' },
 ];
 
+const RENTAL_SECTIONS = [
+  { id: 'rental-fees', label: 'Mobilization and fees' },
+  { id: 'operating-costs', label: 'Operating costs' },
+  { id: 'diesel', label: 'Diesel' },
+  { id: 'rate-cards', label: 'Rate cards' },
+];
+
 // The standard price book: one set of prices for every client and prospect.
 // Equipment rental is rate cards + operating costs + the fixed mobilization
 // and demobilization; trucking is its per-trip fees, extras and tolls. A
@@ -67,30 +75,30 @@ function PriceBook() {
         title="Quotes"
         description="The standard prices every client and prospect is quoted. A booking gets its quote from these at once; you only revise one when the customer negotiates."
       />
-      <div role="tablist" aria-label="Service" className="flex gap-1 border-b border-border">
-        {PRICE_BOOK_TABS.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === entry.id}
-            onClick={() => setTab(entry.id)}
-            className={[
-              '-mb-px border-b-2 px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
-              tab === entry.id ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text',
-            ].join(' ')}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
+      <Tabs label="Service" items={PRICE_BOOK_TABS} value={tab} onChange={setTab} />
       {tab === 'rental' ? (
         <>
-          <RentalFeesForm />
-          <PricingParametersForm />
-          <DieselPriceForm />
-          <RateCardForm />
-          <RateCardsPanel />
+          {/* Four long forms: a jump list so the rate cards at the bottom
+              are one click away. */}
+          <nav aria-label="Price book sections" className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {RENTAL_SECTIONS.map((section) => (
+              <a key={section.id} href={`#${section.id}`} className="font-semibold text-accent hover:underline">
+                {section.label}
+              </a>
+            ))}
+          </nav>
+          <section id="rental-fees" className="scroll-mt-20">
+            <RentalFeesForm />
+          </section>
+          <section id="operating-costs" className="scroll-mt-20">
+            <PricingParametersForm />
+          </section>
+          <section id="diesel" className="scroll-mt-20">
+            <DieselPriceForm />
+          </section>
+          <section id="rate-cards" className="scroll-mt-20">
+            <RateCardsPanel />
+          </section>
         </>
       ) : (
         <>

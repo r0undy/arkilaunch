@@ -4,6 +4,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import type { IncidentResponse, InvoiceSummaryResponse, WeatherSeverity } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import {
+  companiesQueries,
   edtrQueries,
   equipmentQueries,
   fleetUtilizationPct,
@@ -11,8 +12,10 @@ import {
   invoicesQueries,
   reportQueries,
   sitesQueries,
+  trucksQueries,
   weatherQueries,
 } from '../lib/queries.js';
+import { StatTile } from '../components/stat-tile.js';
 import { WeatherBanner, type WeatherTone } from '../components/weather-banner.js';
 import { Surface } from '../components/surface.js';
 import { Modal } from '../components/modal.js';
@@ -119,6 +122,10 @@ function AdminDashboardPage() {
   const { data: invoices } = useQuery(invoicesQueries.list());
   const { data: incidents } = useQuery(incidentsQueries.list());
   const { data: fleet } = useQuery(equipmentQueries.list());
+  // Work waiting on staff, as real totals (not a page's length).
+  const reviewCount = useQuery(edtrQueries.reviewCount());
+  const openTrucks = useQuery(trucksQueries.list(1, 0, '', 'open'));
+  const kycPending = useQuery({ ...companiesQueries.review('pending', 1, 0), retry: false });
   const advisoryBySite = new Map((advisories?.items ?? []).map((a) => [a.siteId, a]));
 
   // Three secondary queues used to stack down the page, so the one queue
@@ -240,6 +247,32 @@ function AdminDashboardPage() {
           available
         </p>
       </Surface>
+
+      {/* ---- Work waiting, each a click from its queue ---- */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatTile
+          label="Field logs to review"
+          value={reviewCount.data?.total ?? null}
+          hint="Logs the two-source match could not settle."
+          action={<Link to="/app/ocr" className="hover:underline">Open field logs</Link>}
+        />
+        <StatTile
+          label="Open truck requests"
+          value={openTrucks.data?.total ?? null}
+          hint="Not yet paid or cancelled."
+          action={
+            <Link to="/app/bookings" search={{ service: 'truck' }} className="hover:underline">
+              Open truck service
+            </Link>
+          }
+        />
+        <StatTile
+          label="Companies to verify"
+          value={kycPending.isError ? '--' : (kycPending.data?.total ?? null)}
+          hint="Customer companies waiting on KYC."
+          action={<Link to="/app/registration/pending" className="hover:underline">Open registration</Link>}
+        />
+      </div>
 
       {alerts.length > 0 && (
         <button

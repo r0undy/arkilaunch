@@ -21,6 +21,7 @@ import { CaptureModal } from '../components/capture-modal.js';
 import { HourFields, hourValuesFrom, toLineItems, type HourFieldValues, EMPTY_HOURS } from '../components/hour-fields.js';
 import { Modal } from '../components/modal.js';
 import { PageHeader } from '../components/page-header.js';
+import { Tabs } from '../components/tabs.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
 import { SiteEquipmentWeather } from '../components/equipment-weather.js';
@@ -649,24 +650,12 @@ function SiteHubPage() {
           </Link>
         }
       />
-      <div role="tablist" aria-label="Site sections" className="flex flex-wrap gap-1 border-b border-border">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => void navigate({ search: { tab: t } })}
-            className={[
-              '-mb-px border-b-2 px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
-              tab === t ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text',
-            ].join(' ')}
-          >
-            {TAB_LABEL[t]}
-            {t === 'logs' && hub.data && hub.data.totals.pending > 0 ? ` (${hub.data.totals.pending})` : ''}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        label="Site sections"
+        value={tab}
+        onChange={(t) => void navigate({ search: { tab: t } })}
+        items={TABS.map((t) => ({ id: t, label: TAB_LABEL[t], badge: t === 'logs' ? (hub.data?.totals.pending ?? null) : null }))}
+      />
       {hub.isError && <p className="text-sm text-error">{apiErrorText(hub.error)}</p>}
       {hub.isPending && <p className="text-sm text-text-muted">Loading the site...</p>}
       {hub.data && (

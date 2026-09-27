@@ -125,8 +125,6 @@ export const APP_NAV: NavGroup[] = [
       { label: 'People', to: '/app/users', icon: Users },
       { label: 'Notifications', to: '/app/notifications', icon: Bell },
       { label: 'My profile', to: '/app/profile', icon: UserCircle },
-      { label: 'Tickets', to: '/app/tickets', icon: ClipboardList },
-      { label: 'Security logs', to: '/app/security-logs', icon: ShieldAlert },
     ],
   },
 ];

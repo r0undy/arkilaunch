@@ -1,7 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { desc, eq } from 'drizzle-orm';
 import { auditLogs, coupons, withTenantTx } from '@arkilaunch/db';
-import type { CouponCreate, CouponResponse, RequestContext } from '@arkilaunch/shared';
+import type { CouponCreate, CouponListResponse, CouponResponse, RequestContext } from '@arkilaunch/shared';
+import { countRows } from '../common/count-rows.js';
 
 const toResponse = (row: typeof coupons.$inferSelect): CouponResponse => ({
   id: row.id,
@@ -21,10 +22,10 @@ const toResponse = (row: typeof coupons.$inferSelect): CouponResponse => ({
 // payments.service.ts checkout; this is only the catalog.
 @Injectable()
 export class CouponsService {
-  async list(ctx: RequestContext): Promise<CouponResponse[]> {
+  async list(ctx: RequestContext, limit: number, offset: number): Promise<CouponListResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const rows = await tx.select().from(coupons).orderBy(desc(coupons.createdAt));
-      return rows.map(toResponse);
+      const rows = await tx.select().from(coupons).orderBy(desc(coupons.createdAt), desc(coupons.id)).limit(limit).offset(offset);
+      return { items: rows.map(toResponse), total: await countRows(tx, coupons) };
     });
   }
 

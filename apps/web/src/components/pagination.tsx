@@ -51,7 +51,6 @@ export function Pagination({
         </span>
         <Button
           variant="secondary"
-          size="field"
           onClick={() => onOffsetChange(Math.max(0, offset - limit))}
           disabled={!canGoBack || busy}
         >
@@ -59,7 +58,6 @@ export function Pagination({
         </Button>
         <Button
           variant="secondary"
-          size="field"
           onClick={() => onOffsetChange(offset + limit)}
           disabled={!canGoForward || busy}
         >

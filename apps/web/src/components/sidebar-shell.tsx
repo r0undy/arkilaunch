@@ -2,6 +2,7 @@ import { useRouterState } from '@tanstack/react-router';
 import { useState, type ReactNode } from 'react';
 import type { NavGroup } from '../lib/nav-config.js';
 import { AppBar } from './app-bar.js';
+import { Modal } from './modal.js';
 import { NavGroupList } from './nav-group.js';
 import { SkipLink } from './skip-link.js';
 
@@ -28,26 +29,22 @@ export function SidebarShell({ navGroups, tenantLabel, children }: SidebarShellP
             screen reader. */}
         <aside
           aria-label="Sidebar"
-          className="hidden w-60 shrink-0 border-r border-border bg-surface-sunk px-3 py-6 lg:block"
+          className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-60 shrink-0 overflow-y-auto border-r border-border bg-surface-sunk px-3 py-6 lg:block"
         >
           <NavGroupList groups={navGroups} pathname={pathname} />
         </aside>
 
-        {drawerOpen && (
-          <div className="fixed inset-0 z-50 flex lg:hidden">
-            <button
-              type="button"
-              aria-label="Close navigation"
-              onClick={() => setDrawerOpen(false)}
-              className="flex-1 bg-[var(--yb-modal-scrim)]"
-            />
-            <div className="w-64 max-w-[80vw] bg-surface-sunk px-3 py-6 shadow-lg">
-              <NavGroupList groups={navGroups} pathname={pathname} onNavigate={() => setDrawerOpen(false)} />
-            </div>
-          </div>
-        )}
+        {/* The shared dialog, so the phone drawer gets the focus trap,
+            Escape and focus return it was missing. */}
+        <Modal open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Menu" placement="right" size="sm">
+          <NavGroupList groups={navGroups} pathname={pathname} onNavigate={() => setDrawerOpen(false)} />
+        </Modal>
 
-        <main id="main" className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
+        {/* Capped at the wide breakpoint: past 1440px a table stretched to
+            the edges is harder to scan, not easier. */}
+        <main id="main" className="min-w-0 flex-1 p-4 sm:p-6">
+          <div className="mx-auto w-full max-w-[1440px]">{children}</div>
+        </main>
       </div>
     </div>
   );

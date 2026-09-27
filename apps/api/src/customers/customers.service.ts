@@ -38,6 +38,7 @@ import {
   isOcrDocument,
   KYC_REJECTION_REASONS,
   type KycRejectionReason,
+  type CompanyReviewListResponse,
   type CompanyReviewResponse,
   type DocumentIntelligencePort,
   type KycScanResponse,
@@ -69,6 +70,7 @@ import { EventsService } from '../events/events.service.js';
 import { notifyStaff } from '../common/notify-customer.js';
 import { siteDocumentsFor, siteProofComplete } from '../common/site-proof.js';
 import { latestEquipmentWeather } from '../common/equipment-weather.js';
+import { countRows } from '../common/count-rows.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -716,15 +718,17 @@ export class CustomersService {
   // Each document carries its stored reads, so the reviewer sees what the
   // upload-time OCR and the customer said without a click (or an Azure
   // spend); "Re-read" stays for a fresh pass.
-  async listForReview(ctx: RequestContext, kycStatus: string): Promise<CompanyReviewResponse[]> {
+  async listForReview(ctx: RequestContext, kycStatus: string, limit = 50, offset = 0): Promise<CompanyReviewListResponse> {
     return withTenantTx(ctx, async (tx) => {
+      const where = eq(customers.kycStatus, kycStatus);
       const rows = await tx
         .select()
         .from(customers)
-        .where(eq(customers.kycStatus, kycStatus))
-        .orderBy(desc(customers.createdAt))
-        .limit(100);
-      return withScores(tx, await withDocuments(tx, rows, true));
+        .where(where)
+        .orderBy(desc(customers.createdAt), desc(customers.id))
+        .limit(limit)
+        .offset(offset);
+      return { items: await withScores(tx, await withDocuments(tx, rows, true)), total: await countRows(tx, customers, where) };
     });
   }
 

@@ -1,9 +1,10 @@
 import { createRoute, useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PinMap, type LatLng } from '../components/pin-map.js';
+import type { LatLng } from '../components/pin-map.js';
+import { RouteMap, type Which } from '../components/route-map.js';
 import { matchPhLocation, reverseGeocode } from '../lib/reverse-geocode.js';
 import { useState } from 'react';
-import type { TruckPrice, TruckRequestResponse } from '@arkilaunch/shared';
+import type { TruckEstimateResponse, TruckPrice, TruckRequestListResponse, TruckRequestResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { apiErrorText, apiGet, apiPost } from '../lib/api-client.js';
 import { formatPeso, formatStatus } from '../lib/format.js';
@@ -16,6 +17,7 @@ import { TruckThread } from '../components/truck-thread.js';
 import { Select } from '../components/select.js';
 import { BookingCode } from '../components/booking-code.js';
 import { customerSitesQueries } from '../lib/queries.js';
+import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import {
   EMPTY_LOCATION,
   LocationPicker,
@@ -23,10 +25,16 @@ import {
   type PhLocation,
 } from '../components/location-picker.js';
 
-export const myTruckRequestsQuery = {
-  queryKey: ['me', 'truck-requests'] as const,
-  queryFn: () => apiGet<TruckRequestResponse[]>('/me/truck-requests'),
-};
+// The customer's own requests, one page at a time. Every key starts with
+// MY_TRUCK_REQUESTS, so invalidating that refreshes every page.
+export const MY_TRUCK_REQUESTS = ['me', 'truck-requests'] as const;
+export const myTruckRequestsQuery = (limit: number, offset: number, q = '') => ({
+  queryKey: [...MY_TRUCK_REQUESTS, limit, offset, q] as const,
+  queryFn: () =>
+    apiGet<TruckRequestListResponse>(
+      `/me/truck-requests?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}`,
+    ),
+});
 
 // low-high band and the cap note shown with every estimate.
 export function EstimateRange({ price, capPhp }: { price: TruckPrice; capPhp?: number | null }) {
@@ -106,7 +114,19 @@ function TrucksPage() {
     const place = matchPhLocation(found);
     if (place) setPlace(place);
   }
-  const mine = useQuery(myTruckRequestsQuery);
+  // One map places both pins; each fills its own side's address fields.
+  function placePin(which: Which, at: LatLng) {
+    estimate.reset();
+    if (which === 'pickup') {
+      setPickupPin(at);
+      void fillFromPin(at, setPickupDetail, setPickupAt);
+    } else {
+      setDropoffPin(at);
+      void fillFromPin(at, setDropoffDetail, setDropoffAt);
+    }
+  }
+  const [offset, setOffset] = useState(0);
+  const mine = useQuery(myTruckRequestsQuery(PAGE_SIZE, offset));
   // The project site the trip serves: staff open its proof before the job.
   const sites = useQuery(customerSitesQueries.mine());
   const [siteId, setSiteId] = useState('');
@@ -114,7 +134,7 @@ function TrucksPage() {
 
   const ready = pickup !== '' && dropoff !== '';
   const estimate = useMutation({
-    mutationFn: () => apiPost<TruckPrice>('/me/truck-requests/estimate', { pickup, dropoff, ...pinBody }),
+    mutationFn: () => apiPost<TruckEstimateResponse>('/me/truck-requests/estimate', { pickup, dropoff, ...pinBody }),
   });
   const submit = useMutation({
     mutationFn: () =>
@@ -136,7 +156,8 @@ function TrucksPage() {
       setDropoffPin(null);
       setNotes('');
       estimate.reset();
-      void queryClient.invalidateQueries({ queryKey: myTruckRequestsQuery.queryKey });
+      setOffset(0);
+      void queryClient.invalidateQueries({ queryKey: MY_TRUCK_REQUESTS });
     },
     onError: (e) => toast.error('Request not sent', apiErrorText(e)),
   });
@@ -166,15 +187,6 @@ function TrucksPage() {
             value={pickupDetail}
             onChange={(e) => setPickupDetail(e.target.value)}
           />
-          <PinMap
-            label="Pickup pin"
-            value={pickupPin}
-            onChange={(next) => {
-              setPickupPin(next);
-              estimate.reset();
-              void fillFromPin(next, setPickupDetail, setPickupAt);
-            }}
-          />
         </div>
         <div className="flex flex-col gap-2">
           <LocationPicker
@@ -190,14 +202,14 @@ function TrucksPage() {
             value={dropoffDetail}
             onChange={(e) => setDropoffDetail(e.target.value)}
           />
-          <PinMap
-            label="Drop-off pin"
-            value={dropoffPin}
-            onChange={(next) => {
-              setDropoffPin(next);
-              estimate.reset();
-              void fillFromPin(next, setDropoffDetail, setDropoffAt);
-            }}
+        </div>
+        <div className="sm:col-span-2">
+          <RouteMap
+            mode="edit"
+            pickup={pickupPin}
+            dropoff={dropoffPin}
+            route={estimate.data?.route ?? null}
+            onChange={placePin}
           />
         </div>
         <Input label="Pickup date and time" type="datetime-local" value={when} min={toLocalInput(new Date().toISOString())} onChange={(e) => setWhen(e.target.value)} {...(when && new Date(when) <= new Date() ? { error: 'Pick a time in the future.' } : {})} />
@@ -249,10 +261,13 @@ function TrucksPage() {
 
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-lg font-semibold text-text">Your requests</h2>
-        {mine.data?.length === 0 && <p className="text-sm text-text-muted">No truck requests yet.</p>}
-        {mine.data?.map((r) => (
+        {mine.data?.total === 0 && <p className="text-sm text-text-muted">No truck requests yet.</p>}
+        {mine.data?.items.map((r) => (
           <TruckRequestCard key={r.id} request={r} />
         ))}
+        {mine.data && (
+          <Pagination offset={offset} limit={PAGE_SIZE} total={mine.data.total} onOffsetChange={setOffset} noun="requests" />
+        )}
       </section>
     </div>
   );
@@ -264,7 +279,7 @@ export function TruckRequestCard({ request: r }: { request: TruckRequestResponse
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: myTruckRequestsQuery.queryKey });
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: MY_TRUCK_REQUESTS });
   const call = useMutation({ mutationFn: () => apiPost(`/me/truck-requests/${r.id}/request-call`, {}), onSuccess: refresh });
   const approve = useMutation({ mutationFn: () => apiPost(`/me/truck-requests/${r.id}/approve-price`, {}), onSuccess: refresh });
   const overCap = r.agreedPricePhp !== null && r.capPhp !== null && r.agreedPricePhp > r.capPhp;

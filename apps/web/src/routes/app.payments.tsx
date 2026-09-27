@@ -271,22 +271,14 @@ function PaymentsPage() {
         emptyDescription="Invoices appear once a reconciliation is approved and a deduction is posted."
         isEmpty={(data) => data.total === 0}
         render={(data) => (
-          <div>
-            <Table
-              columns={COLUMNS}
-              rows={data.items}
-              rowKey={(row) => row.id}
-              onRowClick={setSelected}
-              rowLabel={(row) => `invoice ${shortCode('invoice', row.id)}`}
-            />
-            <Pagination
-              offset={offset}
-              limit={PAGE_SIZE}
-              total={data.total}
-              onOffsetChange={setOffset}
-              noun="invoices"
-            />
-          </div>
+          <Table
+            columns={COLUMNS}
+            rows={data.items}
+            rowKey={(row) => row.id}
+            onRowClick={setSelected}
+            rowLabel={(row) => `invoice ${shortCode('invoice', row.id)}`}
+            footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="invoices" />}
+          />
         )}
       />
       <Modal

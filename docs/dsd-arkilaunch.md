@@ -352,6 +352,8 @@ No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the mo
 - Border radius: `--radius-md` card, `--radius-lg` modal.
 - Shadow: `--shadow-sm` inline, `--shadow-md` floating, `--shadow-lg` modal.
 - Modal backdrop: `rgba(16,21,27,0.55)`, no blur. Focus trapped; `Esc` closes non-destructive modals; a destructive modal (e.g. reject reconciliation) requires an explicit button, not backdrop-click.
+- **Drawers and modals over pages (CR: console-polish).** A record's detail opens in a right-hand drawer over its list (the list keeps its page and filters), addressable by URL (`?open=CODE`) so the back button closes it. A create form opens as a modal from a header button; it is never an always-open inline form stacked on a list. A confirm opened from inside a drawer owns Escape and Tab until it closes.
+- **Confirm before money or state moves (CR: console-polish).** Accepting a price, marking delivered/returned, approving or declining a change request, and removing a toll each pass through a confirm that says what will happen in the reader's terms. A one-click reversible toggle (a coupon on/off) stays one click, and a toast says what changed.
 
 ### Domain components (Yardboard-specific)
 
@@ -368,6 +370,14 @@ No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the mo
 **Evidence Split View**; the reconciliation review surface (§4.1); the original handwritten image beside the extracted, editable fields. **Not yet built** (no consumer screen exists; S7/S8 unbuilt).
 
 **Hazard Divider**; a diagonal amber/black stripe rule used only to fence a blocking/danger region (reconciliation discrepancy, stop-work weather, unverified KYC). Never decorative; its presence means "do not proceed until resolved". **Built:** `apps/web/src/components/hazard-divider.tsx`.
+
+**Status Badge** (CR: console-polish); the lifecycle marker in table cells and drawer headers for bookings, truck requests, coupons, people and companies. Light tint of the tone plus a 1px tone border, `--radius-sm`, a Lucide icon + label, 12px semibold. Five tones: done (success), moving (accent), someone must act (warning tint, `--color-text` label, since warning yellow fails contrast as text), went wrong (error), over (muted). Distinct from the Status Pill, which keeps the solid weather and reconciliation scales. **Built:** `apps/web/src/components/status-badge.tsx`.
+
+**Tabs** (CR: console-polish); the one tablist: 44px tabs, 2px `--color-primary` underline on the selected tab, arrow keys/Home/End move and select, only the selected tab is in the Tab order, an optional mono count badge. Used by Quotes, the site hub, Bookings and the booking drawer. **Built:** `apps/web/src/components/tabs.tsx`.
+
+**Stat Tile** (CR: console-polish); one work-waiting figure on the dashboard: overline label, big mono number, one-line meaning, a link to the queue that acts on it. A figure that cannot load shows `--`, never a fake zero. **Built:** `apps/web/src/components/stat-tile.tsx`.
+
+**Route Map** (CR: console-polish); a truck trip on one map. Pins A (pickup, `--color-primary`) and B (drop-off, `--color-accent`), the road route as an accent line on a white casing, a dashed straight line until the road route returns, and the distance/drive time in mono labelled "(estimate)". Tilted 3D by default with a "Flat view" toggle; two-finger pan on touch so the page still scrolls. Vector tiles are OpenFreeMap (keyless); MapLibre loads lazily. Without WebGL it falls back to the flat Leaflet pin map. Under `prefers-reduced-motion` the camera jumps rather than flies. The coordinates are always printed below the map, so the map is never the only record of a pin. **Built:** `apps/web/src/components/route-map.tsx` (+ `route-map-gl.tsx`).
 
 ### Marketing components (CR: dsd-marketing-tier)
 

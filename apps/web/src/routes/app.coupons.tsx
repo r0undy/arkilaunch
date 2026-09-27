@@ -1,16 +1,17 @@
 import { createRoute } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CouponCreate, CouponResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { couponsQueries } from '../lib/queries.js';
 import { ApiError, apiErrorText, apiPatch, apiPost } from '../lib/api-client.js';
 import { Button } from '../components/button.js';
-import { DataPanel } from '../components/data-panel.js';
 import { Input } from '../components/input.js';
 import { PageHeader } from '../components/page-header.js';
 import { Select } from '../components/select.js';
-import { Surface } from '../components/surface.js';
+import { Modal } from '../components/modal.js';
+import { StatusBadge } from '../components/status-badge.js';
+import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { useToast } from '../components/toast.js';
 import { formatDate, formatPeso } from '../lib/format.js';
@@ -23,7 +24,10 @@ import { formatDate, formatPeso } from '../lib/format.js';
 const discountText = (c: CouponResponse) =>
   c.discountType === 'percent' ? `${c.discountValue}% off rent` : `${formatPeso(c.discountValue)} off rent`;
 
-function CreateCoupon() {
+// Every coupons page shares this key prefix.
+const COUPONS = ['coupons'] as const;
+
+function CreateCouponModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [code, setCode] = useState('');
@@ -41,7 +45,8 @@ function CreateCoupon() {
       setValue('');
       setExpires('');
       setMaxUses('');
-      void queryClient.invalidateQueries({ queryKey: couponsQueries.list().queryKey });
+      onClose();
+      void queryClient.invalidateQueries({ queryKey: COUPONS });
     },
     onError: (err) =>
       toast.error(
@@ -64,8 +69,23 @@ function CreateCoupon() {
   }
 
   return (
-    <Surface radius="md" elevation="sm" className="p-5">
-      <form onSubmit={submit} className="grid gap-4 md:grid-cols-3">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="New coupon"
+      description="Customers enter the code at checkout. It comes off the rent, never the deposit."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="new-coupon" variant="primary" loading={create.isPending}>
+            Create coupon
+          </Button>
+        </>
+      }
+    >
+      <form id="new-coupon" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
         <Input
           label="Code"
           required
@@ -108,13 +128,8 @@ function CreateCoupon() {
           />
           Once per customer company
         </label>
-        <div className="md:col-span-3">
-          <Button type="submit" variant="primary" loading={create.isPending}>
-            Create coupon
-          </Button>
-        </div>
       </form>
-    </Surface>
+    </Modal>
   );
 }
 
@@ -123,7 +138,12 @@ function ActiveToggle({ coupon }: { coupon: CouponResponse }) {
   const queryClient = useQueryClient();
   const toggle = useMutation({
     mutationFn: () => apiPatch<CouponResponse>(`/coupons/${coupon.id}`, { active: !coupon.active }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: couponsQueries.list().queryKey }),
+    // Reversible with the same button, so no confirm; the toast says what
+    // changed.
+    onSuccess: (updated) => {
+      toast.success(updated.active ? `${updated.code} switched on` : `${updated.code} switched off`);
+      void queryClient.invalidateQueries({ queryKey: COUPONS });
+    },
     onError: (err) => toast.error('Could not update the coupon', apiErrorText(err)),
   });
   return (
@@ -141,27 +161,33 @@ const COLUMNS: TableColumn<CouponResponse>[] = [
     cell: (c) => `${c.redeemedCount}${c.maxUses ? ` of ${c.maxUses}` : ''}${c.oncePerCustomer ? ', once per company' : ''}`,
   },
   { header: 'Expires', cell: (c) => (c.expiresAt ? formatDate(c.expiresAt) : 'Never') },
-  { header: 'Status', cell: (c) => (c.active ? 'Active' : 'Off') },
-  { header: '', cell: (c) => <ActiveToggle coupon={c} />, align: 'right' },
+  { header: 'Status', cell: (c) => <StatusBadge status={c.active ? 'active' : 'inactive'} label={c.active ? 'Active' : 'Off'} /> },
+  { header: 'Actions', cell: (c) => <ActiveToggle coupon={c} />, align: 'right' },
 ];
 
 function CouponsPage() {
+  const [offset, setOffset] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const coupons = useQuery(couponsQueries.list(PAGE_SIZE, offset));
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="Billing"
         title="Coupons"
         description="Codes your customers enter at checkout. A coupon comes off the rent, never the consumable deposit."
+        actions={<Button onClick={() => setCreating(true)}>New coupon</Button>}
       />
-      <CreateCoupon />
-      <DataPanel
-        title="Coupons"
-        options={couponsQueries.list()}
-        emptyTitle="No coupons yet"
-        emptyDescription="Create one above and share the code with a customer."
-        isEmpty={(data) => data.length === 0}
-        render={(data) => <Table columns={COLUMNS} rows={data} rowKey={(c) => c.id} />}
+      {coupons.isError && <p className="text-sm text-error">{apiErrorText(coupons.error)}</p>}
+      <Table
+        columns={COLUMNS}
+        rows={coupons.data?.items ?? []}
+        rowKey={(c) => c.id}
+        empty={coupons.isPending ? 'Loading coupons...' : 'No coupons yet. Create one and share the code with a customer.'}
+        footer={
+          <Pagination offset={offset} limit={PAGE_SIZE} total={coupons.data?.total ?? 0} onOffsetChange={setOffset} noun="coupons" busy={coupons.isFetching} />
+        }
       />
+      <CreateCouponModal open={creating} onClose={() => setCreating(false)} />
     </div>
   );
 }

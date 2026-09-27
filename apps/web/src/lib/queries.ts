@@ -4,8 +4,10 @@ import type {
   NegotiationMessageResponse,
   RentPart,
   CompanyResponse,
-  CouponResponse,
-  CompanyReviewResponse,
+  CouponListResponse,
+  CompanyReviewListResponse,
+  TruckRequestListResponse,
+  TruckRoute,
   SiteForecastResponse,
   AreaForecastResponse,
   CustomerSiteResponse,
@@ -63,7 +65,10 @@ export const catalogQueries = {
   equipment: () =>
     queryOptions({
       queryKey: ['catalog', 'equipment'] as const,
-      queryFn: () => apiGet<CatalogEquipmentListResponse>('/catalog/equipment'),
+      // ponytail: the storefront filters in the browser, so it takes the
+      // API's 100-row ceiling (the default was 50). Past 100 machines, page
+      // on the server -- that needs a total from the catalog SQL function.
+      queryFn: () => apiGet<CatalogEquipmentListResponse>('/catalog/equipment?limit=100'),
     }),
   equipmentDetail: (id: string) =>
     queryOptions({
@@ -92,10 +97,31 @@ export const sitesQueries = {
 };
 
 export const couponsQueries = {
-  list: () =>
+  list: (limit: number, offset: number) =>
     queryOptions({
-      queryKey: ['coupons'] as const,
-      queryFn: () => apiGet<CouponResponse[]>('/coupons'),
+      queryKey: ['coupons', limit, offset] as const,
+      queryFn: () => apiGet<CouponListResponse>(`/coupons?limit=${limit}&offset=${offset}`),
+    }),
+};
+
+// Staff truck queue (cr-arkilaunch-console-polish.md). Every key starts
+// with 'truck-requests', so invalidating that prefix refreshes them all.
+export const trucksQueries = {
+  list: (limit: number, offset: number, q = '', status?: 'open' | 'closed') =>
+    queryOptions({
+      queryKey: ['truck-requests', limit, offset, q, status ?? 'all'] as const,
+      queryFn: () =>
+        apiGet<TruckRequestListResponse>(
+          `/truck-requests?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}${status ? `&status=${status}` : ''}`,
+        ),
+    }),
+  // The road line between a request's saved pins, for the drawer map.
+  route: (id: string) =>
+    queryOptions({
+      queryKey: ['truck-requests', id, 'route'] as const,
+      queryFn: () => apiGet<TruckRoute>(`/truck-requests/${id}/route`),
+      staleTime: Infinity,
+      retry: false,
     }),
 };
 
@@ -237,11 +263,13 @@ export const usersQueries = {
     }),
 };
 
+// Badge counts read `total`, not a page's length: a page tops out at the
+// API's limit, so counting its rows capped every badge at 50.
 export const notificationsQueries = {
-  list: () =>
+  unreadCount: () =>
     queryOptions({
-      queryKey: ['notifications'] as const,
-      queryFn: () => apiGet<{ items: { id: string; status: string }[] }>('/notifications'),
+      queryKey: ['notifications', 'unread-count'] as const,
+      queryFn: () => apiGet<{ total: number }>('/notifications?status=unread&limit=1'),
     }),
 };
 
@@ -258,6 +286,11 @@ export const edtrQueries = {
     queryOptions({
       queryKey: ['edtr'] as const,
       queryFn: () => apiGet<{ items: unknown[] }>('/edtr'),
+    }),
+  reviewCount: () =>
+    queryOptions({
+      queryKey: ['edtr', 'review-count'] as const,
+      queryFn: () => apiGet<{ total: number }>('/edtr?status=review&limit=1'),
     }),
   detail: (id: string) =>
     queryOptions({
@@ -295,10 +328,11 @@ export const companiesQueries = {
       staleTime: 240_000,
       retry: false,
     }),
-  review: (kycStatus: 'pending' | 'approved' | 'rejected') =>
+  review: (kycStatus: 'pending' | 'approved' | 'rejected', limit: number, offset: number) =>
     queryOptions({
-      queryKey: ['customers', 'review', kycStatus] as const,
-      queryFn: () => apiGet<CompanyReviewResponse[]>(`/customers/review?kycStatus=${kycStatus}`),
+      queryKey: ['customers', 'review', kycStatus, limit, offset] as const,
+      queryFn: () =>
+        apiGet<CompanyReviewListResponse>(`/customers/review?kycStatus=${kycStatus}&limit=${limit}&offset=${offset}`),
     }),
 };
 

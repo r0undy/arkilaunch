@@ -6,7 +6,7 @@ import { CloseIcon } from './icons.js';
 // consequential action now open through this instead, so the accessibility
 // work is done once.
 
-export type ModalSize = 'sm' | 'md' | 'lg';
+export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
 export interface ModalProps {
   open: boolean;
@@ -28,6 +28,7 @@ const SIZE_CLASSES: Record<ModalSize, string> = {
   sm: 'max-w-md',
   md: 'max-w-xl',
   lg: 'max-w-3xl',
+  xl: 'max-w-5xl',
 };
 
 const FOCUSABLE =
@@ -48,12 +49,22 @@ export function Modal({
   const restoreFocusTo = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
+  // Callers pass inline arrows. Read through a ref so a re-render does not
+  // re-run the open effect -- that re-focused the first control (and
+  // re-bound the keys) on every keystroke in a form inside the dialog.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
+      // Only the dialog that holds focus answers. A confirm opened from
+      // inside a drawer owns Escape and Tab; otherwise one Escape closed
+      // both, and the drawer's trap pulled focus out of the confirm.
+      const active = document.activeElement;
+      if (!panel.current || !(active instanceof Element) || active.closest('[role="dialog"]') !== panel.current) return;
       if (event.key === 'Escape') {
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab' || !panel.current) return;
@@ -71,7 +82,7 @@ export function Modal({
         first.focus();
       }
     },
-    [onClose],
+    [],
   );
 
   useEffect(() => {
@@ -81,8 +92,12 @@ export function Modal({
     document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', handleKeyDown, true);
 
-    const focusable = panel.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
-    (focusable && focusable.length > 0 ? focusable[0] : panel.current)?.focus();
+    // A dialog nested inside this one (its effect runs first) may already
+    // hold focus; leave it there.
+    if (!panel.current?.contains(document.activeElement)) {
+      const focusable = panel.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
+      (focusable && focusable.length > 0 ? focusable[0] : panel.current)?.focus();
+    }
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true);

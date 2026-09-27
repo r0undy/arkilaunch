@@ -1,18 +1,24 @@
 import { Link } from '@tanstack/react-router';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BookingDetailResponse, BookingService, TruckRequestResponse } from '@arkilaunch/shared';
-import { bookingsQueries } from '../lib/queries.js';
+import { bookingsQueries, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
 import { formatDate, formatInvoiceType, formatPeso, formatStatus } from '../lib/format.js';
 import { RequestRow } from '../routes/app.trucks.js';
-import { BookingCode } from './booking-code.js';
 import { Button } from './button.js';
 import { Modal } from './modal.js';
+import { Tabs } from './tabs.js';
+import { StatusBadge } from './status-badge.js';
+import { RouteMap } from './route-map.js';
+import { TruckThread } from './truck-thread.js';
+import { NegotiationThread } from './negotiation-thread.js';
+import { BookingSide } from './booking-actions.js';
 
 // One drawer for both services (cr-arkilaunch-uniform-booking-codes.md):
-// the admin reads a booking start to end without leaving the list. The full
-// page (/app/bookings/$bookingId) keeps the negotiation thread and the
-// actions that need room.
+// the admin reads and works a booking start to end without leaving the
+// list -- overview, negotiation thread and every action, in tabs. The full
+// page (/app/bookings/$bookingId) shows the same pieces for a deep link.
 
 const heading = 'font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
 
@@ -173,19 +179,92 @@ export interface BookingDrawerTarget {
   id: string;
 }
 
+type DrawerTab = 'overview' | 'negotiation' | 'actions';
+const TABS: { id: DrawerTab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'negotiation', label: 'Negotiation' },
+  { id: 'actions', label: 'Actions' },
+];
+
+// A truck trip at a glance: the route map (when the customer pinned both
+// ends), the schedule and the money.
+function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
+  const pickup = useMemo(
+    () => (truck.pickupLat !== null && truck.pickupLng !== null ? { lat: truck.pickupLat, lng: truck.pickupLng } : null),
+    [truck.pickupLat, truck.pickupLng],
+  );
+  const dropoff = useMemo(
+    () => (truck.dropoffLat !== null && truck.dropoffLng !== null ? { lat: truck.dropoffLat, lng: truck.dropoffLng } : null),
+    [truck.dropoffLat, truck.dropoffLng],
+  );
+  const route = useQuery({ ...trucksQueries.route(truck.id), enabled: !!pickup && !!dropoff });
+  return (
+    <div className="flex flex-col gap-4">
+      <Stepper steps={truckSteps(truck)} cancelled={truck.status === 'cancelled'} />
+      <Section title="Route">
+        <p className="text-sm font-medium text-text">
+          {truck.pickup} → {truck.dropoff}
+        </p>
+        {pickup && dropoff ? (
+          <>
+            <RouteMap mode="view" pickup={pickup} dropoff={dropoff} route={route.data ?? null} className="h-72" />
+            {route.isError && (
+              <p className="text-xs text-text-muted">The road route is unavailable; the pins are joined in a straight line.</p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-text-muted">
+            No exact pins on this request; the estimate routed between the place names.
+          </p>
+        )}
+      </Section>
+      <Section title="Trip">
+        <dl className="flex flex-col gap-1">
+          <Row label="Pickup">{new Date(truck.scheduledFor).toLocaleString()}</Row>
+          <Row label="Distance">
+            <span className="font-mono tabular-nums">
+              {truck.confirmedKm !== null ? `${truck.confirmedKm} km confirmed` : `~${truck.estimatedKm} km estimated`}
+            </span>
+          </Row>
+          <Row label="Crew">{[truck.driverName, truck.helperName].filter(Boolean).join(', ') || '--'}</Row>
+        </dl>
+        {truck.notes && <p className="whitespace-pre-line text-sm text-text-muted">{truck.notes}</p>}
+      </Section>
+      <Section title="Money">
+        <dl className="flex flex-col gap-1">
+          <Row label={truck.confirmedKm !== null ? 'Price' : 'Estimate'}>
+            <span className="font-mono tabular-nums">{formatPeso(truck.price.totalPhp)}</span>
+          </Row>
+          <Row label="Agreed">
+            <span className="font-mono tabular-nums">{truck.agreedPricePhp !== null ? formatPeso(truck.agreedPricePhp) : '--'}</span>
+          </Row>
+          <Row label="Customer cap">
+            <span className="font-mono tabular-nums">{truck.capPhp !== null ? formatPeso(truck.capPhp) : '--'}</span>
+          </Row>
+        </dl>
+      </Section>
+    </div>
+  );
+}
+
 export function BookingDrawer({
   target,
-  trucks,
+  truck,
   onClose,
 }: {
   target: BookingDrawerTarget | null;
-  trucks: TruckRequestResponse[];
+  // The staff page looks the truck request up by its code.
+  truck: TruckRequestResponse | undefined;
   onClose: () => void;
 }) {
+  const [tab, setTab] = useState<DrawerTab>('overview');
+  // A different booking opens on its overview.
+  useEffect(() => setTab('overview'), [target?.id]);
   const rentalId = target?.service === 'rental' ? target.id : null;
   const booking = useQuery({ ...bookingsQueries.detail(rentalId ?? ''), enabled: !!rentalId });
-  const truck = target?.service === 'truck' ? trucks.find((t) => t.id === target.id) : undefined;
-  const code = rentalId ? booking.data?.code : truck?.code;
+  const shownTruck = target?.service === 'truck' && truck?.id === target.id ? truck : undefined;
+  const code = rentalId ? booking.data?.code : shownTruck?.code;
+  const status = rentalId ? booking.data?.status : shownTruck?.status;
 
   return (
     <Modal
@@ -198,22 +277,42 @@ export function BookingDrawer({
       footer={
         rentalId ? (
           <Link to="/app/bookings/$bookingId" params={{ bookingId: rentalId }}>
-            <Button variant="secondary">Open negotiation and actions</Button>
+            <Button variant="ghost">Open as a full page</Button>
           </Link>
         ) : undefined
       }
     >
-      {rentalId && booking.isError && <p className="text-sm text-error">{apiErrorText(booking.error)}</p>}
-      {rentalId && booking.isPending && <p className="text-sm text-text-muted">Loading booking...</p>}
-      {booking.data && rentalId && <RentalBody booking={booking.data} />}
-      {truck && (
-        <div className="flex flex-col gap-4">
-          <BookingCode code={truck.code} service="truck" />
-          <Stepper steps={truckSteps(truck)} cancelled={truck.status === 'cancelled'} />
-          <RequestRow r={truck} />
+      <div className="flex flex-col gap-4">
+        {status && (
+          <div>
+            <StatusBadge status={status} />
+          </div>
+        )}
+        <Tabs label="Booking sections" items={TABS} value={tab} onChange={setTab} />
+        <div role="tabpanel" aria-label={TABS.find((t) => t.id === tab)?.label}>
+          {rentalId && booking.isError && <p className="text-sm text-error">{apiErrorText(booking.error)}</p>}
+          {rentalId && booking.isPending && <p className="text-sm text-text-muted">Loading booking...</p>}
+          {booking.data && rentalId && (
+            <>
+              {tab === 'overview' && <RentalBody booking={booking.data} />}
+              {tab === 'negotiation' && (
+                <NegotiationThread bookingId={rentalId} disabled={booking.data.status === 'cancelled'} />
+              )}
+              {tab === 'actions' && <BookingSide booking={booking.data} />}
+            </>
+          )}
+          {shownTruck && (
+            <>
+              {tab === 'overview' && <TruckOverview truck={shownTruck} />}
+              {tab === 'negotiation' && <TruckThread base={`/truck-requests/${shownTruck.id}`} />}
+              {tab === 'actions' && <RequestRow r={shownTruck} />}
+            </>
+          )}
+          {target?.service === 'truck' && !shownTruck && (
+            <p className="text-sm text-text-muted">Loading truck request...</p>
+          )}
         </div>
-      )}
-      {target?.service === 'truck' && !truck && <p className="text-sm text-text-muted">Truck request not found.</p>}
+      </div>
     </Modal>
   );
 }

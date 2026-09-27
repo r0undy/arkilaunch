@@ -1,8 +1,9 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNotNull, like } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, like, notInArray } from 'drizzle-orm';
 import { negotiationMessages, notifications, projectSites, tollRates, truckRequests, truckSettings, withTenantTx } from '@arkilaunch/db';
 import {
   bookingCodeSearchPrefix,
+  CLOSED_TRUCK_STATUSES,
   PH_CLASS3_TOLLS,
   PH_TOLLS_AS_OF,
   priceTruckTrip,
@@ -14,6 +15,10 @@ import {
   type NegotiationMessageResponse,
   type RequestContext,
   type TruckEstimateRequest,
+  type TruckEstimateResponse,
+  type TruckRequestListQuery,
+  type TruckRequestListResponse,
+  type TruckRoute,
   type TruckPrice,
   type TruckCrew,
   type TruckRequestCreate,
@@ -25,7 +30,8 @@ import { PricingEngineService } from '../quotes/pricing-engine.service.js';
 import { notifyStaff } from '../common/notify-customer.js';
 import { ownCustomers } from '../common/customer-scope.js';
 import { requireSiteProof } from '../common/site-proof.js';
-import { roadDistanceKm } from './route-distance.js';
+import { roadRoute } from './route-distance.js';
+import { countRows } from '../common/count-rows.js';
 
 type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
 const DEFAULT_SETTINGS: TruckSettings = { baseFeePhp: 0, driverFeePhp: 0, extras: [], formula: null, rangePct: 10, region: 'NCR' };
@@ -59,6 +65,10 @@ function toResponse(row: typeof truckRequests.$inferSelect): TruckRequestRespons
     projectSiteId: row.projectSiteId,
     driverName: row.driverName,
     helperName: row.helperName,
+    pickupLat: num(row.pickupLat),
+    pickupLng: num(row.pickupLng),
+    dropoffLat: num(row.dropoffLat),
+    dropoffLng: num(row.dropoffLng),
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -184,13 +194,14 @@ export class TrucksService {
 
   // Routing runs outside any transaction: two slow network calls should not
   // hold a DB connection.
-  async estimate(ctx: RequestContext, body: TruckEstimateRequest): Promise<TruckPrice> {
-    const km = await roadDistanceKm(body.pickup, body.dropoff, pins(body));
-    return withTenantTx(ctx, (tx) => this.price(tx, ctx.tenantId, km));
+  async estimate(ctx: RequestContext, body: TruckEstimateRequest): Promise<TruckEstimateResponse> {
+    const route = await roadRoute(body.pickup, body.dropoff, pins(body));
+    const price = await withTenantTx(ctx, (tx) => this.price(tx, ctx.tenantId, route.km));
+    return { ...price, route: route.line.length > 1 ? route : null };
   }
 
   async create(ctx: RequestContext, body: TruckRequestCreate): Promise<TruckRequestResponse> {
-    const km = await roadDistanceKm(body.pickup, body.dropoff, pins(body));
+    const { km } = await roadRoute(body.pickup, body.dropoff, pins(body));
     return withTenantTx(ctx, async (tx) => {
       // Only one of the caller's own sites, and only once it has its proof.
       const own = (await ownCustomers(tx, ctx)).map((row) => row.id);
@@ -228,21 +239,39 @@ export class TrucksService {
 
   // A customer sees only their own requests; staff see the tenant's queue.
   // `q` narrows to a TRK- code, exactly or by prefix, as GET /bookings does.
-  list(ctx: RequestContext, scope: 'mine' | 'all', q?: string): Promise<TruckRequestResponse[]> {
+  // `status` splits the queue into open (still to act on) and closed.
+  list(ctx: RequestContext, scope: 'mine' | 'all', query: TruckRequestListQuery): Promise<TruckRequestListResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const codePrefix = q ? bookingCodeSearchPrefix(q) : null;
+      const codePrefix = query.q ? bookingCodeSearchPrefix(query.q) : null;
+      const closed = [...CLOSED_TRUCK_STATUSES];
+      const where = and(
+        scope === 'mine' ? eq(truckRequests.requestedBy, ctx.userId) : undefined,
+        codePrefix ? like(truckRequests.code, `${codePrefix}%`) : undefined,
+        query.status === 'open' ? notInArray(truckRequests.status, closed) : undefined,
+        query.status === 'closed' ? inArray(truckRequests.status, closed) : undefined,
+      );
       const rows = await tx
         .select()
         .from(truckRequests)
-        .where(
-          and(
-            scope === 'mine' ? eq(truckRequests.requestedBy, ctx.userId) : undefined,
-            codePrefix ? like(truckRequests.code, `${codePrefix}%`) : undefined,
-          ),
-        )
-        .orderBy(desc(truckRequests.createdAt))
-        .limit(100);
-      return rows.map(toResponse);
+        .where(where)
+        .orderBy(desc(truckRequests.createdAt), desc(truckRequests.id))
+        .limit(query.limit)
+        .offset(query.offset);
+      return { items: rows.map(toResponse), total: await countRows(tx, truckRequests, where) };
+    });
+  }
+
+  // GET /truck-requests/:id/route: the road line between a request's saved
+  // pins, for the staff map. The pins are read under RLS (tenant from the
+  // JWT); routing runs after the transaction closes.
+  async route(ctx: RequestContext, id: string): Promise<TruckRoute> {
+    const row = await withTenantTx(ctx, (tx) => this.visibleRequest(tx, ctx, id));
+    if (row.pickupLat === null || row.pickupLng === null || row.dropoffLat === null || row.dropoffLng === null) {
+      throw new NotFoundException({ error: 'truck_pins_missing' });
+    }
+    return roadRoute(row.pickup, row.dropoff, {
+      a: { lat: Number(row.pickupLat), lon: Number(row.pickupLng) },
+      b: { lat: Number(row.dropoffLat), lon: Number(row.dropoffLng) },
     });
   }
 

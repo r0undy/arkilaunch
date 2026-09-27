@@ -30,7 +30,7 @@ export function BookingCode({
 }) {
   return (
     <span className={['inline-flex flex-wrap items-center gap-2', className].join(' ')}>
-      <span className="font-mono font-semibold tracking-[0.02em] text-text">{code || '--'}</span>
+      <span className="whitespace-nowrap font-mono font-semibold tracking-[0.02em] text-text">{code || '--'}</span>
       {service && <ServiceBadge service={service} />}
     </span>
   );
