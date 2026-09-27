@@ -69,10 +69,15 @@ function isAuthTokens(response: AuthTokens | TwoFaChallenge): response is AuthTo
   return 'accessToken' in response;
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
+// Header name matches apps/api/src/common/turnstile.ts TURNSTILE_HEADER.
+export function turnstileHeaders(token?: string | null): Record<string, string> {
+  return token ? { 'X-Turnstile-Token': token } : {};
+}
+
+async function postJson<T>(path: string, body: unknown, turnstileToken?: string | null): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...hostHeaders() },
+    headers: { 'Content-Type': 'application/json', ...hostHeaders(), ...turnstileHeaders(turnstileToken) },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -88,15 +93,20 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 // into sessionStorage, which then passed every getAccessToken() presence
 // check downstream -- a silent fake "signed in" state. Only store real
 // tokens; the caller (login.tsx) must branch on the discriminant.
-export async function login(request: LoginRequest): Promise<AuthTokens | TwoFaChallenge> {
-  const response = await postJson<AuthTokens | TwoFaChallenge>('/auth/login', request);
+// turnstileToken: only needed after repeated failures, when the API
+// answers 'captcha_required' (turnstile CR).
+export async function login(
+  request: LoginRequest,
+  turnstileToken?: string | null,
+): Promise<AuthTokens | TwoFaChallenge> {
+  const response = await postJson<AuthTokens | TwoFaChallenge>('/auth/login', request, turnstileToken);
   if (isAuthTokens(response)) storeTokens(response);
   return response;
 }
 
 // POST /auth/register-customer: storefront self-signup, signed straight in.
-export async function registerCustomer(request: CustomerSignup): Promise<AuthTokens> {
-  const tokens = await postJson<AuthTokens>('/auth/register-customer', request);
+export async function registerCustomer(request: CustomerSignup, turnstileToken?: string | null): Promise<AuthTokens> {
+  const tokens = await postJson<AuthTokens>('/auth/register-customer', request, turnstileToken);
   storeTokens(tokens);
   return tokens;
 }
@@ -126,8 +136,8 @@ export async function activateAccount(request: UserActivateRequest): Promise<voi
 // POST /auth/forgot-password: always answers 200, whether or not the email
 // has an account. There is no email provider; the tenant's admins are told
 // and send the reset link themselves.
-export async function requestPasswordReset(email: string): Promise<void> {
-  await postJson<{ ok: true }>('/auth/forgot-password', { email });
+export async function requestPasswordReset(email: string, turnstileToken?: string | null): Promise<void> {
+  await postJson<{ ok: true }>('/auth/forgot-password', { email }, turnstileToken);
 }
 
 // Single-flight refresh: apps/api/test/refresh-rotation.spec.ts proves a

@@ -67,6 +67,7 @@ jobs:
           TF_VAR_jwt_public_key: ${{ secrets.JWT_PUBLIC_KEY }}
           TF_VAR_paymongo_secret_key: ${{ secrets.PAYMONGO_SECRET_KEY }}
           TF_VAR_paymongo_webhook_secret: ${{ secrets.PAYMONGO_WEBHOOK_SECRET }}
+          TF_VAR_turnstile_secret_key: ${{ secrets.TURNSTILE_SECRET_KEY }}
 
   deploy:
     if: github.event_name == 'push'
@@ -141,6 +142,7 @@ jobs:
           TF_VAR_jwt_public_key: ${{ secrets.JWT_PUBLIC_KEY }}
           TF_VAR_paymongo_secret_key: ${{ secrets.PAYMONGO_SECRET_KEY }}
           TF_VAR_paymongo_webhook_secret: ${{ secrets.PAYMONGO_WEBHOOK_SECRET }}
+          TF_VAR_turnstile_secret_key: ${{ secrets.TURNSTILE_SECRET_KEY }}
 
   # Static Vite build served by an assets-only Worker (apps/web/wrangler.jsonc)
   # on arkilaunch.app + *.arkilaunch.app. After `deploy` so the frontend never
@@ -169,6 +171,9 @@ jobs:
       - run: pnpm --filter @arkilaunch/shared build && pnpm --filter @arkilaunch/web build
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          # Public by design (it ships in the bundle); the secret half is
+          # TF_VAR_turnstile_secret_key above.
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
 
       - run: pnpm --filter @arkilaunch/web exec wrangler deploy
         env:

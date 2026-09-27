@@ -1,5 +1,5 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { authLayoutRoute } from './_auth.js';
 import { currentHost } from '../lib/host.js';
 import { login, requestPasswordReset, verify2fa } from '../lib/auth-client.js';
@@ -7,6 +7,7 @@ import { getCurrentRole, homeRouteForRole } from '../lib/guards.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Surface } from '../components/surface.js';
+import { captchaError, Turnstile, TURNSTILE_SITE_KEY } from '../components/turnstile.js';
 
 // Only accept an internal path (starts with '/', not '//'); a leaf value
 // like `//evil.com` is protocol-relative and would send a successful login
@@ -35,26 +36,59 @@ function LoginPage() {
   const [code, setCode] = useState('');
   // 'form' shows the forgot-password email box; 'sent' its confirmation.
   const [forgot, setForgot] = useState<'off' | 'form' | 'sent'>('off');
+  // Turnstile (turnstile CR). Forgot-password always asks for it; sign-in
+  // only once the API answers 'captcha_required' after repeated failures,
+  // and then retries by itself as soon as the widget passes.
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
+  const [loginNeedsCaptcha, setLoginNeedsCaptcha] = useState(false);
+  const retryWhenVerified = useRef(false);
+  const waitingOnCaptcha = Boolean(TURNSTILE_SITE_KEY) && !captcha;
+
+  function freshCaptcha() {
+    setCaptcha(null);
+    setCaptchaKey((k) => k + 1);
+  }
 
   async function goHome() {
     await navigate({ to: redirectTo ?? homeRouteForRole(getCurrentRole()) });
   }
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function attemptLogin(token: string | null) {
     setError(null);
     setSubmitting(true);
     try {
-      const response = await login({ email, password });
+      const response = await login({ email, password }, token);
       if ('requires2fa' in response) {
         setTwoFaToken(response.twoFaToken);
         return;
       }
       await goHome();
-    } catch {
-      setError('Incorrect email or password.');
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (loginNeedsCaptcha) freshCaptcha();
+      if ((code === 'captcha_required' || code === 'captcha_failed') && TURNSTILE_SITE_KEY) {
+        setLoginNeedsCaptcha(true);
+        retryWhenVerified.current = true;
+        setError('Quick security check before you try again.');
+      } else {
+        setError(captchaError(code) ?? 'Incorrect email or password.');
+      }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    await attemptLogin(captcha);
+  }
+
+  function onLoginCaptcha(token: string | null) {
+    setCaptcha(token);
+    if (token && retryWhenVerified.current) {
+      retryWhenVerified.current = false;
+      void attemptLogin(token);
     }
   }
 
@@ -78,10 +112,11 @@ function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await requestPasswordReset(email);
+      await requestPasswordReset(email, captcha);
       setForgot('sent');
-    } catch {
-      setError('Could not send the request. Try again in a minute.');
+    } catch (err) {
+      setError(captchaError(err instanceof Error ? err.message : '') ?? 'Could not send the request. Try again in a minute.');
+      freshCaptcha();
     } finally {
       setSubmitting(false);
     }
@@ -91,6 +126,7 @@ function LoginPage() {
     const back = () => {
       setForgot('off');
       setError(null);
+      freshCaptcha();
     };
     return (
       <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
@@ -118,7 +154,10 @@ function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               {...(error ? { error } : {})}
             />
-            <Button type="submit" loading={submitting} disabled={submitting} className="mt-4 w-full">
+            <div className="mt-4">
+              <Turnstile key={captchaKey} onToken={setCaptcha} />
+            </div>
+            <Button type="submit" loading={submitting} disabled={submitting || waitingOnCaptcha} className="mt-4 w-full">
               Request a reset
             </Button>
           </form>
@@ -222,13 +261,25 @@ function LoginPage() {
           onClick={() => {
             setForgot('form');
             setError(null);
+            freshCaptcha();
           }}
           className="mt-1 text-sm text-text-muted underline decoration-dotted"
         >
           Forgot password?
         </button>
 
-        <Button type="submit" loading={submitting} disabled={submitting} className="mt-4 w-full">
+        {loginNeedsCaptcha && (
+          <div className="mt-4">
+            <Turnstile key={captchaKey} onToken={onLoginCaptcha} />
+          </div>
+        )}
+
+        <Button
+          type="submit"
+          loading={submitting}
+          disabled={submitting || (loginNeedsCaptcha && waitingOnCaptcha)}
+          className="mt-4 w-full"
+        >
           Sign in to system
         </Button>
 

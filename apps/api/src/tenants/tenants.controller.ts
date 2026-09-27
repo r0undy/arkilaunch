@@ -10,12 +10,14 @@ import {
   Query,
   Req,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { Public } from '../common/decorators/public.decorator.js';
+import { TurnstileGuard } from '../common/turnstile.js';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import type { RequestContext } from '@arkilaunch/shared';
 import { UuidParamPipe } from '../common/uuid-param.pipe.js';
@@ -87,6 +89,7 @@ export class TenantsController {
   @Post('register')
   @Public()
   @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
+  @UseGuards(TurnstileGuard)
   register(@Body() body: TenantRegisterDto) {
     return this.tenants.register(body);
   }

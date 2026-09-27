@@ -46,11 +46,14 @@ async function bootstrap() {
   // read the normally parsed req.body; only the webhook handler reads
   // req.rawBody.
   const app = await NestFactory.create(AppModule, { rawBody: true });
-  // Behind Cloudflare (BUILD §3), req.socket.remoteAddress is Cloudflare's
-  // edge IP, not the client's -- so without this every request shares one
-  // throttle bucket (QAD-T22/T31 controls become fiction). This makes
-  // Express trust the X-Forwarded-For chain Cloudflare sets; PlatformThrottlerGuard
-  // below prefers the more specific CF-Connecting-IP header.
+  // The API is reached straight on its ACA ingress (not through Cloudflare),
+  // so req.socket.remoteAddress is ACA's envoy, not the client -- without
+  // this every request shares one throttle bucket (QAD-T22/T31 controls
+  // become fiction). Trusting exactly one hop makes req.ip the rightmost
+  // X-Forwarded-For entry, the one envoy appends from the real socket; a
+  // client can prepend entries but not replace that one. Never trust a
+  // client-settable header like CF-Connecting-IP here (turnstile CR): the
+  // old guard did, and any caller could mint a fresh bucket per request.
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
   app.setGlobalPrefix('api/v1', { exclude: ['health'] });
   // apps/web (Vite dev server, a different origin) calls this API directly;

@@ -51,6 +51,7 @@ locals {
     azure-di-key                  = module.document_intelligence.primary_access_key
     paymongo-secret-key           = var.paymongo_secret_key
     paymongo-webhook-secret       = var.paymongo_webhook_secret
+    turnstile-secret-key          = var.turnstile_secret_key
     appinsights-connection-string = module.log_analytics.app_insights_connection_string
   }
   secrets = { for k, v in local.all_secrets : k => v if v != "" }
@@ -66,6 +67,7 @@ locals {
     AZURE_DI_KEY                          = "azure-di-key"
     PAYMONGO_SECRET_KEY                   = "paymongo-secret-key"
     PAYMONGO_WEBHOOK_SECRET               = "paymongo-webhook-secret"
+    TURNSTILE_SECRET_KEY                  = "turnstile-secret-key"
     APPLICATIONINSIGHTS_CONNECTION_STRING = "appinsights-connection-string"
   }
   secret_env_vars = { for k, v in local.all_secret_env_vars : k => v if contains(keys(local.secrets), v) }
@@ -85,6 +87,7 @@ locals {
     WEATHER_POLL_MAX_SITES       = tostring(var.weather_poll_max_sites)
     ENABLE_DIESEL_SCRAPE         = tostring(var.enable_diesel_scrape)
     ENABLE_PAYMENTS              = tostring(var.enable_payments)
+    TURNSTILE_ENABLED            = tostring(var.enable_turnstile)
     # F0 (this env's DI sku) analyzes only the first 2 pages of any
     # document; the adapter hard-fails rather than silently truncate one.
     AZURE_DI_MAX_PAGES = "2"
