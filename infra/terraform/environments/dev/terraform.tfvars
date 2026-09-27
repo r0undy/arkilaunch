@@ -26,3 +26,6 @@ enable_ocr_kyc       = false
 enable_weather_poll  = true
 enable_diesel_scrape = true
 enable_payments      = true
+# Turnstile (docs/cr-arkilaunch-turnstile.md): the site key and secret are
+# in the GitHub dev environment. Rollback: set false.
+enable_turnstile     = true
