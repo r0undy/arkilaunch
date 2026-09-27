@@ -265,7 +265,7 @@ export function TollsEditor() {
     <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5" aria-label="Toll rates">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-2xl">
-          <h2 className="font-display text-base font-semibold text-text">Toll rates</h2>
+          <h2 className="text-base font-semibold text-text">Toll rates</h2>
           <p className="text-sm text-text-muted">
             Class 3 (large trucks) expressway fees, picked by entry and exit when you confirm a trip&apos;s km.
             Loaded fees are the TRB-approved rates effective {formatDate(PH_TOLLS_AS_OF)}; check them against the
@@ -475,7 +475,7 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   const open = r.status !== 'cancelled' && r.status !== 'paid';
   const overCap = r.capPhp !== null && Number(price) > r.capPhp;
   const section = 'flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0';
-  const heading = 'font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
+  const heading = 'text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
 
   return (
     <div className="flex flex-col gap-4">

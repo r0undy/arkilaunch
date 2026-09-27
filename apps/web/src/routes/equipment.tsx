@@ -196,7 +196,7 @@ function EquipmentPage() {
       ].join(' ')}
     >
       <div className="flex min-w-0 flex-col gap-6">
-      <h1 className="font-display text-2xl font-semibold text-ink-mk">Equipment for hire</h1>
+      <h1 className="text-2xl font-semibold text-ink-mk">Equipment for hire</h1>
       <SearchFilterBar query={query} onQueryChange={setQuery} />
       {isPending && <Skeleton label="Loading equipment" rows={3} />}
       {isError && (

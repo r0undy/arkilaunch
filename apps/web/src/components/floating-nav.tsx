@@ -90,7 +90,7 @@ export function FloatingNav({ className }: { className?: string }) {
       <div className="flex items-center justify-between px-6 py-4">
         <Link
           to={homeHref()}
-          className={`flex items-center gap-2 font-display text-lg font-semibold ${bar ? '' : 'text-ink-mk'}`}
+          className={`flex items-center gap-2 text-lg font-semibold ${bar ? '' : 'text-ink-mk'}`}
           aria-label={`${tenantName} home`}
         >
           {tenant?.logoUrl && <img src={tenant.logoUrl} alt="" className="h-8 w-auto max-w-[120px] object-contain" />}

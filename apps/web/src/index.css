@@ -160,9 +160,8 @@
 
 @theme {
   /* Fonts (§2.3). One sans for every heading and paragraph; data uses static Mono 500
-     (the gauge rule). Display is the sans until the Inter switch retires it. */
-  --font-sans: 'IBM Plex Sans', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-display: 'IBM Plex Sans', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
+     (the gauge rule). Inter stands in for Amazon Ember; a tenant may pick Plex. */
+  --font-sans: 'Inter', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', 'Roboto Mono', ui-monospace, monospace;
 
   /* Type scale (§2.3), the AWS reference's tiers. text-base and text-sm are already
@@ -284,9 +283,9 @@
   src: url('/fonts/ibm-plex-mono-500.woff2') format('woff2');
 }
 
-/* Tenant font (DSD §2.3, CR: tenant-brand-kit). Only a tenant that picks Inter
-   points --font-sans/--font-display at it (lib/brand.ts), so no other host
-   ever fetches this file. Latin-subset variable WOFF2, SIL OFL 1.1. */
+/* The platform sans (DSD §2.3, CR: aws-design-language), preloaded in index.html.
+   Latin-subset variable WOFF2, SIL OFL 1.1. IBM Plex Sans above stays for a tenant
+   that picks it (lib/brand.ts). */
 @font-face {
   font-family: 'Inter';
   font-style: normal;

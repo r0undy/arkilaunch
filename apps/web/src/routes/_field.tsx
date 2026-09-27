@@ -13,7 +13,7 @@ function FieldLayout() {
   return (
     <div className="flex min-h-screen flex-col bg-bg pb-20">
       <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3">
-        <span className="font-display text-base font-semibold text-text">Operator</span>
+        <span className="text-base font-semibold text-text">Operator</span>
         <button
           type="button"
           onClick={() => {

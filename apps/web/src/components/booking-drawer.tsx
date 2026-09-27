@@ -20,7 +20,7 @@ import { BookingSide } from './booking-actions.js';
 // list -- overview, negotiation thread and every action, in tabs. The full
 // page (/app/bookings/$bookingId) shows the same pieces for a deep link.
 
-const heading = 'font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
+const heading = 'text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
 
 export interface Step {
   label: string;

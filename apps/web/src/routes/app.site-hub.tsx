@@ -43,7 +43,7 @@ const TAB_LABEL: Record<Tab, string> = {
   documents: 'Documents',
 };
 
-const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
+const heading = 'text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
 
 const STATUS_META: Record<FieldLogDayStatus, { label: string; className: string }> = {
   missing: { label: 'Missing', className: 'border border-dashed border-border text-text-muted' },

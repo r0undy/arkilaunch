@@ -3,7 +3,7 @@ import type { EquipmentReportResponse } from '@arkilaunch/shared';
 import { apiErrorText, apiGet } from '../lib/api-client.js';
 import { formatDate, formatPeso, formatStatus } from '../lib/format.js';
 
-const heading = 'font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
+const heading = 'text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
 
 function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (

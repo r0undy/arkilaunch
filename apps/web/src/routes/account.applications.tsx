@@ -38,7 +38,7 @@ const TABS: { value: StatusFilter; label: string }[] = [
 function CounterTile({ value, label }: { value: number; label: string }) {
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-1 p-5">
-      <dd className="font-display text-3xl font-semibold text-text">{value}</dd>
+      <dd className="text-3xl font-semibold text-text">{value}</dd>
       <dt className="text-sm text-text-muted">{label}</dt>
     </Surface>
   );
@@ -88,7 +88,7 @@ function ApplicationCard({ company }: { company: CompanyResponse }) {
     >
       <RegistrationThumbnail company={company} />
       <div className="flex min-w-48 flex-1 flex-col gap-2">
-        <h2 className="font-display text-lg font-semibold text-text">{company.companyName}</h2>
+        <h2 className="text-lg font-semibold text-text">{company.companyName}</h2>
         <VerificationPill status={company.kycStatus} />
         <div className="text-sm text-text-muted">
           <p>Registration Number:</p>

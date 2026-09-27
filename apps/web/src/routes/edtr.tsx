@@ -487,7 +487,7 @@ function RentalGroup({
   );
 }
 
-const drawerHeading = 'font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
+const drawerHeading = 'text-xs font-semibold uppercase tracking-[0.04em] text-text-muted';
 
 // One field log, read without leaving the queue (DSD drawer rule): what was
 // recorded, how it matched, and where it belongs -- the booking and the site

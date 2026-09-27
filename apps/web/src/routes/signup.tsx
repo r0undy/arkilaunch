@@ -59,7 +59,7 @@ function SignupPage() {
     <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
       <form onSubmit={onSubmit} aria-labelledby="signup-heading" className="flex flex-col gap-4">
         <div>
-          <h1 id="signup-heading" className="font-display text-xl font-semibold text-text">
+          <h1 id="signup-heading" className="text-xl font-semibold text-text">
             Create account
           </h1>
           <p className="text-sm text-text-muted">Rent equipment for your projects. Company details come next.</p>

@@ -39,7 +39,7 @@ export function NegotiationThread({ bookingId, disabled = false }: { bookingId: 
 
   return (
     <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col p-0">
-      <h2 className="border-b border-border px-4 py-3 font-display text-base font-semibold text-text">
+      <h2 className="border-b border-border px-4 py-3 text-base font-semibold text-text">
         Conversation
       </h2>
 
@@ -61,7 +61,7 @@ export function NegotiationThread({ bookingId, disabled = false }: { bookingId: 
               message.mine ? 'self-end border-primary bg-surface-sunk' : 'self-start border-border bg-surface',
             ].join(' ')}
           >
-            <span className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+            <span className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
               {message.mine ? 'You' : message.authorRole === 'staff' ? 'Rental team' : 'Customer'} &middot;{' '}
               {formatDateTime(message.createdAt)}
             </span>

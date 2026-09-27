@@ -158,7 +158,7 @@ export function RangeCalendar({
         >
           <ChevronLeft className="h-4 w-4" aria-hidden />
         </button>
-        <p className="font-display text-sm font-semibold text-text" aria-live="polite">
+        <p className="text-sm font-semibold text-text" aria-live="polite">
           {title}
         </p>
         <button

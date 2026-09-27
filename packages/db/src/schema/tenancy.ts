@@ -28,7 +28,7 @@ export const tenants = pgTable(
     iconKey: text('icon_key'),
     primaryColor: text('primary_color'), // #rrggbb, CHECK in 0051
     headerColor: text('header_color'), // #rrggbb, CHECK in 0060
-    font: text('font'), // 'inter' or NULL (IBM Plex), CHECK in 0060
+    font: text('font'), // 'inter', 'plex' or NULL (Inter), CHECK in 0061
     facebookUrl: text('facebook_url'), // https Facebook page, CHECK in 0060
     tagline: text('tagline'),
     about: text('about'),

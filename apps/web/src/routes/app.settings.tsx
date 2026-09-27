@@ -678,7 +678,7 @@ export function RateCardsPanel() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-base font-semibold text-text">Rate cards</h2>
+        <h2 className="text-base font-semibold text-text">Rate cards</h2>
         <Button onClick={() => setAdding(true)}>
           <Plus aria-hidden="true" className="h-4 w-4" />
           Add rate card

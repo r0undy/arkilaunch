@@ -68,7 +68,7 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
   const renderGroup = (group: NavGroup, labelled: boolean) => (
     <div key={group.title}>
       {labelled && (
-        <p className="mb-1.5 px-3 font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+        <p className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
           {group.title}
         </p>
       )}

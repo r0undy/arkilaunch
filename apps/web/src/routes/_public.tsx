@@ -60,7 +60,7 @@ export function MarketingChrome({ children }: { children: ReactNode }) {
       <footer className="bg-surface-mk">
         <div className="mx-auto flex max-w-shell flex-col gap-8 px-6 py-12 sm:flex-row sm:justify-between">
           <div>
-            <p className="flex items-center gap-3 font-display text-lg font-semibold text-ink-mk">
+            <p className="flex items-center gap-3 text-lg font-semibold text-ink-mk">
               {tenant?.logoUrl && <img src={tenant.logoUrl} alt="" className="h-10 w-auto max-w-[140px] object-contain" />}
               {tenantName}
             </p>

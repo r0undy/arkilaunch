@@ -26,7 +26,7 @@ export function SummaryCard({ title, description, items, action, children }: Sum
     <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5" role="group" aria-label={title}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-base font-semibold text-text">{title}</h2>
+          <h2 className="text-base font-semibold text-text">{title}</h2>
           {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
         </div>
         {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}

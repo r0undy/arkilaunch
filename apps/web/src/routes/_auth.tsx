@@ -13,14 +13,14 @@ function BrandPanel() {
     <div className="flex flex-col justify-between bg-[var(--yb-color-text)] px-8 py-10 text-text-inverse lg:w-[42%] lg:px-14 lg:py-16">
       <Link
         to={homeHref()}
-        className="flex items-center gap-3 self-start font-display text-lg font-semibold"
+        className="flex items-center gap-3 self-start text-lg font-semibold"
         aria-label={`${tenantName} home`}
       >
         {logoUrl && <img src={logoUrl} alt="" className="h-10 w-auto max-w-[140px] rounded-sm bg-white object-contain p-1" />}
         {tenantName}
       </Link>
       <div className="my-12 lg:my-0">
-        <p className="max-w-sm border-l-2 border-primary pl-4 font-display text-2xl font-semibold leading-snug sm:text-3xl">
+        <p className="max-w-sm border-l-2 border-primary pl-4 text-2xl font-semibold leading-snug sm:text-3xl">
           {currentHost.kind === 'platform'
             ? 'Your rental company, on its own address.'
             : tenant?.tagline || "Your timekeeper's handwriting sits right next to the hours we bill."}

@@ -55,7 +55,7 @@ function TrucksPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="font-display text-2xl font-semibold text-text">Self-loading truck</h1>
+        <h1 className="text-2xl font-semibold text-text">Self-loading truck</h1>
         <p className="text-sm text-text-muted">
           Tap the pickup, then the drop-off. The price comes from the road route; the rental team confirms the
           final kilometres before you pay.

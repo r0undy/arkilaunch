@@ -26,7 +26,7 @@ function useSaveMe() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4 sm:p-6">
-      <h2 className="font-display text-lg font-semibold text-text">{title}</h2>
+      <h2 className="text-lg font-semibold text-text">{title}</h2>
       {children}
     </Surface>
   );
@@ -72,7 +72,7 @@ function ProfileTab({ me }: { me: UserSelfResponse }) {
           ) : (
             <span
               aria-hidden="true"
-              className="flex h-20 w-20 items-center justify-center rounded-full bg-primary font-display text-2xl font-semibold text-text"
+              className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-2xl font-semibold text-text"
             >
               {initials(me)}
             </span>
@@ -343,7 +343,7 @@ function AccountSettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="font-display text-2xl font-semibold text-text">Settings</h1>
+      <h1 className="text-2xl font-semibold text-text">Settings</h1>
       <div role="tablist" aria-label="Settings sections" className="flex gap-1 overflow-x-auto border-b border-border">
         {TABS.map((t) => (
           <button

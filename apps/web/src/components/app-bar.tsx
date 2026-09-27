@@ -232,7 +232,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
         )}
         <Link
           to={homeHref()}
-          className={`flex min-w-0 items-center gap-2 font-display text-base font-semibold ${ink}`}
+          className={`flex min-w-0 items-center gap-2 text-base font-semibold ${ink}`}
           aria-label={`${tenantLabel} home`}
         >
           {/* The mark leads the bar (BRAND.md): the tenant's icon, else its
@@ -242,7 +242,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
           ) : (
             <span
               aria-hidden
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary font-display text-sm font-semibold text-on-primary"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-on-primary"
             >
               {tenantLabel.trim().charAt(0).toUpperCase() || 'A'}
             </span>

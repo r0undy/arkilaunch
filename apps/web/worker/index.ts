@@ -80,9 +80,9 @@ async function tenantPage(request: Request, env: Env, ctx: ExecutionContext, slu
   if (isIndexable(url.pathname)) {
     rewriter = rewriter.on('meta[name="robots"]', { element: (e) => void e.setAttribute('content', 'index, follow') });
   }
-  if (tenant.font === 'inter') {
-    rewriter = rewriter.on('link[rel="preload"][href="/fonts/ibm-plex-sans-variable.woff2"]', {
-      element: (e) => void e.setAttribute('href', '/fonts/inter-variable-latin.woff2'),
+  if (tenant.font === 'plex') {
+    rewriter = rewriter.on('link[rel="preload"][href="/fonts/inter-variable-latin.woff2"]', {
+      element: (e) => void e.setAttribute('href', '/fonts/ibm-plex-sans-variable.woff2'),
     });
   }
   return rewriter.transform(await shell());

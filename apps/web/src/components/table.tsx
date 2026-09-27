@@ -112,7 +112,7 @@ export function Table<T>({
                   key={i}
                   scope="col"
                   className={[
-                    'whitespace-nowrap px-4 py-2.5 font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted',
+                    'whitespace-nowrap px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.04em] text-text-muted',
                     ALIGN_CLASS[columnAlign(col.kind)],
                   ].join(' ')}
                 >

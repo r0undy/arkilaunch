@@ -13,7 +13,7 @@ import { formatDate, formatStatus, shortCode } from '../lib/format.js';
 function ProfileRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5 border-t border-border pt-3">
-      <span className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+      <span className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
         {label}
       </span>
       <span className="text-text">{value}</span>
@@ -46,12 +46,12 @@ function ProfilePage({ eyebrow }: { eyebrow: string }) {
               <div className="flex items-center gap-3">
                 <span
                   aria-hidden="true"
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-primary font-display text-lg font-semibold text-text"
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-primary text-lg font-semibold text-text"
                 >
                   {user.email.slice(0, 2).toUpperCase()}
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate font-display text-lg font-semibold text-text">
+                  <p className="truncate text-lg font-semibold text-text">
                     {user.email}
                   </p>
                   <p className="text-sm text-text-muted">{formatStatus(user.role)}</p>
@@ -63,7 +63,7 @@ function ProfilePage({ eyebrow }: { eyebrow: string }) {
             </Surface>
 
             <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
-              <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">
                 Workspace
               </h2>
               <div className="flex items-center gap-2">

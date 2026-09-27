@@ -89,10 +89,10 @@ function EquipmentDetailPage() {
         />
       </div>
       <div>
-        <h1 className="font-display text-2xl font-semibold text-ink-mk">{equipment.model}</h1>
+        <h1 className="text-2xl font-semibold text-ink-mk">{equipment.model}</h1>
         <p className="text-sm text-text-muted">{equipment.equipmentTypeName}</p>
         {equipment.rateValue != null && (
-          <p className="mt-2 font-display text-lg font-semibold text-text" data-testid="equipment-price">
+          <p className="mt-2 text-lg font-semibold text-text" data-testid="equipment-price">
             {formatPeso(equipment.rateValue)}
             <span className="text-sm font-normal text-text-muted"> / {equipment.rateType === 'daily' ? 'day' : 'hour'}</span>
           </p>

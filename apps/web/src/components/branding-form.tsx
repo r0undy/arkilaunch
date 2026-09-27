@@ -39,7 +39,7 @@ function toRequest(d: Draft): TenantBrandingUpdateRequest {
   return {
     primaryColor: orNull(d.primaryColor.toLowerCase()),
     headerColor: orNull(d.headerColor.toLowerCase()),
-    font: d.font === 'inter' ? 'inter' : null,
+    font: d.font === 'inter' || d.font === 'plex' ? d.font : null,
     facebookUrl: orNull(d.facebookUrl),
     tagline: d.tagline.trim(),
     about: orNull(d.about),
@@ -237,14 +237,14 @@ export function BrandingForm({ basePath }: { basePath: string }) {
   return (
     <div className="flex flex-col gap-5">
       <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Preview">
-        <h2 className="font-display text-base font-semibold text-text">Preview</h2>
+        <h2 className="text-base font-semibold text-text">Preview</h2>
         <div className="overflow-hidden rounded-sm border border-border">
           <div
             className={['flex items-center gap-3 px-4 py-3', header ? '' : 'text-text'].join(' ')}
             style={header ? { backgroundColor: header, color: onPrimaryFor(header) } : undefined}
           >
             {mark && <img src={mark} alt="" className="h-8 w-auto max-w-[120px] object-contain" />}
-            <span className="font-display text-lg font-semibold">{saved.data.legalName}</span>
+            <span className="text-lg font-semibold">{saved.data.legalName}</span>
           </div>
           <div className="flex flex-wrap items-center gap-4 border-t border-border p-4">
             <span className="min-w-0 flex-1 text-sm text-text-muted">{current.tagline || 'Your tagline'}</span>
@@ -259,7 +259,7 @@ export function BrandingForm({ basePath }: { basePath: string }) {
       </Surface>
 
       <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Images">
-        <h2 className="font-display text-base font-semibold text-text">Logo, icon and hero image</h2>
+        <h2 className="text-base font-semibold text-text">Logo, icon and hero image</h2>
         <div className="grid gap-6 md:grid-cols-2">
           <ImageField
             label="Logo"
@@ -292,7 +292,7 @@ export function BrandingForm({ basePath }: { basePath: string }) {
 
       <Surface radius="md" elevation="sm" className="p-4" aria-label="Details">
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <h2 className="font-display text-base font-semibold text-text">Details</h2>
+          <h2 className="text-base font-semibold text-text">Details</h2>
           <Input
             label="Company name"
             value={saved.data.legalName}
@@ -323,8 +323,8 @@ export function BrandingForm({ basePath }: { basePath: string }) {
             onChange={(e) => edit({ font: e.target.value })}
             hint="Headings and text on your storefront and workspace. Figures always keep the monospace face."
           >
-            <option value="">IBM Plex (ArkiLaunch default)</option>
-            <option value="inter">Inter</option>
+            <option value="">Inter (ArkiLaunch default)</option>
+            <option value="plex">IBM Plex</option>
           </Select>
           <Input
             label="Tagline"

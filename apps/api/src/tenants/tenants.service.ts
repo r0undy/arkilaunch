@@ -195,7 +195,7 @@ If you did not register, ignore this email.`,
     const { logoKey, heroKey, iconKey, ...rest } = row;
     return {
       ...rest,
-      font: rest.font === 'inter' ? 'inter' : null,
+      font: rest.font === 'inter' || rest.font === 'plex' ? rest.font : null,
       logoUrl: publicPhotoUrl(logoKey),
       heroUrl: publicPhotoUrl(heroKey),
       iconUrl: publicPhotoUrl(iconKey),

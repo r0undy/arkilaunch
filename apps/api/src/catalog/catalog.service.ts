@@ -40,7 +40,7 @@ export class CatalogService {
     const { logoKey, heroKey, iconKey, ...rest } = tenant;
     return {
       ...rest,
-      font: rest.font === 'inter' ? 'inter' : null,
+      font: rest.font === 'inter' || rest.font === 'plex' ? rest.font : null,
       logoUrl: publicPhotoUrl(logoKey),
       heroUrl: publicPhotoUrl(heroKey),
       iconUrl: publicPhotoUrl(iconKey),

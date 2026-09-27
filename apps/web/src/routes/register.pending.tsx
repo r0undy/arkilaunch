@@ -6,7 +6,7 @@ import { onlyOn } from '../lib/guards.js';
 function CheckEmailPage() {
   return (
     <Surface radius="lg" elevation="md" className="flex w-full max-w-sm flex-col items-center gap-4 p-8 text-center">
-      <h1 className="font-display text-xl font-semibold text-text">Check your email</h1>
+      <h1 className="text-xl font-semibold text-text">Check your email</h1>
       <p className="text-sm text-text-muted">
         We sent an activation link to the email you registered with. Open it and set your password, and your
         storefront goes live right away.

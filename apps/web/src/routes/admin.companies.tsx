@@ -225,7 +225,7 @@ function Stat({ label, value, detail }: { label: string; value: string; detail?:
   return (
     <Surface className="flex flex-col gap-1 p-4">
       <span className="text-sm text-text-muted">{label}</span>
-      <span className="font-display text-2xl font-semibold text-text">{value}</span>
+      <span className="text-2xl font-semibold text-text">{value}</span>
       {detail && <span className="text-xs text-text-muted">{detail}</span>}
     </Surface>
   );

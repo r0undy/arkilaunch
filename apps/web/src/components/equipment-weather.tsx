@@ -125,7 +125,7 @@ export function MyEquipmentWeather({ siteId }: { siteId: string }) {
   if (!query.data) return null;
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5" aria-label="Weather for your equipment">
-      <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Weather for your equipment</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-[0.04em] text-text-muted">Weather for your equipment</h2>
       <EquipmentWeatherList data={query.data} />
     </Surface>
   );

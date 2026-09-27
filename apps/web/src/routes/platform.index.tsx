@@ -85,7 +85,7 @@ function Directory() {
 
   return (
     <section aria-labelledby="directory-title" className="flex flex-col gap-6">
-      <h2 id="directory-title" className="font-display text-2xl font-semibold text-ink-mk">
+      <h2 id="directory-title" className="text-2xl font-semibold text-ink-mk">
         Find a rental company
       </h2>
       <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto] lg:items-end">
@@ -131,13 +131,13 @@ function Directory() {
                   ) : (
                     <span
                       aria-hidden="true"
-                      className="flex size-14 shrink-0 items-center justify-center rounded-sm bg-primary font-display text-xl font-semibold text-on-primary"
+                      className="flex size-14 shrink-0 items-center justify-center rounded-sm bg-primary text-xl font-semibold text-on-primary"
                     >
                       {t.name.charAt(0)}
                     </span>
                   )}
                   <span className="flex min-w-0 flex-col gap-1">
-                    <span className="font-display text-lg font-semibold text-ink-mk">{t.name}</span>
+                    <span className="text-lg font-semibold text-ink-mk">{t.name}</span>
                     {t.tagline && <span className="text-sm text-text-muted">{t.tagline}</span>}
                     {place && <span className="text-xs text-text-muted">{place}</span>}
                   </span>
@@ -197,7 +197,7 @@ function PlatformLanding() {
     <div data-tier="marketing" className="flex min-h-screen flex-col bg-bg-mk-frame">
       <SkipLink />
       <header className="mx-auto flex w-full max-w-shell items-center justify-between px-6 py-4">
-        <Link to="/" className="font-display text-lg font-semibold text-ink-mk">
+        <Link to="/" className="text-lg font-semibold text-ink-mk">
           ArkiLaunch
         </Link>
         <Link to="/login" className="text-sm font-semibold text-text hover:underline">
@@ -206,7 +206,7 @@ function PlatformLanding() {
       </header>
       <main id="main" className="mx-auto flex w-full max-w-shell flex-1 flex-col gap-16 bg-bg-mk px-6 py-10 shadow-mk-inset sm:px-10">
         <section className="flex flex-col gap-4">
-          <h1 className="max-w-2xl font-display text-[28px] font-semibold uppercase leading-[1.15] text-ink-mk sm:text-5xl lg:text-6xl">
+          <h1 className="max-w-2xl text-[28px] font-semibold uppercase leading-[1.15] text-ink-mk sm:text-5xl lg:text-6xl">
             Launch your equipment rental business
           </h1>
           <p className="max-w-md border-l-2 border-primary pl-4 text-sm text-text-muted">
@@ -225,13 +225,13 @@ function PlatformLanding() {
         <Directory />
 
         <section aria-labelledby="features-title" className="flex flex-col gap-6">
-          <h2 id="features-title" className="font-display text-2xl font-semibold text-ink-mk">
+          <h2 id="features-title" className="text-2xl font-semibold text-ink-mk">
             What you get
           </h2>
           <div className="grid gap-6 sm:grid-cols-2">
             {FEATURES.map((f) => (
               <article key={f.title} className="rounded-sm border border-border bg-surface-mk p-6">
-                <h3 className="font-display text-lg font-semibold text-ink-mk">{f.title}</h3>
+                <h3 className="text-lg font-semibold text-ink-mk">{f.title}</h3>
                 <p className="mt-2 text-sm text-text-muted">{f.body}</p>
               </article>
             ))}
@@ -239,13 +239,13 @@ function PlatformLanding() {
         </section>
 
         <section aria-labelledby="how-title" className="flex flex-col gap-6">
-          <h2 id="how-title" className="font-display text-2xl font-semibold text-ink-mk">
+          <h2 id="how-title" className="text-2xl font-semibold text-ink-mk">
             Open in three steps
           </h2>
           <ol className="grid gap-6 md:grid-cols-3">
             {STEPS.map((s, i) => (
               <li key={s.title} className="flex flex-col gap-2">
-                <span className="font-display text-3xl font-semibold text-primary">{i + 1}</span>
+                <span className="text-3xl font-semibold text-primary">{i + 1}</span>
                 <h3 className="font-semibold text-text">{s.title}</h3>
                 <p className="text-sm text-text-muted">{s.body}</p>
               </li>

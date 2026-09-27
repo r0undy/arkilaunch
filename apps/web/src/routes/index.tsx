@@ -39,7 +39,7 @@ function LandingPage() {
         {tenant?.heroUrl && (
           <img src={tenant.heroUrl} alt="" className="aspect-[3/1] w-full rounded-sm object-cover" />
         )}
-        <h1 className="max-w-2xl font-display text-[28px] font-semibold uppercase leading-[1.15] text-ink-mk sm:text-5xl lg:text-6xl">
+        <h1 className="max-w-2xl text-[28px] font-semibold uppercase leading-[1.15] text-ink-mk sm:text-5xl lg:text-6xl">
           Industrial fleet management &amp; rentals
         </h1>
         <p className="max-w-md border-l-2 border-primary pl-4 text-sm text-text-muted">
@@ -92,7 +92,7 @@ function LandingPage() {
 
       {testimonialData && testimonialData.items.length > 0 && (
         <section className="flex flex-col gap-6">
-          <h2 className="font-display text-2xl font-semibold text-ink-mk">What our customers say</h2>
+          <h2 className="text-2xl font-semibold text-ink-mk">What our customers say</h2>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {testimonialData.items.map((t) => (
               <TestimonialCard key={t.id} testimonial={t} />

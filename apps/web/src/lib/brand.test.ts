@@ -27,11 +27,11 @@ describe('brandVars', () => {
     });
   });
 
-  it('swaps prose and display to Inter, never mono', () => {
-    const vars = brandVars({ primaryColor: null, font: 'inter' });
-    expect(vars['--font-sans']).toMatch(/^'Inter'/);
-    expect(vars['--font-display']).toBe(vars['--font-sans']);
+  it('swaps prose to IBM Plex for a Plex tenant, never mono; Inter is the default', () => {
+    const vars = brandVars({ primaryColor: null, font: 'plex' });
+    expect(vars['--font-sans']).toMatch(/^'IBM Plex Sans'/);
     expect(Object.keys(vars)).not.toContain('--font-mono');
+    expect(brandVars({ primaryColor: null, font: 'inter' })).toEqual({});
   });
 });
 

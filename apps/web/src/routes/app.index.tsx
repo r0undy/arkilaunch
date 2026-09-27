@@ -71,11 +71,11 @@ function ConsoleCard({
   return (
     <Surface radius="md" elevation="sm" className="overflow-hidden p-0">
       <div className="flex items-stretch justify-between gap-2 bg-success text-white">
-        <div className="px-4 py-2.5 font-display text-sm font-semibold uppercase tracking-[0.04em]">
+        <div className="px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.04em]">
           {title}
         </div>
         {badge && (
-          <p className="flex items-center bg-primary px-4 py-2.5 font-display text-sm font-semibold uppercase tracking-[0.04em] text-text">
+          <p className="flex items-center bg-primary px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.04em] text-text">
             {badge}
           </p>
         )}
@@ -211,10 +211,10 @@ function AdminDashboardPage() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-primary px-5 py-3">
         <div>
-          <p className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text">
+          <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text">
             Control room
           </p>
-          <h1 className="font-display text-2xl font-semibold uppercase tracking-[0.02em] text-text">
+          <h1 className="text-2xl font-semibold uppercase tracking-[0.02em] text-text">
             Dashboard
           </h1>
         </div>
@@ -349,7 +349,7 @@ function AdminDashboardPage() {
                 onClick={() => setTab(entry.id)}
                 onKeyDown={(event) => onTabKeyDown(event, index)}
                 className={[
-                  'px-4 py-2.5 font-display text-sm font-semibold uppercase tracking-[0.04em] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
+                  'px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.04em] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
                   tab === entry.id ? 'bg-primary text-on-primary' : 'text-white hover:bg-white/15',
                 ].join(' ')}
               >

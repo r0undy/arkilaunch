@@ -13,7 +13,7 @@ import { describeWeatherCode, weekdayLabel } from '../lib/weather-code.js';
 // gone: the cart is one affordance in the app bar, next to Sign out, rather
 // than the same thing drawn twice.
 
-const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
+const heading = 'text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
 
 // The API answers 503 { error: 'weather_unavailable', reason } when it cannot
 // get a forecast, and the reason decides what to say. An adapter switched off

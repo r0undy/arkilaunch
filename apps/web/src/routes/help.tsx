@@ -54,14 +54,14 @@ function HelpPage() {
   return (
     <div className="flex flex-col gap-6 px-6 py-10 sm:px-10">
       <div>
-        <h1 className="font-display text-2xl font-semibold text-ink-mk">Help center</h1>
+        <h1 className="text-2xl font-semibold text-ink-mk">Help center</h1>
         <p className="mt-1 text-sm text-text-muted">
           Reach {tenantName} directly. Someone answers during yard hours.
         </p>
       </div>
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
           Direct channels
         </h2>
         <ul className="flex flex-col gap-3">

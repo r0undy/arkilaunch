@@ -84,7 +84,7 @@ function InvoiceDetail({ invoice }: { invoice: InvoiceDetailResponse }) {
             <StatusPill tone={meta.tone} label={formatStatus(invoice.status)} icon={meta.icon} />
             <div>
               <p className="font-mono text-2xl font-semibold text-text">{formatPeso(invoice.amount)}</p>
-              <p className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+              <p className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
                 Total amount due
               </p>
             </div>
@@ -106,7 +106,7 @@ function InvoiceDetail({ invoice }: { invoice: InvoiceDetailResponse }) {
             shows the deduction's evidence trail instead, which is what RFC-2
             requires a customer be able to see behind a charge. */}
         <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-4 p-5">
-          <h2 className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
             Evidence for this charge
           </h2>
           {invoice.edtrEvidence ? (
@@ -136,7 +136,7 @@ function InvoiceDetail({ invoice }: { invoice: InvoiceDetailResponse }) {
 
       <Surface radius="md" elevation="sm" className="overflow-hidden p-0">
         <div className="flex flex-wrap items-center justify-between gap-2 bg-success px-4 py-3 text-white">
-          <h2 className="font-display text-sm font-semibold uppercase tracking-[0.04em]">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.04em]">
             Itemized costs
           </h2>
           <p className="text-sm">Issued {formatDate(invoice.createdAt)}</p>
@@ -145,16 +145,16 @@ function InvoiceDetail({ invoice }: { invoice: InvoiceDetailResponse }) {
           <table className="w-full min-w-[520px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left">
-                <th className="px-4 py-3 font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
                   Description
                 </th>
-                <th className="px-4 py-3 text-right font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
                   Qty
                 </th>
-                <th className="px-4 py-3 text-right font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
                   Unit price
                 </th>
-                <th className="px-4 py-3 text-right font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
                   Total
                 </th>
               </tr>
@@ -181,7 +181,7 @@ function InvoiceDetail({ invoice }: { invoice: InvoiceDetailResponse }) {
             <span className="font-mono text-text">{formatPeso(subtotal)}</span>
           </div>
           <div className="flex w-full max-w-xs items-center justify-between border-t border-border pt-2">
-            <span className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text">
+            <span className="text-sm font-semibold uppercase tracking-[0.04em] text-text">
               Total
             </span>
             <span className="font-mono text-lg font-semibold text-text">

@@ -24,7 +24,7 @@ import { Skeleton } from '../components/skeleton.js';
 // the customer accepts or declines the quote itself. Only the accepted
 // quote's engine-priced total is ever charged.
 
-const heading = 'font-display text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
+const heading = 'text-sm font-semibold uppercase tracking-[0.04em] text-text-muted';
 
 function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
   const navigate = useNavigate();
@@ -261,7 +261,7 @@ function NegotiationFinalRoute() {
     <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-5">
       <StatusPill tone="recon-approved" label="Agreed" icon={<CheckIcon />} />
       <div className="text-center">
-        <h1 className="font-display text-2xl font-semibold text-text">Negotiation finalised</h1>
+        <h1 className="text-2xl font-semibold text-text">Negotiation finalised</h1>
         <p className="mt-1 text-sm text-text-muted">
           These are the terms you accepted. Review them, then pay.
         </p>
@@ -271,7 +271,7 @@ function NegotiationFinalRoute() {
         <LineItems quoteId={quoteId} />
         <Row label="Consumable deposit" value={formatPeso(deposit)} />
         <div className="flex items-end justify-between gap-3 border-t border-border pt-3">
-          <span className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text">
+          <span className="text-sm font-semibold uppercase tracking-[0.04em] text-text">
             Total due
           </span>
           <span className="font-mono text-2xl font-semibold text-text">
