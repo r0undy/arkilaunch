@@ -5,13 +5,15 @@ import {
   db,
   invoices,
   notifications,
+  publicPhotoUrl,
   rentals,
   roles,
   sendEmail,
+  tenants,
   truckRequests,
   users,
 } from '@arkilaunch/db';
-import { notificationEmail, type InvoiceInfo } from '@arkilaunch/shared';
+import { notificationEmail, renderEmailHtml, type EmailBrand, type InvoiceInfo } from '@arkilaunch/shared';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -45,6 +47,16 @@ async function invoiceInfo(tx: Tx, payload: Record<string, unknown>): Promise<In
   };
 }
 
+// The current tenant's storefront branding (RLS tenant_self scopes the row
+// to the transaction's tenant), used in the header of every email.
+export async function tenantBrand(tx: Tx): Promise<EmailBrand> {
+  const [row] = await tx
+    .select({ name: tenants.legalName, logoKey: tenants.logoKey, color: tenants.primaryColor })
+    .from(tenants)
+    .limit(1);
+  return { name: row?.name ?? 'ArkiLaunch', logoUrl: publicPhotoUrl(row?.logoKey ?? null), color: row?.color ?? null };
+}
+
 // Queues the email for a money event, sent once the transaction commits.
 // Users who switched email off in settings (notification_prefs) get none.
 async function queueEmails(
@@ -59,7 +71,8 @@ async function queueEmails(
   const inv = await invoiceInfo(tx, payload);
   const mail = inv && notificationEmail(type, inv, audience, process.env.WEB_ORIGIN ?? 'http://localhost:5173', payload);
   if (!mail) return;
-  for (const address of to) afterCommit(tx, () => sendEmail(address, mail.subject, mail.text));
+  const html = renderEmailHtml(await tenantBrand(tx), mail.text);
+  for (const address of to) afterCommit(tx, () => sendEmail(address, mail.subject, mail.text, html));
 }
 
 // Drops a row into one user's in-app feed (notifications.tsx), plus an

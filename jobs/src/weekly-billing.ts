@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { customers, depositAccruals, invoiceLineItems, invoices, notifications, rentals, sendEmail, users } from '@arkilaunch/db';
-import { notificationEmail } from '@arkilaunch/shared';
+import { customers, depositAccruals, invoiceLineItems, invoices, notifications, publicPhotoUrl, rentals, sendEmail, tenants, users } from '@arkilaunch/db';
+import { notificationEmail, renderEmailHtml } from '@arkilaunch/shared';
 import { makeJobDb } from './db-client.js';
 import { runInstrumentedJob } from './telemetry.js';
 
@@ -24,7 +24,7 @@ export async function runWeeklyBilling(): Promise<number> {
 
     for (const { tenantId, rentalId } of open) {
       // Sent after the commit, so a rolled-back run mails nobody.
-      let mail = null as { to: string; subject: string; text: string } | null;
+      let mail = null as { to: string; subject: string; text: string; html: string } | null;
       await db.transaction(async (tx) => {
         // Locked so a concurrent run cannot bill the same rows twice.
         const rows = await tx
@@ -86,13 +86,25 @@ export async function runWeeklyBilling(): Promise<number> {
                   process.env.WEB_ORIGIN ?? 'http://localhost:5173',
                 )
               : null;
-          if (email && owner.email) mail = { to: owner.email, ...email };
+          if (email && owner.email) {
+            // Superuser connection: the tenant is named explicitly.
+            const [brand] = await tx
+              .select({ name: tenants.legalName, logoKey: tenants.logoKey, color: tenants.primaryColor })
+              .from(tenants)
+              .where(eq(tenants.id, tenantId))
+              .limit(1);
+            const html = renderEmailHtml(
+              { name: brand?.name ?? 'ArkiLaunch', logoUrl: publicPhotoUrl(brand?.logoKey ?? null), color: brand?.color ?? null },
+              email.text,
+            );
+            mail = { to: owner.email, ...email, html };
+          }
         }
         issued += 1;
       });
       if (mail) {
-        const { to, subject, text } = mail;
-        await sendEmail(to, subject, text).catch((err) => console.error('weekly-billing: invoice email failed', err));
+        const { to, subject, text, html } = mail;
+        await sendEmail(to, subject, text, html).catch((err) => console.error('weekly-billing: invoice email failed', err));
       }
     }
     console.log(`weekly-billing: issued ${issued} weekly invoice(s).`);

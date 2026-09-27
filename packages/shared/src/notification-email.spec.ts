@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { notificationEmail, type InvoiceInfo } from './notification-email.js';
+import { notificationEmail, renderEmailHtml, textOn, type InvoiceInfo } from './notification-email.js';
 
 const inv: InvoiceInfo = {
   invoiceId: 'inv-1',
@@ -38,5 +38,30 @@ describe('notificationEmail', () => {
     expect(notificationEmail('quote_ready', inv, 'customer', origin)).toBeNull();
     expect(notificationEmail('payment_paid', inv, 'customer', origin)).toBeNull();
     expect(notificationEmail('weekly_invoice', inv, 'staff', origin)).toBeNull();
+  });
+});
+
+describe('renderEmailHtml', () => {
+  const text = notificationEmail('payment_received', inv, 'customer', origin)!.text;
+
+  it('puts the logo and brand color in the header and links as buttons', () => {
+    const html = renderEmailHtml({ name: 'Acme <Rentals>', logoUrl: 'https://cdn.example/logo.png', color: '#ffcc00' }, text);
+    expect(html).toContain('src="https://cdn.example/logo.png"');
+    expect(html).toContain('background:#ffcc00');
+    expect(html).toContain('Acme &lt;Rentals&gt;');
+    expect(html).toContain('href="https://arkilaunch.app/account/bookings/r-1"');
+    expect(html).toContain('>View it</a>');
+  });
+
+  it('falls back to the name and a dark header without branding', () => {
+    const html = renderEmailHtml({ name: 'Acme', logoUrl: null, color: 'javascript:alert(1)' }, text);
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('javascript');
+    expect(html).toContain('background:#1f2933');
+  });
+
+  it('picks legible text on the brand color', () => {
+    expect(textOn('#ffcc00')).toBe('#000000');
+    expect(textOn('#1f2933')).toBe('#ffffff');
   });
 });

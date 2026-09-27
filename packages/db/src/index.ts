@@ -2,6 +2,7 @@ export * from './schema/index.js';
 export * from './client.js';
 export * from './with-tenant-tx.js';
 export * from './send-email.js';
+export * from './public-url.js';
 export * from './rls.js';
 export * from './auth-lookup.js';
 export * from './payments-lookup.js';

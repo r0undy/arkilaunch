@@ -1,8 +1,10 @@
-import { Controller, Get, Param, Patch, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { NotificationsService } from './notifications.service.js';
-import { NotificationListQueryDto } from './dto.js';
+import { NotificationListQueryDto, TestEmailRequestDto } from './dto.js';
+import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 
 type CtxRequest = Request & { ctx: RequestContext };
 
@@ -27,5 +29,14 @@ export class NotificationsController {
   @Patch(':id/read')
   markRead(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.notifications.markRead(req.ctx, id);
+  }
+
+  // Admin-only and throttled: it mails an address the caller types, so it
+  // must not become an open relay.
+  @Post('test-email')
+  @RequirePermission('tenant:manage')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  testEmail(@Body() body: TestEmailRequestDto, @Req() req: CtxRequest) {
+    return this.notifications.sendTestEmail(req.ctx, body);
   }
 }
