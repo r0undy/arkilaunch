@@ -59,7 +59,6 @@ function CompaniesPendingPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Companies"
         title="Applications"
         description="Businesses waiting on a decision before they get a workspace."
       />
@@ -105,7 +104,6 @@ function CompanyApplicationPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Companies"
         title={application?.companyName ?? 'Company application'}
         description="Who applied, and what they told us."
         actions={

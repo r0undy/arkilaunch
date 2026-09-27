@@ -122,7 +122,7 @@ function MyBookingsPage() {
               columns={COLUMNS}
               rows={data.items}
               rowKey={(row) => row.id}
-              footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="bookings" />}
+              header={{ title: 'Bookings', count: data.total, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="bookings" /> }}
             />
           )}
         />

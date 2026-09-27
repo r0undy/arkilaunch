@@ -144,7 +144,6 @@ function InventoryPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Fleet"
         title="Equipment"
         description="Every machine in the fleet and where it stands."
         actions={

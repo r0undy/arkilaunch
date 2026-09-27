@@ -109,7 +109,6 @@ function DeploymentPage() {
       {/* Outside DataPanel: the header belongs to the page, not to the
           response, so it stays put while the table is loading or empty. */}
       <PageHeader
-        eyebrow="Operations"
         title="Sites"
         description="Where your machines are working, and the weather over each site."
       />
@@ -127,7 +126,7 @@ function DeploymentPage() {
             rowKey={(row) => row.id}
             renderExpanded={(row) => <SiteEquipment site={row} />}
             expandLabel={(row) => `Show equipment at ${siteName(row)}`}
-            footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="sites" />}
+            header={{ title: 'Sites', count: data.total, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="sites" /> }}
           />
         )}
       />

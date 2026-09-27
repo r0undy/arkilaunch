@@ -342,7 +342,6 @@ function ManageUsersPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        eyebrow="Settings"
         title="People"
         description="Manage teammates, roles, and access."
         actions={<Button onClick={() => setInviting(true)}>Invite a user</Button>}
@@ -360,7 +359,7 @@ function ManageUsersPage() {
             columns={columns}
             rows={data.items}
             rowKey={(row) => row.id}
-            footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="people" />}
+            header={{ title: 'People', count: data.total, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="people" /> }}
           />
         )}
       />

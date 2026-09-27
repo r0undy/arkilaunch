@@ -42,7 +42,6 @@ function IncidentsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Operations"
         title="Incidents"
         description="Weather and liability events recorded against your sites, timekeeper weather reports the site readings contradict, and machines used after a Stop work warning."
       />
@@ -77,7 +76,7 @@ function IncidentsPage() {
             columns={COLUMNS}
             rows={data.items}
             rowKey={(row) => row.id}
-            footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="incidents" />}
+            header={{ title: 'Incidents', count: data.total, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="incidents" /> }}
           />
         )}
       />

@@ -633,9 +633,7 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
               ? 'Nothing waiting. Companies customers add appear here for review.'
               : 'No verified companies yet. Companies you approve appear here.'
         }
-        footer={
-          <Pagination offset={offset} limit={PAGE_SIZE} total={query.data?.total ?? 0} onOffsetChange={setOffset} noun="companies" busy={query.isFetching} />
-        }
+        header={{ title: 'Companies', count: query.data?.total ?? 0, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={query.data?.total ?? 0} onOffsetChange={setOffset} noun="companies" busy={query.isFetching} /> }}
       />
       <Modal
         open={open !== null}
@@ -709,7 +707,6 @@ function RegistrationsPage({ kycStatus }: { kycStatus: Queue }) {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Customers"
         title="Registrations"
         description={
           kycStatus === 'pending'

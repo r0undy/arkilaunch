@@ -302,6 +302,8 @@
        background underneath it. Disabling overscroll bounce here removes
        that "different color flashes in when you scroll too far" seam. */
     overscroll-behavior-y: none;
+    /* The sticky 56px bar must never cover a focused element (SC 2.4.11). */
+    scroll-padding-top: 4.5rem;
   }
 
   /* Belt-and-suspenders for browsers that still rubber-band despite

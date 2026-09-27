@@ -696,7 +696,7 @@ export function RateCardsPanel() {
             columns={columns}
             rows={data.items}
             rowKey={(row) => row.id}
-            footer={<Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="rate cards" />}
+            header={{ title: 'Rate cards', count: data.total, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="rate cards" /> }}
           />
         )}
       />
@@ -848,7 +848,6 @@ function SettingsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Settings"
         title="Business settings"
         description="Office hours, deposits and billing. Prices live in the Price book."
         actions={

@@ -34,7 +34,7 @@ function CheckoutSuccessPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Checkout" title={paid ? 'Payment received' : 'Payment submitted'} />
+      <PageHeader title={paid ? 'Payment received' : 'Payment submitted'} />
       <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-4 p-6">
         <StatusPill
           tone={paid ? 'recon-approved' : 'recon-review'}

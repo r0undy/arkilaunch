@@ -25,7 +25,6 @@ function DeploymentScanPage({ billingTo }: { billingTo?: string }) {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Field logs"
         title="DTR scanning"
         description="Choose the deployment this sheet belongs to, then scan it."
       />

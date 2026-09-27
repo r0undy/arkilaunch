@@ -234,7 +234,6 @@ function EdtrPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Operations"
         title="Field logs"
         description="Each day's hours, recorded twice and matched before anything is billed."
         actions={

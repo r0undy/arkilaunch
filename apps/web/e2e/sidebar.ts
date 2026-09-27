@@ -7,8 +7,13 @@ import { expect, type Locator, type Page } from '@playwright/test';
 // Opening the drawer also means the links exist TWICE: the hidden desktop
 // <aside> is still in the DOM beside the drawer's copy, and Playwright's
 // strict mode counts both. Every query here is filtered to the visible one.
+// Scoped to the sidebar and its phone drawer: breadcrumbs repeat a nav
+// destination's name on the pages under it.
 export function sidebarLink(page: Page, name: string): Locator {
-  return page.getByRole('link', { name, exact: true }).filter({ visible: true });
+  return page
+    .locator('aside[aria-label="Sidebar"], [role="dialog"]')
+    .getByRole('link', { name, exact: true })
+    .filter({ visible: true });
 }
 
 /**

@@ -339,7 +339,6 @@ function CheckoutPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Checkout"
         title="Payment information"
         description="Choose how to settle this booking."
         actions={
@@ -366,7 +365,7 @@ function CheckoutPage() {
 function CheckoutFailedPage() {
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Checkout" title="Payment not completed" />
+      <PageHeader title="Payment not completed" />
       <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-4 p-6">
         <StatusPill tone="recon-failed" label="Not paid" icon={<AlertIcon />} />
         <p className="max-w-prose text-sm text-text-muted">

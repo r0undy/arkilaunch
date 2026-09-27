@@ -57,7 +57,6 @@ function InsightsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Overview"
         title="Reports"
         description="How hard the fleet is working, and what it has earned."
       />

@@ -172,7 +172,6 @@ function CouponsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Billing"
         title="Coupons"
         description="Codes your customers enter at checkout. A coupon comes off the rent, never the consumable deposit."
         actions={<Button onClick={() => setCreating(true)}>New coupon</Button>}
@@ -183,9 +182,7 @@ function CouponsPage() {
         rows={coupons.data?.items ?? []}
         rowKey={(c) => c.id}
         empty={coupons.isPending ? 'Loading coupons...' : 'No coupons yet. Create one and share the code with a customer.'}
-        footer={
-          <Pagination offset={offset} limit={PAGE_SIZE} total={coupons.data?.total ?? 0} onOffsetChange={setOffset} noun="coupons" busy={coupons.isFetching} />
-        }
+        header={{ title: 'Coupons', count: coupons.data?.total ?? 0, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={coupons.data?.total ?? 0} onOffsetChange={setOffset} noun="coupons" busy={coupons.isFetching} /> }}
       />
       <CreateCouponModal open={creating} onClose={() => setCreating(false)} />
     </div>

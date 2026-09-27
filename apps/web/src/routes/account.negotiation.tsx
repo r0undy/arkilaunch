@@ -168,7 +168,6 @@ function NegotiationPage({ bookingId }: { bookingId: string }) {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Negotiation"
         title={booking.data ? `Booking ${booking.data.code}` : 'Booking'}
         description="Agree the price with the rental team before you pay."
         actions={
@@ -209,7 +208,7 @@ function NegotiationCallRoute() {
   const code = booking.data?.code;
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Negotiation" title="Negotiate by phone" {...(code ? { description: `Booking ${code}` } : {})} />
+      <PageHeader title="Negotiate by phone" {...(code ? { description: `Booking ${code}` } : {})} />
       <Surface radius="md" elevation="sm" className="flex max-w-xl flex-col gap-3 p-6">
         <p className="text-sm text-text">
           Call the rental team on the number on our contact page and quote your booking reference{' '}

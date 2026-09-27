@@ -313,7 +313,7 @@ export function TollsEditor() {
         rows={shown.slice(safeOffset, safeOffset + PAGE_SIZE)}
         rowKey={(t) => t.id}
         empty={tolls.isPending ? 'Loading toll rates...' : rows.length === 0 ? 'No toll rates yet. Load the PH matrix or add one.' : 'No toll matches that filter.'}
-        footer={<Pagination offset={safeOffset} limit={PAGE_SIZE} total={shown.length} onOffsetChange={setOffset} noun="tolls" />}
+        header={{ title: 'Toll rates', count: shown.length, pagination: <Pagination offset={safeOffset} limit={PAGE_SIZE} total={shown.length} onOffsetChange={setOffset} noun="tolls" /> }}
       />
       <Modal
         open={adding}

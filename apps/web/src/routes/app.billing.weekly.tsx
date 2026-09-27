@@ -156,7 +156,6 @@ function WeeklyBillingPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Billing"
         title="Weekly billing rundown"
         description="Hours run against money invoiced, for the current reporting period."
         actions={

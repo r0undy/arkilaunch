@@ -200,7 +200,6 @@ function AccountInvoicePage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Billing"
         title={`Invoice ${shortCode('invoice', invoiceId)}`}
         description="What was charged, and the evidence behind it."
         actions={

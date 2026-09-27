@@ -66,7 +66,6 @@ function PriceBook() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Billing"
         title="Price book"
         description="The standard prices every client and prospect is quoted. A booking gets its quote from these at once; you only revise one when the customer negotiates."
       />
@@ -285,7 +284,6 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Billing"
         title="Revise quote"
         description="The customer is negotiating. Start from the price book quote they saw and meet their offer with an agreed price or a discount."
       />

@@ -498,7 +498,6 @@ function BookingDetailPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="My bookings"
         title={booking.data?.code ?? 'Booking'}
         description="Where this hire stands and what it has cost."
         actions={
@@ -596,7 +595,7 @@ function ExtendRentalPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="My bookings" title="Extend rental" {...(booking.data ? { description: `Booking ${booking.data.code}` } : {})} />
+      <PageHeader title="Extend rental" {...(booking.data ? { description: `Booking ${booking.data.code}` } : {})} />
       <Surface radius="md" elevation="sm" className="flex max-w-xl flex-col gap-4 p-6">
         <p className="text-sm text-text-muted">
           Currently due back {currentEnd ? formatDate(currentEnd) : 'on an open date'}.

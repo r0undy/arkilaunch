@@ -136,7 +136,6 @@ function ApplicationsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="My account"
         title="Company Applications"
         description="Manage and track company applications."
         actions={

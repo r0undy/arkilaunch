@@ -266,7 +266,6 @@ function CompaniesPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Companies"
         title="Companies"
         description="Every rental company on ArkiLaunch. Open a company's site, or deactivate it to take it offline."
       />

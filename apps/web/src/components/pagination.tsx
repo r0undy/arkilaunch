@@ -1,4 +1,4 @@
-import { Button } from './button.js';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 // Every list in the console rendered its whole result set. The API caps a
 // page at 100 rows, so a long list was not just unreadable -- it was silently
@@ -48,23 +48,25 @@ export function Pagination({
   const canGoBack = offset > 0;
   const canGoForward = offset + limit < total;
 
+  const arrow =
+    'inline-flex min-h-11 min-w-11 items-center justify-center rounded-sm text-text hover:bg-surface-sunk disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring';
+
+  // AWS Console table paging: the range, then ‹ page numbers ›, compact enough
+  // for a container toolbar.
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
+    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
       <p className="text-sm text-text-muted" aria-live="polite">
         {/* The range, not just the page number: "showing 21-40 of 63" answers
             "where am I" and "how much is there" in one line. */}
         Showing {first.toLocaleString('en-PH')}-{last.toLocaleString('en-PH')} of{' '}
         {total.toLocaleString('en-PH')} {noun}
       </p>
-      <div className="flex items-center gap-2">
-        <Button
-          variant="secondary"
-          onClick={() => onOffsetChange(Math.max(0, offset - limit))}
-          disabled={!canGoBack || busy}
-        >
-          Previous
-        </Button>
-        <nav aria-label={`Pages of ${noun}`} className="flex items-center gap-1">
+      <div className="flex items-center">
+        <button type="button" className={arrow} onClick={() => onOffsetChange(Math.max(0, offset - limit))} disabled={!canGoBack || busy}>
+          <ChevronLeft aria-hidden className="h-4 w-4" />
+          <span className="sr-only">Previous</span>
+        </button>
+        <nav aria-label={`Pages of ${noun}`} className="flex items-center">
           {pageWindow(page, pages).map((n, i) =>
             n === null ? (
               <span key={`gap-${i}`} aria-hidden="true" className="px-1 text-sm text-text-muted">
@@ -79,8 +81,8 @@ export function Pagination({
                 disabled={busy}
                 onClick={() => onOffsetChange((n - 1) * limit)}
                 className={[
-                  'min-h-9 min-w-9 rounded-sm px-2 text-sm font-semibold tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
-                  n === page ? 'bg-primary text-on-primary' : 'text-text hover:bg-surface-sunk',
+                  'min-h-11 min-w-9 rounded-sm px-2 text-sm tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
+                  n === page ? 'font-semibold text-text underline decoration-primary decoration-2 underline-offset-8' : 'text-text-muted hover:bg-surface-sunk hover:text-text',
                 ].join(' ')}
               >
                 {n}
@@ -88,13 +90,10 @@ export function Pagination({
             ),
           )}
         </nav>
-        <Button
-          variant="secondary"
-          onClick={() => onOffsetChange(offset + limit)}
-          disabled={!canGoForward || busy}
-        >
-          Next
-        </Button>
+        <button type="button" className={arrow} onClick={() => onOffsetChange(offset + limit)} disabled={!canGoForward || busy}>
+          <ChevronRight aria-hidden className="h-4 w-4" />
+          <span className="sr-only">Next</span>
+        </button>
       </div>
     </div>
   );

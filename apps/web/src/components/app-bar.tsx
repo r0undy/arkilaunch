@@ -14,9 +14,9 @@ import { applicationsListQuery } from './application-actions.js';
 import { AlertIcon, BellIcon, LogOutIcon } from './icons.js';
 import { useHeaderColor, useTenant } from '../lib/tenant.js';
 
-// On a tenant-colored bar (DSD §2.1) the controls inherit its black or white
-// text; on the default bar they keep the muted-to-ink hover.
-const QUIET = 'text-text-muted hover:text-text';
+// Controls inherit the bar's text (steel bar: paper; a tenant color: its black
+// or white) and hover as a tile of that same color (DSD §4.1 Nav shell).
+const TILE = 'hover:bg-current/10';
 
 export interface AppBarProps {
   tenantLabel: string;
@@ -203,13 +203,12 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   const bar = useHeaderColor();
   const tenant = useTenant();
   const mark = tenant?.iconUrl ?? tenant?.logoUrl;
-  const ink = bar ? '' : 'text-text';
-  const tone = bar ? 'hover:opacity-80' : QUIET;
+  const tone = TILE;
 
   return (
     <header
       style={bar ?? undefined}
-      className={`sticky top-0 z-40 flex min-h-14 items-center justify-between gap-2 border-b border-border px-3 py-2 sm:gap-4 sm:px-4 ${bar ? '' : 'bg-surface'}`}
+      className={`sticky top-0 z-40 flex min-h-14 items-center justify-between gap-2 px-3 py-2 sm:gap-4 sm:px-4 ${bar ? '' : 'bg-nav text-text-inverse'}`}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         {onMenuClick && (
@@ -217,7 +216,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             type="button"
             onClick={onMenuClick}
             aria-label="Toggle navigation"
-            className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-sm lg:hidden ${ink}`}
+            className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-sm lg:hidden ${tone}`}
           >
             <svg
               viewBox="0 0 20 20"
@@ -232,7 +231,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
         )}
         <Link
           to={homeHref()}
-          className={`flex min-w-0 items-center gap-2 text-base font-semibold ${ink}`}
+          className="flex min-w-0 items-center gap-2 text-base font-medium"
           aria-label={`${tenantLabel} home`}
         >
           {/* The mark leads the bar (BRAND.md): the tenant's icon, else its
@@ -242,7 +241,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
           ) : (
             <span
               aria-hidden
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-on-primary"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary"
             >
               {tenantLabel.trim().charAt(0).toUpperCase() || 'A'}
             </span>

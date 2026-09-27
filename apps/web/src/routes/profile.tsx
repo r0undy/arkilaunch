@@ -26,11 +26,10 @@ function ProfileRow({ label, value }: { label: string; value: string }) {
 // there is no endpoint that writes a display name, avatar or phone number
 // back, so this shows the identity the JWT and the API actually agree on
 // and offers no edit affordance it cannot honour.
-function ProfilePage({ eyebrow }: { eyebrow: string }) {
+function ProfilePage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow={eyebrow}
         title="My profile"
         description="The account you are signed in with."
       />
@@ -91,17 +90,17 @@ function ProfilePage({ eyebrow }: { eyebrow: string }) {
 export const appProfileRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/profile',
-  component: () => <ProfilePage eyebrow="Account" />,
+  component: () => <ProfilePage />,
 });
 
 export const adminProfileRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: '/admin/profile',
-  component: () => <ProfilePage eyebrow="Account" />,
+  component: () => <ProfilePage />,
 });
 
 export const fieldProfileRoute = createRoute({
   getParentRoute: () => fieldLayoutRoute,
   path: '/field/profile',
-  component: () => <ProfilePage eyebrow="Field" />,
+  component: () => <ProfilePage />,
 });

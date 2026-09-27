@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Pencil } from 'lucide-react';
-import { Surface } from './surface.js';
+import { Container } from './container.js';
 import { Button } from './button.js';
 
 export interface SummaryItem {
@@ -23,26 +23,19 @@ export interface SummaryCardProps {
 // tabular-nums); a caller passing prose can wrap it in its own span.
 export function SummaryCard({ title, description, items, action, children }: SummaryCardProps) {
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5" role="group" aria-label={title}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-text">{title}</h2>
-          {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
-        </div>
-        {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
-      </div>
+    <Container role="group" aria-label={title} header={{ title, description, actions: action }}>
       {items.length > 0 && (
-        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+        <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => (
             <div key={item.label} className="flex flex-col gap-0.5">
-              <dt className="text-xs font-medium text-text-muted">{item.label}</dt>
+              <dt className="text-sm font-medium text-text-muted">{item.label}</dt>
               <dd className="font-mono text-sm tabular-nums text-text">{item.value}</dd>
             </div>
           ))}
         </dl>
       )}
       {children}
-    </Surface>
+    </Container>
   );
 }
 

@@ -19,14 +19,12 @@ import { Button } from '../components/button.js';
 // is missing, which is what the next Change Record has to build.
 // Recorded in docs/report-figma-route-alignment.md §5.
 function GapScreen({
-  eyebrow,
   title,
   description,
   gapTitle,
   gap,
   action,
 }: {
-  eyebrow: string;
   title: string;
   description: string;
   gapTitle: string;
@@ -35,7 +33,7 @@ function GapScreen({
 }) {
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow={eyebrow} title={title} description={description} />
+      <PageHeader title={title} description={description} />
       <EmptyState title={gapTitle} description={gap} {...(action ? { action } : {})} />
     </div>
   );
@@ -46,7 +44,6 @@ export const appTicketsRoute = createRoute({
   path: '/app/tickets',
   component: () => (
     <GapScreen
-      eyebrow="Support"
       title="Ticket management"
       description="Support requests raised by customers and crew."
       gapTitle="There is no ticket store yet"
@@ -65,7 +62,6 @@ export const appSecurityLogsRoute = createRoute({
   path: '/app/security-logs',
   component: () => (
     <GapScreen
-      eyebrow="Administration"
       title="Security logs"
       description="Who signed in, what changed, and when."
       gapTitle="Audit events are recorded but not readable"
@@ -84,7 +80,6 @@ export const adminSecurityLogsRoute = createRoute({
   path: '/admin/security-logs',
   component: () => (
     <GapScreen
-      eyebrow="Administration"
       title="Security logs"
       description="Who signed in, what changed, and when."
       gapTitle="Audit events are recorded but not readable"
@@ -103,7 +98,6 @@ export const fieldSettingsRoute = createRoute({
   path: '/field/settings',
   component: () => (
     <GapScreen
-      eyebrow="Field"
       title="Settings"
       description="How this console behaves for you."
       gapTitle="Nothing is adjustable from here yet"
