@@ -84,19 +84,20 @@ function ApplicationCard({ company }: { company: CompanyResponse }) {
       elevation="sm"
       role="group"
       aria-label={company.companyName}
-      className="flex flex-wrap items-center gap-5 p-5"
+      className="flex flex-wrap items-center gap-5 p-5 transition-shadow hover:shadow-md"
     >
       <RegistrationThumbnail company={company} />
       <div className="flex min-w-48 flex-1 flex-col gap-2">
         <h2 className="text-heading-md text-text">{company.companyName}</h2>
-        <VerificationPill status={company.kycStatus} />
-        <div className="text-sm text-text-muted">
-          <p>Registration Number:</p>
-          <p className="text-text">{company.secNumber ?? 'Not provided'}</p>
-        </div>
+        <span className="self-start">
+          <VerificationPill status={company.kycStatus} />
+        </span>
+        <p className="text-sm text-text-muted">
+          Registration number <span className="font-mono text-text">{company.secNumber ?? 'Not provided'}</span>
+        </p>
       </div>
       <Link to="/account/companies/$companyId" params={{ companyId: company.id }}>
-        <Button variant="primary">Manage</Button>
+        <Button variant="secondary">Manage</Button>
       </Link>
     </Surface>
   );

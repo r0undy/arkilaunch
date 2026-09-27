@@ -675,28 +675,29 @@ export function RateCardsPanel() {
     },
   ];
 
+  const addButton = (
+    <Button onClick={() => setAdding(true)}>
+      <Plus aria-hidden="true" className="h-4 w-4" />
+      Add rate card
+    </Button>
+  );
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-heading-md text-text">Rate cards</h2>
-        <Button onClick={() => setAdding(true)}>
-          <Plus aria-hidden="true" className="h-4 w-4" />
-          Add rate card
-        </Button>
-      </div>
       <DataPanel
         title="Rate cards"
         options={rateCardsListQuery(PAGE_SIZE, offset)}
         emptyTitle="No rate cards yet"
         emptyDescription="Add a rate card to make an equipment type quotable."
         emptyIcon={Receipt}
+        emptyAction={addButton}
         isEmpty={(data) => data.total === 0}
         render={(data) => (
           <Table
             columns={columns}
             rows={data.items}
             rowKey={(row) => row.id}
-            header={{ title: 'Rate cards', count: data.total, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="rate cards" /> }}
+            header={{ title: 'Rate cards', count: data.total, actions: addButton, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="rate cards" /> }}
           />
         )}
       />

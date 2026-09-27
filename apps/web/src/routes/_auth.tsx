@@ -20,7 +20,7 @@ function BrandPanel() {
         {tenantName}
       </Link>
       <div className="my-12 lg:my-0">
-        <p className="max-w-sm border-l-2 border-primary pl-4 text-display-md lg:text-display-lg">
+        <p className="max-w-sm border-l-2 border-primary pl-4 text-heading-lg lg:text-display-md">
           {currentHost.kind === 'platform'
             ? 'Your rental company, on its own address.'
             : tenant?.tagline || "Your timekeeper's handwriting sits right next to the hours we bill."}

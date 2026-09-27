@@ -169,8 +169,9 @@ function AddressPreview() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex max-w-xl flex-col gap-3 rounded-md border border-border bg-surface p-5">
-      <p className="truncate text-sm text-text-muted" aria-live="polite">
+    <form onSubmit={onSubmit} className="flex w-full flex-col gap-4 rounded-lg border border-border bg-surface p-8 shadow-md">
+      <h2 className="text-heading-lg text-text">Your storefront address</h2>
+      <p className="truncate font-mono text-sm text-text-muted" aria-live="polite">
         https://<strong className="text-text">{label}</strong>.{PLATFORM_DOMAIN}
       </p>
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -207,8 +208,9 @@ function PlatformLanding() {
         </div>
       </header>
       <main id="main" className="mx-auto flex w-full max-w-shell flex-1 flex-col gap-16 px-4 py-12 sm:px-8 lg:gap-24 lg:py-20">
-        <section className="flex flex-col gap-5">
-          <h1 className="max-w-3xl text-display-lg text-text lg:text-display-xl">
+        <section className="grid items-center gap-10 lg:grid-cols-2">
+          <div className="flex flex-col gap-5">
+          <h1 className="text-display-lg text-text lg:text-display-xl">
             Launch your equipment rental business
           </h1>
           <p className="max-w-xl text-body-lg text-text-muted">
@@ -221,6 +223,8 @@ function PlatformLanding() {
               Sign in
             </Button>
           </div>
+          </div>
+          {/* The hero's right half: the address a company gets, typed live. */}
           <AddressPreview />
         </section>
 

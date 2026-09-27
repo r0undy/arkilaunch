@@ -260,60 +260,61 @@ export function TollsEditor() {
       ),
     },
   ];
-  const selectClass = 'min-h-11 rounded-sm border border-border bg-surface px-2 text-sm text-text';
+  const selectClass = 'min-h-11 rounded-input border border-border bg-surface px-2 text-sm text-text';
+  const tollDescription = (
+    <>
+      Class 3 (large trucks) expressway fees, picked by entry and exit when you confirm a trip&apos;s km.
+                  Loaded fees are the TRB-approved rates effective {formatDate(PH_TOLLS_AS_OF)}; check them against the
+                  operator&apos;s current matrix and edit any that changed.
+    </>
+  );
+  const tollActions = (
+    <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" loading={load.isPending} onClick={() => load.mutate()}>
+              {expressways.length ? 'Load missing fees' : 'Load PH toll matrix'}
+            </Button>
+            <Button onClick={() => setAdding(true)}>Add toll</Button>
+          </div>
+  );
+  const tollFilter = (
+    <div className="flex flex-wrap gap-2">
+          <select
+            aria-label="Expressway"
+            className={selectClass}
+            value={road}
+            onChange={(e) => {
+              setRoad(e.target.value);
+              setOffset(0);
+            }}
+          >
+            <option value="">All expressways</option>
+            {expressways.map((x) => (
+              <option key={x}>{x}</option>
+            ))}
+            {rows.some((t) => !t.expressway) && <option value={OTHER}>Other tolls</option>}
+          </select>
+          <input
+            type="search"
+            aria-label="Find a toll"
+            placeholder="Find an entry or exit"
+            value={find}
+            onChange={(e) => {
+              setFind(e.target.value);
+              setOffset(0);
+            }}
+            className="min-h-11 w-full max-w-xs rounded-input border border-border bg-surface px-3 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          />
+        </div>
+  );
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5" aria-label="Toll rates">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="max-w-2xl">
-          <h2 className="text-heading-md text-text">Toll rates</h2>
-          <p className="text-sm text-text-muted">
-            Class 3 (large trucks) expressway fees, picked by entry and exit when you confirm a trip&apos;s km.
-            Loaded fees are the TRB-approved rates effective {formatDate(PH_TOLLS_AS_OF)}; check them against the
-            operator&apos;s current matrix and edit any that changed.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" loading={load.isPending} onClick={() => load.mutate()}>
-            {expressways.length ? 'Load missing fees' : 'Load PH toll matrix'}
-          </Button>
-          <Button onClick={() => setAdding(true)}>Add toll</Button>
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <select
-          aria-label="Expressway"
-          className={selectClass}
-          value={road}
-          onChange={(e) => {
-            setRoad(e.target.value);
-            setOffset(0);
-          }}
-        >
-          <option value="">All expressways</option>
-          {expressways.map((x) => (
-            <option key={x}>{x}</option>
-          ))}
-          {rows.some((t) => !t.expressway) && <option value={OTHER}>Other tolls</option>}
-        </select>
-        <input
-          type="search"
-          aria-label="Find a toll"
-          placeholder="Find an entry or exit"
-          value={find}
-          onChange={(e) => {
-            setFind(e.target.value);
-            setOffset(0);
-          }}
-          className="min-h-11 w-full max-w-xs rounded-input border border-border bg-surface px-3 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-        />
-      </div>
+    <section aria-label="Toll rates" className="flex flex-col gap-3">
       {tolls.isError && <p className="text-sm text-error">{apiErrorText(tolls.error)}</p>}
       <Table
         columns={columns}
         rows={shown.slice(safeOffset, safeOffset + PAGE_SIZE)}
         rowKey={(t) => t.id}
         empty={tolls.isPending ? 'Loading toll rates...' : rows.length === 0 ? 'No toll rates yet. Load the PH matrix or add one.' : 'No toll matches that filter.'}
-        header={{ title: 'Toll rates', count: shown.length, pagination: <Pagination offset={safeOffset} limit={PAGE_SIZE} total={shown.length} onOffsetChange={setOffset} noun="tolls" /> }}
+        header={{ title: 'Toll rates', count: shown.length, description: tollDescription, actions: tollActions, filter: tollFilter, pagination: <Pagination offset={safeOffset} limit={PAGE_SIZE} total={shown.length} onOffsetChange={setOffset} noun="tolls" /> }}
       />
       <Modal
         open={adding}
@@ -349,7 +350,7 @@ export function TollsEditor() {
         }}
         onCancel={() => setRemoving(null)}
       />
-    </Surface>
+    </section>
   );
 }
 
@@ -367,7 +368,7 @@ function TollPicker({ tolls, value, onChange }: { tolls: TollRateResponse[]; val
       : onRoad.find((t) => (t.entryPoint === a && t.exitPoint === b) || (t.entryPoint === b && t.exitPoint === a));
   const picked = value.map((id) => tolls.find((t) => t.id === id)).filter((t): t is TollRateResponse => Boolean(t));
   const expressways = [...new Set(tolls.filter((t) => t.expressway).map((t) => t.expressway!))];
-  const selectClass = 'min-h-11 rounded-sm border border-border bg-surface px-2 text-sm';
+  const selectClass = 'min-h-11 rounded-input border border-border bg-surface px-2 text-sm';
   return (
     <fieldset className="flex flex-col gap-2 text-sm">
       <legend className="mb-1 text-xs text-text-muted">Tolls on this route</legend>
