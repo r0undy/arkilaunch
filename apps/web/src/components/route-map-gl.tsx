@@ -9,7 +9,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 setWorkerUrl(workerUrl);
 import type { RouteMapCanvasProps } from './route-map.js';
 
-// The WebGL half of RouteMap, loaded on demand so MapLibre never reaches
+// The WebGL half of the trip map, loaded on demand so MapLibre never reaches
 // the main bundle. Vector tiles from OpenFreeMap (keyless, OSM data): its
 // Liberty style ships the 3D building extrusions a tilted camera shows.
 //
@@ -27,35 +27,62 @@ function token(name: string, fallback: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
-// A round lettered pin in the token colours. MapLibre positions the element
-// through its own transform, so the pin is styled, never transformed.
+// A Grab-style teardrop pin in the token colours: the letter in its head, a
+// ground shadow at its tip and an address bubble above. MapLibre positions
+// the root through its own transform, so only the children are animated.
 function pinElement(letter: 'A' | 'B', label: string) {
-  const el = document.createElement('div');
-  el.setAttribute('role', 'img');
-  el.setAttribute('aria-label', label);
-  el.textContent = letter;
   const pickup = letter === 'A';
-  Object.assign(el.style, {
-    width: '28px',
-    height: '28px',
-    borderRadius: '50%',
-    display: 'grid',
-    placeItems: 'center',
-    font: '600 13px "IBM Plex Sans Condensed", sans-serif',
-    background: pickup ? 'var(--yb-color-primary)' : 'var(--yb-color-accent)',
-    color: pickup ? 'var(--yb-color-on-primary)' : '#fff',
-    border: '3px solid #fff',
-    boxShadow: '0 2px 6px rgb(16 21 27 / 40%)',
-  });
-  return el;
+  const fill = pickup ? 'var(--yb-color-primary)' : 'var(--yb-color-accent)';
+  const ink = pickup ? 'var(--yb-color-on-primary)' : '#fff';
+  const root = document.createElement('div');
+  root.setAttribute('role', 'img');
+  root.setAttribute('aria-label', label);
+  Object.assign(root.style, { width: '34px', height: '46px', cursor: 'grab' });
+  root.innerHTML = `
+    <div data-bubble style="position:absolute;bottom:50px;left:50%;transform:translateX(-50%);max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 8px;border-radius:4px;background:var(--yb-color-surface);color:var(--yb-color-text);font:600 12px 'IBM Plex Sans',sans-serif;box-shadow:0 1px 4px rgb(16 21 27 / 30%);display:none"></div>
+    <svg data-drop width="34" height="46" viewBox="0 0 34 46" aria-hidden="true" style="overflow:visible;display:block">
+      <ellipse cx="17" cy="44" rx="7" ry="2.5" fill="rgb(16 21 27 / 35%)"/>
+      <path d="M17 43C17 43 2 27 2 17A15 15 0 0 1 32 17C32 27 17 43 17 43Z" fill="${fill}" stroke="#fff" stroke-width="2.5"/>
+      <text x="17" y="21.5" text-anchor="middle" font-family="'IBM Plex Sans Condensed',sans-serif" font-size="14" font-weight="700" fill="${ink}">${letter}</text>
+    </svg>`;
+  if (!reducedMotion()) {
+    root.querySelector('[data-drop]')?.animate(
+      [
+        { transform: 'translateY(-18px)', opacity: 0 },
+        { transform: 'translateY(0)', opacity: 1 },
+      ],
+      { duration: 260, easing: 'cubic-bezier(.2,.9,.3,1.2)' },
+    );
+  }
+  return root;
 }
 
-export default function RouteMapCanvas({ mode, pickup, dropoff, placing, onPlace, line, label }: RouteMapCanvasProps) {
+function setBubble(marker: Marker | null, text: string | undefined) {
+  const bubble = marker?.getElement().querySelector<HTMLElement>('[data-bubble]');
+  if (!bubble) return;
+  bubble.textContent = text ?? '';
+  bubble.style.display = text ? 'block' : 'none';
+}
+
+export default function RouteMapCanvas({
+  mode,
+  pickup,
+  dropoff,
+  placing,
+  onPlace,
+  line,
+  label,
+  labels,
+  fitPadding = 56,
+  hint,
+}: RouteMapCanvasProps) {
   const el = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapLibre | null>(null);
   const markers = useRef<{ A: Marker | null; B: Marker | null }>({ A: null, B: null });
   const place = useRef({ placing, onPlace });
   place.current = { placing, onPlace };
+  const padding = useRef(fitPadding);
+  padding.current = fitPadding;
   const [ready, setReady] = useState(false);
   const [tilted, setTilted] = useState(true);
   const tiltedRef = useRef(tilted);
@@ -76,13 +103,19 @@ export default function RouteMapCanvas({ mode, pickup, dropoff, placing, onPlace
     m.addControl(new NavigationControl({ visualizePitch: true }), 'top-right');
     m.on('load', () => {
       const accent = token('--yb-color-accent', '#1e5f8c');
+      const accentDark = token('--yb-color-accent-hover', '#164a6e');
+      // Wider as the map zooms in, like a navigation app's route.
+      const width = (base: number): ['interpolate', ['linear'], ['zoom'], ...number[]] => [
+        'interpolate', ['linear'], ['zoom'], 8, base * 0.5, 12, base, 16, base * 2,
+      ];
       m.addSource('route', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       m.addLayer({
         id: 'route-casing',
         type: 'line',
         source: 'route',
+        filter: ['==', ['get', 'kind'], 'road'],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.9 },
+        paint: { 'line-color': accentDark, 'line-width': width(9) },
       });
       m.addLayer({
         id: 'route-road',
@@ -90,7 +123,7 @@ export default function RouteMapCanvas({ mode, pickup, dropoff, placing, onPlace
         source: 'route',
         filter: ['==', ['get', 'kind'], 'road'],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': accent, 'line-width': 5 },
+        paint: { 'line-color': accent, 'line-width': width(5.5) },
       });
       // Before the road route comes back the pins are joined as the crow
       // flies: dashed, so it never reads as the real route.
@@ -132,7 +165,7 @@ export default function RouteMapCanvas({ mode, pickup, dropoff, placing, onPlace
         existing.setLngLat([at.lng, at.lat]);
         continue;
       }
-      const marker = new Marker({ element: pinElement(key, name), draggable: mode === 'edit' })
+      const marker = new Marker({ element: pinElement(key, name), anchor: 'bottom', draggable: mode === 'edit' })
         .setLngLat([at.lng, at.lat])
         .addTo(m);
       marker.on('dragend', () => {
@@ -141,25 +174,22 @@ export default function RouteMapCanvas({ mode, pickup, dropoff, placing, onPlace
       });
       markers.current[key] = marker;
     }
-  }, [pickup, dropoff, mode]);
+    setBubble(markers.current.A, labels?.pickup);
+    setBubble(markers.current.B, labels?.dropoff);
+  }, [pickup, dropoff, mode, labels?.pickup, labels?.dropoff]);
 
   // The line and the camera: the road route when there is one, else a
   // dashed straight line between the pins; fitted to whatever is shown.
   useEffect(() => {
     const m = map.current;
     if (!m || !ready) return;
+    const road = Boolean(line && line.length > 1);
     const coords: [number, number][] =
-      line && line.length > 1 ? line : pickup && dropoff ? [[pickup.lng, pickup.lat], [dropoff.lng, dropoff.lat]] : [];
+      road ? line! : pickup && dropoff ? [[pickup.lng, pickup.lat], [dropoff.lng, dropoff.lat]] : [];
     m.getSource<GeoJSONSource>('route')?.setData({
       type: 'FeatureCollection',
       features: coords.length
-        ? [
-            {
-              type: 'Feature',
-              properties: { kind: line && line.length > 1 ? 'road' : 'straight' },
-              geometry: { type: 'LineString', coordinates: coords },
-            },
-          ]
+        ? [{ type: 'Feature', properties: { kind: road ? 'road' : 'straight' }, geometry: { type: 'LineString', coordinates: coords } }]
         : [],
     });
     const points = coords.length ? coords : [pickup, dropoff].filter((p) => p !== null).map((p) => [p.lng, p.lat] as [number, number]);
@@ -170,13 +200,10 @@ export default function RouteMapCanvas({ mode, pickup, dropoff, placing, onPlace
       return;
     }
     const bounds = points.reduce((b, p) => b.extend(p), new LngLatBounds(points[0]!, points[0]!));
-    // fitBounds frames the pins top-down and drops the pitch, so the tilt
-    // is put back once the fit settles. Read through a ref: only a new
-    // route or pin moves the camera, never the toggle itself.
-    m.once('moveend', () => {
-      if (tiltedRef.current) m.easeTo({ pitch: PITCH, duration });
-    });
-    m.fitBounds(bounds, { padding: 56, maxZoom: 15, duration });
+    // Framed at the current tilt, so both pins stay in view once tilted.
+    // Read through a ref: only a new route or pin moves the camera, never
+    // the toggle itself.
+    m.fitBounds(bounds, { padding: padding.current, maxZoom: 15, duration, pitch: tiltedRef.current ? PITCH : 0 });
   }, [ready, line, pickup, dropoff]);
 
   function toggleTilt() {
@@ -188,12 +215,20 @@ export default function RouteMapCanvas({ mode, pickup, dropoff, placing, onPlace
   return (
     <div className="relative h-full w-full">
       <div ref={el} role="application" aria-label={label} className="h-full w-full" />
+      {hint && (
+        <p
+          aria-live="polite"
+          className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap rounded-full bg-text/85 px-3 py-1.5 text-xs font-semibold text-text-inverse shadow-sm"
+        >
+          {hint}
+        </p>
+      )}
       <button
         type="button"
         onClick={toggleTilt}
         aria-pressed={tilted}
         className={[
-          'absolute left-2 top-2 min-h-9 rounded-sm border px-3 text-xs font-semibold shadow-sm',
+          'absolute right-12 top-2.5 min-h-9 rounded-sm border px-3 text-xs font-semibold shadow-sm',
           'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
           tilted ? 'border-text bg-text text-text-inverse' : 'border-border bg-surface text-text hover:bg-surface-sunk',
         ].join(' ')}

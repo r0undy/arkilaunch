@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { apiDelete, apiErrorText, apiGet, apiPost, apiPut } from '../lib/api-client.js';
-import type { TenantCalendar } from '@arkilaunch/shared';
+import { TEST_EMAIL_TYPES, type TenantCalendar } from '@arkilaunch/shared';
 import { equipmentQueries, referenceQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { Table, type TableColumn } from '../components/table.js';
@@ -356,6 +356,62 @@ function BillingSettingsForm() {
   );
 }
 
+// Sends one sample payment/invoice email, with this tenant's logo and
+// brand color, to any address -- to check how customers and staff see it.
+const TEST_EMAIL_LABELS: Record<(typeof TEST_EMAIL_TYPES)[number], string> = {
+  payment_received: 'Customer: payment receipt',
+  payment_failed: 'Customer: payment failed',
+  payment_refunded: 'Customer: refund issued',
+  weekly_invoice: 'Customer: weekly invoice',
+  payment_paid: 'Staff: payment paid',
+  payment_amount_mismatch: 'Staff: amount mismatch',
+};
+
+function TestEmailForm() {
+  const toast = useToast();
+  const [to, setTo] = useState('');
+  const [type, setType] = useState<(typeof TEST_EMAIL_TYPES)[number]>('payment_received');
+  const send = useMutation({
+    mutationFn: () => apiPost<{ sent: boolean; delivered: boolean }>('/notifications/test-email', { to, type }),
+    onSuccess: (res) =>
+      res.delivered
+        ? toast.success('Test email sent', `Check ${to}.`)
+        : toast.success('Test email logged', 'No email provider is set up here, so it went to the API log instead.'),
+    onError: (e) => toast.error('Could not send the test email', apiErrorText(e)),
+  });
+  function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    send.mutate();
+  }
+  return (
+    <Surface radius="md" elevation="sm" className="p-4" aria-label="Test email">
+      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <div>
+          <h2 className="font-display text-base font-semibold text-text">Test email notifications</h2>
+          <p className="text-sm text-text-muted">
+            Sends a sample with your storefront logo and brand color, using made-up booking details.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input label="Send to" id="test-email-to" type="email" required value={to} onChange={(e) => setTo(e.target.value)} />
+          <Select label="Email" id="test-email-type" value={type} onChange={(e) => setType(e.target.value as typeof type)}>
+            {TEST_EMAIL_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {TEST_EMAIL_LABELS[t]}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Button type="submit" variant="primary" loading={send.isPending}>
+            Send test email
+          </Button>
+        </div>
+      </form>
+    </Surface>
+  );
+}
+
 // Equipment rental's fixed mobilization and demobilization: the same for
 // every client, on every booking's quote. Trucking has no mob/demob (it is
 // the trip). Saved with the rest of the billing settings.
@@ -643,10 +699,11 @@ function SettingsPage() {
       <PageHeader
         eyebrow="Administration"
         title="Settings"
-        description="Office hours, deposits and billing. Prices live in Quotes, the standard price book."
+        description="Office hours, deposits, billing and email. Prices live in Quotes, the standard price book."
       />
       <BusinessCalendarForm />
       <BillingSettingsForm />
+      <TestEmailForm />
     </div>
   );
 }

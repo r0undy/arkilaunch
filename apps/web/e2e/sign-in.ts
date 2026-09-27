@@ -50,6 +50,9 @@ export async function signIn(page: Page): Promise<void> {
 // `customers` row (seed/anchor.ts), so the cart has a company to book against
 // and /account/applications has something to list.
 export async function signInAsCustomer(page: Page): Promise<void> {
+  // The setup-checklist pop-up opens on the first /account visit of a
+  // session and would sit over every customer test.
+  await page.addInitScript(() => sessionStorage.setItem('setup-modal-seen', '1'));
   await submit(page, CUSTOMER_EMAIL);
   await expect(
     page,

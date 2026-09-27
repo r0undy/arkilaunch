@@ -7,7 +7,19 @@ import { apiGet, apiPatch } from '../lib/api-client.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
 import { EmptyState } from './empty-state.js';
-import { BellIcon } from './icons.js';
+import {
+  Bell,
+  CalendarDays,
+  CircleCheck,
+  CircleX,
+  Clock,
+  MessageSquare,
+  ReceiptText,
+  TriangleAlert,
+  Truck,
+  Wrench,
+  type LucideIcon,
+} from 'lucide-react';
 import { Pagination, PAGE_SIZE } from './pagination.js';
 import { formatRelativeTime } from '../lib/format-time.js';
 import { formatPeso, formatStatus, shortCode } from '../lib/format.js';
@@ -401,6 +413,54 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
   }
 }
 
+// The icon names the kind of event, the tone says how it went. Same tints
+// as StatusBadge (DESIGN.md §6: never colour alone, the icon carries it).
+export type NotificationTone = 'success' | 'danger' | 'warning' | 'neutral';
+
+export function notificationIcon(type: string): { Icon: LucideIcon; tone: NotificationTone } {
+  if (/(failed|rejected|mismatch|disputed|cancelled|declined)$/.test(type)) return { Icon: CircleX, tone: 'danger' };
+  if (/^(payment_|weekly_invoice)/.test(type)) {
+    return { Icon: ReceiptText, tone: /(paid|received)$/.test(type) ? 'success' : 'neutral' };
+  }
+  if (type === 'deposit_low') return { Icon: ReceiptText, tone: 'warning' };
+  if (type.startsWith('maintenance_')) return { Icon: Wrench, tone: 'warning' };
+  if (type.includes('weather')) return { Icon: TriangleAlert, tone: 'warning' };
+  if (/(approved|verified|confirmed|accepted|delivered)$/.test(type)) return { Icon: CircleCheck, tone: 'success' };
+  if (type.startsWith('truck_')) return { Icon: Truck, tone: 'neutral' };
+  if (/^(customer_message|negotiation_reply|company_review_comment|document_resubmit_required)$/.test(type)) {
+    return { Icon: MessageSquare, tone: 'neutral' };
+  }
+  if (type.startsWith('edtr_') || type === 'daily_log_approved') {
+    return { Icon: Clock, tone: type === 'edtr_needs_correction' ? 'warning' : 'neutral' };
+  }
+  if (/^(booking_|quote_|change_request_|call_|equipment_)/.test(type)) return { Icon: CalendarDays, tone: 'neutral' };
+  return { Icon: Bell, tone: 'neutral' };
+}
+
+const TONE_CLASS: Record<NotificationTone, string> = {
+  success: 'bg-success/10 text-success',
+  danger: 'bg-error/10 text-error',
+  // Warning yellow fails contrast as text; the tint carries it.
+  warning: 'bg-warning/20 text-text',
+  neutral: 'bg-primary text-on-primary',
+};
+
+export function NotificationIcon({ type, unread, className = '' }: { type: string; unread: boolean; className?: string }) {
+  const { Icon, tone } = notificationIcon(type);
+  return (
+    <span
+      aria-hidden="true"
+      className={[
+        'flex shrink-0 items-center justify-center rounded-md',
+        unread ? TONE_CLASS[tone] : 'bg-surface-sunk text-text-muted',
+        className,
+      ].join(' ')}
+    >
+      <Icon className="h-5 w-5" />
+    </span>
+  );
+}
+
 function NotificationRow({ notification, area }: { notification: NotificationResponse; area: FeedArea }) {
   const queryClient = useQueryClient();
   const isUnread = notification.status === 'unread';
@@ -414,15 +474,7 @@ function NotificationRow({ notification, area }: { notification: NotificationRes
 
   const content = (
     <>
-        <span
-          aria-hidden="true"
-          className={[
-            'flex h-11 w-11 shrink-0 items-center justify-center rounded-md',
-            isUnread ? 'bg-primary text-on-primary' : 'bg-surface-sunk text-text-muted',
-          ].join(' ')}
-        >
-          <BellIcon />
-        </span>
+        <NotificationIcon type={notification.notificationType} unread={isUnread} className="h-11 w-11" />
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-display text-sm font-semibold uppercase tracking-[0.04em] text-text">

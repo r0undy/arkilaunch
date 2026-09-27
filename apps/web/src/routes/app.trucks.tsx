@@ -5,7 +5,7 @@ import { DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, type TollRateResponse, type Truc
 import { appLayoutRoute } from './_app.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
 import { formatDate, formatPeso } from '../lib/format.js';
-import { PriceBreakdown } from './account.trucks.js';
+import { PriceBreakdown } from '../components/truck-trip.js';
 import { Surface } from '../components/surface.js';
 import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';

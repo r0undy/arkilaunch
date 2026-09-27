@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeNotification, feedAreaOf, type FeedArea } from './notification-feed.js';
+import { describeNotification, feedAreaOf, notificationIcon, type FeedArea } from './notification-feed.js';
 
 // Every notification type the backend writes, by who receives it. Each must
 // resolve to a real destination in that person's console, so a row is
@@ -98,5 +98,18 @@ describe('describeNotification: every written type has a destination', () => {
     expect(feedAreaOf('/field/notifications')).toBe('field');
     expect(feedAreaOf('/app/notifications')).toBe('app');
     expect(feedAreaOf('/admin/notifications')).toBe('admin');
+  });
+});
+
+describe('notificationIcon', () => {
+  it('names the kind of event and how it went', () => {
+    expect(notificationIcon('payment_received').tone).toBe('success');
+    expect(notificationIcon('payment_failed').tone).toBe('danger');
+    expect(notificationIcon('payment_amount_mismatch').tone).toBe('danger');
+    expect(notificationIcon('weekly_invoice').Icon).toBe(notificationIcon('payment_paid').Icon);
+    expect(notificationIcon('equipment_weather_alert').tone).toBe('warning');
+    expect(notificationIcon('company_verified').tone).toBe('success');
+    expect(notificationIcon('truck_requested').Icon).not.toBe(notificationIcon('something_new').Icon);
+    expect(notificationIcon('something_new').tone).toBe('neutral');
   });
 });
