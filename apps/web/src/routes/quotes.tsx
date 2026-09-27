@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BookingDetailResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
+import { requireRole } from '../lib/guards.js';
 import { apiGet, apiPost, apiErrorText } from '../lib/api-client.js';
 import { getEquipmentTypes, getRateCards, type EquipmentTypeRef, type RateCardRef } from '../lib/reference-client.js';
 import type { QuoteDetail } from '../lib/queries.js';
@@ -481,6 +482,9 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
 export const quotesRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/quotes',
+  // Every price-book endpoint needs pricing:manage, which owner lacks: an
+  // owner here got a page of forms that never loaded.
+  beforeLoad: requireRole('admin'),
   validateSearch: validateQuoteSearch,
   component: QuotesPage,
 });

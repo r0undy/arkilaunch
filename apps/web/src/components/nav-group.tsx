@@ -62,44 +62,57 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
     groups.flatMap((group) => group.items),
     pathname,
   );
+  const listed = groups.filter((group) => !group.pinned);
+  const pinned = groups.filter((group) => group.pinned);
 
+  const renderGroup = (group: NavGroup, labelled: boolean) => (
+    <div key={group.title}>
+      {labelled && (
+        <p className="mb-1.5 px-3 font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
+          {group.title}
+        </p>
+      )}
+      <div className="flex flex-col gap-0.5">
+        {group.items.map((item) => {
+          const isActive = item.to === active;
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              onClick={onNavigate}
+              // Link marks itself active on a prefix match and sets
+              // aria-current from that, which is the same ancestor
+              // problem in a second place -- so its own matching is
+              // pinned to exact and the attribute comes from the
+              // longest-match above, which is the one source of truth.
+              activeOptions={{ exact: true }}
+              aria-current={isActive ? 'page' : undefined}
+              className={[
+                'flex min-h-11 items-center gap-2.5 rounded-sm border-l-[3px] px-3 py-2 text-sm font-medium',
+                isActive
+                  ? 'border-primary bg-surface font-semibold text-text'
+                  : 'border-transparent text-text-muted hover:bg-surface hover:text-text',
+              ].join(' ')}
+            >
+              {item.icon && <item.icon aria-hidden="true" className="h-4 w-4 shrink-0" />}
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // One nav, so the landmark count stays one; the pinned groups sit at its
+  // foot (mt-auto) when the column has room to spare.
   return (
-    <nav className="flex flex-col gap-5">
-      {groups.map((group) => (
-        <div key={group.title}>
-          <p className="mb-1.5 px-3 font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">
-            {group.title}
-          </p>
-          <div className="flex flex-col gap-0.5">
-            {group.items.map((item) => {
-              const isActive = item.to === active;
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  onClick={onNavigate}
-                  // Link marks itself active on a prefix match and sets
-                  // aria-current from that, which is the same ancestor
-                  // problem in a second place -- so its own matching is
-                  // pinned to exact and the attribute comes from the
-                  // longest-match above, which is the one source of truth.
-                  activeOptions={{ exact: true }}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={[
-                    'flex min-h-11 items-center gap-2.5 rounded-sm border-l-[3px] px-3 py-2 text-sm font-medium',
-                    isActive
-                      ? 'border-primary bg-surface font-semibold text-text'
-                      : 'border-transparent text-text-muted hover:bg-surface hover:text-text',
-                  ].join(' ')}
-                >
-                  {item.icon && <item.icon aria-hidden="true" className="h-4 w-4 shrink-0" />}
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
+    <nav className="flex min-h-full flex-col gap-5">
+      {listed.map((group) => renderGroup(group, true))}
+      {pinned.length > 0 && (
+        <div className="mt-auto flex flex-col gap-5 border-t border-border pt-4">
+          {pinned.map((group) => renderGroup(group, false))}
         </div>
-      ))}
+      )}
     </nav>
   );
 }
