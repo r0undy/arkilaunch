@@ -183,6 +183,7 @@ These turn the BRD metrics into pass/fail gates with a real measurement method.
 |--------|------|----------------|----------------|
 | QAD-T49 | Rent-only discount | A coupon lowers the booking invoice's rent line and total; the consumable-deposit line is unchanged; a retry with the same code is the same invoice, one use; re-pricing an issued invoice expires its open PayMongo session | PRD-F2 / US-08 |
 | QAD-T50 | Coupon rules | Expired, inactive, used-up and unknown codes all answer `coupon_invalid`; a once-per-company code refuses the company's second booking with `coupon_used` and rolls the claim back; one coupon per invoice | PRD-F2 / US-08 |
+| QAD-T52 | Staff amount change | Staff lower an issued booking invoice to PHP 5: rent line first, deposit last; the old PayMongo session is expired and the next checkout charges PHP 5; raising the amount is refused | PRD-F2 / US-08 |
 | QAD-T51 | Coupon isolation | Tenant B cannot list or redeem Tenant A's coupons; the same code in two tenants never collides (RLS) | RFC-1 |
 
 ---

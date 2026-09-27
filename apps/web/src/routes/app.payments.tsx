@@ -81,8 +81,70 @@ export function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) 
           </div>
         ))}
       </dl>
+      {invoice.status === 'issued' && ADJUSTABLE.has(invoice.invoiceType) && <ChangeAmount invoice={invoice} />}
       {invoice.status === 'issued' && <RecordCash invoice={invoice} />}
       {invoice.status === 'paid' && invoice.invoiceType !== 'deposit_deduction' && <RefundPayment invoice={invoice} />}
+    </div>
+  );
+}
+
+// Invoices the customer checks out (the server's ADJUSTABLE_INVOICE_TYPES).
+const ADJUSTABLE = new Set(['booking', 'deposit', 'truck']);
+
+// Lower what an unpaid invoice charges (never raise it). The customer's next
+// checkout charges the new amount; any open PayMongo page at the old amount
+// is closed. PHP 1.00 is PayMongo's smallest charge. Audit-logged with the reason.
+function ChangeAmount({ invoice }: { invoice: InvoiceSummaryResponse }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [amount, setAmount] = useState(String(invoice.amount));
+  const [reason, setReason] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const value = Number(amount);
+  const invalid = !(value >= 1 && value <= invoice.amount) || reason.trim().length < 3;
+  const change = useMutation({
+    mutationFn: () => apiPost(`/invoices/${invoice.id}/amount`, { amountPhp: value, reason: reason.trim() }),
+    onSuccess: () => {
+      toast.success('Amount changed', `The customer's next checkout charges ${formatPeso(value)}.`);
+      setConfirming(false);
+      void queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    },
+    onError: (e) =>
+      toast.error(
+        'Not changed',
+        e instanceof ApiError && e.message === 'payment_in_progress'
+          ? 'A payment for this invoice is going through right now. Try again in a minute.'
+          : apiErrorText(e),
+      ),
+  });
+  return (
+    <div className="flex flex-col gap-3 border-t border-border pt-3">
+      <Input
+        label="New amount (PHP)"
+        type="number"
+        numeric
+        min={1}
+        max={invoice.amount}
+        step="0.01"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        error={amount !== '' && !(value >= 1 && value <= invoice.amount) ? `Between ${formatPeso(1)} and ${formatPeso(invoice.amount)}` : undefined}
+      />
+      <Input label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} hint="Saved in the audit log." />
+      <Button variant="secondary" disabled={invalid} onClick={() => setConfirming(true)}>
+        Change amount
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        title="Change invoice amount"
+        body={`Lower this invoice from ${formatPeso(invoice.amount)} to ${formatPeso(value)}? The rent comes down first, then the deposit.`}
+        confirmLabel="Change amount"
+        pending={change.isPending}
+        onConfirm={async () => {
+          await change.mutateAsync();
+        }}
+        onCancel={() => setConfirming(false)}
+      />
     </div>
   );
 }

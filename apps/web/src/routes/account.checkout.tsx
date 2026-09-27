@@ -116,6 +116,7 @@ function checkoutError(err: unknown): string {
     if (code === 'coupon_invalid') return 'That coupon code is not valid for this booking.';
     if (code === 'coupon_used') return 'Your company has already used this coupon.';
     if (code === 'coupon_already_applied') return 'This booking already has a coupon applied.';
+    if (code === 'amount_below_minimum') return 'Online payment needs at least PHP 1.00. Choose cash at the office instead.';
     if (code === 'payment_in_progress') return 'A payment for this booking is going through. Check the booking page in a minute.';
   }
   return apiErrorText(err);
