@@ -35,7 +35,7 @@ const STATUS_META: Record<string, { tone: StatusTone; icon: ReactElement }> = {
 
 const COLUMNS: TableColumn<InvoiceSummaryResponse>[] = [
   {
-    header: 'Invoice',
+    header: 'Invoice', kind: 'text',
     cell: (row) => (
       <div className="flex flex-col">
         <span className="text-text">{formatInvoiceType(row.invoiceType)}</span>
@@ -44,14 +44,14 @@ const COLUMNS: TableColumn<InvoiceSummaryResponse>[] = [
     ),
   },
   {
-    header: 'Status',
+    header: 'Status', kind: 'status',
     cell: (row) => {
       const meta = STATUS_META[row.status] ?? STATUS_META['draft']!;
       return <StatusPill tone={meta.tone} label={formatStatus(row.status)} icon={meta.icon} />;
     },
   },
-  { header: 'Due', cell: (row) => formatDate(row.dueDate) },
-  { header: 'Amount', cell: (row) => formatPeso(row.amount), align: 'right' },
+  { header: 'Due', kind: 'date', cell: (row) => formatDate(row.dueDate) },
+  { header: 'Amount', kind: 'money', cell: (row) => formatPeso(row.amount) },
 ];
 
 // Four columns of a seven-field record, with the id cut to a short code:

@@ -33,11 +33,11 @@ function MachineName({ equipmentId }: { equipmentId: string }) {
 }
 
 const UTILIZATION_COLUMNS: TableColumn<ReportsSnapshot['utilization']['fleet'][number]>[] = [
-  { header: 'Machine', cell: (row) => <MachineName equipmentId={row.equipmentId} /> },
-  { header: 'Hours run', cell: (row) => formatHours(row.runtimeHours), align: 'right' },
-  { header: 'Utilization', cell: (row) => `${row.utilizationPct.toFixed(1)}%`, align: 'right' },
+  { header: 'Machine', kind: 'text', cell: (row) => <MachineName equipmentId={row.equipmentId} /> },
+  { header: 'Hours run', kind: 'number', cell: (row) => formatHours(row.runtimeHours) },
+  { header: 'Utilization', kind: 'number', cell: (row) => `${row.utilizationPct.toFixed(1)}%` },
   {
-    header: 'Maintenance',
+    header: 'Maintenance', kind: 'text',
     cell: (row) =>
       row.maintenanceDue ? (
         <StatusPill tone="fleet-maintenance" label="Due" icon={<WrenchIcon />} />
@@ -92,13 +92,12 @@ function InsightsPage() {
               <Table
                 columns={[
                   {
-                    header: 'Invoice type',
+                    header: 'Invoice type', kind: 'text',
                     cell: (row: [string, number]) => formatInvoiceType(row[0]),
                   },
                   {
-                    header: 'Invoiced',
+                    header: 'Invoiced', kind: 'money',
                     cell: (row: [string, number]) => formatPeso(row[1]),
-                    align: 'right',
                   },
                 ]}
                 rows={Object.entries(data.financial.invoiced.byType)}

@@ -10,14 +10,14 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { formatDateTime, formatSeverity, shortCode } from '../lib/format.js';
 
 const COLUMNS: TableColumn<IncidentResponse>[] = [
-  { header: 'Occurred', cell: (row) => formatDateTime(row.occurredAt) },
-  { header: 'Severity', cell: (row) => formatSeverity(row.severity) },
+  { header: 'Occurred', kind: 'date', cell: (row) => formatDateTime(row.occurredAt) },
+  { header: 'Severity', kind: 'status', cell: (row) => formatSeverity(row.severity) },
   {
-    header: 'What happened',
+    header: 'What happened', kind: 'text',
     cell: (row) => row.detail ?? 'Weather advisory crossed at this site',
   },
   {
-    header: 'Project site',
+    header: 'Project site', kind: 'text',
     cell: (row) =>
       row.siteCity ??
       row.siteProvince ??

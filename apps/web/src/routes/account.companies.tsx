@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   isPrimaryRegistration,
   normalizePcn,
+  normalizeSecNumber,
   normalizeTin,
   type CompanyResponse,
   type KycScanResponse,
@@ -243,7 +244,7 @@ function DocumentStep({
 async function scanForSuggestions(
   file: File,
   documentType: string,
-): Promise<Pick<KycScanResponse, 'suggestions' | 'confidence'> | null> {
+): Promise<Pick<KycScanResponse, 'suggestions' | 'confidence' | 'layoutRecognized'> | null> {
   try {
     const scan = await apiPostForm<KycScanResponse>('/me/kyc/scan', { documentType }, file);
     return scan.extractionAvailable ? scan : null;
@@ -432,6 +433,8 @@ function NewCompanyPage() {
   const stage = idOnFile && (chosenStage === 'government_id' || chosenStage === 'id_details') ? 'company_registration' : chosenStage;
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState<boolean | null>(null);
+  // The registration scan did not read as the paper picked (layoutRecognized).
+  const [wrongPaper, setWrongPaper] = useState(false);
 
   // Each number comes only from the paper that prints it.
   const showTin = registrationType === 'bir_cor';
@@ -464,6 +467,7 @@ function NewCompanyPage() {
     const address = p?.address ?? d?.address;
     if (address && !billingAddress) setBillingAddress(address);
     setScanned(Boolean(name || p?.tin || p?.secNumber || d?.dtiNumber));
+    setWrongPaper(primary?.layoutRecognized === false);
     setScanning(false);
     setStage('details');
   }
@@ -478,7 +482,7 @@ function NewCompanyPage() {
         companyName,
         billingAddress,
         contactMobile,
-        ...filled({ tin: showTin ? normalizeTin(tin) : '', secNumber: showSec ? secNumber : '' }),
+        ...filled({ tin: showTin ? normalizeTin(tin) : '', secNumber: showSec ? normalizeSecNumber(secNumber) : '' }),
       });
       await uploadDocuments(created.id, {
         governmentId,
@@ -590,6 +594,17 @@ function NewCompanyPage() {
                 : 'We could not read your registration documents, so please fill this in yourself.'}
             </p>
           )}
+          {wrongPaper && (
+            <div role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-warning px-3 py-2 text-sm text-text">
+              <span>
+                We couldn't recognise this as a {DOC_LABELS[registrationType]}. Check it's the right paper and the
+                whole page is in the photo.
+              </span>
+              <Button type="button" variant="ghost" onClick={() => setStage('company_registration')}>
+                Retake
+              </Button>
+            </div>
+          )}
           <Input
             label="Company name"
             required
@@ -602,10 +617,10 @@ function NewCompanyPage() {
               label="TIN"
               required
               inputMode="numeric"
-              placeholder="000-000-000-000"
-              pattern="\d{3}-\d{3}-\d{3}(-\d{3})?"
-              title="9 or 12 digits: 000-000-000 or 000-000-000-000"
-              hint="From your BIR Form 2303. 9 or 12 digits."
+              placeholder="000-000-000-00000"
+              pattern="\d{3}-\d{3}-\d{3}(-\d{3}|-\d{5})?"
+              title="9, 12 or 14 digits: 000-000-000, 000-000-000-000 or 000-000-000-00000"
+              hint="From your BIR Form 2303, with the branch code as printed."
               value={tin}
               onChange={(e) => setTin(e.target.value)}
               onBlur={(e) => setTin(normalizeTin(e.target.value))}
@@ -615,13 +630,14 @@ function NewCompanyPage() {
             <Input
               label="SEC registration number"
               required
-              maxLength={16}
+              maxLength={24}
               placeholder="CS201912345"
               pattern="([A-Za-z]{1,3}\d{3}-?\d{4,9}|\d{10,13}(-\d{2})?)"
               title="As printed on the SEC certificate, e.g. CS201912345 or 2021060012345-00"
-              hint="From your SEC certificate."
+              hint="From your SEC certificate (Company Reg. No.)."
               value={secNumber}
-              onChange={(e) => setSecNumber(e.target.value.trim())}
+              onChange={(e) => setSecNumber(e.target.value)}
+              onBlur={(e) => setSecNumber(normalizeSecNumber(e.target.value))}
             />
           )}
           {showDti && (

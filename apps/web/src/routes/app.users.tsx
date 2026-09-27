@@ -305,10 +305,18 @@ function ManageUsersPage() {
   const [offset, setOffset] = useState(0);
   const [inviting, setInviting] = useState(false);
   const columns: TableColumn<UserRow>[] = [
-    { header: 'Email', cell: (row) => row.email },
-    { header: 'Role', cell: (row) => formatRole(row.roleName) },
-    { header: 'Status', cell: (row) => <StatusBadge status={row.status} /> },
-    { header: 'Actions', cell: (row) => <UserActions user={row} /> },
+    {
+      header: 'Email',
+      kind: 'text',
+      cell: (row) => (
+        <a href={`mailto:${row.email}`} className="text-accent hover:underline">
+          {row.email}
+        </a>
+      ),
+    },
+    { header: 'Role', kind: 'text', cell: (row) => formatRole(row.roleName) },
+    { header: 'Status', kind: 'status', cell: (row) => <StatusBadge status={row.status} /> },
+    { header: 'Actions', kind: 'action', cell: (row) => <UserActions user={row} /> },
   ];
 
   return (

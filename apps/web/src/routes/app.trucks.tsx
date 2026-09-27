@@ -211,12 +211,11 @@ export function TollsEditor() {
   }, [rows, road, find]);
   const safeOffset = offset < shown.length ? offset : 0;
   const columns: TableColumn<TollRateResponse>[] = [
-    { header: 'Expressway', cell: (t) => t.expressway ?? <span className="text-text-muted">Other</span> },
-    { header: 'Toll', cell: (t) => tollLabel(t) },
-    { header: 'Fee (₱)', align: 'right', cell: (t) => <TollFeeInput toll={t} /> },
+    { header: 'Expressway', kind: 'text', cell: (t) => t.expressway ?? <span className="text-text-muted">Other</span> },
+    { header: 'Toll', kind: 'text', cell: (t) => tollLabel(t) },
+    { header: 'Fee (₱)', kind: 'money', cell: (t) => <TollFeeInput toll={t} /> },
     {
-      header: 'Actions',
-      align: 'right',
+      header: 'Actions', kind: 'action',
       cell: (t) => (
         <Button variant="ghost" onClick={() => setRemoving(t)} aria-label={`Remove ${tollLabel(t)}`}>
           Remove

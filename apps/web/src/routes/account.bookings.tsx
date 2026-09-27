@@ -30,7 +30,7 @@ const STAGE_HINT: Record<string, string> = {
 
 const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
   {
-    header: 'Where',
+    header: 'Where', kind: 'text',
     cell: (row) => (
       <div className="flex flex-col">
         <span className="text-text">
@@ -41,7 +41,7 @@ const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
     ),
   },
   {
-    header: 'Status',
+    header: 'Status', kind: 'status',
     cell: (row) => (
       <div className="flex flex-col">
         <span className="text-text">{formatStatus(row.status)}</span>
@@ -50,7 +50,7 @@ const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
     ),
   },
   {
-    header: 'Details',
+    header: 'Details', kind: 'action',
     cell: (row) => (
       <Link
         to="/account/bookings/$bookingId"

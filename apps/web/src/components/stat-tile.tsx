@@ -3,7 +3,7 @@ import { Surface } from './surface.js';
 
 // One KPI on the dashboard: overline label, the number in Plex Mono (the
 // gauge rule, DESIGN.md §2.3), and a line saying what it means or where to
-// act on it. `value` null is loading -- a dash, never a fake zero.
+// act on it; the whole tile is the action's hit area. `value` null is loading -- a dash, never a fake zero.
 
 export interface StatTileProps {
   label: string;
@@ -15,11 +15,11 @@ export interface StatTileProps {
 
 export function StatTile({ label, value, hint, action }: StatTileProps) {
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-1 p-4">
+    <Surface radius="md" elevation="sm" className={['relative flex flex-col gap-1 p-4', action ? 'hover:bg-surface-sunk focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus-ring' : ''].join(' ')}>
       <p className="font-display text-xs font-semibold uppercase tracking-[0.04em] text-text-muted">{label}</p>
       <p className="font-mono text-3xl font-medium tabular-nums text-text">{value ?? '--'}</p>
       {hint && <p className="text-sm text-text-muted">{hint}</p>}
-      {action && <div className="mt-auto pt-1 text-sm font-semibold text-accent">{action}</div>}
+      {action && <div className="mt-auto pt-1 text-sm font-semibold text-accent [&_a]:after:absolute [&_a]:after:inset-0 [&_a]:after:content-[''] [&_a]:focus-visible:outline-none">{action}</div>}
     </Surface>
   );
 }

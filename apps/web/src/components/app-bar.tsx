@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
-import { parseBookingCode } from '@arkilaunch/shared';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useRouterState } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { describeNotification, feedAreaOf, notificationQueries } from './notification-feed.js';
 import { apiPatch } from '../lib/api-client.js';
 import { formatStatus } from '../lib/format.js';
-import { Search, ShoppingCart } from 'lucide-react';
+import { ShoppingCart } from 'lucide-react';
 import { clearTokens } from '../lib/auth-client.js';
 import { useCart } from '../lib/cart-client.js';
 import { getCurrentRole, homeHref } from '../lib/guards.js';
@@ -13,51 +12,6 @@ import { edtrQueries, notificationsQueries } from '../lib/queries.js';
 import { StatusPill } from './status-pill.js';
 import { applicationsListQuery } from './application-actions.js';
 import { AlertIcon, BellIcon, LogOutIcon } from './icons.js';
-
-// Staff jump straight to a booking by its code (EQR-/TRK-), from any page.
-// Only a whole, valid code navigates; anything else says what it expects.
-function BookingJump() {
-  const navigate = useNavigate();
-  const [value, setValue] = useState('');
-  const [invalid, setInvalid] = useState(false);
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    const code = value.trim().toUpperCase();
-    if (!parseBookingCode(code)) {
-      setInvalid(true);
-      return;
-    }
-    setValue('');
-    setInvalid(false);
-    void navigate({ to: '/app/bookings', search: { open: code } });
-  }
-  return (
-    <form role="search" onSubmit={submit} className="relative hidden w-full max-w-xs md:block">
-      <label htmlFor="booking-jump" className="sr-only">
-        Open a booking by code
-      </label>
-      <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-      <input
-        id="booking-jump"
-        type="search"
-        value={value}
-        onChange={(e) => {
-          setValue(e.target.value);
-          setInvalid(false);
-        }}
-        placeholder="EQR-2026-0001 or TRK-..."
-        aria-invalid={invalid || undefined}
-        aria-describedby={invalid ? 'booking-jump-error' : undefined}
-        className="min-h-10 w-full rounded-md border border-border bg-bg pl-9 pr-3 font-mono text-sm text-text placeholder:font-sans placeholder:text-text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring aria-[invalid]:border-error"
-      />
-      {invalid && (
-        <p id="booking-jump-error" role="alert" className="absolute left-0 top-full mt-1 rounded-sm bg-surface px-2 py-1 text-xs text-error shadow-md">
-          Enter a full booking code, like EQR-2026-0001.
-        </p>
-      )}
-    </form>
-  );
-}
 
 export interface AppBarProps {
   tenantLabel: string;
@@ -216,7 +170,6 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   // The platform admin runs no tenant's field logs; its queue is the company
   // applications waiting on a decision, so the pill counts those instead.
   const isPlatformAdmin = role === 'platform_admin';
-  const isStaff = role === 'admin' || role === 'owner';
   const edtrList = useQuery({
     ...edtrQueries.reviewCount(),
     retry: false,
@@ -273,7 +226,6 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
           </span>
           <span className="truncate">{tenantLabel}</span>
         </Link>
-        {isStaff && <BookingJump />}
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">

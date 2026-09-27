@@ -369,7 +369,7 @@ function AdminDashboardPage() {
                       <th className="px-4 py-2 font-medium">Type</th>
                       <th className="px-4 py-2 text-right font-medium">Amount</th>
                       <th className="px-4 py-2 font-medium">Due</th>
-                      <th className="px-4 py-2 font-medium">Status</th>
+                      <th className="px-4 py-2 text-center font-medium">Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -395,8 +395,8 @@ function AdminDashboardPage() {
                         <td className="px-4 py-2 text-right font-mono tabular-nums">
                           {formatPeso(invoice.amount)}
                         </td>
-                        <td className="px-4 py-2 text-text-muted">{formatDate(invoice.dueDate)}</td>
-                        <td className="px-4 py-2 uppercase text-text-muted">{invoice.status}</td>
+                        <td className="whitespace-nowrap px-4 py-2 tabular-nums text-text-muted">{formatDate(invoice.dueDate)}</td>
+                        <td className="px-4 py-2 text-center uppercase text-text-muted">{invoice.status}</td>
                       </tr>
                     ))}
                   </tbody>

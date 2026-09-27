@@ -39,9 +39,9 @@ function CompanyLink({ application }: { application: TenantApplication }) {
 }
 
 const COLUMNS: TableColumn<TenantApplication>[] = [
-  { header: 'Company', cell: (row) => <CompanyLink application={row} /> },
+  { header: 'Company', kind: 'text', cell: (row) => <CompanyLink application={row} /> },
   {
-    header: 'Representative',
+    header: 'Representative', kind: 'text',
     cell: (row) => (
       <span className="flex flex-col">
         <span>{`${row.contactFirstName} ${row.contactLastName}`}</span>
@@ -49,8 +49,8 @@ const COLUMNS: TableColumn<TenantApplication>[] = [
       </span>
     ),
   },
-  { header: 'Submitted', cell: (row) => formatDate(row.createdAt) },
-  { header: 'Actions', cell: (row) => <ApplicationActions application={row} /> },
+  { header: 'Submitted', kind: 'date', cell: (row) => formatDate(row.createdAt) },
+  { header: 'Actions', kind: 'action', cell: (row) => <ApplicationActions application={row} /> },
 ];
 
 function CompaniesPendingPage() {
