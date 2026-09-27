@@ -77,7 +77,7 @@ function ProfileTab({ me }: { me: UserSelfResponse }) {
               {initials(me)}
             </span>
           )}
-          <label className="inline-flex min-h-11 cursor-pointer items-center rounded-mk-sm border border-border px-4 text-sm font-medium text-text hover:bg-surface-sunk focus-within:outline focus-within:outline-2 focus-within:outline-focus-ring">
+          <label className="inline-flex min-h-11 cursor-pointer items-center rounded-sm border border-border px-4 text-sm font-medium text-text hover:bg-surface-sunk focus-within:outline focus-within:outline-2 focus-within:outline-focus-ring">
             {avatar.isPending ? 'Uploading…' : 'Upload a photo'}
             <input
               type="file"

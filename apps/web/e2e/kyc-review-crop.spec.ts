@@ -316,6 +316,7 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     await card.getByLabel('I checked this on the DTI registry').check();
     await expect(verify).toBeEnabled();
     await verify.click();
+    await page.getByRole('dialog', { name: 'Verify this company?' }).getByRole('button', { name: 'Verify company' }).click();
     await expect(page.getByText('Company verified')).toBeVisible({ timeout: 30_000 });
   });
 });

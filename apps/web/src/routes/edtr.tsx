@@ -1,5 +1,5 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
 import { apiGet, apiPost } from '../lib/api-client.js';
@@ -13,7 +13,6 @@ import {
   formatStatus,
   shortCode,
   siteName,
-  weekStart,
 } from '../lib/format.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
@@ -27,6 +26,7 @@ import { PageHeader } from '../components/page-header.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { AlertIcon, CheckIcon, ClockIcon, XCircleIcon } from '../components/icons.js';
 import { EmptyState } from '../components/empty-state.js';
+import { ClipboardList } from 'lucide-react';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { useToast } from '../components/toast.js';
@@ -91,6 +91,14 @@ function MatchText({ row }: { row: EdtrListItem }) {
   );
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function addDaysIso(iso: string, days: number): string {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function EdtrPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -110,10 +118,20 @@ function EdtrPage() {
   const [viewing, setViewing] = useState<EdtrListItem | null>(null);
 
   const [offset, setOffset] = useState(0);
+  // A new filter starts from its first page.
+  useEffect(() => setOffset(0), [search.site, search.equipment, search.week]);
+  // Deep links from the dashboard's "Needs you" rows: one machine-week. The
+  // filter goes to the API, so the pager counts the filtered rows rather than
+  // filtering whichever page happened to load.
+  const filters = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+  if (search.equipment) filters.set('equipmentId', search.equipment);
+  if (search.week) {
+    filters.set('from', search.week);
+    filters.set('to', addDaysIso(search.week, 6));
+  }
   const queue = useQuery({
-    queryKey: ['edtr', PAGE_SIZE, offset] as const,
-    queryFn: () =>
-      apiGet<{ items: EdtrListItem[]; total: number }>(`/edtr?limit=${PAGE_SIZE}&offset=${offset}`),
+    queryKey: ['edtr', PAGE_SIZE, offset, search.equipment ?? '', search.week ?? ''] as const,
+    queryFn: () => apiGet<{ items: EdtrListItem[]; total: number }>(`/edtr?${filters.toString()}`),
   });
 
   const equipmentById = useMemo(
@@ -130,26 +148,20 @@ function EdtrPage() {
     void queryClient.invalidateQueries({ queryKey: ['edtr'] });
   }
 
-  // Deep links from the dashboard's "Needs you" rows: one machine-week.
-  // ponytail: filters the loaded page only; move to API params if the
-  // queue routinely spans more than one page.
+  // Equipment and week filter on the server; the site is not an API
+  // filter, so it narrows the loaded page. One site runs many machines:
+  // pick the site, then the machine list narrows to the ones logged there.
+  // ponytail: move site to an API param if a site's queue spans pages.
   const rentalById = useMemo(() => new Map(rentals.map((r) => [r.id, r])), [rentals]);
   const siteOf = (rentalId: string) => rentalById.get(rentalId)?.projectSiteId;
   const all = queue.data?.items ?? [];
-  // One site runs many machines: pick the site, then the machine list
-  // narrows to the ones logged there.
   const siteOptions = [...new Set(all.map((row) => siteOf(row.rentalId)).filter((id): id is string => !!id))];
   const equipmentOptions = [
     ...new Set(
       all.filter((row) => !search.site || siteOf(row.rentalId) === search.site).map((row) => row.equipmentId),
     ),
   ];
-  const items = all.filter(
-    (row) =>
-      (!search.site || siteOf(row.rentalId) === search.site) &&
-      (!search.equipment || row.equipmentId === search.equipment) &&
-      (!search.week || weekStart(row.reportDate) === search.week),
-  );
+  const items = all.filter((row) => !search.site || siteOf(row.rentalId) === search.site);
   const filtered = Boolean(search.site || search.equipment || search.week);
 
   function setFilter(next: { site?: string | undefined; equipment?: string | undefined }) {
@@ -222,7 +234,7 @@ function EdtrPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Billing"
+        eyebrow="Operations"
         title="Field logs"
         description="Each day's hours, recorded twice and matched before anything is billed."
         actions={
@@ -306,7 +318,15 @@ function EdtrPage() {
 
       {queue.isSuccess &&
         (items.length === 0 ? (
+          filtered ? (
+            <EmptyState
+              icon={ClipboardList}
+              title="Nothing left here"
+              description="No field logs for this machine and week. They may already be billed."
+            />
+          ) : (
           <EmptyState
+            icon={ClipboardList}
             title="No field logs yet"
             description="Record the first one to start matching hours against the deposit."
             action={
@@ -315,6 +335,7 @@ function EdtrPage() {
               </Button>
             }
           />
+          )
         ) : (
           <div className="flex flex-col gap-3">
             {groupByRental(items).map(([rentalId, rows]) => (
@@ -726,10 +747,12 @@ function ApproveModal({ item, machine, onClose, onApproved, toast }: ApproveModa
 export const edtrRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/ocr',
+  // Shapes the API accepts (uuid, YYYY-MM-DD); anything else is dropped
+  // rather than turned into a 400.
   validateSearch: (search: Record<string, unknown>): { site?: string; equipment?: string; week?: string } => ({
-    ...(typeof search.site === 'string' ? { site: search.site } : {}),
-    ...(typeof search.equipment === 'string' ? { equipment: search.equipment } : {}),
-    ...(typeof search.week === 'string' ? { week: search.week } : {}),
+    ...(typeof search.site === 'string' && UUID.test(search.site) ? { site: search.site } : {}),
+    ...(typeof search.equipment === 'string' && UUID.test(search.equipment) ? { equipment: search.equipment } : {}),
+    ...(typeof search.week === 'string' && /^d{4}-d{2}-d{2}$/.test(search.week) ? { week: search.week } : {}),
   }),
   component: EdtrPage,
 });

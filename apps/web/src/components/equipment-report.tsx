@@ -30,7 +30,7 @@ export function EquipmentReport({ equipmentId }: { equipmentId: string }) {
   if (report.isPending) return <p className="text-sm text-text-muted">Loading report...</p>;
   if (report.isError) return <p className="text-sm text-error">{apiErrorText(report.error)}</p>;
   const r = report.data;
-  const litres = (value: number | null) => (value === null ? 'set fuel burn in Quotes' : `${value.toLocaleString()} L`);
+  const litres = (value: number | null) => (value === null ? 'set fuel burn in the Price book' : `${value.toLocaleString()} L`);
   const current = r.maintenance.blocks.find((b) => b.current);
 
   return (

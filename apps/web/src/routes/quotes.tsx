@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BookingDetailResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
+import { requireRole } from '../lib/guards.js';
 import { apiGet, apiPost, apiErrorText } from '../lib/api-client.js';
 import { getEquipmentTypes, getRateCards, type EquipmentTypeRef, type RateCardRef } from '../lib/reference-client.js';
 import type { QuoteDetail } from '../lib/queries.js';
@@ -14,6 +15,7 @@ import { Surface } from '../components/surface.js';
 import { PageHeader } from '../components/page-header.js';
 import { GaugeReadout } from '../components/gauge-readout.js';
 import { Modal } from '../components/modal.js';
+import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { QuoteLines } from '../components/quote-lines.js';
 import { useToast } from '../components/toast.js';
 import { DieselPriceForm, PricingParametersForm, RateCardsPanel, RentalFeesForm } from './app.settings.js';
@@ -54,13 +56,6 @@ const PRICE_BOOK_TABS: Array<{ id: PriceBookTab; label: string }> = [
   { id: 'trucking', label: 'Trucking' },
 ];
 
-const RENTAL_SECTIONS = [
-  { id: 'rental-fees', label: 'Mobilization and fees' },
-  { id: 'operating-costs', label: 'Operating costs' },
-  { id: 'diesel', label: 'Diesel' },
-  { id: 'rate-cards', label: 'Rate cards' },
-];
-
 // The standard price book: one set of prices for every client and prospect.
 // Equipment rental is rate cards + operating costs + the fixed mobilization
 // and demobilization; trucking is its per-trip fees, extras and tolls. A
@@ -72,33 +67,18 @@ function PriceBook() {
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="Billing"
-        title="Quotes"
+        title="Price book"
         description="The standard prices every client and prospect is quoted. A booking gets its quote from these at once; you only revise one when the customer negotiates."
       />
       <Tabs label="Service" items={PRICE_BOOK_TABS} value={tab} onChange={setTab} />
       {tab === 'rental' ? (
         <>
-          {/* Four long forms: a jump list so the rate cards at the bottom
-              are one click away. */}
-          <nav aria-label="Price book sections" className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            {RENTAL_SECTIONS.map((section) => (
-              <a key={section.id} href={`#${section.id}`} className="font-semibold text-accent hover:underline">
-                {section.label}
-              </a>
-            ))}
-          </nav>
-          <section id="rental-fees" className="scroll-mt-20">
+          <div className="grid gap-5 lg:grid-cols-2">
             <RentalFeesForm />
-          </section>
-          <section id="operating-costs" className="scroll-mt-20">
-            <PricingParametersForm />
-          </section>
-          <section id="diesel" className="scroll-mt-20">
             <DieselPriceForm />
-          </section>
-          <section id="rate-cards" className="scroll-mt-20">
-            <RateCardsPanel />
-          </section>
+          </div>
+          <PricingParametersForm />
+          <RateCardsPanel />
         </>
       ) : (
         <>
@@ -142,6 +122,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
   // Create draft in its own footer.
   const [previewOpen, setPreviewOpen] = useState(false);
   const [busy, setBusy] = useState<'preview' | 'create' | 'approve' | null>(null);
+  const [confirmingApprove, setConfirmingApprove] = useState(false);
   const [quoteId, setQuoteId] = useState<string | null>(null);
 
   const cardsFor = (typeId: string) => rateCards.filter((rc) => rc.equipmentTypeId === typeId);
@@ -440,7 +421,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
             <Button
               type="button"
               variant="approve"
-              onClick={approve}
+              onClick={() => setConfirmingApprove(true)}
               loading={busy === 'approve'}
               disabled={result.status === 'approved'}
             >
@@ -474,6 +455,24 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
       >
         {result && <QuoteFigures quote={result} />}
       </Modal>
+      <ConfirmDialog
+        open={confirmingApprove}
+        tone="approve"
+        title="Approve and send this quote?"
+        body={
+          <p>
+            The customer is notified and can accept the revised total of{' '}
+            <span className="font-mono font-semibold tabular-nums">{result ? formatPeso(result.total) : ''}</span>.
+          </p>
+        }
+        confirmLabel="Approve and send"
+        pending={busy === 'approve'}
+        onConfirm={async () => {
+          await approve();
+          setConfirmingApprove(false);
+        }}
+        onCancel={() => setConfirmingApprove(false)}
+      />
     </div>
   );
 }
@@ -481,6 +480,9 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
 export const quotesRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/quotes',
+  // Every price-book endpoint needs pricing:manage, which owner lacks: an
+  // owner here got a page of forms that never loaded.
+  beforeLoad: requireRole('admin'),
   validateSearch: validateQuoteSearch,
   component: QuotesPage,
 });

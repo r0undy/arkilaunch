@@ -16,6 +16,7 @@ import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { SiteProofAdmin } from '../components/site-proof.js';
 import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
+import { EditButton, SummaryCard } from '../components/summary-card.js';
 
 export const settingsQuery = {
   queryKey: ['truck-settings'] as const,
@@ -36,6 +37,16 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
   const [extras, setExtras] = useState<TruckExtra[]>(initial.extras);
   const [formula, setFormula] = useState(initial.formula || DEFAULT_TRUCK_FORMULA);
   const [rangePct, setRangePct] = useState(String(initial.rangePct));
+  const [editing, setEditing] = useState(false);
+  // Every open starts from what is saved, so a cancelled edit leaves nothing behind.
+  const open = () => {
+    setBase(String(initial.baseFeePhp));
+    setDriver(String(initial.driverFeePhp));
+    setExtras(initial.extras);
+    setFormula(initial.formula || DEFAULT_TRUCK_FORMULA);
+    setRangePct(String(initial.rangePct));
+    setEditing(true);
+  };
   // The builder's sample trip is priced with the same per-km, fuel and
   // national diesel figures a real request uses.
   const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<{ transportPhpPerKm: string; fuelLPerKm: string } | null>('/pricing/parameters') });
@@ -56,6 +67,7 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
         rangePct: Number(rangePct),
       }),
     onSuccess: () => {
+      setEditing(false);
       void queryClient.invalidateQueries({ queryKey: settingsQuery.queryKey });
       toast.success('Truck pricing saved');
     },
@@ -66,65 +78,87 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
     setExtras((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4 sm:p-6">
-      <div>
-        <h2 className="font-display text-lg font-semibold text-text">Truck pricing</h2>
-        <p className="text-sm text-text-muted">
-          Per-km rate and fuel use come from your pricing parameters; diesel is the national GasWatch
-          average (or your own diesel price in Settings). Set the truck&apos;s own fees and any extra
-          charges here.
-        </p>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Input label="Base fee (₱ per trip)" type="number" min={0} numeric value={base} onChange={(e) => setBase(e.target.value)} />
-        <Input label="Driver's fee (₱ per trip)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
-        <Input label="Estimate range (± %)" type="number" min={0} max={100} numeric value={rangePct} onChange={(e) => setRangePct(e.target.value)} />
-      </div>
-      <FormulaBuilder
-        value={formula}
-        onChange={setFormula}
-        settings={{ baseFeePhp: Number(base), driverFeePhp: Number(driver), extras }}
-        sample={sample}
+    <>
+      <SummaryCard
+        title="Truck pricing"
+        description="Per-km rate and fuel use come from your operating costs; diesel is the national GasWatch average (or your own diesel price). The truck's own fees and extra charges are set here."
+        items={[
+          { label: 'Base fee (per trip)', value: formatPeso(initial.baseFeePhp) },
+          { label: "Driver's fee (per trip)", value: formatPeso(initial.driverFeePhp) },
+          { label: 'Estimate range', value: `± ${initial.rangePct}%` },
+          { label: 'Formula', value: initial.formula ? 'Custom' : 'Standard' },
+          {
+            label: 'Extra charges',
+            value: initial.extras.length
+              ? initial.extras.map((x) => `${x.label} ${formatPeso(x.amountPhp)}/${x.per}`).join(', ')
+              : 'None',
+          },
+        ]}
+        action={<EditButton what="truck pricing" onClick={open} />}
       />
-      <p className="text-xs text-text-muted">
-        The high end of the estimate range is the most a customer can be charged without approving.
-      </p>
-      <fieldset className="flex flex-col gap-3">
-        <legend className="mb-2 text-sm font-medium text-text">Extra charges</legend>
-        {extras.map((x, i) => (
-          <div key={i} className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_140px_140px_auto]">
-            <div className="col-span-2 sm:col-span-1">
-              <Input label="Charge" value={x.label} onChange={(e) => setExtra(i, { label: e.target.value })} />
-            </div>
-            <Input label="₱" type="number" min={0} numeric value={String(x.amountPhp)} onChange={(e) => setExtra(i, { amountPhp: Number(e.target.value) })} />
-            <label className="flex flex-col gap-1 text-sm font-medium text-text">
-              Per
-              <select
-                className="min-h-11 rounded-mk-sm border border-border bg-surface px-2"
-                value={x.per}
-                onChange={(e) => setExtra(i, { per: e.target.value as TruckExtra['per'] })}
-              >
-                <option value="trip">trip</option>
-                <option value="km">km</option>
-              </select>
-            </label>
-            <Button variant="secondary" onClick={() => setExtras((xs) => xs.filter((_, j) => j !== i))}>
-              Remove
+      <Modal
+        open={editing}
+        onClose={() => setEditing(false)}
+        title="Truck pricing"
+        description="The high end of the estimate range is the most a customer can be charged without approving."
+        size="xl"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditing(false)}>
+              Cancel
             </Button>
+            <Button loading={save.isPending} onClick={() => save.mutate()}>
+              Save truck pricing
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Input label="Base fee (₱ per trip)" type="number" min={0} numeric value={base} onChange={(e) => setBase(e.target.value)} />
+            <Input label="Driver's fee (₱ per trip)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
+            <Input label="Estimate range (± %)" type="number" min={0} max={100} numeric value={rangePct} onChange={(e) => setRangePct(e.target.value)} />
           </div>
-        ))}
-        <div>
-          <Button variant="secondary" onClick={() => setExtras((xs) => [...xs, { label: '', amountPhp: 0, per: 'trip' }])}>
-            Add a charge
-          </Button>
+          <FormulaBuilder
+            value={formula}
+            onChange={setFormula}
+            settings={{ baseFeePhp: Number(base), driverFeePhp: Number(driver), extras }}
+            sample={sample}
+          />
+          <fieldset className="flex flex-col gap-3">
+            <legend className="mb-2 text-sm font-medium text-text">Extra charges</legend>
+            {extras.length === 0 && <p className="text-sm text-text-muted">None.</p>}
+            {extras.map((x, i) => (
+              <div key={i} className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_140px_140px_auto]">
+                <div className="col-span-2 sm:col-span-1">
+                  <Input label="Charge" value={x.label} onChange={(e) => setExtra(i, { label: e.target.value })} />
+                </div>
+                <Input label="₱" type="number" min={0} numeric value={String(x.amountPhp)} onChange={(e) => setExtra(i, { amountPhp: Number(e.target.value) })} />
+                <label className="flex flex-col gap-1 text-sm font-medium text-text">
+                  Per
+                  <select
+                    className="min-h-11 rounded-sm border border-border bg-surface px-2"
+                    value={x.per}
+                    onChange={(e) => setExtra(i, { per: e.target.value as TruckExtra['per'] })}
+                  >
+                    <option value="trip">trip</option>
+                    <option value="km">km</option>
+                  </select>
+                </label>
+                <Button variant="ghost" onClick={() => setExtras((xs) => xs.filter((_, j) => j !== i))}>
+                  Remove
+                </Button>
+              </div>
+            ))}
+            <div>
+              <Button variant="secondary" onClick={() => setExtras((xs) => [...xs, { label: '', amountPhp: 0, per: 'trip' }])}>
+                Add a charge
+              </Button>
+            </div>
+          </fieldset>
         </div>
-      </fieldset>
-      <div>
-        <Button loading={save.isPending} onClick={() => save.mutate()}>
-          Save truck pricing
-        </Button>
-      </div>
-    </Surface>
+      </Modal>
+    </>
   );
 }
 
@@ -137,7 +171,10 @@ function TollFeeInput({ toll }: { toll: TollRateResponse }) {
   useEffect(() => setFee(String(toll.feePhp)), [toll.feePhp]);
   const save = useMutation({
     mutationFn: () => apiPatch(`/toll-rates/${toll.id}`, { feePhp: Number(fee) }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: tollsQuery.queryKey }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: tollsQuery.queryKey });
+      toast.success('Toll fee saved', `${tollLabel(toll)}: ${formatPeso(Number(fee))}.`);
+    },
     onError: (e) => toast.error('Fee not saved', apiErrorText(e)),
   });
   return (
@@ -225,10 +262,10 @@ export function TollsEditor() {
   ];
   const selectClass = 'min-h-11 rounded-sm border border-border bg-surface px-2 text-sm text-text';
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4 sm:p-6">
+    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5" aria-label="Toll rates">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-2xl">
-          <h2 className="font-display text-lg font-semibold text-text">Toll rates</h2>
+          <h2 className="font-display text-base font-semibold text-text">Toll rates</h2>
           <p className="text-sm text-text-muted">
             Class 3 (large trucks) expressway fees, picked by entry and exit when you confirm a trip&apos;s km.
             Loaded fees are the TRB-approved rates effective {formatDate(PH_TOLLS_AS_OF)}; check them against the
@@ -330,7 +367,7 @@ function TollPicker({ tolls, value, onChange }: { tolls: TollRateResponse[]; val
       : onRoad.find((t) => (t.entryPoint === a && t.exitPoint === b) || (t.entryPoint === b && t.exitPoint === a));
   const picked = value.map((id) => tolls.find((t) => t.id === id)).filter((t): t is TollRateResponse => Boolean(t));
   const expressways = [...new Set(tolls.filter((t) => t.expressway).map((t) => t.expressway!))];
-  const selectClass = 'min-h-11 rounded-mk-sm border border-border bg-surface px-2 text-sm';
+  const selectClass = 'min-h-11 rounded-sm border border-border bg-surface px-2 text-sm';
   return (
     <fieldset className="flex flex-col gap-2 text-sm">
       <legend className="mb-1 text-xs text-text-muted">Tolls on this route</legend>
@@ -401,9 +438,11 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   const [km, setKm] = useState(String(r.confirmedKm ?? r.estimatedKm));
   useEffect(() => setKm(String(r.confirmedKm ?? r.estimatedKm)), [r.confirmedKm, r.estimatedKm]);
   const refresh = () => void queryClient.invalidateQueries({ queryKey: TRUCK_REQUESTS });
+  const [confirmingCall, setConfirmingCall] = useState(false);
   const callConfirm = useMutation({
     mutationFn: () => apiPost<TruckRequestResponse>(`/truck-requests/${r.id}/call-confirmed`, {}),
     onSuccess: () => {
+      setConfirmingCall(false);
       refresh();
       toast.success('Confirmed by phone');
     },
@@ -454,7 +493,7 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
           </p>
           {!r.callConfirmedAt && (
             <div>
-              <Button variant="secondary" loading={callConfirm.isPending} onClick={() => callConfirm.mutate()}>
+              <Button variant="secondary" loading={callConfirm.isPending} onClick={() => setConfirmingCall(true)}>
                 Confirmed by phone
               </Button>
             </div>
@@ -504,6 +543,16 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
           )}
         </section>
       )}
+      <ConfirmDialog
+        open={confirmingCall}
+        tone="approve"
+        title="Mark as confirmed by phone?"
+        body={<p>Only once you have spoken to the customer: it opens payment for this trip.</p>}
+        confirmLabel="Yes, we spoke"
+        pending={callConfirm.isPending}
+        onConfirm={() => callConfirm.mutate()}
+        onCancel={() => setConfirmingCall(false)}
+      />
       <ConfirmDialog
         open={asking}
         tone="approve"

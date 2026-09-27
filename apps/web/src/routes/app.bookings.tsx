@@ -105,7 +105,7 @@ function BookingsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Dispatch"
+        eyebrow="Operations"
         title="Bookings"
         description="Equipment rentals and truck service requests. Open one to negotiate, confirm and move it along."
         actions={

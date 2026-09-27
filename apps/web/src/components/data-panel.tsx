@@ -1,5 +1,6 @@
 import { useQuery, type QueryKey, type UseQueryOptions } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { ApiError } from '../lib/api-client.js';
 import { Surface } from './surface.js';
 import { EmptyState } from './empty-state.js';
@@ -13,6 +14,9 @@ export interface DataPanelProps<T, TQueryKey extends QueryKey = QueryKey> {
   emptyDescription: string;
   isEmpty: (data: T) => boolean;
   render: (data: T) => ReactNode;
+  emptyIcon?: LucideIcon;
+  // The next step from an empty list, e.g. an "Add" button.
+  emptyAction?: ReactNode;
 }
 
 // Shared loading/error/success/empty wrapper (DESIGN.md §4.1) for the
@@ -28,6 +32,8 @@ export function DataPanel<T, TQueryKey extends QueryKey = QueryKey>({
   emptyDescription,
   isEmpty,
   render,
+  emptyIcon,
+  emptyAction,
 }: DataPanelProps<T, TQueryKey>) {
   const query = useQuery(options);
 
@@ -52,7 +58,7 @@ export function DataPanel<T, TQueryKey extends QueryKey = QueryKey>({
       )}
       {query.isSuccess &&
         (isEmpty(query.data) ? (
-          <EmptyState title={emptyTitle} description={emptyDescription} />
+          <EmptyState title={emptyTitle} description={emptyDescription} icon={emptyIcon} action={emptyAction} />
         ) : (
           render(query.data)
         ))}

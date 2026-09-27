@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
+import type { RoleCode } from '@arkilaunch/shared';
 import {
   Boxes,
   ClipboardList,
@@ -13,6 +14,8 @@ import {
   UserCircle,
   ShieldAlert,
   ShoppingCart,
+  ShieldCheck,
+  TriangleAlert,
   Store,
   ExternalLink,
   CalendarCheck,
@@ -35,11 +38,26 @@ export interface NavItem {
   // Extra path prefixes this destination owns, for screens reached from it
   // that have no sidebar entry of their own (a detail page, a wizard).
   owns?: string[];
+  // Roles that may open it. Mirrors the route's own `beforeLoad` guard, so an
+  // owner is not shown a page that only bounces them home. Unset = everyone
+  // the shell admits.
+  roles?: RoleCode[];
 }
 
 export interface NavGroup {
   title: string;
   items: NavItem[];
+  // Rendered at the foot of the sidebar instead of in the list: the
+  // destinations a user reaches for from anywhere (inbox, profile).
+  pinned?: boolean;
+}
+
+// The groups as a given role sees them: items it cannot open are dropped,
+// and a group left with nothing goes too.
+export function navForRole(groups: NavGroup[], role: RoleCode | null): NavGroup[] {
+  return groups
+    .map((group) => ({ ...group, items: group.items.filter((item) => !item.roles || (role !== null && item.roles.includes(role))) }))
+    .filter((group) => group.items.length > 0);
 }
 
 // One sidebar component, driven by which shell mounts it (Figma reuses the
@@ -84,14 +102,25 @@ export const ACCOUNT_NAV: NavGroup[] = [
 // not the way the system is built ("OCR Tool", "Registration").
 export const APP_NAV: NavGroup[] = [
   {
-    title: 'Dispatch',
+    title: 'Overview',
     items: [
       { label: 'Dashboard', to: '/app', icon: LayoutDashboard, exact: true },
-      { label: 'Bookings', to: '/app/bookings', icon: ShoppingCart },
-      { label: 'Quotes', to: '/app/quotes', icon: FileText },
-      { label: 'Field logs', to: '/app/ocr', icon: ClipboardList },
-      { label: 'Sites and deployment', to: '/app/deployment', icon: MapPin },
+      // The owner's home (guards.ts homeRouteForRole).
+      { label: 'Reports', to: '/app/insights', icon: TrendingUp },
     ],
+  },
+  {
+    title: 'Operations',
+    items: [
+      { label: 'Bookings', to: '/app/bookings', icon: ShoppingCart },
+      { label: 'Field logs', to: '/app/ocr', icon: ClipboardList },
+      { label: 'Sites', to: '/app/deployment', icon: MapPin },
+      { label: 'Incidents', to: '/app/incidents', icon: TriangleAlert },
+    ],
+  },
+  {
+    title: 'Fleet',
+    items: [{ label: 'Equipment', to: '/app/inventory', icon: Boxes }],
   },
   {
     title: 'Billing',
@@ -99,32 +128,37 @@ export const APP_NAV: NavGroup[] = [
       { label: 'Invoices', to: '/app/payments', icon: Receipt },
       { label: 'Weekly billing', to: '/app/billing/weekly', icon: CalendarRange },
       { label: 'Coupons', to: '/app/coupons', icon: BadgePercent },
-      { label: 'Reports', to: '/app/insights', icon: TrendingUp },
-    ],
-  },
-  {
-    title: 'Fleet',
-    items: [
-      { label: 'Equipment and maintenance', to: '/app/inventory', icon: Boxes },
-      { label: 'Incident log', to: '/app/incidents', icon: ShieldAlert },
+      { label: 'Price book', to: '/app/quotes', icon: FileText, roles: ['admin'] },
     ],
   },
   {
     title: 'Customers',
     items: [
-      { label: 'Registration pending', to: '/app/registration/pending', icon: ClipboardList },
-      { label: 'Registration verified', to: '/app/registration/verified', icon: ShieldAlert },
+      {
+        label: 'Registrations',
+        to: '/app/registration/pending',
+        icon: ShieldCheck,
+        // Pending and Verified are tabs of one page.
+        owns: ['/app/registration'],
+        roles: ['admin'],
+      },
     ],
   },
   {
-    title: 'Administration',
+    title: 'Settings',
     items: [
-      { label: 'Rate cards', to: '/app/settings', icon: Settings },
+      { label: 'Business settings', to: '/app/settings', icon: Settings, roles: ['admin'] },
       { label: 'Storefront branding', to: '/app/branding', icon: Store },
-      { label: 'View storefront', to: '/', icon: ExternalLink, exact: true },
-      { label: 'People', to: '/app/users', icon: Users },
+      { label: 'People', to: '/app/users', icon: Users, roles: ['admin'] },
+    ],
+  },
+  {
+    title: 'You',
+    pinned: true,
+    items: [
       { label: 'Notifications', to: '/app/notifications', icon: Bell },
       { label: 'My profile', to: '/app/profile', icon: UserCircle },
+      { label: 'View storefront', to: '/', icon: ExternalLink, exact: true },
     ],
   },
 ];

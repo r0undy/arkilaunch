@@ -8,7 +8,7 @@ function BrandingPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Administration"
+        eyebrow="Settings"
         title="Storefront branding"
         description="How your company looks on your storefront and in the ArkiLaunch directory."
       />

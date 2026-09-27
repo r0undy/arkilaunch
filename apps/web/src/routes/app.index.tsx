@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode } from 'react';
 import type { IncidentResponse, InvoiceSummaryResponse, WeatherSeverity } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
+import { getCurrentRole } from '../lib/guards.js';
 import {
   companiesQueries,
   edtrQueries,
@@ -24,8 +25,10 @@ import { explainAdvisory } from '../lib/weather-explain.js';
 import {
   formatDate,
   formatDateTime,
+  formatInvoiceType,
   formatPeso,
   formatSeverity,
+  formatStatus,
   shortCode,
   weekStart,
 } from '../lib/format.js';
@@ -119,13 +122,17 @@ function AdminDashboardPage() {
   const { data: sites } = useQuery(sitesQueries.list());
   const { data: edtrList } = useQuery(edtrQueries.list());
   const { data: advisories } = useQuery(weatherQueries.advisories());
-  const { data: invoices } = useQuery(invoicesQueries.list());
+  // Unpaid only, asked of the server: filtering the first page of every
+  // invoice missed unpaid ones once paid ones filled that page.
+  const { data: invoices } = useQuery(invoicesQueries.list(6, 0, 'issued'));
   const { data: incidents } = useQuery(incidentsQueries.list());
   const { data: fleet } = useQuery(equipmentQueries.list());
   // Work waiting on staff, as real totals (not a page's length).
   const reviewCount = useQuery(edtrQueries.reviewCount());
   const openTrucks = useQuery(trucksQueries.list(1, 0, '', 'open'));
-  const kycPending = useQuery({ ...companiesQueries.review('pending', 1, 0), retry: false });
+  // Registrations are admin-only; the owner has no page to act on this.
+  const isAdmin = getCurrentRole() === 'admin';
+  const kycPending = useQuery({ ...companiesQueries.review('pending', 1, 0), retry: false, enabled: isAdmin });
   const advisoryBySite = new Map((advisories?.items ?? []).map((a) => [a.siteId, a]));
 
   // Three secondary queues used to stack down the page, so the one queue
@@ -189,11 +196,7 @@ function AdminDashboardPage() {
   const inMaintenance = fleetItems.filter((e) => e.availabilityStatus === 'maintenance').length;
   const recoveredHours =
     snapshot?.utilization.fleet.reduce((sum, u) => sum + u.runtimeHours, 0) ?? null;
-  // The approval queue is what has been invoiced and not settled; paid and
-  // void rows are not waiting on anyone.
-  const pendingInvoices = (invoices?.items ?? []).filter(
-    (i) => i.status !== 'paid' && i.status !== 'void',
-  );
+  const pendingInvoices = invoices?.items ?? [];
 
   function onTabKeyDown(event: React.KeyboardEvent, index: number) {
     const delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
@@ -266,12 +269,14 @@ function AdminDashboardPage() {
             </Link>
           }
         />
-        <StatTile
-          label="Companies to verify"
-          value={kycPending.isError ? '--' : (kycPending.data?.total ?? null)}
-          hint="Customer companies waiting on KYC."
-          action={<Link to="/app/registration/pending" className="hover:underline">Open registration</Link>}
-        />
+        {isAdmin && (
+          <StatTile
+            label="Companies to verify"
+            value={kycPending.isError ? '--' : (kycPending.data?.total ?? null)}
+            hint="Customer companies waiting on KYC."
+            action={<Link to="/app/registration/pending" className="hover:underline">Open registrations</Link>}
+          />
+        )}
       </div>
 
       {alerts.length > 0 && (
@@ -391,12 +396,12 @@ function AdminDashboardPage() {
                             {shortCode('invoice', invoice.id)}
                           </button>
                         </td>
-                        <td className="px-4 py-2">{invoice.invoiceType}</td>
+                        <td className="px-4 py-2">{formatInvoiceType(invoice.invoiceType)}</td>
                         <td className="px-4 py-2 text-right font-mono tabular-nums">
                           {formatPeso(invoice.amount)}
                         </td>
                         <td className="whitespace-nowrap px-4 py-2 tabular-nums text-text-muted">{formatDate(invoice.dueDate)}</td>
-                        <td className="px-4 py-2 text-center uppercase text-text-muted">{invoice.status}</td>
+                        <td className="px-4 py-2 text-center text-text-muted">{formatStatus(invoice.status)}</td>
                       </tr>
                     ))}
                   </tbody>

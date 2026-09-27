@@ -12,7 +12,7 @@ test.describe('platform console', () => {
     await expect(page.getByRole('heading', { name: 'Applications', level: 1 })).toBeVisible();
     const sidebar = page.getByRole('complementary', { name: 'Sidebar' });
     await expect(sidebar.getByRole('link', { name: 'Companies' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: 'Equipment and maintenance' })).toHaveCount(0);
+    await expect(sidebar.getByRole('link', { name: 'Equipment', exact: true })).toHaveCount(0);
     await expect(sidebar.getByRole('link', { name: 'Dashboard' })).toHaveCount(0);
   });
 

@@ -33,8 +33,13 @@ test.describe('console design pass', () => {
 
     await page.goto('/app/quotes');
     await expect(page.getByRole('tab', { name: 'Equipment rental' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByLabel('Mobilization (PHP)', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Customer')).toHaveCount(0);
+    // Saved values on a card; the form opens in a modal.
+    await expect(page.getByRole('group', { name: 'Mobilization and demobilization' })).toBeVisible();
+    await page.getByRole('button', { name: 'Edit mobilization fees' }).click();
+    const fees = page.getByRole('dialog', { name: 'Mobilization and demobilization' });
+    await expect(fees.getByLabel('Mobilization (PHP)', { exact: true })).toBeVisible();
+    await fees.getByRole('button', { name: 'Cancel' }).click();
 
     await page.getByRole('tab', { name: 'Trucking' }).click();
     await expect(page.getByRole('heading', { name: 'Truck pricing' })).toBeVisible();

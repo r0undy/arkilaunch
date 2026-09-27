@@ -20,6 +20,7 @@ import { Button } from '../components/button.js';
 import { CaptureModal } from '../components/capture-modal.js';
 import { HourFields, hourValuesFrom, toLineItems, type HourFieldValues, EMPTY_HOURS } from '../components/hour-fields.js';
 import { Modal } from '../components/modal.js';
+import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { PageHeader } from '../components/page-header.js';
 import { Tabs } from '../components/tabs.js';
 import { Select } from '../components/select.js';
@@ -323,6 +324,7 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
       .map((u) => byKey.get(`${u.equipmentId}|${date}`))
       .filter((d): d is FieldLogDay => !!d && d.status === 'pending' && d.flags.length === 0 && !!d.edtrId),
   );
+  const [bulkConfirm, setBulkConfirm] = useState(false);
   const bulk = useMutation({
     mutationFn: async () => {
       let approved = 0;
@@ -379,9 +381,27 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
           </Button>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" disabled={clean.length === 0} loading={bulk.isPending} onClick={() => bulk.mutate()}>
+          <Button variant="secondary" disabled={clean.length === 0} loading={bulk.isPending} onClick={() => setBulkConfirm(true)}>
             Approve {clean.length} clean day{clean.length === 1 ? '' : 's'}
           </Button>
+          <ConfirmDialog
+            open={bulkConfirm}
+            tone="approve"
+            title={`Approve ${clean.length} clean day${clean.length === 1 ? '' : 's'}?`}
+            body={
+              <p>
+                Each day is approved with the timekeeper&apos;s own hours, which become the office log for billing. Days
+                with anything flagged are left for you to review one by one.
+              </p>
+            }
+            confirmLabel="Approve them"
+            pending={bulk.isPending}
+            onConfirm={async () => {
+              await bulk.mutateAsync().catch(() => undefined);
+              setBulkConfirm(false);
+            }}
+            onCancel={() => setBulkConfirm(false)}
+          />
           <Button
             variant="primary"
             disabled={hub.rentals.length === 0}
@@ -548,18 +568,27 @@ function Personnel({ hub, siteId }: { hub: SiteHubResponse; siteId: string }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [pick, setPick] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [removing, setRemoving] = useState<{ userId: string; name: string } | null>(null);
   const refresh = () => queryClient.invalidateQueries({ queryKey: sitesQueries.hub(siteId).queryKey });
+  const nameOf = (userId: string) => hub.personnel.availableTimekeepers.find((t) => t.userId === userId)?.name ?? 'The timekeeper';
   const add = useMutation({
     mutationFn: (userId: string) => apiPost(`/sites/${siteId}/timekeepers`, { userId }),
-    onSuccess: async () => {
+    onSuccess: async (_res, userId) => {
+      toast.success('Timekeeper assigned', `${nameOf(userId)} can now submit logs for this site.`);
       setPick('');
+      setAssigning(false);
       await refresh();
     },
     onError: (err) => toast.error('Could not assign the timekeeper', apiErrorText(err)),
   });
   const remove = useMutation({
     mutationFn: (userId: string) => apiDelete(`/sites/${siteId}/timekeepers/${userId}`),
-    onSuccess: refresh,
+    onSuccess: async () => {
+      toast.success('Timekeeper removed', `${removing?.name ?? 'They'} can no longer submit logs for this site.`);
+      setRemoving(null);
+      await refresh();
+    },
     onError: (err) => toast.error('Could not remove the timekeeper', apiErrorText(err)),
   });
   const p = hub.personnel;
@@ -577,33 +606,67 @@ function Personnel({ hub, siteId }: { hub: SiteHubResponse; siteId: string }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5">
-        <h2 className={heading}>Timekeepers</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className={heading}>Timekeepers</h2>
+          {p.availableTimekeepers.length > 0 && (
+            <Button variant="secondary" onClick={() => setAssigning(true)}>
+              Assign
+            </Button>
+          )}
+        </div>
         {p.timekeepers.length === 0 && <p className="text-sm text-text-muted">None assigned: no one can submit logs here.</p>}
         <ul className="flex flex-col gap-1 text-sm">
           {p.timekeepers.map((t) => (
             <li key={t.userId} className="flex items-center justify-between gap-2">
               <span className="text-text">{t.name}</span>
-              <Button variant="ghost" loading={remove.isPending} onClick={() => remove.mutate(t.userId)}>
+              <Button variant="ghost" onClick={() => setRemoving({ userId: t.userId, name: t.name })} aria-label={`Remove ${t.name}`}>
                 Remove
               </Button>
             </li>
           ))}
         </ul>
-        {p.availableTimekeepers.length > 0 && (
-          <div className="flex items-end gap-2">
-            <Select id="add-timekeeper" label="Assign a timekeeper" value={pick} onChange={(e) => setPick(e.target.value)}>
-              <option value="">Choose…</option>
-              {p.availableTimekeepers.map((t) => (
-                <option key={t.userId} value={t.userId}>
-                  {t.name}
-                </option>
-              ))}
-            </Select>
-            <Button variant="secondary" disabled={!pick} loading={add.isPending} onClick={() => add.mutate(pick)}>
-              Assign
-            </Button>
-          </div>
-        )}
+        <Modal
+          open={assigning}
+          onClose={() => setAssigning(false)}
+          title="Assign a timekeeper"
+          description="They can submit daily logs for the machines on this site."
+          size="sm"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setAssigning(false)}>
+                Cancel
+              </Button>
+              <Button disabled={!pick} loading={add.isPending} onClick={() => add.mutate(pick)}>
+                Assign
+              </Button>
+            </>
+          }
+        >
+          <Select id="add-timekeeper" label="Timekeeper" value={pick} onChange={(e) => setPick(e.target.value)}>
+            <option value="">Choose…</option>
+            {p.availableTimekeepers.map((t) => (
+              <option key={t.userId} value={t.userId}>
+                {t.name}
+              </option>
+            ))}
+          </Select>
+        </Modal>
+        <ConfirmDialog
+          open={removing !== null}
+          tone="danger"
+          title="Remove this timekeeper?"
+          body={
+            <p>
+              <strong>{removing?.name}</strong> can no longer submit logs for this site. Logs they already sent are kept.
+            </p>
+          }
+          confirmLabel="Remove timekeeper"
+          pending={remove.isPending}
+          onConfirm={() => {
+            if (removing) remove.mutate(removing.userId);
+          }}
+          onCancel={() => setRemoving(null)}
+        />
       </Surface>
       <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5">
         <h2 className={heading}>Operators</h2>
@@ -662,7 +725,7 @@ function SiteHubPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Sites and deployment"
+        eyebrow="Sites"
         title={hub.data ? hub.data.site.address || 'Project site' : 'Project site'}
         {...(hub.data?.site.customerName ? { description: hub.data.site.customerName } : {})}
         actions={

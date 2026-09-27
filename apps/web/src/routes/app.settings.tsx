@@ -11,12 +11,15 @@ import { Table, type TableColumn } from '../components/table.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
-import { Surface } from '../components/surface.js';
 import { PageHeader } from '../components/page-header.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { Modal } from '../components/modal.js';
 import { useToast } from '../components/toast.js';
+import { EditButton, SummaryCard } from '../components/summary-card.js';
+import { LoadError } from '../components/load-error.js';
+import { Skeleton } from '../components/skeleton.js';
+import { Mail, Plus, Receipt } from 'lucide-react';
 import { formatDate, formatPeso, formatRateType } from '../lib/format.js';
 
 interface RateCardRow {
@@ -46,6 +49,7 @@ const rateCardsListQuery = (limit: number, offset: number) => ({
 // Adding a rate card, in a dialog opened from the rate card list.
 function RateCardModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const equipmentTypes = useQuery(referenceQueries.equipmentTypes());
   const [equipmentTypeId, setEquipmentTypeId] = useState('');
   const [equipmentId, setEquipmentId] = useState('');
@@ -66,7 +70,8 @@ function RateCardModal({ open, onClose }: { open: boolean; onClose: () => void }
     onSuccess: () => {
       setRateValue('');
       onClose();
-      queryClient.invalidateQueries({ queryKey: ['rate-cards'] });
+      void queryClient.invalidateQueries({ queryKey: ['rate-cards'] });
+      toast.success('Rate card added', 'It is quotable at once.');
     },
     onError: () => setError('Could not create this rate card.'),
   });
@@ -220,91 +225,125 @@ function BusinessCalendarForm() {
       return data && data.openTime ? (data as TenantCalendar) : null;
     },
   });
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<TenantCalendar | null>(null);
   const [newDate, setNewDate] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const cal = draft ?? saved.data ?? DEFAULT_CALENDAR;
   const edit = (patch: Partial<TenantCalendar>) => setDraft({ ...cal, ...patch });
+  const close = () => {
+    setDraft(null);
+    setEditing(false);
+  };
 
   const save = useMutation({
     mutationFn: () => apiPut('/tenant-calendar', cal),
     onSuccess: () => {
-      setDraft(null);
+      close();
       void queryClient.invalidateQueries({ queryKey: ['tenant-calendar'] });
       toast.success('Office hours saved');
     },
     onError: (e) => toast.error('Could not save office hours', apiErrorText(e)),
   });
 
+  const current = saved.data;
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Office hours">
-      <h2 className="font-display text-base font-semibold text-text">Office hours and holidays</h2>
-      <p className="text-sm text-text-muted">Pickup and return must be on an office day within these hours. A rental can run through closed days, like Saturday to Monday.</p>
-      {saved.data === null && !draft && (
-        <p className="text-sm text-text-muted">Not set: bookings are accepted any day, any time.</p>
-      )}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Input label="Opens" type="time" value={cal.openTime} onChange={(e) => edit({ openTime: e.target.value })} />
-        <Input label="Closes" type="time" value={cal.closeTime} onChange={(e) => edit({ closeTime: e.target.value })} />
-      </div>
-      <fieldset className="flex flex-wrap gap-3">
-        <legend className="mb-1 text-sm font-medium text-text">Open days</legend>
-        {DAY_NAMES.map((name, day) => (
-          <label key={name} className="flex items-center gap-1 text-sm text-text">
-            <input
-              type="checkbox"
-              checked={cal.openDays.includes(day)}
-              onChange={(e) =>
-                edit({ openDays: e.target.checked ? [...cal.openDays, day].sort() : cal.openDays.filter((d) => d !== day) })
-              }
-            />
-            {name}
-          </label>
-        ))}
-      </fieldset>
-      <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium text-text">Holidays and blackout dates</p>
-        {cal.blackouts.length === 0 && <p className="text-sm text-text-muted">None.</p>}
-        <ul className="flex flex-col gap-1">
-          {cal.blackouts.map((b) => (
-            <li key={b.date} className="flex items-center justify-between gap-2 text-sm text-text">
-              <span>
-                {b.date}
-                {b.label ? ` · ${b.label}` : ''}
-              </span>
-              <Button variant="secondary" onClick={() => edit({ blackouts: cal.blackouts.filter((x) => x.date !== b.date) })}>
-                Remove
+    <>
+      <SummaryCard
+        title="Office hours and holidays"
+        description="Pickup and return must be on an office day within these hours. A rental can run through closed days, like Saturday to Monday."
+        items={
+          current
+            ? [
+                { label: 'Hours', value: `${current.openTime} to ${current.closeTime}` },
+                { label: 'Open days', value: current.openDays.map((d) => DAY_NAMES[d]).join(', ') || 'None' },
+                {
+                  label: 'Holidays and blackouts',
+                  value: current.blackouts.length ? current.blackouts.map((b) => b.date).join(', ') : 'None',
+                },
+              ]
+            : []
+        }
+        action={<EditButton what="office hours" onClick={() => setEditing(true)} />}
+      >
+        {current === null && <p className="text-sm text-text-muted">Not set: bookings are accepted any day, any time.</p>}
+      </SummaryCard>
+      <Modal
+        open={editing}
+        onClose={close}
+        title="Office hours and holidays"
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={close}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              loading={save.isPending}
+              disabled={cal.closeTime <= cal.openTime}
+              onClick={() => save.mutate()}
+            >
+              Save office hours
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input label="Opens" type="time" value={cal.openTime} onChange={(e) => edit({ openTime: e.target.value })} />
+            <Input label="Closes" type="time" value={cal.closeTime} onChange={(e) => edit({ closeTime: e.target.value })} />
+          </div>
+          <fieldset className="flex flex-wrap gap-3">
+            <legend className="mb-1 text-sm font-medium text-text">Open days</legend>
+            {DAY_NAMES.map((name, day) => (
+              <label key={name} className="flex min-h-11 items-center gap-1.5 text-sm text-text">
+                <input
+                  type="checkbox"
+                  checked={cal.openDays.includes(day)}
+                  onChange={(e) =>
+                    edit({ openDays: e.target.checked ? [...cal.openDays, day].sort() : cal.openDays.filter((d) => d !== day) })
+                  }
+                />
+                {name}
+              </label>
+            ))}
+          </fieldset>
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium text-text">Holidays and blackout dates</p>
+            {cal.blackouts.length === 0 && <p className="text-sm text-text-muted">None.</p>}
+            <ul className="flex flex-col gap-1">
+              {cal.blackouts.map((b) => (
+                <li key={b.date} className="flex items-center justify-between gap-2 text-sm text-text">
+                  <span>
+                    <span className="font-mono tabular-nums">{b.date}</span>
+                    {b.label ? ` · ${b.label}` : ''}
+                  </span>
+                  <Button variant="ghost" onClick={() => edit({ blackouts: cal.blackouts.filter((x) => x.date !== b.date) })}>
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+            <div className="grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
+              <Input label="Date" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+              <Input label="Label (optional)" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
+              <Button
+                variant="secondary"
+                disabled={!newDate || cal.blackouts.some((b) => b.date === newDate)}
+                onClick={() => {
+                  edit({ blackouts: [...cal.blackouts, { date: newDate, ...(newLabel.trim() ? { label: newLabel.trim() } : {}) }].sort((a, b) => a.date.localeCompare(b.date)) });
+                  setNewDate('');
+                  setNewLabel('');
+                }}
+              >
+                Add date
               </Button>
-            </li>
-          ))}
-        </ul>
-        <div className="grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
-          <Input label="Date" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
-          <Input label="Label (optional)" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
-          <Button
-            variant="secondary"
-            disabled={!newDate || cal.blackouts.some((b) => b.date === newDate)}
-            onClick={() => {
-              edit({ blackouts: [...cal.blackouts, { date: newDate, ...(newLabel.trim() ? { label: newLabel.trim() } : {}) }].sort((a, b) => a.date.localeCompare(b.date)) });
-              setNewDate('');
-              setNewLabel('');
-            }}
-          >
-            Add date
-          </Button>
+            </div>
+          </div>
         </div>
-      </div>
-      <div>
-        <Button
-          variant="primary"
-          loading={save.isPending}
-          disabled={cal.closeTime <= cal.openTime}
-          onClick={() => save.mutate()}
-        >
-          Save office hours
-        </Button>
-      </div>
-    </Surface>
+      </Modal>
+    </>
   );
 }
 
@@ -318,41 +357,83 @@ interface BillingSettings {
   minHours: number;
 }
 
-// Hours in a rental day (a daily card is divided by this), the minimum
-// deposit a booking holds, and when to warn that a deposit is running low.
-function BillingSettingsForm() {
+// Draft/save/close for a form over the billing settings row. The deposit
+// block here and the mobilization fees in the price book save the same
+// row, so they share this rather than two copies of it.
+function useBillingSettingsEditor(saved: { title: string; detail?: string }, failed: string) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const saved = useQuery({ queryKey: ['billing-settings'], queryFn: () => apiGet<BillingSettings>('/pricing/billing-settings') });
+  const query = useQuery({ queryKey: ['billing-settings'], queryFn: () => apiGet<BillingSettings>('/pricing/billing-settings') });
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<BillingSettings | null>(null);
-  const current = draft ?? saved.data;
+  const current = draft ?? query.data;
+  const close = () => {
+    setDraft(null);
+    setEditing(false);
+  };
   const save = useMutation({
     mutationFn: () => apiPut('/pricing/billing-settings', current),
     onSuccess: () => {
-      setDraft(null);
+      close();
       void queryClient.invalidateQueries({ queryKey: ['billing-settings'] });
-      toast.success('Billing settings saved');
+      toast.success(saved.title, saved.detail);
     },
-    onError: (e) => toast.error('Could not save billing settings', apiErrorText(e)),
+    onError: (e) => toast.error(failed, apiErrorText(e)),
   });
-  if (!current) return null;
-  const edit = (patch: Partial<BillingSettings>) => setDraft({ ...current, ...patch });
+  const edit = (patch: Partial<BillingSettings>) => {
+    if (current) setDraft({ ...current, ...patch });
+  };
+  return { query, current, draft, editing, open: () => setEditing(true), close, save, edit };
+}
+
+// Hours in a rental day (a daily card is divided by this), the minimum
+// deposit a booking holds, and when to warn that a deposit is running low.
+function BillingSettingsForm() {
+  const form = useBillingSettingsEditor({ title: 'Billing settings saved' }, 'Could not save billing settings');
+  const { current, query } = form;
+  if (query.isError)
+    return <LoadError message={`Billing settings could not be loaded. ${apiErrorText(query.error)}`} onRetry={() => void query.refetch()} />;
+  if (!current) return <Skeleton label="Loading billing settings" />;
+  const saved = query.data ?? current;
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Billing settings">
-      <h2 className="font-display text-base font-semibold text-text">Deposit and billing</h2>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Input label="Hours in a rental day" type="number" min="1" max="24" step="0.5" numeric value={String(current.dailyHours)} onChange={(e) => edit({ dailyHours: Number(e.target.value) })} />
-        <Input label="Minimum deposit (PHP)" type="number" min="0" step="0.01" numeric value={String(current.minDepositPhp)} onChange={(e) => edit({ minDepositPhp: Number(e.target.value) })} />
-        <Input label="Deposit (% of rented hours)" type="number" min="0" max="100" step="0.5" numeric hint="Prepaid and consumed by EDTR hours, not refunded. 50 on a 50-hour rental prepays 25 hours. 0 uses the minimum deposit only." value={String(current.depositPct)} onChange={(e) => edit({ depositPct: Number(e.target.value) })} />
-        <Input label="Low-balance warning (%)" type="number" min="0" max="100" step="1" numeric hint="Warns you and the customer when this much deposit is left." value={String(current.lowBalancePct)} onChange={(e) => edit({ lowBalancePct: Number(e.target.value) })} />
-        <Input label="Minimum rental hours" type="number" min="0" step="1" numeric hint="Customers cannot book fewer hours than this. 0 means only the chosen dates count." value={String(current.minHours)} onChange={(e) => edit({ minHours: Number(e.target.value) })} />
-      </div>
-      <div>
-        <Button variant="primary" loading={save.isPending} disabled={!draft} onClick={() => save.mutate()}>
-          Save billing settings
-        </Button>
-      </div>
-    </Surface>
+    <>
+      <SummaryCard
+        title="Deposit and billing"
+        description="How a rental day is counted, what a booking holds as deposit, and when to warn that it is running low."
+        items={[
+          { label: 'Hours in a rental day', value: saved.dailyHours },
+          { label: 'Minimum deposit', value: formatPeso(saved.minDepositPhp) },
+          { label: 'Deposit (% of rented hours)', value: `${saved.depositPct}%` },
+          { label: 'Low-balance warning', value: `${saved.lowBalancePct}%` },
+          { label: 'Minimum rental hours', value: saved.minHours },
+        ]}
+        action={<EditButton what="deposit and billing" onClick={form.open} />}
+      />
+      <Modal
+        open={form.editing}
+        onClose={form.close}
+        title="Deposit and billing"
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={form.close}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={form.save.isPending} disabled={!form.draft} onClick={() => form.save.mutate()}>
+              Save billing settings
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input label="Hours in a rental day" type="number" min="1" max="24" step="0.5" numeric value={String(current.dailyHours)} onChange={(e) => form.edit({ dailyHours: Number(e.target.value) })} />
+          <Input label="Minimum deposit (PHP)" type="number" min="0" step="0.01" numeric value={String(current.minDepositPhp)} onChange={(e) => form.edit({ minDepositPhp: Number(e.target.value) })} />
+          <Input label="Deposit (% of rented hours)" type="number" min="0" max="100" step="0.5" numeric hint="Prepaid and consumed by EDTR hours, not refunded. 50 on a 50-hour rental prepays 25 hours. 0 uses the minimum deposit only." value={String(current.depositPct)} onChange={(e) => form.edit({ depositPct: Number(e.target.value) })} />
+          <Input label="Low-balance warning (%)" type="number" min="0" max="100" step="1" numeric hint="Warns you and the customer when this much deposit is left." value={String(current.lowBalancePct)} onChange={(e) => form.edit({ lowBalancePct: Number(e.target.value) })} />
+          <Input label="Minimum rental hours" type="number" min="0" step="1" numeric hint="Customers cannot book fewer hours than this. 0 means only the chosen dates count." value={String(current.minHours)} onChange={(e) => form.edit({ minHours: Number(e.target.value) })} />
+        </div>
+      </Modal>
+    </>
   );
 }
 
@@ -367,16 +448,17 @@ const TEST_EMAIL_LABELS: Record<(typeof TEST_EMAIL_TYPES)[number], string> = {
   payment_amount_mismatch: 'Staff: amount mismatch',
 };
 
-function TestEmailForm() {
+function TestEmailModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const toast = useToast();
   const [to, setTo] = useState('');
   const [type, setType] = useState<(typeof TEST_EMAIL_TYPES)[number]>('payment_received');
   const send = useMutation({
     mutationFn: () => apiPost<{ sent: boolean; delivered: boolean }>('/notifications/test-email', { to, type }),
-    onSuccess: (res) =>
-      res.delivered
-        ? toast.success('Test email sent', `Check ${to}.`)
-        : toast.success('Test email logged', 'No email provider is set up here, so it went to the API log instead.'),
+    onSuccess: (res) => {
+      onClose();
+      if (res.delivered) toast.success('Test email sent', `Check ${to}.`);
+      else toast.success('Test email logged', 'No email provider is set up here, so it went to the API log instead.');
+    },
     onError: (e) => toast.error('Could not send the test email', apiErrorText(e)),
   });
   function onSubmit(event: FormEvent) {
@@ -384,31 +466,33 @@ function TestEmailForm() {
     send.mutate();
   }
   return (
-    <Surface radius="md" elevation="sm" className="p-4" aria-label="Test email">
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div>
-          <h2 className="font-display text-base font-semibold text-text">Test email notifications</h2>
-          <p className="text-sm text-text-muted">
-            Sends a sample with your storefront logo and brand color, using made-up booking details.
-          </p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input label="Send to" id="test-email-to" type="email" required value={to} onChange={(e) => setTo(e.target.value)} />
-          <Select label="Email" id="test-email-type" value={type} onChange={(e) => setType(e.target.value as typeof type)}>
-            {TEST_EMAIL_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {TEST_EMAIL_LABELS[t]}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <Button type="submit" variant="primary" loading={send.isPending}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Send a test email"
+      description="A sample with your storefront logo and brand color, using made-up booking details."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="test-email" variant="primary" loading={send.isPending}>
             Send test email
           </Button>
-        </div>
+        </>
+      }
+    >
+      <form id="test-email" onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+        <Input label="Send to" id="test-email-to" type="email" required value={to} onChange={(e) => setTo(e.target.value)} />
+        <Select label="Email" id="test-email-type" value={type} onChange={(e) => setType(e.target.value as typeof type)}>
+          {TEST_EMAIL_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {TEST_EMAIL_LABELS[t]}
+            </option>
+          ))}
+        </Select>
       </form>
-    </Surface>
+    </Modal>
   );
 }
 
@@ -416,40 +500,58 @@ function TestEmailForm() {
 // every client, on every booking's quote. Trucking has no mob/demob (it is
 // the trip). Saved with the rest of the billing settings.
 export function RentalFeesForm() {
-  const toast = useToast();
-  const queryClient = useQueryClient();
-  const saved = useQuery({ queryKey: ['billing-settings'], queryFn: () => apiGet<BillingSettings>('/pricing/billing-settings') });
-  const [draft, setDraft] = useState<BillingSettings | null>(null);
-  const current = draft ?? saved.data;
-  const save = useMutation({
-    mutationFn: () => apiPut('/pricing/billing-settings', current),
-    onSuccess: () => {
-      setDraft(null);
-      void queryClient.invalidateQueries({ queryKey: ['billing-settings'] });
-      toast.success('Mobilization fees saved', 'New quotes use them from now on.');
-    },
-    onError: (e) => toast.error('Could not save the fees', apiErrorText(e)),
-  });
-  if (!current) return null;
-  const edit = (patch: Partial<BillingSettings>) => setDraft({ ...current, ...patch });
+  const form = useBillingSettingsEditor(
+    { title: 'Mobilization fees saved', detail: 'New quotes use them from now on.' },
+    'Could not save the fees',
+  );
+  const { current, query } = form;
+  if (query.isError)
+    return <LoadError message={`The fees could not be loaded. ${apiErrorText(query.error)}`} onRetry={() => void query.refetch()} />;
+  if (!current) return <Skeleton label="Loading fees" />;
+  const saved = query.data ?? current;
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Mobilization and demobilization">
-      <div>
-        <h2 className="font-display text-base font-semibold text-text">Mobilization and demobilization</h2>
-        <p className="text-sm text-text-muted">Fixed fees added to every equipment rental quote. Not charged on trucking.</p>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Input label="Mobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Delivery of the machine to the site." value={String(current.mobilizationPhp)} onChange={(e) => edit({ mobilizationPhp: Number(e.target.value) })} />
-        <Input label="Demobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Pick-up at the end of the hire." value={String(current.demobilizationPhp)} onChange={(e) => edit({ demobilizationPhp: Number(e.target.value) })} />
-      </div>
-      <div>
-        <Button variant="primary" loading={save.isPending} disabled={!draft} onClick={() => save.mutate()}>
-          Save fees
-        </Button>
-      </div>
-    </Surface>
+    <>
+      <SummaryCard
+        title="Mobilization and demobilization"
+        description="Fixed fees added to every equipment rental quote. Not charged on trucking."
+        items={[
+          { label: 'Mobilization', value: formatPeso(saved.mobilizationPhp) },
+          { label: 'Demobilization', value: formatPeso(saved.demobilizationPhp) },
+        ]}
+        action={<EditButton what="mobilization fees" onClick={form.open} />}
+      />
+      <Modal
+        open={form.editing}
+        onClose={form.close}
+        title="Mobilization and demobilization"
+        footer={
+          <>
+            <Button variant="secondary" onClick={form.close}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={form.save.isPending} disabled={!form.draft} onClick={() => form.save.mutate()}>
+              Save fees
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input label="Mobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Delivery of the machine to the site." value={String(current.mobilizationPhp)} onChange={(e) => form.edit({ mobilizationPhp: Number(e.target.value) })} />
+          <Input label="Demobilization (PHP)" type="number" min="0" step="0.01" numeric hint="Pick-up at the end of the hire." value={String(current.demobilizationPhp)} onChange={(e) => form.edit({ demobilizationPhp: Number(e.target.value) })} />
+        </div>
+      </Modal>
+    </>
   );
 }
+
+const PRICING_FIELDS = [
+  ['operatorHourlyPhp', 'Operator (PHP per hour)'],
+  ['maintenanceHourlyPhp', 'Maintenance (PHP per hour)'],
+  ['fuelLPerHour', 'Fuel burn (L per hour)'],
+  ['fuelLPerKm', 'Fuel burn (L per km)'],
+  ['transportPhpPerKm', 'Transport (PHP per km)'],
+  ['bufferPct', 'Buffer (%)'],
+] as const;
 
 // The operating inputs every equipment line is priced with: operator and
 // maintenance per hour, fuel burn, transport per km and the buffer. The
@@ -458,24 +560,22 @@ export function PricingParametersForm() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<PricingParametersRow | null>('/pricing/parameters') });
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, string> | null>(null);
-  const fields = [
-    ['operatorHourlyPhp', 'Operator (PHP per hour)'],
-    ['maintenanceHourlyPhp', 'Maintenance (PHP per hour)'],
-    ['fuelLPerHour', 'Fuel burn (L per hour)'],
-    ['fuelLPerKm', 'Fuel burn (L per km)'],
-    ['transportPhpPerKm', 'Transport (PHP per km)'],
-    ['bufferPct', 'Buffer (%)'],
-  ] as const;
   const fromSaved = (p: PricingParametersRow | null | undefined): Record<string, string> =>
     Object.fromEntries(
-      fields.map(([key]) => {
+      PRICING_FIELDS.map(([key]) => {
         const raw = p?.[key];
         if (raw == null) return [key, ''];
         return [key, key === 'bufferPct' ? String(Number(raw) * 100) : String(Number(raw))];
       }),
     );
-  const current = draft ?? fromSaved(params.data);
+  const saved = fromSaved(params.data);
+  const current = draft ?? saved;
+  const close = () => {
+    setDraft(null);
+    setEditing(false);
+  };
   const save = useMutation({
     mutationFn: () =>
       apiPost('/pricing/parameters', {
@@ -492,40 +592,57 @@ export function PricingParametersForm() {
           : {}),
       }),
     onSuccess: () => {
-      setDraft(null);
+      close();
       void queryClient.invalidateQueries({ queryKey: ['pricing-parameters'] });
       toast.success('Operating costs saved', 'New quotes use them from now on.');
     },
     onError: (e) => toast.error('Could not save operating costs', apiErrorText(e)),
   });
-  const incomplete = fields.some(([key]) => current[key] === '');
+  const incomplete = PRICING_FIELDS.some(([key]) => current[key] === '');
+  if (params.isError)
+    return <LoadError message={`Operating costs could not be loaded. ${apiErrorText(params.error)}`} onRetry={() => void params.refetch()} />;
+  if (params.isPending) return <Skeleton label="Loading operating costs" />;
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Operating costs">
-      <div>
-        <h2 className="font-display text-base font-semibold text-text">Operating costs</h2>
-        <p className="text-sm text-text-muted">Added to each machine&apos;s rent on every quote. Transport and fuel per km also price trucking trips.</p>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {fields.map(([key, label]) => (
-          <Input
-            key={key}
-            label={label}
-            type="number"
-            min="0"
-            {...(key === 'bufferPct' ? { max: '100' } : {})}
-            step="0.01"
-            numeric
-            value={current[key] ?? ''}
-            onChange={(e) => setDraft({ ...current, [key]: e.target.value })}
-          />
-        ))}
-      </div>
-      <div>
-        <Button variant="primary" loading={save.isPending} disabled={!draft || incomplete} onClick={() => save.mutate()}>
-          Save operating costs
-        </Button>
-      </div>
-    </Surface>
+    <>
+      <SummaryCard
+        title="Operating costs"
+        description="Added to each machine's rent on every quote. Transport and fuel per km also price trucking trips."
+        items={PRICING_FIELDS.map(([key, label]) => ({ label, value: saved[key] === '' ? 'Not set' : saved[key] }))}
+        action={<EditButton what="operating costs" onClick={() => setEditing(true)} />}
+      />
+      <Modal
+        open={editing}
+        onClose={close}
+        title="Operating costs"
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={close}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={save.isPending} disabled={!draft || incomplete} onClick={() => save.mutate()}>
+              Save operating costs
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          {PRICING_FIELDS.map(([key, label]) => (
+            <Input
+              key={key}
+              label={label}
+              type="number"
+              min="0"
+              {...(key === 'bufferPct' ? { max: '100' } : {})}
+              step="0.01"
+              numeric
+              value={current[key] ?? ''}
+              onChange={(e) => setDraft({ ...current, [key]: e.target.value })}
+            />
+          ))}
+        </div>
+      </Modal>
+    </>
   );
 }
 
@@ -561,14 +678,18 @@ export function RateCardsPanel() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-lg font-semibold text-text">Rate cards</h2>
-        <Button onClick={() => setAdding(true)}>Add rate card</Button>
+        <h2 className="font-display text-base font-semibold text-text">Rate cards</h2>
+        <Button onClick={() => setAdding(true)}>
+          <Plus aria-hidden="true" className="h-4 w-4" />
+          Add rate card
+        </Button>
       </div>
       <DataPanel
         title="Rate cards"
         options={rateCardsListQuery(PAGE_SIZE, offset)}
         emptyTitle="No rate cards yet"
         emptyDescription="Add a rate card to make an equipment type quotable."
+        emptyIcon={Receipt}
         isEmpty={(data) => data.total === 0}
         render={(data) => (
           <Table
@@ -617,14 +738,22 @@ export function DieselPriceForm() {
   const queryClient = useQueryClient();
   const latest = useQuery({ queryKey: ['diesel-price'], queryFn: () => apiGet<DieselReading | null>('/pricing/diesel-price') });
   const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<PricingParametersRow | null>('/pricing/parameters') });
+  const [editing, setEditing] = useState(false);
   const [override, setOverride] = useState<string | null>(null);
+  const close = () => {
+    setOverride(null);
+    setEditing(false);
+  };
   const fetchNow = useMutation({
     mutationFn: () => apiPost<DieselReading | null>('/pricing/diesel-price/fetch', {}),
     onSuccess: (reading) => {
       void queryClient.invalidateQueries({ queryKey: ['diesel-price'] });
+      toast.success('Diesel price fetched', reading ? `${formatPeso(reading.pricePhp)} per litre. Save it to use it.` : undefined);
       // Put the fetched average in the field; the admin still saves it.
-      if (reading) setOverride(String(Number(reading.pricePhp)));
-      toast.success('Diesel price fetched', reading ? `${formatPeso(reading.pricePhp)} per litre. Save to use it.` : undefined);
+      if (reading && params.data) {
+        setOverride(String(Number(reading.pricePhp)));
+        setEditing(true);
+      }
     },
     onError: (e) => toast.error('Could not reach GasWatch', apiErrorText(e)),
   });
@@ -643,7 +772,7 @@ export function DieselPriceForm() {
       });
     },
     onSuccess: () => {
-      setOverride(null);
+      close();
       void queryClient.invalidateQueries({ queryKey: ['pricing-parameters'] });
       toast.success('Diesel price saved');
     },
@@ -652,58 +781,86 @@ export function DieselPriceForm() {
   const saved = params.data?.dieselOverridePhp ?? null;
   const value = override ?? (saved !== null ? String(Number(saved)) : '');
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Diesel price">
-      <h2 className="font-display text-base font-semibold text-text">Diesel price</h2>
-      <p className="text-sm text-text-muted">
-        {latest.data
-          ? `National: ${formatPeso(latest.data.pricePhp)} per litre, ${DIESEL_SOURCE[latest.data.source] ?? latest.data.source}, as of ${formatDate(latest.data.observedDate)}. Refreshes every Monday.`
-          : 'No national diesel price on file yet.'}
-      </p>
-      <div>
-        <Button variant="secondary" loading={fetchNow.isPending} onClick={() => fetchNow.mutate()}>
-          Fetch now from GasWatch
-        </Button>
-      </div>
-      {params.data ? (
-        <div className="flex flex-wrap items-end gap-3">
-          <Input
-            label="Your diesel price (PHP per litre)"
-            type="number"
-            min="20"
-            max="150"
-            step="0.01"
-            numeric
-            hint="Leave empty to use the national price."
-            value={value}
-            onChange={(e) => setOverride(e.target.value)}
-          />
-          <Button
-            variant="primary"
-            loading={saveOverride.isPending}
-            disabled={override === null}
-            onClick={() => saveOverride.mutate(value === '' ? undefined : Number(value))}
-          >
-            Save diesel price
-          </Button>
-        </div>
-      ) : (
-        <p className="text-sm text-text-muted">Set up pricing parameters to use your own diesel price.</p>
-      )}
-    </Surface>
+    <>
+      <SummaryCard
+        title="Diesel price"
+        description={
+          latest.data
+            ? `${DIESEL_SOURCE[latest.data.source] ?? latest.data.source}, as of ${formatDate(latest.data.observedDate)}. Refreshes every Monday.`
+            : 'No national diesel price on file yet.'
+        }
+        items={[
+          { label: 'National (per litre)', value: latest.data ? formatPeso(latest.data.pricePhp) : 'None' },
+          { label: 'Yours (per litre)', value: saved !== null ? formatPeso(saved) : 'Uses the national price' },
+        ]}
+        action={
+          <>
+            <Button variant="ghost" loading={fetchNow.isPending} onClick={() => fetchNow.mutate()}>
+              Fetch now from GasWatch
+            </Button>
+            {params.data && <EditButton what="diesel price" onClick={() => setEditing(true)} />}
+          </>
+        }
+      >
+        {!params.data && params.isSuccess && (
+          <p className="text-sm text-text-muted">Set up operating costs to use your own diesel price.</p>
+        )}
+      </SummaryCard>
+      <Modal
+        open={editing}
+        onClose={close}
+        title="Your diesel price"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={close}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              loading={saveOverride.isPending}
+              disabled={override === null}
+              onClick={() => saveOverride.mutate(value === '' ? undefined : Number(value))}
+            >
+              Save diesel price
+            </Button>
+          </>
+        }
+      >
+        <Input
+          label="Your diesel price (PHP per litre)"
+          type="number"
+          min="20"
+          max="150"
+          step="0.01"
+          numeric
+          hint="Leave empty to use the national price."
+          value={value}
+          onChange={(e) => setOverride(e.target.value)}
+        />
+      </Modal>
+    </>
   );
 }
 
 function SettingsPage() {
+  const [testing, setTesting] = useState(false);
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Administration"
-        title="Settings"
-        description="Office hours, deposits, billing and email. Prices live in Quotes, the standard price book."
+        eyebrow="Settings"
+        title="Business settings"
+        description="Office hours, deposits and billing. Prices live in the Price book."
+        actions={
+          <Button variant="secondary" onClick={() => setTesting(true)}>
+            <Mail aria-hidden="true" className="h-4 w-4" />
+            Send test email
+          </Button>
+        }
       />
       <BusinessCalendarForm />
       <BillingSettingsForm />
-      <TestEmailForm />
+      <TestEmailModal open={testing} onClose={() => setTesting(false)} />
     </div>
   );
 }

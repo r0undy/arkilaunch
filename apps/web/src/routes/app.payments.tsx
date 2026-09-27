@@ -14,6 +14,8 @@ import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Modal } from '../components/modal.js';
+import { Tabs } from '../components/tabs.js';
+import { Receipt } from 'lucide-react';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
@@ -81,9 +83,13 @@ export function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) 
           </div>
         ))}
       </dl>
-      {invoice.status === 'issued' && ADJUSTABLE.has(invoice.invoiceType) && <ChangeAmount invoice={invoice} />}
-      {invoice.status === 'issued' && <RecordCash invoice={invoice} />}
-      {invoice.status === 'paid' && invoice.invoiceType !== 'deposit_deduction' && <RefundPayment invoice={invoice} />}
+      {/* One row of actions; each opens its own dialog rather than stacking
+          two money forms inside this one. */}
+      <div className="flex flex-wrap gap-2 border-t border-border pt-3 empty:hidden">
+        {invoice.status === 'issued' && <RecordCash invoice={invoice} />}
+        {invoice.status === 'issued' && ADJUSTABLE.has(invoice.invoiceType) && <ChangeAmount invoice={invoice} />}
+        {invoice.status === 'paid' && invoice.invoiceType !== 'deposit_deduction' && <RefundPayment invoice={invoice} />}
+      </div>
     </div>
   );
 }
@@ -99,14 +105,14 @@ function ChangeAmount({ invoice }: { invoice: InvoiceSummaryResponse }) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState(String(invoice.amount));
   const [reason, setReason] = useState('');
-  const [confirming, setConfirming] = useState(false);
+  const [open, setOpen] = useState(false);
   const value = Number(amount);
   const invalid = !(value >= 1 && value <= invoice.amount) || reason.trim().length < 3;
   const change = useMutation({
     mutationFn: () => apiPost(`/invoices/${invoice.id}/amount`, { amountPhp: value, reason: reason.trim() }),
     onSuccess: () => {
       toast.success('Amount changed', `The customer's next checkout charges ${formatPeso(value)}.`);
-      setConfirming(false);
+      setOpen(false);
       void queryClient.invalidateQueries({ queryKey: ['invoices'] });
     },
     onError: (e) =>
@@ -117,35 +123,58 @@ function ChangeAmount({ invoice }: { invoice: InvoiceSummaryResponse }) {
           : apiErrorText(e),
       ),
   });
+  const close = () => {
+    setOpen(false);
+    setAmount(String(invoice.amount));
+    setReason('');
+  };
   return (
-    <div className="flex flex-col gap-3 border-t border-border pt-3">
-      <Input
-        label="New amount (PHP)"
-        type="number"
-        numeric
-        min={1}
-        max={invoice.amount}
-        step="0.01"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-        error={amount !== '' && !(value >= 1 && value <= invoice.amount) ? `Between ${formatPeso(1)} and ${formatPeso(invoice.amount)}` : undefined}
-      />
-      <Input label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} hint="Saved in the audit log." />
-      <Button variant="secondary" disabled={invalid} onClick={() => setConfirming(true)}>
+    <>
+      <Button variant="secondary" onClick={() => setOpen(true)}>
         Change amount
       </Button>
-      <ConfirmDialog
-        open={confirming}
+      {/* The dialog is the confirm: it states the change in full and takes a
+          deliberate click, never a stray one on the backdrop. */}
+      <Modal
+        open={open}
+        onClose={change.isPending ? () => undefined : close}
         title="Change invoice amount"
-        body={`Lower this invoice from ${formatPeso(invoice.amount)} to ${formatPeso(value)}? The rent comes down first, then the deposit.`}
-        confirmLabel="Change amount"
-        pending={change.isPending}
-        onConfirm={async () => {
-          await change.mutateAsync();
-        }}
-        onCancel={() => setConfirming(false)}
-      />
-    </div>
+        description="Lower what this unpaid invoice charges; it can never go up. The customer's next checkout charges the new amount."
+        size="sm"
+        dismissOnScrim={false}
+        footer={
+          <>
+            <Button variant="secondary" onClick={close} disabled={change.isPending}>
+              Cancel
+            </Button>
+            <Button disabled={invalid} loading={change.isPending} onClick={() => change.mutate()}>
+              Change amount
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Input
+            label="New amount (PHP)"
+            type="number"
+            numeric
+            min={1}
+            max={invoice.amount}
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            error={amount !== '' && !(value >= 1 && value <= invoice.amount) ? `Between ${formatPeso(1)} and ${formatPeso(invoice.amount)}` : undefined}
+          />
+          <Input label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} hint="Saved in the audit log." />
+          {!invalid && (
+            <p className="text-sm text-text">
+              From <span className="font-mono tabular-nums">{formatPeso(invoice.amount)}</span> to{' '}
+              <span className="font-mono font-semibold tabular-nums">{formatPeso(value)}</span>. The rent comes down first, then the deposit.
+            </p>
+          )}
+        </div>
+      </Modal>
+    </>
   );
 }
 
@@ -198,14 +227,14 @@ function RefundPayment({ invoice }: { invoice: InvoiceSummaryResponse }) {
   const toast = useToast();
   const [amount, setAmount] = useState(String(invoice.amount));
   const [reason, setReason] = useState<RefundReason>('requested_by_customer');
-  const [confirming, setConfirming] = useState(false);
+  const [open, setOpen] = useState(false);
   const value = Number(amount);
   const invalid = !(value > 0 && value <= invoice.amount);
   const refund = useMutation({
     mutationFn: () => apiPost(`/invoices/${invoice.id}/refund`, { amountPhp: value, reason }),
     onSuccess: () => {
       toast.success('Refund requested', 'PayMongo is processing it. It appears on the invoice once it clears.');
-      setConfirming(false);
+      setOpen(false);
     },
     onError: (e) =>
       toast.error(
@@ -215,46 +244,73 @@ function RefundPayment({ invoice }: { invoice: InvoiceSummaryResponse }) {
           : apiErrorText(e),
       ),
   });
+  const close = () => {
+    setOpen(false);
+    setAmount(String(invoice.amount));
+  };
   return (
-    <div className="flex flex-col gap-3 border-t border-border pt-3">
-      <Input
-        label="Refund amount (PHP)"
-        type="number"
-        numeric
-        min={0.01}
-        max={invoice.amount}
-        step="0.01"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-        error={amount !== '' && invalid ? `Between ${formatPeso(0.01)} and ${formatPeso(invoice.amount)}` : undefined}
-      />
-      <Select label="Reason" value={reason} onChange={(e) => setReason(e.target.value as RefundReason)}>
-        {REFUND_REASONS.map((r) => (
-          <option key={r} value={r}>
-            {REASON_LABELS[r]}
-          </option>
-        ))}
-      </Select>
-      <Button variant="secondary" disabled={invalid} onClick={() => setConfirming(true)}>
+    <>
+      <Button variant="secondary" onClick={() => setOpen(true)}>
         Refund through PayMongo
       </Button>
-      <ConfirmDialog
-        open={confirming}
+      <Modal
+        open={open}
+        onClose={refund.isPending ? () => undefined : close}
         title="Refund payment"
-        body={`Refund ${formatPeso(value)} to the customer through PayMongo? This cannot be undone.`}
-        confirmLabel="Refund"
-        pending={refund.isPending}
-        onConfirm={async () => {
-          await refund.mutateAsync();
-        }}
-        onCancel={() => setConfirming(false)}
-      />
-    </div>
+        description="PayMongo returns the money to the customer's wallet, bank or card. It shows on the invoice once PayMongo confirms it."
+        size="sm"
+        dismissOnScrim={false}
+        footer={
+          <>
+            <Button variant="secondary" onClick={close} disabled={refund.isPending}>
+              Cancel
+            </Button>
+            <Button variant="destructive" disabled={invalid} loading={refund.isPending} onClick={() => refund.mutate()}>
+              Refund
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Input
+            label="Refund amount (PHP)"
+            type="number"
+            numeric
+            min={0.01}
+            max={invoice.amount}
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            error={amount !== '' && invalid ? `Between ${formatPeso(0.01)} and ${formatPeso(invoice.amount)}` : undefined}
+          />
+          <Select label="Reason" value={reason} onChange={(e) => setReason(e.target.value as RefundReason)}>
+            {REFUND_REASONS.map((r) => (
+              <option key={r} value={r}>
+                {REASON_LABELS[r]}
+              </option>
+            ))}
+          </Select>
+          {!invalid && (
+            <p className="text-sm text-text">
+              Refund <span className="font-mono font-semibold tabular-nums">{formatPeso(value)}</span> to the customer. This cannot be undone.
+            </p>
+          )}
+        </div>
+      </Modal>
+    </>
   );
 }
 
+type InvoiceFilter = 'all' | 'issued' | 'paid';
+const INVOICE_FILTERS: Array<{ id: InvoiceFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'issued', label: 'Unpaid' },
+  { id: 'paid', label: 'Paid' },
+];
+
 function PaymentsPage() {
   const [offset, setOffset] = useState(0);
+  const [filter, setFilter] = useState<InvoiceFilter>('all');
   const [selected, setSelected] = useState<InvoiceSummaryResponse | null>(null);
 
   return (
@@ -264,11 +320,21 @@ function PaymentsPage() {
         title="Invoices"
         description="Deposits taken and hours billed against them."
       />
+      <Tabs
+        label="Invoice status"
+        items={INVOICE_FILTERS}
+        value={filter}
+        onChange={(next) => {
+          setFilter(next);
+          setOffset(0);
+        }}
+      />
       <DataPanel
         title="Invoices"
-        options={invoicesQueries.list(PAGE_SIZE, offset)}
-        emptyTitle="No invoices yet"
-        emptyDescription="Invoices appear once a reconciliation is approved and a deduction is posted."
+        options={invoicesQueries.list(PAGE_SIZE, offset, filter === 'all' ? undefined : filter)}
+        emptyTitle={filter === 'all' ? 'No invoices yet' : `No ${filter === 'issued' ? 'unpaid' : 'paid'} invoices`}
+        emptyDescription="Invoices appear once a booking is confirmed or a reconciliation is approved and a deduction is posted."
+        emptyIcon={Receipt}
         isEmpty={(data) => data.total === 0}
         render={(data) => (
           <Table

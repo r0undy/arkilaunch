@@ -18,6 +18,7 @@ import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Modal } from '../components/modal.js';
 import { StatusBadge } from '../components/status-badge.js';
+import { Users } from 'lucide-react';
 
 interface UserRow {
   id: string;
@@ -129,6 +130,7 @@ function UserActions({ user }: { user: UserRow }) {
   const [pendingRole, setPendingRole] = useState<AssignableRole | null>(null);
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const [confirmingReactivate, setConfirmingReactivate] = useState(false);
   const toast = useToast();
 
   const changeRole = useMutation({
@@ -214,7 +216,7 @@ function UserActions({ user }: { user: UserRow }) {
         <Button
           variant="secondary"
           size="field"
-          onClick={() => reactivate.mutate()}
+          onClick={() => setConfirmingReactivate(true)}
           loading={reactivate.isPending}
         >
           Reactivate
@@ -280,6 +282,24 @@ function UserActions({ user }: { user: UserRow }) {
       />
 
       <ConfirmDialog
+        open={confirmingReactivate}
+        title="Restore this person's access?"
+        tone="approve"
+        confirmLabel="Restore access"
+        pending={reactivate.isPending}
+        body={
+          <p>
+            <strong>{user.email}</strong> can sign in again as {formatRole(user.roleName).toLowerCase()}.
+          </p>
+        }
+        onConfirm={() => {
+          reactivate.mutate();
+          setConfirmingReactivate(false);
+        }}
+        onCancel={() => setConfirmingReactivate(false)}
+      />
+
+      <ConfirmDialog
         open={confirmingReset}
         title="Reset this password?"
         tone="danger"
@@ -322,7 +342,7 @@ function ManageUsersPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        eyebrow="Administration"
+        eyebrow="Settings"
         title="People"
         description="Manage teammates, roles, and access."
         actions={<Button onClick={() => setInviting(true)}>Invite a user</Button>}
@@ -333,6 +353,7 @@ function ManageUsersPage() {
         options={usersListQuery(PAGE_SIZE, offset)}
         emptyTitle="No users yet"
         emptyDescription="Invite your first teammate."
+        emptyIcon={Users}
         isEmpty={(data) => data.total === 0}
         render={(data) => (
           <Table
