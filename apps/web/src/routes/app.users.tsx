@@ -223,7 +223,7 @@ function UserActions({ user }: { user: UserRow }) {
         </Button>
       ) : (
         <Button
-          variant="destructive"
+          variant="secondary"
           size="field"
           onClick={() => setConfirmingDeactivate(true)}
           loading={deactivate.isPending}
