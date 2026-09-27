@@ -27,7 +27,7 @@ import {
   type RequestContext,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
-import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
+import { notifyBookingCustomer, notifyStaff, notifyUser } from '../common/notify-customer.js';
 import { customerOwnsInvoice, ownsCustomer } from '../common/customer-scope.js';
 import { resolveBookingRef } from '../common/booking-ref.js';
 import { checkoutReturnOrigin } from './return-origin.js';
@@ -483,7 +483,17 @@ export class PaymentsService {
       await notifyBookingCustomer(tx, tenantId, invoice.rentalId, 'payment_received', { invoice_id: invoiceId });
     }
     if (invoice?.truckRequestId) {
-      await tx.update(truckRequests).set({ status: 'paid' }).where(eq(truckRequests.id, invoice.truckRequestId));
+      const [request] = await tx
+        .update(truckRequests)
+        .set({ status: 'paid' })
+        .where(eq(truckRequests.id, invoice.truckRequestId))
+        .returning({ requestedBy: truckRequests.requestedBy });
+      if (request?.requestedBy) {
+        await notifyUser(tx, tenantId, request.requestedBy, 'payment_received', {
+          truck_request_id: invoice.truckRequestId,
+          invoice_id: invoiceId,
+        });
+      }
     }
   }
 

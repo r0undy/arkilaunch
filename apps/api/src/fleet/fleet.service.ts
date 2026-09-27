@@ -70,15 +70,8 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 // the same fleet is already served anonymously by GET /catalog/equipment.
 // Keys stay tenant-prefixed and UUID-suffixed so they are not enumerable.
 // Recorded in docs/cr-arkilaunch-equipment-crud.md.
-export function publicPhotoUrl(key: string | null): string | null {
-  if (!key) return null;
-  const base = process.env.SUPABASE_URL?.replace(/\/$/, '');
-  const bucket = process.env.SUPABASE_STORAGE_BUCKET_EQUIPMENT ?? 'equipment-photos';
-  // No SUPABASE_URL configured (unit tests, local runs without storage) is
-  // not an error: the row simply has no renderable photo.
-  if (!base) return null;
-  return `${base}/storage/v1/object/public/${bucket}/${key}`;
-}
+import { publicPhotoUrl } from '@arkilaunch/db';
+export { publicPhotoUrl };
 
 function toEquipmentResponse(row: typeof equipment.$inferSelect): EquipmentResponse {
   return {
