@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, useRouterState } from '@tanstack/react-router';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
+import { parseBookingCode } from '@arkilaunch/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { describeNotification, feedAreaOf, notificationQueries } from './notification-feed.js';
 import { apiPatch } from '../lib/api-client.js';
 import { formatStatus } from '../lib/format.js';
-import { ShoppingCart } from 'lucide-react';
+import { Search, ShoppingCart } from 'lucide-react';
 import { clearTokens } from '../lib/auth-client.js';
 import { useCart } from '../lib/cart-client.js';
 import { getCurrentRole, homeHref } from '../lib/guards.js';
@@ -12,6 +13,51 @@ import { edtrQueries, notificationsQueries } from '../lib/queries.js';
 import { StatusPill } from './status-pill.js';
 import { applicationsListQuery } from './application-actions.js';
 import { AlertIcon, BellIcon, LogOutIcon } from './icons.js';
+
+// Staff jump straight to a booking by its code (EQR-/TRK-), from any page.
+// Only a whole, valid code navigates; anything else says what it expects.
+function BookingJump() {
+  const navigate = useNavigate();
+  const [value, setValue] = useState('');
+  const [invalid, setInvalid] = useState(false);
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const code = value.trim().toUpperCase();
+    if (!parseBookingCode(code)) {
+      setInvalid(true);
+      return;
+    }
+    setValue('');
+    setInvalid(false);
+    void navigate({ to: '/app/bookings', search: { open: code } });
+  }
+  return (
+    <form role="search" onSubmit={submit} className="relative hidden w-full max-w-xs md:block">
+      <label htmlFor="booking-jump" className="sr-only">
+        Open a booking by code
+      </label>
+      <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+      <input
+        id="booking-jump"
+        type="search"
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setInvalid(false);
+        }}
+        placeholder="EQR-2026-0001 or TRK-..."
+        aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? 'booking-jump-error' : undefined}
+        className="min-h-10 w-full rounded-md border border-border bg-bg pl-9 pr-3 font-mono text-sm text-text placeholder:font-sans placeholder:text-text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring aria-[invalid]:border-error"
+      />
+      {invalid && (
+        <p id="booking-jump-error" role="alert" className="absolute left-0 top-full mt-1 rounded-sm bg-surface px-2 py-1 text-xs text-error shadow-md">
+          Enter a full booking code, like EQR-2026-0001.
+        </p>
+      )}
+    </form>
+  );
+}
 
 export interface AppBarProps {
   tenantLabel: string;
@@ -161,7 +207,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   const isCustomer = role === 'customer';
   const notificationsPath = isCustomer ? '/account/notifications' : '/app/notifications';
 
-  const notifications = useQuery({ ...notificationsQueries.list(), retry: false });
+  const notifications = useQuery({ ...notificationsQueries.unreadCount(), retry: false });
   // GET /edtr is staff-only, so this fired a guaranteed 403 on every page a
   // customer loaded -- a console error and a wasted round trip each time,
   // for a badge they can never see. The bar has rendered in the account
@@ -170,8 +216,9 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   // The platform admin runs no tenant's field logs; its queue is the company
   // applications waiting on a decision, so the pill counts those instead.
   const isPlatformAdmin = role === 'platform_admin';
+  const isStaff = role === 'admin' || role === 'owner';
   const edtrList = useQuery({
-    ...edtrQueries.list(),
+    ...edtrQueries.reviewCount(),
     retry: false,
     // The queue is staff-only (edtr:read); a timekeeper submits and does not read it.
     enabled: !isCustomer && !isPlatformAdmin && role !== 'timekeeper',
@@ -186,14 +233,8 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   // is shared with the admin shell.
   const cartCount = useCart().length;
 
-  const unreadItems = notifications.data?.items;
-  const unreadCount = unreadItems ? unreadItems.filter((n) => n.status === 'unread').length : null;
-  const reviewItems = edtrList.data?.items as { status?: string }[] | undefined;
-  const reviewQueueCount = isPlatformAdmin
-    ? (applications.data?.total ?? null)
-    : reviewItems
-      ? reviewItems.filter((e) => e.status === 'review').length
-      : null;
+  const unreadCount = notifications.data?.total ?? null;
+  const reviewQueueCount = isPlatformAdmin ? (applications.data?.total ?? null) : (edtrList.data?.total ?? null);
   const reviewQueueLabel = isPlatformAdmin ? 'Applications' : 'Review queue';
 
   return (
@@ -217,9 +258,22 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             </svg>
           </button>
         )}
-        <Link to={homeHref()} className="truncate font-display text-base font-semibold text-text" aria-label={`${tenantLabel} home`}>
-          {tenantLabel}
+        <Link
+          to={homeHref()}
+          className="flex min-w-0 items-center gap-2 font-display text-base font-semibold text-text"
+          aria-label={`${tenantLabel} home`}
+        >
+          {/* The tenant's initial on its own primary: the mark leads the bar
+              (BRAND.md) even for a tenant with no uploaded logo. */}
+          <span
+            aria-hidden
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary font-display text-sm font-semibold text-on-primary"
+          >
+            {tenantLabel.trim().charAt(0).toUpperCase() || 'A'}
+          </span>
+          <span className="truncate">{tenantLabel}</span>
         </Link>
+        {isStaff && <BookingJump />}
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">

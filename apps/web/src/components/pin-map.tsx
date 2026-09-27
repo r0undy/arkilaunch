@@ -63,7 +63,7 @@ export function PinMap({ label, value, onChange }: { label: string; value: LatLn
   return (
     <div className="flex flex-col gap-1">
       <span className="text-sm font-medium text-text">{label}</span>
-      <div ref={el} role="application" aria-label={`${label} map`} className="h-56 w-full rounded-mk-sm border border-border" />
+      <div ref={el} role="application" aria-label={`${label} map`} className="h-56 w-full rounded-md border border-border" />
       <span className="text-xs text-text-muted">
         {value ? `Pinned at ${value.lat.toFixed(5)}, ${value.lng.toFixed(5)}` : 'Click the map to pin the exact spot.'}
       </span>
