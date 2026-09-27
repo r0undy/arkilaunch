@@ -71,3 +71,85 @@ export function pageTitle(pathname: string, name: string, detail?: string): stri
   const page = PAGE_TITLES[path];
   return page ? `${page} | ${name}` : name;
 }
+
+// Public storefront pages: the only paths a crawler is asked to index. The
+// account, staff and sign-in routes keep the shell's noindex.
+const INDEXABLE = ['/', '/equipment', '/contact', '/help', '/terms', '/privacy'];
+
+export function isIndexable(pathname: string): boolean {
+  const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
+  return INDEXABLE.includes(path) || /^\/equipment\/[^/]+$/.test(path);
+}
+
+// Tenant-written strings go into attributes and a <script>: escape both.
+function attr(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// A detail page's own facts, when the edge could fetch them.
+export interface PageDetail {
+  title: string;
+  description: string;
+  imageUrl: string | null;
+}
+
+// The <head> tags a tenant's page gets at the edge (CR: tenant-brand-kit):
+// description, canonical, Open Graph/Twitter, favicon, theme color, and the
+// Organization JSON-LD on the home page. Only the tenant's own row feeds it.
+export function headTags(t: CatalogTenant, url: URL, detail?: PageDetail | null): string {
+  const path = url.pathname.length > 1 ? url.pathname.replace(/\/$/, '') : url.pathname;
+  const canonical = `${url.origin}${path === '/' ? '/' : path}`;
+  const title = pageTitle(path, t.name, detail?.title) ?? t.name;
+  const description =
+    detail?.description ?? t.tagline ?? t.about?.slice(0, 160) ?? `Heavy equipment rentals from ${t.name}.`;
+  const image = detail?.imageUrl ?? t.heroUrl ?? t.iconUrl ?? t.logoUrl;
+  const icon = t.iconUrl ?? t.logoUrl;
+  const theme = t.headerColor ?? t.primaryColor;
+  const meta = (key: 'name' | 'property', name: string, content: string) =>
+    `<meta ${key}="${name}" content="${attr(content)}" />`;
+  const tags = [
+    meta('name', 'description', description),
+    `<link rel="canonical" href="${attr(canonical)}" />`,
+    meta('property', 'og:type', 'website'),
+    meta('property', 'og:site_name', t.name),
+    meta('property', 'og:title', title),
+    meta('property', 'og:description', description),
+    meta('property', 'og:url', canonical),
+    meta('name', 'twitter:card', t.heroUrl && !detail?.imageUrl ? 'summary_large_image' : 'summary'),
+  ];
+  if (image) tags.push(meta('property', 'og:image', image));
+  if (icon) tags.push(`<link rel="icon" href="${attr(icon)}" />`, `<link rel="apple-touch-icon" href="${attr(icon)}" />`);
+  if (theme) tags.push(meta('name', 'theme-color', theme));
+  if (path === '/') {
+    const org: Record<string, unknown> = { '@context': 'https://schema.org', '@type': 'Organization', name: t.name, url: canonical };
+    if (t.logoUrl ?? t.iconUrl) org.logo = t.logoUrl ?? t.iconUrl;
+    if (description) org.description = description;
+    if (t.phone) org.telephone = t.phone;
+    if (t.contactEmail) org.email = t.contactEmail;
+    if (t.address || t.city || t.province) {
+      org.address = {
+        '@type': 'PostalAddress',
+        ...(t.address ? { streetAddress: t.address } : {}),
+        ...(t.city ? { addressLocality: t.city } : {}),
+        ...(t.province ? { addressRegion: t.province } : {}),
+        addressCountry: 'PH',
+      };
+    }
+    if (t.facebookUrl) org.sameAs = [t.facebookUrl];
+    // `<` escaped so no tenant string can close the script element.
+    tags.push(`<script type="application/ld+json">${JSON.stringify(org).replace(/</g, '\\u003c')}</script>`);
+  }
+  return tags.join('\n    ');
+}
+
+// The shared robots.txt, with its Sitemap line pointed at this host.
+export function robotsFor(robots: string, origin: string): string {
+  return robots.replace(/^Sitemap:.*$/m, `Sitemap: ${origin}/sitemap.xml`);
+}
+
+// Public pages plus each listed equipment page.
+export function sitemapXml(origin: string, equipmentIds: string[]): string {
+  const paths = [...INDEXABLE, ...equipmentIds.map((id) => `/equipment/${encodeURIComponent(id)}`)];
+  const urls = paths.map((p) => `  <url><loc>${attr(`${origin}${p}`)}</loc></url>`).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+}

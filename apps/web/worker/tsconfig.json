@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["./worker-configuration.d.ts"],
+    "noEmit": true
+  },
+  "include": ["./**/*.ts", "../src/lib/brand.ts"]
+}

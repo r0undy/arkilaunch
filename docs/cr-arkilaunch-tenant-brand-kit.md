@@ -31,9 +31,9 @@ Everything is per tenant. Almara's values live only in Almara's `tenants` row; n
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Fields, migration, API, form, DSD | In progress |
-| 2 | Tenant host renders the brand kit; Almara seed and logo | Not started |
-| 3 | Edge SEO Worker; prerender removed | Not started |
+| 1 | Fields, migration, API, form, DSD | Applied (repo); migration 0060 verified on a throwaway postgres:17, applied twice (idempotent); guards PASS |
+| 2 | Tenant host renders the brand kit; Almara seed and logo | Applied (repo); checked in the browser at 1440px and 360px |
+| 3 | Edge SEO Worker; prerender removed | Applied (repo); checked with `wrangler dev` (tenant head, noindex kept off public paths, robots, sitemap, favicon 302, assets untouched); 9 KiB bundle |
 | 4 | Almara's values applied to the live site (with the user's go-ahead) | Not started |
 
 ## 4. Known gaps
