@@ -1,6 +1,6 @@
 import { hash } from '@node-rs/argon2';
 import { ROLE_CODES } from '@arkilaunch/shared';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../schema/index.js';
 import { makeServiceDb, seedPermissionCatalog } from './permission-catalog.js';
 import {
@@ -36,6 +36,20 @@ async function main() {
     .onConflictDoUpdate({ target: schema.tenants.slug, set: { status: 'active' } })
     .returning();
   if (!tenant) throw new Error('failed to seed the Almara tenant');
+
+  // Almara's storefront brand (Figma 144:1386, CR: tenant-brand-kit). Only
+  // fills what is unset, so edits made in Storefront branding survive a
+  // re-seed. The logo/icon is docs/assets/tenants/almara/logo.png, uploaded
+  // through the form (it lives in storage, not in this row).
+  await db
+    .update(schema.tenants)
+    .set({
+      primaryColor: sql`coalesce(${schema.tenants.primaryColor}, '#5ec2c2')`,
+      headerColor: sql`coalesce(${schema.tenants.headerColor}, '#a23e01')`,
+      font: sql`coalesce(${schema.tenants.font}, 'inter')`,
+      tagline: sql`coalesce(${schema.tenants.tagline}, ${'Precision industrial equipment for every project. High-fidelity logistics and heavy machinery for world-class construction and manufacturing sites.'})`,
+    })
+    .where(eq(schema.tenants.id, tenant.id));
 
   // Every role in ROLE_CODES gets a seeded account, so RBAC can be
   // exercised end-to-end rather than only for the three roles that used to

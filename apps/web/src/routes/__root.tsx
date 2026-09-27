@@ -1,9 +1,10 @@
-import { createRootRoute, Outlet } from '@tanstack/react-router';
+import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { ApiError } from '../lib/api-client.js';
+import { pageTitle } from '../lib/brand.js';
 import { currentHost, platformOrigin } from '../lib/host.js';
-import { applyTenantPrimary, tenantQuery } from '../lib/tenant.js';
+import { applyTenantBrand, tenantQuery } from '../lib/tenant.js';
 
 function TenantNotFound() {
   return (
@@ -21,13 +22,25 @@ function TenantNotFound() {
 
 function RootLayout() {
   const tenant = useQuery(tenantQuery());
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
+  // Same titles the edge Worker writes (lib/brand.ts), so a crawler that
+  // runs this script sees what one reading the HTML does. An equipment page
+  // titles itself once its model has loaded.
   useEffect(() => {
-    if (currentHost.kind === 'platform') document.title = 'ArkiLaunch';
-    else if (tenant.data) document.title = tenant.data.name;
-  }, [tenant.data]);
+    if (currentHost.kind === 'platform') {
+      document.title = 'ArkiLaunch';
+      return;
+    }
+    const title = tenant.data ? pageTitle(pathname, tenant.data.name) : null;
+    if (title) document.title = title;
+  }, [tenant.data, pathname]);
 
-  useEffect(() => applyTenantPrimary(tenant.data?.primaryColor), [tenant.data?.primaryColor]);
+  // Only once the brand has loaded: clearing it while the query is pending
+  // would strip what the Worker painted and flash the ArkiLaunch defaults.
+  useEffect(() => {
+    if (tenant.data) applyTenantBrand(tenant.data);
+  }, [tenant.data]);
 
   if (tenant.error instanceof ApiError && tenant.error.status === 404) return <TenantNotFound />;
   return <Outlet />;

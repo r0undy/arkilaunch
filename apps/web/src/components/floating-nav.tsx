@@ -2,7 +2,7 @@ import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { getAccessToken } from '../lib/auth-client.js';
 import { homeHref } from '../lib/guards.js';
-import { useTenant } from '../lib/tenant.js';
+import { useHeaderColor, useTenant } from '../lib/tenant.js';
 import { Button } from './button.js';
 import { CloseIcon, MenuIcon } from './icons.js';
 
@@ -24,6 +24,17 @@ export function FloatingNav({ className }: { className?: string }) {
   const tenant = useTenant();
   const tenantName = tenant?.name ?? '';
   const signedIn = typeof window !== 'undefined' && Boolean(getAccessToken());
+  // A tenant header color paints the bar (DSD §2.1); links inherit its
+  // black or white text, and the outline/ghost buttons turn black-on-white
+  // (Figma 144:1404 'Sign in'), inline so the variant classes can't win.
+  const bar = useHeaderColor();
+  const inverse = bar ? { backgroundColor: '#ffffff', color: '#000000', borderColor: '#ffffff' } : undefined;
+  const linkClass = (active: boolean) =>
+    bar
+      ? ['underline-offset-4 hover:underline', active ? 'font-semibold underline' : ''].join(' ')
+      : active
+        ? 'font-semibold text-text'
+        : 'text-text-muted hover:text-text';
 
   useEffect(() => {
     function onScroll() {
@@ -42,13 +53,13 @@ export function FloatingNav({ className }: { className?: string }) {
   }, [pathname]);
 
   const authActions = signedIn ? (
-    <Button size="default" variant="secondary" onClick={() => window.location.assign(homeHref())}>
+    <Button size="default" variant="secondary" style={inverse} onClick={() => window.location.assign(homeHref())}>
       Dashboard
     </Button>
   ) : (
     <>
       <Link to="/login">
-        <Button size="default" variant="ghost">
+        <Button size="default" variant="ghost" style={inverse}>
           Sign in
         </Button>
       </Link>
@@ -69,15 +80,17 @@ export function FloatingNav({ className }: { className?: string }) {
         // content sitting just below it. Always matching bg-bg-mk keeps the
         // nav visually part of the page at rest; scrolling only adds the
         // glass blur/shadow/border on top of that same base color.
-        'sticky top-0 z-50 bg-bg-mk transition-shadow duration-[160ms]',
+        'sticky top-0 z-50 transition-shadow duration-[160ms]',
+        bar ? '' : 'bg-bg-mk',
         scrolled || open ? 'shadow-mk-nav backdrop-blur-[24px] border-b border-border-glass' : '',
         className ?? '',
       ].join(' ')}
+      style={bar ?? undefined}
     >
       <div className="flex items-center justify-between px-6 py-4">
         <Link
           to={homeHref()}
-          className="flex items-center gap-2 font-display text-lg font-semibold text-ink-mk"
+          className={`flex items-center gap-2 font-display text-lg font-semibold ${bar ? '' : 'text-ink-mk'}`}
           aria-label={`${tenantName} home`}
         >
           {tenant?.logoUrl && <img src={tenant.logoUrl} alt="" className="h-8 w-auto max-w-[120px] object-contain" />}
@@ -88,7 +101,7 @@ export function FloatingNav({ className }: { className?: string }) {
             <Link
               key={link.to}
               to={link.to}
-              className={pathname === link.to ? 'text-sm font-semibold text-text' : 'text-sm text-text-muted hover:text-text'}
+              className={`text-sm ${linkClass(pathname === link.to)}`}
             >
               {link.label}
             </Link>
@@ -100,7 +113,7 @@ export function FloatingNav({ className }: { className?: string }) {
           onClick={() => setOpen((v) => !v)}
           aria-label={open ? 'Close menu' : 'Open menu'}
           aria-expanded={open}
-          className="flex min-h-11 min-w-11 items-center justify-center rounded-sm text-ink-mk sm:hidden"
+          className={`flex min-h-11 min-w-11 items-center justify-center rounded-sm sm:hidden ${bar ? '' : 'text-ink-mk'}`}
         >
           {open ? <CloseIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
         </button>
@@ -115,7 +128,7 @@ export function FloatingNav({ className }: { className?: string }) {
                 to={link.to}
                 className={[
                   'block min-h-11 w-full py-3 text-base',
-                  pathname === link.to ? 'font-semibold text-text' : 'text-text-muted',
+                  linkClass(pathname === link.to),
                 ].join(' ')}
               >
                 {link.label}
