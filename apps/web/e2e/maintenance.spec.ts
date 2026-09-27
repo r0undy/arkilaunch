@@ -24,10 +24,10 @@ test('admin adds an Others machine, corrects its meter and logs a service that r
 
   const card = page.getByRole('group', { name: serial });
   await card.getByRole('button', { name: 'Report & maintenance' }).click();
-  const dialog = page.getByRole('dialog');
-  // Opens on the unit's report; maintenance is the second tab.
+  const dialog = page.getByRole('dialog', { name: 'E2E Paver' });
+  // Opens on the unit's report; schedules are the second tab.
   await expect(dialog.getByRole('tab', { name: 'Report' })).toHaveAttribute('aria-selected', 'true');
-  await dialog.getByRole('tab', { name: 'Maintenance' }).click();
+  await dialog.getByRole('tab', { name: /^Schedules/ }).click();
   await expect(dialog.getByText('No schedules yet.')).toBeVisible();
 
   // The Engine oil 250 h preset is the default.
@@ -35,9 +35,12 @@ test('admin adds an Others machine, corrects its meter and logs a service that r
   const oil = dialog.getByRole('listitem', { name: 'Engine oil' });
   await expect(oil.getByTestId('hours-since')).toHaveText('0');
 
-  await dialog.getByLabel('Meter reading (hours)').fill('120');
-  await dialog.getByLabel('Reason').fill('Meter read on site');
-  await dialog.getByRole('button', { name: 'Save reading' }).click();
+  await dialog.getByRole('button', { name: 'Correct hour meter' }).click();
+  const meter = page.getByRole('dialog', { name: 'Correct hour meter' });
+  await meter.getByLabel('Meter reading (hours)').fill('120');
+  await meter.getByLabel('Reason').fill('Meter read on site');
+  await meter.getByRole('button', { name: 'Save reading' }).click();
+  await expect(meter).toBeHidden();
   await expect(oil.getByTestId('hours-since')).toHaveText('120');
 
   await oil.getByRole('button', { name: 'Log service' }).click();

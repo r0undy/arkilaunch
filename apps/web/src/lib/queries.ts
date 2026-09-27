@@ -146,10 +146,11 @@ export const trucksQueries = {
 };
 
 export const invoicesQueries = {
-  list: (limit = PAGE_SIZE, offset = 0) =>
+  list: (limit = PAGE_SIZE, offset = 0, status?: 'issued' | 'paid') =>
     queryOptions({
-      queryKey: ['invoices', limit, offset] as const,
-      queryFn: () => apiGet<InvoiceListResponse>(`/invoices?limit=${limit}&offset=${offset}`),
+      queryKey: ['invoices', limit, offset, status ?? 'all'] as const,
+      queryFn: () =>
+        apiGet<InvoiceListResponse>(`/invoices?limit=${limit}&offset=${offset}${status ? `&status=${status}` : ''}`),
     }),
   detail: (invoiceId: string) =>
     queryOptions({
