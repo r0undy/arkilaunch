@@ -54,7 +54,7 @@ function HelpPage() {
   return (
     <div className="flex flex-col gap-6 px-6 py-10 sm:px-10">
       <div>
-        <h1 className="text-2xl font-semibold text-ink-mk">Help center</h1>
+        <h1 className="text-2xl font-semibold text-text">Help center</h1>
         <p className="mt-1 text-sm text-text-muted">
           Reach {tenantName} directly. Someone answers during yard hours.
         </p>

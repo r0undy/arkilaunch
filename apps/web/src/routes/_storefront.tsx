@@ -37,14 +37,7 @@ function StorefrontLayout() {
 
   return (
     <SidebarShell navGroups={ACCOUNT_NAV} tenantLabel={me?.tenantName ?? 'Loading...'}>
-      {/* The catalog's cards are built from the marketing token tier
-          (bg-surface-mk, rounded-mk-*, shadow-mk-card, text-ink-mk), which
-          index.css scopes to [data-tier="marketing"]. Outside that attribute
-          those utilities resolve to nothing and the grid renders unstyled --
-          a silent failure, so the tier travels with the content. */}
-      <div data-tier="marketing" className="-m-4 sm:-m-6">
-        <Outlet />
-      </div>
+      <Outlet />
     </SidebarShell>
   );
 }

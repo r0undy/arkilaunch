@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { storefrontLayoutRoute } from './_storefront.js';
 import { EquipmentCard } from '../components/equipment-card.js';
+import { useShellNav } from '../components/sidebar-shell.js';
+import { PageHeader } from '../components/page-header.js';
 import { SearchFilterBar } from '../components/search-filter-bar.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
@@ -188,15 +190,21 @@ function EquipmentPage() {
   // and three cards squeezed to 201px with the machine names wrapping -- so it
   // stacks under the catalog there rather than crowding it or vanishing.
   const showWeather = weatherInsightsVisible();
+  // In the signed-in shell the main column already pads; public pages pad here.
+  const inShell = useShellNav() !== null;
   return (
     <div
       className={[
-        'grid gap-6 px-6 py-10 sm:px-10',
+        inShell ? 'grid gap-6' : 'grid gap-6 px-4 py-12 sm:px-8',
         showWeather ? 'xl:grid-cols-[1fr_320px] xl:items-start' : '',
       ].join(' ')}
     >
       <div className="flex min-w-0 flex-col gap-6">
-      <h1 className="text-2xl font-semibold text-ink-mk">Equipment for hire</h1>
+      {inShell ? (
+        <PageHeader title="Equipment for hire" />
+      ) : (
+        <h1 className="text-display-md text-text lg:text-display-lg">Equipment for hire</h1>
+      )}
       <SearchFilterBar query={query} onQueryChange={setQuery} />
       {isPending && <Skeleton label="Loading equipment" rows={3} />}
       {isError && (

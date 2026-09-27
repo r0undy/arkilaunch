@@ -9,7 +9,7 @@ function ContactPage() {
   const hasContact = Boolean(place || tenant?.phone || tenant?.contactEmail);
   return (
     <div className="flex flex-col gap-4 px-6 py-10 sm:px-10">
-      <h1 className="text-2xl font-semibold text-ink-mk">Contact</h1>
+      <h1 className="text-2xl font-semibold text-text">Contact</h1>
       {tenant?.about && <p className="max-w-2xl whitespace-pre-line text-sm text-text-muted">{tenant.about}</p>}
       {hasContact ? (
         <dl className="grid max-w-md grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">

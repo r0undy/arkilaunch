@@ -7,130 +7,80 @@ import { Button } from './button.js';
 import { CloseIcon, MenuIcon } from './icons.js';
 
 const LINKS = [
-  { label: 'Equipments', to: '/equipment' },
+  { label: 'Equipment', to: '/equipment' },
   { label: 'Contact', to: '/contact' },
 ];
 
-// DSD §4 FloatingNav (marketing tier): sticky, glass only past scrollY > 24
-// (--blur-mk-nav, --border-glass, --shadow-mk-nav). Rendered here in
-// Yardboard tokens, not SprintForge's cool palette. Below sm, the nav links
-// and auth actions move into a burger-triggered panel -- at 360px baseline
-// width there isn't room for "Almara" + 2 links + 2 buttons on
-// one row.
-export function FloatingNav({ className }: { className?: string }) {
-  const [scrolled, setScrolled] = useState(false);
+// The public top nav (DSD §4, the AWS reference's top-nav): a sticky steel
+// bar, 56px, 14px links on 8px hover tiles, sign-in and a primary pill on the
+// right. A tenant header color paints it instead, and everything on it takes
+// that bar's black or white. Below sm the links and actions move into a burger
+// panel -- at the 360px baseline there is no room for them on one row.
+export function FloatingNav() {
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const tenant = useTenant();
   const tenantName = tenant?.name ?? '';
+  const mark = tenant?.iconUrl ?? tenant?.logoUrl;
   const signedIn = typeof window !== 'undefined' && Boolean(getAccessToken());
-  // A tenant header color paints the bar (DSD §2.1); links inherit its
-  // black or white text, and the outline/ghost buttons turn black-on-white
-  // (Figma 144:1404 'Sign in'), inline so the variant classes can't win.
   const bar = useHeaderColor();
-  const inverse = bar ? { backgroundColor: '#ffffff', color: '#000000', borderColor: '#ffffff' } : undefined;
+  const tile = 'rounded-sm px-3 hover:bg-current/10';
   const linkClass = (active: boolean) =>
-    bar
-      ? ['underline-offset-4 hover:underline', active ? 'font-semibold underline' : ''].join(' ')
-      : active
-        ? 'font-semibold text-text'
-        : 'text-text-muted hover:text-text';
+    ['inline-flex min-h-11 items-center', tile, active ? 'font-medium underline decoration-2 underline-offset-8' : ''].join(' ');
 
-  useEffect(() => {
-    function onScroll() {
-      setScrolled(window.scrollY > 24);
-    }
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  // A route change (following a link from the panel) should close it, same
-  // as any off-canvas menu -- otherwise it's still open, invisibly, on the
-  // page the user just navigated to.
+  // A route change (following a link from the panel) should close it.
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
 
   const authActions = signedIn ? (
-    <Button size="default" variant="secondary" style={inverse} onClick={() => window.location.assign(homeHref())}>
+    <Button variant="primary" onClick={() => window.location.assign(homeHref())}>
       Dashboard
     </Button>
   ) : (
     <>
-      <Link to="/login">
-        <Button size="default" variant="ghost" style={inverse}>
-          Sign in
-        </Button>
+      <Link to="/login" className={`text-sm ${linkClass(false)}`}>
+        Sign in
       </Link>
       <Link to="/signup">
-        <Button size="default" variant="primary">
-          Register
-        </Button>
+        <Button variant="primary">Register</Button>
       </Link>
     </>
   );
 
   return (
-    <header
-      className={[
-        // Idle used to be bg-transparent, which let the marketing frame's
-        // own (slightly darker) background show through right up to the
-        // nav's bottom edge -- a visible seam against the paper-toned
-        // content sitting just below it. Always matching bg-bg-mk keeps the
-        // nav visually part of the page at rest; scrolling only adds the
-        // glass blur/shadow/border on top of that same base color.
-        'sticky top-0 z-50 transition-shadow duration-[160ms]',
-        bar ? '' : 'bg-bg-mk',
-        scrolled || open ? 'shadow-mk-nav backdrop-blur-[24px] border-b border-border-glass' : '',
-        className ?? '',
-      ].join(' ')}
-      style={bar ?? undefined}
-    >
-      <div className="flex items-center justify-between px-6 py-4">
-        <Link
-          to={homeHref()}
-          className={`flex items-center gap-2 text-lg font-semibold ${bar ? '' : 'text-ink-mk'}`}
-          aria-label={`${tenantName} home`}
-        >
-          {tenant?.logoUrl && <img src={tenant.logoUrl} alt="" className="h-8 w-auto max-w-[120px] object-contain" />}
-          {tenantName}
-        </Link>
-        <nav className="hidden items-center gap-6 sm:flex" aria-label="Primary">
-          {LINKS.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className={`text-sm ${linkClass(pathname === link.to)}`}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+    <header className={['sticky top-0 z-50', bar ? '' : 'bg-nav text-text-inverse'].join(' ')} style={bar ?? undefined}>
+      <div className="mx-auto flex min-h-14 max-w-shell items-center justify-between gap-6 px-4 sm:px-8">
+        <div className="flex min-w-0 items-center gap-6">
+          <Link to={homeHref()} className="flex min-w-0 items-center gap-2 text-base font-medium" aria-label={`${tenantName} home`}>
+            {mark && <img src={mark} alt="" className="h-8 w-auto max-w-[120px] object-contain" />}
+            <span className="truncate">{tenantName}</span>
+          </Link>
+          <nav className="hidden items-center gap-1 text-sm sm:flex" aria-label="Primary">
+            {LINKS.map((link) => (
+              <Link key={link.to} to={link.to} className={linkClass(pathname === link.to)}>
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
         <div className="hidden items-center gap-2 sm:flex">{authActions}</div>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-label={open ? 'Close menu' : 'Open menu'}
           aria-expanded={open}
-          className={`flex min-h-11 min-w-11 items-center justify-center rounded-sm sm:hidden ${bar ? '' : 'text-ink-mk'}`}
+          className="flex min-h-11 min-w-11 items-center justify-center rounded-sm hover:bg-current/10 sm:hidden"
         >
           {open ? <CloseIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
         </button>
       </div>
 
       {open && (
-        <div className="flex flex-col gap-1 border-t border-border-glass px-6 pb-6 pt-2 sm:hidden" aria-label="Mobile">
+        <div className="flex flex-col gap-1 border-t border-current/15 px-4 pb-6 pt-2 sm:hidden" aria-label="Mobile">
           <nav className="flex flex-col" aria-label="Primary">
             {LINKS.map((link) => (
-              <Link
-                key={link.to}
-                to={link.to}
-                className={[
-                  'block min-h-11 w-full py-3 text-base',
-                  linkClass(pathname === link.to),
-                ].join(' ')}
-              >
+              <Link key={link.to} to={link.to} className={`w-full text-base ${linkClass(pathname === link.to)}`}>
                 {link.label}
               </Link>
             ))}

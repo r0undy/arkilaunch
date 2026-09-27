@@ -32,31 +32,36 @@ function LandingPage() {
   // into an unbounded grid as the fleet does.
   const PREVIEW_COUNT = 6;
   const preview = equipment.slice(0, PREVIEW_COUNT);
+  const firstPhoto = data?.items.find((eq) => eq.photoUri)?.photoUri;
+  const heroImage = tenant?.heroUrl ?? firstPhoto;
 
   return (
-    <div className="flex flex-col gap-16 px-6 py-10 sm:px-10">
-      <section className="flex flex-col gap-4">
-        {tenant?.heroUrl && (
-          <img src={tenant.heroUrl} alt="" className="aspect-[3/1] w-full rounded-sm object-cover" />
-        )}
-        <h1 className="max-w-2xl text-[28px] font-semibold uppercase leading-[1.15] text-ink-mk sm:text-5xl lg:text-6xl">
-          Industrial fleet management &amp; rentals
-        </h1>
-        <p className="max-w-md border-l-2 border-primary pl-4 text-sm text-text-muted">
-          {tenant?.tagline ??
-            'Handwritten field logs get scanned and reconciled before any peso is deducted. Every quote prices against today’s diesel, not last week’s estimate.'}
-        </p>
-        <div className="flex flex-wrap gap-3">
+    <div className="flex flex-col gap-16 px-4 py-12 sm:px-8 lg:gap-24 lg:py-20">
+      <section className="grid items-center gap-10 lg:grid-cols-2">
+        <div className="flex flex-col gap-5">
+          <h1 className="text-display-lg text-text lg:text-display-xl">Industrial fleet management &amp; rentals</h1>
+          <p className="max-w-xl text-body-lg text-text-muted">
+            {tenant?.tagline ??
+              'Handwritten field logs get scanned and reconciled before any peso is deducted. Every quote prices against today’s diesel, not last week’s estimate.'}
+          </p>
+          <div className="flex flex-wrap gap-3">
           <Button variant="primary" onClick={() => navigate({ to: '/equipment' })}>
             Rent now
           </Button>
           <Button variant="secondary" onClick={() => navigate({ to: '/equipment' })}>
             View fleet
           </Button>
+          </div>
         </div>
+        {/* The AWS hero's right half: the tenant's hero, else its first
+            machine's photo, so the fold never reads as half empty. */}
+        {heroImage && <img src={heroImage} alt="" className="aspect-[4/3] w-full rounded-lg object-cover" />}
       </section>
 
       <section className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <h2 className="text-display-md text-text lg:text-display-lg">Available equipment</h2>
+        </div>
         <SearchFilterBar query={query} onQueryChange={setQuery} />
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {preview.map((eq) => {
@@ -92,7 +97,7 @@ function LandingPage() {
 
       {testimonialData && testimonialData.items.length > 0 && (
         <section className="flex flex-col gap-6">
-          <h2 className="text-2xl font-semibold text-ink-mk">What our customers say</h2>
+          <h2 className="text-display-md text-text lg:text-display-lg">What our customers say</h2>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {testimonialData.items.map((t) => (
               <TestimonialCard key={t.id} testimonial={t} />
