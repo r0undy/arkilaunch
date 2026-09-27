@@ -107,6 +107,8 @@ A component never silently crosses tiers. The tier is set once, on a route wrapp
 
 **Tenant lockup rule (Rule 3):** in the authed app bar and on a tenant's public catalog, the **tenant's** name/mark leads; "Powered by ArkiLaunch" is the secondary line. ArkiLaunch never overrides the tenant identity inside a tenant's own workspace. This rule also governs the Marketing-tier FloatingNav (DESIGN.md §4) if a tenant surface ever reuses it.
 
+**Tenant icon (CR: tenant-brand-kit):** a tenant may upload a square icon beside its logo. On that tenant's host it is the favicon, the apple-touch icon, the app-bar mark and the fallback link-preview image. Without an icon the logo stands in; without either, the app bar keeps the tenant's initial on its primary.
+
 **Clear space:** 1x the mark's bezel height on all sides.
 **Minimum size:** mark 24px (favicon 16px permitted); full lockup wordmark cap-height >= 14px.
 **Approved backgrounds:** page background, surface white, steel black `#10151B` (see DESIGN.md §2 for the exact tokens). On a photo, place on a solid steel scrim; never directly on a busy yard photo.
