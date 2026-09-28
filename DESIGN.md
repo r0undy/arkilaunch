@@ -85,6 +85,8 @@ Palette is high-contrast by construction, verified for WCAG 2.2 AA at the pairin
 
 Signal hues (success/warning/error/weather/recon) hold their hue in dark theme; borders and text lift to keep AA. Theme is toggled by `data-theme` on the root; default is light.
 
+**Public landing motion (CR: platform-landing-motion, 2026-09-28):** the platform landing only. A 400ms feature reveal (80ms stagger, once, IntersectionObserver) and a scroll-snap step carousel (native smooth scroll, no autoplay). Both collapse to instant under `prefers-reduced-motion`.
+
 > **Retired (CR: aws-design-language, 2026-09-28).** The Marketing tier is gone: every screen now uses one token system, the AWS reference's shape, type and elevation on Yardboard's colors. The block below is kept as history; nothing in code reads it.
 
 **Marketing surface tokens (CR: dsd-marketing-tier)**; scoped to `[data-tier="marketing"]`. This is the merged SprintForge shell, re-tinted warm so it reads as one brand with the console rather than a cool, separate skin. `--color-primary` (amber `#F2A100`) stays the single brand accent in this tier too; SprintForge's signature orange `#E34A32` is dropped entirely; it sat between `--weather-orange` (`#D9600A`) and `--color-error` (`#C42B1C`) and would have diluted both semantic scales.
