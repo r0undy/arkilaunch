@@ -8,6 +8,8 @@ export interface PinAddress {
   barangay: string;
   city: string;
   province: string;
+  // The region, only used to tell same-named cities apart (8 San Juans).
+  region: string;
   postalCode: string;
 }
 
@@ -15,14 +17,18 @@ type NominatimAddress = Partial<Record<string, string>>;
 
 // Nominatim's addressdetails, mapped to Philippine address parts. A
 // barangay shows up as quarter, suburb, village or neighbourhood depending
-// on how it was mapped; Metro Manila has no province, only its state.
+// on how it was mapped. Metro Manila has no province: Nominatim puts it
+// under `region` (sometimes `state`), and it is the NCR's one "province".
+const METRO_MANILA = /metro manila|national capital/i;
 export function toPinAddress(address: NominatimAddress): PinAddress {
+  const region = address.region || address.state || '';
   const street = [address.house_number, address.road].filter(Boolean).join(' ');
   return {
     street: street || address.neighbourhood || address.hamlet || '',
     barangay: address.quarter || address.suburb || address.village || address.neighbourhood || '',
     city: address.city || address.town || address.municipality || '',
-    province: address.province || address.state || '',
+    province: address.province || (METRO_MANILA.test(region) ? 'Metro Manila' : address.state) || '',
+    region,
     postalCode: address.postcode ?? '',
   };
 }
@@ -50,24 +56,35 @@ export async function reverseGeocode(lat: number, lng: number, key = 'pin'): Pro
   }
 }
 
-const norm = (name: string) =>
-  name.toLowerCase().replace(/^city of /, '').replace(/ city$/, '').replace(/[^a-z]/g, '');
+const letters = (name: string) => name.toLowerCase().replace(/[^a-z]/g, '');
+const short = (name: string) => letters(name.toLowerCase().replace(/^city of /, '').replace(/ city$/, ''));
+
+// Is the PSGC region the one Nominatim named ("Metro Manila" is the NCR,
+// "Calabarzon" is "CALABARZON (Region IV-A)")?
+function sameRegion(psgc: string, hint: string): boolean {
+  if (!hint) return false;
+  if (METRO_MANILA.test(hint)) return psgc.startsWith('NCR');
+  return letters(psgc).includes(letters(hint));
+}
 
 // The PSGC region/province/city the truck form's pickers use, found from a
-// geocoded city and province; null when the names do not line up.
+// geocoded city, province and region. A name shared by several places
+// ("San Juan", "Quezon" vs "Quezon City") resolves by province, then by
+// region; still ambiguous, it is null rather than a guess.
 export function matchPhLocation(address: PinAddress): PhLocation | null {
-  const city = norm(address.city);
-  if (!city) return null;
-  const province = norm(address.province);
-  let fallback: PhLocation | null = null;
-  for (const region of PH_LOCATIONS) {
-    for (const p of region.provinces) {
-      const hit = p.cities.find((c) => norm(c) === city);
-      if (!hit) continue;
-      const found = { region: region.region, province: p.name, city: hit };
-      if (norm(p.name) === province) return found;
-      fallback ??= found;
-    }
-  }
-  return fallback;
+  if (!short(address.city)) return null;
+  const hits: PhLocation[] = [];
+  for (const region of PH_LOCATIONS)
+    for (const p of region.provinces)
+      for (const c of p.cities)
+        if (short(c) === short(address.city)) hits.push({ region: region.region, province: p.name, city: c });
+  // With no province or region to go on, "Quezon City" still means the
+  // one place of that full name, not the town of Quezon, Isabela.
+  const exact = hits.filter((h) => letters(h.city) === letters(address.city));
+  const province = letters(address.province);
+  return (
+    hits.find((h) => province && letters(h.province) === province) ??
+    hits.find((h) => sameRegion(h.region, address.region) || sameRegion(h.region, address.province)) ??
+    (exact.length === 1 ? exact[0]! : hits.length === 1 ? hits[0]! : null)
+  );
 }

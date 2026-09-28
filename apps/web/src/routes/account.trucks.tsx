@@ -109,9 +109,13 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
     if (which === 'pickup' && !sides.dropoff.pin) setPlacing('dropoff');
     const found = await reverseGeocode(at.lat, at.lng, which);
     if (!found) return;
-    const detail = [found.street, found.barangay && `Brgy. ${found.barangay}`].filter(Boolean).join(', ');
     const place = matchPhLocation(found);
-    update(which, { detail, ...(place ? { place } : {}) });
+    // No sure PSGC match: the pickers clear (a previous pin's province must
+    // not linger) and the geocoded city stays in the street text instead.
+    const detail = [found.street, found.barangay && `Brgy. ${found.barangay}`, !place && found.city]
+      .filter(Boolean)
+      .join(', ');
+    update(which, { detail, place: place ?? EMPTY_LOCATION });
   }
 
   function locateMe() {
