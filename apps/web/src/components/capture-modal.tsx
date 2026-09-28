@@ -216,7 +216,7 @@ export function CaptureModal({
       size="lg"
       footer={
         <>
-          <Button variant="secondary" onClick={handleClose}>
+          <Button variant="ghost" onClick={handleClose}>
             {detail ? 'Done' : 'Cancel'}
           </Button>
           <Button variant="primary" onClick={capture} loading={submitting} disabled={!reportDate}>

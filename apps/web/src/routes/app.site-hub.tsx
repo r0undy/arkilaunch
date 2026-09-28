@@ -633,7 +633,7 @@ function Personnel({ hub, siteId }: { hub: SiteHubResponse; siteId: string }) {
           size="sm"
           footer={
             <>
-              <Button variant="secondary" onClick={() => setAssigning(false)}>
+              <Button variant="ghost" onClick={() => setAssigning(false)}>
                 Cancel
               </Button>
               <Button disabled={!pick} loading={add.isPending} onClick={() => add.mutate(pick)}>

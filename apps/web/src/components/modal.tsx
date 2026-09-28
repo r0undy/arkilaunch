@@ -22,6 +22,8 @@ export interface ModalProps {
   // 'right' is a full-height drawer from the right edge (the booking
   // drawer); same dialog semantics, focus trap and Escape handling.
   placement?: 'center' | 'right';
+  // 'alertdialog' for a confirm that interrupts to ask (ConfirmDialog).
+  role?: 'dialog' | 'alertdialog';
 }
 
 const SIZE_CLASSES: Record<ModalSize, string> = {
@@ -34,6 +36,15 @@ const SIZE_CLASSES: Record<ModalSize, string> = {
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+// Skips what Tab never reaches: the hidden native <select> behind a
+// dropdown (tabIndex -1) and anything in a closed <details> or [hidden].
+function focusables(root: HTMLElement | null): HTMLElement[] {
+  if (!root) return [];
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (el) => el.tabIndex >= 0 && !el.closest('[hidden], details:not([open]) > :not(summary)'),
+  );
+}
+
 export function Modal({
   open,
   onClose,
@@ -44,8 +55,11 @@ export function Modal({
   size = 'md',
   dismissOnScrim = true,
   placement = 'center',
+  role = 'dialog',
 }: ModalProps) {
   const panel = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const foot = useRef<HTMLDivElement>(null);
   const restoreFocusTo = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
@@ -61,7 +75,7 @@ export function Modal({
       // inside a drawer owns Escape and Tab; otherwise one Escape closed
       // both, and the drawer's trap pulled focus out of the confirm.
       const active = document.activeElement;
-      if (!panel.current || !(active instanceof Element) || active.closest('[role="dialog"]') !== panel.current) return;
+      if (!panel.current || !(active instanceof Element) || active.closest('[role="dialog"], [role="alertdialog"]') !== panel.current) return;
       // An open dropdown (components/select.tsx) owns its own Escape: it
       // closes the menu, not the dialog around it.
       if (event.key === 'Escape' && active.getAttribute('role') === 'combobox' && active.getAttribute('aria-expanded') === 'true') return;
@@ -73,7 +87,7 @@ export function Modal({
       if (event.key !== 'Tab' || !panel.current) return;
       // Keep Tab inside the dialog, so focus cannot wander onto the page
       // behind it while it is open.
-      const focusable = Array.from(panel.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+      const focusable = focusables(panel.current);
       if (focusable.length === 0) return;
       const first = focusable[0]!;
       const last = focusable[focusable.length - 1]!;
@@ -96,10 +110,11 @@ export function Modal({
     document.addEventListener('keydown', handleKeyDown, true);
 
     // A dialog nested inside this one (its effect runs first) may already
-    // hold focus; leave it there.
+    // hold focus; leave it there. Otherwise open on the first field, else the
+    // first footer action (Cancel in a confirm), never the dismiss X
+    // (Cloudscape Modal).
     if (!panel.current?.contains(document.activeElement)) {
-      const focusable = panel.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
-      (focusable && focusable.length > 0 ? focusable[0] : panel.current)?.focus();
+      (focusables(body.current)[0] ?? focusables(foot.current)[0] ?? panel.current)?.focus();
     }
 
     return () => {
@@ -126,7 +141,7 @@ export function Modal({
       />
       <div
         ref={panel}
-        role="dialog"
+        role={role}
         aria-modal="true"
         aria-labelledby={titleId}
         {...(description ? { 'aria-describedby': descriptionId } : {})}
@@ -153,16 +168,18 @@ export function Modal({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="-m-1 shrink-0 rounded-sm p-1 text-text-muted hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+            className="-m-2.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-text-muted hover:bg-surface-sunk hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
           >
             <CloseIcon className="h-5 w-5" aria-hidden />
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">{children}</div>
+        <div ref={body} className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          {children}
+        </div>
 
         {footer && (
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border p-4 sm:p-5">
+          <div ref={foot} className="flex flex-wrap items-center justify-end gap-2 border-t border-border p-4 sm:p-5">
             {footer}
           </div>
         )}

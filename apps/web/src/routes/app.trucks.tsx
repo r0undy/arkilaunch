@@ -105,7 +105,7 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
         size="xl"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setEditing(false)}>
+            <Button variant="ghost" onClick={() => setEditing(false)}>
               Cancel
             </Button>
             <Button loading={save.isPending} onClick={() => save.mutate()}>
@@ -316,7 +316,7 @@ export function TollsEditor() {
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setAdding(false)}>
+            <Button variant="ghost" onClick={() => setAdding(false)}>
               Cancel
             </Button>
             <Button loading={add.isPending} disabled={!name.trim() || fee === ''} onClick={() => add.mutate()}>

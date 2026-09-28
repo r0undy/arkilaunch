@@ -374,7 +374,7 @@ export function MaintenanceModal({
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setCorrecting(false)}>
+            <Button variant="ghost" onClick={() => setCorrecting(false)}>
               Cancel
             </Button>
             <Button

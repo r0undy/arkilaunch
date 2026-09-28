@@ -51,12 +51,14 @@ export function ConfirmDialog({
       onClose={working ? () => undefined : onCancel}
       title={title}
       size="sm"
+      role="alertdialog"
       // A destructive choice should take a deliberate click, never a stray
       // one on the backdrop.
       dismissOnScrim={false}
       footer={
         <>
-          <Button variant="secondary" onClick={onCancel} disabled={working}>
+          {/* Cloudscape: Cancel is the link-style action, the act is the one button. */}
+          <Button variant="ghost" onClick={onCancel} disabled={working}>
             {cancelLabel}
           </Button>
           <Button
@@ -69,7 +71,7 @@ export function ConfirmDialog({
         </>
       }
     >
-      <div className="text-sm text-text">{body}</div>
+      <div className="text-base text-text">{body}</div>
     </Modal>
   );
 }

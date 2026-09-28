@@ -46,7 +46,7 @@ export function StatusPill({ tone, label, icon, value, className = '' }: StatusP
   return (
     <span
       className={[
-'inline-flex items-center gap-1.5 rounded-xs px-2.5 py-1 text-sm font-medium',
+'inline-flex items-center gap-1.5 rounded-xs px-2 py-1 text-sm font-medium',
         TONE_CLASSES[tone],
         className,
       ].join(' ')}

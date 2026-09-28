@@ -29,7 +29,7 @@ export function ConfidenceChip({ tone, confidence, fieldLabel, className = '' }:
   return (
     <span
       role={tone === 'match' ? undefined : 'status'}
-      className={['inline-flex items-center gap-1.5 rounded-xs px-2.5 py-1 text-sm', TONE_CLASSES[tone], className].join(
+      className={['inline-flex items-center gap-1.5 rounded-xs px-2 py-1 text-sm', TONE_CLASSES[tone], className].join(
         ' ',
       )}
     >

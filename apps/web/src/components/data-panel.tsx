@@ -2,9 +2,8 @@ import { useQuery, type QueryKey, type UseQueryOptions } from '@tanstack/react-q
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { ApiError } from '../lib/api-client.js';
-import { Surface } from './surface.js';
+import { LoadError } from './load-error.js';
 import { EmptyState } from './empty-state.js';
-import { Button } from './button.js';
 import { Skeleton } from './skeleton.js';
 
 export interface DataPanelProps<T, TQueryKey extends QueryKey = QueryKey> {
@@ -45,16 +44,14 @@ export function DataPanel<T, TQueryKey extends QueryKey = QueryKey>({
           still used to word the states below. */}
       {query.isPending && <Skeleton label={`Loading ${title.toLowerCase()}`} />}
       {query.isError && (
-        <Surface radius="md" elevation="sm" className="flex flex-col gap-3 border-error p-4">
-          <p className="text-sm text-error">
-            {query.error instanceof ApiError && query.error.status === 403
+        <LoadError
+          message={
+            query.error instanceof ApiError && query.error.status === 403
               ? `You do not have permission to view ${title.toLowerCase()}.`
-              : `${title} could not be loaded just now. Check your connection and try again.`}
-          </p>
-          <Button variant="secondary" onClick={() => query.refetch()}>
-            Retry
-          </Button>
-        </Surface>
+              : `${title} could not be loaded just now. Check your connection and try again.`
+          }
+          onRetry={() => query.refetch()}
+        />
       )}
       {query.isSuccess &&
         (isEmpty(query.data) ? (

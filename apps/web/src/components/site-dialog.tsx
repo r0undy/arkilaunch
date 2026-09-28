@@ -6,6 +6,7 @@ import type { CustomerSiteResponse, SiteDocumentType } from '@arkilaunch/shared'
 import { apiErrorText, apiPost } from '../lib/api-client.js';
 import { reverseGeocode } from '../lib/reverse-geocode.js';
 import { Modal } from './modal.js';
+import { Alert } from './alert.js';
 import { Button } from './button.js';
 import { Input } from './input.js';
 import { SiteProofFields, uploadSiteDocument } from './site-proof.js';
@@ -173,8 +174,19 @@ export function SiteDialog({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Add a project site" description="Where the machines are delivered." size="lg">
-      <form onSubmit={submit} className="flex flex-col gap-4">
+    <Modal open={open} onClose={onClose} title="Add a project site" description="Where the machines are delivered." size="lg"
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="new-site-form" variant="primary" loading={create.isPending} disabled={!pin || !proof || !photo}>
+            Save site
+          </Button>
+        </>
+      }
+    >
+      <form id="new-site-form" onSubmit={submit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           <div
             ref={mapEl}
@@ -192,7 +204,7 @@ export function SiteDialog({
               Use my location
             </Button>
           </div>
-          {locateError && <p className="text-sm text-error">{locateError}</p>}
+          {locateError && <Alert type="error">{locateError}</Alert>}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Input label="Street address" required maxLength={300} value={line1} onChange={(e) => setLine1(e.target.value)} />
@@ -202,15 +214,7 @@ export function SiteDialog({
           <Input label="ZIP code" inputMode="numeric" pattern="\d{4}" maxLength={4} value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
         </div>
         <SiteProofFields idPrefix="new-site" proofType={proofType} onProofTypeChange={setProofType} onProofFile={setProof} onPhotoFile={setPhoto} />
-        {create.isError && <p className="text-sm text-error">{apiErrorText(create.error)}</p>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" loading={create.isPending} disabled={!pin || !proof || !photo}>
-            Save site
-          </Button>
-        </div>
+        {create.isError && <Alert type="error">{apiErrorText(create.error)}</Alert>}
       </form>
     </Modal>
   );

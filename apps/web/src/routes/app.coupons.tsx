@@ -76,7 +76,7 @@ function CreateCouponModal({ open, onClose }: { open: boolean; onClose: () => vo
       description="Customers enter the code at checkout. It comes off the rent, never the deposit."
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" form="new-coupon" variant="primary" loading={create.isPending}>

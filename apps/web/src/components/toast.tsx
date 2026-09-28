@@ -9,7 +9,8 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertIcon, CheckIcon, XCircleIcon } from './icons.js';
+import { Info } from 'lucide-react';
+import { AlertIcon, CheckIcon, CloseIcon, XCircleIcon } from './icons.js';
 
 // Until now a successful mutation produced no visible response at all -- a
 // deduction, a role change and a retired rate card all looked identical to
@@ -19,7 +20,7 @@ import { AlertIcon, CheckIcon, XCircleIcon } from './icons.js';
 // dependency and this needs ~80 lines. Announced through an aria-live region
 // so the acknowledgement is not sighted-only.
 
-export type ToastTone = 'success' | 'error' | 'info';
+export type ToastTone = 'success' | 'error' | 'info' | 'warning';
 
 export interface Toast {
   readonly id: number;
@@ -32,6 +33,8 @@ interface ToastContextValue {
   show: (toast: Omit<Toast, 'id'>) => void;
   success: (title: string, detail?: string) => void;
   error: (title: string, detail?: string) => void;
+  info: (title: string, detail?: string) => void;
+  warning: (title: string, detail?: string) => void;
   dismiss: (id: number) => void;
 }
 
@@ -45,20 +48,24 @@ const SlotContext = createContext<(el: HTMLElement | null) => void>(() => {});
 const DISMISS_AFTER_MS: Record<ToastTone, number | null> = {
   success: 5000,
   info: 5000,
+  warning: 5000,
   error: null,
 };
 
-// Filled bars, white text: 5.4:1 on success, 5.6:1 on error, 6.8:1 on accent.
+// Filled bars (Cloudscape Flashbar). White text: 5.4:1 on success, 5.6:1 on
+// error, 6.8:1 on accent. Warning yellow takes dark text.
 const TONE_CLASSES: Record<ToastTone, string> = {
-  success: 'bg-success',
-  error: 'bg-error',
-  info: 'bg-accent',
+  success: 'bg-success text-white',
+  error: 'bg-error text-white',
+  info: 'bg-accent text-white',
+  warning: 'bg-warning text-text',
 };
 
 function ToastIcon({ tone }: { tone: ToastTone }) {
   if (tone === 'success') return <CheckIcon className="h-5 w-5 shrink-0" aria-hidden />;
   if (tone === 'error') return <XCircleIcon className="h-5 w-5 shrink-0" aria-hidden />;
-  return <AlertIcon className="h-5 w-5 shrink-0" aria-hidden />;
+  if (tone === 'warning') return <AlertIcon className="h-5 w-5 shrink-0" aria-hidden />;
+  return <Info className="h-5 w-5 shrink-0" aria-hidden />;
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -81,6 +88,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       dismiss,
       success: (title, detail) => show({ tone: 'success', title, ...(detail ? { detail } : {}) }),
       error: (title, detail) => show({ tone: 'error', title, ...(detail ? { detail } : {}) }),
+      info: (title, detail) => show({ tone: 'info', title, ...(detail ? { detail } : {}) }),
+      warning: (title, detail) => show({ tone: 'warning', title, ...(detail ? { detail } : {}) }),
     }),
     [show, dismiss],
   );
@@ -112,32 +121,39 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => void }) {
+  // The timer holds while the pointer or focus is on the bar, so a message
+  // being read (or its dismiss button reached by keyboard) does not vanish.
+  const [held, setHeld] = useState(false);
   useEffect(() => {
     const after = DISMISS_AFTER_MS[toast.tone];
-    if (after === null) return;
+    if (after === null || held) return;
     const timer = setTimeout(() => onDismiss(toast.id), after);
     return () => clearTimeout(timer);
-  }, [toast.id, toast.tone, onDismiss]);
+  }, [toast.id, toast.tone, onDismiss, held]);
 
   return (
     <div
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      onFocus={() => setHeld(true)}
+      onBlur={() => setHeld(false)}
       className={[
-'pointer-events-auto flex w-full items-start gap-3 rounded-sm px-4 py-3 text-white shadow-md',
+'pointer-events-auto flex w-full items-start gap-3 rounded-sm px-4 py-3 shadow-md',
         TONE_CLASSES[toast.tone],
       ].join(' ')}
     >
       <ToastIcon tone={toast.tone} />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">{toast.title}</p>
-        {toast.detail && <p className="mt-0.5 text-sm text-white/90">{toast.detail}</p>}
+        {toast.detail && <p className="mt-0.5 text-sm opacity-90">{toast.detail}</p>}
       </div>
       <button
         type="button"
         onClick={() => onDismiss(toast.id)}
         aria-label={`Dismiss: ${toast.title}`}
-        className="-m-1 shrink-0 rounded-sm p-1 text-white hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+        className="-my-2.5 -mr-2.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm hover:bg-black/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
       >
-        <XCircleIcon className="h-4 w-4" aria-hidden />
+        <CloseIcon className="h-4 w-4" aria-hidden />
       </button>
     </div>
   );
@@ -149,8 +165,8 @@ export function useToast(): ToastContextValue {
   return context;
 }
 
-// Sits at the top of a shell's content column; sticky under the 56px bar.
+// Sits at the top of a shell's content column; sticky flush under the 56px bar.
 export function FlashbarSlot() {
   const setSlot = useContext(SlotContext);
-  return <div ref={setSlot} className="sticky top-16 z-50 [&_[aria-live]:not(:empty)]:mb-4" />;
+  return <div ref={setSlot} className="sticky top-14 z-50 [&_[aria-live]:not(:empty)]:mb-4" />;
 }

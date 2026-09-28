@@ -90,7 +90,7 @@ function RateCardModal({ open, onClose }: { open: boolean; onClose: () => void }
       description="What an equipment type (or one unit of it) rents for. It is quotable at once."
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" form="new-rate-card" loading={create.isPending} disabled={create.isPending || !equipmentTypeId}>
@@ -275,7 +275,7 @@ function BusinessCalendarForm() {
         size="lg"
         footer={
           <>
-            <Button variant="secondary" onClick={close}>
+            <Button variant="ghost" onClick={close}>
               Cancel
             </Button>
             <Button
@@ -416,7 +416,7 @@ function BillingSettingsForm() {
         size="lg"
         footer={
           <>
-            <Button variant="secondary" onClick={form.close}>
+            <Button variant="ghost" onClick={form.close}>
               Cancel
             </Button>
             <Button variant="primary" loading={form.save.isPending} disabled={!form.draft} onClick={() => form.save.mutate()}>
@@ -473,7 +473,7 @@ function TestEmailModal({ open, onClose }: { open: boolean; onClose: () => void 
       description="A sample with your storefront logo and brand color, using made-up booking details."
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" form="test-email" variant="primary" loading={send.isPending}>
@@ -526,7 +526,7 @@ export function RentalFeesForm() {
         title="Mobilization and demobilization"
         footer={
           <>
-            <Button variant="secondary" onClick={form.close}>
+            <Button variant="ghost" onClick={form.close}>
               Cancel
             </Button>
             <Button variant="primary" loading={form.save.isPending} disabled={!form.draft} onClick={() => form.save.mutate()}>
@@ -617,7 +617,7 @@ export function PricingParametersForm() {
         size="lg"
         footer={
           <>
-            <Button variant="secondary" onClick={close}>
+            <Button variant="ghost" onClick={close}>
               Cancel
             </Button>
             <Button variant="primary" loading={save.isPending} disabled={!draft || incomplete} onClick={() => save.mutate()}>
@@ -814,7 +814,7 @@ export function DieselPriceForm() {
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={close}>
+            <Button variant="ghost" onClick={close}>
               Cancel
             </Button>
             <Button

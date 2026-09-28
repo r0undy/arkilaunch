@@ -50,6 +50,6 @@ test('admin adds an Others machine, corrects its meter and logs a service that r
 
   await dialog.getByRole('button', { name: 'Close' }).click();
   await card.getByRole('button', { name: 'Delete' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Delete asset' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete asset' }).click();
   await expect(page.getByRole('group', { name: serial })).toBeHidden();
 });

@@ -144,7 +144,7 @@ function ChangeAmount({ invoice }: { invoice: InvoiceSummaryResponse }) {
         dismissOnScrim={false}
         footer={
           <>
-            <Button variant="secondary" onClick={close} disabled={change.isPending}>
+            <Button variant="ghost" onClick={close} disabled={change.isPending}>
               Cancel
             </Button>
             <Button disabled={invalid} loading={change.isPending} onClick={() => change.mutate()}>
@@ -262,7 +262,7 @@ function RefundPayment({ invoice }: { invoice: InvoiceSummaryResponse }) {
         dismissOnScrim={false}
         footer={
           <>
-            <Button variant="secondary" onClick={close} disabled={refund.isPending}>
+            <Button variant="ghost" onClick={close} disabled={refund.isPending}>
               Cancel
             </Button>
             <Button variant="destructive" disabled={invalid} loading={refund.isPending} onClick={() => refund.mutate()}>
