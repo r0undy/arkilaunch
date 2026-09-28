@@ -449,6 +449,11 @@ export class PaymentsService {
       .where(eq(tenants.id, ctx.tenantId))
       .limit(1);
 
+    // Back from PayMongo and Pay again (QA 17): the earlier session is
+    // expired first, so one invoice never has two payable sessions; one
+    // PayMongo already reports paid stops here (payment_in_progress).
+    await this.closePendingPayments(tx, c.invoiceId);
+
     const returnTo = checkoutReturnOrigin(c.origin);
     const bookingRef = await resolveBookingRef(tx, { invoice_id: c.invoiceId });
     const session = await this.paymentsPort.createCheckoutSession(c.amount, c.invoiceId, {

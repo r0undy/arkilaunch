@@ -1,4 +1,4 @@
-import { createRoute, Link, useNavigate } from '@tanstack/react-router';
+import { createRoute, Link, useBlocker, useNavigate } from '@tanstack/react-router';
 import { useRef, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -95,6 +95,8 @@ async function uploadDocuments(
 // which asked a customer to frame two different papers at once; the ID is
 // the gate, and the customer checks what it says before moving on.
 export type DocStep = 'government_id' | 'company_registration';
+type WizardStep = DocStep | 'id_details' | 'details';
+const WIZARD_STEPS: readonly WizardStep[] = ['government_id', 'id_details', 'company_registration', 'details'];
 
 export const DOC_STEPS: { type: DocStep; label: string; hint: string }[] = [
   {
@@ -433,8 +435,25 @@ function NewCompanyPage() {
   const [error, setError] = useState<string | null>(null);
   // Scan first, type last: the documents are captured in order, the ID is
   // checked on its own step, and the form opens on what the registration
-  // scans read, for final edits.
-  const [chosenStage, setStage] = useState<DocStep | 'id_details' | 'details'>('government_id');
+  // scans read, for final edits. The step lives in the URL (?step=) so the
+  // browser's Back and Forward move between steps; the page stays mounted,
+  // so what was captured survives the move (QA 17).
+  const { step: urlStep } = accountCompanyNewRoute.useSearch();
+  const setStage = (step: WizardStep) => void navigate({ to: '/account/companies/new', search: { step } });
+  // A reload loses the ID photo and its scan: the ID check step then starts over.
+  const chosenStage: WizardStep = urlStep === 'id_details' && !idScan ? 'government_id' : (urlStep ?? 'government_id');
+  // Leaving the wizard (not moving between its steps) with anything captured
+  // asks first; the photos cannot be put back. A finished submit is free to go.
+  const submitted = useRef(false);
+  const dirty = Boolean(governmentId || registration || dti || selfie || companyName || billingAddress);
+  useBlocker({
+    shouldBlockFn: ({ current, next }) =>
+      !submitted.current &&
+      dirty &&
+      next.pathname !== current.pathname &&
+      !window.confirm('Leave this application? The documents you captured will be lost.'),
+    enableBeforeUnload: () => dirty && !submitted.current,
+  });
   // The National ID is captured once per login: with one on file (any of this
   // account's companies) the ID steps are skipped and the server reuses it.
   const mine = useQuery(companiesQueries.mine()).data ?? [];
@@ -512,14 +531,17 @@ function NewCompanyPage() {
       // held the spinner for one more round trip.
       void queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
       toast.success('Company added', 'The rental team will verify it. You can request quotes now.');
-      await navigate({ to: '/account/applications' });
+      submitted.current = true;
+      // replace: Back from the list must not reopen a finished application.
+      await navigate({ to: '/account/applications', replace: true });
     } catch (err) {
       // The company exists even if an upload failed; say so, and send the
       // customer to finish the upload rather than create a duplicate.
       if (created) {
         await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
         toast.error('Company saved, but a document did not upload', apiErrorText(err));
-        await navigate({ to: '/account/applications' });
+        submitted.current = true;
+        await navigate({ to: '/account/applications', replace: true });
         return;
       }
       setError(apiErrorText(err));
@@ -940,6 +962,8 @@ export const accountCompanyDetailRoute = createRoute({
 export const accountCompanyNewRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/companies/new',
+  validateSearch: (search: Record<string, unknown>): { step?: WizardStep } =>
+    WIZARD_STEPS.includes(search.step as WizardStep) ? { step: search.step as WizardStep } : {},
   component: NewCompanyPage,
 });
 

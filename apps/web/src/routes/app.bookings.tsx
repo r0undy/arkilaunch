@@ -78,7 +78,7 @@ function BookingsPage() {
   const setService = (next: Service) => {
     setOffset(0);
     setSearch('');
-    void navigate({ search: (prev) => ({ ...prev, service: next }) });
+    void navigate({ search: (prev) => ({ ...prev, service: next }), replace: true });
   };
 
   const rentals = useQuery({ ...bookingsQueries.list(PAGE_SIZE, offset, codePrefix), enabled: service === 'rental' });

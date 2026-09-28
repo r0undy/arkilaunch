@@ -12,7 +12,7 @@ import {
   TIN_REGEX,
   sameValue,
 } from '@arkilaunch/shared';
-import { createRoute, useNavigate } from '@tanstack/react-router';
+import { createRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { CircleCheck, CircleX, TriangleAlert } from 'lucide-react';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
@@ -616,7 +616,18 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   const queryClient = useQueryClient();
   const [offset, setOffset] = useState(0);
   const query = useQuery(companiesQueries.review(kycStatus, PAGE_SIZE, offset));
-  const [openId, setOpenId] = useState<string | null>(null);
+  // The open review is in the URL (?open=), so Back closes the drawer
+  // instead of leaving the queue (QA 17).
+  const openId = useSearch({ strict: false }).open ?? null;
+  const navigateQueue = useNavigate();
+  const setOpenId = (id: string | null) =>
+    void navigateQueue({
+      to: '.',
+      search: (prev: { open?: string }) => {
+        const { open: _open, ...rest } = prev;
+        return id ? { ...rest, open: id } : rest;
+      },
+    });
   const [preview, setPreview] = useState<{ companyId: string; documentId: string } | null>(null);
   const [rejecting, setRejecting] = useState<CompanyReviewResponse | null>(null);
   const [approving, setApproving] = useState<{ company: CompanyReviewResponse; body: Record<string, unknown> } | null>(null);
@@ -745,10 +756,15 @@ function RegistrationsPage({ kycStatus }: { kycStatus: Queue }) {
   );
 }
 
+function queueSearch(search: Record<string, unknown>): { open?: string } {
+  return typeof search.open === 'string' && /^[0-9a-f-]{36}$/i.test(search.open) ? { open: search.open } : {};
+}
+
 export const appRegistrationPendingRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/registration/pending',
   beforeLoad: requireRole('admin'),
+  validateSearch: queueSearch,
   component: () => <RegistrationsPage kycStatus="pending" />,
 });
 
@@ -756,5 +772,6 @@ export const appRegistrationVerifiedRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/registration/verified',
   beforeLoad: requireRole('admin'),
+  validateSearch: queueSearch,
   component: () => <RegistrationsPage kycStatus="approved" />,
 });
