@@ -13,6 +13,7 @@ import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { CheckIcon, AlertIcon, XCircleIcon } from '../components/icons.js';
 import { formatDate, formatSeverity, siteName } from '../lib/format.js';
 import { BookingCode } from '../components/booking-code.js';
+import { Alert } from '../components/alert.js';
 import { MapPin } from 'lucide-react';
 
 const SEVERITY_META: Record<string, { tone: StatusTone; icon: ReactElement }> = {
@@ -31,8 +32,6 @@ const COLUMNS: TableColumn<SiteResponse>[] = [
       </Link>
     ),
   },
-  { header: 'Latitude', kind: 'number', cell: (row) => row.latitude.toFixed(4) },
-  { header: 'Longitude', kind: 'number', cell: (row) => row.longitude.toFixed(4) },
   {
     header: 'Weather', kind: 'status',
     cell: (row) => {
@@ -52,7 +51,7 @@ const COLUMNS: TableColumn<SiteResponse>[] = [
 function SiteEquipment({ site }: { site: SiteResponse }) {
   const hub = useQuery(sitesQueries.hub(site.id));
   if (hub.isPending) return <p className="text-sm text-text-muted">Loading equipment...</p>;
-  if (hub.isError) return <p className="text-sm text-error">Equipment for this site could not be loaded.</p>;
+  if (hub.isError) return <Alert type="error">Equipment for this site could not be loaded.</Alert>;
   const units = hub.data.units;
   if (units.length === 0) return <p className="text-sm text-text-muted">No machines deployed to this site yet.</p>;
   return (

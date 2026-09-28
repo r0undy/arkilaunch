@@ -1,7 +1,7 @@
 import { createRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { REFUND_REASONS, type InvoiceSummaryResponse, type RefundReason } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { invoicesQueries } from '../lib/queries.js';
@@ -18,22 +18,14 @@ import { Tabs } from '../components/tabs.js';
 import { Receipt } from 'lucide-react';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
-import { StatusPill, type StatusTone } from '../components/status-pill.js';
-import { CheckIcon, AlertIcon, ClockIcon } from '../components/icons.js';
+import { StatusBadge } from '../components/status-badge.js';
+import { CopyButton } from '../components/copy-button.js';
 import {
   formatDate,
   formatInvoiceType,
   formatPeso,
-  formatStatus,
   shortCode,
 } from '../lib/format.js';
-
-const STATUS_META: Record<string, { tone: StatusTone; icon: ReactElement }> = {
-  paid: { tone: 'recon-approved', icon: <CheckIcon /> },
-  issued: { tone: 'recon-review', icon: <AlertIcon /> },
-  draft: { tone: 'recon-failed', icon: <ClockIcon /> },
-  void: { tone: 'recon-failed', icon: <ClockIcon /> },
-};
 
 const COLUMNS: TableColumn<InvoiceSummaryResponse>[] = [
   {
@@ -47,10 +39,7 @@ const COLUMNS: TableColumn<InvoiceSummaryResponse>[] = [
   },
   {
     header: 'Status', kind: 'status',
-    cell: (row) => {
-      const meta = STATUS_META[row.status] ?? STATUS_META['draft']!;
-      return <StatusPill tone={meta.tone} label={formatStatus(row.status)} icon={meta.icon} />;
-    },
+    cell: (row) => <StatusBadge status={row.status} />,
   },
   { header: 'Due', kind: 'date', cell: (row) => formatDate(row.dueDate) },
   { header: 'Amount', kind: 'money', cell: (row) => formatPeso(row.amount) },
@@ -61,11 +50,17 @@ const COLUMNS: TableColumn<InvoiceSummaryResponse>[] = [
 // unanswerable from this screen, which is awkward for the one table in the
 // console that stands for money already charged.
 export function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) {
-  const rows: [string, string][] = [
-    ['Invoice id', invoice.id],
+  const rows: [string, ReactNode][] = [
+    [
+      'Reference',
+      <span key="ref" className="inline-flex items-center gap-1">
+        {shortCode('invoice', invoice.id)}
+        <CopyButton value={invoice.id} label="the full invoice id" />
+      </span>,
+    ],
     [invoice.truckRequestId ? 'Truck service' : 'Equipment rental', invoice.bookingCode ?? '--'],
     ['Type', formatInvoiceType(invoice.invoiceType)],
-    ['Status', formatStatus(invoice.status)],
+    ['Status', <StatusBadge key="status" status={invoice.status} />],
     ['Amount', formatPeso(invoice.amount)],
     ['Due', formatDate(invoice.dueDate)],
     ['Raised', formatDate(invoice.createdAt)],
@@ -79,7 +74,7 @@ export function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) 
             className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border py-2 last:border-0"
           >
             <dt className="text-sm text-text-muted">{label}</dt>
-            <dd className="min-w-0 break-all font-mono text-sm tabular-nums text-text">{value}</dd>
+            <dd className="min-w-0 break-words font-mono text-sm tabular-nums text-text">{value}</dd>
           </div>
         ))}
       </dl>
@@ -350,7 +345,7 @@ function PaymentsPage() {
         open={selected != null}
         onClose={() => setSelected(null)}
         title={selected ? `Invoice ${shortCode('invoice', selected.id)}` : 'Invoice'}
-        description="Read-only. Invoices are raised by a reconciliation, never edited here."
+        description="Raised by a reconciliation. Money moves only through the actions below."
         size="sm"
       >
         {selected && <InvoiceDetail invoice={selected} />}

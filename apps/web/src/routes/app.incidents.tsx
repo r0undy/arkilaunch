@@ -7,6 +7,7 @@ import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
+import { Tabs } from '../components/tabs.js';
 import { formatDateTime, formatSeverity, shortCode } from '../lib/format.js';
 import { TriangleAlert } from 'lucide-react';
 
@@ -28,45 +29,36 @@ const COLUMNS: TableColumn<IncidentResponse>[] = [
   },
 ];
 
-const KINDS = [
-  { id: undefined, label: 'All' },
-  { id: 'weather', label: 'Weather incidents' },
+type Kind = 'all' | 'weather' | 'discrepancy' | 'used_despite_warning';
+const KINDS: { id: Kind; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'weather', label: 'Weather' },
   { id: 'discrepancy', label: 'Report discrepancies' },
   { id: 'used_despite_warning', label: 'Used despite warning' },
-] as const;
+];
 
 function IncidentsPage() {
   const [offset, setOffset] = useState(0);
-  const [kind, setKind] = useState<'weather' | 'discrepancy' | 'used_despite_warning' | undefined>(undefined);
+  const [kind, setKind] = useState<Kind>('all');
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Incidents"
-        description="Weather and liability events recorded against your sites, timekeeper weather reports the site readings contradict, and machines used after a Stop work warning."
+        description="Weather and liability events recorded against your sites."
       />
-      <div role="group" aria-label="Filter incidents" className="flex flex-wrap gap-2">
-        {KINDS.map((entry) => (
-          <button
-            key={entry.label}
-            type="button"
-            aria-pressed={kind === entry.id}
-            onClick={() => {
-              setKind(entry.id);
-              setOffset(0);
-            }}
-            className={[
-'min-h-9 rounded-full border px-3 text-sm',
-              kind === entry.id ? 'border-accent bg-accent text-white' : 'border-border text-text hover:border-accent',
-            ].join(' ')}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        label="Filter incidents"
+        items={KINDS}
+        value={kind}
+        onChange={(next) => {
+          setKind(next);
+          setOffset(0);
+        }}
+      />
       <DataPanel
         title="Incidents"
-        options={incidentsQueries.list(PAGE_SIZE, offset, kind)}
+        options={incidentsQueries.list(PAGE_SIZE, offset, kind === 'all' ? undefined : kind)}
         emptyTitle="No incidents logged"
         emptyDescription="Weather and liability incidents will appear here as they are auto-logged or recorded."
         emptyIcon={TriangleAlert}

@@ -14,6 +14,7 @@ import { StatusBadge } from '../components/status-badge.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { useToast } from '../components/toast.js';
+import { Alert } from '../components/alert.js';
 import { formatDate, formatPeso } from '../lib/format.js';
 
 // cr-arkilaunch-coupons.md: the company's coupon codes. A coupon comes off
@@ -176,7 +177,7 @@ function CouponsPage() {
         description="Codes your customers enter at checkout. A coupon comes off the rent, never the consumable deposit."
         actions={<Button onClick={() => setCreating(true)}>New coupon</Button>}
       />
-      {coupons.isError && <p className="text-sm text-error">{apiErrorText(coupons.error)}</p>}
+      {coupons.isError && <Alert type="error">{apiErrorText(coupons.error)}</Alert>}
       <Table
         columns={COLUMNS}
         rows={coupons.data?.items ?? []}
