@@ -42,6 +42,9 @@ export interface EdtrSheetInput {
   page?: PageSize;
   // The tenant logo as a data: URI, so the PNG/PDF are self-contained.
   logoDataUri?: string | null;
+  // The tenant's brand colour (the rule under the header) and TIN (QA 20).
+  accent?: string | null;
+  tin?: string | null;
 }
 
 const M = 8;
@@ -203,6 +206,7 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   out.push(text(lx, 12, fit(tenantName.toUpperCase(), 44), 5, { bold: true }));
   if (context?.tenant?.address) out.push(text(lx, 17.5, fit(context.tenant.address, 70), 2.5, { fill: MUTED }));
   if (context?.tenant?.contact) out.push(text(lx, 21.5, fit(context.tenant.contact, 70), 2.5, { fill: MUTED }));
+  if (input.tin) out.push(text(lx, 25.5, `TIN ${fit(input.tin, 30)}`, 2.5, { fill: MUTED }));
   out.push(text(W / 2, 14, 'EQUIPMENT DAILY TIME REPORT', 5.2, { bold: true, anchor: 'middle' }));
   const sheetNo =
     context && spanStartIso && weekStart ? sheetIndex(manila(spanStartIso), spanTo, weekStart) : null;
@@ -228,7 +232,7 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
     out.push(rect(qx - 44, 8, 40, 10, 0.3));
     out.push(text(qx - 43, 11, 'BOOKING CODE', 2, { bold: true, fill: MUTED }));
   }
-  out.push(line(M, 32, W - M, 32, 0.9, AMBER));
+  out.push(line(M, 32, W - M, 32, 0.9, input.accent && /^#[0-9a-f]{6}$/i.test(input.accent) ? input.accent : AMBER));
 
   // B. Job details: the Almara 2 x 2 kept as the first row, then v3's.
   const fw = (W - 2 * M) / 4;

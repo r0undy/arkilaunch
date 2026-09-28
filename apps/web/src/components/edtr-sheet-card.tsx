@@ -1,3 +1,4 @@
+import { useTenant } from '../lib/tenant.js';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { EdtrSheetContext } from '@arkilaunch/shared';
@@ -31,6 +32,7 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
   const [week, setWeek] = useState(thisMonday);
   const [busy, setBusy] = useState<string | null>(null);
   const [page, setPage] = useState<'legal' | 'letter'>('legal');
+  const tenant = useTenant();
   const units = context.data?.equipment ?? [];
   const unit = equipmentId || units[0]?.id || '';
 
@@ -43,10 +45,11 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
       d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
       const companyName = me.data?.tenantName ?? '';
       const logo = await sheet.logoDataUri(context.data?.tenant?.logoUrl);
+      const brand = { logoDataUri: logo, accent: tenant?.primaryColor ?? null, tin: tenant?.tin ?? null };
       const input =
         blank || !context.data
-          ? { companyName, page, logoDataUri: logo }
-          : { context: context.data, equipmentId: unit, weekStart: localDate(d), companyName, page, logoDataUri: logo };
+          ? { companyName, page, ...brand }
+          : { context: context.data, equipmentId: unit, weekStart: localDate(d), companyName, page, ...brand };
       const png = await sheet.svgToPng(sheet.buildEdtrSheetSvg(input), page);
       sheet.downloadBlob(kind === 'png' ? png : await sheet.pngToPdf(png, page), sheet.edtrSheetFilename(input, kind));
     } catch (e) {

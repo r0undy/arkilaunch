@@ -7,6 +7,7 @@ import { formatDate, shortCode } from '../lib/format.js';
 import { quoteExpiresAt } from '@arkilaunch/shared';
 import { Button } from '../components/button.js';
 import { QuoteLines } from '../components/quote-lines.js';
+import { PrintFrame } from '../components/print-frame.js';
 
 // The printable quote the API's printableUrl points at: letterhead, lines as
 // the customer sees them, validity. Browser print (or Save as PDF) keeps it
@@ -28,7 +29,19 @@ function QuotePrintPage() {
           <Button variant="ghost">Back to quotes</Button>
         </Link>
       </div>
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
+      <PrintFrame
+        title="Quotation"
+        docRef={`${shortCode('quote', q.id)} rev ${q.revision}`}
+        issuedAt={q.createdAt}
+        details={[
+          ['Prepared for', q.customerName ?? '--'],
+          ['Booking', q.bookingCode ?? '--'],
+          ['Valid until', q.createdAt ? formatDate(quoteExpiresAt(q.createdAt)) : '--'],
+        ]}
+      />
+      {/* Screen letterhead; on paper the PrintFrame above replaces it (a
+          <header> is hidden by print CSS, which is why it vanished before). */}
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4 print:hidden">
         <div>
           <p className="text-display-md text-text">{me.data?.tenantName ?? ''}</p>
           <p className="text-sm text-text-muted">Equipment rental quotation</p>
@@ -43,7 +56,7 @@ function QuotePrintPage() {
           {q.createdAt && <p>Issued {formatDate(q.createdAt)}</p>}
           {q.createdAt && <p>Valid until {formatDate(quoteExpiresAt(q.createdAt))}</p>}
         </div>
-      </header>
+      </div>
       {q.customerName && (
         <p className="text-sm text-text">
           <span className="text-text-muted">Prepared for </span>

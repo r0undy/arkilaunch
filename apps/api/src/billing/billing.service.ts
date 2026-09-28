@@ -2,12 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, gte, lte, type SQL } from 'drizzle-orm';
 import {
   auditLogs,
+  customers,
   db,
   edtrReconciliations,
   invoiceLineItems,
   invoices,
   rentals,
   resolveDepositLedger,
+  truckRequests,
   withTenantTx,
 } from '@arkilaunch/db';
 import type {
@@ -89,6 +91,26 @@ async function findEdtrEvidence(tx: Tx, lineItems: (typeof invoiceLineItems.$inf
   return null;
 }
 
+// The company an invoice bills: its booking's, or its truck trip's.
+async function billTo(tx: Tx, invoice: typeof invoices.$inferSelect) {
+  const [row] = invoice.rentalId
+    ? await tx.select({ customerId: rentals.customerId }).from(rentals).where(eq(rentals.id, invoice.rentalId)).limit(1)
+    : invoice.truckRequestId
+      ? await tx
+          .select({ customerId: truckRequests.customerId })
+          .from(truckRequests)
+          .where(eq(truckRequests.id, invoice.truckRequestId))
+          .limit(1)
+      : [];
+  if (!row?.customerId) return null;
+  const [company] = await tx
+    .select({ companyName: customers.companyName, tin: customers.tin, billingAddress: customers.billingAddress })
+    .from(customers)
+    .where(eq(customers.id, row.customerId))
+    .limit(1);
+  return company ?? null;
+}
+
 // PRD-F2/F3 read surface backing S9 Billing & Deposit Ledger
 // (cr-arkilaunch-f9-read-surface.md). Read-only: writes to invoices/
 // payments/edtr_reconciliations happen exclusively in edtr.service.ts and
@@ -160,6 +182,7 @@ export class BillingService {
           unitPrice: Number(item.unitPrice),
           amount: Number(item.amount),
         })),
+        billTo: await billTo(tx, invoice),
         edtrEvidence,
         auditTrail: auditRows.map((row) => ({ action: row.action, actorId: row.actorId, timestamp: row.timestamp })),
       };

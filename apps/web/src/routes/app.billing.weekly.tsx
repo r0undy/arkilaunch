@@ -9,6 +9,7 @@ import { ExpandableSection } from '../components/expandable-section.js';
 import { StatTile } from '../components/stat-tile.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { Button } from '../components/button.js';
+import { PrintFrame } from '../components/print-frame.js';
 import { formatDate, formatHours, formatInvoiceType, formatPeso, shortCode } from '../lib/format.js';
 import { CalendarRange } from 'lucide-react';
 
@@ -42,6 +43,17 @@ function Statement({ snapshot }: { snapshot: ReportsSnapshot }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <PrintFrame
+        title="Weekly billing rundown"
+        docRef={`WBR-${financial.period.to.slice(0, 10)}`}
+        issuedAt={new Date()}
+        details={[
+          ['Billing period', period(financial.period)],
+          ['Hours period', period(utilization.period)],
+          ['Total invoiced', formatPeso(financial.invoiced.total)],
+          ['EDTR hours', formatHours(totalHours)],
+        ]}
+      />
       <Container
         header={{
           title: period(utilization.period),
