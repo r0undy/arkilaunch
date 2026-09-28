@@ -1,5 +1,8 @@
 import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
+
+// A fresh TIN per company: one login cannot apply for the same TIN twice.
+const randomTin = () => String(Math.floor(Math.random() * 1e9)).padStart(9, '1');
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import postgres from 'postgres';
 import {
@@ -128,12 +131,12 @@ describe('Customer onboarding', () => {
     ).rejects.toBeInstanceOf(ConflictException);
 
     const details = {
-      tin: '123-456-789',
       billingAddress: '1248 North Quarry Way, Pasig',
       contactMobile: '09170000000',
     };
     const acme = await companies.createCompany(ctx, {
       companyName: 'Acme Builders',
+      tin: '123-456-789',
       secNumber: 'PH62780901',
       ...details,
     });
@@ -142,7 +145,18 @@ describe('Customer onboarding', () => {
     expect((await companies.listCompanies(ctx)).find((c) => c.id === acme.id)?.secNumber).toBe(
       'PH62780901',
     );
-    const beta = await companies.createCompany(ctx, { companyName: 'Beta Works', ...details });
+    // One application per company: the same TIN (head office written
+    // either way), SEC number or name again is refused, not a second row.
+    for (const again of [
+      { companyName: 'Acme Builders Two', tin: '123-456-789-000' },
+      { companyName: 'Another Name', secNumber: 'ph 62780901' },
+      { companyName: 'ACME builders' },
+    ]) {
+      await expect(companies.createCompany(ctx, { ...details, ...again })).rejects.toMatchObject({
+        response: { error: 'company_already_applied', companyId: acme.id },
+      });
+    }
+    const beta = await companies.createCompany(ctx, { companyName: 'Beta Works', tin: '987-654-321', ...details });
     expect((await companies.listCompanies(ctx)).map((c) => c.companyName).sort()).toEqual([
       'Acme Builders',
       'Beta Works',
@@ -249,7 +263,7 @@ describe('Customer onboarding', () => {
     const ctx = decodeCtx(tokens.accessToken);
     const mine = await companies.createCompany(ctx, {
       companyName: 'Gamma Corp',
-      tin: '123456789',
+      tin: randomTin(),
       billingAddress: 'Somewhere, Cebu',
       contactMobile: '09180000000',
     });
@@ -354,7 +368,7 @@ describe('Customer onboarding', () => {
     async function siteFor(ctx: RequestContext, service: CustomersService, city: string) {
       const company = await service.createCompany(ctx, {
         companyName: `Forecast ${city} ${randomUUID().slice(0, 6)}`,
-        tin: '123-456-789',
+        tin: randomTin(),
         billingAddress: `1 ${city} Road`,
         contactMobile: '09170000000',
       });
@@ -669,7 +683,7 @@ describe('Customer onboarding', () => {
     async function companyWithRegistration(name: string, documentType = 'sec_certificate') {
       const company = await companies.createCompany(reviewCtx, {
         companyName: name,
-        tin: '111-222-333',
+        tin: randomTin(),
         billingAddress: '12 Yard Road, Cebu City',
         contactMobile: '0917 000 0000',
       });
@@ -878,7 +892,7 @@ describe('Customer onboarding', () => {
       const illegible = reviewer({ first_name: { value: 'J', confidence: 0.4 } });
       const company = await illegible.createCompany(reviewCtx, {
         companyName: 'Blurry Scan Corp',
-        tin: '111-222-333',
+        tin: randomTin(),
         billingAddress: '12 Yard Road, Cebu City',
         contactMobile: '0917 000 0000',
       });
@@ -896,7 +910,7 @@ describe('Customer onboarding', () => {
       const service = reviewer({ tin: { value: '111-222-333', confidence: 0.95 } });
       const company = await service.createCompany(reviewCtx, {
         companyName: 'Locked Corp',
-        tin: '111-222-333',
+        tin: randomTin(),
         billingAddress: '12 Yard Road, Cebu City',
         contactMobile: '0917 000 0000',
       });
