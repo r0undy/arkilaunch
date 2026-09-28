@@ -245,6 +245,51 @@ describe('Customer journey', () => {
     await bookings.cancel(customerCtx, booking.id);
   });
 
+  // Each unit on a booking keeps its own dates: one unit cannot overlap
+  // itself in a single request, and extending one leaves the others alone.
+  it('keeps every unit on its own dates', async () => {
+    await expect(
+      bookings.create(customerCtx, {
+        projectSiteId: siteId,
+        items: [
+          { equipmentId, start: day(16, 8), end: day(17, 17) },
+          { equipmentId, start: day(17, 8), end: day(18, 17) },
+        ],
+      }),
+    ).rejects.toMatchObject({ response: { error: 'equipment_unavailable', reason: 'overlaps_in_cart' } });
+
+    const created = await bookings.create(customerCtx, {
+      projectSiteId: siteId,
+      siteContact: 'Marcus Thorne',
+      siteContactMobile: '+639170000000',
+      items: [
+        { equipmentId, start: day(16, 8), end: day(16, 17) },
+        { equipmentId, start: day(19, 8), end: day(19, 17) },
+      ],
+    });
+    const detail = await bookings.get(customerCtx, created.id);
+    expect(detail.siteContactMobile).toBe('+639170000000');
+    expect(detail.items.map((item) => item.end?.toISOString())).toEqual([day(16, 17), day(19, 17)]);
+    const listed = (await bookings.list(customerCtx, { limit: 50, offset: 0 })).items.find((row) => row.id === created.id);
+    expect(listed?.items?.map((item) => item.start.toISOString())).toEqual([day(16, 8), day(19, 8)]);
+
+    const [first, second] = detail.items;
+    const request = await bookings.requestChange(customerCtx, created.id, {
+      kind: 'extend',
+      assignmentId: first!.id,
+      requestedEnd: day(17, 17),
+    });
+    await bookings.resolveChange(adminCtx, created.id, request.id, { decision: 'approved' });
+    const after = await bookings.get(customerCtx, created.id);
+    expect(after.items.find((item) => item.id === first!.id)?.end?.toISOString()).toBe(day(17, 17));
+    expect(after.items.find((item) => item.id === second!.id)?.end?.toISOString()).toBe(day(19, 17));
+    expect(after.changeRequests[0]?.assignmentId).toBe(first!.id);
+    const [rental] = await withTenantTx(adminCtx, (tx) => tx.select().from(rentals).where(eq(rentals.id, created.id)));
+    expect(rental?.endDate?.toISOString()).toBe(day(19, 17));
+
+    await bookings.cancel(customerCtx, created.id);
+  });
+
   it('a quote on someone else’s booking, and the thread, stay invisible across tenants', async () => {
     const booking = await book(20);
     await bookings.postMessage(customerCtx, booking.id, { body: 'hello' });

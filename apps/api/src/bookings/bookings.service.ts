@@ -127,6 +127,22 @@ export class BookingsService {
         return item.hours ?? min;
       });
 
+      // Each unit keeps its own dates, and one unit cannot overlap itself:
+      // the database check below sees only other bookings, so two lines of
+      // the same unit in this request would both pass it.
+      body.items.forEach((item, i) => {
+        const clash = body.items.some(
+          (other, j) =>
+            j < i &&
+            other.equipmentId === item.equipmentId &&
+            new Date(other.start) < new Date(item.end) &&
+            new Date(item.start) < new Date(other.end),
+        );
+        if (clash) {
+          throw new ConflictException({ error: 'equipment_unavailable', reason: 'overlaps_in_cart', equipmentId: item.equipmentId, alternatives: [] });
+        }
+      });
+
       const equipmentIds = body.items.map((item) => item.equipmentId);
       const equipmentRows = await tx
         .select()
@@ -178,6 +194,7 @@ export class BookingsService {
           customerId,
           projectSiteId: body.projectSiteId,
           siteContact: body.siteContact || null,
+          siteContactMobile: body.siteContactMobile || null,
           siteNotes: body.siteNotes || null,
           status: 'pending',
           startDate,
@@ -261,6 +278,31 @@ export class BookingsService {
         .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
         .where(inArray(projectSites.id, rows.map((row) => row.projectSiteId)));
       const siteById = new Map(siteRows.map((site) => [site.id, site]));
+      // Every unit on these bookings with its own dates, in one query.
+      const unitRows = await tx
+        .select({
+          rentalId: equipmentAssignments.rentalId,
+          typeName: equipmentTypes.name,
+          model: equipment.model,
+          start: equipmentAssignments.start,
+          end: equipmentAssignments.end,
+        })
+        .from(equipmentAssignments)
+        .innerJoin(equipment, eq(equipment.id, equipmentAssignments.equipmentId))
+        .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipment.equipmentTypeId))
+        .where(
+          and(
+            inArray(equipmentAssignments.rentalId, rows.map((row) => row.id)),
+            ne(equipmentAssignments.status, 'cancelled'),
+          ),
+        )
+        .orderBy(asc(equipmentAssignments.start));
+      const unitsByRental = new Map<string, { equipmentName: string; start: Date; end: Date | null }[]>();
+      for (const unit of unitRows) {
+        const list = unitsByRental.get(unit.rentalId) ?? [];
+        list.push({ equipmentName: `${unit.typeName} · ${unit.model}`, start: unit.start, end: unit.end });
+        unitsByRental.set(unit.rentalId, list);
+      }
 
       return {
         items: rows.map((row) => {
@@ -272,6 +314,7 @@ export class BookingsService {
             projectSiteId: row.projectSiteId,
             siteCity: site?.city ?? null,
             siteProvince: site?.province ?? null,
+            items: unitsByRental.get(row.id) ?? [],
           };
         }),
         total,
@@ -388,7 +431,8 @@ export class BookingsService {
         .from(equipmentAssignments)
         .innerJoin(equipment, eq(equipment.id, equipmentAssignments.equipmentId))
         .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipment.equipmentTypeId))
-        .where(eq(equipmentAssignments.rentalId, id));
+        .where(eq(equipmentAssignments.rentalId, id))
+        .orderBy(asc(equipmentAssignments.start));
       const [customer] = await tx
         .select({ companyName: customers.companyName })
         .from(customers)
@@ -445,6 +489,7 @@ export class BookingsService {
         customerId: rental.customerId,
         customerName: customer?.companyName ?? null,
         siteContact: rental.siteContact,
+        siteContactMobile: rental.siteContactMobile,
         siteNotes: rental.siteNotes,
         callRequestedAt: rental.callRequestedAt,
         callConfirmedAt: rental.callConfirmedAt,
@@ -457,12 +502,14 @@ export class BookingsService {
         changeRequests: changeRows.map((row) => ({
           id: row.id,
           kind: row.kind,
+          assignmentId: row.assignmentId,
           requestedEnd: row.requestedEnd,
           reason: row.reason,
           status: row.status,
           createdAt: row.createdAt,
         })),
         items: assignmentRows.map(({ assignment, typeName, model, serialNo }) => ({
+          id: assignment.id,
           equipmentId: assignment.equipmentId,
           equipmentName: `${typeName} · ${model} · SN ${serialNo}`,
           start: assignment.start,
@@ -679,8 +726,21 @@ export class BookingsService {
         throw new ConflictException({ error: 'already_on_site' });
       }
       const requestedEnd = body.requestedEnd ? new Date(body.requestedEnd) : null;
-      if (body.kind === 'extend' && requestedEnd && rental.endDate && requestedEnd <= rental.endDate) {
-        throw new ConflictException({ error: 'extend_must_be_later' });
+      let assignmentId: string | null = null;
+      if (body.kind === 'extend' && body.assignmentId) {
+        // One unit at a time: each keeps its own return date.
+        const [unit] = await tx
+          .select()
+          .from(equipmentAssignments)
+          .where(and(eq(equipmentAssignments.id, body.assignmentId), eq(equipmentAssignments.rentalId, id)))
+          .limit(1);
+        if (!unit || unit.status === 'cancelled' || unit.status === 'completed') {
+          throw new NotFoundException({ error: 'booking_unit_not_found' });
+        }
+        if (requestedEnd && unit.end && requestedEnd <= unit.end) {
+          throw new ConflictException({ error: 'extend_must_be_later' });
+        }
+        assignmentId = unit.id;
       }
       const [open] = await tx
         .select()
@@ -695,6 +755,7 @@ export class BookingsService {
           tenantId: ctx.tenantId,
           rentalId: id,
           kind: body.kind,
+          assignmentId,
           requestedEnd,
           reason: body.reason || null,
           requestedBy: ctx.userId,
@@ -724,7 +785,7 @@ export class BookingsService {
         if (request.kind === 'cancel') {
           await this.cancelRental(tx, ctx, id);
         } else if (request.requestedEnd) {
-          await this.extendRental(tx, id, request.requestedEnd);
+          await this.extendRental(tx, id, request.requestedEnd, request.assignmentId);
         }
       }
 
@@ -771,11 +832,14 @@ export class BookingsService {
     });
   }
 
-  private async extendRental(tx: Tx, id: string, newEnd: Date) {
-    const assignments = await tx
+  // Extends one unit (assignmentId) or, for a request made before units
+  // were picked, every unit. The booking's end_date follows the latest unit.
+  private async extendRental(tx: Tx, id: string, newEnd: Date, assignmentId: string | null) {
+    const live = await tx
       .select()
       .from(equipmentAssignments)
       .where(and(eq(equipmentAssignments.rentalId, id), ne(equipmentAssignments.status, 'cancelled')));
+    const assignments = assignmentId ? live.filter((a) => a.id === assignmentId) : live;
     // Lock the units first, same as create(), so a concurrent booking of
     // the added days serializes behind this check.
     if (assignments.length > 0) {
@@ -802,8 +866,12 @@ export class BookingsService {
         });
       }
       await tx.update(equipmentAssignments).set({ end: newEnd }).where(eq(equipmentAssignments.id, assignment.id));
+      assignment.end = newEnd;
     }
-    await tx.update(rentals).set({ endDate: newEnd }).where(eq(rentals.id, id));
+    const ends = live.map((a) => a.end).filter((e): e is Date => e !== null);
+    if (ends.length > 0) {
+      await tx.update(rentals).set({ endDate: new Date(Math.max(...ends.map((e) => e.getTime()))) }).where(eq(rentals.id, id));
+    }
   }
 
   private async cancelRental(tx: Tx, ctx: RequestContext, id: string) {

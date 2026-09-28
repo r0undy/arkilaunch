@@ -7,6 +7,7 @@ import { EmptyState } from '../components/empty-state.js';
 import { PageHeader } from '../components/page-header.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
+import { MobileInput } from '../components/mobile-input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
 import { StatusPill } from '../components/status-pill.js';
@@ -148,6 +149,7 @@ function CartPage() {
   const [projectSiteId, setProjectSiteId] = useState('');
   const [siteOpen, setSiteOpen] = useState(false);
   const [siteContact, setSiteContact] = useState('');
+  const [siteContactMobile, setSiteContactMobile] = useState('');
   const [siteNotes, setSiteNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [swap, setSwap] = useState<ReturnType<typeof bookingAlternatives>>(null);
@@ -169,6 +171,7 @@ function CartPage() {
     companyId,
     projectSiteId,
     siteContact,
+    siteContactMobile,
     siteNotes,
   });
   // Errors stay quiet until the first submit, then follow every keystroke --
@@ -236,6 +239,7 @@ function CartPage() {
         customerId: companyId,
         projectSiteId,
         ...(siteContact.trim() ? { siteContact: siteContact.trim() } : {}),
+        ...(siteContactMobile ? { siteContactMobile } : {}),
         ...(siteNotes.trim() ? { siteNotes: siteNotes.trim() } : {}),
         items: items.map(({ equipmentId, start, end, hours }) => ({ equipmentId, start, end, hours })),
       }),
@@ -524,13 +528,20 @@ function CartPage() {
                 )}
               </div>
               <Input
-                label="Contact on site"
-                placeholder="Name and mobile number"
+                label="Site contact name"
+                placeholder="Who the driver asks for"
                 maxLength={MAX_SITE_CONTACT}
                 value={siteContact}
                 {...show('siteContact')}
                 hint="Optional. Who the driver asks for on arrival."
                 onChange={(e) => setSiteContact(e.target.value)}
+              />
+              <MobileInput
+                label="Site contact mobile"
+                value={siteContactMobile}
+                {...show('siteContactMobile')}
+                hint="Optional. The driver calls this number on arrival."
+                onChange={setSiteContactMobile}
               />
             </div>
             <Input

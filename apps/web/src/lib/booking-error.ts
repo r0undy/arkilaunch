@@ -27,6 +27,9 @@ export function explainBookingError(error: unknown): string {
 
   switch (code) {
     case 'equipment_unavailable':
+      if (str(payload, 'reason') === 'overlaps_in_cart') {
+        return 'The same machine is in your cart twice for overlapping dates. Change the dates on one line or remove it.';
+      }
       if (str(payload, 'reason') === 'dates_taken') {
         return `That machine is already booked for the dates you picked. Choose a different window.${more}`;
       }

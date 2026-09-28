@@ -11,6 +11,7 @@ import { Button } from '../components/button.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { CheckIcon, ClockIcon } from '../components/icons.js';
 import { Input } from '../components/input.js';
+import { Select } from '../components/select.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { useToast } from '../components/toast.js';
 import { MyEquipmentWeather } from '../components/equipment-weather.js';
@@ -49,15 +50,50 @@ export function leaseProgress(
   return { pct, daysRemaining };
 }
 
-function MachineCard({ equipmentId }: { equipmentId: string }) {
+type BookingItem = BookingDetailResponse['items'][number];
+
+// One machine on the booking, with ITS dates: each unit has its own window
+// (and its own deliveries, returns and extensions), so no unit is shown
+// under another's dates.
+function MachineCard({ item, onSite }: { item: BookingItem; onSite: boolean }) {
+  const { equipmentId } = item;
   const fleet = useQuery(equipmentQueries.list());
-  const match = fleet.data?.items.find((item) => item.id === equipmentId);
+  const match = fleet.data?.items.find((unit) => unit.id === equipmentId);
+  const progress = onSite && item.status === 'active' ? leaseProgress(item.start, item.end) : null;
 
   return (
     <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
-      <h2 className="text-sm font-medium text-text-muted">
-        Machine on hire
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-medium text-text-muted">Machine on hire</h2>
+        <span className="text-sm text-text-muted">{formatStatus(item.status)}</span>
+      </div>
+      <dl className="grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <dt className="font-medium text-text-muted">Start</dt>
+          <dd className="text-text">{formatDate(item.start)}</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-text-muted">Return</dt>
+          <dd className="text-text">{item.end ? formatDate(item.end) : 'Open ended'}</dd>
+        </div>
+      </dl>
+      {progress && (
+        <div className="flex flex-col gap-1">
+          <div
+            role="progressbar"
+            aria-valuenow={progress.pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Hire progress, ${item.equipmentName ?? 'machine'}`}
+            className="h-2 w-full overflow-hidden rounded-sm bg-surface-sunk"
+          >
+            <div className="h-full bg-primary" style={{ width: `${progress.pct}%` }} />
+          </div>
+          <p className="text-sm text-text-muted">
+            {progress.pct}% complete &middot; {progress.daysRemaining} day{progress.daysRemaining === 1 ? '' : 's'} remaining
+          </p>
+        </div>
+      )}
       {match ? (
         <>
           <p className="text-heading-lg text-text">{match.model}</p>
@@ -84,10 +120,16 @@ function MachineCard({ equipmentId }: { equipmentId: string }) {
           </dl>
         </>
       ) : (
-        <p className="font-mono text-sm text-text-muted">{shortCode('equipment', equipmentId)}</p>
+        <p className="text-sm text-text-muted">{item.equipmentName ?? shortCode('equipment', equipmentId)}</p>
       )}
     </Surface>
   );
+}
+
+// The earliest start across the booking's machines.
+export function earliestStart(items: { start: Date | string }[]): string | null {
+  if (items.length === 0) return null;
+  return new Date(Math.min(...items.map((item) => new Date(item.start).getTime()))).toISOString();
 }
 
 export interface TimelineStep {
@@ -102,7 +144,10 @@ export interface TimelineStep {
  * move on site (`active` once delivered, `completed` once returned).
  */
 export function bookingTimeline(booking: BookingDetailResponse): TimelineStep[] {
-  const first = booking.items[0];
+  // The booking's span: the first machine in, the last one back. Each
+  // machine's own dates are on its card.
+  const firstIn = earliestStart(booking.items);
+  const lastOut = latestEnd(booking.items);
   const onSite = booking.status === 'active' || booking.status === 'completed';
   const returned = booking.status === 'completed';
   const paid =
@@ -112,8 +157,8 @@ export function bookingTimeline(booking: BookingDetailResponse): TimelineStep[] 
     { label: 'Requested', done: true, detail: formatDate(booking.createdAt) },
     { label: 'Price agreed', done: quoted || paid, detail: booking.quotation ? formatPeso(booking.quotation.totalPhp) : null },
     { label: 'Paid', done: paid, detail: null },
-    { label: 'Delivered', done: onSite, detail: first ? formatDate(first.start) : null },
-    { label: 'Returned', done: returned, detail: first?.end ? formatDate(first.end) : null },
+    { label: 'Delivered', done: onSite, detail: firstIn ? formatDate(firstIn) : null },
+    { label: 'Returned', done: returned, detail: lastOut ? formatDate(lastOut) : null },
   ];
 }
 
@@ -227,7 +272,9 @@ function ChangeRequests({ booking }: { booking: BookingDetailResponse }) {
       {booking.changeRequests.map((request) => (
         <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
           <span className="text-text">
-            {request.kind === 'extend' ? `Extend to ${formatDate(request.requestedEnd)}` : 'Cancel booking'}
+            {request.kind === 'extend'
+              ? `Extend ${booking.items.find((item) => item.id === request.assignmentId)?.equipmentName ?? 'all machines'} to ${formatDate(request.requestedEnd)}`
+              : 'Cancel booking'}
           </span>
           <span className="text-text-muted">{formatStatus(request.status)}</span>
         </div>
@@ -237,9 +284,10 @@ function ChangeRequests({ booking }: { booking: BookingDetailResponse }) {
 }
 
 function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
-  const first = booking.items[0];
   const { paid, onSite } = bookingStage(booking);
-  const progress = first && onSite ? leaseProgress(first.start, first.end) : null;
+  const firstIn = earliestStart(booking.items);
+  const lastOut = latestEnd(booking.items);
+  const several = booking.items.length > 1;
   const invoiceTotal = booking.invoices.reduce((sum, invoice) => sum + invoice.amount, 0);
   const paidTotal = booking.payments
     .filter((payment) => payment.status === 'paid')
@@ -253,7 +301,7 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
           <NextStep booking={booking} />
         </Surface>
         {booking.items.map((item) => (
-          <MachineCard key={`${item.equipmentId}-${String(item.start)}`} equipmentId={item.equipmentId} />
+          <MachineCard key={item.id} item={item} onSite={onSite} />
         ))}
 
         {/* A booking with no equipment lines is a real state in this data --
@@ -273,61 +321,29 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
           </Surface>
         )}
 
-        <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+        {booking.items.length > 0 && (
+          <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
             <h2 className="text-sm font-medium text-text-muted">
-              {onSite ? 'Lease timeline' : paid ? 'Scheduled dates' : 'Requested dates'}
+              {onSite ? 'Hire period' : paid ? 'Scheduled dates' : 'Requested dates'}
             </h2>
-            {progress && (
-              <p className="text-sm font-semibold text-text">
-                {progress.daysRemaining} day{progress.daysRemaining === 1 ? '' : 's'} remaining
+            {several && (
+              <p className="text-sm text-text-muted">
+                Each machine keeps its own dates, shown on its card. This is the whole booking, first machine in to
+                last one back.
               </p>
             )}
-          </div>
-
-          {progress ? (
-            <>
-              <div
-                role="progressbar"
-                aria-valuenow={progress.pct}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label="Lease progress"
-                className="h-2 w-full overflow-hidden rounded-sm bg-surface-sunk"
-              >
-                <div className="h-full bg-primary" style={{ width: `${progress.pct}%` }} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-sm font-medium text-text-muted">{several ? 'First start' : 'Start date'}</p>
+                <p className="text-text">{firstIn ? formatDate(firstIn) : '--'}</p>
               </div>
-              <p className="text-sm font-medium text-text-muted">
-                {progress.pct}% complete
-              </p>
-            </>
-          ) : !onSite ? null : (
-            <p className="text-sm text-text-muted">
-              {booking.items.length === 0
-                ? 'This booking has no equipment lines, so there is no hire period to track.'
-                : 'No return date is set on this booking yet, so there is no progress to show.'}
-            </p>
-          )}
-
-          <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
-            {first && (
-              <>
-                <div>
-                  <p className="text-sm font-medium text-text-muted">
-                    Start date
-                  </p>
-                  <p className="text-text">{formatDate(first.start)}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-text-muted">
-                    Return date
-                  </p>
-                  <p className="text-text">{first.end ? formatDate(first.end) : 'Open ended'}</p>
-                </div>
-              </>
-            )}
-          </div>
-        </Surface>
+              <div>
+                <p className="text-sm font-medium text-text-muted">{several ? 'Last return' : 'Return date'}</p>
+                <p className="text-text">{lastOut ? formatDate(lastOut) : 'Open ended'}</p>
+              </div>
+            </div>
+          </Surface>
+        )}
       </div>
 
       <div className="flex min-w-0 flex-col gap-4">
@@ -554,14 +570,18 @@ function ExtendRentalPage() {
   const [end, setEnd] = useState('');
   const [reason, setReason] = useState('');
   const [sent, setSent] = useState(false);
-  // The booking is due back when its LAST machine is: items[0] alone read
-  // the first unit's end and let a later unit's days be extended over.
-  const currentEnd = latestEnd(booking.data?.items ?? []);
+  // One machine at a time: each keeps its own return date, so extending one
+  // never drags the others along.
+  const units = (booking.data?.items ?? []).filter((item) => item.status !== 'cancelled' && item.status !== 'completed');
+  const [chosen, setChosen] = useState('');
+  const unit = units.find((item) => item.id === chosen) ?? (units.length === 1 ? units[0] : undefined);
+  const currentEnd = unit?.end ? new Date(unit.end).toISOString() : null;
 
   const request = useMutation({
     mutationFn: () =>
       apiPost(`/bookings/${bookingId}/change-requests`, {
         kind: 'extend',
+        assignmentId: unit?.id,
         requestedEnd: new Date(`${end}T17:00:00`).toISOString(),
         ...(reason.trim() ? { reason: reason.trim() } : {}),
       }),
@@ -580,8 +600,8 @@ function ExtendRentalPage() {
           <StatusPill tone="recon-review" label="Submitted" icon={<ClockIcon />} />
           <h1 className="text-display-md text-text">Extension requested</h1>
           <p className="text-sm text-text-muted">
-            The rental team checks the machines are free until {formatDate(`${end}T17:00:00`)} and
-            confirms. You get a notification either way; any extra charge is quoted before you pay it.
+            The rental team checks {unit?.equipmentName ?? 'the machine'} is free until{' '}
+            {formatDate(`${end}T17:00:00`)} and confirms. Your other machines keep their dates. You get a notification either way; any extra charge is quoted before you pay it.
           </p>
           <Button variant="primary" onClick={() => navigate({ to: '/account/bookings/$bookingId', params: { bookingId } })}>
             Back to booking
@@ -597,14 +617,38 @@ function ExtendRentalPage() {
     <div className="flex flex-col gap-5">
       <PageHeader title="Extend rental" {...(booking.data ? { description: `Booking ${booking.data.code}` } : {})} />
       <Surface radius="md" elevation="sm" className="flex max-w-xl flex-col gap-4 p-6">
-        <p className="text-sm text-text-muted">
-          Currently due back {currentEnd ? formatDate(currentEnd) : 'on an open date'}.
-        </p>
         <form className="flex flex-col gap-4" onSubmit={submit}>
+          {units.length > 1 && (
+            <Select
+              label="Machine to extend"
+              id="extend-unit"
+              required
+              value={unit?.id ?? ''}
+              onChange={(e) => {
+                setChosen(e.target.value);
+                setEnd('');
+              }}
+            >
+              <option value="" disabled>
+                Select...
+              </option>
+              {units.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.equipmentName ?? 'Machine'} (due back {item.end ? formatDate(item.end) : 'open'})
+                </option>
+              ))}
+            </Select>
+          )}
+          {unit && (
+            <p className="text-sm text-text-muted">
+              {units.length === 1 && unit.equipmentName ? `${unit.equipmentName}: currently` : 'Currently'} due back{' '}
+              {currentEnd ? formatDate(currentEnd) : 'on an open date'}.
+            </p>
+          )}
           <Input label="New return date" type="date" required min={minDate} value={end} onChange={(e) => setEnd(e.target.value)} />
           <Input label="Reason (optional)" maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} />
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" variant="primary" loading={request.isPending} disabled={!end}>
+            <Button type="submit" variant="primary" loading={request.isPending} disabled={!end || !unit}>
               Request extension
             </Button>
             <Link to="/account/bookings/$bookingId" params={{ bookingId }}>

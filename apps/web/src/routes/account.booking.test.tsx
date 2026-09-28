@@ -49,6 +49,7 @@ function booking(overrides: Partial<BookingDetailResponse> = {}): BookingDetailR
     createdAt: new Date('2026-09-01T00:00:00Z'),
     items: [
       {
+        id: '66666666-6666-4666-8666-666666666666',
         equipmentId: '44444444-4444-4444-8444-444444444444',
         start: new Date('2026-10-01T08:00:00Z'),
         end: new Date('2026-10-05T17:00:00Z'),

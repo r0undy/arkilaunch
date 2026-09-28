@@ -2,6 +2,7 @@ import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BookingDetailResponse, CheckoutMethod, CouponPreviewResponse } from '@arkilaunch/shared';
+import { localPhMobile } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, companiesQueries } from '../lib/queries.js';
 import { ApiError, apiErrorText, apiPost } from '../lib/api-client.js';
@@ -294,7 +295,8 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
         {booking.siteCity && (
           <p className="text-sm text-text-muted">
             Delivering to {booking.siteCity}
-            {booking.siteContact ? `, contact ${booking.siteContact}` : ''}.
+            {booking.siteContact ? `, contact ${booking.siteContact}` : ''}
+            {booking.siteContactMobile ? ` (+63 ${localPhMobile(booking.siteContactMobile)})` : ''}.
           </p>
         )}
       </fieldset>

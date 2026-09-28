@@ -86,6 +86,8 @@ export const rentals = pgTable(
     // Figma 168:1982 "Logistics & Delivery": who meets the truck and how to
     // get it on site. Free text the customer types at the cart.
     siteContact: text('site_contact'),
+    // 0064: the site contact's PH mobile (+639XXXXXXXXX), apart from the name.
+    siteContactMobile: text('site_contact_mobile'),
     siteNotes: text('site_notes'),
     startDate: timestamp('start_date', { withTimezone: true }).notNull(),
     endDate: timestamp('end_date', { withTimezone: true }),
@@ -98,6 +100,7 @@ export const rentals = pgTable(
   },
   (table) => [tenantIsolationPolicy(),
     index('rentals_tenant_id_idx').on(table.tenantId),
+    check('rentals_site_contact_mobile_chk', sql`${table.siteContactMobile} IS NULL OR ${table.siteContactMobile} ~ '^[+]639[0-9]{9}$'`),
   ],
 );
 
@@ -303,6 +306,8 @@ export const bookingChangeRequests = pgTable(
       .notNull()
       .references(() => rentals.id),
     kind: text('kind').notNull(), // extend | cancel
+    // 0064: the unit an extension is for; null = every unit (older requests).
+    assignmentId: uuid('assignment_id').references(() => equipmentAssignments.id),
     requestedEnd: timestamp('requested_end', { withTimezone: true }),
     reason: text('reason'),
     status: text('status').notNull().default('pending'), // pending | approved | rejected

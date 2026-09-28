@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BookingDetailResponse, BookingService, TruckRequestResponse } from '@arkilaunch/shared';
+import { localPhMobile } from '@arkilaunch/shared';
 import { bookingsQueries, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
 import { formatDate, formatDateTime, formatInvoiceType, formatPeso, formatStatus } from '../lib/format.js';
@@ -93,13 +94,23 @@ function RentalBody({ booking }: { booking: BookingDetailResponse }) {
       <Section title="Customer">
         <dl className="flex flex-col gap-1">
           <Row label="Company">{booking.customerName ?? '--'}</Row>
-          <Row label="Site rep">{booking.siteContact ?? '--'}</Row>
+          <Row label="Site rep">
+            {booking.siteContact ?? '--'}
+            {booking.siteContactMobile && (
+              <>
+                {' · '}
+                <a href={`tel:${booking.siteContactMobile}`} className="underline">
+                  +63 {localPhMobile(booking.siteContactMobile)}
+                </a>
+              </>
+            )}
+          </Row>
         </dl>
       </Section>
       <Section title="Schedule and machines">
         <ul className="flex flex-col gap-1 text-sm">
           {booking.items.map((item) => (
-            <li key={`${item.equipmentId}-${String(item.start)}`} className="flex flex-wrap justify-between gap-x-4">
+            <li key={item.id} className="flex flex-wrap justify-between gap-x-4">
               <span className="text-text">{item.equipmentName ?? 'Machine'}</span>
               <span className="text-text-muted">
                 {formatDate(item.start)} – {item.end ? formatDate(item.end) : 'open'}
@@ -112,7 +123,7 @@ function RentalBody({ booking }: { booking: BookingDetailResponse }) {
           <ul className="flex flex-col gap-1 text-xs text-text-muted">
             {extensions.map((request) => (
               <li key={request.id}>
-                Extension to {formatDate(request.requestedEnd)} · {formatStatus(request.status)}
+                Extend {booking.items.find((item) => item.id === request.assignmentId)?.equipmentName ?? 'all machines'} to {formatDate(request.requestedEnd)} · {formatStatus(request.status)}
               </li>
             ))}
           </ul>

@@ -1,4 +1,4 @@
-import type { CompanyResponse } from '@arkilaunch/shared';
+import { PH_MOBILE_REGEX, type CompanyResponse } from '@arkilaunch/shared';
 import type { CartItem } from './cart-client.js';
 
 // What the cart refuses to submit, and why, in one place a test can drive.
@@ -13,6 +13,7 @@ export interface CartFieldErrors {
   companyId?: string;
   projectSiteId?: string;
   siteContact?: string;
+  siteContactMobile?: string;
   siteNotes?: string;
   // Keyed by cart index.
   items: Record<number, string>;
@@ -27,6 +28,7 @@ export function hasErrors(errors: CartFieldErrors): boolean {
     errors.companyId ||
       errors.projectSiteId ||
       errors.siteContact ||
+      errors.siteContactMobile ||
       errors.siteNotes ||
       Object.keys(errors.items).length > 0,
   );
@@ -62,6 +64,8 @@ export interface ValidateCartInput {
   companyId: string;
   projectSiteId: string;
   siteContact: string;
+  /** +639XXXXXXXXX, or '' when not given. */
+  siteContactMobile: string;
   siteNotes: string;
 }
 
@@ -84,8 +88,11 @@ export function validateCart(input: ValidateCartInput): CartFieldErrors {
     errors.projectSiteId = 'Choose where the machines are going.';
   }
 
-  if (input.siteContact.trim() && input.siteContact.trim().length < 3) {
-    errors.siteContact = 'Give a name the driver can ask for, and a number.';
+  if (input.siteContact.trim() && input.siteContact.trim().length < 2) {
+    errors.siteContact = 'Give a name the driver can ask for.';
+  }
+  if (input.siteContactMobile && !PH_MOBILE_REGEX.test(input.siteContactMobile)) {
+    errors.siteContactMobile = 'Enter a PH mobile number, e.g. 917 123 4567.';
   }
   if (input.siteContact.length > MAX_SITE_CONTACT) {
     errors.siteContact = `Keep this under ${MAX_SITE_CONTACT} characters.`;
@@ -114,7 +121,18 @@ export function validateCart(input: ValidateCartInput): CartFieldErrors {
     }
     if ((end - start) / 86_400_000 > MAX_RENTAL_DAYS) {
       errors.items[index] = `A single booking runs at most ${MAX_RENTAL_DAYS} days.`;
+      return;
     }
+    // Each unit keeps its own dates; the same unit twice must not overlap
+    // itself (the server refuses it too).
+    const clash = input.items.some(
+      (other, j) =>
+        j < index &&
+        other.equipmentId === item.equipmentId &&
+        new Date(other.start).getTime() < end &&
+        start < new Date(other.end).getTime(),
+    );
+    if (clash) errors.items[index] = 'This unit is already in your cart for overlapping dates.';
   });
 
   return errors;

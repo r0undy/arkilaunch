@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PaginationQuerySchema } from './pagination.js';
+import { PhMobileSchema } from './phone.js';
 
 // PRD-F8 (Client Booking Portal), SDD §4 `POST /api/v1/bookings` contract,
 // built as an authenticated `customer`-role surface rather than the PRD's
@@ -41,6 +42,7 @@ export const BookingCreateRequestSchema = z.object({
   customerId: z.string().uuid().optional(),
   projectSiteId: z.string().uuid(),
   siteContact: z.string().trim().max(200).optional(),
+  siteContactMobile: PhMobileSchema.optional(),
   siteNotes: z.string().trim().max(1000).optional(),
   items: z.array(BookingItemRequestSchema).min(1),
 });
@@ -64,6 +66,11 @@ export const BookingSummaryResponseSchema = z.object({
   projectSiteId: z.string().uuid(),
   siteCity: z.string().nullable(),
   siteProvince: z.string().nullable(),
+  // Each unit with its own dates; units never share one merged range.
+  // Optional so a cached response from before it existed still parses.
+  items: z
+    .array(z.object({ equipmentName: z.string(), start: z.coerce.date(), end: z.coerce.date().nullable() }))
+    .optional(),
 });
 export type BookingSummaryResponse = z.infer<typeof BookingSummaryResponseSchema>;
 
@@ -121,6 +128,8 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
   customerName: z.string().nullable().optional(),
   items: z.array(
     z.object({
+      // The equipment_assignments row: the unit's own line on this booking.
+      id: z.string().uuid(),
       equipmentId: z.string().uuid(),
       // "Excavator · CAT 320 · SN 123", so no screen names a unit by UUID.
       equipmentName: z.string().optional(),
@@ -130,6 +139,7 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
     }),
   ),
   siteContact: z.string().nullable(),
+  siteContactMobile: z.string().nullable().optional(),
   siteNotes: z.string().nullable(),
   // Callback before payment: checkout waits for callConfirmedAt.
   callRequestedAt: z.coerce.date().nullable(),
@@ -157,6 +167,8 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
     z.object({
       id: z.string().uuid(),
       kind: z.string(),
+      // The unit an extension is for; null = every unit (older requests).
+      assignmentId: z.string().uuid().nullable().optional(),
       requestedEnd: z.coerce.date().nullable(),
       reason: z.string().nullable(),
       status: z.string(),
@@ -237,12 +249,18 @@ export type NegotiationMessageResponse = z.infer<typeof NegotiationMessageRespon
 export const ChangeRequestCreateSchema = z
   .object({
     kind: z.enum(['extend', 'cancel']),
+    // Which unit to extend: each keeps its own return date.
+    assignmentId: z.string().uuid().optional(),
     requestedEnd: z.string().datetime({ offset: true }).optional(),
     reason: z.string().trim().max(1000).optional(),
   })
   .refine((body) => body.kind !== 'extend' || body.requestedEnd, {
     message: 'requestedEnd is required to extend',
     path: ['requestedEnd'],
+  })
+  .refine((body) => body.kind !== 'extend' || body.assignmentId, {
+    message: 'assignmentId is required to extend',
+    path: ['assignmentId'],
   });
 export type ChangeRequestCreate = z.infer<typeof ChangeRequestCreateSchema>;
 
