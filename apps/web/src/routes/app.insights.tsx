@@ -68,41 +68,42 @@ function InsightsPage() {
         emptyIcon={TrendingUp}
         isEmpty={() => false}
         render={(data) => (
-          <div className="flex flex-col gap-8">
-            {/* The four numbers an owner opens this page for, before any table. */}
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="flex flex-col gap-5">
+            {/* The numbers an owner opens this page for, before any table.
+                Deposit deducted is not a tile: it is the deposit_deduction
+                line of the breakdown below, and two figures for one sum read
+                as a double charge (same fix as app.billing.weekly.tsx). */}
+            <div className="grid gap-3 sm:grid-cols-3">
               <StatTile label="Invoiced" value={formatPeso(data.financial.invoiced.total)} />
               <StatTile label="Paid" value={formatPeso(data.financial.paid)} />
-              <StatTile label="Deposit deducted" value={formatPeso(data.financial.depositDeducted)} />
               <StatTile
                 label="Fleet utilization"
                 value={fleetUtilizationPct(data.utilization)?.toFixed(1).concat('%') ?? null}
                 hint={`${data.utilization.fleet.length} machines`}
               />
             </div>
-            <div>
-              <h2 className="mb-3 text-base font-semibold text-text">
-                Fleet utilization
-              </h2>
-              <Table
-                columns={UTILIZATION_COLUMNS}
-                rows={data.utilization.fleet.slice(fleetOffset, fleetOffset + PAGE_SIZE)}
-                rowKey={(row) => row.equipmentId}
-              />
-              <Pagination
-                offset={fleetOffset}
-                limit={PAGE_SIZE}
-                total={data.utilization.fleet.length}
-                onOffsetChange={setFleetOffset}
-                noun="machines"
-              />
-            </div>
+            <Table
+              header={{
+                title: 'Fleet utilization',
+                count: data.utilization.fleet.length,
+                pagination: (
+                  <Pagination
+                    offset={fleetOffset}
+                    limit={PAGE_SIZE}
+                    total={data.utilization.fleet.length}
+                    onOffsetChange={setFleetOffset}
+                    noun="machines"
+                  />
+                ),
+              }}
+              columns={UTILIZATION_COLUMNS}
+              rows={data.utilization.fleet.slice(fleetOffset, fleetOffset + PAGE_SIZE)}
+              rowKey={(row) => row.equipmentId}
+            />
 
             <div>
-              <h2 className="mb-3 text-base font-semibold text-text">
-                Financial breakdown
-              </h2>
               <Table
+                header={{ title: 'Financial breakdown' }}
                 columns={[
                   {
                     header: 'Invoice type', kind: 'text',
@@ -113,7 +114,12 @@ function InsightsPage() {
                     cell: (row: [string, number]) => formatPeso(row[1]),
                   },
                 ]}
-                rows={Object.entries(data.financial.invoiced.byType)}
+                rows={[
+                  ...Object.entries(data.financial.invoiced.byType),
+                  ...(data.financial.depositDeducted > 0 && !('deposit_deduction' in data.financial.invoiced.byType)
+                    ? [['deposit_deduction', data.financial.depositDeducted] as [string, number]]
+                    : []),
+                ]}
                 rowKey={(row) => row[0]}
               />
             </div>
