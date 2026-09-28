@@ -548,7 +548,7 @@ export class PaymentsService {
         throw new ConflictException({ error: 'price_not_agreed', status: request.status });
       }
       // Same gates as a booking: a verified company and a confirming call.
-      // The trip's own company (0066); a request made before then has none,
+      // The trip's own company (0067); a request made before then has none,
       // so any one of the requester's approved companies is enough.
       const companies = await tx
         .select()

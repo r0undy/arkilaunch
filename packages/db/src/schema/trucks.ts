@@ -65,7 +65,7 @@ export const truckRequests = pgTable(
     // 0059: who drives and loads, for the site hub's personnel tab.
     driverName: text('driver_name'),
     helperName: text('helper_name'),
-    // 0066: the company the trip is booked for (the site is optional), what
+    // 0067: the company the trip is booked for (the site is optional), what
     // it carries, and the agreed price the customer last accepted. FK in
     // SQL, like project_site_id.
     customerId: uuid('customer_id'),

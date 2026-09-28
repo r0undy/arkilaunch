@@ -14,7 +14,7 @@
 
 **Before:** every truck request had to name one of the customer's project sites, and that site needed its proof first. The site did not move the drop-off pin. The only way to say what was being hauled was free-text notes.
 
-**After (migration `0066_qa_batch_14_22.sql`):**
+**After (migration `0067_qa_batch_14_22.sql`):**
 - **Company:** `truck_requests.customer_id` is the company the trip is booked for. `POST /me/truck-requests` takes a `customerId`, which must be one of the caller's own companies. Checkout checks that company's KYC. Older rows are backfilled from their site; a request with no site falls back to any approved company of the requester.
 - **Site:** `projectSiteId` is optional. Picking a site pins the drop-off at the site's coordinates and uses the site's own address. A truck trip needs no site proof: `requireSiteProof` is dropped for trucks, and staff no longer see the site-proof panel on a truck.
 - **Cargo:** `truck_requests.load_description` ("Equipment to load", 1–300 characters) is required on new requests. Both sides see it on the trip, in the staff list and drawer, and in the Actions tab.

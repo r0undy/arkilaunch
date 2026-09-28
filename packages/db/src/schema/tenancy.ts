@@ -30,7 +30,7 @@ export const tenants = pgTable(
     headerColor: text('header_color'), // #rrggbb, CHECK in 0060
     font: text('font'), // 'inter', 'plex' or NULL (Inter), CHECK in 0061
     facebookUrl: text('facebook_url'), // https Facebook page, CHECK in 0060
-    messengerUrl: text('messenger_url'), // https m.me / Messenger link, CHECK in 0066
+    messengerUrl: text('messenger_url'), // https m.me / Messenger link, CHECK in 0067
     tagline: text('tagline'),
     about: text('about'),
     phone: text('phone'),

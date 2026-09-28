@@ -261,9 +261,9 @@ export interface TruckRequestResponse {
   acceptedPricePhp: number | null;
   callRequestedAt: string | null;
   callConfirmedAt: string | null;
-  // Optional since 0066; null on requests made before 0055.
+  // Optional since 0067; null on requests made before 0055.
   projectSiteId: string | null;
-  // 0066: the company the trip is for and what it carries (null on older
+  // 0067: the company the trip is for and what it carries (null on older
   // requests), and who asked, so staff can call them.
   customerId: string | null;
   companyName: string | null;

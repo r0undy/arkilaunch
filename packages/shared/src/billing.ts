@@ -76,7 +76,7 @@ export type AuditTrailEntry = z.infer<typeof AuditTrailEntrySchema>;
 
 export const InvoiceDetailResponseSchema = InvoiceSummaryResponseSchema.extend({
   lineItems: z.array(InvoiceLineItemResponseSchema),
-  // The company billed (the booking's, or the truck trip's since 0066), for
+  // The company billed (the booking's, or the truck trip's since 0067), for
   // the printed invoice. Null on an older trip with no company.
   billTo: z
     .object({ companyName: z.string(), tin: z.string().nullable(), billingAddress: z.string().nullable() })

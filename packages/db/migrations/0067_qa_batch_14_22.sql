@@ -3,7 +3,7 @@
 --
 -- 1. A self-loading trip is booked for a company, not a site: the site is an
 -- optional drop-off shortcut and no longer needs its proof. Backfilled from
--- the site each pre-0066 request named (a request with no site keeps NULL;
+-- the site each pre-0067 request named (a request with no site keeps NULL;
 -- checkout then falls back to the requester's approved company).
 ALTER TABLE "truck_requests" ADD COLUMN "customer_id" uuid REFERENCES "customers"("id");--> statement-breakpoint
 UPDATE "truck_requests" tr SET "customer_id" = ps."customer_id"

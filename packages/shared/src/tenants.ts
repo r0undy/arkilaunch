@@ -150,7 +150,7 @@ const FacebookUrlSchema = z
   });
 
 // Same rule for the Facebook Messenger link (m.me/<page> or a Messenger or
-// Facebook URL), offered beside the in-app chat; DB CHECK in 0066.
+// Facebook URL), offered beside the in-app chat; DB CHECK in 0067.
 const MESSENGER_HOST = /^(m\.me|(www\.)?messenger\.com|([a-z0-9-]+\.)*facebook\.com)$/;
 const MessengerUrlSchema = z
   .string()

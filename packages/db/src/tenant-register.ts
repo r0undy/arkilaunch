@@ -328,7 +328,7 @@ export async function setTenantPaymongoAccount(
   }
 }
 
-// The tenant's TIN for printed documents (0066); the caller passes the
+// The tenant's TIN for printed documents (0067); the caller passes the
 // verified JWT's tenant.
 export async function getTenantTin(tenantId: string): Promise<string | null> {
   const rows = await db.execute<{ tin: string | null }>(sql`select tenants_get_tin(${tenantId}) as tin`);
