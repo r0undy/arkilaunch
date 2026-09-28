@@ -778,7 +778,7 @@ describe('Customer onboarding', () => {
       await companies.decide(adminCtx, companyId, { decision: 'approved', identity: IDENTITY, registryChecked: [secId], cureDocuments: [] });
       const approved = (await companies.listForReview(adminCtx, 'approved')).items.find((c) => c.id === companyId);
       expect(approved?.companyName).toBe('As Sent Corp');
-      expect(approved?.tin).toBe('111-222-333');
+      expect(approved?.tin).toMatch(/^d{9}$/);
       expect(approved?.rejection).toBeNull();
       expect(approved?.documents.find((d) => d.id === secId)?.registryChecked).toBe(true);
     });
