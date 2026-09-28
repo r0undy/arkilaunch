@@ -1,5 +1,6 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
+import { CircleCheck, CircleDashed, CircleX, Clock, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   REVIEW_FLAGS,
@@ -24,7 +25,11 @@ import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { PageHeader } from '../components/page-header.js';
 import { Tabs } from '../components/tabs.js';
 import { Select } from '../components/select.js';
-import { Surface } from '../components/surface.js';
+import { Container } from '../components/container.js';
+import { Alert } from '../components/alert.js';
+import { StatusBadge } from '../components/status-badge.js';
+import { ExpandableSection } from '../components/expandable-section.js';
+import { useMediaQuery } from '../lib/use-media-query.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { SiteEquipmentWeather } from '../components/equipment-weather.js';
 import { useToast } from '../components/toast.js';
@@ -43,14 +48,15 @@ const TAB_LABEL: Record<Tab, string> = {
   documents: 'Documents',
 };
 
-const heading = 'text-heading-md text-text';
-
-const STATUS_META: Record<FieldLogDayStatus, { label: string; className: string }> = {
-  missing: { label: 'Missing', className: 'border border-dashed border-border text-text-muted' },
-  pending: { label: 'Pending', className: 'bg-recon-review text-text' },
-  needs_correction: { label: 'Needs correction', className: 'bg-recon-discrepancy text-white' },
-  approved: { label: 'Approved', className: 'bg-recon-approved text-white' },
-  rejected: { label: 'Rejected', className: 'bg-recon-failed text-white' },
+// Each day is a status indicator (Cloudscape): the icon carries the colour and
+// the label is spoken and shown on hover, so a week reads as a row of marks
+// rather than seven chips of text.
+const STATUS_META: Record<FieldLogDayStatus, { label: string; icon: LucideIcon; className: string }> = {
+  missing: { label: 'Missing', icon: CircleDashed, className: 'text-text-muted' },
+  pending: { label: 'Pending', icon: Clock, className: 'text-accent' },
+  needs_correction: { label: 'Needs correction', icon: TriangleAlert, className: 'text-warning' },
+  approved: { label: 'Approved', icon: CircleCheck, className: 'text-success' },
+  rejected: { label: 'Rejected', icon: CircleX, className: 'text-error' },
 };
 
 function addDays(iso: string, n: number): string {
@@ -90,75 +96,78 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function Overview({ hub, today }: { hub: SiteHubResponse; today: string }) {
   const t = hub.totals;
+  const { latitude, longitude } = hub.site;
   return (
     <div className="flex flex-col gap-4">
-      <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5 text-sm">
-        <h2 className={heading}>Site</h2>
-        <p className="text-text">{hub.site.address || '--'}</p>
-        <p className="text-text-muted">Customer: {hub.site.customerName ?? '--'}</p>
-        <a
-          className="w-fit text-accent underline"
-          href={`https://www.openstreetmap.org/?mlat=${hub.site.latitude}&mlon=${hub.site.longitude}#map=17/${hub.site.latitude}/${hub.site.longitude}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Map pin ({hub.site.latitude.toFixed(5)}, {hub.site.longitude.toFixed(5)})
-        </a>
-      </Surface>
-      <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
-        <h2 className={heading}>Bookings on this site</h2>
-        {hub.rentals.length === 0 && <p className="text-sm text-text-muted">No bookings yet.</p>}
-        {hub.rentals.map((r) => {
-          const p = spanProgress(r.start, r.end, today);
-          const pct = p.of ? Math.round((p.day / p.of) * 100) : null;
-          return (
-            <div key={r.id} className="flex flex-col gap-1 border-t border-border pt-3 first:border-t-0 first:pt-0">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Link to="/app/bookings" search={{ open: r.code }} className="underline">
-                  <BookingCode code={r.code} />
-                </Link>
-                <span className="text-sm text-text-muted">{formatStatus(r.status)}</span>
-              </div>
-              <p className="text-sm text-text">
-                {r.customerName ?? '--'} · Site rep {r.siteRep ?? 'not given'}
-              </p>
-              <p className="text-sm text-text-muted">
-                {formatDate(r.start)} – {r.end ? formatDate(r.end) : 'open'}
-                {r.extended && <span className="ml-2 font-semibold text-accent">Extended</span>}
-                {p.of ? ` · day ${p.day} of ${p.of}` : ''}
-              </p>
-              {pct !== null && (
-                <div
-                  className="h-1.5 w-full rounded-full bg-border"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={pct}
-                  aria-label={`${r.code} rental progress`}
-                >
-                  <div className="h-1.5 rounded-full bg-accent" style={{ width: `${pct}%` }} />
+      <Container header={{ title: 'Site' }}>
+        <div className="flex flex-col gap-2 text-sm">
+          <p className="text-text">{hub.site.address || '--'}</p>
+          <p className="text-text-muted">Customer: {hub.site.customerName ?? '--'}</p>
+          <ExpandableSection header={<span className="text-sm font-medium">Location details</span>}>
+            <p className="font-mono text-sm tabular-nums text-text">
+              {latitude.toFixed(4)}, {longitude.toFixed(4)}
+            </p>
+            <a
+              className="text-sm text-accent underline"
+              href={`https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=17/${latitude}/${longitude}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open the map
+            </a>
+          </ExpandableSection>
+        </div>
+      </Container>
+      <Container header={{ title: 'Bookings on this site', count: hub.rentals.length }}>
+        <div className="flex flex-col gap-3">
+          {hub.rentals.length === 0 && <p className="text-sm text-text-muted">No bookings yet.</p>}
+          {hub.rentals.map((r) => {
+            const p = spanProgress(r.start, r.end, today);
+            const pct = p.of ? Math.round((p.day / p.of) * 100) : null;
+            return (
+              <div key={r.id} className="flex flex-col gap-1 border-t border-border pt-3 first:border-t-0 first:pt-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Link to="/app/bookings" search={{ open: r.code }} className="underline">
+                    <BookingCode code={r.code} />
+                  </Link>
+                  <StatusBadge status={r.status} />
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </Surface>
-      <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
-        <h2 className={heading}>Approved field logs</h2>
+                <p className="text-sm text-text">{r.customerName ?? '--'}</p>
+                <p className="text-sm text-text-muted">
+                  {formatDate(r.start)} – {r.end ? formatDate(r.end) : 'open'}
+                  {r.extended && ' · extended'}
+                  {p.of ? ` · day ${p.day} of ${p.of}` : ''}
+                </p>
+                {pct !== null && (
+                  <div
+                    className="h-1.5 w-full rounded-full bg-border"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={pct}
+                    aria-label={`${r.code} rental progress`}
+                  >
+                    <div className="h-1.5 rounded-full bg-accent" style={{ width: `${pct}%` }} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Container>
+      <Container
+        header={{ title: 'Approved field logs', description: `${t.daysApproved} of ${t.daysInSpan} machine-days approved` }}
+      >
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat label="Running" value={`${t.running.toFixed(1)} h`} />
           <Stat label="Billable idle" value={`${t.idle.toFixed(1)} h`} />
           <Stat label="Downtime" value={`${(t.breakdown + t.weather + t.otherDowntime).toFixed(1)} h`} />
           <Stat label="Billed to date" value={formatPeso(t.billedPhp)} />
         </div>
-        <p className="text-sm text-text-muted">
-          {t.daysApproved} of {t.daysInSpan} unit-days approved · {t.pending} pending
-        </p>
-      </Surface>
-      <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5">
-        <h2 className={heading}>Weather now</h2>
+      </Container>
+      <Container header={{ title: 'Weather now' }}>
         <SiteEquipmentWeather siteId={hub.site.id} />
-      </Surface>
+      </Container>
     </div>
   );
 }
@@ -224,7 +233,7 @@ function ReviewPanel({
       placement="right"
       size="lg"
       title={day ? `${formatDate(day.date)} · ${unit?.name ?? 'Machine'}` : 'Field log'}
-      description={day ? `${STATUS_META[day.status].label}${unit ? ` · ${unit.bookingCode} · SN ${unit.serialNo}` : ''}` : ''}
+      description={day ? `${STATUS_META[day.status].label}${unit ? ` · ${unit.bookingCode}` : ''}` : ''}
       footer={
         reviewable ? (
           <>
@@ -256,7 +265,7 @@ function ReviewPanel({
           Nothing was submitted for this day. Use Record EDTR to enter the paper sheet.
         </p>
       )}
-      {detail.isError && <p className="text-sm text-error">{apiErrorText(detail.error)}</p>}
+      {detail.isError && <Alert type="error">{apiErrorText(detail.error)}</Alert>}
       {day?.edtrId && detail.data && (
         <div className="flex flex-col gap-4">
           {detail.data.source === 'paper_ocr' &&
@@ -269,11 +278,13 @@ function ReviewPanel({
             ))}
           {day.submittedBy && <p className="text-sm text-text-muted">Submitted by {day.submittedBy}</p>}
           {day.flags.length > 0 && (
-            <ul className="flex flex-col gap-1 rounded-md border border-warning p-3 text-sm text-text">
-              {day.flags.map((f) => (
-                <li key={f}>! {REVIEW_FLAGS[f as ReviewFlag] ?? f}</li>
-              ))}
-            </ul>
+            <Alert type="warning" header="Check before approving">
+              <ul className="list-disc pl-5">
+                {day.flags.map((f) => (
+                  <li key={f}>{REVIEW_FLAGS[f as ReviewFlag] ?? f}</li>
+                ))}
+              </ul>
+            </Alert>
           )}
           {day.reason && <p className="text-sm text-text">Reason given: {day.reason}</p>}
           {reviewable ? (
@@ -353,11 +364,9 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
   return (
     <div className="flex flex-col gap-4">
       {lost > 0 && (
-        <Surface radius="md" elevation="sm" className="flex flex-col gap-2 border-warning p-4">
-          <p className="text-sm font-semibold text-text">
-            {lost} full day{lost === 1 ? '' : 's'} lost to breakdown or weather. Extend the rental?
-          </p>
-          <div className="flex flex-wrap gap-2">
+        <Alert type="warning" header={`${lost} full day${lost === 1 ? '' : 's'} lost to breakdown or weather`}>
+          <p>Extend the rental so the customer is not charged for them.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
             {hub.rentals
               .filter((r) => r.status === 'active')
               .map((r) => (
@@ -366,7 +375,7 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
                 </Link>
               ))}
           </div>
-        </Surface>
+        </Alert>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -414,70 +423,7 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
       {hub.units.length === 0 ? (
         <p className="text-sm text-text-muted">No machines are deployed to this site yet.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-sm">
-            <caption className="sr-only">Field log status by machine and day</caption>
-            <thead>
-              <tr>
-                <th scope="col" className="p-2 text-left font-semibold text-text-muted">
-                  Machine
-                </th>
-                {dates.map((d) => (
-                  <th key={d} scope="col" className="p-2 text-center font-semibold text-text-muted">
-                    {new Date(`${d}T00:00:00Z`).toLocaleDateString('en-PH', { weekday: 'short', timeZone: 'UTC' })}
-                    <br />
-                    <span className="font-mono text-xs">{d.slice(5)}</span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {hub.units.map((u) => (
-                <tr key={`${u.rentalId}-${u.equipmentId}`} className="border-t border-border">
-                  <th scope="row" className="p-2 text-left font-normal">
-                    <span className="block font-medium text-text">{u.name}</span>
-                    <span className="font-mono text-xs text-text-muted">
-                      {u.bookingCode} · SN {u.serialNo}
-                    </span>
-                  </th>
-                  {dates.map((d) => {
-                    const day = byKey.get(`${u.equipmentId}|${d}`);
-                    if (!inSpan(u, d)) {
-                      return (
-                        <td key={d} className="p-1 text-center">
-                          <span className="block rounded-sm bg-border/40 px-1 py-2 text-xs text-text-muted" title="Outside the rental">
-                            —
-                          </span>
-                        </td>
-                      );
-                    }
-                    if (!day) {
-                      return (
-                        <td key={d} className="p-1 text-center text-xs text-text-muted">
-                          Upcoming
-                        </td>
-                      );
-                    }
-                    const meta = STATUS_META[day.status];
-                    return (
-                      <td key={d} className="p-1 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setOpen(day)}
-                          className={`block w-full rounded-sm px-1 py-2 text-xs font-semibold ${meta.className}`}
-                          aria-label={`${u.name} ${d}: ${meta.label}${day.flags.length ? ', flagged' : ''}`}
-                        >
-                          {meta.label}
-                          {day.flags.length > 0 && ' !'}
-                        </button>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <WeekGrid hub={hub} dates={dates} byKey={byKey} onOpen={setOpen} />
       )}
       <ReviewPanel
         day={open}
@@ -496,6 +442,151 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
         initialSource="paper_ocr"
         {...(recordRental ? { initialRentalId: recordRental } : {})}
       />
+    </div>
+  );
+}
+
+const weekday = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-PH', { weekday: 'short', timeZone: 'UTC' });
+
+// One day of one machine: outside the rental, not yet due, or a status mark
+// that opens the day's log.
+function DayCell({ unit, date, day, onOpen }: { unit: FieldLogUnit; date: string; day: FieldLogDay | undefined; onOpen: (d: FieldLogDay) => void }) {
+  if (!inSpan(unit, date)) {
+    return (
+      <span className="flex h-11 items-center justify-center text-text-muted" title="Outside the rental">
+        <span aria-hidden>—</span>
+        <span className="sr-only">{`${weekday(date)} ${formatDate(date)}: outside the rental`}</span>
+      </span>
+    );
+  }
+  if (!day) {
+    return (
+      <span className="flex h-11 items-center justify-center text-xs text-text-muted" title="Upcoming">
+        <span aria-hidden>·</span>
+        <span className="sr-only">{`${weekday(date)} ${formatDate(date)}: upcoming`}</span>
+      </span>
+    );
+  }
+  const meta = STATUS_META[day.status];
+  const Icon = meta.icon;
+  const label = `${unit.name}, ${weekday(date)} ${formatDate(date)}: ${meta.label}${day.flags.length ? ', flagged' : ''}`;
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(day)}
+      title={`${meta.label}${day.flags.length ? ' (flagged)' : ''}`}
+      aria-label={label}
+      className="relative flex h-11 w-full items-center justify-center rounded-sm hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
+    >
+      <Icon aria-hidden className={`h-5 w-5 ${meta.className}`} />
+      {day.flags.length > 0 && <span aria-hidden className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-error" />}
+    </button>
+  );
+}
+
+// The week as machines x days. On a phone each machine is a card with its
+// seven days in one row, so nothing scrolls sideways.
+function WeekGrid({
+  hub,
+  dates,
+  byKey,
+  onOpen,
+}: {
+  hub: SiteHubResponse;
+  dates: string[];
+  byKey: Map<string, FieldLogDay>;
+  onOpen: (d: FieldLogDay) => void;
+}) {
+  const narrow = useMediaQuery('(max-width: 767px)');
+  const legend = (
+    <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-muted" aria-label="Legend">
+      {Object.values(STATUS_META).map(({ label, icon: Icon, className }) => (
+        <li key={label} className="inline-flex items-center gap-1">
+          <Icon aria-hidden className={`h-4 w-4 ${className}`} />
+          {label}
+        </li>
+      ))}
+      <li className="inline-flex items-center gap-1">
+        <span aria-hidden className="h-2 w-2 rounded-full bg-error" />
+        Flagged
+      </li>
+    </ul>
+  );
+  const dayHead = (d: string) => (
+    <>
+      <span className="block">{weekday(d)}</span>
+      <span className="font-mono text-xs tabular-nums">{Number(d.slice(8))}</span>
+    </>
+  );
+  const unitName = (u: FieldLogUnit) => (
+    <>
+      <span className="block font-medium text-text">{u.name}</span>
+      <span className="font-mono text-xs text-text-muted">{u.bookingCode}</span>
+    </>
+  );
+
+  if (narrow) {
+    return (
+      <div className="flex flex-col gap-3">
+        {legend}
+        <Container flush>
+          <ul>
+            {hub.units.map((u) => (
+              <li key={`${u.rentalId}-${u.equipmentId}`} className="border-b border-border px-4 py-3 last:border-0">
+                {unitName(u)}
+                <div className="mt-2 grid grid-cols-7 text-center text-xs text-text-muted">
+                  {dates.map((d) => (
+                    <div key={d}>
+                      <div aria-hidden>{dayHead(d)}</div>
+                      <DayCell unit={u} date={d} day={byKey.get(`${u.equipmentId}|${d}`)} onOpen={onOpen} />
+                    </div>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Container>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {legend}
+      <Container flush>
+        <table className="w-full table-fixed border-collapse text-sm">
+          <caption className="sr-only">Field log status by machine and day</caption>
+          <colgroup>
+            <col className="w-[28%]" />
+          </colgroup>
+          <thead>
+            <tr className="border-b border-border">
+              <th scope="col" className="px-4 py-2 text-left font-medium text-text-muted">
+                Machine
+              </th>
+              {dates.map((d) => (
+                <th key={d} scope="col" className="px-1 py-2 text-center font-medium text-text-muted">
+                  {dayHead(d)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {hub.units.map((u) => (
+              <tr key={`${u.rentalId}-${u.equipmentId}`} className="border-b border-border last:border-0">
+                <th scope="row" className="px-4 py-2 text-left font-normal">
+                  {unitName(u)}
+                </th>
+                {dates.map((d) => (
+                  <td key={d} className="px-1 py-1 text-center">
+                    <DayCell unit={u} date={d} day={byKey.get(`${u.equipmentId}|${d}`)} onOpen={onOpen} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Container>
     </div>
   );
 }
@@ -549,18 +640,13 @@ function Equipment({ hub, siteId }: { hub: SiteHubResponse; siteId: string }) {
     },
   ];
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm text-text-muted">
-        {hub.units.length} machine{hub.units.length === 1 ? '' : 's'} at this site. Click a machine for its field logs,
-        or a booking code to open the booking.
-      </p>
-      <Table
-        columns={columns}
-        rows={hub.units}
-        rowKey={(u) => `${u.rentalId}-${u.equipmentId}`}
-        empty="No machines deployed here."
-      />
-    </div>
+    <Table
+      header={{ title: 'Machines on this site', count: hub.units.length }}
+      columns={columns}
+      rows={hub.units}
+      rowKey={(u) => `${u.rentalId}-${u.equipmentId}`}
+      empty="No machines deployed here."
+    />
   );
 }
 
@@ -605,15 +691,21 @@ function Personnel({ hub, siteId }: { hub: SiteHubResponse; siteId: string }) {
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className={heading}>Timekeepers</h2>
-          {p.availableTimekeepers.length > 0 && (
-            <Button variant="secondary" onClick={() => setAssigning(true)}>
-              Assign
-            </Button>
-          )}
-        </div>
+      <Container
+        header={{
+          title: 'Timekeepers',
+          count: p.timekeepers.length,
+          ...(p.availableTimekeepers.length > 0
+            ? {
+                actions: (
+                  <Button variant="secondary" onClick={() => setAssigning(true)}>
+                    Assign
+                  </Button>
+                ),
+              }
+            : {}),
+        }}
+      >
         {p.timekeepers.length === 0 && <p className="text-sm text-text-muted">None assigned: no one can submit logs here.</p>}
         <ul className="flex flex-col gap-1 text-sm">
           {p.timekeepers.map((t) => (
@@ -667,23 +759,20 @@ function Personnel({ hub, siteId }: { hub: SiteHubResponse; siteId: string }) {
           }}
           onCancel={() => setRemoving(null)}
         />
-      </Surface>
-      <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5">
-        <h2 className={heading}>Operators</h2>
+      </Container>
+      <Container header={{ title: 'Operators', count: p.operators.length }}>
         {list(
           p.operators.map((o) => `${o.name} · ${o.equipmentName}`),
           'No operator assigned to a machine here.',
         )}
-      </Surface>
-      <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5">
-        <h2 className={heading}>Customer site reps</h2>
+      </Container>
+      <Container header={{ title: 'Customer site reps', count: p.siteReps.length }}>
         {list(
           p.siteReps.map((r) => `${r.name} (${r.bookingCode})`),
           'The customer has not named a site rep.',
         )}
-      </Surface>
-      <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5">
-        <h2 className={heading}>Truck drivers and helpers</h2>
+      </Container>
+      <Container header={{ title: 'Truck drivers and helpers', count: p.truckCrew.length }}>
         {list(
           p.truckCrew.map(
             (c) =>
@@ -691,27 +780,27 @@ function Personnel({ hub, siteId }: { hub: SiteHubResponse; siteId: string }) {
           ),
           'No truck trips to this site.',
         )}
-      </Surface>
+      </Container>
     </div>
   );
 }
 
 function Documents({ hub }: { hub: SiteHubResponse }) {
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5">
-      <h2 className={heading}>Site documents</h2>
+    <Container header={{ title: 'Site documents', count: hub.documents.length }}>
       {hub.documents.length === 0 && <p className="text-sm text-text-muted">No documents uploaded for this site.</p>}
       <ul className="flex flex-col gap-1 text-sm">
         {hub.documents.map((d) => (
           <li key={d.id} className="flex flex-wrap justify-between gap-2">
             <span className="text-text">{formatStatus(d.documentType)}</span>
-            <span className="text-text-muted">
-              {formatStatus(d.status)} · {formatDate(d.createdAt)}
+            <span className="inline-flex items-center gap-3 text-text-muted">
+              <StatusBadge status={d.status} />
+              {formatDate(d.createdAt)}
             </span>
           </li>
         ))}
       </ul>
-    </Surface>
+    </Container>
   );
 }
 
@@ -739,7 +828,7 @@ function SiteHubPage() {
         onChange={(t) => void navigate({ search: { tab: t } })}
         items={TABS.map((t) => ({ id: t, label: TAB_LABEL[t], badge: t === 'logs' ? (hub.data?.totals.pending ?? null) : null }))}
       />
-      {hub.isError && <p className="text-sm text-error">{apiErrorText(hub.error)}</p>}
+      {hub.isError && <Alert type="error">{apiErrorText(hub.error)}</Alert>}
       {hub.isPending && <p className="text-sm text-text-muted">Loading the site...</p>}
       {hub.data && (
         <div role="tabpanel">
