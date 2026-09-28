@@ -17,7 +17,7 @@ test.describe('customer settings', () => {
     await page.getByRole('button', { name: 'Save profile' }).click();
     await expect(page.getByText('Profile saved')).toBeVisible();
     await page.reload();
-    await expect(page.getByLabel('Mobile number')).toHaveValue('+63 917 000 1234');
+    await expect(page.getByLabel('Mobile number')).toHaveValue('917 000 1234');
 
     // Picture: a real PNG, cut from the page itself. CI's console-e2e job has
     // no storage behind the API (ci.yml), so the upload is checked locally only.

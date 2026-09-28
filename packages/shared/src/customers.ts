@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { PaginationQuerySchema } from './pagination.js';
-import { DTI_REGEX, PHILSYS_PCN_REGEX, SEC_REGEX } from './kyc.js';
+import { DTI_REGEX, normalizeSecNumber, PHILSYS_PCN_REGEX, SEC_REGEX, sameTin } from './kyc.js';
+import { PhMobileSchema } from './phone.js';
 
 // Customer prerequisites CR: self-signup, companies (Figma 582:3946 "Add
 // New Company") and customer-owned project sites.
@@ -32,7 +33,7 @@ export const CompanyCreateSchema = z.object({
   billingAddress: z.string().trim().min(5).max(500),
   // No name field here: the customer's legal name comes only from their
   // National ID scan, read by staff and confirmed on approval (decide()).
-  contactMobile: z.string().trim().min(7).max(30),
+  contactMobile: PhMobileSchema,
 });
 export type CompanyCreate = z.infer<typeof CompanyCreateSchema>;
 
@@ -95,6 +96,21 @@ export function hasRequiredCompanyDocuments(documents: { documentType: string }[
     documents.some((d) => d.documentType === 'government_id') &&
     documents.some((d) => d.documentType === 'selfie_with_id') &&
     documents.some((d) => isPrimaryRegistration(d.documentType))
+  );
+}
+
+// The company this login already applied for, if the new one is the same:
+// the same TIN (branch included), the same SEC number, or the same name
+// once case, spaces and punctuation are ignored. One login applies for a
+// company once; a rejected one is cured and reapplied, never re-added.
+type CompanyIdentity = { companyName: string; tin?: string | null | undefined; secNumber?: string | null | undefined };
+export function findSameCompany<T extends CompanyIdentity>(candidate: CompanyIdentity, existing: T[]): T | undefined {
+  const name = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return existing.find(
+    (c) =>
+      (candidate.tin && c.tin && sameTin(candidate.tin, c.tin)) ||
+      (candidate.secNumber && c.secNumber && normalizeSecNumber(candidate.secNumber) === normalizeSecNumber(c.secNumber)) ||
+      (name(candidate.companyName).length > 0 && name(candidate.companyName) === name(c.companyName)),
   );
 }
 

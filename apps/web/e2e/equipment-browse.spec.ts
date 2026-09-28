@@ -45,7 +45,7 @@ test.describe('equipment browsing', () => {
     await page.goto('/equipment');
 
     await expect(page).toHaveURL(/\/equipment$/);
-    await expect(page.getByRole('heading', { name: /equipment for hire/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Equipment for hire', level: 1 })).toBeVisible();
     await expect(page.getByRole('complementary', { name: 'Sidebar' })).toHaveCount(0);
   });
 
@@ -71,7 +71,7 @@ test.describe('equipment browsing', () => {
     const panel = page.getByRole('complementary', { name: 'Weather insights' });
     await expect(panel).toBeVisible();
 
-    const heading = page.getByRole('heading', { name: /equipment for hire/i });
+    const heading = page.getByRole('heading', { name: 'Browse equipment', level: 1 });
     // Visible above, so both boxes exist.
     const panelBox = (await panel.boundingBox())!;
     const headingBox = (await heading.boundingBox())!;

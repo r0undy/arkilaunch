@@ -71,8 +71,8 @@ export function SidebarShell({ navGroups, tenantLabel, children }: SidebarShellP
               aria-label="Sidebar"
               className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-64 shrink-0 flex-col overflow-y-auto overflow-x-hidden [scrollbar-width:thin] [scrollbar-color:var(--color-border)_transparent] border-r border-border bg-surface px-3 pb-6 pt-3 lg:flex"
             >
-              <div className="mb-2 flex items-center justify-between pl-3">
-                <span className="line-clamp-2 text-base font-medium text-text">{tenantLabel}</span>
+              {/* The tenant's name is already beside its logo in the top bar. */}
+              <div className="mb-2 flex items-center justify-end">
                 <button type="button" onClick={toggleCollapsed} aria-expanded aria-label="Close navigation" className={railButton}>
                   <PanelLeftClose aria-hidden className="h-5 w-5" />
                 </button>

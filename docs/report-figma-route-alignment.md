@@ -215,7 +215,7 @@ debt on Figma's side, not code to delete.
 Endpoints that turned out to exist and had never been called by anything:
 `GET /bookings/:id`, `GET /invoices/:id`, `GET /notifications` +
 `PATCH /notifications/:id/read`, and `GET /users/me`. The active rental,
-invoice, notification-centre and profile screens are real as a result.
+invoice, notification-center and profile screens are real as a result.
 
 - `/app/security-logs` — no audit endpoint exists. Layout only, placeholder rows.
 - `/app/tickets` — no ticket table, no endpoint. Layout only.

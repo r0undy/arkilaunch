@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ROLE_CODES, type RoleCode } from './permissions.js';
 import { PaginationQuerySchema } from './pagination.js';
+import { PhMobileSchema } from './phone.js';
 
 // S19 Users & Roles (PRD-F7). A role assignable through this API -- never
 // `owner` (tenant-governance act, belongs to the platform console, S25) or
@@ -83,7 +84,7 @@ export const NotificationPrefsSchema = z.object({
 // PATCH /users/me. Only what the user owns: never email, role or names.
 export const UserSelfUpdateSchema = z
   .object({
-    phone: z.string().trim().max(32).regex(/^[+\d][\d\s-]*$/).nullable(),
+    phone: PhMobileSchema.nullable(),
     address: z.string().trim().max(500).nullable(),
     notificationPrefs: NotificationPrefsSchema,
   })

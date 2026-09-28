@@ -201,7 +201,7 @@ function EquipmentPage() {
     >
       <div className="flex min-w-0 flex-col gap-6">
       {inShell ? (
-        <PageHeader title="Equipment for hire" />
+        <PageHeader title="Browse equipment" description="Pick a machine, set its dates, and add it to your cart." />
       ) : (
         <h1 className="text-display-md text-text lg:text-display-lg">Equipment for hire</h1>
       )}

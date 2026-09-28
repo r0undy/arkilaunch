@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { BookingDetailResponse, RescheduleSuggestion } from '@arkilaunch/shared';
+import { localPhMobile } from '@arkilaunch/shared';
 import { bookingsQueries } from '../lib/queries.js';
 import { apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 import { formatDate, formatDateTime, formatPeso, formatStatus } from '../lib/format.js';
@@ -47,7 +48,9 @@ function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
       {booking.changeRequests.map((request) => (
         <div key={request.id} className="flex flex-col gap-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
           <p className="text-sm text-text">
-            {request.kind === 'extend' ? `Extend to ${formatDate(request.requestedEnd)}` : 'Cancel booking'}
+            {request.kind === 'extend'
+              ? `Extend ${booking.items.find((item) => item.id === request.assignmentId)?.equipmentName ?? 'all machines'} to ${formatDate(request.requestedEnd)}`
+              : 'Cancel booking'}
             <span className="text-text-muted"> &middot; {formatStatus(request.status)}</span>
           </p>
           {request.reason && <p className="text-sm text-text-muted">{request.reason}</p>}
@@ -79,7 +82,7 @@ function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
         body={
           ask?.decision === 'approved'
             ? ask.request.kind === 'extend'
-              ? `The booking will run to ${formatDate(ask.request.requestedEnd)}. The customer is notified.`
+              ? `${booking.items.find((item) => item.id === ask.request.assignmentId)?.equipmentName ?? 'Every machine'} will run to ${formatDate(ask.request.requestedEnd)}; other machines keep their dates. The customer is notified.`
               : 'The booking is cancelled for good. The customer is notified.'
             : 'The booking stays as it is. The customer is notified that you declined.'
         }
@@ -259,7 +262,19 @@ export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
       <Container header={{ title: 'Site' }}>
         <div className="flex flex-col gap-2 text-sm">
         <p className="text-text">{booking.siteCity ?? booking.siteProvince ?? '--'}</p>
-        {booking.siteContact && <p className="text-text-muted">Contact: {booking.siteContact}</p>}
+        {(booking.siteContact || booking.siteContactMobile) && (
+          <p className="text-text-muted">
+            Contact: {booking.siteContact}
+            {booking.siteContactMobile && (
+              <>
+                {booking.siteContact ? ' · ' : ''}
+                <a href={`tel:${booking.siteContactMobile}`} className="underline">
+                  +63 {localPhMobile(booking.siteContactMobile)}
+                </a>
+              </>
+            )}
+          </p>
+        )}
         {booking.siteNotes && <p className="text-text-muted">Access: {booking.siteNotes}</p>}
         <SiteProofAdmin siteId={booking.projectSiteId} />
         {booking.status === 'active' && <SiteEquipmentWeather siteId={booking.projectSiteId} />}

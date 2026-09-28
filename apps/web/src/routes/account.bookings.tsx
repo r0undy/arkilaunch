@@ -6,9 +6,10 @@ import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, trucksQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
+import { Tabs } from '../components/tabs.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
-import { formatStatus, siteName } from '../lib/format.js';
+import { formatDate, formatStatus, siteName } from '../lib/format.js';
 import { Button } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { TruckRequestCard } from '../components/truck-trip.js';
@@ -39,6 +40,26 @@ const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
         <span className="font-mono text-xs text-text-muted">{row.code}</span>
       </div>
     ),
+  },
+  {
+    // One line per machine, each with its own dates: units on a booking are
+    // hired, delivered and returned on their own schedules.
+    header: 'Machines and dates', kind: 'text',
+    cell: (row) =>
+      row.items && row.items.length > 0 ? (
+        <ul className="flex flex-col gap-1">
+          {row.items.map((item, index) => (
+            <li key={index} className="flex flex-col">
+              <span className="text-text">{item.equipmentName}</span>
+              <span className="text-xs text-text-muted">
+                {formatDate(item.start)} to {item.end ? formatDate(item.end) : 'open'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <span className="text-text-muted">No machines</span>
+      ),
   },
   {
     header: 'Status', kind: 'status',
@@ -88,25 +109,7 @@ function MyBookingsPage() {
         aria-label="Find a booking by code"
         className="min-h-10 w-full max-w-md rounded-input border border-border bg-surface px-3 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
       />
-      <div role="tablist" aria-label="Service" className="flex gap-1 border-b border-border">
-        {SERVICES.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            role="tab"
-            aria-selected={service === entry.id}
-            onClick={() => setService(entry.id)}
-            className={[
-'-mb-px border-b-2 px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
-              service === entry.id
-                ? 'border-primary text-text'
-                : 'border-transparent text-text-muted hover:text-text',
-            ].join(' ')}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
+      <Tabs label="Service" items={SERVICES} value={service} onChange={setService} />
       {service === 'truck' ? (
         // Keyed on the search, so a new search starts back on page 1.
         <TruckBookings key={codePrefix} codePrefix={codePrefix} />

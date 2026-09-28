@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { SEC_REGEX, TIN_REGEX } from './kyc.js';
 import { PaginationQuerySchema } from './pagination.js';
+import { PhMobileSchema } from './phone.js';
 
 // POST /tenants/register (@Public). Mirrors apps/web/src/lib/registration-
 // client.ts's two-step form. Auto-approved (CR: tenant-self-serve-branding):
@@ -9,7 +10,7 @@ import { PaginationQuerySchema } from './pagination.js';
 export const TenantRegisterRequestSchema = z.object({
   firstName: z.string().min(1).max(200),
   lastName: z.string().min(1).max(200),
-  mobileNumber: z.string().min(1).max(50),
+  mobileNumber: PhMobileSchema,
   email: z.string().email(),
   jobTitle: z.string().min(1).max(200),
   companyName: z.string().min(1).max(200),

@@ -43,6 +43,40 @@ export function isWaitingForReview(company: CompanyResponse): boolean {
   return company.kycStatus === 'pending' && hasRequiredCompanyDocuments(company.documents);
 }
 
+// The number off the paper the customer actually uploaded: a TIN from the
+// BIR Form 2303, an SEC number from the SEC certificate. The card used to
+// read secNumber only, so a BIR-only company always said "Not provided".
+export function registrationNumber(company: CompanyResponse): { label: string; value: string } | null {
+  const has = (type: string) => company.documents.some((d) => d.documentType === type);
+  if (company.tin && (has('bir_cor') || !company.secNumber)) return { label: 'TIN', value: company.tin };
+  if (company.secNumber) return { label: 'SEC reg. no.', value: company.secNumber };
+  return null;
+}
+
+// What the rental team still needs before it can review the company.
+export function missingDocuments(company: CompanyResponse): string[] {
+  const has = (test: (type: string) => boolean) => company.documents.some((d) => test(d.documentType));
+  return [
+    ...(has((t) => t === 'government_id') ? [] : [DOC_LABELS.government_id!]),
+    ...(has((t) => t === 'selfie_with_id') ? [] : [DOC_LABELS.selfie_with_id!]),
+    ...(has(isPrimaryRegistration) ? [] : ['BIR Form 2303 or SEC certificate']),
+  ];
+}
+
+// The one line that tells the customer where the application stands and
+// what, if anything, they do next.
+export function companyRemark(company: CompanyResponse): { text: string; action?: 'upload' | 'fix' } {
+  if (company.kycStatus === 'approved') return { text: 'Verified: you can book and pay under this company.' };
+  if (company.kycStatus === 'rejected') {
+    const reason = company.rejection ? KYC_REJECTION_REASONS[company.rejection.reason] : null;
+    const label = reason ? `Not verified: ${reason.label}.` : 'Verification was declined.';
+    return company.rejection && !company.rejection.final ? { text: `${label} Fix it and reapply.`, action: 'fix' } : { text: label };
+  }
+  const missing = missingDocuments(company);
+  if (missing.length > 0) return { text: `Still needed: ${missing.join(', ')}.`, action: 'upload' };
+  return { text: "Under review: the rental team is checking your documents. We'll notify you when it's done." };
+}
+
 // One document picked and uploaded on its own: the selfie, or a paper that
 // cures a rejection. The selfie opens the front camera on a phone.
 function DocumentUpload({ company, documentType, done }: { company: CompanyResponse; documentType: string; done: boolean }) {
@@ -154,10 +188,8 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
   const [siteOpen, setSiteOpen] = useState(false);
   const mine = (sites.data ?? []).filter((site) => site.customerId === company.id);
   const has = (test: (type: string) => boolean) => company.documents.some((d) => test(d.documentType));
-  const missing = [
-    ...(has((t) => t === 'government_id') ? [] : [DOC_LABELS.government_id]),
-    ...(has(isPrimaryRegistration) ? [] : ['BIR Form 2303 or SEC certificate']),
-  ];
+  // The selfie has its own upload below, so it is left out of this list.
+  const missing = missingDocuments(company).filter((label) => label !== DOC_LABELS.selfie_with_id);
   const waiting = isWaitingForReview(company);
   // The selfie has its own upload here; the ID and registration go through
   // the document steps.
@@ -169,7 +201,10 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
         <div>
           <h2 className="text-heading-md text-text">{company.companyName}</h2>
           <p className="text-sm text-text-muted">
-            TIN {company.tin ?? '--'} &middot; {company.billingAddress ?? '--'}
+            {registrationNumber(company)
+              ? `${registrationNumber(company)!.label} ${registrationNumber(company)!.value}`
+              : 'No registration number yet'}{' '}
+            &middot; {company.billingAddress ?? '--'}
           </p>
         </div>
         <VerificationPill status={company.kycStatus} />

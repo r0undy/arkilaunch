@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   ConflictException,
   ForbiddenException,
@@ -24,6 +25,7 @@ import {
 import {
   DTI_REGEX,
   ExtractionUnavailableError,
+  findSameCompany,
   hasRequiredCompanyDocuments,
   scoreRegistration,
   normalizePcn,
@@ -255,8 +257,21 @@ function humanKeys(payload: unknown): Record<string, unknown> {
   );
 }
 
+// The onboarding form scans each paper (POST /me/kyc/scan) and then uploads
+// the same bytes on submit; reading them twice doubled the wait and the
+// Azure spend. A read is kept for the login that asked for it, keyed by the
+// file's hash, so the upload reuses what the scan already computed. The
+// server made the read; nothing here comes from the client.
+// ponytail: per-instance Map; a miss (other instance, restart, expiry) just
+// runs OCR again. Move it to Redis if the API ever scales out wide.
+const OCR_CACHE_TTL_MS = 30 * 60_000;
+const OCR_CACHE_MAX = 200;
+
 @Injectable()
 export class CustomersService {
+  // Per service instance, so a read is only ever reused from the same port.
+  private readonly ocrCache = new Map<string, { at: number; result: Promise<DocumentExtractionResult> }>();
+
   constructor(
     private readonly events: EventsService,
     @Inject(DOCUMENT_INTELLIGENCE_PORT) private readonly port: DocumentIntelligencePort,
@@ -296,7 +311,7 @@ export class CustomersService {
     };
     let result;
     try {
-      result = await this.port.analyze(this.modelIdFor(documentType), bytes);
+      result = await this.analyzeCached(ctx, this.modelIdFor(documentType), bytes);
     } catch (error) {
       if (!(error instanceof ExtractionUnavailableError)) throw error;
       await this.events.emit(ctx, 'ocr_extraction_unavailable', {
@@ -336,6 +351,12 @@ export class CustomersService {
   async createCompany(ctx: RequestContext, body: CompanyCreate): Promise<CompanyResponse> {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
+      // One application per company per login. A pending or verified one is
+      // already in; a rejected one is cured and reapplied from its own page.
+      const same = findSameCompany(body, await ownCustomers(tx, ctx));
+      if (same) {
+        throw new ConflictException({ error: 'company_already_applied', companyId: same.id, status: same.kycStatus });
+      }
       const [row] = await tx
         .insert(customers)
         .values({
@@ -425,6 +446,21 @@ export class CustomersService {
     return documentType === 'government_id' ? NATIONAL_ID_MODEL_ID : KYC_MODEL_ID;
   }
 
+  private analyzeCached(ctx: RequestContext, modelId: string, bytes: Buffer): Promise<DocumentExtractionResult> {
+    const key = `${ctx.tenantId}:${ctx.userId}:${modelId}:${createHash('sha256').update(bytes).digest('hex')}`;
+    const now = Date.now();
+    const ocrCache = this.ocrCache;
+    const hit = ocrCache.get(key);
+    if (hit && now - hit.at < OCR_CACHE_TTL_MS) return hit.result;
+    const result = this.port.analyze(modelId, bytes);
+    // A failed read is not kept: the next attempt asks Azure again.
+    result.catch(() => ocrCache.delete(key));
+    ocrCache.set(key, { at: now, result });
+    // Oldest first (Map keeps insertion order).
+    while (ocrCache.size > OCR_CACHE_MAX) ocrCache.delete(ocrCache.keys().next().value!);
+    return result;
+  }
+
   // One OCR pass, whichever fields its model returns. The company model
   // yields company_name/tin/sec_number/dti_number, the National ID model the
   // holder's name, PCN, birth date, sex and address -- azure-adapter.ts
@@ -434,13 +470,16 @@ export class CustomersService {
     ctx: RequestContext,
     documentType: string,
     bytes: Buffer,
+    // A reviewer's manual re-read asks Azure afresh; the upload reuses the scan.
+    cached = true,
   ): Promise<CompanyDocumentReadResponse & { ocrPayload: Record<string, unknown> }> {
     const suggestions = Object.fromEntries(
       Object.keys(READ_FIELDS).map((k) => [k, null]),
     ) as CompanyDocumentReadResponse['suggestions'];
     let result;
     try {
-      result = await this.port.analyze(this.modelIdFor(documentType), bytes);
+      const modelId = this.modelIdFor(documentType);
+      result = await (cached ? this.analyzeCached(ctx, modelId, bytes) : this.port.analyze(modelId, bytes));
     } catch (error) {
       if (!(error instanceof ExtractionUnavailableError)) throw error;
       await this.events.emit(ctx, 'ocr_extraction_unavailable', {
@@ -522,7 +561,9 @@ export class CustomersService {
         .filter(([k, v]) => v && CUSTOMER_KEYS[k])
         .map(([k, v]) => [CUSTOMER_KEYS[k], v]),
     );
-    return withTenantTx(ctx, async (tx) => {
+    // The row is recorded first and the OCR read runs after that transaction
+    // commits: a slow Azure call must not hold a pooled connection open.
+    const row = await withTenantTx(ctx, async (tx) => {
       if (!(await ownsCustomer(tx, ctx, customerId)))
         throw new NotFoundException({ error: 'company_not_found' });
       const live = await liveDocuments(tx, customerId);
@@ -563,14 +604,22 @@ export class CustomersService {
       // The selfie (a face) and the cure papers go to a person only.
       if (!isOcrDocument(documentType)) {
         await tx.update(kycDocuments).set({ status: 'needs_review' }).where(eq(kycDocuments.id, row.id));
-        return { id: row.id, documentType: row.documentType, status: 'needs_review', createdAt: row.createdAt };
+        return { ...row, status: 'needs_review' };
       }
+      return row;
+    });
+    if (!isOcrDocument(documentType)) {
+      return { id: row.id, documentType: row.documentType, status: row.status, createdAt: row.createdAt };
+    }
 
-      const read = await this.analyzeDocument(ctx, documentType, bytes);
-      let status = row.status;
-      if (read.extractionAvailable) {
-        status = 'needs_review';
-        await tx
+    // Usually a cache hit: the form scanned these same bytes a moment ago.
+    // A read that fails leaves the row 'pending' for the reviewer's re-read.
+    const read = await this.analyzeDocument(ctx, documentType, bytes);
+    let status = row.status;
+    if (read.extractionAvailable) {
+      status = 'needs_review';
+      await withTenantTx(ctx, (tx) =>
+        tx
           .update(kycDocuments)
           .set({
             ocrPayload: { ...read.ocrPayload, ...customerPayload },
@@ -578,16 +627,16 @@ export class CustomersService {
             ...(read.confidence === null ? {} : { confidence: read.confidence.toFixed(4) }),
             status,
           })
-          .where(eq(kycDocuments.id, row.id));
-      }
+          .where(eq(kycDocuments.id, row.id)),
+      );
+    }
 
-      return {
-        id: row.id,
-        documentType: row.documentType,
-        status,
-        createdAt: row.createdAt,
-      };
-    });
+    return {
+      id: row.id,
+      documentType: row.documentType,
+      status,
+      createdAt: row.createdAt,
+    };
   }
 
   async listSites(ctx: RequestContext): Promise<CustomerSiteResponse[]> {
@@ -842,7 +891,7 @@ export class CustomersService {
         .limit(1);
       if (!doc) throw new NotFoundException({ error: 'document_not_found' });
 
-      const read = await this.analyzeDocument(ctx, doc.documentType, bytes);
+      const read = await this.analyzeDocument(ctx, doc.documentType, bytes, false);
       if (read.extractionAvailable) {
         await tx
           .update(kycDocuments)

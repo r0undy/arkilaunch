@@ -2,6 +2,7 @@ import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useRef, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  findSameCompany,
   isPrimaryRegistration,
   normalizePcn,
   normalizeSecNumber,
@@ -11,6 +12,8 @@ import {
   type PrimaryRegistrationType,
 } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
+import { prepareUpload } from '../lib/image-compression.js';
+import { companyStatusLabel } from '../lib/cart-validation.js';
 import { apiErrorText, apiPost, apiPostForm } from '../lib/api-client.js';
 import { companiesQueries } from '../lib/queries.js';
 import { PageHeader } from '../components/page-header.js';
@@ -18,6 +21,7 @@ import { Surface } from '../components/surface.js';
 import { Alert } from '../components/alert.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
+import { MobileInput } from '../components/mobile-input.js';
 import { EmptyState } from '../components/empty-state.js';
 import { CompanyCard, DOC_LABELS } from '../components/company-card.js';
 import { CaptureField } from '../components/capture-field.js';
@@ -57,7 +61,7 @@ function filled(fields: Record<string, string>): Record<string, string> {
   );
 }
 
-// Upload each document, one request each. Shared by the new-company form
+// Upload each document, one request each, all at once. Shared by the new-company form
 // and the "upload what is still missing" screen.
 async function uploadDocuments(
   companyId: string,
@@ -77,10 +81,14 @@ async function uploadDocuments(
     [files.registrationType, files.registration, {}],
     ['dti_certificate', files.dti, filled({ dtiNumber: files.dtiNumber ?? '' })],
   ];
-  for (const [documentType, file, confirmed] of uploads) {
-    if (!file) continue;
-    await apiPostForm(`/me/companies/${companyId}/documents`, { documentType, ...confirmed }, file);
-  }
+  // Side by side: each is its own request and its own row.
+  await Promise.all(
+    uploads
+      .filter(([, file]) => file)
+      .map(([documentType, file, confirmed]) =>
+        apiPostForm(`/me/companies/${companyId}/documents`, { documentType, ...confirmed }, file!),
+      ),
+  );
 }
 
 // One document at a time, in order. Both used to sit on the same screen,
@@ -219,7 +227,13 @@ function DocumentStep({
             type="file"
             accept="image/*"
             capture="user"
-            onChange={(e) => onSelfieChange(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              // Shrunk like every other capture: a raw 12 MP selfie was the
+              // slowest upload on submit.
+              if (!file) return onSelfieChange(null);
+              prepareUpload(file).then(onSelfieChange, () => onSelfieChange(file));
+            }}
             className="min-h-11 text-sm"
           />
           {selfie && <span className="font-normal text-text-muted">{selfie.name}</span>}
@@ -423,9 +437,8 @@ function NewCompanyPage() {
   const [chosenStage, setStage] = useState<DocStep | 'id_details' | 'details'>('government_id');
   // The National ID is captured once per login: with one on file (any of this
   // account's companies) the ID steps are skipped and the server reuses it.
-  const idOnFile = Boolean(
-    useQuery(companiesQueries.mine()).data?.some((c) => c.documents.some((d) => d.documentType === 'government_id')),
-  );
+  const mine = useQuery(companiesQueries.mine()).data ?? [];
+  const idOnFile = mine.some((c) => c.documents.some((d) => d.documentType === 'government_id'));
   const stage = idOnFile && (chosenStage === 'government_id' || chosenStage === 'id_details') ? 'company_registration' : chosenStage;
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState<boolean | null>(null);
@@ -436,6 +449,12 @@ function NewCompanyPage() {
   const showTin = registrationType === 'bir_cor';
   const showSec = registrationType === 'sec_certificate';
   const showDti = Boolean(dti);
+  // Already applied for? Checked as the details fill in, against the list
+  // this page already has; the server refuses it too.
+  const existing = findSameCompany(
+    { companyName, tin: showTin ? tin : null, secNumber: showSec ? secNumber : null },
+    mine,
+  );
 
   async function checkId() {
     if (!governmentId) return;
@@ -489,7 +508,9 @@ function NewCompanyPage() {
         dti,
         dtiNumber: showDti ? dtiNumber : '',
       });
-      await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
+      // Not awaited: the list page refetches on its own; waiting here only
+      // held the spinner for one more round trip.
+      void queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
       toast.success('Company added', 'The rental team will verify it. You can request quotes now.');
       await navigate({ to: '/account/applications' });
     } catch (err) {
@@ -599,6 +620,15 @@ function NewCompanyPage() {
               </Button>
             </div>
           )}
+          {existing && (
+            <Alert type="warning" header={`You already applied for ${existing.companyName}`}>
+              It is {companyStatusLabel(existing) || 'verified'}.{' '}
+              <Link to="/account/companies/$companyId" params={{ companyId: existing.id }} className="underline">
+                Open it
+              </Link>
+              {existing.kycStatus === 'rejected' ? ' to fix and reapply' : ''} instead of adding it again.
+            </Alert>
+          )}
           <Input
             label="Company name"
             required
@@ -654,14 +684,7 @@ function NewCompanyPage() {
             value={billingAddress}
             onChange={(e) => setBillingAddress(e.target.value)}
           />
-          <Input
-            label="Contact mobile"
-            type="tel"
-            required
-            maxLength={30}
-            value={contactMobile}
-            onChange={(e) => setContactMobile(e.target.value)}
-          />
+          <MobileInput label="Contact mobile" required value={contactMobile} onChange={setContactMobile} />
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-muted">
             <span>
               Scanned: {idOnFile ? 'National ID on file' : governmentId ? 'National ID' : 'no ID'}, {DOC_LABELS[registrationType]}
@@ -694,7 +717,7 @@ function NewCompanyPage() {
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" variant="primary" loading={busy} disabled={!accepted}>
+            <Button type="submit" variant="primary" loading={busy} disabled={!accepted || Boolean(existing)}>
               Submit
             </Button>
             <Link to="/account/companies">

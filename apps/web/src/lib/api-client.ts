@@ -84,6 +84,9 @@ export function apiErrorText(error: unknown): string {
     if (code === 'online_payment_unavailable') {
       return 'This rental company does not take online payment yet. Choose cash at the office instead.';
     }
+    if (code === 'company_already_applied') {
+      return 'You already applied for this company. Open it under Applications instead of adding it again.';
+    }
     if (code === 'site_proof_required') {
       return 'This site needs its proof first: a photo of the site and a permit, NTP or contract, title or lease, or barangay clearance. Add them under the company sites.';
     }

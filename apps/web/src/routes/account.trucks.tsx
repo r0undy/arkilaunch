@@ -54,10 +54,10 @@ function TrucksPage() {
   const [justCreated, setJustCreated] = useState<string | null>(null);
   const active = useQuery(trucksQueries.mine(1, 0, '', 'open'));
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <PageHeader
         title="Self-loading truck"
-        description="Tap the pickup, then the drop-off. The price comes from the road route; the rental team confirms the final kilometres before you pay."
+        description="Tap the pickup, then the drop-off; the price comes from the road route."
       />
       <Tabs
         label="Truck"

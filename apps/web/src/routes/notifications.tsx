@@ -12,7 +12,7 @@ import { NotificationFeed } from '../components/notification-feed.js';
 function NotificationsPage({ description }: { description: string }) {
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Notification centre" description={description} />
+      <PageHeader title="Notifications" description={description} />
       <NotificationFeed />
     </div>
   );
