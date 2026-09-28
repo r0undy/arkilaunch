@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import type { BookingDetailResponse, BookingService, TruckRequestResponse } from '@arkilaunch/shared';
 import { bookingsQueries, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
-import { formatDate, formatInvoiceType, formatPeso, formatStatus } from '../lib/format.js';
+import { formatDate, formatDateTime, formatInvoiceType, formatPeso, formatStatus } from '../lib/format.js';
+import { Alert } from './alert.js';
 import { RequestRow } from '../routes/app.trucks.js';
 import { Button } from './button.js';
 import { Modal } from './modal.js';
@@ -220,7 +221,7 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
       </Section>
       <Section title="Trip">
         <dl className="flex flex-col gap-1">
-          <Row label="Pickup">{new Date(truck.scheduledFor).toLocaleString()}</Row>
+          <Row label="Pickup">{formatDateTime(truck.scheduledFor)}</Row>
           <Row label="Distance">
             <span className="font-mono tabular-nums">
               {truck.confirmedKm !== null ? `${truck.confirmedKm} km confirmed` : `~${truck.estimatedKm} km estimated`}
@@ -290,7 +291,7 @@ export function BookingDrawer({
         )}
         <Tabs label="Booking sections" items={TABS} value={tab} onChange={setTab} />
         <div role="tabpanel" aria-label={TABS.find((t) => t.id === tab)?.label}>
-          {rentalId && booking.isError && <p className="text-sm text-error">{apiErrorText(booking.error)}</p>}
+          {rentalId && booking.isError && <Alert type="error">{apiErrorText(booking.error)}</Alert>}
           {rentalId && booking.isPending && <p className="text-sm text-text-muted">Loading booking...</p>}
           {booking.data && rentalId && (
             <>

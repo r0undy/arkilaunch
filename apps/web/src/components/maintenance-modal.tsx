@@ -14,6 +14,7 @@ import { ConfirmDialog } from './confirm-dialog.js';
 import { Tabs } from './tabs.js';
 import { EquipmentReport } from './equipment-report.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
+import { formatDateTime } from '../lib/format.js';
 
 // One machine's report and maintenance: the report (hours, fuel, rentals,
 // history) first, then per-task schedules, logging a service (which resets
@@ -292,7 +293,7 @@ export function MaintenanceModal({
                   className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border p-3 text-sm text-text"
                 >
                   <span className="flex flex-wrap items-center gap-2">
-                    {new Date(w.startsAt).toLocaleString()} to {new Date(w.endsAt).toLocaleString()}
+                    {formatDateTime(w.startsAt)} to {formatDateTime(w.endsAt)}
                     {w.notes ? ` · ${w.notes}` : ''}
                     {new Date(w.endsAt).getTime() <= Date.now() ? (
                       <span className="text-xs text-text-muted">ended · unit is free again</span>
@@ -324,7 +325,7 @@ export function MaintenanceModal({
                       onClick={() =>
                         setUnblocking({
                           id: w.id,
-                          span: `${new Date(w.startsAt).toLocaleString()} to ${new Date(w.endsAt).toLocaleString()}`,
+                          span: `${formatDateTime(w.startsAt)} to ${formatDateTime(w.endsAt)}`,
                         })
                       }
                     >
