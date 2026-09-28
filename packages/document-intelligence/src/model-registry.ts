@@ -30,14 +30,17 @@ const KYC_QUERY_FIELDS = [
 // The Philippine National ID (PhilSys) is a person-identity document, not a
 // corporate one -- same reason as above, prebuilt-idDocument doesn't cover
 // it, so this is queryFields against prebuilt-layout too, just asking for
-// holder fields instead of company ones. PhilSysCardNumber is the 16-digit
-// PCN printed on the card front; the names follow the card's own labels
-// (Apelyido/Last Name, Petsa ng Kapanganakan/Date of Birth, Tirahan/Address).
+// holder fields instead of company ones. The same read serves every
+// Philippine primary ID (QA 15: passport, driver's license, UMID, SSS, PRC,
+// postal, voter's, TIN ID): IdNumber is the card's own number (the PhilSys
+// PCN, a passport or license number...), checked afterwards in that card's
+// format (packages/shared/src/kyc.ts PH_ID_TYPES). The names follow the
+// cards' labels (Last Name/Surname, Date of Birth, Address).
 const NATIONAL_ID_QUERY_FIELDS = [
   'FirstName',
   'MiddleName',
   'LastName',
-  'PhilSysCardNumber',
+  'IdNumber',
   'DateOfBirth',
   'Sex',
   'Address',
@@ -109,7 +112,7 @@ export const QUERY_FIELD_TO_PORT_KEY: Record<string, string> = {
   MiddleName: 'middle_name',
   LastName: 'last_name',
   BusinessNameNumber: 'dti_number',
-  PhilSysCardNumber: 'id_number',
+  IdNumber: 'id_number',
   DateOfBirth: 'birth_date',
   Sex: 'sex',
   Address: 'address',

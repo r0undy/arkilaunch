@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { hasRequiredCompanyDocuments, isPrimaryRegistration } from './customers.js';
-import { PHILSYS_PCN_REGEX, SEC_REGEX, TIN_REGEX, normalizePcn, normalizeSecNumber, normalizeTin, sameTin } from './kyc.js';
+import { PH_ID_TYPES, SEC_REGEX, TIN_REGEX, idTypeOf, normalizeSecNumber, normalizeTin, sameTin, validIdNumber } from './kyc.js';
 
 // Advisory confidence for a company registration under review
 // (cr-arkilaunch-registration-scoring.md). Pure: the API adds the one fact
@@ -160,11 +160,13 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
   });
 
   // 3. ID number formats (hard).
+  // The ID's number in its own card's format (QA 15; untyped = PhilSys).
   const pcn = id ? (id.customer.id_number ?? id.ocr.id_number) : undefined;
+  const idType = idTypeOf(id?.customer.id_type);
   const invalid: string[] = [];
   if (input.tin && !TIN_REGEX.test(normalizeTin(input.tin))) invalid.push('TIN');
   if (input.secNumber && !SEC_REGEX.test(normalizeSecNumber(input.secNumber))) invalid.push('SEC number');
-  if (pcn && !PHILSYS_PCN_REGEX.test(normalizePcn(pcn))) invalid.push('PCN');
+  if (pcn && !validIdNumber(idType, pcn)) invalid.push(PH_ID_TYPES[idType].numberLabel);
   const anyNumber = !!(input.tin || input.secNumber || pcn);
   checks.push({
     id: 'id_formats',
@@ -174,10 +176,10 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
     status: !anyNumber ? 'warn' : invalid.length ? 'fail' : 'pass',
     hard: invalid.length > 0,
     reason: !anyNumber
-      ? 'No TIN, SEC number or PCN given.'
+      ? 'No TIN, SEC number or ID number given.'
       : invalid.length
         ? `Not a valid format: ${invalid.join(', ')}.`
-        : 'TIN, SEC number and PCN are well formed.',
+        : 'TIN, SEC number and ID number are well formed.',
   });
 
   // 4. Date of birth plausibility.
@@ -197,7 +199,7 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
   // 5. Duplicates in this tenant (hard).
   const dups = [
     input.duplicates.tin && 'TIN',
-    input.duplicates.pcn && 'PCN',
+    input.duplicates.pcn && 'ID number',
     input.duplicates.mobile && 'mobile number',
   ].filter(Boolean) as string[];
   checks.push({
@@ -207,7 +209,7 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
     credit: dups.length ? 0 : 1,
     status: dups.length ? 'fail' : 'pass',
     hard: dups.length > 0,
-    reason: dups.length ? `Another company here uses the same ${dups.join(', ')}.` : 'No other company shares its TIN, PCN or mobile.',
+    reason: dups.length ? `Another company here uses the same ${dups.join(', ')}.` : 'No other company shares its TIN, ID number or mobile.',
   });
 
   // 6. Document quality.

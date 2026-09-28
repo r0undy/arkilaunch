@@ -25,8 +25,8 @@ import { SiteProofStatus } from './site-proof.js';
 // "Manage" opens.
 const heading = 'text-heading-md text-text';
 export const DOC_LABELS: Record<string, string> = {
-  government_id: 'Philippine National ID (PhilSys)',
-  selfie_with_id: 'Selfie holding your National ID',
+  government_id: 'Government-issued ID',
+  selfie_with_id: 'Selfie holding your ID',
   bir_cor: 'BIR Certificate of Registration (Form 2303)',
   sec_certificate: 'SEC Certificate of Incorporation',
   dti_certificate: 'DTI Business Name (secondary)',
@@ -221,7 +221,7 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
         {needsSelfie && (
           <div className="flex flex-col gap-1">
             <p className="text-text-muted">
-              Take a selfie holding your National ID next to your face, so the rental team can match you to the card.
+              Take a selfie holding your ID next to your face, so the rental team can match you to the card.
             </p>
             <DocumentUpload company={company} documentType="selfie_with_id" done={false} />
           </div>

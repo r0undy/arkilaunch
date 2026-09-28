@@ -4,7 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   findSameCompany,
   isPrimaryRegistration,
-  normalizePcn,
+  PH_ID_TYPE_CODES,
+  PH_ID_TYPES,
+  type PhIdTypeCode,
   normalizeSecNumber,
   normalizeTin,
   type CompanyResponse,
@@ -30,9 +32,11 @@ import { Skeleton } from '../components/skeleton.js';
 import { useToast } from '../components/toast.js';
 import { Select } from '../components/select.js';
 
-// What the customer confirmed off their National ID. Sent with the ID
-// upload so the reviewer sees it beside what the OCR read.
+// What the customer confirmed off their ID. Sent with the ID upload so the
+// reviewer sees it beside what the OCR read. `idType` is which Philippine
+// primary ID it is (QA 15); its number is checked in that card's format.
 export interface IdDetails {
+  idType: PhIdTypeCode;
   firstName: string;
   middleName: string;
   lastName: string;
@@ -43,6 +47,7 @@ export interface IdDetails {
 }
 
 const EMPTY_ID: IdDetails = {
+  idType: 'philsys',
   firstName: '',
   middleName: '',
   lastName: '',
@@ -101,8 +106,8 @@ const WIZARD_STEPS: readonly WizardStep[] = ['government_id', 'id_details', 'com
 export const DOC_STEPS: { type: DocStep; label: string; hint: string }[] = [
   {
     type: 'government_id',
-    label: 'Philippine National ID (PhilSys)',
-    hint: 'Step 1 of 3. Only the PhilSys National ID (or ePhilID) is accepted, with its QR code clearly visible: the rental team verifies it on PhilSys Check. Add a selfie holding the ID so they can match you to it.',
+    label: 'Government-issued ID',
+    hint: 'Step 1 of 3. Any Philippine primary ID: National ID (PhilSys), passport, driver\'s license, UMID, SSS, PRC, postal, voter\'s or TIN ID. The whole card must be in the photo, clear and unexpired; the rental team checks it with the issuer. Add a selfie holding the ID so they can match you to it.',
   },
   {
     type: 'company_registration',
@@ -176,6 +181,8 @@ function DocumentStep({
   showDti = true,
   selfie = null,
   onSelfieChange,
+  idType,
+  onIdTypeChange,
 }: {
   step: (typeof DOC_STEPS)[number];
   value: File | null;
@@ -189,8 +196,12 @@ function DocumentStep({
   showDti?: boolean;
   selfie?: File | null;
   onSelfieChange?: (file: File | null) => void;
+  // Which primary ID is being captured, on the ID step.
+  idType?: PhIdTypeCode;
+  onIdTypeChange?: (type: PhIdTypeCode) => void;
 }) {
   const isRegistration = step.type === 'company_registration';
+  const idLabel = idType ? PH_ID_TYPES[idType].label : step.label;
 
   return (
     <div className="flex flex-col gap-2">
@@ -209,17 +220,26 @@ function DocumentStep({
           ))}
         </Select>
       )}
+      {!isRegistration && idType && onIdTypeChange && (
+        <Select label="ID type" id="id-type" value={idType} onChange={(e) => onIdTypeChange(e.target.value as PhIdTypeCode)}>
+          {PH_ID_TYPE_CODES.map((code) => (
+            <option key={code} value={code}>
+              {PH_ID_TYPES[code].label}
+            </option>
+          ))}
+        </Select>
+      )}
       {(!isRegistration || showPrimary) && (
         <CroppableCapture
           id={`doc-${step.type}`}
-          label={isRegistration ? DOC_LABELS[registrationType]! : step.label}
+          label={isRegistration ? DOC_LABELS[registrationType]! : idLabel}
           value={value}
           onChange={onChange}
         />
       )}
       {!isRegistration && onSelfieChange && (
         <label className="flex flex-col gap-1 text-sm font-medium text-text">
-          Selfie holding your National ID
+          Selfie holding your ID
           <span className="font-normal text-text-muted">
             Hold the ID beside your face, both clearly visible. The rental team only compares it with the ID photo; it is
             never read by a machine.
@@ -259,9 +279,10 @@ function DocumentStep({
 async function scanForSuggestions(
   file: File,
   documentType: string,
+  idType?: PhIdTypeCode,
 ): Promise<Pick<KycScanResponse, 'suggestions' | 'confidence' | 'layoutRecognized'> | null> {
   try {
-    const scan = await apiPostForm<KycScanResponse>('/me/kyc/scan', { documentType }, file);
+    const scan = await apiPostForm<KycScanResponse>('/me/kyc/scan', { documentType, ...(idType ? { idType } : {}) }, file);
     return scan.extractionAvailable ? scan : null;
   } catch {
     return null;
@@ -279,10 +300,11 @@ interface IdScan {
   unclear: boolean;
 }
 
-async function scanId(file: File): Promise<IdScan> {
-  const scan = await scanForSuggestions(file, 'government_id');
+async function scanId(file: File, idType: PhIdTypeCode): Promise<IdScan> {
+  const scan = await scanForSuggestions(file, 'government_id', idType);
   const s = scan?.suggestions;
   const details: IdDetails = {
+    idType,
     firstName: s?.firstName ?? '',
     middleName: s?.middleName ?? '',
     lastName: s?.lastName ?? '',
@@ -295,7 +317,7 @@ async function scanId(file: File): Promise<IdScan> {
   };
   return {
     details,
-    read: Object.values(details).some(Boolean),
+    read: Object.entries(details).some(([key, v]) => key !== 'idType' && Boolean(v)),
     unclear: scan?.confidence != null && scan.confidence < LEGIBLE_CONFIDENCE,
   };
 }
@@ -316,6 +338,7 @@ function IdReviewStep({
   onConfirm: () => void;
 }) {
   const set = (patch: Partial<IdDetails>) => onChange({ ...value, ...patch });
+  const card = PH_ID_TYPES[value.idType];
   return (
     <form
       className="flex flex-col gap-4"
@@ -325,7 +348,7 @@ function IdReviewStep({
       }}
     >
       <p className="text-sm text-text-muted">
-        Step 2 of 3. Check your National ID details. The rental team compares them with the card
+        Step 2 of 3. Check your {card.label} details. The rental team compares them with the card
         before verifying.
       </p>
       <p role="status" className="text-sm text-text-muted">
@@ -364,16 +387,15 @@ function IdReviewStep({
         />
       </div>
       <Input
-        label="PhilSys Card Number (PCN)"
+        label={card.numberLabel}
         required
-        inputMode="numeric"
-        placeholder="0000-0000-0000-0000"
-        pattern="\d{4}-\d{4}-\d{4}-\d{4}"
-        title="16 digits: 0000-0000-0000-0000"
-        hint="The 16-digit number on the front of the card."
+        placeholder={card.placeholder}
+        pattern={card.re.source.replace(/^\^|\$$/g, '')}
+        title={`As printed on the card, like ${card.placeholder}`}
+        hint={`As printed on your ${card.label}.`}
         value={value.idNumber}
         onChange={(e) => set({ idNumber: e.target.value })}
-        onBlur={(e) => set({ idNumber: normalizePcn(e.target.value) })}
+        onBlur={(e) => set({ idNumber: card.normalize(e.target.value) })}
       />
       <div className="grid gap-3 sm:grid-cols-2">
         <Input
@@ -454,7 +476,7 @@ function NewCompanyPage() {
       !window.confirm('Leave this application? The documents you captured will be lost.'),
     enableBeforeUnload: () => dirty && !submitted.current,
   });
-  // The National ID is captured once per login: with one on file (any of this
+  // The ID is captured once per login: with one on file (any of this
   // account's companies) the ID steps are skipped and the server reuses it.
   const mine = useQuery(companiesQueries.mine()).data ?? [];
   const idOnFile = mine.some((c) => c.documents.some((d) => d.documentType === 'government_id'));
@@ -478,7 +500,7 @@ function NewCompanyPage() {
   async function checkId() {
     if (!governmentId) return;
     setScanning(true);
-    const scan = await scanId(governmentId);
+    const scan = await scanId(governmentId, idDetails.idType);
     setIdScan(scan);
     setIdDetails(scan.details);
     setScanning(false);
@@ -588,6 +610,8 @@ function NewCompanyPage() {
             onDtiChange={setDti}
             selfie={selfie}
             onSelfieChange={setSelfie}
+            idType={idDetails.idType}
+            onIdTypeChange={(idType) => setIdDetails({ ...idDetails, idType })}
           />
           <div className="flex flex-wrap gap-2">
             <Button
@@ -709,7 +733,7 @@ function NewCompanyPage() {
           <MobileInput label="Contact mobile" required value={contactMobile} onChange={setContactMobile} />
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-muted">
             <span>
-              Scanned: {idOnFile ? 'National ID on file' : governmentId ? 'National ID' : 'no ID'}, {DOC_LABELS[registrationType]}
+              Scanned: {idOnFile ? 'ID on file' : governmentId ? PH_ID_TYPES[idDetails.idType].label : 'no ID'}, {DOC_LABELS[registrationType]}
               {dti ? ' and DTI certificate' : ''}.
             </span>
             <Button type="button" variant="ghost" onClick={() => setStage(idOnFile ? 'company_registration' : 'government_id')}>
@@ -803,7 +827,7 @@ function CompanyDocumentsPage() {
   async function checkId() {
     if (!governmentId) return;
     setScanning(true);
-    const scan = await scanId(governmentId);
+    const scan = await scanId(governmentId, idDetails.idType);
     setIdScan(scan);
     setIdDetails(scan.details);
     setScanning(false);
@@ -879,6 +903,8 @@ function CompanyDocumentsPage() {
                 onDtiChange={setDti}
                 selfie={selfie}
                 onSelfieChange={setSelfie}
+                idType={idDetails.idType}
+                onIdTypeChange={(idType) => setIdDetails({ ...idDetails, idType })}
                 showPrimary={primaryOpen}
                 showDti={dtiOpen}
               />
