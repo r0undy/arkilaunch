@@ -159,7 +159,13 @@ const COLUMNS: TableColumn<CouponResponse>[] = [
   { header: 'Discount', kind: 'text', cell: discountText },
   {
     header: 'Uses', kind: 'number',
-    cell: (c) => `${c.redeemedCount}${c.maxUses ? ` of ${c.maxUses}` : ''}${c.oncePerCustomer ? ', once per company' : ''}`,
+    cell: (c) => (
+      <>
+        {c.redeemedCount}
+        {c.maxUses ? ` / ${c.maxUses}` : ''}
+        {c.oncePerCustomer && <span className="block font-sans text-xs text-text-muted">once per company</span>}
+      </>
+    ),
   },
   { header: 'Expires', kind: 'date', cell: (c) => (c.expiresAt ? formatDate(c.expiresAt) : 'Never') },
   { header: 'Status', kind: 'status', cell: (c) => <StatusBadge status={c.active ? 'active' : 'inactive'} label={c.active ? 'Active' : 'Off'} /> },
