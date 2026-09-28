@@ -23,6 +23,7 @@ import { apiPost } from '../lib/api-client.js';
 import { bookingAlternatives, explainBookingError } from '../lib/booking-error.js';
 import { catalogQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
 import { SiteDialog } from '../components/site-dialog.js';
+import { NegotiateChoice } from '../components/negotiate-choice.js';
 import { formatPeso, shortCode } from '../lib/format.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import {
@@ -173,7 +174,10 @@ function CartPage() {
   const [error, setError] = useState<string | null>(null);
   const [swap, setSwap] = useState<ReturnType<typeof bookingAlternatives>>(null);
   const catalog = useQuery({ ...catalogQueries.equipment(), enabled: swap !== null });
-  const [booking, setBooking] = useState<BookingCreateResponse | null>(null);
+  // The "request sent" screen is addressed in the URL (?booked=), so a
+  // refresh or Back-then-Forward shows it again instead of an empty cart.
+  const { booked, code } = accountCartRoute.useSearch();
+  const booking = booked && code ? { id: booked, code } : null;
   const companies = useQuery(companiesQueries.mine());
   const sites = useQuery(customerSitesQueries.mine());
   const [submitted, setSubmitted] = useState(false);
@@ -207,7 +211,8 @@ function CartPage() {
   // to registration instead of leaving them to notice the empty state.
   useEffect(() => {
     if (companies.data && companies.data.length === 0) {
-      void navigate({ to: '/account/companies/new' });
+      // replace: Back from registration must not bounce straight here again.
+      void navigate({ to: '/account/companies/new', replace: true });
     }
   }, [companies.data, navigate]);
 
@@ -273,8 +278,8 @@ function CartPage() {
           };
         }),
       }),
-    onSuccess: (data) => {
-      setBooking(data);
+    onSuccess: (data: BookingCreateResponse) => {
+      void navigate({ to: '/account/cart', search: { booked: data.id, code: data.code }, replace: true });
       clearCart();
       setItems([]);
     },
@@ -310,9 +315,9 @@ function CartPage() {
               than the frame's dropdown: it is two options, and the app has no
               menu primitive worth building one for. */}
           <div className="flex flex-wrap gap-2">
-            <Link to="/account/negotiation/$bookingId/chat" params={{ bookingId: booking.id }}>
-              <Button variant="primary">Negotiate via messenger</Button>
-            </Link>
+            <NegotiateChoice
+              onInApp={() => void navigate({ to: '/account/negotiation/$bookingId/chat', params: { bookingId: booking.id } })}
+            />
             <Link to="/account/negotiation/$bookingId/call" params={{ bookingId: booking.id }}>
               <Button variant="secondary">Negotiate by phone</Button>
             </Link>
@@ -687,5 +692,9 @@ function CartPage() {
 export const accountCartRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/cart',
+  validateSearch: (search: Record<string, unknown>): { booked?: string; code?: string } =>
+    typeof search.booked === 'string' && /^[0-9a-f-]{36}$/i.test(search.booked) && typeof search.code === 'string'
+      ? { booked: search.booked, code: search.code.slice(0, 20) }
+      : {},
   component: CartPage,
 });

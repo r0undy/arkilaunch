@@ -2,7 +2,8 @@ import type { QuotesService } from '../src/quotes/quotes.service.js';
 import { describe, expect, it, beforeAll } from 'vitest';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import postgres from 'postgres';
-import type { RequestContext } from '@arkilaunch/shared';
+import { StubPaymentsAdapter, type RequestContext } from '@arkilaunch/shared';
+import { PaymentsService } from '../src/payments/payments.service.js';
 import { BookingsService } from '../src/bookings/bookings.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { fixtureCompanyId } from './fixture-company.js';
@@ -13,7 +14,7 @@ import { fixtureCompanyId } from './fixture-company.js';
 describe('BookingsService (PRD-F8)', () => {
   // Auto-quoting off: this suite covers bookings/payments, not pricing
   // (customer-journey.spec.ts covers the automatic quote).
-  const bookings = new BookingsService(new EventsService(), { autoQuoteBooking: async () => null } as unknown as QuotesService);
+  const bookings = new BookingsService(new EventsService(), { autoQuoteBooking: async () => null } as unknown as QuotesService, new PaymentsService(new StubPaymentsAdapter(), new EventsService()));
   let customerCtxA: RequestContext;
   let adminCtxA: RequestContext;
   let adminCtxB: RequestContext;

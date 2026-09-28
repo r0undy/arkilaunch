@@ -11,7 +11,10 @@ import { Button } from './button.js';
 import { Modal } from './modal.js';
 import { RouteMap } from './route-map.js';
 import { StatusBadge } from './status-badge.js';
-import { TruckThread } from './truck-thread.js';
+import { NegotiationThread } from './negotiation-thread.js';
+import { NegotiateChoice } from './negotiate-choice.js';
+import { ConfirmDialog } from './confirm-dialog.js';
+import { useTenant } from '../lib/tenant.js';
 
 // A customer's truck trip: a compact card with a progress stepper that
 // opens a drawer holding the map, the price, the actions and the
@@ -27,7 +30,8 @@ export function EstimateRange({ price, capPhp }: { price: TruckPrice; capPhp?: n
         {formatPeso(price.lowPhp)} – {formatPeso(price.highPhp)}
       </p>
       <p className="text-xs text-text-muted">
-        Near-point estimate; tolls and route may change the final price, never above {formatPeso(cap)} without your OK.
+        Near-point estimate; the rental team confirms the km and tolls, then you accept the final price before paying
+        (they are warned if it goes above {formatPeso(cap)}).
       </p>
     </div>
   );
@@ -57,12 +61,17 @@ export interface TripStep {
 
 // Where a request stands. Each step is done on its own evidence: the call
 // can be confirmed before or after the price is agreed.
-export function tripSteps(r: Pick<TruckRequestResponse, 'status' | 'confirmedKm' | 'callConfirmedAt'>): TripStep[] {
+export function tripSteps(
+  r: Pick<TruckRequestResponse, 'status' | 'confirmedKm' | 'callConfirmedAt'> & Partial<Pick<TruckRequestResponse, 'agreedPricePhp' | 'acceptedPricePhp'>>,
+): TripStep[] {
   const reached = (...statuses: TruckRequestResponse['status'][]) => statuses.includes(r.status);
   return [
     { label: 'Requested', done: true },
     { label: 'Distance confirmed', done: r.confirmedKm !== null || reached('km_confirmed', 'agreed', 'paid') },
-    { label: 'Price agreed', done: reached('agreed', 'paid') },
+    {
+      label: 'Price accepted',
+      done: reached('paid') || (reached('agreed') && r.acceptedPricePhp != null && r.acceptedPricePhp === r.agreedPricePhp),
+    },
     { label: 'Confirmed by call', done: r.callConfirmedAt !== null || reached('paid') },
     { label: 'Paid', done: reached('paid') },
   ];
@@ -146,6 +155,12 @@ export function TruckRequestCard({ request: r, initiallyOpen = false }: { reques
           </div>
           <StatusBadge status={r.status} />
         </div>
+        {r.loadDescription && (
+          <p className="truncate text-sm text-text">
+            <span className="text-text-muted">Loading: </span>
+            {r.loadDescription}
+          </p>
+        )}
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 flex-col gap-1.5 text-sm text-text">
             <span className="flex min-w-0 items-center gap-2">
@@ -175,14 +190,31 @@ export function TruckRequestCard({ request: r, initiallyOpen = false }: { reques
 }
 
 // The drawer body: map, stepper, price, what the customer can do next, and
-// the negotiation thread.
+// the negotiation thread (which is also the price history: every staff
+// price change and every accept is posted there).
 function TripDetail({ request: r }: { request: TruckRequestResponse }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: MY_TRUCK_REQUESTS });
+  const tenant = useTenant();
+  const [cancelling, setCancelling] = useState(false);
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: MY_TRUCK_REQUESTS });
+    void queryClient.invalidateQueries({ queryKey: ['thread', `/me/truck-requests/${r.id}`] });
+  };
   const call = useMutation({ mutationFn: () => apiPost(`/me/truck-requests/${r.id}/request-call`, {}), onSuccess: refresh });
-  const approve = useMutation({ mutationFn: () => apiPost(`/me/truck-requests/${r.id}/approve-price`, {}), onSuccess: refresh });
-  const overCap = r.agreedPricePhp !== null && r.capPhp !== null && r.agreedPricePhp > r.capPhp;
+  // The price shown is the price accepted: a staff change in between is a
+  // 409 and the list refreshes to the new figure.
+  const accept = useMutation({
+    mutationFn: () => apiPost(`/me/truck-requests/${r.id}/approve-price`, { pricePhp: r.agreedPricePhp }),
+    onSettled: refresh,
+  });
+  const cancel = useMutation({
+    mutationFn: () => apiPost(`/me/truck-requests/${r.id}/cancel`, {}),
+    onSuccess: () => {
+      setCancelling(false);
+      refresh();
+    },
+  });
   const pay = useMutation({
     mutationFn: (cash: boolean) =>
       apiPost<{ checkoutUrl: string | null; invoiceId: string }>(`/me/truck-requests/${r.id}/checkout`, cash ? { cash: true } : {}),
@@ -193,12 +225,16 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
       }
       void navigate({ to: '/account/invoices/$invoiceId', params: { invoiceId: data.invoiceId } });
     },
+    onError: refresh,
   });
   const closed = r.status === 'cancelled' || r.status === 'paid';
+  const needsAccept = r.status === 'agreed' && r.agreedPricePhp !== null && r.acceptedPricePhp !== r.agreedPricePhp;
+  const accepted = r.status === 'agreed' && !needsAccept;
   const pickup = r.pickupLat !== null && r.pickupLng !== null ? { lat: r.pickupLat, lng: r.pickupLng } : null;
   const dropoff = r.dropoffLat !== null && r.dropoffLng !== null ? { lat: r.dropoffLat, lng: r.dropoffLng } : null;
   const route = useQuery({ ...trucksQueries.myRoute(r.id), enabled: pickup !== null && dropoff !== null });
   const price = priceOf(r);
+  const error = call.error ?? accept.error ?? pay.error ?? cancel.error;
 
   return (
     <div className="flex flex-col gap-5">
@@ -220,6 +256,22 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
           {r.confirmedKm !== null ? `${r.confirmedKm} km confirmed` : `about ${r.estimatedKm} km`}
         </span>
       </div>
+      {(r.loadDescription || r.companyName) && (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+          {r.loadDescription && (
+            <>
+              <dt className="text-text-muted">Equipment to load</dt>
+              <dd className="font-medium text-text">{r.loadDescription}</dd>
+            </>
+          )}
+          {r.companyName && (
+            <>
+              <dt className="text-text-muted">Company</dt>
+              <dd className="text-text">{r.companyName}</dd>
+            </>
+          )}
+        </dl>
+      )}
       {r.status !== 'cancelled' && <TripStepper request={r} />}
 
       <section className="flex flex-col gap-2 rounded-md border border-border bg-surface-sunk p-4">
@@ -228,27 +280,41 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
           {price.note && <span className="font-sans text-sm font-normal text-text-muted"> {price.note}</span>}
         </p>
         {r.agreedPricePhp === null && <EstimateRange price={r.price} capPhp={r.capPhp} />}
-        {!closed && (
-          <p className="text-xs text-text-muted">
-            {r.callConfirmedAt
-              ? 'Confirmed by phone.'
-              : r.callRequestedAt
-                ? 'Call requested. The rental team will ring you to confirm before payment.'
-                : 'The rental team confirms every truck by phone before you pay.'}
+        {needsAccept && (
+          <p className="text-sm text-text">
+            The rental team set the price at <strong>{formatPeso(r.agreedPricePhp!)}</strong>. Accept it to pay. If it
+            does not match what you agreed, message them below before accepting.
           </p>
         )}
-        {r.status === 'agreed' && overCap && (
-          <p className="text-sm text-text-muted">
-            The agreed price is above the {formatPeso(r.capPhp!)} cap from your estimate. Approve it to pay.
-          </p>
+        {!closed && (
+          <div className="text-xs text-text-muted">
+            {r.callConfirmedAt ? (
+              <p>Confirmed by phone.</p>
+            ) : r.callRequestedAt ? (
+              <p>
+                Call requested. The rental team will call you{r.requesterPhone ? ` at ${r.requesterPhone}` : ''}; keep your
+                phone on, they may call any time before pickup.
+              </p>
+            ) : (
+              <p>The rental team confirms every truck by phone before you pay. Request a call, or call them yourself.</p>
+            )}
+            {tenant?.phone && !r.callConfirmedAt && (
+              <p>
+                Rental team:{' '}
+                <a className="font-medium text-text underline" href={`tel:${tenant.phone.replace(/[^\d+]/g, '')}`}>
+                  {tenant.phone}
+                </a>
+              </p>
+            )}
+          </div>
         )}
         <div className="flex flex-wrap gap-2">
-          {r.status === 'agreed' && overCap && (
-            <Button loading={approve.isPending} onClick={() => approve.mutate()}>
-              Approve {formatPeso(r.agreedPricePhp!)}
+          {needsAccept && (
+            <Button loading={accept.isPending} onClick={() => accept.mutate()}>
+              Accept {formatPeso(r.agreedPricePhp!)}
             </Button>
           )}
-          {r.status === 'agreed' && r.callConfirmedAt && !overCap && (
+          {accepted && r.callConfirmedAt && (
             <>
               <Button loading={pay.isPending && pay.variables === false} onClick={() => pay.mutate(false)}>
                 Pay online
@@ -263,10 +329,15 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
               {r.callRequestedAt ? 'Request call again' : 'Request call'}
             </Button>
           )}
+          {!closed && (
+            <Button variant="ghost" onClick={() => setCancelling(true)}>
+              Cancel trip
+            </Button>
+          )}
         </div>
-        {(call.isError || approve.isError || pay.isError) && (
+        {error && (
           <p role="alert" className="text-sm text-error">
-            {apiErrorText(call.error ?? approve.error ?? pay.error)}
+            {apiErrorText(error)}
           </p>
         )}
       </section>
@@ -278,12 +349,30 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
         </section>
       )}
 
-      {!closed && (
-        <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold text-text">Negotiate the price</h3>
-          <TruckThread base={`/me/truck-requests/${r.id}`} />
-        </section>
-      )}
+      <section id={`thread-${r.id}`} className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-text">Negotiation and price history</h3>
+          {!closed && (
+            <NegotiateChoice
+              variant="secondary"
+              onInApp={() => document.getElementById(`message-me-truck-requests-${r.id}`)?.focus()}
+            />
+          )}
+        </div>
+        <NegotiationThread base={`/me/truck-requests/${r.id}`} disabled={closed} />
+      </section>
+
+      <ConfirmDialog
+        open={cancelling}
+        title={`Cancel ${r.code}?`}
+        body="The truck is released and any unpaid invoice for this trip is voided. You can book a new trip any time."
+        confirmLabel="Cancel trip"
+        cancelLabel="Keep trip"
+        tone="danger"
+        pending={cancel.isPending}
+        onConfirm={() => cancel.mutate()}
+        onCancel={() => setCancelling(false)}
+      />
     </div>
   );
 }

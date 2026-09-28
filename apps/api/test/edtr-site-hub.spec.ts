@@ -15,7 +15,8 @@ import {
   rentals,
   withTenantTx,
 } from '@arkilaunch/db';
-import type { RequestContext } from '@arkilaunch/shared';
+import { StubPaymentsAdapter, type RequestContext } from '@arkilaunch/shared';
+import { PaymentsService } from '../src/payments/payments.service.js';
 import { EdtrService } from '../src/edtr/edtr.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { SiteHubService } from '../src/sites/site-hub.service.js';
@@ -185,7 +186,7 @@ describe('EDTR site hub approval', () => {
     expect(cell?.hours).toMatchObject({ running: 6, billable: 7, breakdown: 2 });
     expect(hub.personnel.siteReps).toEqual([{ name: 'Engr. Reyes', bookingCode: rentalCode }]);
 
-    const bookings = new BookingsService(events, { autoQuoteBooking: async () => null } as unknown as QuotesService);
+    const bookings = new BookingsService(events, { autoQuoteBooking: async () => null } as unknown as QuotesService, new PaymentsService(new StubPaymentsAdapter(), new EventsService()));
     const booking = await bookings.get(adminCtx, rentalId);
     expect(booking.fieldLogs?.days.some((d) => d.date === '2022-05-03' && d.hours.billable === 7)).toBe(true);
   });

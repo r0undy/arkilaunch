@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PaginationQuerySchema } from './pagination.js';
-import { DTI_REGEX, normalizeSecNumber, PHILSYS_PCN_REGEX, SEC_REGEX, sameTin } from './kyc.js';
+import { DTI_REGEX, idTypeOf, normalizeSecNumber, PH_ID_TYPE_CODES, PH_ID_TYPES, SEC_REGEX, sameTin, validIdNumber } from './kyc.js';
 import { PhMobileSchema } from './phone.js';
 
 // Customer prerequisites CR: self-signup, companies (Figma 582:3946 "Add
@@ -144,10 +144,10 @@ export const KYC_REJECTION_REASONS = {
     final: false,
   },
   id_not_verified: {
-    label: 'National ID could not be verified',
-    detail: 'The PhilSys QR did not verify on PhilSys Check, or the card is unreadable.',
+    label: 'ID could not be verified',
+    detail: 'The ID did not check out with its issuer (PhilSys Check for the National ID), or it is unreadable or expired.',
     customer:
-      'Upload a clear photo of your Philippine National ID (or ePhilID) with the whole QR code visible, and a new selfie holding it.',
+      "Upload a clear photo of a valid Philippine primary ID (National ID with its QR visible, passport, driver's license, UMID, SSS, PRC, postal, voter's or TIN ID), and a new selfie holding it.",
     cure: ['government_id', 'selfie_with_id'],
     final: false,
   },
@@ -191,18 +191,32 @@ export const CompanyDocumentUploadSchema = z
     firstName: z.string().trim().min(1).max(200).optional(),
     middleName: z.string().trim().max(200).optional(),
     lastName: z.string().trim().min(1).max(200).optional(),
-    idNumber: z.string().trim().regex(PHILSYS_PCN_REGEX, 'PCN is 16 digits: 0000-0000-0000-0000').optional(),
+    // Which primary ID the government_id upload is (QA 15); none = PhilSys,
+    // as every upload before then was. The number is checked against it.
+    idType: z.enum(PH_ID_TYPE_CODES).optional(),
+    idNumber: z.string().trim().min(1).max(40).optional(),
     birthDate: z.string().trim().date().optional(),
     sex: z.enum(['M', 'F']).optional(),
     address: z.string().trim().max(500).optional(),
     dtiNumber: z.string().trim().regex(DTI_REGEX, 'Not a valid DTI business name number').optional(),
   })
   // The customer must check their ID before it reaches a reviewer: an ID
-  // upload without the confirmed name and PCN is refused, not queued.
+  // upload without the confirmed name and ID number is refused, not queued.
   .refine(
     (body) => body.documentType !== 'government_id' || (body.idNumber && body.firstName && body.lastName),
-    { message: 'Confirm your name and PCN before uploading the National ID', path: ['idNumber'] },
-  );
+    { message: 'Confirm your name and ID number before uploading your ID', path: ['idNumber'] },
+  )
+  .superRefine((body, ctx) => {
+    if (!body.idNumber) return;
+    const type = idTypeOf(body.idType);
+    if (!validIdNumber(type, body.idNumber)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['idNumber'],
+        message: `Not a valid ${PH_ID_TYPES[type].numberLabel}: it looks like ${PH_ID_TYPES[type].placeholder}`,
+      });
+    }
+  });
 export type CompanyDocumentUpload = z.infer<typeof CompanyDocumentUploadSchema>;
 
 // POST /me/kyc/scan. Suggestions a customer can edit before they submit
@@ -244,7 +258,11 @@ export type CompanyDocumentReadResponse = z.infer<typeof CompanyDocumentReadResp
 // Only the fields the scanned document type actually carries are filled
 // (SCAN_FIELDS); the rest are null, so a SEC certificate never suggests a
 // TIN it does not print.
-export const KycScanRequestSchema = z.object({ documentType: z.enum(COMPANY_DOCUMENT_TYPES) });
+export const KycScanRequestSchema = z.object({
+  documentType: z.enum(COMPANY_DOCUMENT_TYPES),
+  // For an ID scan: which card, so its number is checked in its own format.
+  idType: z.enum(PH_ID_TYPE_CODES).optional(),
+});
 export const KycScanResponseSchema = z.object({
   suggestions: z.object({
     companyName: z.string().nullable(),

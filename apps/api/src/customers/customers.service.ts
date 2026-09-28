@@ -28,12 +28,13 @@ import {
   findSameCompany,
   hasRequiredCompanyDocuments,
   scoreRegistration,
-  normalizePcn,
+  idTypeOf,
+  PH_ID_TYPES,
+  type PhIdTypeCode,
   normalizeSecNumber,
   normalizeTin,
   parseCertificateDate,
   parseRegistrationCertificate,
-  PHILSYS_PCN_REGEX,
   REGISTRY_DOCUMENT_TYPES,
   SEC_REGEX,
   TIN_REGEX,
@@ -158,24 +159,29 @@ const SCAN_FIELDS: Record<string, ReadField[]> = {
 };
 
 // Format checks per field. A scan suggestion failing its check is dropped;
-// a staff read reports it as invalid instead.
-const FIELD_FORMAT: Partial<Record<ReadField, { normalize?: (v: string) => string; re: RegExp }>> = {
+// a staff read reports it as invalid instead. The ID number is checked in
+// its own card's format (QA 15; PhilSys unless the customer said otherwise).
+type FieldFormat = { normalize?: (v: string) => string; re: RegExp };
+const FIELD_FORMAT: Partial<Record<ReadField, FieldFormat>> = {
   tin: { normalize: normalizeTin, re: TIN_REGEX },
   secNumber: { normalize: normalizeSecNumber, re: SEC_REGEX },
   dtiNumber: { re: DTI_REGEX },
-  idNumber: { normalize: normalizePcn, re: PHILSYS_PCN_REGEX },
 };
+function formatOf(field: ReadField, idType: PhIdTypeCode): FieldFormat | undefined {
+  return field === 'idNumber' ? PH_ID_TYPES[idType] : FIELD_FORMAT[field];
+}
 
 // Long free-text fields read at structurally lower confidence than a
 // number or a name, so they do not count toward a document's legibility.
 const LEGIBILITY_EXCLUDED = new Set<ReadField>(['address', 'registeredAddress']);
 
-// The customer's "hard to read" hint on a scan also leaves out sex and
-// middle name: sex is not printed on the front of a PhilSys card and a
-// middle name is often blank, so the read guesses at both with a low score
-// on a perfectly sharp image. The staff read above keeps them (its
-// confidence feeds the RFC-2 review gate, which this must not loosen).
-const SCAN_HINT_EXCLUDED = new Set<ReadField>([...LEGIBILITY_EXCLUDED, 'sex', 'middleName']);
+// The customer's "hard to read" hint on a scan also leaves out middle name
+// (often blank) and, on a PhilSys card, sex (not printed on its front), so
+// the read's low-score guesses at them never flag a perfectly sharp image.
+// The staff read above keeps them (its confidence feeds the RFC-2 review
+// gate, which this must not loosen).
+const scanHintExcluded = (field: ReadField, idType: PhIdTypeCode) =>
+  LEGIBILITY_EXCLUDED.has(field) || field === 'middleName' || (field === 'sex' && idType === 'philsys');
 
 // The card prints "M"/"F" or "MALE"/"FEMALE"; the form takes the letter.
 function normalizeSex(value: string): string {
@@ -197,14 +203,14 @@ function normalizeDate(value: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function normalizeRead(field: ReadField, value: string): string {
+function normalizeRead(field: ReadField, value: string, idType: PhIdTypeCode): string {
   if (field === 'sex') return normalizeSex(value);
   if (field === 'birthDate') return normalizeDate(value);
   // Printed as 11/25/2013 or "24th day of April, Twenty Twenty Three";
   // anything else is shown to the reviewer as read.
   if (field === 'registrationDate') return parseCertificateDate(value) ?? value.trim();
   if (field === 'companyName' || field === 'registeredAddress') return value.replace(/\s+/g, ' ').trim();
-  return FIELD_FORMAT[field]?.normalize?.(value) ?? value.trim();
+  return formatOf(field, idType)?.normalize?.(value) ?? value.trim();
 }
 
 type CertificateLayout = 'sec_coi' | 'bir_2303' | 'unrecognized';
@@ -237,6 +243,7 @@ const CUSTOMER_KEYS: Record<keyof ConfirmedDocumentFields, string> = {
   middleName: 'customer_middle_name',
   lastName: 'customer_last_name',
   idNumber: 'customer_id_number',
+  idType: 'customer_id_type',
   birthDate: 'customer_birth_date',
   sex: 'customer_sex',
   address: 'customer_address',
@@ -294,7 +301,12 @@ export class CustomersService {
    * document under RFC-2's human gate, against what the customer submitted.
    * When no extraction adapter is available the form simply opens empty.
    */
-  async scanDocument(ctx: RequestContext, documentType: string, bytes: Buffer): Promise<KycScanResponse> {
+  async scanDocument(
+    ctx: RequestContext,
+    documentType: string,
+    bytes: Buffer,
+    idType: PhIdTypeCode = 'philsys',
+  ): Promise<KycScanResponse> {
     assertCustomer(ctx);
     const suggestions: KycScanResponse['suggestions'] = {
       companyName: null,
@@ -326,10 +338,11 @@ export class CustomersService {
       const read = fields[READ_FIELDS[field]];
       // The form takes no registration date; the staff read keeps it.
       if (!read || (field !== 'registeredAddress' && !(field in suggestions))) continue;
-      const value = normalizeRead(field, read.value);
+      const value = normalizeRead(field, read.value, idType);
       // A dropped value is never shown, so it does not score either.
-      if (FIELD_FORMAT[field] && !FIELD_FORMAT[field].re.test(value)) continue;
-      if (!SCAN_HINT_EXCLUDED.has(field)) confidences.push(read.confidence);
+      const format = formatOf(field, idType);
+      if (format && !format.re.test(value)) continue;
+      if (!scanHintExcluded(field, idType)) confidences.push(read.confidence);
       // A certificate's registered address suggests the billing address.
       suggestions[(field === 'registeredAddress' ? 'address' : field) as keyof typeof suggestions] = value;
     }
@@ -472,6 +485,8 @@ export class CustomersService {
     bytes: Buffer,
     // A reviewer's manual re-read asks Azure afresh; the upload reuses the scan.
     cached = true,
+    // Which primary ID a government_id is, for its number's format.
+    idType: PhIdTypeCode = 'philsys',
   ): Promise<CompanyDocumentReadResponse & { ocrPayload: Record<string, unknown> }> {
     const suggestions = Object.fromEntries(
       Object.keys(READ_FIELDS).map((k) => [k, null]),
@@ -507,7 +522,7 @@ export class CustomersService {
       // certificates, and its low-confidence guess at a TIN on an SEC
       // certificate is neither evidence nor a legibility signal.
       if (!read || !(SCAN_FIELDS[documentType]?.includes(field) ?? true)) continue;
-      const value = normalizeRead(field, read.value);
+      const value = normalizeRead(field, read.value, idType);
       suggestions[field] = value;
       ocrPayload[key] = value;
       // sec_confidence, not sec_number_confidence: the key kyc.service.ts
@@ -518,9 +533,9 @@ export class CustomersService {
     // Every number with a known format gets its check recorded, not only
     // the TIN and SEC number: a DTI number or PCN that fails is as much a
     // signal to the reviewer.
-    const valid = (field: keyof typeof FIELD_FORMAT) => {
+    const valid = (field: 'tin' | 'secNumber' | 'dtiNumber' | 'idNumber') => {
       const value = suggestions[field];
-      return value ? FIELD_FORMAT[field]!.re.test(value) : false;
+      return value ? formatOf(field, idType)!.re.test(value) : false;
     };
     const formatValid = {
       tin: valid('tin'),
@@ -614,7 +629,7 @@ export class CustomersService {
 
     // Usually a cache hit: the form scanned these same bytes a moment ago.
     // A read that fails leaves the row 'pending' for the reviewer's re-read.
-    const read = await this.analyzeDocument(ctx, documentType, bytes);
+    const read = await this.analyzeDocument(ctx, documentType, bytes, true, idTypeOf(confirmed.idType));
     let status = row.status;
     if (read.extractionAvailable) {
       status = 'needs_review';
@@ -891,7 +906,8 @@ export class CustomersService {
         .limit(1);
       if (!doc) throw new NotFoundException({ error: 'document_not_found' });
 
-      const read = await this.analyzeDocument(ctx, doc.documentType, bytes, false);
+      const typed = (doc.ocrPayload as Record<string, unknown> | null)?.customer_id_type;
+      const read = await this.analyzeDocument(ctx, doc.documentType, bytes, false, idTypeOf(typed));
       if (read.extractionAvailable) {
         await tx
           .update(kycDocuments)
@@ -1199,10 +1215,13 @@ async function withScores(tx: Tx, companies: CompanyReviewResponse[]): Promise<C
   };
   const byTin = holders(allCompanies.map((c) => ({ customerId: c.id, key: c.tin ? digits(c.tin) : '' })));
   const byPhone = holders(phones.map((p) => ({ customerId: p.customerId, key: digits(p.value).slice(-10) })));
+  // Keyed by card type and number (QA 15): a passport and an SSS number
+  // that share digits are not the same ID.
+  const idKey = (type: unknown, value: unknown) =>
+    typeof value === 'string' && digits(value) ? `${idTypeOf(type)}:${value.toUpperCase().replace(/[^A-Z0-9]/g, '')}` : '';
   const pcnOf = (payload: unknown) => {
     const p = (payload as Record<string, unknown> | null) ?? {};
-    const v = p.customer_id_number ?? p.id_number;
-    return typeof v === 'string' ? digits(v) : '';
+    return idKey(p.customer_id_type, p.customer_id_number ?? p.id_number);
   };
   const byPcn = holders(ids.map((d) => ({ customerId: d.customerId, key: pcnOf(d.payload) })));
   const shared = (map: Map<string, Set<string>>, key: string, self: string) =>
@@ -1212,7 +1231,7 @@ async function withScores(tx: Tx, companies: CompanyReviewResponse[]): Promise<C
   return companies.map((company) => {
     const phone = phones.find((p) => p.customerId === company.id)?.value ?? null;
     const idDoc = company.documents.find((d) => d.documentType === 'government_id');
-    const pcn = idDoc ? digits(idDoc.customer.id_number ?? idDoc.ocr.id_number ?? '') : '';
+    const pcn = idDoc ? idKey(idDoc.customer.id_type, idDoc.customer.id_number ?? idDoc.ocr.id_number) : '';
     return {
       ...company,
       contactPhone: phone,

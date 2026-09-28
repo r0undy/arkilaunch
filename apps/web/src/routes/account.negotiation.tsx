@@ -4,7 +4,7 @@ import { quoteExpiresAt, type BookingDetailResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, quotesQueries } from '../lib/queries.js';
 import { ApiError, apiErrorText, apiPost } from '../lib/api-client.js';
-import { formatDate, formatPeso } from '../lib/format.js';
+import { formatDate, formatPeso, shortCode } from '../lib/format.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { Button } from '../components/button.js';
@@ -13,6 +13,7 @@ import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon, ClockIcon } from '../components/icons.js';
 import { NegotiationThread } from '../components/negotiation-thread.js';
 import { QuoteLines } from '../components/quote-lines.js';
+import { PrintFrame } from '../components/print-frame.js';
 import { useToast } from '../components/toast.js';
 import { LoadError } from '../components/load-error.js';
 import { Skeleton } from '../components/skeleton.js';
@@ -180,7 +181,7 @@ function NegotiationPage({ bookingId }: { bookingId: string }) {
       {booking.isError && <LoadFailed error={booking.error} onRetry={() => booking.refetch()} />}
       {booking.data && (
         <div className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,360px)]">
-          <NegotiationThread bookingId={bookingId} disabled={booking.data.status === 'cancelled'} />
+          <NegotiationThread base={`/bookings/${bookingId}`} disabled={booking.data.status === 'cancelled'} />
           <QuoteCard booking={booking.data} />
         </div>
       )}
@@ -258,6 +259,19 @@ function NegotiationFinalRoute() {
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-5">
+      <div className="w-full">
+        <PrintFrame
+          title="Agreed quotation"
+          docRef={quote.data ? `${shortCode('quote', quote.data.id)} rev ${quote.data.revision}` : '--'}
+          issuedAt={quote.data?.createdAt ?? null}
+          details={[
+            ['Booking', booking.data?.code ?? '--'],
+            ['Status', 'Accepted by the customer'],
+            ['Valid until', quote.data?.createdAt ? formatDate(quoteExpiresAt(quote.data.createdAt)) : '--'],
+            ['Total due', quote.data ? formatPeso(quote.data.total + deposit) : '--'],
+          ]}
+        />
+      </div>
       <StatusPill tone="recon-approved" label="Agreed" icon={<CheckIcon />} />
       <div className="text-center">
         <h1 className="text-display-md text-text">Negotiation finalised</h1>

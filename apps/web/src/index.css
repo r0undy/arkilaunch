@@ -287,5 +287,18 @@
   }
   body {
     background: white;
+    /* Room for the PrintFrame's fixed running footer. */
+    padding-bottom: 8mm;
+  }
+}
+
+/* Page X of Y on every printed page (browsers without margin boxes simply
+   print without it). */
+@page {
+  margin: 12mm 12mm 16mm;
+  @bottom-right {
+    content: 'Page ' counter(page) ' of ' counter(pages);
+    font-size: 8pt;
+    color: #555;
   }
 }

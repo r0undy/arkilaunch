@@ -131,6 +131,7 @@ export interface CatalogTenantRow {
   headerColor: string | null;
   font: string | null;
   facebookUrl: string | null;
+  messengerUrl: string | null;
   tagline: string | null;
   about: string | null;
   phone: string | null;
@@ -150,6 +151,7 @@ export async function getCatalogTenantForSlug(slug: string): Promise<CatalogTena
     header_color: string | null;
     font: string | null;
     facebook_url: string | null;
+    messenger_url: string | null;
     tagline: string | null;
     about: string | null;
     phone: string | null;
@@ -169,6 +171,7 @@ export async function getCatalogTenantForSlug(slug: string): Promise<CatalogTena
     headerColor: r.header_color,
     font: r.font,
     facebookUrl: r.facebook_url,
+    messengerUrl: r.messenger_url,
     tagline: r.tagline,
     about: r.about,
     phone: r.phone,

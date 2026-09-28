@@ -6,7 +6,7 @@ import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Surface } from '../components/surface.js';
 import { captchaError, Turnstile, TURNSTILE_SITE_KEY } from '../components/turnstile.js';
-import { onlyOn } from '../lib/guards.js';
+import { onlyOn, redirectIfSignedIn } from '../lib/guards.js';
 import { platformOrigin } from '../lib/host.js';
 
 export const MIN_PASSWORD = 10;
@@ -44,7 +44,7 @@ function SignupPage() {
     setError(null);
     try {
       await registerCustomer({ email, password, acceptedTerms: true }, captcha);
-      await navigate({ to: '/account/companies/new' });
+      await navigate({ to: '/account/companies/new', replace: true });
     } catch (err) {
       setError(signupError(err instanceof Error ? err.message : ''));
       // The token was spent on this attempt; get a fresh one.
@@ -126,7 +126,7 @@ function SignupPage() {
 
 export const signupRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
-  beforeLoad: onlyOn('tenant'),
+  beforeLoad: onlyOn('tenant', redirectIfSignedIn),
   path: '/signup',
   component: SignupPage,
 });

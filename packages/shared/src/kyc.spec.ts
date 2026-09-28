@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DTI_REGEX,
+  idTypeOf,
+  PH_ID_TYPES,
+  validIdNumber,
   matchBand,
   normalizePcn,
   normalizeSecNumber,
@@ -97,5 +100,30 @@ describe('5-digit branch codes, sameTin, normalizeSecNumber', () => {
   it('removes the spaces OCR and people put in an SEC number', () => {
     expect(normalizeSecNumber(' cs 2019 12345 ')).toBe('CS201912345');
     expect(normalizeSecNumber('2022090068683 - 02')).toBe('2022090068683-02');
+  });
+});
+
+describe('Philippine primary IDs (QA 15)', () => {
+  it('checks each card number in its own format, however it was typed', () => {
+    expect(validIdNumber('philsys', '1234 5678 9012 3456')).toBe(true);
+    expect(validIdNumber('passport', 'p1234567a')).toBe(true);
+    expect(validIdNumber('drivers_license', 'A0123456789')).toBe(true);
+    expect(PH_ID_TYPES.drivers_license.normalize('a01 23 456789')).toBe('A01-23-456789');
+    expect(validIdNumber('umid', '011112345678')).toBe(true);
+    expect(validIdNumber('sss', '34 1234567 8')).toBe(true);
+    expect(validIdNumber('prc', '0123456')).toBe(true);
+    expect(validIdNumber('tin_id', '123456789')).toBe(true);
+  });
+
+  it('refuses a number in another card format', () => {
+    expect(validIdNumber('philsys', 'P1234567A')).toBe(false);
+    expect(validIdNumber('passport', '1234-5678-9012-3456')).toBe(false);
+    expect(validIdNumber('sss', '12345')).toBe(false);
+  });
+
+  it('reads an untyped (pre-QA 15) upload as PhilSys', () => {
+    expect(idTypeOf(undefined)).toBe('philsys');
+    expect(idTypeOf('nonsense')).toBe('philsys');
+    expect(idTypeOf('passport')).toBe('passport');
   });
 });

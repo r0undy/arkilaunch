@@ -1,7 +1,9 @@
 import { afterAll, describe, expect, it, beforeAll } from 'vitest';
 import postgres from 'postgres';
 import { truckRequests, withTenantTx } from '@arkilaunch/db';
-import { TruckRequestListQuerySchema, type RequestContext } from '@arkilaunch/shared';
+import { StubPaymentsAdapter, TruckRequestListQuerySchema, type RequestContext } from '@arkilaunch/shared';
+import { PaymentsService } from '../src/payments/payments.service.js';
+import { EventsService } from '../src/events/events.service.js';
 import { TrucksService } from '../src/trucks/trucks.service.js';
 import { PricingEngineService } from '../src/quotes/pricing-engine.service.js';
 import { parseOsrm } from '../src/trucks/route-distance.js';
@@ -9,7 +11,10 @@ import { parseOsrm } from '../src/trucks/route-distance.js';
 // cr-arkilaunch-console-polish.md: the truck queue is paged with a real
 // total, and the staff route map reads pins only inside the caller's tenant.
 describe('Truck request list and route', () => {
-  const trucks = new TrucksService(new PricingEngineService());
+  const trucks = new TrucksService(
+    new PricingEngineService(),
+    new PaymentsService(new StubPaymentsAdapter(), new EventsService()),
+  );
   const page = (over: Record<string, unknown> = {}) => TruckRequestListQuerySchema.parse(over);
   let customerCtx: RequestContext;
   let adminCtx: RequestContext;

@@ -66,7 +66,7 @@ function RegisterCompanyDetailsPage() {
     event.preventDefault();
     // Opened in a new tab or after the draft cleared: step 1 is missing.
     if (!getPersonalDetails()) {
-      navigate({ to: '/register' });
+      navigate({ to: '/register', replace: true });
       return;
     }
     setSubmitting(true);
@@ -76,7 +76,7 @@ function RegisterCompanyDetailsPage() {
         { companyName, businessAddress, secNumber: normalizeSecNumber(secNumber), tin: normalizeTin(tin) },
         captcha,
       );
-      navigate({ to: '/register/pending' });
+      navigate({ to: '/register/pending', replace: true });
     } catch (err) {
       setError(submitError(err));
       // The token was spent on this attempt; get a fresh one.

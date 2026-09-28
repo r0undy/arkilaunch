@@ -18,7 +18,7 @@ import { fixtureCompanyId } from './fixture-company.js';
 describe('PaymentsService (PRD-F2)', () => {
   const events = new EventsService();
   const payments_ = new PaymentsService(new StubPaymentsAdapter(), events);
-  const bookings = new BookingsService(events, { autoQuoteBooking: async () => null } as unknown as QuotesService);
+  const bookings = new BookingsService(events, { autoQuoteBooking: async () => null } as unknown as QuotesService, new PaymentsService(new StubPaymentsAdapter(), new EventsService()));
   const webhookSecret = 'whsec_test_secret';
 
   let customerCtxA: RequestContext;

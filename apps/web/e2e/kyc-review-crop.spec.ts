@@ -247,7 +247,7 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     // The PCN was typed one digit off the card: where the scan read it, the
     // card shows the edit and the scan's value instead of a read %.
     if (idRead) {
-      const idButton = card.getByRole('button', { name: /Philippine National ID/ });
+      const idButton = card.getByRole('button', { name: /Government-issued ID/ });
       await expect(idButton).toContainText('Edited by customer');
       await expect(idButton).not.toContainText('%');
       await expect(card.getByText('scan read "1234-5678-9012-3456"')).toBeVisible();

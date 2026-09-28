@@ -1,7 +1,7 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
 import { authLayoutRoute } from './_auth.js';
-import { savePersonalDetails } from '../lib/registration-client.js';
+import { getPersonalDetails, savePersonalDetails } from '../lib/registration-client.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { MobileInput } from '../components/mobile-input.js';
@@ -10,11 +10,13 @@ import { onlyOn } from '../lib/guards.js';
 
 function RegisterPersonalDetailsPage() {
   const navigate = useNavigate();
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [mobileNumber, setMobileNumber] = useState('');
-  const [email, setEmail] = useState('');
-  const [jobTitle, setJobTitle] = useState('');
+  // Back from the company step finds what was typed here (QA 17).
+  const [draft] = useState(getPersonalDetails);
+  const [firstName, setFirstName] = useState(draft?.firstName ?? '');
+  const [lastName, setLastName] = useState(draft?.lastName ?? '');
+  const [mobileNumber, setMobileNumber] = useState(draft?.mobileNumber ?? '');
+  const [email, setEmail] = useState(draft?.email ?? '');
+  const [jobTitle, setJobTitle] = useState(draft?.jobTitle ?? '');
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();

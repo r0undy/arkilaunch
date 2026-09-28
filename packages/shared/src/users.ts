@@ -60,6 +60,8 @@ export const UserSelfResponseSchema = z.object({
   status: UserStatusSchema,
   createdAt: z.coerce.date(),
   tenantName: z.string(),
+  // The rental company's TIN, for printed documents (never public).
+  tenantTin: z.string().nullable().optional(),
   tenantSlug: z.string(),
   // Self-service profile. Names are KYC-owned and read-only here.
   firstName: z.string().nullable().optional(),

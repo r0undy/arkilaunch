@@ -58,6 +58,7 @@ import { appBrandingRoute } from './routes/app.branding.js';
 import { appTrucksRoute } from './routes/app.trucks.js';
 import { quotesRoute } from './routes/quotes.js';
 import { quotePrintRoute } from './routes/quote-print.js';
+import { accountStatementRoute, appStatementRoute } from './routes/statement.js';
 import { edtrRoute } from './routes/edtr.js';
 import { appOcrDeploymentsRoute, fieldScanRoute } from './routes/app.ocr.deployments.js';
 import { adminUsersRoute } from './routes/app.users.js';
@@ -125,6 +126,7 @@ export const routeTree = rootRoute.addChildren([
     accountCheckoutFailedRoute,
     accountNotificationsRoute,
     accountBookingRoute,
+    accountStatementRoute,
     accountBookingExtendRoute,
     accountCompaniesRedirectRoute,
     accountCompanyDetailRoute,
@@ -139,6 +141,7 @@ export const routeTree = rootRoute.addChildren([
     appIndexRoute,
     appBookingsRoute,
     appBookingRoute,
+    appStatementRoute,
     appInventoryRoute,
     appDeploymentRoute,
     appSiteHubRoute,

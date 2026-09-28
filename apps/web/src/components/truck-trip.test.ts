@@ -16,4 +16,11 @@ describe('tripSteps', () => {
       'Confirmed by call',
     ]);
   });
+
+  it('counts the price only once the customer accepted the current one', () => {
+    const agreed = { status: 'agreed' as const, confirmedKm: 12, callConfirmedAt: null, agreedPricePhp: 1500 };
+    expect(done({ ...agreed, acceptedPricePhp: null })).not.toContain('Price accepted');
+    expect(done({ ...agreed, acceptedPricePhp: 1400 })).not.toContain('Price accepted');
+    expect(done({ ...agreed, acceptedPricePhp: 1500 })).toContain('Price accepted');
+  });
 });

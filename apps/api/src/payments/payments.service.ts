@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, gte, like } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, like, ne } from 'drizzle-orm';
 import {
   auditLogs,
   couponRedemptions,
@@ -352,6 +352,32 @@ export class PaymentsService {
     }
   }
 
+  // The deal changed (a truck's price was re-agreed, or the booking or trip
+  // was cancelled): its unpaid checkout invoices are voided, so nothing is
+  // payable at the old figure -- the next checkout issues a fresh invoice,
+  // PayMongo session and QR at the new one. A session PayMongo already
+  // reports paid refuses the change (payment_in_progress).
+  async voidUnpaid(tx: Tx, of: { rentalId: string } | { truckRequestId: string }) {
+    const open = await tx
+      .select({ id: invoices.id })
+      .from(invoices)
+      .where(
+        and(
+          eq(invoices.status, 'issued'),
+          'rentalId' in of
+            ? and(eq(invoices.rentalId, of.rentalId), inArray(invoices.invoiceType, ['booking', 'deposit']))
+            : eq(invoices.truckRequestId, of.truckRequestId),
+        ),
+      );
+    for (const invoice of open) await this.closePendingPayments(tx, invoice.id);
+    if (open.length) {
+      await tx
+        .update(invoices)
+        .set({ status: 'void' })
+        .where(inArray(invoices.id, open.map((i) => i.id)));
+    }
+  }
+
   // POST /invoices/:id/amount (staff, quote:approve). Lowers what an unpaid
   // checkout invoice charges -- a goodwill price, a correction, or a small
   // live test charge. Never raises it: the customer agreed to the price
@@ -423,6 +449,11 @@ export class PaymentsService {
       .where(eq(tenants.id, ctx.tenantId))
       .limit(1);
 
+    // Back from PayMongo and Pay again (QA 17): the earlier session is
+    // expired first, so one invoice never has two payable sessions; one
+    // PayMongo already reports paid stops here (payment_in_progress).
+    await this.closePendingPayments(tx, c.invoiceId);
+
     const returnTo = checkoutReturnOrigin(c.origin);
     const bookingRef = await resolveBookingRef(tx, { invoice_id: c.invoiceId });
     const session = await this.paymentsPort.createCheckoutSession(c.amount, c.invoiceId, {
@@ -478,7 +509,11 @@ export class PaymentsService {
       // Only the booking's own invoice confirms it; a weekly invoice is
       // paid on a rental already under way.
       if (invoice.invoiceType === 'booking' || invoice.invoiceType === 'deposit') {
-        await tx.update(rentals).set({ status: 'confirmed' }).where(eq(rentals.id, invoice.rentalId));
+        // A cancelled booking stays cancelled; staff refund what came in.
+        await tx
+          .update(rentals)
+          .set({ status: 'confirmed' })
+          .where(and(eq(rentals.id, invoice.rentalId), ne(rentals.status, 'cancelled')));
       }
       await notifyBookingCustomer(tx, tenantId, invoice.rentalId, 'payment_received', { invoice_id: invoiceId });
     }
@@ -486,7 +521,7 @@ export class PaymentsService {
       const [request] = await tx
         .update(truckRequests)
         .set({ status: 'paid' })
-        .where(eq(truckRequests.id, invoice.truckRequestId))
+        .where(and(eq(truckRequests.id, invoice.truckRequestId), ne(truckRequests.status, 'cancelled')))
         .returning({ requestedBy: truckRequests.requestedBy });
       if (request?.requestedBy) {
         await notifyUser(tx, tenantId, request.requestedBy, 'payment_received', {
@@ -513,16 +548,20 @@ export class PaymentsService {
         throw new ConflictException({ error: 'price_not_agreed', status: request.status });
       }
       // Same gates as a booking: a verified company and a confirming call.
-      // A truck request has no customer_id, so the requester's companies
-      // are checked; any one approved is enough.
-      const companies = await tx.select().from(customers).where(eq(customers.userId, request.requestedBy));
+      // The trip's own company (0067); a request made before then has none,
+      // so any one of the requester's approved companies is enough.
+      const companies = await tx
+        .select()
+        .from(customers)
+        .where(request.customerId ? eq(customers.id, request.customerId) : eq(customers.userId, request.requestedBy));
       if (!companies.some((c) => c.kycStatus === 'approved')) {
         throw new ConflictException({ error: 'company_not_verified', status: companies[0]?.kycStatus ?? null });
       }
       if (!request.callConfirmedAt) throw new ConflictException({ error: 'call_not_confirmed' });
-      // Never above the locked cap without the customer's OK (approve-price).
-      if (request.capPhp !== null && Number(request.agreedPricePhp) > Number(request.capPhp)) {
-        throw new ConflictException({ error: 'over_cap', capPhp: Number(request.capPhp) });
+      // The customer accepted exactly this price (approve-price); a staff
+      // change since clears the accept.
+      if (request.acceptedPricePhp === null || Number(request.acceptedPricePhp) !== Number(request.agreedPricePhp)) {
+        throw new ConflictException({ error: 'price_not_accepted', agreedPricePhp: Number(request.agreedPricePhp) });
       }
 
       let [invoice] = await tx
@@ -629,13 +668,22 @@ export class PaymentsService {
     p: { invoiceId: string; sessionId: string; paymentId: string; amountCentavos: number },
   ): Promise<boolean> {
     const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, p.invoiceId)).limit(1);
-    if (!invoice || invoice.status !== 'issued') return false;
+    if (!invoice) return false;
     const [payment] = await tx
       .select()
       .from(payments)
       .where(and(eq(payments.invoiceId, p.invoiceId), eq(payments.providerRef, p.sessionId)))
       .limit(1);
     if (!payment) return false;
+    // Paid in the moment between a price change (or cancel) voiding the
+    // invoice and PayMongo expiring its session: the money is recorded,
+    // nothing is unlocked, and staff are told to refund it.
+    if (invoice.status === 'void' && payment.status !== 'paid') {
+      await tx.update(payments).set({ status: 'paid', providerPaymentId: p.paymentId }).where(eq(payments.id, payment.id));
+      await notifyStaff(tx, tenantId, 'payment_on_void_invoice', { invoice_id: p.invoiceId, paid_centavos: p.amountCentavos });
+      return false;
+    }
+    if (invoice.status !== 'issued') return false;
     const expectedCentavos = Math.round(Number(invoice.amount) * 100);
     if (p.amountCentavos !== expectedCentavos) {
       await notifyStaff(tx, tenantId, 'payment_amount_mismatch', {

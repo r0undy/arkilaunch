@@ -3,7 +3,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { authLayoutRoute } from './_auth.js';
 import { currentHost } from '../lib/host.js';
 import { login, requestPasswordReset, verify2fa } from '../lib/auth-client.js';
-import { getCurrentRole, homeRouteForRole } from '../lib/guards.js';
+import { getCurrentRole, homeRouteForRole, redirectIfSignedIn } from '../lib/guards.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Surface } from '../components/surface.js';
@@ -17,14 +17,18 @@ function isSafeInternalRedirect(value: unknown): value is string {
   return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//');
 }
 
-function validateLoginSearch(search: Record<string, unknown>): { redirect?: string } {
-  return isSafeInternalRedirect(search.redirect) ? { redirect: search.redirect } : {};
+function validateLoginSearch(search: Record<string, unknown>): { redirect?: string; reason?: 'signed_in_elsewhere' } {
+  return {
+    ...(isSafeInternalRedirect(search.redirect) ? { redirect: search.redirect } : {}),
+    // Set by auth-client when another account signed in on this browser.
+    ...(search.reason === 'signed_in_elsewhere' ? { reason: 'signed_in_elsewhere' as const } : {}),
+  };
 }
 
 function LoginPage() {
   const onPlatform = currentHost.kind === 'platform';
   const navigate = useNavigate();
-  const { redirect: redirectTo } = loginRoute.useSearch();
+  const { redirect: redirectTo, reason } = loginRoute.useSearch();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +55,8 @@ function LoginPage() {
   }
 
   async function goHome() {
-    await navigate({ to: redirectTo ?? homeRouteForRole(getCurrentRole()) });
+    // replace: Back from the home page must not return to this form.
+    await navigate({ to: redirectTo ?? homeRouteForRole(getCurrentRole()), replace: true });
   }
 
   async function attemptLogin(token: string | null) {
@@ -231,6 +236,12 @@ function LoginPage() {
         <p className="mb-6 text-sm text-text-muted">
           {onPlatform ? 'Sign in to the ArkiLaunch console.' : 'Enter your credentials to start renting equipment.'}
         </p>
+        {reason === 'signed_in_elsewhere' && (
+          <p role="status" className="mb-4 rounded-md border border-border bg-surface-sunk p-3 text-sm text-text">
+            You were signed out because another account signed in, or you signed out, in another tab of this browser.
+            Only one account can be signed in at a time.
+          </p>
+        )}
 
         <div className="mb-4">
           <Input
@@ -297,6 +308,7 @@ function LoginPage() {
 export const loginRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
   path: '/login',
+  beforeLoad: redirectIfSignedIn,
   validateSearch: validateLoginSearch,
   component: LoginPage,
 });

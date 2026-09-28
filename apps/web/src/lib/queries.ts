@@ -1,7 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 import type {
   BookingDetailResponse,
-  NegotiationMessageResponse,
   RentPart,
   CompanyResponse,
   CouponListResponse,
@@ -194,14 +193,6 @@ export const bookingsQueries = {
     queryOptions({
       queryKey: ['booking', bookingId] as const,
       queryFn: () => apiGet<BookingDetailResponse>(`/bookings/${bookingId}`),
-    }),
-  // The negotiation thread. Polled, not pushed: there is no socket here,
-  // and a counter-offer landing ten seconds late costs nothing.
-  messages: (bookingId: string) =>
-    queryOptions({
-      queryKey: ['booking', bookingId, 'messages'] as const,
-      queryFn: () => apiGet<NegotiationMessageResponse[]>(`/bookings/${bookingId}/messages`),
-      refetchInterval: 10_000,
     }),
 };
 

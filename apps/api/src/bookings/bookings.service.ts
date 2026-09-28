@@ -41,6 +41,7 @@ import type {
 } from '@arkilaunch/shared';
 import { bookingCodeSearchPrefix, bookingDays, minBookingHours, selectedOptionsError } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
+import { PaymentsService } from '../payments/payments.service.js';
 import { QuotesService, inNegotiation } from '../quotes/quotes.service.js';
 import { requireSiteProof } from '../common/site-proof.js';
 import {
@@ -79,6 +80,7 @@ export class BookingsService {
   constructor(
     private readonly events: EventsService,
     private readonly quotes: QuotesService,
+    private readonly payments: PaymentsService,
   ) {}
 
   // POST /api/v1/bookings (SDD §4, PRD-F8 US-09). Never overbooks: the
@@ -883,7 +885,11 @@ export class BookingsService {
     }
   }
 
+  // Cancelling also voids the unpaid booking/deposit invoice and any open
+  // PayMongo session, so nothing stays payable on a cancelled booking, and
+  // tells staff when the customer did it.
   private async cancelRental(tx: Tx, ctx: RequestContext, id: string) {
+    await this.payments.voidUnpaid(tx, { rentalId: id });
     await tx.update(rentals).set({ status: 'cancelled' }).where(eq(rentals.id, id));
     await tx.update(equipmentAssignments).set({ status: 'cancelled' }).where(eq(equipmentAssignments.rentalId, id));
     await tx.insert(auditLogs).values({
@@ -894,6 +900,7 @@ export class BookingsService {
       entityId: id,
     });
     await this.events.emit(ctx, 'booking_cancelled', { rental_id: id });
+    if (ctx.role === 'customer') await notifyStaff(tx, ctx.tenantId, 'booking_cancelled', { rental_id: id });
   }
 
   // Every per-booking endpoint starts here: RLS bounds the tenant, this

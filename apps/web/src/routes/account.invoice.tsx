@@ -11,6 +11,7 @@ import { Surface } from '../components/surface.js';
 import { Button } from '../components/button.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { CheckIcon, AlertIcon, ClockIcon } from '../components/icons.js';
+import { PrintFrame } from '../components/print-frame.js';
 import {
   condenseIds,
   formatDate,
@@ -78,6 +79,25 @@ function InvoiceDetail({ invoice }: { invoice: InvoiceDetailResponse }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <PrintFrame
+        title={invoice.status === 'paid' ? 'Invoice (paid)' : 'Invoice'}
+        docRef={shortCode('invoice', invoice.id)}
+        issuedAt={invoice.createdAt}
+        details={[
+          ...(invoice.billTo
+            ? ([
+                ['Bill to', invoice.billTo.companyName],
+                ['Customer TIN', invoice.billTo.tin ?? '--'],
+                ['Billing address', invoice.billTo.billingAddress ?? '--'],
+              ] as [string, string][])
+            : []),
+          [invoice.truckRequestId ? 'Truck service' : 'Equipment rental', invoice.bookingCode ?? '--'],
+          ['Type', formatInvoiceType(invoice.invoiceType)],
+          ['Due', formatDate(invoice.dueDate)],
+          ['Status', formatStatus(invoice.status)],
+          ['Amount due', formatPeso(invoice.status === 'paid' ? 0 : invoice.amount)],
+        ]}
+      />
       <div className="grid gap-4 lg:grid-cols-[minmax(260px,340px)_1fr]">
         <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-4 p-5">
           <div className="flex flex-col items-start gap-3">
