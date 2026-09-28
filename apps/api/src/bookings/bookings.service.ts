@@ -39,7 +39,7 @@ import type {
   RequestContext,
   RescheduleSuggestion,
 } from '@arkilaunch/shared';
-import { bookingCodeSearchPrefix, bookingDays, minBookingHours } from '@arkilaunch/shared';
+import { bookingCodeSearchPrefix, bookingDays, minBookingHours, selectedOptionsError } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { QuotesService, inNegotiation } from '../quotes/quotes.service.js';
 import { requireSiteProof } from '../common/site-proof.js';
@@ -155,6 +155,13 @@ export class BookingsService {
         const equipmentRow = equipmentById.get(item.equipmentId);
         if (!equipmentRow) throw new NotFoundException({ error: 'equipment_not_found', equipmentId: item.equipmentId });
 
+        // Each option group answered with one of the unit's own choices.
+        // The unit is the authority, never the client's copy of its groups.
+        const optionsError = selectedOptionsError(equipmentRow.optionGroups, item.selectedOptions ?? {});
+        if (optionsError) {
+          throw new UnprocessableEntityException({ error: 'invalid_options', equipmentId: item.equipmentId, detail: optionsError });
+        }
+
         // Both refusals below are 'equipment_unavailable', which left the
         // customer unable to tell "this machine is off the road" from "those
         // particular dates are taken" -- the second is fixed by picking other
@@ -211,6 +218,7 @@ export class BookingsService {
           start: new Date(item.start),
           end: new Date(item.end),
           bookedHours: String(bookedHours[index]),
+          selectedOptions: item.selectedOptions ?? {},
           status: 'scheduled',
         });
       }
@@ -515,6 +523,7 @@ export class BookingsService {
           start: assignment.start,
           end: assignment.end,
           status: assignment.status,
+          selectedOptions: assignment.selectedOptions,
         })),
         quotation: quotation
           ? {

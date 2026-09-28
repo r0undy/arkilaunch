@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PaginationQuerySchema } from './pagination.js';
+import { SelectedOptionsSchema } from './fleet.js';
 import { PhMobileSchema } from './phone.js';
 
 // PRD-F8 (Client Booking Portal), SDD §4 `POST /api/v1/bookings` contract,
@@ -17,6 +18,9 @@ export const BookingItemRequestSchema = z
     // Hours the customer means to run the machine; at least minBookingHours.
     // Omitted (staff, older clients) = that minimum.
     hours: z.number().finite().positive().max(100_000).optional(),
+    // One choice per option group on the unit ("Bucket size" -> "3/4"),
+    // checked against the unit server-side. Omitted = the unit has none.
+    selectedOptions: SelectedOptionsSchema.optional(),
   })
   .refine((item) => new Date(item.end).getTime() > new Date(item.start).getTime(), {
     message: 'end must be after start',
@@ -136,6 +140,8 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
       start: z.coerce.date(),
       end: z.coerce.date().nullable(),
       status: z.string(),
+      // What the customer picked for this unit (migration 0065).
+      selectedOptions: SelectedOptionsSchema.optional(),
     }),
   ),
   siteContact: z.string().nullable(),

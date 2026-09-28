@@ -51,11 +51,23 @@ import { PAGE_SIZE } from '../components/pagination.js';
 // Keys never appear as literals at call sites; only these factories build
 // them, so they cannot drift out of sync with each other.
 
+// The admin Equipment tab's filters (GET /equipment); empty = not applied.
+export interface EquipmentListFilters {
+  typeId?: string;
+  status?: string;
+  q?: string;
+  missing?: 'photo' | 'price' | '';
+}
+
 export const equipmentQueries = {
-  list: (limit = PAGE_SIZE, offset = 0) =>
+  list: (limit = PAGE_SIZE, offset = 0, filters: EquipmentListFilters = {}) =>
     queryOptions({
-      queryKey: ['equipment', limit, offset] as const,
-      queryFn: () => apiGet<EquipmentListResponse>(`/equipment?limit=${limit}&offset=${offset}`),
+      queryKey: ['equipment', limit, offset, filters] as const,
+      queryFn: () => {
+        const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+        for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
+        return apiGet<EquipmentListResponse>(`/equipment?${params}`);
+      },
     }),
 };
 

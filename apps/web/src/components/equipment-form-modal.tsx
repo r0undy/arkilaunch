@@ -75,6 +75,12 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
   const [notes, setNotes] = useState(equipment?.notes ?? '');
   const [categoryNote, setCategoryNote] = useState(equipment?.categoryNote ?? '');
   const [photo, setPhoto] = useState<File | null>(null);
+  const [photoCredit, setPhotoCredit] = useState(equipment?.photoCredit ?? '');
+  const [photoSourceUrl, setPhotoSourceUrl] = useState(equipment?.photoSourceUrl ?? '');
+  // Choices the customer picks in the cart. Edited as "name" + comma list.
+  const [optionRows, setOptionRows] = useState<{ name: string; values: string }[]>(
+    (equipment?.optionGroups ?? []).map((g) => ({ name: g.name, values: g.values.join(', ') })),
+  );
   const [serialError, setSerialError] = useState<string | null>(null);
 
   // "Others" carries a free-text category instead of a standard one.
@@ -96,6 +102,12 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
         ...(isOthers && textOrUndefined(categoryNote)
           ? { categoryNote: textOrUndefined(categoryNote) }
           : {}),
+        // Always sent, so removing the last group clears them. A row with no
+        // name or no choices is an unfinished row, not a group.
+        optionGroups,
+        // '' clears on edit; on create an empty field is simply omitted.
+        ...(isEdit || photoCredit.trim() ? { photoCredit: photoCredit.trim() } : {}),
+        ...(isEdit || photoSourceUrl.trim() ? { photoSourceUrl: photoSourceUrl.trim() } : {}),
       };
 
       // serialNo is absent from the edit request on purpose: migration 0026
@@ -154,7 +166,18 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
     },
   });
 
+  const optionGroups = optionRows
+    .map((row) => ({
+      name: row.name.trim(),
+      values: [...new Set(row.values.split(',').map((v) => v.trim()).filter(Boolean))],
+    }))
+    .filter((g) => g.name && g.values.length > 0);
+  const duplicateOption = new Set(optionGroups.map((g) => g.name)).size !== optionGroups.length;
+  const badSourceUrl = photoSourceUrl.trim() !== '' && !photoSourceUrl.trim().startsWith('https://');
+
   const canSubmit =
+    !duplicateOption &&
+    !badSourceUrl &&
     model.trim() !== '' &&
     (!isOthers || categoryNote.trim() !== '') &&
     (isEdit || (serialNo.trim() !== '' && equipmentTypeId));
@@ -317,6 +340,56 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
 
         <section className="flex flex-col gap-4">
           <h3 className="text-sm font-medium text-text-muted">
+            Rental options
+          </h3>
+          <p className="text-sm text-text-muted">
+            Choices the customer picks when booking, such as bucket size or arm length. They do not
+            change the price.
+          </p>
+          {optionRows.map((row, index) => (
+            <div key={index} className="grid items-end gap-3 sm:grid-cols-[1fr_2fr_auto]">
+              <Input
+                label="Option"
+                value={row.name}
+                maxLength={60}
+                onChange={(e) =>
+                  setOptionRows((rows) => rows.map((r, i) => (i === index ? { ...r, name: e.target.value } : r)))
+                }
+                placeholder="Bucket size"
+                {...(duplicateOption && optionGroups.filter((g) => g.name === row.name.trim()).length > 1
+                  ? { error: 'Each option needs its own name.' }
+                  : {})}
+              />
+              <Input
+                label="Choices, separated by commas"
+                value={row.values}
+                onChange={(e) =>
+                  setOptionRows((rows) => rows.map((r, i) => (i === index ? { ...r, values: e.target.value } : r)))
+                }
+                placeholder="Standard, 3/4, 1/2"
+              />
+              <Button
+                variant="ghost"
+                onClick={() => setOptionRows((rows) => rows.filter((_, i) => i !== index))}
+                aria-label={`Remove option ${row.name || index + 1}`}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+          {optionRows.length < 6 && (
+            <Button
+              variant="secondary"
+              className="w-fit"
+              onClick={() => setOptionRows((rows) => [...rows, { name: '', values: '' }])}
+            >
+              Add an option
+            </Button>
+          )}
+        </section>
+
+        <section className="flex flex-col gap-4">
+          <h3 className="text-sm font-medium text-text-muted">
             Notes
           </h3>
           <label htmlFor="equipment-notes" className="sr-only">
@@ -343,6 +416,24 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
             onChange={setPhoto}
             accept="image/*"
           />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="Photo credit"
+              value={photoCredit}
+              maxLength={200}
+              onChange={(e) => setPhotoCredit(e.target.value)}
+              placeholder="Komatsu (reference photo)"
+              hint="Only for a photo that is not your own."
+            />
+            <Input
+              label="Photo source page"
+              type="url"
+              value={photoSourceUrl}
+              onChange={(e) => setPhotoSourceUrl(e.target.value)}
+              placeholder="https://"
+              {...(badSourceUrl ? { error: 'Use a full https:// link.' } : {})}
+            />
+          </div>
         </section>
       </form>
     </Modal>

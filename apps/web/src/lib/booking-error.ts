@@ -34,6 +34,8 @@ export function explainBookingError(error: unknown): string {
         return `That machine is already booked for the dates you picked. Choose a different window.${more}`;
       }
       return `That machine is not in service right now${str(payload, 'status') ? ` (${str(payload, 'status')})` : ''}, so it cannot be booked.${more}`;
+    case 'invalid_options':
+      return "A machine's options changed since you added it. Check its choices in your cart and try again.";
     case 'project_site_not_found':
       return 'That delivery site is no longer on your account. Pick another site.';
     case 'equipment_not_found':

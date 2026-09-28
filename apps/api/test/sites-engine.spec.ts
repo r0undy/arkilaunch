@@ -32,7 +32,7 @@ describe('SitesService (PRD-F4/F5)', () => {
     const [adminA] = await sql`select id from users where tenant_id = ${tenantIdA} and email = 'admin@test-tenant-a.test'`;
     const [adminB] = await sql`select id from users where tenant_id = ${tenantIdB} and email = 'admin@test-tenant-b.test'`;
     const [equipmentType] = await sql`select id from equipment_types limit 1`;
-    const [customerA] = await sql`select id from customers where tenant_id = ${tenantIdA} limit 1`;
+    const [customerA] = await sql`select id from customers where tenant_id = ${tenantIdA} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
 
     adminCtxA = { tenantId: tenantIdA, userId: (adminA as { id: string }).id, role: 'admin' };
     adminCtxB = { tenantId: tenantIdB, userId: (adminB as { id: string }).id, role: 'admin' };

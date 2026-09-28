@@ -5,7 +5,9 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.spec.ts', 'test/**/*.spec.ts'],
     setupFiles: ['./vitest.setup.ts'],
-    testTimeout: 30000,
+    // The engine specs run against a remote Postgres; a full booking journey
+    // is dozens of round trips, which 30s did not always cover.
+    testTimeout: 90000,
     hookTimeout: 30000,
     // The engine specs share one seeded database, one bookable unit and
     // one tenant-wide checkout rate limit. In parallel they clean up each

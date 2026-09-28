@@ -1,7 +1,14 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { bookingDays, minBookingHours, rentFor, type BookingCreateResponse, type RentUnit } from '@arkilaunch/shared';
+import {
+  bookingDays,
+  minBookingHours,
+  rentFor,
+  type BookingCreateResponse,
+  type EquipmentOptionGroup,
+  type RentUnit,
+} from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { EmptyState } from '../components/empty-state.js';
 import { PageHeader } from '../components/page-header.js';
@@ -53,6 +60,18 @@ function fromDateInput(value: string, hour: number): string {
 // A cart saved before the catalog served photo URLs holds a bare storage key.
 function cartPhoto(item: CartItem): string | undefined {
   return (item.photoUri?.startsWith('http') ? item.photoUri : null) ?? equipmentImageUrl(item.model);
+}
+
+// One choice per option group the unit has now, defaulting to the first. The
+// catalog's groups are the authority, so a stale or swapped cart line cannot
+// carry a pick the unit no longer offers.
+function resolvedOptions(item: CartItem, groups: readonly EquipmentOptionGroup[]): Record<string, string> {
+  return Object.fromEntries(
+    groups.map((g) => {
+      const pick = item.selectedOptions?.[g.name];
+      return [g.name, pick !== undefined && g.values.includes(pick) ? pick : g.values[0]!];
+    }),
+  );
 }
 
 function rentalDays(item: CartItem): number {
@@ -199,7 +218,7 @@ function CartPage() {
 
   function handleSwap(equipmentId: string, model: string) {
     items.forEach((item, index) => {
-      if (item.equipmentId === swap?.equipmentId) updateCartItem(index, { equipmentId, model });
+      if (item.equipmentId === swap?.equipmentId) updateCartItem(index, { equipmentId, model, selectedOptions: undefined });
     });
     setItems(getCart());
     setSwap(null);
@@ -227,6 +246,7 @@ function CartPage() {
   );
   const rates = useQuery(catalogQueries.equipment());
   const rateById = new Map(rates.data?.items.map((eq) => [eq.id, { rateType: eq.rateType ?? null, rateValue: eq.rateValue ?? null }]));
+  const optionGroupsById = new Map(rates.data?.items.map((eq) => [eq.id, eq.optionGroups ?? []]));
   // Only a full total is shown: a sum missing an unpriced machine would mislead.
   const lineEstimates = items.map((_, index) => estimates[index] ?? null);
   const estimatedTotal = lineEstimates.every((value) => value !== null)
@@ -241,7 +261,17 @@ function CartPage() {
         ...(siteContact.trim() ? { siteContact: siteContact.trim() } : {}),
         ...(siteContactMobile ? { siteContactMobile } : {}),
         ...(siteNotes.trim() ? { siteNotes: siteNotes.trim() } : {}),
-        items: items.map(({ equipmentId, start, end, hours }) => ({ equipmentId, start, end, hours })),
+        items: items.map((item) => {
+          const groups = optionGroupsById.get(item.equipmentId) ?? [];
+          const { equipmentId, start, end, hours } = item;
+          return {
+            equipmentId,
+            start,
+            end,
+            hours,
+            ...(groups.length > 0 ? { selectedOptions: resolvedOptions(item, groups) } : {}),
+          };
+        }),
       }),
     onSuccess: (data) => {
       setBooking(data);
@@ -441,6 +471,32 @@ function CartPage() {
                     Remove
                   </Button>
                 </div>
+                {(optionGroupsById.get(item.equipmentId) ?? []).length > 0 && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(optionGroupsById.get(item.equipmentId) ?? []).map((group) => (
+                      <Select
+                        key={group.name}
+                        label={group.name}
+                        value={resolvedOptions(item, optionGroupsById.get(item.equipmentId) ?? [])[group.name]}
+                        onChange={(e) => {
+                          updateCartItem(index, {
+                            selectedOptions: {
+                              ...resolvedOptions(item, optionGroupsById.get(item.equipmentId) ?? []),
+                              [group.name]: e.target.value,
+                            },
+                          });
+                          setItems(getCart());
+                        }}
+                      >
+                        {group.values.map((value) => (
+                          <option key={value} value={value}>
+                            {value}
+                          </option>
+                        ))}
+                      </Select>
+                    ))}
+                  </div>
+                )}
                 <CartItemDates
                   item={item}
                   rate={rateById.get(item.equipmentId)}

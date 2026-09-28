@@ -88,6 +88,20 @@ function EquipmentDetailPage() {
           className="max-h-full"
         />
       </div>
+      {imageUrl && equipment.photoCredit && (
+        // A reference photo is credited to its source, never passed off as
+        // this unit (migration 0065).
+        <p className="-mt-4 text-xs text-text-muted">
+          Reference photo:{' '}
+          {equipment.photoSourceUrl ? (
+            <a href={equipment.photoSourceUrl} target="_blank" rel="noopener noreferrer" className="underline">
+              {equipment.photoCredit}
+            </a>
+          ) : (
+            equipment.photoCredit
+          )}
+        </p>
+      )}
       <div>
         <h1 className="text-display-md text-text">{equipment.model}</h1>
         <p className="text-sm text-text-muted">{equipment.equipmentTypeName}</p>
@@ -98,6 +112,19 @@ function EquipmentDetailPage() {
           </p>
         )}
       </div>
+      {(equipment.optionGroups ?? []).length > 0 && (
+        <div className="grid gap-2 text-sm">
+          <dl className="grid gap-2">
+            {(equipment.optionGroups ?? []).map((group) => (
+              <div key={group.name} className="flex flex-wrap gap-x-2">
+                <dt className="text-text-muted">{group.name}:</dt>
+                <dd className="text-text">{group.values.join(' · ')}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="text-text-muted">You choose these in your cart.</p>
+        </div>
+      )}
       <Button
         variant="primary"
         className="w-fit"

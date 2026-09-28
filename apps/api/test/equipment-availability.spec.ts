@@ -61,7 +61,7 @@ describe('availabilityBlockers (DB)', () => {
     equipmentId = (unit as { id: string }).id;
     const [other] = await sql`select id from equipment where tenant_id = ${tenantId} and id <> ${equipmentId} limit 1`;
     otherEquipmentId = (other as { id: string }).id;
-    const [customer] = await sql`select id from customers where tenant_id = ${tenantId} limit 1`;
+    const [customer] = await sql`select id from customers where tenant_id = ${tenantId} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
     const [site] = await sql`select id from project_sites where tenant_id = ${tenantId} and customer_id is null order by created_at limit 1`;
 
     await cleanup();

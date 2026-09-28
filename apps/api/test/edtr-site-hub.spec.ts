@@ -50,7 +50,7 @@ describe('EDTR site hub approval', () => {
     const [tenant] = await sql`select id from tenants where slug = 'test-tenant-a'`;
     const tenantId = (tenant as { id: string }).id;
     const [admin] = await sql`select id from users where tenant_id = ${tenantId} and email = 'admin@test-tenant-a.test'`;
-    const [customer] = await sql`select id from customers where tenant_id = ${tenantId} limit 1`;
+    const [customer] = await sql`select id from customers where tenant_id = ${tenantId} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
     const [card] =
       await sql`select equipment_type_id from rate_cards where tenant_id = ${tenantId} and rate_type = 'hourly' limit 1`;
     await sql.end();

@@ -74,8 +74,10 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
       `;
       otherCustomerIdA = (inserted as { id: string }).id;
     }
-    // Quotes now require a verified company (company_not_verified).
-    await sql`update customers set kyc_status = 'approved' where id = ${otherCustomerIdA}`;
+    // Quotes now require a verified company (company_not_verified). And it
+    // must not belong to the seeded customer's login: on the shared database
+    // it got linked once, which made 'someone else's quote' the customer's own.
+    await sql`update customers set kyc_status = 'approved', user_id = null where id = ${otherCustomerIdA}`;
 
     const [siteA] = await sql`select id from project_sites where tenant_id = ${(tenantA as { id: string }).id} order by created_at limit 1`;
     siteIdA = (siteA as { id: string }).id;

@@ -201,7 +201,12 @@ async function main() {
     })
     .onConflictDoNothing();
 
-  const existingEquipment = await db.select().from(schema.equipment).where(eq(schema.equipment.tenantId, tenant.id));
+  // By serial, not "any unit": the catalog units seeded below share the
+  // tenant, and the sample rental must keep citing this same backhoe.
+  const existingEquipment = await db
+    .select()
+    .from(schema.equipment)
+    .where(and(eq(schema.equipment.tenantId, tenant.id), eq(schema.equipment.serialNo, 'almara-serial-001')));
   const equipmentRow =
     existingEquipment[0] ??
     (
@@ -216,6 +221,91 @@ async function main() {
         .returning()
     )[0];
   if (!equipmentRow) throw new Error('failed to seed equipment for Almara');
+
+  // Almara's catalog (cr-arkilaunch-equipment-options.md). Names and choices
+  // are the owner's own labels; nothing here is a verified spec -- "10 tons"
+  // is a size label, not weight_capacity_tons. No rate cards: the owner
+  // prices these later. Serials are seed placeholders, one per unit.
+  // Photos are manufacturer/dealer reference shots (equipment-images.ts),
+  // credited to their source, never presented as the unit itself.
+  const typeIdByName = new Map(
+    (await db.select().from(schema.equipmentTypes)).map((type) => [type.name, type.id]),
+  );
+  const digOptions = [
+    { name: 'Bucket size', values: ['Standard', '3/4', '1/2'] },
+    { name: 'Arm', values: ['Short', 'Long'] },
+  ];
+  const catalogUnits: {
+    type: string;
+    model: string;
+    serialNo: string;
+    optionGroups?: { name: string; values: string[] }[];
+    photoCredit?: string;
+    photoSourceUrl?: string;
+  }[] = [
+    {
+      type: 'Excavator',
+      model: 'Mitsubishi MS90',
+      serialNo: 'almara-exc-ms90',
+      optionGroups: digOptions,
+      photoCredit: 'Truck2Hand listing (reference photo)',
+      photoSourceUrl: 'https://www.truck2hand.com/listing/yML3d8YxRr/',
+    },
+    {
+      type: 'Excavator',
+      model: 'Mitsubishi MS70',
+      serialNo: 'almara-exc-ms70',
+      optionGroups: digOptions,
+      photoCredit: 'Plant and Equipment listing (reference photo, MS070-8)',
+      photoSourceUrl: 'https://www.plantandequipment.com/equipment-items/1986-mitsubishi-ms070-8',
+    },
+    {
+      type: 'Excavator',
+      model: 'Sumitomo Excavator',
+      serialNo: 'almara-exc-sumitomo',
+      optionGroups: digOptions,
+      photoCredit: 'Sumitomo Vietnam (reference photo, SH80-6B)',
+      photoSourceUrl: 'https://sumitomo-vn.com/landing/product/59',
+    },
+    { type: 'Excavator', model: 'Komatsu PC40', serialNo: 'almara-exc-pc40', optionGroups: digOptions },
+    { type: 'Backhoe Loader', model: 'Caterpillar Backhoe Loader', serialNo: 'almara-bhl-cat', optionGroups: digOptions },
+    { type: 'Bulldozer', model: 'Bulldozer (Pison), Standard', serialNo: 'almara-doz-standard' },
+    {
+      type: 'Bulldozer',
+      model: 'Bulldozer (Pison), 10 tons',
+      serialNo: 'almara-doz-10t',
+      photoCredit: 'Komatsu (reference photo, D39EX-24)',
+      photoSourceUrl: 'https://www.komatsu.com/en-us/products/equipment/dozers/small-dozers/d39ex-24',
+    },
+    { type: 'Self-Loading Truck', model: 'Self-Loading Truck, Standard #1', serialNo: 'almara-slt-std-1' },
+    { type: 'Self-Loading Truck', model: 'Self-Loading Truck, Standard #2', serialNo: 'almara-slt-std-2' },
+    { type: 'Self-Loading Truck', model: 'Self-Loading Truck, Small', serialNo: 'almara-slt-small' },
+    { type: 'Dump Truck', model: 'Dump Truck, Mini', serialNo: 'almara-dump-mini' },
+    {
+      type: 'Dump Truck',
+      model: 'Dump Truck, Standard',
+      serialNo: 'almara-dump-standard',
+      photoCredit: 'PinoyDeal listing (reference photo, Sinotruk Howo A7)',
+      photoSourceUrl: 'https://pinoydeal.ph/vehicles/other-vehicles/sinotruk-howo-a7-10-wheeler-dump-truck_i77579',
+    },
+  ];
+  for (const unit of catalogUnits) {
+    const equipmentTypeId = typeIdByName.get(unit.type);
+    if (!equipmentTypeId) throw new Error(`equipment type ${unit.type} missing; run migrations first`);
+    await db
+      .insert(schema.equipment)
+      .values({
+        tenantId: tenant.id,
+        equipmentTypeId,
+        model: unit.model,
+        serialNo: unit.serialNo,
+        optionGroups: unit.optionGroups ?? [],
+        photoCredit: unit.photoCredit ?? null,
+        photoSourceUrl: unit.photoSourceUrl ?? null,
+      })
+      // Re-seeding leaves a unit the owner has since edited alone.
+      .onConflictDoNothing({ target: [schema.equipment.tenantId, schema.equipment.serialNo] });
+  }
 
   // PRD-F4: maintenance-schedule writes are out of scope for this pass
   // (fleet.service.ts only advances an existing row's next_due); seed one

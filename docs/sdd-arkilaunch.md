@@ -297,15 +297,15 @@ Full column definitions follow for the multi-tenant additions and the load-beari
 | 10 | `addresses` | Yes | id | tenant_id | +line1/2, city, province, postal_code, country |
 | 11 | `customer_addresses` | Yes | id | tenant_id, customer_id, address_id | +address_type |
 | 12 | `kyc_documents` | Yes | id | tenant_id, customer_id | +file_uri, ocr_payload, confidence, status |
-| 13 | `equipment_types` | No (global) | id | | shared reference catalog; +name |
-| 14 | `equipment` | Yes | id | tenant_id, equipment_type_id | +serial_no, availability_status, runtime_hours |
+| 13 | `equipment_types` | No (global) | id | | shared reference catalog; +name. `Self-Loading Truck` added (cr-arkilaunch-equipment-options) |
+| 14 | `equipment` | Yes | id | tenant_id, equipment_type_id | +serial_no, availability_status, runtime_hours, option_groups (jsonb `[{name, values[]}]`, labels only, never priced), photo_credit, photo_source_url (https; cr-arkilaunch-equipment-options) |
 | 15 | `rate_cards` | Yes | id | tenant_id, equipment_type_id | time-variant (effective_from/to) |
 | 16 | `project_sites` | Yes | id | tenant_id, address_id | +latitude, longitude (weather poll) |
 | 17 | `rentals` | Yes | id | tenant_id, customer_id, project_site_id | +status, start_date, end_date (the span of its units: earliest start, latest end), site_contact, site_contact_mobile (+639XXXXXXXXX, CHECK; cr-arkilaunch-qa-feedback-batch) |
 | 18 | `quotations` | Yes | id | tenant_id, customer_id, rental_id | +revision, status, diesel_price_snapshot, price_stale |
 | 19 | `quotation_items` | Yes | id | tenant_id, quotation_id, equipment_type_id, rate_card_id | +quantity, mobilization_km, demobilization_km |
 | 20 | `rental_contracts` | Yes | id | tenant_id, quotation_id | +deposit_required, terms_ref, status |
-| 21 | `equipment_assignments` | Yes | id | tenant_id, equipment_id, rental_id | +start, end, status (double-book guard). Each unit keeps its own window; an extension (`booking_change_requests.assignment_id`) moves only its unit (cr-arkilaunch-qa-feedback-batch) |
+| 21 | `equipment_assignments` | Yes | id | tenant_id, equipment_id, rental_id | +start, end, status (double-book guard). Each unit keeps its own window; an extension (`booking_change_requests.assignment_id`) moves only its unit (cr-arkilaunch-qa-feedback-batch). +selected_options (jsonb, one choice per the unit's option group; cr-arkilaunch-equipment-options) |
 | 22 | `edtr` | Yes | id | tenant_id, rental_id, equipment_id | +source, ocr_payload, status |
 | 23 | `edtr_line_items` | Yes | id | tenant_id, edtr_id | +hours_active, hours_idle, notes |
 | 24 | `edtr_reconciliations` | Yes | id | tenant_id, edtr_id, counterpart_edtr_id, verified_by | the deduction gate |
@@ -637,7 +637,7 @@ Response 409:
 { "error": "equipment_unavailable", "equipment_id": uuid,
   "alternatives": [uuid] }
 ```
-Availability is checked against `equipment_assignments`; an unavailable unit returns 409 with alternatives and never overbooks (US-09). The same unit twice in one request with overlapping windows is refused as 409 `equipment_unavailable`, `reason: overlaps_in_cart`. Optional `site_contact_mobile` takes a PH mobile only (cr-arkilaunch-qa-feedback-batch).
+Availability is checked against `equipment_assignments`; an unavailable unit returns 409 with alternatives and never overbooks (US-09). The same unit twice in one request with overlapping windows is refused as 409 `equipment_unavailable`, `reason: overlaps_in_cart`. Optional `site_contact_mobile` takes a PH mobile only (cr-arkilaunch-qa-feedback-batch). Each item's `selectedOptions` must answer every option group on its unit with one of that unit's choices and nothing else, else 422 `invalid_options` (cr-arkilaunch-equipment-options).
 
 ### `POST /api/v1/webhooks/paymongo` · PRD-F2
 

@@ -1,4 +1,4 @@
-import { index, integer, numeric, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, numeric, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants } from './tenancy.js';
 
@@ -39,6 +39,12 @@ export const equipment = pgTable(
     photoUri: text('photo_uri'),
     // Free-text category when the type is "Others" (migration 0035).
     categoryNote: text('category_note'),
+    // The choices a unit is rented with, e.g. "Bucket size": Standard, 3/4,
+    // 1/2 (migration 0065). Labels only; never priced.
+    optionGroups: jsonb('option_groups').$type<{ name: string; values: string[] }[]>().notNull().default([]),
+    // Credit and source page for a photo that is not the tenant's own.
+    photoCredit: text('photo_credit'),
+    photoSourceUrl: text('photo_source_url'),
     // Soft retire. A machine is never deleted: edtr rows cite equipment_id as
     // the evidence an invoice was computed from (billing.ts), and
     // equipment_assignments carries its rental history. Migration 0026

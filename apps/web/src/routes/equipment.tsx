@@ -153,6 +153,7 @@ function ConfigureRentalDialog({
 function EquipmentPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('');
   const [offset, setOffset] = useState(0);
   const [configuring, setConfiguring] = useState<CatalogEquipment | null>(null);
   const { data, isPending, isError, refetch } = useQuery(catalogQueries.equipment());
@@ -170,10 +171,20 @@ function EquipmentPage() {
           // A deployed unit is still bookable for later dates; the
           // availability grid shows which.
           eq.availabilityStatus !== 'maintenance' &&
+          (!category || eq.equipmentTypeName === category) &&
           `${eq.model} ${eq.equipmentTypeName}`.toLowerCase().includes(query.toLowerCase()),
       ),
-    [data, query],
+    [data, query, category],
   );
+  // Categories with a bookable unit, counted before the category filter.
+  const categories = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const eq of data?.items ?? []) {
+      if (eq.availabilityStatus === 'maintenance') continue;
+      counts.set(eq.equipmentTypeName, (counts.get(eq.equipmentTypeName) ?? 0) + 1);
+    }
+    return [...counts].sort(([a], [b]) => a.localeCompare(b));
+  }, [data]);
 
   // Narrowing the filters can leave the offset past the end of the new
   // result, which would render an empty grid with no controls to escape it
@@ -206,6 +217,27 @@ function EquipmentPage() {
         <h1 className="text-display-md text-text lg:text-display-lg">Equipment for hire</h1>
       )}
       <SearchFilterBar query={query} onQueryChange={setQuery} />
+      {categories.length > 1 && (
+        <div role="group" aria-label="Category" className="flex flex-wrap gap-2">
+          {[['', 'All'] as const, ...categories.map(([name, n]) => [name, `${name} (${n})`] as const)].map(([value, label]) => (
+            <button
+              key={value || 'all'}
+              type="button"
+              aria-pressed={category === value}
+              onClick={() => {
+                setCategory(value);
+                setOffset(0);
+              }}
+              className={[
+                'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
+                category === value ? 'border-accent bg-accent text-white' : 'border-border bg-surface text-text hover:bg-surface-sunk',
+              ].join(' ')}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       {isPending && <Skeleton label="Loading equipment" rows={3} />}
       {isError && (
         <LoadError

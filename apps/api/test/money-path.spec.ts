@@ -95,7 +95,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
       insert into rate_cards (tenant_id, equipment_type_id, rate_type, rate_value, currency, effective_from, effective_to)
       values (${tenantId}, ${cappedTypeId}, 'hourly', 1000.00, 'PHP', '2021-01-01', '2021-12-31')
     `;
-    const [customerRow] = await sql`select id from customers where tenant_id = ${tenantId} limit 1`;
+    const [customerRow] = await sql`select id from customers where tenant_id = ${tenantId} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
     const [siteRow] = await sql`select id from project_sites where tenant_id = ${tenantId} limit 1`;
 
     adminCtx = { tenantId, userId: (admin as { id: string }).id, role: 'admin' };
