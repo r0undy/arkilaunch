@@ -63,7 +63,7 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     // guaranteed to return the same row every run.
     const [rateCardRow] = await sql`select equipment_type_id from rate_cards where tenant_id = ${tenantIdA} and equipment_id is null and rate_type = 'hourly' and (effective_to is null or effective_to > now()) order by effective_from limit 1`;
     const equipmentTypeIdA = (rateCardRow as { equipment_type_id: string }).equipment_type_id;
-    const [customerA] = await sql`select id from customers where tenant_id = ${tenantIdA} limit 1`;
+    const [customerA] = await sql`select id from customers where tenant_id = ${tenantIdA} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
     const [siteA] = await sql`select id from project_sites where tenant_id = ${tenantIdA} limit 1`;
 
     adminCtxA = { tenantId: tenantIdA, userId: (adminA as { id: string }).id, role: 'admin' };

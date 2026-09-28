@@ -13,6 +13,13 @@ export type EquipmentStatus = z.infer<typeof EquipmentStatusSchema>;
 // boundary with Zod"), not passed through as a raw string.
 export const EquipmentListQuerySchema = PaginationQuerySchema.extend({
   status: EquipmentStatusSchema.optional(),
+  // Admin classification (cr-arkilaunch-equipment-options.md §4).
+  typeId: z.string().uuid().optional(),
+  // Name, model number or serial, case-insensitive substring.
+  q: z.string().trim().max(100).optional(),
+  // Listings still missing something: no uploaded or credited photo, or no
+  // rate card in force for the unit or its category.
+  missing: z.enum(['photo', 'price']).optional(),
 });
 export type EquipmentListQuery = z.infer<typeof EquipmentListQuerySchema>;
 
@@ -245,6 +252,8 @@ export const EquipmentResponseSchema = z.object({
   // id and the bucket layout, and keeping it server-side means the bucket can
   // move without a backfill.
   photoUrl: z.string().nullable(),
+  // The category's name, for grouping. Optional so old caches still parse.
+  equipmentTypeName: z.string().optional(),
   optionGroups: z.array(EquipmentOptionGroupSchema),
   photoCredit: z.string().nullable(),
   photoSourceUrl: z.string().nullable(),
@@ -254,6 +263,11 @@ export type EquipmentResponse = z.infer<typeof EquipmentResponseSchema>;
 export const EquipmentListResponseSchema = z.object({
   items: z.array(EquipmentResponseSchema),
   total: z.number().int(),
+  // Units per category under every filter except the category itself, so
+  // each chip shows what picking it would list. Optional for old caches.
+  categories: z
+    .array(z.object({ equipmentTypeId: z.string().uuid(), name: z.string(), count: z.number().int() }))
+    .optional(),
 });
 export type EquipmentListResponse = z.infer<typeof EquipmentListResponseSchema>;
 

@@ -16,6 +16,7 @@ import { QuotesService } from '../src/quotes/quotes.service.js';
 import { PricingEngineService } from '../src/quotes/pricing-engine.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { checkoutPaidWebhook } from './paymongo-webhook.js';
+import { fixtureCompanyId } from './fixture-company.js';
 
 // A paid booking is delivered and returned by staff on its own
 // reservation, the customer hears about each step, and staff hear about
@@ -43,6 +44,8 @@ describe('Delivery, return and staff alerts', () => {
   let rateCardId: string;
   let equipmentTypeId: string;
 
+  let fixtureCustomerId: string;
+
   beforeAll(async () => {
     const url = process.env.DATABASE_URL_DIRECT;
     if (!url) throw new Error('DATABASE_URL_DIRECT is required');
@@ -57,6 +60,8 @@ describe('Delivery, return and staff alerts', () => {
     const [rateCard] = await sql`select id, equipment_type_id from rate_cards where tenant_id = ${tenantId} and equipment_id is null and rate_type = 'hourly' and (effective_to is null or effective_to > now()) order by effective_from limit 1`;
 
     customerCtx = { tenantId, userId: (customerUser as { id: string }).id, role: 'customer' };
+
+    fixtureCustomerId = await fixtureCompanyId(sql, tenantId);
     adminCtx = { tenantId, userId: (adminUser as { id: string }).id, role: 'admin' };
     siteId = (site as { id: string }).id;
     equipmentId = (unit as { id: string }).id;
@@ -92,6 +97,7 @@ describe('Delivery, return and staff alerts', () => {
 
   async function book(offset: number, days = 1) {
     const created = await bookings.create(customerCtx, {
+      customerId: fixtureCustomerId,
       projectSiteId: siteId,
       siteContact: 'Marcus Thorne 0917 000 0000',
       items: [{ equipmentId, start: day(offset, 8), end: day(offset + days - 1, 17) }],

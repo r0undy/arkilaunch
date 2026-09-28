@@ -64,3 +64,18 @@
   - The owner can upload real fleet photos through the existing flow at any time.
 
 **Migration:** columns only, on tables that already carry `tenant_id` and RLS, with defaults of `'[]'` / `'{}'` / null. There is no new tenant table, no backfill, and nothing destructive.
+
+## 4. Classifying the fleet
+
+The owner asked for filtering and grouping, used the existing platform-wide categories rather than per-company ones (so no schema change), and applied the category filter to the storefront too.
+
+- **API:** `GET /equipment` takes these filters:
+  - `typeId`: the category.
+  - `q`: name, model number or serial, case-insensitive. A literal `%` or `_` matches itself.
+  - `missing=photo`: no uploaded photo and no credited reference photo.
+  - `missing=price`: no rate card in force for the unit or its category. This is the catalog's own price rule.
+- **Response:** the list is ordered by category, then newest first. Each item carries `equipmentTypeName`. `categories[]` gives `{ equipmentTypeId, name, count }` under every filter except the category itself, so each chip shows how many units picking it would list.
+- **Admin Equipment tab:** the tab has category chips with counts, a Status select, a search box and a "Needs attention" select (No photo / No price). The list is grouped under category headings, and changing a filter returns to page one.
+  - Cards now fall back to the reference photo (`equipment-images.ts`) as the storefront already did, and the drawing follows the category.
+- **Storefront browse:** category chips with counts, applied alongside the existing search.
+- **Tests:** a new fleet spec covers the category, search (including a literal `%`/`_`) and missing-photo filters. The existing "lists it" spec now finds its unit by serial, because a category-ordered list no longer puts the newest unit first.

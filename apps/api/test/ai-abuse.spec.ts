@@ -39,7 +39,7 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
     const [admin] = await sql`select id from users where tenant_id = ${tenantId} and email = 'admin@test-tenant-a.test'`;
     const [rental] = await sql`select id from rentals where tenant_id = ${tenantId} limit 1`;
     const [equipment] = await sql`select id from equipment where tenant_id = ${tenantId} limit 1`;
-    const [customer] = await sql`select id from customers where tenant_id = ${tenantId} limit 1`;
+    const [customer] = await sql`select id from customers where tenant_id = ${tenantId} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
     ctx = { tenantId, userId: (admin as { id: string }).id, role: 'admin' };
     rentalId = (rental as { id: string }).id;
     equipmentId = (equipment as { id: string }).id;

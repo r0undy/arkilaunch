@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm';
 import { PaymentsService } from '../src/payments/payments.service.js';
 import { BookingsService } from '../src/bookings/bookings.service.js';
 import { EventsService } from '../src/events/events.service.js';
+import { fixtureCompanyId } from './fixture-company.js';
 
 // PRD-F2 (PayMongo Payment Interface). QAD-T10 (deposit stores only
 // provider_ref + status), QAD-T20 (abandoned/failed checkout never flips
@@ -25,6 +26,8 @@ describe('PaymentsService (PRD-F2)', () => {
   let equipmentIdA: string;
   let customerIdA: string;
 
+  let fixtureCustomerId: string;
+
   beforeAll(async () => {
     const url = process.env.DATABASE_URL_DIRECT;
     if (!url) throw new Error('DATABASE_URL_DIRECT is required');
@@ -35,9 +38,11 @@ describe('PaymentsService (PRD-F2)', () => {
     const [customerUser] = await sql`select id from users where tenant_id = ${tenantIdA} and email = 'customer@test-tenant-a.test'`;
     const [site] = await sql`select id from project_sites where tenant_id = ${tenantIdA} and customer_id is null order by created_at limit 1`;
     const [equipmentRow] = await sql`select id from equipment where tenant_id = ${tenantIdA} and serial_no = 'test-tenant-a-serial-booking-001'`;
-    const [customerRow] = await sql`select id from customers where tenant_id = ${tenantIdA} limit 1`;
+    const [customerRow] = await sql`select id from customers where tenant_id = ${tenantIdA} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
 
     customerCtxA = { tenantId: tenantIdA, userId: (customerUser as { id: string }).id, role: 'customer' };
+
+    fixtureCustomerId = await fixtureCompanyId(sql, tenantIdA);
     siteIdA = (site as { id: string }).id;
     equipmentIdA = (equipmentRow as { id: string }).id;
     customerIdA = (customerRow as { id: string }).id;
@@ -70,6 +75,7 @@ describe('PaymentsService (PRD-F2)', () => {
   async function createBooking(dayOffset: number): Promise<string> {
     const { start, end } = window(dayOffset);
     const created = await bookings.create(customerCtxA, {
+      customerId: fixtureCustomerId,
       projectSiteId: siteIdA,
       items: [{ equipmentId: equipmentIdA, start, end }],
     });
@@ -341,7 +347,8 @@ describe('PaymentsService (PRD-F2)', () => {
       `;
       await sql.end();
     },
-    60_000,
+    // 22 sequential bookings over a remote database.
+    180_000,
   );
 
   it('sanity: seeded booking customer id resolves (fixture guard)', () => {

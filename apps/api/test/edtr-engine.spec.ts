@@ -46,7 +46,7 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     const [admin] = await sql`select id from users where tenant_id = ${tenantId} and email = 'admin@test-tenant-a.test'`;
     const [timekeeper] = await sql`select id from users where tenant_id = ${tenantId} and email = 'timekeeper@test-tenant-a.test'`;
     const [rental] = await sql`select id from rentals where tenant_id = ${tenantId} limit 1`;
-    const [customer] = await sql`select id from customers where tenant_id = ${tenantId} limit 1`;
+    const [customer] = await sql`select id from customers where tenant_id = ${tenantId} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
 
     // A dedicated equipment unit, not `select ... from equipment limit 1`.
     // This spec asserts on equipment.runtime_hours as a delta around its own
@@ -58,7 +58,10 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     // for the same reason. The rate card is keyed by tenant+equipment type,
     // so the type is taken from an hourly card to keep the deduction priced.
     const [rateCardRow] =
-      await sql`select equipment_type_id from rate_cards where tenant_id = ${tenantId} and rate_type = 'hourly' limit 1`;
+      // A type-wide card in force across this spec's 2021-03 report dates: a
+      // unit's own card would not price the new unit below, and on the shared
+      // database 'any hourly card' was often one of those.
+      await sql`select equipment_type_id from rate_cards where tenant_id = ${tenantId} and rate_type = 'hourly' and equipment_id is null and effective_from <= '2021-03-01' and (effective_to is null or effective_to > '2021-03-07') order by effective_from limit 1`;
     const equipmentTypeId = (rateCardRow as { equipment_type_id: string }).equipment_type_id;
     const [equipment] = await sql`
       insert into equipment (tenant_id, equipment_type_id, model, serial_no)
@@ -96,7 +99,7 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
       await sql`delete from edtr where id = any(${ids})`;
     }
 
-    const [customerRow] = await sql`select id from customers where tenant_id = ${tenantId} limit 1`;
+    const [customerRow] = await sql`select id from customers where tenant_id = ${tenantId} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
     const [siteRow] = await sql`select id from project_sites where tenant_id = ${tenantId} limit 1`;
 
     await sql.end();

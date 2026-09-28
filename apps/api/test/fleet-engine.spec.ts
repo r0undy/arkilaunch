@@ -40,9 +40,40 @@ describe('FleetService (PRD-F4)', () => {
     });
     expect(created.runtimeHours).toBe(0);
 
-    const { items, total } = await fleet.list(adminCtx, { status: 'available', limit: 50, offset: 0 });
+    // By its own serial: the list is ordered by category, so a new unit is
+    // not necessarily on the first page of a busy shared fleet.
+    const { items, total } = await fleet.list(adminCtx, { status: 'available', q: created.serialNo, limit: 50, offset: 0 });
     expect(total).toBeGreaterThan(0);
     expect(items.some((item) => item.id === created.id)).toBe(true);
+  });
+
+  it('filters by category, search and missing photo, and counts each category', async () => {
+    const run = Date.now();
+    const serialNo = `fleet-test-${run}-classify`;
+    const created = await fleet.create(adminCtx, {
+      equipmentTypeId,
+      model: `Fleet Classify ${run} 100%_Loader`,
+      serialNo,
+      availabilityStatus: 'available',
+      optionGroups: [{ name: 'Arm', values: ['Short', 'Long'] }],
+    });
+    expect(created.optionGroups).toEqual([{ name: 'Arm', values: ['Short', 'Long'] }]);
+
+    // A literal % and _ in the search match themselves, not any text.
+    const found = await fleet.list(adminCtx, { q: `${run} 100%_load`, typeId: equipmentTypeId, limit: 50, offset: 0 });
+    expect(found.items.map((item) => item.id)).toEqual([created.id]);
+    expect(found.items[0]?.equipmentTypeName).toEqual(expect.any(String));
+    expect(await fleet.list(adminCtx, { q: `${run} 100%x`, limit: 50, offset: 0 })).toMatchObject({ total: 0 });
+
+    const noPhoto = await fleet.list(adminCtx, { missing: 'photo', q: serialNo, limit: 50, offset: 0 });
+    expect(noPhoto.total).toBe(1);
+
+    // Counts ignore the category filter itself, so every chip stays visible.
+    const all = await fleet.list(adminCtx, { limit: 1, offset: 0 });
+    const narrowed = await fleet.list(adminCtx, { typeId: equipmentTypeId, limit: 1, offset: 0 });
+    // (Names only: other specs write to the shared fleet between the calls.)
+    expect(narrowed.categories?.map((c) => c.name)).toEqual(all.categories?.map((c) => c.name));
+    expect(all.categories?.find((c) => c.equipmentTypeId === equipmentTypeId)?.count).toBeGreaterThan(0);
   });
 
   it('rejects a duplicate serial number for the same tenant', async () => {

@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, gt, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, ilike, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import {
   auditLogs,
   customers,
@@ -8,6 +8,7 @@ import {
   edtrLineItems,
   equipment,
   equipmentAssignments,
+  equipmentTypes,
   events,
   getBillingSettings,
   invoices,
@@ -158,22 +159,52 @@ export class FleetService {
       // Retired units leave the fleet list. They are never deleted (migration
       // 0026), so history -- maintenanceDetail, the utilization and financial
       // reports, every edtr row citing the machine -- stays readable by id.
-      const where = and(
+      // A rate card in force for the unit or, failing that, its category --
+      // the same rule the catalog's upfront price uses (migration 0042).
+      const priced = sql`exists (
+        select 1 from rate_cards r
+        where r.tenant_id = ${equipment.tenantId}
+          and (r.equipment_id = ${equipment.id} or (r.equipment_id is null and r.equipment_type_id = ${equipment.equipmentTypeId}))
+          and r.effective_from <= now() and (r.effective_to is null or r.effective_to > now())
+      )`;
+      const search = query.q ? `%${query.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
+      // Every filter but the category, so the category counts answer "how
+      // many would I see if I picked this one".
+      const base = and(
         isNull(equipment.retiredAt),
         query.status ? eq(equipment.availabilityStatus, query.status) : undefined,
+        search
+          ? or(ilike(equipment.model, search), ilike(equipment.modelNumber, search), ilike(equipment.serialNo, search))
+          : undefined,
+        query.missing === 'photo' ? and(isNull(equipment.photoUri), isNull(equipment.photoCredit)) : undefined,
+        query.missing === 'price' ? sql`not ${priced}` : undefined,
       );
+      const where = and(base, query.typeId ? eq(equipment.equipmentTypeId, query.typeId) : undefined);
+      // Ordered by category first, so a page reads as grouped headings.
       const rows = await tx
-        .select()
+        .select({ unit: equipment, typeName: equipmentTypes.name })
         .from(equipment)
+        .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipment.equipmentTypeId))
         .where(where)
-        .orderBy(desc(equipment.createdAt))
+        .orderBy(asc(equipmentTypes.name), desc(equipment.createdAt))
         .limit(query.limit)
         .offset(query.offset);
       // The unpaged count, so the caller can page: rows.length only ever
       // described the page it was handed. Counted in Postgres rather than
       // by pulling every matching row into Node (audit-api-surface.md #9).
       const total = await countRows(tx, equipment, where);
-      return { items: rows.map(toEquipmentResponse), total };
+      const categories = await tx
+        .select({ equipmentTypeId: equipmentTypes.id, name: equipmentTypes.name, count: count() })
+        .from(equipment)
+        .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipment.equipmentTypeId))
+        .where(base)
+        .groupBy(equipmentTypes.id, equipmentTypes.name)
+        .orderBy(asc(equipmentTypes.name));
+      return {
+        items: rows.map(({ unit, typeName }) => ({ ...toEquipmentResponse(unit), equipmentTypeName: typeName })),
+        total,
+        categories,
+      };
     });
   }
 

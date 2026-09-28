@@ -5,6 +5,7 @@ import postgres from 'postgres';
 import type { RequestContext } from '@arkilaunch/shared';
 import { BookingsService } from '../src/bookings/bookings.service.js';
 import { EventsService } from '../src/events/events.service.js';
+import { fixtureCompanyId } from './fixture-company.js';
 
 // PRD-F8 (Client Booking Portal), built as an authenticated `customer`-role
 // surface (cr-arkilaunch-f2-f8-bookings-payments.md). QAD-T9 (happy path),
@@ -21,6 +22,8 @@ describe('BookingsService (PRD-F8)', () => {
   let equipmentTypeIdA: string;
   let customerIdA: string;
 
+  let fixtureCustomerId: string;
+
   beforeAll(async () => {
     const url = process.env.DATABASE_URL_DIRECT;
     if (!url) throw new Error('DATABASE_URL_DIRECT is required');
@@ -36,9 +39,11 @@ describe('BookingsService (PRD-F8)', () => {
     const [adminB] = await sql`select id from users where tenant_id = ${tenantIdB} and email = 'admin@test-tenant-b.test'`;
     const [site] = await sql`select id from project_sites where tenant_id = ${tenantIdA} and customer_id is null order by created_at limit 1`;
     const [equipmentRow] = await sql`select id, equipment_type_id from equipment where tenant_id = ${tenantIdA} and serial_no = 'test-tenant-a-serial-booking-001'`;
-    const [customerRow] = await sql`select id from customers where tenant_id = ${tenantIdA} limit 1`;
+    const [customerRow] = await sql`select id from customers where tenant_id = ${tenantIdA} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
 
     customerCtxA = { tenantId: tenantIdA, userId: (customerUser as { id: string }).id, role: 'customer' };
+
+    fixtureCustomerId = await fixtureCompanyId(sql, tenantIdA);
     adminCtxA = { tenantId: tenantIdA, userId: (adminA as { id: string }).id, role: 'admin' };
     adminCtxB = { tenantId: tenantIdB, userId: (adminB as { id: string }).id, role: 'admin' };
     siteIdA = (site as { id: string }).id;
@@ -84,6 +89,7 @@ describe('BookingsService (PRD-F8)', () => {
   it('QAD-T9: a customer books an available unit and the tracker shows order/rental status', async () => {
     const { start, end } = window(1);
     const created = await bookings.create(customerCtxA, {
+      customerId: fixtureCustomerId,
       projectSiteId: siteIdA,
       items: [{ equipmentId: equipmentIdA, start, end }],
     });
@@ -107,6 +113,7 @@ describe('BookingsService (PRD-F8)', () => {
 
     await expect(
       bookings.create(customerCtxA, {
+        customerId: fixtureCustomerId,
         projectSiteId: siteIdA,
         items: [{ equipmentId: equipmentIdA, start, end }],
       }),
@@ -152,6 +159,7 @@ describe('BookingsService (PRD-F8)', () => {
 
     // The same window is bookable again now that the assignment is cancelled.
     const rebooked = await bookings.create(customerCtxA, {
+      customerId: fixtureCustomerId,
       projectSiteId: siteIdA,
       items: [{ equipmentId: equipmentIdA, start, end }],
     });
