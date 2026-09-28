@@ -4,7 +4,7 @@ import { RouterProvider } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { router } from './router.js';
 import { ApiError } from './lib/api-client.js';
-import { bootstrapSession } from './lib/auth-client.js';
+import { bootstrapSession, watchSessionOwner } from './lib/auth-client.js';
 import { ToastProvider } from './components/toast.js';
 import './index.css';
 
@@ -29,6 +29,9 @@ if (!rootElement) throw new Error('#root element missing');
 // The access token now lives in memory only (RFC-1 §3), so a reload starts
 // with none -- rehydrate it from the refresh token before the router's own
 // guards run, or every reload of an authed route bounces to /login.
+// One signed-in account per browser (QA 18): a sign-in or sign-out in
+// another tab, or on another ArkiLaunch site, signs this tab out.
+watchSessionOwner();
 bootstrapSession().finally(() => {
   createRoot(rootElement).render(
     <StrictMode>
