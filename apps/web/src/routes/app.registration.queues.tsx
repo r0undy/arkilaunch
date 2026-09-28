@@ -623,10 +623,7 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   const setOpenId = (id: string | null) =>
     void navigateQueue({
       to: '.',
-      search: (prev: { open?: string }) => {
-        const { open: _open, ...rest } = prev;
-        return id ? { ...rest, open: id } : rest;
-      },
+      search: (prev: { open?: string }) => ({ ...prev, open: id ?? undefined }),
     });
   const [preview, setPreview] = useState<{ companyId: string; documentId: string } | null>(null);
   const [rejecting, setRejecting] = useState<CompanyReviewResponse | null>(null);
