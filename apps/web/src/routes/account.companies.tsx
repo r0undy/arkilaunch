@@ -15,6 +15,7 @@ import { apiErrorText, apiPost, apiPostForm } from '../lib/api-client.js';
 import { companiesQueries } from '../lib/queries.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
+import { Alert } from '../components/alert.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { EmptyState } from '../components/empty-state.js';
@@ -251,8 +252,9 @@ async function scanForSuggestions(
   }
 }
 
-// Below this the upload-time gate bounces the ID back
-// (UPLOAD_CONFIDENCE_GATE in customers.service.ts), so say so now.
+// Below this some filled-in detail may be misread, so the customer is asked
+// to check it against the card. A typing hint only: every ID still goes to
+// staff review whatever it scored (the 0.90 RFC-2 gate is separate).
 const LEGIBLE_CONFIDENCE = 0.85;
 
 interface IdScan {
@@ -316,10 +318,9 @@ function IdReviewStep({
           : 'We could not read your ID, so please type the details from the card.'}
       </p>
       {scan.unclear && (
-        <p role="alert" className="rounded-md border border-warning px-3 py-2 text-sm text-text">
-          This photo looks unclear, so it may be sent back to you. Retaking it in good light speeds up
-          the review.
-        </p>
+        <Alert type="warning">
+          Some details were hard to read. Check each one against your card before continuing.
+        </Alert>
       )}
       <div className="grid gap-3 sm:grid-cols-3">
         <Input

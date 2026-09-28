@@ -53,7 +53,7 @@ async function render(browser: Browser, html: string, width: number, height: num
 }
 
 // Letters only: a trailing timestamp reads as a separate low-confidence
-// token and bounces the certificate as illegible.
+// token and drags the certificate's legibility score down.
 const runTag = Date.now().toString(36).replace(/\d/g, (d) => 'abcdefghij'[Number(d)]!).toUpperCase();
 const STORAGE_UNAVAILABLE = Boolean(process.env.CI);
 const companyName = `E2E Specimen Builders ${runTag}`;

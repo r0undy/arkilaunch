@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Camera, CircleCheck, Upload, type LucideIcon } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   SITE_DOCUMENT_LABELS,
@@ -17,6 +18,55 @@ const label = (type: string) => SITE_DOCUMENT_LABELS[type as SiteDocumentType] ?
 
 export function uploadSiteDocument(siteId: string, documentType: SiteDocumentType, file: File) {
   return apiPostForm(`/me/sites/${siteId}/documents`, { documentType }, file);
+}
+
+// A file input shown as a pill button, so the pick is hard to miss inside
+// the site dialog; once chosen, the file's name shows beside it.
+function FilePick({
+  id,
+  text,
+  icon: Icon,
+  accept,
+  capture,
+  ariaLabel,
+  onFile,
+}: {
+  id: string;
+  text: string;
+  icon: LucideIcon;
+  accept: string;
+  capture?: 'environment';
+  ariaLabel?: string;
+  onFile: (file: File | null) => void;
+}) {
+  const [name, setName] = useState<string | null>(null);
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-pill border border-border-strong bg-surface px-6 py-2.5 text-sm font-medium text-text hover:bg-surface-sunk focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus-ring">
+        <Icon aria-hidden className="h-4 w-4" />
+        {name ? 'Change file' : text}
+        <input
+          id={id}
+          type="file"
+          accept={accept}
+          capture={capture}
+          aria-label={ariaLabel}
+          className="sr-only"
+          onChange={(e) => {
+            const file = e.target.files?.[0] ?? null;
+            setName(file?.name ?? null);
+            onFile(file);
+          }}
+        />
+      </label>
+      {name && (
+        <span className="inline-flex min-w-0 items-center gap-1 text-sm text-text">
+          <CircleCheck aria-hidden className="h-4 w-4 shrink-0 text-success" />
+          <span className="truncate">{name}</span>
+        </span>
+      )}
+    </div>
+  );
 }
 
 // The two picks a site's proof needs: a photo taken there, and one paper
@@ -53,26 +103,27 @@ export function SiteProofFields({
           </option>
         ))}
       </Select>
-      <input
+      <FilePick
         id={`${idPrefix}-proof-file`}
-        aria-label={label(proofType)}
-        type="file"
+        text="Upload document"
+        icon={Upload}
         accept="image/*,application/pdf"
-        onChange={(e) => onProofFile(e.target.files?.[0] ?? null)}
-        className="min-h-11 text-sm"
+        ariaLabel={label(proofType)}
+        onFile={onProofFile}
       />
-      <label className="flex flex-col gap-1 text-sm font-medium text-text">
-        Photo of the site
-        <span className="font-normal text-text-muted">Taken at the site: the gate, signage or the work area.</span>
-        <input
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium text-text">Photo of the site</p>
+        <p className="text-sm text-text-muted">Taken at the site: the gate, signage or the work area.</p>
+        <FilePick
           id={`${idPrefix}-photo`}
-          type="file"
+          text="Take or choose a photo"
+          icon={Camera}
           accept="image/*"
           capture="environment"
-          onChange={(e) => onPhotoFile(e.target.files?.[0] ?? null)}
-          className="min-h-11 text-sm"
+          ariaLabel="Photo of the site"
+          onFile={onPhotoFile}
         />
-      </label>
+      </div>
     </fieldset>
   );
 }

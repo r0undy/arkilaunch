@@ -5,7 +5,7 @@ import type { AssignableRole } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { adminLayoutRoute } from './_admin.js';
 import { requireRole } from '../lib/guards.js';
-import { apiGet, apiPatch, apiPost } from '../lib/api-client.js';
+import { ApiError, apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
@@ -55,8 +55,14 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
       setEmail('');
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: () =>
-      setError('Could not invite this user. Check the email is not already registered.'),
+    // One account per email platform-wide (migration 0063): the address may
+    // belong to another rental company's customer or staff.
+    onError: (e) =>
+      setError(
+        e instanceof ApiError && e.message === 'email_taken'
+          ? 'That email already has an ArkiLaunch account. Invite a different email.'
+          : apiErrorText(e),
+      ),
   });
 
   function close() {

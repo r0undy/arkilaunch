@@ -11,6 +11,7 @@ import {
   timekeeperSiteAssignments,
   users,
   withTenantTx,
+  pgError,
 } from '@arkilaunch/db';
 import {
   evaluateUserAdminAction,
@@ -500,9 +501,5 @@ export class UsersService {
 
 // Postgres unique_violation / foreign_key_violation error codes -- maps a
 // constraint violation to a clean 4xx instead of an uncaught 500.
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === '23505';
-}
-function isForeignKeyViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === '23503';
-}
+const isUniqueViolation = (err: unknown) => pgError(err).code === '23505';
+const isForeignKeyViolation = (err: unknown) => pgError(err).code === '23503';

@@ -1,4 +1,4 @@
-import { index, jsonb, pgPolicy, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { index, jsonb, pgPolicy, pgTable, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { appAuthenticated, tenantIsolationPolicy } from '../rls.js';
 
@@ -138,6 +138,8 @@ export const users = pgTable(
     // proposing to drop it (audit-db-tenant-isolation.md #1).
     unique('users_tenant_email_uq').on(table.tenantId, table.email),
     index('users_email_idx').on(table.email),
+    // One login per email platform-wide, Gmail aliases folded (0063).
+    uniqueIndex('users_email_key_uq').on(sql`email_key(${table.email})`),
   ],
 );
 

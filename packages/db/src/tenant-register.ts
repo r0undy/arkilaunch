@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from './client.js';
+import { pgError } from './pg-error.js';
 
 // Pre-tenant-context write for POST /tenants/register only (see
 // migrations/0009_tenant_registration.sql). Calls a narrow SECURITY DEFINER
@@ -44,6 +45,7 @@ export async function registerTenant(input: TenantRegisterInput): Promise<Tenant
     return { tenantId: row.tenant_id, ownerUserId: row.owner_user_id, applicationId: row.application_id };
   } catch (err) {
     if (isDuplicatePendingApplication(err)) throw new DuplicatePendingApplicationError('duplicate_pending_application');
+    if (isEmailTaken(err)) throw new EmailTakenError('email_taken');
     throw err;
   }
 }
@@ -155,18 +157,18 @@ function isApplicationNotPending(err: unknown): boolean {
 }
 
 function isDuplicatePendingApplication(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code: string }).code === '23505' &&
-    'message' in err &&
-    typeof (err as { message: string }).message === 'string' &&
-    (err as { message: string }).message.includes('duplicate_pending_application')
-  );
+  const e = pgError(err);
+  return e.code === '23505' && typeof e.message === 'string' && e.message.includes('duplicate_pending_application');
 }
 
 export class EmailTakenError extends Error {}
+
+// The functions' own 'email_taken', or the one-login-per-email index
+// (0063) when a concurrent registration slipped past that check.
+function isEmailTaken(err: unknown): boolean {
+  const e = pgError(err);
+  return /email_taken/.test(String(e.message)) || e.constraint === 'users_email_key_uq';
+}
 export class StorefrontNotFoundError extends Error {}
 
 // Pre-tenant-context write for POST /auth/register-customer (migration
@@ -185,11 +187,8 @@ export async function registerCustomerUser(
     if (!row) throw new Error('customer_register returned no row');
     return { tenantId: row.tenant_id, userId: row.user_id };
   } catch (err) {
-    // Drizzle wraps the Postgres error; its RAISE message is on `cause`.
-    const e = err as { message?: unknown; cause?: { message?: unknown } };
-    const text = `${String(e?.message)} ${String(e?.cause?.message)}`;
-    if (/email_taken/.test(text)) throw new EmailTakenError('email_taken');
-    if (/storefront_tenant_not_found/.test(text)) throw new StorefrontNotFoundError('tenant_not_found');
+    if (isEmailTaken(err)) throw new EmailTakenError('email_taken');
+    if (/storefront_tenant_not_found/.test(String(pgError(err).message))) throw new StorefrontNotFoundError('tenant_not_found');
     throw err;
   }
 }

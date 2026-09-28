@@ -7,6 +7,7 @@ export * from './rls.js';
 export * from './auth-lookup.js';
 export * from './payments-lookup.js';
 export * from './catalog-lookup.js';
+export * from './pg-error.js';
 export * from './tenant-register.js';
 export * from './reconciliation.js';
 export * from './deposit-ledger.js';

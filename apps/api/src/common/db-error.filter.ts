@@ -7,6 +7,7 @@ import {
   type ExceptionFilter,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { pgError } from '@arkilaunch/db';
 
 // There was no exception filter of any kind registered, so anything that
 // was not already an HttpException reached the client as a raw 500 with
@@ -19,11 +20,7 @@ import type { Response } from 'express';
 // else stays a 500 but says nothing about the database.
 const INVALID_TEXT_REPRESENTATION = '22P02';
 
-function pgCode(error: unknown): string | undefined {
-  return typeof error === 'object' && error !== null && 'code' in error
-    ? String((error as { code: unknown }).code)
-    : undefined;
-}
+const pgCode = (error: unknown) => pgError(error).code;
 
 @Catch()
 export class DbErrorFilter implements ExceptionFilter {

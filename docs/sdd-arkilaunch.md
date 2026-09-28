@@ -138,7 +138,7 @@ Full column definitions follow for the multi-tenant additions and the load-beari
 | `id` | UUID | No | gen_random_uuid() | PK | |
 | `tenant_id` | UUID | No | | FK `tenants.id`, idx | RESTRICT |
 | `role_id` | UUID | No | | FK `roles.id` | global catalog |
-| `email` | TEXT | No | | UNIQUE idx (per tenant) | lowercased; `UNIQUE (tenant_id, email)` |
+| `email` | TEXT | No | | UNIQUE idx (platform-wide) | lowercased; `UNIQUE (tenant_id, email)` plus `users_email_key_uq` on `email_key(email)` (Gmail dots/+tag folded): one account per email across all tenants (cr-arkilaunch-global-email-unique) |
 | `password_hash` | TEXT | No | | | argon2id, never logged |
 | `status` | TEXT | No | 'active' | | active, disabled, locked |
 | `totp_secret` | TEXT | Yes | | | 2FA for timekeepers; encrypted at rest |

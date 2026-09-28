@@ -168,6 +168,13 @@ const FIELD_FORMAT: Partial<Record<ReadField, { normalize?: (v: string) => strin
 // number or a name, so they do not count toward a document's legibility.
 const LEGIBILITY_EXCLUDED = new Set<ReadField>(['address', 'registeredAddress']);
 
+// The customer's "hard to read" hint on a scan also leaves out sex and
+// middle name: sex is not printed on the front of a PhilSys card and a
+// middle name is often blank, so the read guesses at both with a low score
+// on a perfectly sharp image. The staff read above keeps them (its
+// confidence feeds the RFC-2 review gate, which this must not loosen).
+const SCAN_HINT_EXCLUDED = new Set<ReadField>([...LEGIBILITY_EXCLUDED, 'sex', 'middleName']);
+
 // The card prints "M"/"F" or "MALE"/"FEMALE"; the form takes the letter.
 function normalizeSex(value: string): string {
   const v = value.trim();
@@ -304,9 +311,10 @@ export class CustomersService {
       const read = fields[READ_FIELDS[field]];
       // The form takes no registration date; the staff read keeps it.
       if (!read || (field !== 'registeredAddress' && !(field in suggestions))) continue;
-      if (!LEGIBILITY_EXCLUDED.has(field)) confidences.push(read.confidence);
       const value = normalizeRead(field, read.value);
+      // A dropped value is never shown, so it does not score either.
       if (FIELD_FORMAT[field] && !FIELD_FORMAT[field].re.test(value)) continue;
+      if (!SCAN_HINT_EXCLUDED.has(field)) confidences.push(read.confidence);
       // A certificate's registered address suggests the billing address.
       suggestions[(field === 'registeredAddress' ? 'address' : field) as keyof typeof suggestions] = value;
     }

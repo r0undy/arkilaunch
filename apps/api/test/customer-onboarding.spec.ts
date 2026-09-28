@@ -527,6 +527,28 @@ describe('Customer onboarding', () => {
       expect(scan.confidence).toBeCloseTo(0.92);
     });
 
+    it('does not call a sharp ID unclear over fields the card front does not print', async () => {
+      const service = scanner({
+        first_name: { value: 'KIMBERLY', confidence: 0.95 },
+        middle_name: { value: '', confidence: 0.4 },
+        last_name: { value: 'CORREA', confidence: 0.96 },
+        id_number: { value: '5467-9368-4538-7147', confidence: 0.97 },
+        birth_date: { value: 'DECEMBER 28, 2007', confidence: 0.94 },
+        // Guessed: sex is on the back of a PhilSys card.
+        sex: { value: 'F', confidence: 0.3 },
+      });
+      const scan = await service.scanDocument(seededCustomerCtx, 'government_id', bytes);
+      expect(scan.confidence).toBeCloseTo(0.94);
+
+      // A PCN that fails its format is dropped, and does not score either.
+      const bad = await scanner({
+        first_name: { value: 'KIMBERLY', confidence: 0.95 },
+        id_number: { value: '54679', confidence: 0.2 },
+      }).scanDocument(seededCustomerCtx, 'government_id', bytes);
+      expect(bad.suggestions.idNumber).toBeNull();
+      expect(bad.confidence).toBeCloseTo(0.95);
+    });
+
     it('drops a value that fails its format check rather than suggesting it', async () => {
       const service = scanner({
         tin: { value: 'not-a-tin', confidence: 0.99 },
