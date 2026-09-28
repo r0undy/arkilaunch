@@ -18,7 +18,7 @@ test.describe('platform landing', () => {
     await page.goto(platformUrl('/'));
     await expect(page.getByRole('heading', { name: 'Find a rental company' })).toBeVisible();
     // Searches as you type (debounced); no Search button.
-    await page.getByLabel('Company name').fill('Almara');
+    await page.locator('#directory-q').fill('Almara');
     await expect(page).toHaveURL(/q=Almara/);
   });
 

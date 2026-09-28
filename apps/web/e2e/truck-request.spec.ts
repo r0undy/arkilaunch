@@ -105,7 +105,7 @@ test.describe('self-loading truck', () => {
 
     // Cash is settled only by staff, on the invoice.
     await admin.goto('/app/payments');
-    await admin.getByRole('row', { name: /₱4,321\.00/ }).first().click();
+    await admin.locator('tr, li').filter({ hasText: '₱4,321.00' }).first().click();
     await admin.getByRole('button', { name: 'Record cash payment' }).click();
     await admin.getByRole('button', { name: 'Record payment' }).click();
     await expect(admin.getByText('Cash payment recorded')).toBeVisible();
