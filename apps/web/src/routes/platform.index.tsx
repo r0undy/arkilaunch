@@ -190,8 +190,9 @@ function Directory() {
   const page = search.page ?? 1;
   const offset = (page - 1) * DIRECTORY_PAGE;
   const [q, setQ] = useState(search.q ?? '');
-  const { page: _page, ...filters } = search;
-  const params = new URLSearchParams({ limit: String(DIRECTORY_PAGE), offset: String(offset), ...(filters as Record<string, string>) }).toString();
+  const query = new URLSearchParams({ limit: String(DIRECTORY_PAGE), offset: String(offset) });
+  for (const k of ['q', 'category', 'location'] as const) if (search[k]) query.set(k, search[k]);
+  const params = query.toString();
   const { data, isPending, isError, isPlaceholderData, refetch } = useQuery({
     queryKey: ['catalog', 'tenants', params] as const,
     queryFn: async () => withDirectoryDefaults(await apiGet<Partial<CatalogTenantListResponse>>(`/catalog/tenants?${params}`)),
@@ -216,7 +217,7 @@ function Directory() {
     if (next === (search.q ?? '')) return;
     const timer = setTimeout(() => apply({ q: next }), 300);
     return () => clearTimeout(timer);
-  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q]);
 
   function clearAll() {
     setQ('');
