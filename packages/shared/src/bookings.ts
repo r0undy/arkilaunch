@@ -147,7 +147,7 @@ export const BookingListQuerySchema = PaginationQuerySchema.extend({
     .optional(),
   from: IsoDay.optional(),
   to: IsoDay.optional(),
-  sort: z.enum(['newest', 'start']).default('newest'),
+  sort: z.enum(['newest', 'start']).optional(),
 });
 export type BookingListQuery = z.infer<typeof BookingListQuerySchema>;
 
