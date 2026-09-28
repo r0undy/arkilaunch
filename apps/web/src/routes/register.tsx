@@ -4,6 +4,7 @@ import { authLayoutRoute } from './_auth.js';
 import { savePersonalDetails } from '../lib/registration-client.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
+import { MobileInput } from '../components/mobile-input.js';
 import { Surface } from '../components/surface.js';
 import { onlyOn } from '../lib/guards.js';
 
@@ -32,13 +33,7 @@ function RegisterPersonalDetailsPage() {
         </div>
         <Input label="First name" required value={firstName} onChange={(e) => setFirstName(e.target.value)} />
         <Input label="Last name" required value={lastName} onChange={(e) => setLastName(e.target.value)} />
-        <Input
-          label="Mobile number"
-          type="tel"
-          required
-          value={mobileNumber}
-          onChange={(e) => setMobileNumber(e.target.value)}
-        />
+        <MobileInput label="Mobile number" required value={mobileNumber} onChange={setMobileNumber} />
         <Input label="Email address" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         <Input label="Job title / position" required value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
         <p className="text-xs text-text-muted">

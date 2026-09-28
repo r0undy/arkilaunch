@@ -1,7 +1,7 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
-import type { CompanyResponse, UserSelfResponse } from '@arkilaunch/shared';
+import { localPhMobile, normalizePhMobile, type CompanyResponse, type UserSelfResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { companiesQueries, usersQueries } from '../lib/queries.js';
 import { apiErrorText, apiPatch, apiPost, apiPostForm } from '../lib/api-client.js';
@@ -9,7 +9,9 @@ import { clearTokens } from '../lib/auth-client.js';
 import { companyStatusLabel } from '../lib/cart-validation.js';
 import { Surface } from '../components/surface.js';
 import { PageHeader } from '../components/page-header.js';
+import { Tabs } from '../components/tabs.js';
 import { Input } from '../components/input.js';
+import { MobileInput } from '../components/mobile-input.js';
 import { Button } from '../components/button.js';
 import { LoadError } from '../components/load-error.js';
 import { Skeleton } from '../components/skeleton.js';
@@ -41,12 +43,18 @@ function initials(me: UserSelfResponse) {
 function ProfileTab({ me }: { me: UserSelfResponse }) {
   const toast = useToast();
   const save = useSaveMe();
-  const [phone, setPhone] = useState(me.phone ?? '');
+  // Held as +639XXXXXXXXX. A number saved before the +63 rule that is not a
+  // PH mobile shows blank, and is left alone unless the customer types one.
+  const initialPhone = me.phone && localPhMobile(me.phone) ? normalizePhMobile(me.phone) : '';
+  const [phone, setPhone] = useState(initialPhone);
   const [address, setAddress] = useState(me.address ?? '');
 
   const update = useMutation({
     mutationFn: () =>
-      apiPatch<UserSelfResponse>('/users/me', { phone: phone.trim() || null, address: address.trim() || null }),
+      apiPatch<UserSelfResponse>('/users/me', {
+        ...(phone !== initialPhone ? { phone: phone || null } : {}),
+        address: address.trim() || null,
+      }),
     onSuccess: (data) => {
       save(data);
       toast.success('Profile saved');
@@ -115,7 +123,7 @@ function ProfileTab({ me }: { me: UserSelfResponse }) {
             <p className="text-sm font-medium text-text">Email</p>
             <p className="break-all text-text">{me.email}</p>
           </div>
-          <Input label="Mobile number" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <MobileInput label="Mobile number" value={phone} onChange={setPhone} />
           <Input label="Home address" autoComplete="street-address" value={address} onChange={(e) => setAddress(e.target.value)} />
           <div className="sm:col-span-2">
             <Button type="submit" loading={update.isPending}>
@@ -343,28 +351,10 @@ function AccountSettingsPage() {
   const [tab, setTab] = useState<Tab>('Profile');
 
   return (
-    <div className="flex flex-col gap-4">
-      <PageHeader title="Settings" />
-      <div role="tablist" aria-label="Settings sections" className="flex gap-1 overflow-x-auto border-b border-border">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            id={`tab-${t}`}
-            aria-selected={tab === t}
-            aria-controls="settings-panel"
-            onClick={() => setTab(t)}
-            className={[
-'min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium',
-              tab === t ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text',
-            ].join(' ')}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-      <div id="settings-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
+      <PageHeader title="Settings" description="Your profile, companies, sign-in and notifications." />
+      <Tabs label="Settings sections" items={TABS.map((t) => ({ id: t, label: t }))} value={tab} onChange={setTab} />
+      <div id="settings-panel" role="tabpanel" aria-label={tab} className="flex flex-col gap-4">
         {query.isPending && <Skeleton label="Loading your profile" rows={2} />}
         {query.isError && (
           <LoadError
