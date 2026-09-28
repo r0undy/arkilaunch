@@ -3,6 +3,7 @@ import {
   getCatalogEquipmentForSlug,
   getCatalogTenantForSlug,
   listCatalogEquipmentForSlug,
+  listCatalogLocations,
   listCatalogTenants,
   listEquipmentTypeNames,
   listCatalogTestimonialsForSlug,
@@ -50,12 +51,13 @@ export class CatalogService {
   // The platform directory: active rental companies, public columns only.
   async listTenants(query: CatalogTenantListQuery): Promise<CatalogTenantListResponse> {
     const filters = { q: query.q || null, category: query.category || null, location: query.location || null };
-    const [rows, categories] = await Promise.all([
+    const [{ rows, total }, categories, locations] = await Promise.all([
       listCatalogTenants(filters, query.limit, query.offset),
       listEquipmentTypeNames(),
+      listCatalogLocations(),
     ]);
     const items = rows.map(({ logoKey, ...rest }) => ({ ...rest, logoUrl: publicPhotoUrl(logoKey) }));
-    return { items, categories };
+    return { items, total, categories, locations };
   }
 
   async listEquipment(slug: string, query: CatalogEquipmentListQuery): Promise<CatalogEquipmentListResponse> {
