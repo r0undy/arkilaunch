@@ -45,7 +45,7 @@ test.describe('equipment browsing', () => {
     await page.goto('/equipment');
 
     await expect(page).toHaveURL(/\/equipment$/);
-    await expect(page.getByRole('heading', { name: 'Browse equipment', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Equipment for hire', level: 1 })).toBeVisible();
     await expect(page.getByRole('complementary', { name: 'Sidebar' })).toHaveCount(0);
   });
 
