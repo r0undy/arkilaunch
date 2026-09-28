@@ -119,18 +119,20 @@ function EdtrPage() {
 
   const [offset, setOffset] = useState(0);
   // A new filter starts from its first page.
-  useEffect(() => setOffset(0), [search.site, search.equipment, search.week]);
+  useEffect(() => setOffset(0), [search.site, search.equipment, search.week, search.status]);
   // Deep links from the dashboard's "Needs you" rows: one machine-week. The
   // filter goes to the API, so the pager counts the filtered rows rather than
   // filtering whichever page happened to load.
   const filters = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
   if (search.equipment) filters.set('equipmentId', search.equipment);
+  // The app bar's review-queue pill opens ?status=review (QA 27).
+  if (search.status) filters.set('status', search.status);
   if (search.week) {
     filters.set('from', search.week);
     filters.set('to', addDaysIso(search.week, 6));
   }
   const queue = useQuery({
-    queryKey: ['edtr', PAGE_SIZE, offset, search.equipment ?? '', search.week ?? ''] as const,
+    queryKey: ['edtr', PAGE_SIZE, offset, search.equipment ?? '', search.week ?? '', search.status ?? ''] as const,
     queryFn: () => apiGet<{ items: EdtrListItem[]; total: number }>(`/edtr?${filters.toString()}`),
   });
 
@@ -162,7 +164,7 @@ function EdtrPage() {
     ),
   ];
   const items = all.filter((row) => !search.site || siteOf(row.rentalId) === search.site);
-  const filtered = Boolean(search.site || search.equipment || search.week);
+  const filtered = Boolean(search.site || search.equipment || search.week || search.status);
 
   function setFilter(next: { site?: string | undefined; equipment?: string | undefined }) {
     void navigate({
@@ -291,6 +293,7 @@ function EdtrPage() {
       {filtered && (
         <p className="text-sm text-text-muted">
           Showing {items.length} log{items.length === 1 ? '' : 's'}
+          {search.status === 'review' ? ' waiting for your review' : ''}
           {search.site ? ` at ${siteLabel(search.site)}` : ''}
           {search.equipment ? ` for ${machineName(search.equipment)}` : ''}
           {search.week ? ` in the week of ${formatDate(search.week)}` : ''}.{' '}
@@ -748,10 +751,13 @@ export const edtrRoute = createRoute({
   path: '/app/ocr',
   // Shapes the API accepts (uuid, YYYY-MM-DD); anything else is dropped
   // rather than turned into a 400.
-  validateSearch: (search: Record<string, unknown>): { site?: string; equipment?: string; week?: string } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { site?: string; equipment?: string; week?: string; status?: 'review' } => ({
     ...(typeof search.site === 'string' && UUID.test(search.site) ? { site: search.site } : {}),
     ...(typeof search.equipment === 'string' && UUID.test(search.equipment) ? { equipment: search.equipment } : {}),
-    ...(typeof search.week === 'string' && /^d{4}-d{2}-d{2}$/.test(search.week) ? { week: search.week } : {}),
+    ...(typeof search.week === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(search.week) ? { week: search.week } : {}),
+    ...(search.status === 'review' ? { status: 'review' as const } : {}),
   }),
   component: EdtrPage,
 });

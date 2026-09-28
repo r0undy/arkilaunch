@@ -242,7 +242,7 @@ function AdminDashboardPage() {
           description: 'Field logs the two-source match could not settle.',
         }}
         footer={
-          <Link to="/app/ocr" className={FOOT_LINK}>
+          <Link to="/app/ocr" search={{ status: 'review' }} className={FOOT_LINK}>
             Open field logs
           </Link>
         }
