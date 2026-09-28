@@ -96,6 +96,9 @@ export const rentals = pgTable(
     callRequestedAt: timestamp('call_requested_at', { withTimezone: true }),
     callConfirmedAt: timestamp('call_confirmed_at', { withTimezone: true }),
     callConfirmedBy: uuid('call_confirmed_by').references(() => users.id),
+    // 0068: a 'pending' request holds its dates until then; payment is the
+    // hard lock (common/equipment-availability.ts liveHold).
+    holdExpiresAt: timestamp('hold_expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [tenantIsolationPolicy(),

@@ -52,6 +52,13 @@ export class BookingsController {
     return this.bookings.cancel(req.ctx, id);
   }
 
+  // Staff only: more time for an unpaid request to keep its dates (QA 25).
+  @Patch(':id/hold')
+  @RequirePermission('quote:approve')
+  extendHold(@Param('id') id: string, @Req() req: CtxRequest) {
+    return this.bookings.extendHold(req.ctx, id);
+  }
+
   @Post(':id/deliver')
   @RequirePermission('site:manage')
   deliver(@Param('id') id: string, @Req() req: CtxRequest) {

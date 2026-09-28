@@ -99,5 +99,7 @@ export const BillingSettingsSchema = z.object({
   demobilizationPhp: z.number().finite().min(0).max(99_999_999.99).default(0),
   // Fewest hours a booking may ask for; 0 = only the date span applies.
   minHours: z.number().finite().min(0).max(999_999).default(0),
+  // How long an unpaid request holds its dates, 1 hour to 30 days (0068).
+  holdHours: z.number().int().min(1).max(720).default(48),
 });
 export type BillingSettingsInput = z.infer<typeof BillingSettingsSchema>;

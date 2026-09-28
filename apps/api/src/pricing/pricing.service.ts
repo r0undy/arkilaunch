@@ -336,6 +336,7 @@ export class PricingService {
         mobilizationPhp: String(input.mobilizationPhp),
         demobilizationPhp: String(input.demobilizationPhp),
         minHours: String(input.minHours),
+        holdHours: input.holdHours,
         updatedAt: new Date(),
       };
       await tx

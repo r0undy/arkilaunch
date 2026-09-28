@@ -12,6 +12,8 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 // ponytail: a no-contract rental reads the CURRENT setting, not the amount
 // charged at its checkout; store it on the rental if tenants change it often.
 export const DEFAULT_DEPOSIT_PHP = 5000;
+// billing_settings.hold_hours default (0068).
+export const DEFAULT_HOLD_HOURS = 48;
 
 export interface BillingSettings {
   dailyHours: number;
@@ -21,6 +23,7 @@ export interface BillingSettings {
   mobilizationPhp: number;
   demobilizationPhp: number;
   minHours: number;
+  holdHours: number;
 }
 
 // The tenant's billing knobs; the 0038 column defaults when never set.
@@ -34,6 +37,7 @@ export async function getBillingSettings(tx: Tx, tenantId: string): Promise<Bill
     mobilizationPhp: row ? Number(row.mobilizationPhp) : 0,
     demobilizationPhp: row ? Number(row.demobilizationPhp) : 0,
     minHours: row ? Number(row.minHours) : 0,
+    holdHours: row ? row.holdHours : DEFAULT_HOLD_HOURS,
   };
 }
 

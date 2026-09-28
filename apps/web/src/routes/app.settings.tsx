@@ -355,6 +355,7 @@ interface BillingSettings {
   mobilizationPhp: number;
   demobilizationPhp: number;
   minHours: number;
+  holdHours: number;
 }
 
 // Draft/save/close for a form over the billing settings row. The deposit
@@ -406,6 +407,7 @@ function BillingSettingsForm() {
           { label: 'Deposit (% of rented hours)', value: `${saved.depositPct}%` },
           { label: 'Low-balance warning', value: `${saved.lowBalancePct}%` },
           { label: 'Minimum rental hours', value: saved.minHours },
+          { label: 'Unpaid requests hold dates for', value: `${saved.holdHours} hours` },
         ]}
         action={<EditButton what="deposit and billing" onClick={form.open} />}
       />
@@ -431,6 +433,7 @@ function BillingSettingsForm() {
           <Input label="Deposit (% of rented hours)" type="number" min="0" max="100" step="0.5" numeric hint="Prepaid and consumed by EDTR hours, not refunded. 50 on a 50-hour rental prepays 25 hours. 0 uses the minimum deposit only." value={String(current.depositPct)} onChange={(e) => form.edit({ depositPct: Number(e.target.value) })} />
           <Input label="Low-balance warning (%)" type="number" min="0" max="100" step="1" numeric hint="Warns you and the customer when this much deposit is left." value={String(current.lowBalancePct)} onChange={(e) => form.edit({ lowBalancePct: Number(e.target.value) })} />
           <Input label="Minimum rental hours" type="number" min="0" step="1" numeric hint={current.minHours > 0 ? `Customers book at least ${minRentalDays(current.dailyHours || 8, current.minHours)} days (this many hours at ${current.dailyHours} hours a day). 0 means any length.` : '0 means any length; each day booked still counts a full working day.'} value={String(current.minHours)} onChange={(e) => form.edit({ minHours: Number(e.target.value) })} />
+          <Input label="Hold unpaid requests for (hours)" type="number" min="1" max="720" step="1" numeric hint="A request keeps its dates this long, restarting when you send the quote. Unpaid after that, the dates free up for other customers." value={String(current.holdHours)} onChange={(e) => form.edit({ holdHours: Number(e.target.value) })} />
         </div>
       </Modal>
     </>

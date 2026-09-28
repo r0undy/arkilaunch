@@ -180,6 +180,38 @@ function CallCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
+// QA 25: an unpaid request holds its dates until holdExpiresAt, then frees
+// them for other customers. Staff can give a customer more time to pay.
+function HoldCard({ booking }: { booking: BookingDetailResponse }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const extend = useMutation({
+    mutationFn: () => apiPatch<{ holdExpiresAt: string }>(`/bookings/${booking.id}/hold`, {}),
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: bookingsQueries.detail(booking.id).queryKey });
+      void queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      toast.success('Hold extended', `The dates stay held until ${formatDateTime(data.holdExpiresAt)}.`);
+    },
+    onError: (e) => toast.error('Hold not extended', apiErrorText(e)),
+  });
+  if (booking.status !== 'pending' || !booking.holdExpiresAt) return null;
+  const lapsed = new Date(booking.holdExpiresAt) <= new Date();
+  return (
+    <Container header={{ title: 'Date hold' }}>
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-text-muted">
+          {lapsed
+            ? `The hold lapsed ${formatDateTime(booking.holdExpiresAt)}: other customers can book these dates. It is cancelled within the hour unless extended or paid.`
+            : `Unpaid, so the dates are held until ${formatDateTime(booking.holdExpiresAt)}. Paying locks them.`}
+        </p>
+        <Button variant="secondary" loading={extend.isPending} onClick={() => extend.mutate()}>
+          Extend hold
+        </Button>
+      </div>
+    </Container>
+  );
+}
+
 // Staff mark a paid booking delivered (machines on site, field sheet
 // unlocked) and later returned. Both endpoints already guard the status.
 function DeliveryCard({ booking }: { booking: BookingDetailResponse }) {
@@ -233,6 +265,7 @@ export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <CallCard booking={booking} />
+      <HoldCard booking={booking} />
       <Container header={{ title: 'Quote' }}>
         <div className="flex flex-col gap-3">
         {quote ? (

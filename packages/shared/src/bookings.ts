@@ -83,6 +83,12 @@ export const BookingSummaryResponseSchema = z.object({
   projectSiteId: z.string().uuid(),
   siteCity: z.string().nullable(),
   siteProvince: z.string().nullable(),
+  // QA 27: optional so a cached response from before they existed parses.
+  customerName: z.string().nullable().optional(),
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().nullable().optional(),
+  // QA 25: when an unpaid request lets its dates go; null once paid.
+  holdExpiresAt: z.coerce.date().nullable().optional(),
   // Each unit with its own dates; units never share one merged range.
   // Optional so a cached response from before it existed still parses.
   items: z
@@ -126,14 +132,31 @@ export interface EdtrSheetContext {
 // `q` finds a booking by its code, exactly or by prefix ("EQR-2026-00"),
 // case-insensitively (cr-arkilaunch-uniform-booking-codes.md). Text that
 // cannot be the start of a code is ignored rather than matching nothing.
+// QA 27: `q` also finds a booking by its customer's company name; `status`
+// is a comma list; `from`/`to` (YYYY-MM-DD, Manila) keep bookings whose
+// dates touch that range; `sort` is newest first or soonest start first.
+export const BOOKING_STATUSES = ['pending', 'confirmed', 'active', 'completed', 'cancelled'] as const;
+export type BookingStatus = (typeof BOOKING_STATUSES)[number];
+const IsoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const BookingListQuerySchema = PaginationQuerySchema.extend({
-  q: z.string().trim().max(40).optional(),
+  q: z.string().trim().max(80).optional(),
+  status: z
+    .string()
+    .transform((v) => v.split(',').filter(Boolean))
+    .pipe(z.array(z.enum(BOOKING_STATUSES)).max(BOOKING_STATUSES.length))
+    .optional(),
+  from: IsoDay.optional(),
+  to: IsoDay.optional(),
+  sort: z.enum(['newest', 'start']).default('newest'),
 });
 export type BookingListQuery = z.infer<typeof BookingListQuerySchema>;
 
 export const BookingListResponseSchema = z.object({
   items: z.array(BookingSummaryResponseSchema),
   total: z.number().int(),
+  // Bookings per status under every filter but `status`, for the chips.
+  // Optional so a cached response from before it existed still parses.
+  statusCounts: z.record(z.string(), z.number().int()).optional(),
 });
 export type BookingListResponse = z.infer<typeof BookingListResponseSchema>;
 
@@ -319,7 +342,8 @@ export const AvailabilityQuerySchema = z
   .refine((q) => q.to >= q.from, { message: 'to must not be before from' });
 export type AvailabilityQuery = z.infer<typeof AvailabilityQuerySchema>;
 
-export type AvailabilityBlocker = 'assignment' | 'maintenance' | 'closed' | 'holiday' | 'operator';
+// 'hold': an unpaid request holding the dates until heldUntil (QA 25).
+export type AvailabilityBlocker = 'assignment' | 'hold' | 'maintenance' | 'closed' | 'holiday' | 'operator';
 
 export interface AvailabilityResponse {
   // null = the tenant set no calendar: any time of any day.
@@ -327,7 +351,7 @@ export interface AvailabilityResponse {
   // Billing settings the cart needs for minBookingHours.
   dailyHours: number;
   minHours: number;
-  days: { date: string; available: boolean; reason: AvailabilityBlocker | null }[];
+  days: { date: string; available: boolean; reason: AvailabilityBlocker | null; heldUntil?: string }[];
 }
 
 // GET /bookings/:id/reschedule-suggestion (staff).

@@ -277,6 +277,8 @@ export const billingSettings = pgTable(
     demobilizationPhp: numeric('demobilization_php', { precision: 12, scale: 2 }).notNull().default('0'),
     // 0047: the fewest hours a customer may book, whatever the dates.
     minHours: numeric('min_hours', { precision: 8, scale: 2 }).notNull().default('0'),
+    // 0068: how long an unpaid request holds its dates.
+    holdHours: integer('hold_hours').notNull().default(48),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   () => [tenantIsolationPolicy()],

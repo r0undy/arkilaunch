@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNotNull, like, ne, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, like, lt, ne, or, type SQL } from 'drizzle-orm';
 import {
   addresses,
   auditLogs,
@@ -51,6 +51,7 @@ import { EventsService } from '../events/events.service.js';
 import { PaymentsService } from '../payments/payments.service.js';
 import { QuotesService, inNegotiation } from '../quotes/quotes.service.js';
 import { requireSiteProof } from '../common/site-proof.js';
+import { holdDeadline, renewLapsedHold } from '../common/booking-hold.js';
 import {
   availabilityBlockers,
   findAvailableAlternatives,
@@ -73,6 +74,7 @@ const CUSTOMER_SELF_CANCEL_STATUSES = ['pending'];
 // others and stays the name for another booking's hold.
 const BLOCKER_REASON: Record<AvailabilityBlocker, string> = {
   assignment: 'dates_taken',
+  hold: 'on_hold',
   maintenance: 'maintenance_window',
   closed: 'outside_business_hours',
   holiday: 'holiday',
@@ -127,7 +129,7 @@ export class BookingsService {
       // The customer's site shows it is real and theirs before it takes a job.
       await requireSiteProof(tx, site.id);
 
-      const { dailyHours, minHours } = await getBillingSettings(tx, ctx.tenantId);
+      const { dailyHours, minHours, holdHours } = await getBillingSettings(tx, ctx.tenantId);
       const minDays = minRentalDays(dailyHours, minHours);
       const bookedHours = body.items.map((item) => {
         const days = bookingDays(item.start, item.end);
@@ -224,6 +226,8 @@ export class BookingsService {
           status: 'pending',
           startDate,
           endDate,
+          // QA 25: the dates are held this long unpaid (common/booking-hold.ts).
+          holdExpiresAt: new Date(Date.now() + holdHours * 3_600_000),
         })
         .returning();
       if (!rental) throw new Error('rentals insert returned no row');
@@ -281,19 +285,44 @@ export class BookingsService {
         conditions.push(inArray(rentals.customerId, own.map((row) => row.id)));
       }
       // Only letters, digits and hyphens survive bookingCodeSearchPrefix,
-      // so the LIKE pattern carries no wildcard the caller chose.
+      // so the LIKE pattern carries no wildcard the caller chose. Other text
+      // is a customer's company name (QA 27), its wildcards escaped.
       const codePrefix = query.q ? bookingCodeSearchPrefix(query.q) : null;
-      if (codePrefix) conditions.push(like(rentals.code, `${codePrefix}%`));
+      const byCustomer = query.q
+        ? inArray(
+            rentals.customerId,
+            tx
+              .select({ id: customers.id })
+              .from(customers)
+              .where(ilike(customers.companyName, `%${query.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`)),
+          )
+        : null;
+      if (codePrefix && byCustomer) conditions.push(or(like(rentals.code, `${codePrefix}%`), byCustomer)!);
+      else if (byCustomer) conditions.push(byCustomer);
+      // A booking whose dates touch [from, to], Manila days.
+      if (query.from) conditions.push(or(isNull(rentals.endDate), gte(rentals.endDate, new Date(`${query.from}T00:00:00+08:00`)))!);
+      if (query.to) conditions.push(lt(rentals.startDate, new Date(new Date(`${query.to}T00:00:00+08:00`).getTime() + 86_400_000)));
+      const unfiltered = conditions.length ? and(...conditions) : undefined;
+      if (query.status?.length) conditions.push(inArray(rentals.status, query.status));
       const where = conditions.length ? and(...conditions) : undefined;
       const rows = await tx
         .select()
         .from(rentals)
         .where(where)
-        .orderBy(desc(rentals.createdAt))
+        .orderBy(...(query.sort === 'start' ? [asc(rentals.startDate), desc(rentals.createdAt)] : [desc(rentals.createdAt)]))
         .limit(query.limit)
         .offset(query.offset);
       const total = await countRows(tx, rentals, where);
-      if (rows.length === 0) return { items: [], total };
+      const statusCounts = Object.fromEntries(
+        (
+          await tx
+            .select({ status: rentals.status, n: count() })
+            .from(rentals)
+            .where(unfiltered)
+            .groupBy(rentals.status)
+        ).map((row) => [row.status, row.n]),
+      );
+      if (rows.length === 0) return { items: [], total, statusCounts };
 
       // Human-readable location (a booking is never shown as a bare
       // project_site_id UUID) -- same address-via-site join sites.service.ts
@@ -304,6 +333,11 @@ export class BookingsService {
         .leftJoin(addresses, eq(addresses.id, projectSites.addressId))
         .where(inArray(projectSites.id, rows.map((row) => row.projectSiteId)));
       const siteById = new Map(siteRows.map((site) => [site.id, site]));
+      const customerRows = await tx
+        .select({ id: customers.id, name: customers.companyName })
+        .from(customers)
+        .where(inArray(customers.id, [...new Set(rows.map((row) => row.customerId))]));
+      const customerById = new Map(customerRows.map((c) => [c.id, c.name]));
       // Every unit on these bookings with its own dates, in one query.
       const unitRows = await tx
         .select({
@@ -340,10 +374,15 @@ export class BookingsService {
             projectSiteId: row.projectSiteId,
             siteCity: site?.city ?? null,
             siteProvince: site?.province ?? null,
+            customerName: customerById.get(row.customerId) ?? null,
+            startDate: row.startDate,
+            endDate: row.endDate,
+            holdExpiresAt: row.status === 'pending' ? row.holdExpiresAt : null,
             items: unitsByRental.get(row.id) ?? [],
           };
         }),
         total,
+        statusCounts,
       };
     });
   }
@@ -520,6 +559,7 @@ export class BookingsService {
         callRequestedAt: rental.callRequestedAt,
         callConfirmedAt: rental.callConfirmedAt,
         createdAt: rental.createdAt,
+        holdExpiresAt: rental.status === 'pending' ? rental.holdExpiresAt : null,
         deposit: {
           required: ledger.depositRequired,
           totalDeducted: ledger.totalDeducted,
@@ -588,6 +628,27 @@ export class BookingsService {
       // The customer knows when they cancelled; tell them when staff did.
       if (ctx.role !== 'customer') await notifyBookingCustomer(tx, ctx.tenantId, id, 'booking_cancelled');
       return { id, status: 'cancelled' };
+    });
+  }
+
+  // PATCH /bookings/:id/hold (staff): the request keeps its dates another
+  // hold_hours from now, for a customer who needs more time to pay (QA 25).
+  // A hold that already lapsed renews only while its dates are still free.
+  async extendHold(ctx: RequestContext, id: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const rental = await this.visibleRental(tx, ctx, id);
+      if (rental.status !== 'pending') throw new ConflictException({ error: 'not_on_hold', status: rental.status });
+      await renewLapsedHold(tx, ctx.tenantId, id);
+      const holdExpiresAt = await holdDeadline(tx, ctx.tenantId);
+      await tx.update(rentals).set({ holdExpiresAt }).where(eq(rentals.id, id));
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'rental_hold',
+        entityId: id,
+      });
+      return { id, holdExpiresAt };
     });
   }
 
