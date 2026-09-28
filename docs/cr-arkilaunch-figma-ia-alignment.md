@@ -69,7 +69,7 @@ Checkout (PayMongo-shaped, per §3): `/account/checkout/:bookingId` (method choi
 
 Rental lifecycle and admin ops: `/account/bookings/:bookingId`, `/account/bookings/:bookingId/extend`, `/account/companies/new`, `/account/notifications`, `/app/notifications`, `/app/profile`, `/app/tickets`, `/app/security-logs`, `/field/notifications`, `/field/settings`, `/field/profile`.
 
-Of these, three turned out to have endpoints nothing had ever called: `GET /bookings/:id` (items, quotation, invoices, payments), `GET /notifications` + `PATCH /notifications/:id/read`, and `GET /users/me`. The active-rental, notification-centre and profile screens are therefore real, not placeholders. `maintenance-notify` had been writing notifications that no reader existed for.
+Of these, three turned out to have endpoints nothing had ever called: `GET /bookings/:id` (items, quotation, invoices, payments), `GET /notifications` + `PATCH /notifications/:id/read`, and `GET /users/me`. The active-rental, notification-center and profile screens are therefore real, not placeholders. `maintenance-notify` had been writing notifications that no reader existed for.
 
 Negotiation (layout only, no transport): `/account/negotiation/$quoteId` and its `chat`, `call`, `final` children. The prototype's chat and phone-call screens have no backend, no PRD feature and no RBAC model for a negotiating party; they remain on the `cr-arkilaunch-frontend-storefront-shell.md` §4 backlog and are built here as static layout so the IA is complete and reviewable, not as working features.
 

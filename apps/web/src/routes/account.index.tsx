@@ -142,13 +142,13 @@ function AccountHomePage() {
     bookings?.items.filter((b) => b.status !== 'cancelled' && b.status !== 'completed').length ?? 0;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <PageHeader
-        title="Your account"
+        title="Home"
         description={
           activeCount > 0
-            ? `${activeCount} active booking${activeCount === 1 ? '' : 's'}.`
-            : 'Manage your active operations and equipment status.'
+            ? `${activeCount} active booking${activeCount === 1 ? '' : 's'}, and what to do next.`
+            : 'Your bookings, companies and what to do next.'
         }
       />
       <SetupChecklist />

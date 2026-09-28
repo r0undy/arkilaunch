@@ -98,7 +98,7 @@ describe('/equipment chrome', () => {
     stubFetch();
     const { unmount } = await renderRoute('/equipment');
 
-    const heading = await screen.findByRole('heading', { name: /equipment for hire/i });
+    const heading = await screen.findByRole('heading', { name: 'Browse equipment', level: 1 });
     expect(heading.closest('main')).not.toBeNull();
     unmount();
   });
