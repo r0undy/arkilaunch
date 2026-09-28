@@ -39,7 +39,14 @@ import type {
   RequestContext,
   RescheduleSuggestion,
 } from '@arkilaunch/shared';
-import { bookingCodeSearchPrefix, bookingDays, minBookingHours, selectedOptionsError } from '@arkilaunch/shared';
+import {
+  bookingCodeSearchPrefix,
+  bookingDays,
+  maxBookingHours,
+  minBookingHours,
+  minRentalDays,
+  selectedOptionsError,
+} from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { PaymentsService } from '../payments/payments.service.js';
 import { QuotesService, inNegotiation } from '../quotes/quotes.service.js';
@@ -121,10 +128,19 @@ export class BookingsService {
       await requireSiteProof(tx, site.id);
 
       const { dailyHours, minHours } = await getBillingSettings(tx, ctx.tenantId);
+      const minDays = minRentalDays(dailyHours, minHours);
       const bookedHours = body.items.map((item) => {
-        const min = minBookingHours(bookingDays(item.start, item.end), dailyHours, minHours);
+        const days = bookingDays(item.start, item.end);
+        if (days < minDays) {
+          throw new UnprocessableEntityException({ error: 'rental_too_short', equipmentId: item.equipmentId, minDays, minHours, dailyHours });
+        }
+        const min = minBookingHours(days, dailyHours);
+        const max = maxBookingHours(days);
         if (item.hours !== undefined && item.hours < min) {
           throw new UnprocessableEntityException({ error: 'hours_below_minimum', equipmentId: item.equipmentId, minHours: min });
+        }
+        if (item.hours !== undefined && item.hours > max) {
+          throw new UnprocessableEntityException({ error: 'hours_above_maximum', equipmentId: item.equipmentId, maxHours: max });
         }
         return item.hours ?? min;
       });

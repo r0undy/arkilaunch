@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { apiDelete, apiErrorText, apiGet, apiPost, apiPut } from '../lib/api-client.js';
-import { TEST_EMAIL_TYPES, type TenantCalendar } from '@arkilaunch/shared';
+import { TEST_EMAIL_TYPES, minRentalDays, type TenantCalendar } from '@arkilaunch/shared';
 import { equipmentQueries, referenceQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { Table, type TableColumn } from '../components/table.js';
@@ -430,7 +430,7 @@ function BillingSettingsForm() {
           <Input label="Minimum deposit (PHP)" type="number" min="0" step="0.01" numeric value={String(current.minDepositPhp)} onChange={(e) => form.edit({ minDepositPhp: Number(e.target.value) })} />
           <Input label="Deposit (% of rented hours)" type="number" min="0" max="100" step="0.5" numeric hint="Prepaid and consumed by EDTR hours, not refunded. 50 on a 50-hour rental prepays 25 hours. 0 uses the minimum deposit only." value={String(current.depositPct)} onChange={(e) => form.edit({ depositPct: Number(e.target.value) })} />
           <Input label="Low-balance warning (%)" type="number" min="0" max="100" step="1" numeric hint="Warns you and the customer when this much deposit is left." value={String(current.lowBalancePct)} onChange={(e) => form.edit({ lowBalancePct: Number(e.target.value) })} />
-          <Input label="Minimum rental hours" type="number" min="0" step="1" numeric hint="Customers cannot book fewer hours than this. 0 means only the chosen dates count." value={String(current.minHours)} onChange={(e) => form.edit({ minHours: Number(e.target.value) })} />
+          <Input label="Minimum rental hours" type="number" min="0" step="1" numeric hint={current.minHours > 0 ? `Customers book at least ${minRentalDays(current.dailyHours || 8, current.minHours)} days (this many hours at ${current.dailyHours} hours a day). 0 means any length.` : '0 means any length; each day booked still counts a full working day.'} value={String(current.minHours)} onChange={(e) => form.edit({ minHours: Number(e.target.value) })} />
         </div>
       </Modal>
     </>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { AvailabilityResponse } from '@arkilaunch/shared';
+import { bookingDays, minRentalDays, type AvailabilityResponse } from '@arkilaunch/shared';
 import { apiGet } from '../lib/api-client.js';
 import { getAccessToken } from '../lib/auth-client.js';
 
@@ -72,6 +72,15 @@ export function availabilityProblem(data: AvailabilityResponse | undefined, star
     }
   }
   return null;
+}
+
+// The window is shorter than the tenant rents for, or null. Its minimum is
+// hours, but a crew runs only so many a day, so it is really a length.
+export function rentalLengthProblem(data: AvailabilityResponse | undefined, startIso: string, endIso: string): string | null {
+  if (!data || !startIso || !endIso) return null;
+  const minDays = minRentalDays(data.dailyHours, data.minHours);
+  if (bookingDays(startIso, endIso) >= minDays) return null;
+  return `This company rents for at least ${minDays} days (its ${data.minHours}-hour minimum at ${data.dailyHours} hours a day). Pick a later return date.`;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

@@ -95,6 +95,7 @@ describe('validateCart', () => {
 
   it('needs somewhere to deliver to', () => {
     expect(validateCart(input({ projectSiteId: '' })).projectSiteId).toMatch(/where/i);
+    expect(validateCart(input({ siteNeedsProof: true })).projectSiteId).toMatch(/proof/i);
   });
 
   describe('rental dates', () => {

@@ -20,7 +20,7 @@ import { useToast } from '../components/toast.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
 import { WeatherInsights, weatherInsightsVisible } from '../components/weather-insights.js';
 import { getAccessToken } from '../lib/auth-client.js';
-import { RangeCalendar, availabilityProblem, useAvailability } from '../components/availability-days.js';
+import { RangeCalendar, availabilityProblem, rentalLengthProblem, useAvailability } from '../components/availability-days.js';
 
 // <input type="datetime-local"> speaks local "YYYY-MM-DDTHH:mm"; the cart
 // stores ISO. The frame draws date and time as two fields per end of the
@@ -58,7 +58,7 @@ function ConfigureRentalDialog({
   const order = !start || !end || new Date(end) <= new Date(start);
   // Taken days and closed hours, from the same check the server runs.
   const availability = useAvailability(equipment.id, end);
-  const problem = order ? null : availabilityProblem(availability.data, start, end);
+  const problem = order ? null : (availabilityProblem(availability.data, start, end) ?? rentalLengthProblem(availability.data, start, end));
   const invalid = order || problem !== null;
 
   // Keeps any pickup/return time already typed; else opening/closing time.

@@ -15,8 +15,8 @@ export const BookingItemRequestSchema = z
     equipmentId: z.string().uuid(),
     start: z.string().datetime({ offset: true }),
     end: z.string().datetime({ offset: true }),
-    // Hours the customer means to run the machine; at least minBookingHours.
-    // Omitted (staff, older clients) = that minimum.
+    // Hours the customer means to run the machine, minBookingHours to
+    // maxBookingHours. Omitted (staff, older clients) = the minimum.
     hours: z.number().finite().positive().max(100_000).optional(),
     // One choice per option group on the unit ("Bucket size" -> "3/4"),
     // checked against the unit server-side. Omitted = the unit has none.
@@ -31,10 +31,23 @@ export function bookingDays(start: string | Date, end: string | Date): number {
   return Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000));
 }
 
-// The fewest hours a booking may ask for: the tenant minimum, and never less
-// than a full working day for every day the dates span.
-export function minBookingHours(days: number, dailyHours: number, minHours: number): number {
-  return Math.max(minHours, days * dailyHours);
+// The shortest booking a tenant takes, in days: its minimum hours at a full
+// working day each. A flat hour floor ignored the dates, so 16 days could be
+// asked to carry 500 hours no crew can run in them (QA 24).
+export function minRentalDays(dailyHours: number, minHours: number): number {
+  return minHours > 0 ? Math.ceil(minHours / dailyHours) : 1;
+}
+
+// The fewest hours a booking may ask for: a full working day for every day
+// the dates span. A window of at least minRentalDays always covers the
+// tenant minimum.
+export function minBookingHours(days: number, dailyHours: number): number {
+  return days * dailyHours;
+}
+
+// The most: every hour of every day the dates span.
+export function maxBookingHours(days: number): number {
+  return days * 24;
 }
 export type BookingItemRequest = z.infer<typeof BookingItemRequestSchema>;
 
