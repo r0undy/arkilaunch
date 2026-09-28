@@ -42,7 +42,12 @@ describe('per-equipment weather (warning -> used despite warning)', () => {
     await client.end();
 
     const { db, client: jobClient } = makeJobDb();
-    const typeId = async (name: string) => (await db.select().from(equipmentTypes).where(eq(equipmentTypes.name, name)).limit(1))[0]!.id;
+    // The CI test seed carries only Backhoe Loader; a missing global
+    // category is created, so the spec never depends on the anchor seed.
+    const typeId = async (name: string) => {
+      const [found] = await db.select().from(equipmentTypes).where(eq(equipmentTypes.name, name)).limit(1);
+      return found?.id ?? (await db.insert(equipmentTypes).values({ name }).returning())[0]!.id;
+    };
     const [address] = await db.insert(addresses).values({ tenantId, line1: 'Wx Rd', city: 'Pasig', province, country: 'PH' }).returning();
     const [site] = await db.insert(projectSites).values({ tenantId, addressId: address!.id, latitude: '14.58', longitude: '121.06' }).returning();
     siteId = site!.id;

@@ -77,7 +77,10 @@ describe('weather briefing + hourly watch', { timeout: 180_000 }, () => {
         startDate: new Date('2020-01-01T00:00:00Z'),
       })
       .returning();
-    const [crane] = await db.select().from(equipmentTypes).where(eq(equipmentTypes.name, 'Mobile Crane')).limit(1);
+    // Created when the CI test seed (Backhoe Loader only) lacks it.
+    const crane =
+      (await db.select().from(equipmentTypes).where(eq(equipmentTypes.name, 'Mobile Crane')).limit(1))[0] ??
+      (await db.insert(equipmentTypes).values({ name: 'Mobile Crane' }).returning())[0];
     const [unit] = await db
       .insert(equipment)
       .values({ tenantId, equipmentTypeId: crane!.id, model: 'Briefing Test Crane', serialNo: `WB-${randomUUID().slice(0, 8)}` })

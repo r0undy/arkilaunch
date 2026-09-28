@@ -2,8 +2,9 @@
 // W3C Push API only: the server signs with its own VAPID keys; no
 // Firebase or other third-party SDK. It shows the weather notice and opens
 // its page when tapped.
+/* global self, URL */
 self.addEventListener('push', (event) => {
-  let data = {};
+  let data;
   try {
     data = event.data ? event.data.json() : {};
   } catch {

@@ -59,7 +59,7 @@ const manilaNow = () => ({ date: new Date(Date.now() + 8 * 3_600_000).toISOStrin
 describe('Weather monitoring across the heavy-equipment rental journey', () => {
   const events = new EventsService();
   const quotes = new QuotesService(new PricingEngineService(), events);
-  const bookings = new BookingsService(events, quotes);
+  const bookings = new BookingsService(events, quotes, new PaymentsService(new StubPaymentsAdapter(), events));
   let sessions = 0;
   const adapter = new StubPaymentsAdapter();
   adapter.createCheckoutSession = async (amountPhp: number, invoiceId: string) => ({

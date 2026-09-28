@@ -23,6 +23,9 @@ test('admin adds an Others machine, corrects its meter and logs a service that r
   await add.getByRole('button', { name: 'Add equipment' }).click();
   await expect(add).toBeHidden();
 
+  // The fleet is paged and sorted by category: once other specs have added
+  // units, a new "Others" machine can land past page one. Find it by serial.
+  await page.getByLabel('Search').fill(serial);
   const card = page.getByRole('group', { name: serial });
   await card.getByRole('button', { name: 'Report & maintenance' }).click();
   const dialog = page.getByRole('dialog', { name: 'E2E Paver' });
