@@ -13,6 +13,7 @@ import {
   sameValue,
 } from '@arkilaunch/shared';
 import { createRoute, useNavigate } from '@tanstack/react-router';
+import { CircleCheck, CircleX, TriangleAlert } from 'lucide-react';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { PageHeader } from '../components/page-header.js';
@@ -23,6 +24,8 @@ import { Button } from '../components/button.js';
 import { Modal } from '../components/modal.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { Tabs } from '../components/tabs.js';
+import { Alert } from '../components/alert.js';
+import { ExpandableSection } from '../components/expandable-section.js';
 import { useToast } from '../components/toast.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
@@ -59,40 +62,50 @@ function Submitted({ label, value, scanned }: { label: string; value: string | n
 }
 
 const BAND_META = {
-  high: { label: 'High', className: 'border-success text-success' },
-  medium: { label: 'Medium', className: 'border-warning text-text' },
-  low: { label: 'Low', className: 'border-error text-error' },
+  high: { label: 'High', icon: CircleCheck, className: 'text-success' },
+  medium: { label: 'Medium', icon: TriangleAlert, className: 'text-warning' },
+  low: { label: 'Low', icon: CircleX, className: 'text-error' },
 } as const;
 
-// The advisory score as a small pill; click for the per-check breakdown.
+const CHECK_META = {
+  pass: { icon: CircleCheck, className: 'text-success' },
+  warn: { icon: TriangleAlert, className: 'text-warning' },
+  fail: { icon: CircleX, className: 'text-error' },
+} as const;
+
+// The advisory score as a status indicator; click for the per-check breakdown.
 export function ScorePill({ score }: { score: NonNullable<CompanyReviewResponse['score']> }) {
   const [open, setOpen] = useState(false);
   const meta = BAND_META[score.band];
+  const Icon = meta.icon;
   return (
-    <div className="flex flex-col items-end gap-2">
+    <div className="flex flex-col gap-2">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${meta.className}`}
+        className="inline-flex min-h-11 w-fit items-center gap-1.5 rounded-sm text-sm text-text hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
       >
-        <span className="font-mono">{score.score}%</span> · {meta.label}
-        <span className="sr-only"> confidence. {open ? 'Hide' : 'Show'} the checks</span>
+        <Icon aria-hidden className={`h-4 w-4 ${meta.className}`} />
+        <span className="font-mono tabular-nums">{score.score}%</span> {meta.label} confidence
+        <span className="text-accent underline">{open ? 'Hide checks' : 'Show checks'}</span>
       </button>
       {open && (
-        <ul className="flex w-full max-w-md flex-col gap-1 rounded-md border border-border p-3 text-left text-sm">
-          {score.checks.map((c) => (
-            <li key={c.id} className="flex gap-2">
-              <span aria-hidden className={c.status ==='pass' ? 'text-success' : c.status === 'warn' ? 'text-warning' : 'text-error'}>
-                {c.status === 'pass' ? '✓' : '!'}
-              </span>
-              <span>
-                <span className="font-medium text-text">{c.label}</span>
-                <span className="sr-only"> ({c.status})</span>
-                <span className="block text-xs text-text-muted">{c.reason}</span>
-              </span>
-            </li>
-          ))}
+        <ul className="flex w-full max-w-md flex-col gap-1 rounded-sm border border-border p-3 text-left text-sm">
+          {score.checks.map((c) => {
+            const check = CHECK_META[c.status as keyof typeof CHECK_META] ?? CHECK_META.fail;
+            const CheckIcon = check.icon;
+            return (
+              <li key={c.id} className="flex gap-2">
+                <CheckIcon aria-hidden className={`mt-0.5 h-4 w-4 shrink-0 ${check.className}`} />
+                <span>
+                  <span className="font-medium text-text">{c.label}</span>
+                  <span className="sr-only"> ({c.status})</span>
+                  <span className="block text-xs text-text-muted">{c.reason}</span>
+                </span>
+              </li>
+            );
+          })}
           <li className="pt-1 text-xs text-text-muted">Advisory only: you decide.</li>
         </ul>
       )}
@@ -165,8 +178,7 @@ function RegistryCheck({
             {' '}
             TIN boxes: <span className="font-mono text-text">{tinGroups}</span>
           </>
-        )}{' '}
-        Expired, suspended or not found? Reject with that reason: the customer is told exactly what to bring.
+        )}
       </p>
       <Check checked={checked} onChange={onCheckedChange}>
         It is active on the {link.registry} registry
@@ -248,34 +260,26 @@ function CompanyReviewCard({
       )}
 
       {previous && company.kycStatus === 'pending' && (
-        <div role="note" className="rounded-md border border-warning px-3 py-2 text-sm">
-          <p className="font-medium text-text">
-            Reapplied after a rejection on {formatDate(previous.rejectedAt)}: {KYC_REJECTION_REASONS[previous.reason].label}
-          </p>
+        <Alert
+          type="warning"
+          header={`Reapplied after a rejection on ${formatDate(previous.rejectedAt)}: ${KYC_REJECTION_REASONS[previous.reason].label}`}
+        >
           {previous.note && <p className="text-text-muted">Your note: {previous.note}</p>}
           {previous.cureDocuments.length > 0 && (
             <p className="text-text-muted">
               Asked for: {previous.cureDocuments.map((t) => DOC_LABELS[t] ?? formatStatus(t)).join(', ')}. Check these first.
             </p>
           )}
-        </div>
+        </Alert>
       )}
 
       {registration?.ocr.layout === 'unrecognized' && (
-        <div role="note" className="rounded-md border border-warning px-3 py-2 text-sm">
-          <p className="font-medium text-text">
-            The {DOC_LABELS[registration.documentType] ?? 'registration'} did not read as one.
-          </p>
-          <p className="text-text-muted">
-            It may be the wrong paper, or the page is cut off. Open it and check before relying on what was read.
-          </p>
-        </div>
+        <Alert type="warning" header={`The ${DOC_LABELS[registration.documentType] ?? 'registration'} did not read as one.`}>
+          It may be the wrong paper, or the page is cut off. Open it before relying on what was read.
+        </Alert>
       )}
 
-      <section aria-labelledby={`co-${company.id}`} className="flex flex-col gap-2">
-        <h3 id={`co-${company.id}`} className={groupHeading}>
-          Company
-        </h3>
+      <ExpandableSection header="Company" defaultOpen>
         <dl className={dlClass}>
           <Submitted label="Registered name" value={company.companyName} scanned={registration?.ocr.company_name} />
           {(bir || company.tin) && <Submitted label="TIN" value={company.tin} scanned={(bir ?? registration)?.ocr.tin} />}
@@ -284,12 +288,9 @@ function CompanyReviewCard({
           {registration?.ocr.registration_date && <Submitted label="Registration date" value={registration.ocr.registration_date} />}
           <Submitted label="Billing address" value={company.billingAddress} />
         </dl>
-      </section>
+      </ExpandableSection>
 
-      <section aria-labelledby={`cp-${company.id}`} className="flex flex-col gap-2">
-        <h3 id={`cp-${company.id}`} className={groupHeading}>
-          Contact person
-        </h3>
+      <ExpandableSection header="Contact person">
         <dl className={dlClass}>
           <Submitted
             label="Name"
@@ -302,7 +303,7 @@ function CompanyReviewCard({
           />
           <Submitted label="Mobile" value={company.contactPhone ?? null} />
         </dl>
-      </section>
+      </ExpandableSection>
 
       {decidable && (
         <>
@@ -335,6 +336,11 @@ function CompanyReviewCard({
                 />
               ))}
             </div>
+            {registryDocs.length > 0 && (
+              <p className="text-xs text-text-muted">
+                Expired, suspended or not found? Reject with that reason: the customer is told exactly what to bring.
+              </p>
+            )}
           </section>
 
           <section aria-labelledby={`id-${company.id}`} className="flex flex-col gap-3">
@@ -353,13 +359,15 @@ function CompanyReviewCard({
             {!nationalId && <p className="text-sm text-text-muted">No National ID uploaded.</p>}
             {!selfie && <p className="text-sm text-text-muted">No selfie with the ID uploaded.</p>}
             {nationalId && (
-              <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
-                {ID_DETAILS.map(({ key, label }) => (
-                  <Fragment key={key}>
-                    <Submitted label={label} value={nationalId.customer[key] ?? nationalId.ocr[key]} scanned={nationalId.customer[key] ? nationalId.ocr[key] : undefined} />
-                  </Fragment>
-                ))}
-              </dl>
+              <ExpandableSection header={<span className="text-sm font-medium">ID details</span>}>
+                <dl className={dlClass}>
+                  {ID_DETAILS.map(({ key, label }) => (
+                    <Fragment key={key}>
+                      <Submitted label={label} value={nationalId.customer[key] ?? nationalId.ocr[key]} scanned={nationalId.customer[key] ? nationalId.ocr[key] : undefined} />
+                    </Fragment>
+                  ))}
+                </dl>
+              </ExpandableSection>
             )}
             <div className="flex flex-col rounded-md border border-border px-3 py-2">
               <Check checked={identity.philsysVerified} onChange={(on) => setIdentity({ ...identity, philsysVerified: on })}>
@@ -367,42 +375,51 @@ function CompanyReviewCard({
                 <a href={PHILSYS_CHECK_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline">
                   PhilSys Check <span aria-hidden="true">↗</span>
                 </a>
-                , and the name, birth date and photo it returned match the card.{' '}
-                <span className="text-text-muted">
-                  Open the ID photo and scan its QR with PhilSys Check. The QR is signed by the PSA, so a printed card, an edited
-                  photo or a borrowed ID will not match.
-                </span>
+                , and what it returned matches the card.
               </Check>
               <Check checked={identity.selfieMatches} onChange={(on) => setIdentity({ ...identity, selfieMatches: on })}>
                 The selfie shows the same person as the ID photo, holding this ID.
               </Check>
               <Check checked={identity.holderAuthorized} onChange={(on) => setIdentity({ ...identity, holderAuthorized: on })}>
-                The ID holder may act for the company: listed as an officer on the GIS, named in a Secretary&apos;s Certificate or
-                Board Resolution, or the DTI registrant.
+                The ID holder may act for the company.
               </Check>
+              <ExpandableSection header={<span className="text-sm font-medium">How to check these</span>}>
+                <ul className="list-disc pl-5 text-sm text-text-muted">
+                  <li>
+                    Open the ID photo and scan its QR with PhilSys Check. The QR is signed by the PSA, so a printed card, an
+                    edited photo or a borrowed ID will not match its name, birth date and photo.
+                  </li>
+                  <li>
+                    The holder may act for the company when listed as an officer on the GIS, named in a Secretary&apos;s
+                    Certificate or Board Resolution, or the DTI registrant.
+                  </li>
+                </ul>
+              </ExpandableSection>
             </div>
           </section>
 
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="approve"
-              loading={deciding}
-              disabled={!complete || !allChecked || !identityDone}
-              onClick={() => onApprove([...checked], identity)}
-            >
-              Verify
-            </Button>
-            <Button variant="destructive" loading={deciding} onClick={onReject}>
-              Reject
-            </Button>
+          <div className="sticky -bottom-4 -mx-4 flex flex-col gap-2 border-t border-border bg-surface px-4 py-3 sm:-bottom-5 sm:-mx-5 sm:px-5">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="approve"
+                loading={deciding}
+                disabled={!complete || !allChecked || !identityDone}
+                onClick={() => onApprove([...checked], identity)}
+              >
+                Verify
+              </Button>
+              <Button variant="destructive" loading={deciding} onClick={onReject}>
+                Reject
+              </Button>
+            </div>
+            <p className="text-xs text-text-muted">
+              {!complete
+                ? 'Waiting on the National ID, a selfie holding it, and a BIR 2303 or SEC certificate.'
+                : allChecked && identityDone
+                  ? 'Verifying approves exactly what the customer submitted.'
+                  : 'Check each paper on its registry and tick the three identity checks before verifying.'}
+            </p>
           </div>
-          <p className="text-xs text-text-muted">
-            {!complete
-              ? 'Waiting on the National ID, a selfie holding it, and a BIR 2303 or SEC certificate.'
-              : allChecked && identityDone
-                ? 'Verifying approves exactly what the customer submitted.'
-                : 'Check each paper on its registry and tick the three identity checks before verifying.'}
-          </p>
         </>
       )}
     </div>
@@ -542,7 +559,7 @@ function DocumentPreviewModal({
   return (
     <Modal open onClose={onClose} title="Document" size="lg">
       {query.isPending && <p className="text-sm text-text-muted">Loading...</p>}
-      {query.isError && <p className="text-sm text-error">{apiErrorText(query.error)}</p>}
+      {query.isError && <Alert type="error">{apiErrorText(query.error)}</Alert>}
       {query.data &&
         (asImage ? (
           <img
@@ -619,7 +636,7 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {query.isError && <p className="text-sm text-error">{apiErrorText(query.error)}</p>}
+      {query.isError && <Alert type="error">{apiErrorText(query.error)}</Alert>}
       <Table
         columns={COLUMNS}
         rows={query.data?.items ?? []}
@@ -710,7 +727,7 @@ function RegistrationsPage({ kycStatus }: { kycStatus: Queue }) {
         title="Registrations"
         description={
           kycStatus === 'pending'
-            ? 'Approve or reject what each customer submitted. You check it; you never edit it. A rejection tells the customer which documents fix it, and they reapply.'
+            ? 'Check what each customer submitted, then verify or reject it.'
             : 'Customer companies cleared to book and pay.'
         }
       />
