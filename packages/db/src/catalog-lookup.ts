@@ -16,6 +16,10 @@ export interface CatalogEquipmentRow {
   // The upfront public price (0038 detail, 0042 list): unit card, else type card.
   rateType: string | null;
   rateValue: number | null;
+  // Migration 0065: the unit's choices and its photo credit.
+  optionGroups: { name: string; values: string[] }[];
+  photoCredit: string | null;
+  photoSourceUrl: string | null;
 }
 
 export type CatalogEquipmentDetailRow = CatalogEquipmentRow;
@@ -37,6 +41,9 @@ export async function listCatalogEquipmentForSlug(
     photo_uri: string | null;
     rate_type: string | null;
     rate_value: string | null;
+    option_groups: { name: string; values: string[] }[] | null;
+    photo_credit: string | null;
+    photo_source_url: string | null;
   }>(sql`select * from catalog_list_equipment(${slug}) limit ${limit} offset ${offset}`);
   return rows.map((row) => ({
     id: row.id,
@@ -46,6 +53,9 @@ export async function listCatalogEquipmentForSlug(
     photoUri: row.photo_uri,
     rateType: row.rate_type,
     rateValue: row.rate_value !== null ? Number(row.rate_value) : null,
+    optionGroups: row.option_groups ?? [],
+    photoCredit: row.photo_credit,
+    photoSourceUrl: row.photo_source_url,
   }));
 }
 
@@ -64,6 +74,9 @@ export async function getCatalogEquipmentForSlug(slug: string, id: string): Prom
     photo_uri: string | null;
     rate_type: string | null;
     rate_value: string | null;
+    option_groups: { name: string; values: string[] }[] | null;
+    photo_credit: string | null;
+    photo_source_url: string | null;
   }>(sql`select * from catalog_get_equipment(${slug}, ${id})`);
   const row = rows[0];
   if (!row) return null;
@@ -75,6 +88,9 @@ export async function getCatalogEquipmentForSlug(slug: string, id: string): Prom
     photoUri: row.photo_uri,
     rateType: row.rate_type,
     rateValue: row.rate_value !== null ? Number(row.rate_value) : null,
+    optionGroups: row.option_groups ?? [],
+    photoCredit: row.photo_credit,
+    photoSourceUrl: row.photo_source_url,
   };
 }
 

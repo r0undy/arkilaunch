@@ -17,6 +17,9 @@ export interface CartItem {
   photoUri?: string | null;
   // Hours the customer means to run it; the cart requires minBookingHours.
   hours?: number | undefined;
+  // Option group name -> choice ("Bucket size" -> "3/4"). The groups
+  // themselves are read live from the catalog, never from here.
+  selectedOptions?: Record<string, string> | undefined;
 }
 
 const CART_KEY = 'arkilaunch.cart';

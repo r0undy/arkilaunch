@@ -24,6 +24,7 @@ import {
 } from '@arkilaunch/db';
 import type {
   EquipmentCreateRequest,
+  EquipmentOptionGroup,
   EquipmentListQuery,
   EquipmentListResponse,
   EquipmentResponse,
@@ -92,6 +93,9 @@ function toEquipmentResponse(row: typeof equipment.$inferSelect): EquipmentRespo
     notes: row.notes,
     categoryNote: row.categoryNote,
     photoUrl: publicPhotoUrl(row.photoUri),
+    optionGroups: row.optionGroups,
+    photoCredit: row.photoCredit,
+    photoSourceUrl: row.photoSourceUrl,
   };
 }
 
@@ -105,6 +109,9 @@ type EquipmentSpecFields = {
   fuelType?: string | undefined;
   notes?: string | undefined;
   categoryNote?: string | undefined;
+  optionGroups?: EquipmentOptionGroup[] | undefined;
+  photoCredit?: string | undefined;
+  photoSourceUrl?: string | undefined;
 };
 
 function specFieldPatch(body: EquipmentSpecFields) {
@@ -120,6 +127,10 @@ function specFieldPatch(body: EquipmentSpecFields) {
     ...(body.fuelType !== undefined ? { fuelType: body.fuelType } : {}),
     ...(body.notes !== undefined ? { notes: body.notes } : {}),
     ...(body.categoryNote !== undefined ? { categoryNote: body.categoryNote } : {}),
+    ...(body.optionGroups !== undefined ? { optionGroups: body.optionGroups } : {}),
+    // '' is the form clearing the field; store null, not an empty string.
+    ...(body.photoCredit !== undefined ? { photoCredit: body.photoCredit || null } : {}),
+    ...(body.photoSourceUrl !== undefined ? { photoSourceUrl: body.photoSourceUrl || null } : {}),
   };
 }
 

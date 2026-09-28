@@ -16,6 +16,46 @@ export const EquipmentListQuerySchema = PaginationQuerySchema.extend({
 });
 export type EquipmentListQuery = z.infer<typeof EquipmentListQuerySchema>;
 
+// The choices a unit is rented with (migration 0065): "Bucket size" ->
+// Standard, 3/4, 1/2. Labels, not measurements, and never priced -- rate_cards
+// is the one price. Names and values are unique so a pick is unambiguous.
+export const EquipmentOptionGroupSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  values: z
+    .array(z.string().trim().min(1).max(60))
+    .min(1)
+    .max(12)
+    .refine((values) => new Set(values).size === values.length, { message: 'choices must be unique' }),
+});
+export type EquipmentOptionGroup = z.infer<typeof EquipmentOptionGroupSchema>;
+
+export const EquipmentOptionGroupsSchema = z
+  .array(EquipmentOptionGroupSchema)
+  .max(6)
+  .refine((groups) => new Set(groups.map((g) => g.name)).size === groups.length, {
+    message: 'option names must be unique',
+  });
+
+// What the customer picked, group name -> choice.
+export const SelectedOptionsSchema = z.record(z.string().max(60), z.string().max(60));
+export type SelectedOptions = z.infer<typeof SelectedOptionsSchema>;
+
+// Why a pick does not fit the unit's groups, or null when it does: every
+// group answered with one of its own choices, and nothing else.
+export function selectedOptionsError(
+  groups: readonly EquipmentOptionGroup[],
+  selected: SelectedOptions,
+): string | null {
+  for (const group of groups) {
+    const pick = selected[group.name];
+    if (pick === undefined) return `missing ${group.name}`;
+    if (!group.values.includes(pick)) return `${pick} is not a ${group.name} choice`;
+  }
+  const known = new Set(groups.map((g) => g.name));
+  const extra = Object.keys(selected).find((name) => !known.has(name));
+  return extra ? `${extra} is not an option on this unit` : null;
+}
+
 // POST /equipment (addition beyond the SDD §4 endpoint list; see
 // AGENTS.md §5.1 Change Record). fleet:manage-gated at the controller.
 // The spec sheet from Figma 292:1344 (Add Equipment). Every one of these is
@@ -33,6 +73,11 @@ const EquipmentSpecFieldsSchema = z.object({
   notes: z.string().max(2000).optional(),
   // Free-text category for a machine filed under "Others".
   categoryNote: z.string().max(200).optional(),
+  optionGroups: EquipmentOptionGroupsSchema.optional(),
+  // Credit for a photo that is not the tenant's own (a manufacturer or
+  // dealer reference photo), and the page it came from. '' clears either.
+  photoCredit: z.string().trim().max(200).optional(),
+  photoSourceUrl: z.union([z.string().url().startsWith('https://').max(2000), z.literal('')]).optional(),
 });
 
 export const EquipmentCreateRequestSchema = EquipmentSpecFieldsSchema.extend({
@@ -146,6 +191,10 @@ export const CatalogEquipmentSchema = z.object({
   // The public upfront price (same for every customer); null = on request.
   rateType: z.string().nullable().optional(),
   rateValue: z.number().nullable().optional(),
+  // Optional so a cached response from before migration 0065 still parses.
+  optionGroups: z.array(EquipmentOptionGroupSchema).optional(),
+  photoCredit: z.string().nullable().optional(),
+  photoSourceUrl: z.string().nullable().optional(),
 });
 export type CatalogEquipment = z.infer<typeof CatalogEquipmentSchema>;
 
@@ -196,6 +245,9 @@ export const EquipmentResponseSchema = z.object({
   // id and the bucket layout, and keeping it server-side means the bucket can
   // move without a backfill.
   photoUrl: z.string().nullable(),
+  optionGroups: z.array(EquipmentOptionGroupSchema),
+  photoCredit: z.string().nullable(),
+  photoSourceUrl: z.string().nullable(),
 });
 export type EquipmentResponse = z.infer<typeof EquipmentResponseSchema>;
 
