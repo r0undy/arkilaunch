@@ -215,8 +215,6 @@ export type TenantBranding = z.infer<typeof TenantBrandingSchema>;
 // GET /catalog/tenant (@Public): the host tenant's public branding.
 export const CatalogTenantSchema = TenantBrandingSchema.omit({ legalName: true, slug: true }).extend({
   name: z.string(),
-  // From the approved application; printed on every document's letterhead.
-  tin: z.string().nullable(),
 });
 export type CatalogTenant = z.infer<typeof CatalogTenantSchema>;
 

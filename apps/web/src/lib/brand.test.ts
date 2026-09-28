@@ -59,7 +59,6 @@ const almara: CatalogTenant = {
   font: 'inter',
   facebookUrl: 'https://www.facebook.com/almara',
   messengerUrl: null,
-  tin: null,
   tagline: 'Precision industrial equipment for every project.',
   about: null,
   phone: '0917 000 0000',

@@ -56,7 +56,7 @@
 ## 6. Printed documents (QA 20)
 
 - **`PrintFrame`:** puts the tenant's logo, name, address, contacts and TIN, in its brand colour, above every printed invoice, quote, agreed quote, weekly rundown and statement. It also prints the document's title, reference, issue and print dates and key facts, with a running footer and Page X of Y (`@page`). The quote letterhead had been inside a `<header>`, which print CSS hides.
-- **TIN source:** the tenant TIN is the approved `tenant_applications.tin`, served by `catalog_get_tenant`.
+- **TIN source:** the tenant TIN is the approved `tenant_applications.tin`, read by `tenants_get_tin` (SECURITY DEFINER, the JWT's tenant only) and served on the signed-in `GET /users/me` as `tenantTin`. It is never on the public catalog.
 - **Invoice detail** now carries `billTo` (the company, its TIN and billing address).
 - **EDTR sheet:** uses the brand colour and TIN.
 

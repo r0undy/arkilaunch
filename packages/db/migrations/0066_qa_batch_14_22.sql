@@ -64,22 +64,20 @@ $$;--> statement-breakpoint
 REVOKE ALL ON FUNCTION tenants_update_branding(uuid, uuid, text, text, text, text, text, text, text, text, text, text, text, text) FROM PUBLIC;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION tenants_update_branding(uuid, uuid, text, text, text, text, text, text, text, text, text, text, text, text) TO app_authenticated;--> statement-breakpoint
 
--- 4. Public branding adds the Messenger link and the company's TIN (from its
--- approved application; a TIN is printed on every invoice anyway), for the
--- printed documents' letterhead.
+-- 4. Public branding adds the Messenger link. The TIN is NOT public: it is
+-- read only by signed-in users of the tenant (tenants_get_tin, step 6) for
+-- the printed documents' letterhead.
 DROP FUNCTION IF EXISTS catalog_get_tenant(text);--> statement-breakpoint
 CREATE FUNCTION catalog_get_tenant(p_slug text)
 RETURNS TABLE (
   name text, logo_key text, hero_key text, icon_key text, primary_color text, header_color text,
   font text, tagline text, about text, phone text, contact_email text, address text, city text,
-  province text, facebook_url text, messenger_url text, tin text
+  province text, facebook_url text, messenger_url text
 )
 LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
   SELECT t.legal_name, t.logo_key, t.hero_key, t.icon_key, t.primary_color, t.header_color,
     t.font, t.tagline, t.about, t.phone, t.contact_email, t.address, t.city,
-    t.province, t.facebook_url, t.messenger_url,
-    (SELECT a.tin FROM tenant_applications a
-      WHERE a.tenant_id = t.id AND a.status = 'approved' ORDER BY a.reviewed_at DESC NULLS LAST LIMIT 1)
+    t.province, t.facebook_url, t.messenger_url
   FROM tenants t WHERE t.slug = p_slug AND t.status = 'active';
 $$;--> statement-breakpoint
 REVOKE ALL ON FUNCTION catalog_get_tenant(text) FROM PUBLIC;--> statement-breakpoint
@@ -99,4 +97,16 @@ LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
   FROM tenants t WHERE t.id = p_tenant_id AND t.slug <> 'arkilaunch-platform';
 $$;--> statement-breakpoint
 REVOKE ALL ON FUNCTION tenants_get_branding(uuid) FROM PUBLIC;--> statement-breakpoint
-GRANT EXECUTE ON FUNCTION tenants_get_branding(uuid) TO app_authenticated;
+GRANT EXECUTE ON FUNCTION tenants_get_branding(uuid) TO app_authenticated;;--> statement-breakpoint
+
+-- 6. The rental company's TIN (its approved application's) for printed
+-- invoices and statements. The API passes the verified JWT's tenant only.
+CREATE FUNCTION tenants_get_tin(p_tenant_id uuid)
+RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT a.tin FROM tenant_applications a
+  WHERE a.tenant_id = p_tenant_id AND a.status = 'approved'
+  ORDER BY a.reviewed_at DESC NULLS LAST LIMIT 1;
+$$;--> statement-breakpoint
+REVOKE ALL ON FUNCTION tenants_get_tin(uuid) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION tenants_get_tin(uuid) TO app_authenticated;

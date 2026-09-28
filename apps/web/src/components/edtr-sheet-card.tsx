@@ -45,7 +45,7 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
       d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
       const companyName = me.data?.tenantName ?? '';
       const logo = await sheet.logoDataUri(context.data?.tenant?.logoUrl);
-      const brand = { logoDataUri: logo, accent: tenant?.primaryColor ?? null, tin: tenant?.tin ?? null };
+      const brand = { logoDataUri: logo, accent: tenant?.primaryColor ?? null, tin: me.data?.tenantTin ?? null };
       const input =
         blank || !context.data
           ? { companyName, page, ...brand }

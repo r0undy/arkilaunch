@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTenant } from '../lib/tenant.js';
+import { usersQueries } from '../lib/queries.js';
+import { getAccessToken } from '../lib/auth-client.js';
 import { formatDate } from '../lib/format.js';
 
 // Every printed document's letterhead and running footer (QA 20): the
@@ -25,6 +28,8 @@ export function PrintFrame({
   details?: [label: string, value: ReactNode][];
 }) {
   const tenant = useTenant();
+  // The TIN comes only from the signed-in profile, never the public catalog.
+  const tin = useQuery({ ...usersQueries.me(), enabled: Boolean(getAccessToken()) }).data?.tenantTin ?? null;
   const accent = tenant?.primaryColor ?? '#111111';
   const address = [tenant?.address, tenant?.city, tenant?.province].filter(Boolean).join(', ');
   const contacts = [tenant?.phone, tenant?.contactEmail].filter(Boolean).join(' · ');
@@ -41,7 +46,7 @@ export function PrintFrame({
               </p>
               {address && <p>{address}</p>}
               {contacts && <p>{contacts}</p>}
-              {tenant?.tin && <p>TIN {tenant.tin}</p>}
+              {tin && <p>TIN {tin}</p>}
             </div>
           </div>
           <div className="text-right text-xs leading-snug text-black">
@@ -68,7 +73,7 @@ export function PrintFrame({
       >
         <span>
           {name}
-          {tenant?.tin ? ` · TIN ${tenant.tin}` : ''}
+          {tin ? ` · TIN ${tin}` : ''}
         </span>
         <span className="font-mono">
           {title} {docRef}

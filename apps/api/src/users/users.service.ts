@@ -12,6 +12,7 @@ import {
   users,
   withTenantTx,
   pgError,
+  getTenantTin,
 } from '@arkilaunch/db';
 import {
   evaluateUserAdminAction,
@@ -110,6 +111,7 @@ export class UsersService {
     const { row, profile, tenant } = result;
     // Signed outside the transaction: it is a network call to Storage. A
     // Storage outage costs the picture, never the whole profile.
+    const tenantTin = await getTenantTin(ctx.tenantId).catch(() => null);
     const avatarUrl = profile?.avatarKey
       ? await this.storage.createSignedDownloadUrl(avatarBucket(), profile.avatarKey).catch(() => null)
       : null;
@@ -121,6 +123,7 @@ export class UsersService {
       createdAt: row.createdAt,
       tenantName: tenant?.legalName ?? '',
       tenantSlug: tenant?.slug ?? '',
+      tenantTin,
       firstName: profile?.firstName ?? null,
       middleName: profile?.middleName ?? null,
       lastName: profile?.lastName ?? null,
