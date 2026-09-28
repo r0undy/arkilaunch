@@ -44,33 +44,75 @@ export const WEATHER_LEVEL_INFO: Record<WeatherLevel, { label: string; color: 'g
 // How weather endangers a kind of machine. The catalog's equipment types
 // map onto these by name (EQUIPMENT_TYPE_CLASS), so no reference-table
 // change is needed and an unknown type falls back to 'general'.
-export const EQUIPMENT_WEATHER_CLASSES = ['lifting', 'material_handling', 'earthmoving', 'hauling', 'compaction', 'power', 'general'] as const;
+export const EQUIPMENT_WEATHER_CLASSES = [
+  'lifting',
+  'aerial_work',
+  'concrete_pumping',
+  'material_handling',
+  'earthmoving',
+  'hauling',
+  'compaction',
+  'paving',
+  'power',
+  'general',
+] as const;
 export type EquipmentWeatherClass = (typeof EQUIPMENT_WEATHER_CLASSES)[number];
 
 export const EQUIPMENT_WEATHER_CLASS_INFO: Record<EquipmentWeatherClass, { label: string; why: string }> = {
   lifting: { label: 'Cranes and boom trucks', why: 'Wind on the boom and a suspended load; lightning strikes tall booms first.' },
+  aerial_work: {
+    label: 'Boom lifts (manlifts)',
+    why: 'People on a platform at height: the lowest wind limit on site, slippery decks in rain, nowhere to shelter from lightning.',
+  },
+  concrete_pumping: {
+    label: 'Concrete pumps',
+    why: 'A long placing boom limited by wind like a crane, and a pour that heavy rain ruins (washed-out cement, cold joints).',
+  },
   material_handling: { label: 'Forklifts', why: 'Raised loads sway in wind; wet ground and ramps cause tip-overs.' },
   earthmoving: { label: 'Excavators, dozers, loaders, graders', why: 'Rain softens ground and trenches collapse; heavy rain brings slope failure and flooding.' },
-  hauling: { label: 'Dump trucks and mixers', why: 'Road travel: flooding, poor visibility and slippery haul roads.' },
-  compaction: { label: 'Rollers', why: 'Compaction on wet soil fails and the drum slides on slopes.' },
-  power: { label: 'Generators', why: 'Flood water and lightning around live electrical equipment.' },
+  hauling: { label: 'Dump, mixer, water and self-loading trucks', why: 'Road travel: flooding, poor visibility and slippery haul roads.' },
+  compaction: { label: 'Rollers and compactors', why: 'Compaction on wet soil fails and the drum slides on slopes.' },
+  paving: { label: 'Asphalt pavers', why: 'Hot asphalt cannot be laid on a wet base: any steady rain stops the pour.' },
+  power: { label: 'Generators and compressors', why: 'Flood water and lightning around live electrical equipment.' },
   general: { label: 'Other equipment', why: 'General site weather rules.' },
 };
 
 export const EQUIPMENT_TYPE_CLASS: Record<string, EquipmentWeatherClass> = {
+  // Lifting: suspended loads on a boom.
   crane: 'lifting',
+  'mobile crane': 'lifting',
+  'crawler crane': 'lifting',
   'boom truck': 'lifting',
+  // People at height.
+  'boom lift (manlift)': 'aerial_work',
+  'concrete pump': 'concrete_pumping',
   forklift: 'material_handling',
+  // Earthmoving: ground conditions, trenches and slopes.
   excavator: 'earthmoving',
+  'mini excavator': 'earthmoving',
   'backhoe loader': 'earthmoving',
   bulldozer: 'earthmoving',
   'wheel loader': 'earthmoving',
+  'wheel loader (payloader)': 'earthmoving',
   'skid steer': 'earthmoving',
+  'skid steer loader': 'earthmoving',
   'motor grader': 'earthmoving',
+  // Hauling: public roads, flooding, visibility.
   'dump truck': 'hauling',
   'concrete mixer': 'hauling',
+  'transit mixer': 'hauling',
+  'water truck': 'hauling',
+  // Moves heavy equipment between sites: the risk is the road trip.
+  'self-loading truck': 'hauling',
+  // Compaction.
   'road roller': 'compaction',
+  'pneumatic tire roller': 'compaction',
+  'plate compactor': 'compaction',
+  'asphalt paver': 'paving',
+  // Power: electrics in flood water and lightning.
   generator: 'power',
+  'generator set': 'power',
+  'air compressor': 'power',
 };
 
 export function weatherClassFor(typeName: string | null | undefined): EquipmentWeatherClass {
@@ -162,6 +204,27 @@ const RULES: Record<EquipmentWeatherClass, Rule[]> = {
     { level: 'advisory', test: gustOver(30) },
     { level: 'advisory', test: rainAt('yellow') },
   ],
+  // Manlift manufacturers rate platforms to 12.5 m/s (45 km/h); people
+  // are on it, so the thresholds sit below the crane's.
+  aerial_work: [
+    { level: 'stop_work', test: gustOver(45) },
+    { level: 'stop_work', test: signalAt(1) },
+    { level: 'stop_work', test: thunder },
+    { level: 'stop_work', test: rainAt('orange') },
+    { level: 'caution', test: gustOver(30) },
+    { level: 'caution', test: rainAt('yellow') },
+    { level: 'advisory', test: gustOver(20) },
+  ],
+  // A crane can wait out heavy rain; a pour cannot -- Orange rain washes
+  // the cement out of fresh concrete, so the pump stops a level earlier.
+  concrete_pumping: [
+    { level: 'stop_work', test: gustOver(50) },
+    { level: 'stop_work', test: signalAt(1) },
+    { level: 'stop_work', test: thunder },
+    { level: 'stop_work', test: rainAt('orange') },
+    { level: 'caution', test: gustOver(38) },
+    { level: 'caution', test: rainAt('yellow') },
+  ],
   material_handling: [
     { level: 'stop_work', test: gustOver(50) },
     { level: 'stop_work', test: signalAt(1) },
@@ -190,13 +253,22 @@ const RULES: Record<EquipmentWeatherClass, Rule[]> = {
     { level: 'advisory', test: rainAt('yellow') },
     { level: 'advisory', test: thunder },
   ],
+  // Rolling wet soil does not compact it and the drum slides: rain
+  // limits a roller well before it limits a truck.
   compaction: [
-    { level: 'stop_work', test: rainAt('red') },
+    { level: 'stop_work', test: rainAt('orange') },
     { level: 'stop_work', test: signalAt(2) },
-    { level: 'caution', test: rainAt('orange') },
+    { level: 'caution', test: rainAt('yellow') },
     { level: 'caution', test: signalAt(1) },
-    { level: 'advisory', test: rainAt('yellow') },
     { level: 'advisory', test: thunder },
+  ],
+  // Asphalt is not laid on a wet base: steady rain of any colour stops it.
+  paving: [
+    { level: 'stop_work', test: rainAt('yellow') },
+    { level: 'stop_work', test: signalAt(2) },
+    { level: 'caution', test: signalAt(1) },
+    { level: 'caution', test: thunder },
+    { level: 'caution', test: gustOver(62) },
   ],
   power: [
     { level: 'stop_work', test: signalAt(3) },

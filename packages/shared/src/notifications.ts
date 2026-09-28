@@ -43,3 +43,20 @@ export const TestEmailRequestSchema = z
   })
   .strict();
 export type TestEmailRequest = z.infer<typeof TestEmailRequestSchema>;
+
+// POST /api/v1/me/push-subscriptions: a browser's Web Push subscription
+// (PushSubscription.toJSON()). W3C Push API with our own VAPID keys; no
+// third-party SDK or account (docs/cr-arkilaunch-weather-monitoring.md).
+export const PushSubscriptionCreateSchema = z
+  .object({
+    endpoint: z.string().url().max(2048).startsWith('https://'),
+    keys: z.object({ p256dh: z.string().min(1).max(256), auth: z.string().min(1).max(256) }).strict(),
+  })
+  .strict();
+export type PushSubscriptionCreate = z.infer<typeof PushSubscriptionCreateSchema>;
+
+export const PushSubscriptionDeleteSchema = z.object({ endpoint: z.string().url().max(2048) }).strict();
+export type PushSubscriptionDelete = z.infer<typeof PushSubscriptionDeleteSchema>;
+
+export const PushPublicKeyResponseSchema = z.object({ publicKey: z.string().nullable() });
+export type PushPublicKeyResponse = z.infer<typeof PushPublicKeyResponseSchema>;

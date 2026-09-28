@@ -59,7 +59,7 @@ describe('per-equipment weather (warning -> used despite warning)', () => {
       await db.insert(equipmentAssignments).values({ tenantId, equipmentId: row!.id, rentalId, start: new Date('2020-01-01T00:00:00Z'), status: 'active' });
       return row!.id;
     };
-    craneId = await unit('Crane', 'Test 50t Crane');
+    craneId = await unit('Mobile Crane', 'Test 50t Crane');
     rollerId = await unit('Road Roller', 'Test Roller');
     await jobClient.end();
   });

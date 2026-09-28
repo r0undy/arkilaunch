@@ -1,8 +1,16 @@
 import { desc, eq } from 'drizzle-orm';
-import { evaluateSiteEquipment, events, projectSites, rentals, warnOnEquipmentEscalation, weatherAlerts } from '@arkilaunch/db';
-import { evaluateSeverity, MAX_POLLED_SITES_PER_CYCLE, type EquipmentWeather, type WeatherLevel, type WeatherPort } from '@arkilaunch/shared';
+import { evaluateSiteEquipment, events, warnOnEquipmentEscalation, weatherAlerts } from '@arkilaunch/db';
+import {
+  evaluateSeverity,
+  MAX_POLLED_SITES_PER_CYCLE,
+  type EquipmentWeather,
+  type HourlyForecastPort,
+  type WeatherLevel,
+  type WeatherPort,
+} from '@arkilaunch/shared';
 import { createWeatherAdapter } from '@arkilaunch/weather';
 import { makeJobDb } from './db-client.js';
+import { hourlyWatch, sitesWithDeployedEquipment } from './weather-briefing.js';
 import { runInstrumentedJob } from './telemetry.js';
 
 // PRD-F5 §4/NFR-4: ACA Job cron, every 30 min per active site.
@@ -20,7 +28,10 @@ const SEVERITY_RANK: Record<string, number> = { none: 0, watch: 1, warning: 2 };
 // The site-wide severity never reads calmer than its worst machine.
 const LEVEL_SEVERITY: Record<WeatherLevel, string> = { normal: 'none', advisory: 'watch', caution: 'warning', stop_work: 'warning' };
 
-export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter()): Promise<void> {
+export async function runWeatherPoll(
+  port: WeatherPort & Partial<HourlyForecastPort> = createWeatherAdapter(),
+  now = new Date(),
+): Promise<void> {
   if (process.env.ENABLE_WEATHER_POLL !== 'true') {
     console.log('weather-poll: ENABLE_WEATHER_POLL is off; skipping.');
     return;
@@ -29,18 +40,11 @@ export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter())
   const { db, client } = makeJobDb();
 
   try {
-    // "Active site" = a project_sites row with at least one active rental
-    // (the schema has no active/inactive flag of its own on project_sites).
-    const activeSites = await db
-      .selectDistinct({
-        id: projectSites.id,
-        tenantId: projectSites.tenantId,
-        latitude: projectSites.latitude,
-        longitude: projectSites.longitude,
-      })
-      .from(projectSites)
-      .innerJoin(rentals, eq(rentals.projectSiteId, projectSites.id))
-      .where(eq(rentals.status, 'active'));
+    // Only sites with deployed equipment -- a delivered ('active')
+    // assignment, the same definition as machinesOnSite() -- are monitored
+    // (docs/cr-arkilaunch-weather-monitoring.md). A booked site with
+    // nothing delivered yet has no machine to warn about.
+    const activeSites = await sitesWithDeployedEquipment(db);
 
     const ceiling = Number(process.env.WEATHER_POLL_MAX_SITES ?? MAX_POLLED_SITES_PER_CYCLE);
     if (activeSites.length > ceiling) {
@@ -110,7 +114,7 @@ export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter())
         // customer and the admins now; the event is the delivery proof the
         // "used despite warning" incident later cites.
         const before = (previous?.observed as { equipment?: EquipmentWeather[] } | null)?.equipment ?? null;
-        await warnOnEquipmentEscalation(db, site.tenantId, site.id, before, machines.equipment);
+        await warnOnEquipmentEscalation(db, site.tenantId, site.id, before, machines.equipment, site.name);
 
         if (isEscalation && severity !== 'none') {
           await db.insert(events).values({
@@ -137,6 +141,13 @@ export async function runWeatherPoll(port: WeatherPort = createWeatherAdapter())
           },
         });
       }
+    }
+
+    // Once an hour in working hours, sites on weather watch (the morning
+    // briefing or a later outlook forecast Caution or worse) get their next
+    // hours re-forecast; a changed outlook is sent (weather-briefing.ts).
+    if (port.getHourlyForecast) {
+      await hourlyWatch(db, port as HourlyForecastPort, activeSites, now);
     }
   } finally {
     await client.end();

@@ -28,6 +28,8 @@ const WRITTEN: Record<FeedArea, [string, Record<string, unknown>][]> = {
     ['maintenance_warning', { equipment_id: 'e1' }],
     ['weather_advisory', { severity: 'orange' }],
     ['equipment_weather_alert', { ...RENTAL, level: 'caution' }],
+    ['equipment_weather_briefing', { project_site_id: '44444444-4444-4444-8444-444444444444', site_name: 'Lot 5, Pasig', level: 'stop_work', machines: [{ equipmentId: 'e1', rentalId: RENTAL.rental_id, equipmentName: 'Crane', equipmentType: 'Crane', level: 'stop_work', reasons: ['Gusts 70 km/h'], hours: ['13:00', '14:00'] }] }],
+    ['equipment_weather_outlook', { project_site_id: '44444444-4444-4444-8444-444444444444', site_name: 'Lot 5, Pasig', level: 'stop_work', machines: [{ equipmentId: 'e1', rentalId: RENTAL.rental_id, equipmentName: 'Crane', equipmentType: 'Crane', level: 'stop_work', reasons: ['Gusts 70 km/h'], hours: ['13:00', '14:00'] }] }],
     ['company_submitted', { company_name: 'Acme' }],
     ['company_reapplied', { company_name: 'Acme' }],
     ['password_reset_requested', { email: 'a@b.c' }],
@@ -50,11 +52,14 @@ const WRITTEN: Record<FeedArea, [string, Record<string, unknown>][]> = {
     ['change_request_resolved', { ...RENTAL, kind: 'extend', decision: 'approved' }],
     ['daily_log_approved', { ...RENTAL, report_date: '2026-09-21' }],
     ['equipment_weather_warning', { ...RENTAL, level: 'caution' }],
+    ['equipment_weather_briefing', { project_site_id: '44444444-4444-4444-8444-444444444444', site_name: 'Lot 5, Pasig', level: 'stop_work', machines: [{ equipmentId: 'e1', rentalId: RENTAL.rental_id, equipmentName: 'Crane', equipmentType: 'Crane', level: 'stop_work', reasons: ['Gusts 70 km/h'], hours: ['13:00', '14:00'] }] }],
     ['company_verified', { company_name: 'Acme' }],
     ['company_rejected', { company_name: 'Acme', customer_id: 'c1' }],
     ['company_review_comment', { company_name: 'Acme', company_id: 'c1', comment: 'Re-upload' }],
   ],
   field: [
+    ['equipment_weather_alert', { ...RENTAL, level: 'stop_work', equipment_name: 'Crane' }],
+    ['equipment_weather_briefing', { project_site_id: '44444444-4444-4444-8444-444444444444', site_name: 'Lot 5, Pasig', level: 'stop_work', machines: [{ equipmentId: 'e1', rentalId: RENTAL.rental_id, equipmentName: 'Crane', equipmentType: 'Crane', level: 'stop_work', reasons: ['Gusts 70 km/h'], hours: ['13:00', '14:00'] }] }],
     ['edtr_approved', { ...RENTAL, report_date: '2026-09-21' }],
     ['edtr_needs_correction', { ...RENTAL, report_date: '2026-09-21', reason: 'Meter missing' }],
     ['edtr_rejected', { ...RENTAL, report_date: '2026-09-21', reason: 'Wrong unit' }],
@@ -87,6 +92,17 @@ describe('describeNotification: every written type has a destination', () => {
     expect(
       describeNotification('edtr_submitted', { ...RENTAL, project_site_id: 's1' }, 'app')?.action,
     ).toMatchObject({ to: '/app/deployment/$siteId', params: { siteId: 's1' }, search: { tab: 'logs' } });
+  });
+
+  it('tells the timekeeper which machine, when, and to brief the crew', () => {
+    const d = describeNotification(
+      'equipment_weather_briefing',
+      { site_name: 'Lot 5, Pasig', level: 'stop_work', machines: [{ equipmentId: 'e1', rentalId: 'r1', equipmentName: 'Crane', equipmentType: 'Crane', level: 'stop_work', reasons: [], hours: ['13:00', '14:00'] }] },
+      'field',
+    );
+    expect(d?.title).toContain('Lot 5, Pasig');
+    expect(d?.body).toContain('Crane - Stop work (13:00-14:00)');
+    expect(d?.body).toContain('Brief the operators');
   });
 
   it('names the booking by code, never by UUID fragment', () => {

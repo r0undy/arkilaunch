@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import {
+  compareReportedWeather,
   estimatePagasa,
   evaluateEquipmentWeather,
   heatIndexC,
@@ -9,16 +10,18 @@ import {
   worstLevel,
   type EquipmentWeather,
   type RainfallWarning,
+  type ReportedWeatherDay,
+  type TimedReading,
+  type WeatherDiscrepancy,
   type WeatherLevel,
   type WeatherObservation,
 } from '@arkilaunch/shared';
-import { customers } from './schema/customers.js';
-import { roles, users } from './schema/tenancy.js';
 import { equipment, equipmentTypes } from './schema/fleet.js';
 import { equipmentAssignments, rentals } from './schema/rentals.js';
 import { edtr, edtrLineItems } from './schema/billing.js';
 import { events } from './schema/events.js';
-import { notifications } from './schema/weather.js';
+import { weatherAlerts } from './schema/weather.js';
+import { notifySiteWeather } from './weather-notify.js';
 
 // Shared by the weather poll (service_role, so every query names the
 // tenant explicitly -- RFC-2 §8) and the API (RLS-scoped transactions).
@@ -70,6 +73,9 @@ export async function evaluateSiteEquipment(
   siteId: string,
   observed: WeatherObservation,
   now = new Date(),
+  // Preloaded machinesOnSite() rows, so judging many forecast hours for one
+  // site reads the machines once.
+  preloaded?: Awaited<ReturnType<typeof machinesOnSite>>,
 ): Promise<SiteEquipmentLevels> {
   // PAGASA-equivalent conditions estimated from the reading itself
   // (estimatePagasa): no bulletin keyed in per province.
@@ -86,7 +92,7 @@ export async function evaluateSiteEquipment(
     tcws: pagasa.tcws,
     pagasaRainfall: pagasa.rainfall,
   };
-  const machines = await machinesOnSite(ex, tenantId, siteId);
+  const machines = preloaded ?? (await machinesOnSite(ex, tenantId, siteId));
   const levels: EquipmentWeather[] = machines.map((m) => {
     const weatherClass = weatherClassFor(m.typeName);
     const result = evaluateEquipmentWeather(weatherClass, inputs);
@@ -174,9 +180,10 @@ export async function flagUsedDespiteWarning(ex: Executor, tenantId: string, edt
 }
 
 // The warning a crew receives the moment a machine's level rises to
-// Caution or Stop work: an in-app notification to the customer who rents
-// it and to the tenant's admins, plus an `equipment_weather_warning` event
-// -- the proof, later, that the warning went out (flagUsedDespiteWarning).
+// Caution or Stop work: the site's timekeepers, the customer who rents it
+// and the tenant's admins, in-app plus email and Web Push
+// (notifySiteWeather), plus an `equipment_weather_warning` event -- the
+// proof, later, that the warning went out (flagUsedDespiteWarning).
 // A level that stays up does not re-notify every poll.
 export async function warnOnEquipmentEscalation(
   ex: Executor,
@@ -184,21 +191,16 @@ export async function warnOnEquipmentEscalation(
   siteId: string,
   previous: EquipmentWeather[] | null,
   current: EquipmentWeather[],
+  siteName?: string,
 ): Promise<number> {
   const before = new Map((previous ?? []).map((m) => [m.equipmentId, m.level]));
   const risen = current.filter(
     (m) => LEVEL_RANK[m.level] >= LEVEL_RANK.caution && LEVEL_RANK[m.level] > LEVEL_RANK[before.get(m.equipmentId) ?? 'normal'],
   );
-  if (risen.length === 0) return 0;
-
-  const staff = await ex
-    .select({ id: users.id })
-    .from(users)
-    .innerJoin(roles, eq(roles.id, users.roleId))
-    .where(and(eq(users.tenantId, tenantId), eq(roles.name, 'admin'), eq(users.status, 'active')));
   for (const machine of risen) {
     const payload = {
       project_site_id: siteId,
+      ...(siteName ? { site_name: siteName } : {}),
       rental_id: machine.rentalId,
       equipment_id: machine.equipmentId,
       equipment_name: machine.equipmentName,
@@ -206,23 +208,96 @@ export async function warnOnEquipmentEscalation(
       level: machine.level,
       reasons: machine.reasons,
     };
-    const [customer] = await ex
-      .select({ userId: customers.userId })
-      .from(rentals)
-      .innerJoin(customers, eq(customers.id, rentals.customerId))
-      .where(and(eq(rentals.id, machine.rentalId), eq(rentals.tenantId, tenantId)))
-      .limit(1);
-    // The customer's warning links to their booking, staff's to the admin
-    // side: two types, since the feed does not know who is reading it.
-    const rows = [
-      ...(customer?.userId ? [{ tenantId, userId: customer.userId, notificationType: 'equipment_weather_warning', payload }] : []),
-      ...staff
-        .filter((s) => s.id !== customer?.userId)
-        .map((s) => ({ tenantId, userId: s.id, notificationType: 'equipment_weather_alert', payload })),
-    ];
-    const recipients = rows.map((row) => row.userId);
-    if (rows.length > 0) await ex.insert(notifications).values(rows);
+    const recipients = await notifySiteWeather(ex, tenantId, siteId, 'equipment_weather_warning', payload, [machine.rentalId]);
     await ex.insert(events).values({ tenantId, name: 'equipment_weather_warning', properties: { ...payload, notified: recipients.length } });
   }
   return risen.length;
+}
+
+// The site's recorded readings on one Manila day, as minutes since Manila
+// midnight (weather_alerts keeps one row per 30-minute poll). Null when the
+// rental has no site.
+export async function siteReadingsOn(
+  ex: Executor,
+  tenantId: string,
+  rentalId: string,
+  reportDate: string,
+): Promise<{ siteId: string; readings: TimedReading[] } | null> {
+  const [rental] = await ex
+    .select({ siteId: rentals.projectSiteId })
+    .from(rentals)
+    .where(and(eq(rentals.id, rentalId), eq(rentals.tenantId, tenantId)))
+    .limit(1);
+  if (!rental?.siteId) return null;
+  const { from, to } = manilaDay(reportDate);
+  const rows = await ex
+    .select({ at: weatherAlerts.effectiveAt, observed: weatherAlerts.observed })
+    .from(weatherAlerts)
+    .where(
+      and(
+        eq(weatherAlerts.tenantId, tenantId),
+        eq(weatherAlerts.projectSiteId, rental.siteId),
+        gte(weatherAlerts.effectiveAt, from),
+        lt(weatherAlerts.effectiveAt, to),
+      ),
+    );
+  const readings = rows
+    .filter((r) => r.observed)
+    .map((r) => ({ minute: Math.floor((r.at.getTime() - from.getTime()) / 60_000), observed: r.observed as WeatherObservation }));
+  return { siteId: rental.siteId, readings };
+}
+
+// EDTR v2 verification: the timekeeper's weather and idle reason against
+// the site's recorded readings (compareReportedWeather, rules D1/D2). Each
+// discrepancy goes to the S14 incident log with the half-hour rain readings
+// the reviewer needs (did it rain, how hard, did it keep on). Evidence only:
+// this never touches money or the EDTR's status (RFC-2) -- the caller
+// decides whether to hold the day. Logged once per EDTR, rule and half.
+export async function logWeatherDiscrepancies(
+  ex: Executor,
+  tenantId: string,
+  edtrId: string,
+  rentalId: string,
+  reportDate: string,
+  day: ReportedWeatherDay,
+): Promise<WeatherDiscrepancy[]> {
+  const site = await siteReadingsOn(ex, tenantId, rentalId, reportDate);
+  if (!site) return [];
+  const flags = compareReportedWeather(day, site.readings);
+  for (const flag of flags) {
+    const [already] = await ex
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.tenantId, tenantId),
+          eq(events.name, 'edtr_weather_discrepancy'),
+          sql`${events.properties} ->> 'edtr_id' = ${edtrId}`,
+          sql`${events.properties} ->> 'rule' = ${flag.rule}`,
+          sql`${events.properties} ->> 'half' = ${flag.half}`,
+        ),
+      )
+      .limit(1);
+    if (already) continue;
+    await ex.insert(events).values({
+      tenantId,
+      name: 'edtr_weather_discrepancy',
+      properties: {
+        edtr_id: edtrId,
+        rental_id: rentalId,
+        project_site_id: site.siteId,
+        date: reportDate,
+        half: flag.half,
+        rule: flag.rule,
+        reported: flag.reported,
+        system: flag.system,
+        // The recorded rain through the day, so the reviewer sees whether it
+        // kept raining and how hard, next to what the sheet says.
+        readings: site.readings
+          .map((r) => ({ minute: r.minute, precip_mm: r.observed.precipMm, wind_kph: r.observed.windKph, code: r.observed.code }))
+          .sort((a, b) => a.minute - b.minute),
+      },
+    });
+  }
+  return flags;
 }
