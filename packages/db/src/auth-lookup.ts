@@ -15,8 +15,8 @@ export interface AuthUserRow {
 }
 
 // Login is scoped to the request host's tenant (migration 0048): the slug
-// narrows the email to at most one row, so a shared email across tenants
-// can no longer resolve to whichever row Postgres returns first.
+// keeps a login on its own host (an email is now one account platform-wide,
+// migration 0063, but a customer of tenant A still cannot sign in on B).
 export async function findUserByEmailForAuth(email: string, tenantSlug: string): Promise<AuthUserRow | undefined> {
   const rows = await db.execute<{
     id: string;

@@ -55,10 +55,8 @@ const TWO_FA_ENFORCED_ROLE = 'timekeeper';
 // lowercased email rather than tenant_id, since login runs before any
 // tenant context exists (the same "same error for bad email, bad
 // password" no-enumeration posture this file already has). users.email is
-// only unique per-tenant, so two different tenants' users sharing an
-// email string would share a lockout window; accepted as a rare,
-// non-security-weakening edge case rather than a reason to add a
-// per-tenant lockout table.
+// unique platform-wide (migration 0063), so one email is one account and
+// one lockout window.
 const LOGIN_LOCKOUT_THRESHOLD = 5;
 const LOGIN_LOCKOUT_WINDOW_MS = 15 * 60_000;
 // Turnstile CR: from this many failures (per email OR per IP, same window)

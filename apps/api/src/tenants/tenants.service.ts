@@ -5,6 +5,8 @@ import { desc, eq } from 'drizzle-orm';
 import {
   ApplicationNotPendingError,
   DuplicatePendingApplicationError,
+  EmailTakenError,
+  pgError,
   getTenantBranding,
   getTenantPaymongoAccount,
   setTenantPaymongoAccount,
@@ -147,6 +149,7 @@ export class TenantsService {
         if (err instanceof DuplicatePendingApplicationError) {
           throw new ConflictException({ error: 'duplicate_pending_application' });
         }
+        if (err instanceof EmailTakenError) throw new ConflictException({ error: 'email_taken' });
         if (isSlugCollision(err)) {
           attempt += 1;
           continue;
@@ -296,12 +299,6 @@ function slugify(companyName: string): string {
 }
 
 function isSlugCollision(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code: string }).code === '23505' &&
-    'constraint' in err &&
-    (err as { constraint: string }).constraint === 'tenants_slug_key'
-  );
+  const e = pgError(err);
+  return e.code === '23505' && e.constraint === 'tenants_slug_key';
 }
