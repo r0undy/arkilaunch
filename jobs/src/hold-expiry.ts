@@ -28,6 +28,9 @@ export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: stri
   const { db, client } = makeJobDb();
   const cancelled: string[] = [];
   try {
+    // The one cross-tenant read, as every sweep's is (maintenance-notify);
+    // each row carries its tenant, and every read and write after it names
+    // that tenant explicitly (RFC-2 §8: RLS is bypassed on this connection).
     const lapsed = await db
       .select({ id: rentals.id, tenantId: rentals.tenantId, customerId: rentals.customerId })
       .from(rentals)
@@ -36,7 +39,8 @@ export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: stri
           eq(rentals.status, 'pending'),
           lt(rentals.holdExpiresAt, now),
           sql`NOT EXISTS (SELECT 1 FROM payments p JOIN invoices i ON i.id = p.invoice_id
-            WHERE i.rental_id = ${rentals.id} AND p.status = 'pending' AND p.method <> 'cash')`,
+            WHERE i.tenant_id = ${rentals.tenantId} AND p.tenant_id = ${rentals.tenantId}
+              AND i.rental_id = ${rentals.id} AND p.status = 'pending' AND p.method <> 'cash')`,
         ),
       );
     console.log(`hold-expiry: ${lapsed.length} lapsed hold(s).`);
@@ -48,7 +52,14 @@ export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: stri
         const [still] = await tx
           .select({ id: rentals.id })
           .from(rentals)
-          .where(and(eq(rentals.id, hold.id), eq(rentals.status, 'pending'), lt(rentals.holdExpiresAt, now)))
+          .where(
+            and(
+              eq(rentals.tenantId, hold.tenantId),
+              eq(rentals.id, hold.id),
+              eq(rentals.status, 'pending'),
+              lt(rentals.holdExpiresAt, now),
+            ),
+          )
           .for('update');
         if (!still) return;
 
@@ -69,10 +80,16 @@ export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: stri
           await tx
             .update(payments)
             .set({ status: 'failed' })
-            .where(and(inArray(payments.invoiceId, ids), eq(payments.status, 'pending')));
-          await tx.update(invoices).set({ status: 'void' }).where(inArray(invoices.id, ids));
+            .where(and(eq(payments.tenantId, hold.tenantId), inArray(payments.invoiceId, ids), eq(payments.status, 'pending')));
+          await tx
+            .update(invoices)
+            .set({ status: 'void' })
+            .where(and(eq(invoices.tenantId, hold.tenantId), inArray(invoices.id, ids)));
         }
-        await tx.update(rentals).set({ status: 'cancelled' }).where(eq(rentals.id, hold.id));
+        await tx
+          .update(rentals)
+          .set({ status: 'cancelled' })
+          .where(and(eq(rentals.tenantId, hold.tenantId), eq(rentals.id, hold.id)));
         await tx
           .update(equipmentAssignments)
           .set({ status: 'cancelled' })
