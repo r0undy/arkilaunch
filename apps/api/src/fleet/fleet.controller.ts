@@ -17,7 +17,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
-import { MAX_UPLOAD_BYTES, validateUpload } from '../storage/upload-validation.js';
+import { EQUIPMENT_PHOTO_MAX_BYTES, EQUIPMENT_PHOTO_RULES, validateUpload } from '../storage/upload-validation.js';
 import { StorageService } from '../storage/storage.service.js';
 import { FleetService } from './fleet.service.js';
 import {
@@ -83,16 +83,17 @@ export class FleetController {
   // The object key is built from the verified ctx.tenantId and never from
   // request input, so a caller cannot address another tenant's prefix.
   // validateUpload sniffs magic bytes, so a forged Content-Type is rejected.
+  // Display images only (no PDF) and a 1MB cap: this bucket is public-read.
   @Post('equipment/:id/photo')
   @RequirePermission('fleet:manage')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: EQUIPMENT_PHOTO_MAX_BYTES } }))
   async setPhoto(
     @Param('id') id: string,
     @UploadedFile() file: MulterFile | undefined,
     @Req() req: CtxRequest,
   ) {
-    const validated = validateUpload(file);
+    const validated = validateUpload(file, EQUIPMENT_PHOTO_RULES);
     const key = this.storage.buildObjectKey(req.ctx.tenantId, validated.extension);
     await this.storage.uploadObject(equipmentBucket(), key, file!.buffer, validated.contentType);
     return this.fleet.setPhoto(req.ctx, id, key);

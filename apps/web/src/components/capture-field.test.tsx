@@ -140,7 +140,7 @@ describe('CaptureField', () => {
     await userEvent.click(shutter);
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(prepared));
-    expect(prepareUpload).toHaveBeenCalledWith(expect.any(File));
+    expect(prepareUpload).toHaveBeenCalledWith(expect.any(File), undefined);
     // The stream is released on capture, not left holding the camera open.
     expect(track.stop).toHaveBeenCalled();
   });

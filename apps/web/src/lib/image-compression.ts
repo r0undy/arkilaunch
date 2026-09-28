@@ -17,7 +17,8 @@
 // apps/api/src/storage/upload-validation.ts. The server is authoritative; this
 // copy exists only so the client can refuse early instead of wasting the
 // upload. The type allowlist is not mirrored: everything this module emits is
-// a JPEG or an untouched PDF, so the server's list has nothing to duplicate.
+// a JPEG, a WebP (only when a caller asks, which today is equipment photos) or
+// an untouched PDF, so the server's list has nothing to duplicate.
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 // A long edge of 2200px keeps handwriting legible for Azure DI while cutting a
@@ -27,6 +28,23 @@ const DEFAULT_MAX_EDGE = 2200;
 const DEFAULT_QUALITY = 0.82;
 const RETRY_MAX_EDGE = 1600;
 const RETRY_QUALITY = 0.7;
+// Floors for the stepping ladder below. Past these a photo is mush, and a
+// refusal is more honest than uploading it.
+const MIN_QUALITY = 0.5;
+const MIN_MAX_EDGE = 800;
+
+export type UploadImageType = 'image/jpeg' | 'image/webp';
+
+export interface PrepareUploadOptions {
+  /** Long-edge cap in px. Default 2200. */
+  maxEdge?: number;
+  /** Encoder quality, 0..1. Default 0.82. */
+  quality?: number;
+  /** Default JPEG. WebP falls back to JPEG where the browser cannot encode it. */
+  type?: UploadImageType;
+  /** Byte cap the output must fit. Default MAX_UPLOAD_BYTES. */
+  maxBytes?: number;
+}
 
 export type UploadProblemCode = 'file_too_large' | 'unreadable_image' | 'unsupported_file_type';
 
@@ -54,7 +72,7 @@ export function describeUploadProblem(error: unknown): UploadProblem {
       return {
         title: 'That photo is too big to send',
         detail:
-          'Even after shrinking it, the file is over 10MB. Take the photo again from a little further back, or pick a smaller file.',
+          'Even after shrinking it, the file is still over the size limit. Take the photo again from a little further back, or pick a smaller file.',
       };
     case 'unsupported_file_type':
       return {
@@ -71,7 +89,16 @@ export function describeUploadProblem(error: unknown): UploadProblem {
   }
 }
 
-async function encodeAtScale(file: File, maxEdge: number, quality: number): Promise<File> {
+function encodeBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+async function encodeAtScale(
+  file: File,
+  maxEdge: number,
+  quality: number,
+  type: UploadImageType = 'image/jpeg',
+): Promise<File> {
   let bitmap: ImageBitmap;
   try {
     // imageOrientation 'from-image' applies the EXIF rotation during decode,
@@ -96,13 +123,19 @@ async function encodeAtScale(file: File, maxEdge: number, quality: number): Prom
     }
     context.drawImage(bitmap, 0, 0, width, height);
 
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, 'image/jpeg', quality);
-    });
+    let outType = type;
+    let blob = await encodeBlob(canvas, outType, quality);
+    // toBlob silently ignores a type it cannot encode and hands back a PNG
+    // (older Safari does this for WebP). Trust the blob, not the request.
+    if (blob && outType !== 'image/jpeg' && blob.type !== outType) {
+      outType = 'image/jpeg';
+      blob = await encodeBlob(canvas, outType, quality);
+    }
     if (!blob) {
       throw new UploadPrepareError('unreadable_image', 'the browser produced no image data');
     }
-    return new File([blob], 'capture.jpg', { type: 'image/jpeg', lastModified: Date.now() });
+    const name = outType === 'image/webp' ? 'capture.webp' : 'capture.jpg';
+    return new File([blob], name, { type: outType, lastModified: Date.now() });
   } finally {
     bitmap.close?.();
   }
@@ -110,11 +143,20 @@ async function encodeAtScale(file: File, maxEdge: number, quality: number): Prom
 
 // Turns whatever the camera or the file picker handed us into something the
 // API will accept, or throws an UploadPrepareError describing why it cannot.
-export async function prepareUpload(file: File): Promise<File> {
+// Called with no options by EDTR and KYC: Azure DI reads exactly those bytes,
+// so the defaults are load-bearing and must not drift.
+export async function prepareUpload(file: File, options: PrepareUploadOptions = {}): Promise<File> {
+  const {
+    maxEdge = DEFAULT_MAX_EDGE,
+    quality = DEFAULT_QUALITY,
+    type = 'image/jpeg',
+    maxBytes = MAX_UPLOAD_BYTES,
+  } = options;
+
   // A PDF is passed through untouched. Re-encoding one through a canvas would
   // destroy it, and the KYC path legitimately accepts scanned corporate docs.
   if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
-    if (file.size > MAX_UPLOAD_BYTES) {
+    if (file.size > maxBytes) {
       throw new UploadPrepareError('file_too_large', 'pdf over the upload cap');
     }
     return file;
@@ -126,13 +168,32 @@ export async function prepareUpload(file: File): Promise<File> {
     throw new UploadPrepareError('unsupported_file_type', `content type ${file.type} is not accepted`);
   }
 
-  const prepared = await encodeAtScale(file, DEFAULT_MAX_EDGE, DEFAULT_QUALITY);
-  if (prepared.size <= MAX_UPLOAD_BYTES) return prepared;
-
   // One more rung down before giving up, rather than bouncing the user for a
   // photo we could still have made fit.
-  const retried = await encodeAtScale(file, RETRY_MAX_EDGE, RETRY_QUALITY);
-  if (retried.size <= MAX_UPLOAD_BYTES) return retried;
+  let edge = Math.min(maxEdge, RETRY_MAX_EDGE);
+  let q = Math.min(quality, RETRY_QUALITY);
+  const rungs: Array<[edge: number, quality: number]> = [
+    [maxEdge, quality],
+    [edge, q],
+  ];
+  // A caller with its own byte cap (equipment photos, 1MB) keeps stepping
+  // down, quality first, then size. The default path stops after the retry:
+  // OCR is better served by a refusal than by a mushier sheet.
+  if (options.maxBytes !== undefined) {
+    while (q > MIN_QUALITY) {
+      q = Math.max(MIN_QUALITY, Math.round((q - 0.1) * 10) / 10);
+      rungs.push([edge, q]);
+    }
+    while (edge > MIN_MAX_EDGE) {
+      edge = Math.max(MIN_MAX_EDGE, Math.round(edge * 0.8));
+      rungs.push([edge, q]);
+    }
+  }
 
-  throw new UploadPrepareError('file_too_large', 'still over the cap after the second attempt');
+  for (const [rungEdge, rungQuality] of rungs) {
+    const prepared = await encodeAtScale(file, rungEdge, rungQuality, type);
+    if (prepared.size <= maxBytes) return prepared;
+  }
+
+  throw new UploadPrepareError('file_too_large', 'still over the cap after the last attempt');
 }

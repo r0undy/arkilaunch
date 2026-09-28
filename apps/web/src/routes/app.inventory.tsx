@@ -292,6 +292,8 @@ function InventoryPage() {
                         <img
                           src={photo}
                           alt={`${eq.model}, ${eq.serialNo}`}
+                          loading="lazy"
+                          decoding="async"
                           className="h-full w-full object-cover"
                         />
                       ) : (

@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { hash } from '@node-rs/argon2';
 import { desc, eq } from 'drizzle-orm';
@@ -41,7 +41,7 @@ import { AuthService } from '../auth/auth.service.js';
 import { sendEmail } from '../email/send-email.js';
 import { publicPhotoUrl } from '../fleet/fleet.service.js';
 import { StorageService } from '../storage/storage.service.js';
-import { validateUpload } from '../storage/upload-validation.js';
+import { DISPLAY_IMAGE_TYPES, validateUpload } from '../storage/upload-validation.js';
 
 const brandingBucket = () => process.env.SUPABASE_STORAGE_BUCKET_EQUIPMENT ?? 'equipment-photos';
 const logger = new Logger('TenantsService');
@@ -230,8 +230,8 @@ If you did not register, ignore this email.`,
   }
 
   // Logo, hero or icon image. Key built from the target tenant id, never
-  // request input; magic bytes sniffed, and images only (the shared validator
-  // also admits PDF). Passing no file removes the image.
+  // request input; magic bytes sniffed, and display images only (JPEG, PNG,
+  // WebP; the allow-list refuses a PDF). Passing no file removes the image.
   async setBrandingImage(
     ctx: RequestContext,
     tenantId: string,
@@ -240,10 +240,7 @@ If you did not register, ignore this email.`,
   ) {
     let key: string | null = null;
     if (file) {
-      const validated = validateUpload(file);
-      if (!validated.contentType.startsWith('image/')) {
-        throw new UnprocessableEntityException({ error: 'image_required' });
-      }
+      const validated = validateUpload(file, { allow: DISPLAY_IMAGE_TYPES });
       key = this.storage.buildObjectKey(tenantId, validated.extension);
       await this.storage.uploadObject(brandingBucket(), key, file.buffer, validated.contentType);
     }

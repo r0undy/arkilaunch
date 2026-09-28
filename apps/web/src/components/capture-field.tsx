@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { Button } from './button.js';
-import { describeUploadProblem, prepareUpload } from '../lib/image-compression.js';
+import { describeUploadProblem, prepareUpload, type PrepareUploadOptions } from '../lib/image-compression.js';
 
 // The "DTR Form Capture" view: a live viewfinder with an alignment frame, a
 // shutter, a torch toggle and a folder button, matching the prototype.
@@ -34,6 +34,8 @@ export interface CaptureFieldProps {
   tips?: { title: string; detail: string }[];
   /** What this scan is attached to, shown as the session panel. */
   sessionData?: { label: string; value: string }[];
+  /** Passed to prepareUpload. Omit for the OCR/KYC defaults, which Azure DI depends on. */
+  uploadOptions?: PrepareUploadOptions;
 }
 
 // Torch lives behind a capability TypeScript's DOM lib does not model.
@@ -58,6 +60,7 @@ export function CaptureField({
   disabled = false,
   tips,
   sessionData,
+  uploadOptions,
 }: CaptureFieldProps) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -144,7 +147,7 @@ export function CaptureField({
     setProblem(null);
     setPreparing(true);
     try {
-      const prepared = await prepareUpload(picked);
+      const prepared = await prepareUpload(picked, uploadOptions);
       onChange(prepared);
     } catch (err) {
       // Never leave a value and an error standing together: the field is
