@@ -21,6 +21,7 @@ import type {
   InvoiceListResponse,
   EdtrDetailResponse,
   SiteHubResponse,
+  SiteDeploymentFilter,
   SiteListResponse,
   UserSelfResponse,
   UtilizationReportResponse,
@@ -94,10 +95,11 @@ export const catalogQueries = {
 };
 
 export const sitesQueries = {
-  list: (limit = PAGE_SIZE, offset = 0) =>
+  list: (limit = PAGE_SIZE, offset = 0, deployment?: SiteDeploymentFilter) =>
     queryOptions({
-      queryKey: ['sites', limit, offset] as const,
-      queryFn: () => apiGet<SiteListResponse>(`/sites?limit=${limit}&offset=${offset}`),
+      queryKey: ['sites', limit, offset, deployment ?? 'all'] as const,
+      queryFn: () =>
+        apiGet<SiteListResponse>(`/sites?limit=${limit}&offset=${offset}${deployment ? `&deployment=${deployment}` : ''}`),
     }),
   // The site hub (cr-arkilaunch-edtr-site-hub-approval.md).
   hub: (siteId: string) =>
