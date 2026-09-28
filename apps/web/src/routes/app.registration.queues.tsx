@@ -8,11 +8,13 @@ import {
   KYC_REJECTION_REASONS,
   normalizeTin,
   PHILSYS_CHECK_URL,
+  PH_ID_TYPES,
+  idTypeOf,
   REGISTRY_LINKS,
   TIN_REGEX,
   sameValue,
 } from '@arkilaunch/shared';
-import { createRoute, useNavigate } from '@tanstack/react-router';
+import { createRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { CircleCheck, CircleX, TriangleAlert } from 'lucide-react';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
@@ -39,7 +41,7 @@ const ID_DETAILS: { key: string; label: string }[] = [
   { key: 'first_name', label: 'First name' },
   { key: 'middle_name', label: 'Middle name' },
   { key: 'last_name', label: 'Last name' },
-  { key: 'id_number', label: 'PCN' },
+  { key: 'id_number', label: 'ID number' },
   { key: 'birth_date', label: 'Date of birth' },
   { key: 'sex', label: 'Sex' },
   { key: 'address', label: 'Address' },
@@ -356,7 +358,13 @@ function CompanyReviewCard({
                   <DocButton key={doc.id} doc={doc} onOpen={() => onPreviewDocument(company.id, doc.id)} />
                 ))}
             </div>
-            {!nationalId && <p className="text-sm text-text-muted">No National ID uploaded.</p>}
+            {!nationalId && <p className="text-sm text-text-muted">No ID uploaded.</p>}
+            {nationalId && (
+              <p className="text-sm text-text">
+                <span className="text-text-muted">ID type: </span>
+                {PH_ID_TYPES[idTypeOf(nationalId.customer.id_type)].label}
+              </p>
+            )}
             {!selfie && <p className="text-sm text-text-muted">No selfie with the ID uploaded.</p>}
             {nationalId && (
               <ExpandableSection header={<span className="text-sm font-medium">ID details</span>}>
@@ -370,12 +378,20 @@ function CompanyReviewCard({
               </ExpandableSection>
             )}
             <div className="flex flex-col rounded-md border border-border px-3 py-2">
+              {/* philsysVerified is the stored key for "the ID checked out with
+                  its issuer" whatever the card (QA 15). */}
               <Check checked={identity.philsysVerified} onChange={(on) => setIdentity({ ...identity, philsysVerified: on })}>
-                The ID&apos;s QR code verified on{' '}
-                <a href={PHILSYS_CHECK_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline">
-                  PhilSys Check <span aria-hidden="true">↗</span>
-                </a>
-                , and what it returned matches the card.
+                {idTypeOf(nationalId?.customer.id_type) === 'philsys' ? (
+                  <>
+                    The ID&apos;s QR code verified on{' '}
+                    <a href={PHILSYS_CHECK_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline">
+                      PhilSys Check <span aria-hidden="true">↗</span>
+                    </a>
+                    , and what it returned matches the card.
+                  </>
+                ) : (
+                  <>The ID is genuine, unexpired and checked with its issuer, and its details match the card.</>
+                )}
               </Check>
               <Check checked={identity.selfieMatches} onChange={(on) => setIdentity({ ...identity, selfieMatches: on })}>
                 The selfie shows the same person as the ID photo, holding this ID.
@@ -385,10 +401,7 @@ function CompanyReviewCard({
               </Check>
               <ExpandableSection header={<span className="text-sm font-medium">How to check these</span>}>
                 <ul className="list-disc pl-5 text-sm text-text-muted">
-                  <li>
-                    Open the ID photo and scan its QR with PhilSys Check. The QR is signed by the PSA, so a printed card, an
-                    edited photo or a borrowed ID will not match its name, birth date and photo.
-                  </li>
+                  <li>{PH_ID_TYPES[idTypeOf(nationalId?.customer.id_type)].verifyHint}</li>
                   <li>
                     The holder may act for the company when listed as an officer on the GIS, named in a Secretary&apos;s
                     Certificate or Board Resolution, or the DTI registrant.
@@ -414,7 +427,7 @@ function CompanyReviewCard({
             </div>
             <p className="text-xs text-text-muted">
               {!complete
-                ? 'Waiting on the National ID, a selfie holding it, and a BIR 2303 or SEC certificate.'
+                ? 'Waiting on the ID, a selfie holding it, and a BIR 2303 or SEC certificate.'
                 : allChecked && identityDone
                   ? 'Verifying approves exactly what the customer submitted.'
                   : 'Check each paper on its registry and tick the three identity checks before verifying.'}
@@ -616,7 +629,19 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   const queryClient = useQueryClient();
   const [offset, setOffset] = useState(0);
   const query = useQuery(companiesQueries.review(kycStatus, PAGE_SIZE, offset));
-  const [openId, setOpenId] = useState<string | null>(null);
+  // The open review is in the URL (?open=), so Back closes the drawer
+  // instead of leaving the queue (QA 17).
+  const openId = useSearch({ strict: false }).open ?? null;
+  const navigateQueue = useNavigate();
+  const setOpenId = (id: string | null) =>
+    void navigateQueue({
+      to: '.',
+      search: (prev: { open?: string }) => {
+        const next = { ...prev };
+        delete next.open;
+        return id ? { ...next, open: id } : next;
+      },
+    });
   const [preview, setPreview] = useState<{ companyId: string; documentId: string } | null>(null);
   const [rejecting, setRejecting] = useState<CompanyReviewResponse | null>(null);
   const [approving, setApproving] = useState<{ company: CompanyReviewResponse; body: Record<string, unknown> } | null>(null);
@@ -745,10 +770,15 @@ function RegistrationsPage({ kycStatus }: { kycStatus: Queue }) {
   );
 }
 
+function queueSearch(search: Record<string, unknown>): { open?: string } {
+  return typeof search.open === 'string' && /^[0-9a-f-]{36}$/i.test(search.open) ? { open: search.open } : {};
+}
+
 export const appRegistrationPendingRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/registration/pending',
   beforeLoad: requireRole('admin'),
+  validateSearch: queueSearch,
   component: () => <RegistrationsPage kycStatus="pending" />,
 });
 
@@ -756,5 +786,6 @@ export const appRegistrationVerifiedRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/registration/verified',
   beforeLoad: requireRole('admin'),
+  validateSearch: queueSearch,
   component: () => <RegistrationsPage kycStatus="approved" />,
 });

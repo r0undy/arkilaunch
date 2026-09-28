@@ -180,3 +180,8 @@ variable "turnstile_secret_key" {
   default   = ""
 }
 
+
+variable "weekly_billing_cron" {
+  type    = string
+  default = "0 23 * * 0" # weekly, Monday 07:00 PHT (UTC cron), after the diesel run
+}

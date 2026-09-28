@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNotNull, like, notInArray } from 'drizzle-orm';
-import { negotiationMessages, notifications, projectSites, tollRates, truckRequests, truckSettings, withTenantTx } from '@arkilaunch/db';
+import { auditLogs, customers, negotiationMessages, notifications, projectSites, tollRates, truckRequests, truckSettings, users, withTenantTx } from '@arkilaunch/db';
 import {
   bookingCodeSearchPrefix,
   CLOSED_TRUCK_STATUSES,
@@ -21,15 +21,16 @@ import {
   type TruckRoute,
   type TruckPrice,
   type TruckCrew,
+  type TruckKmConfirm,
   type TruckRequestCreate,
   type TruckRequestResponse,
   type TruckRequestStatus,
   type TruckSettings,
 } from '@arkilaunch/shared';
 import { PricingEngineService } from '../quotes/pricing-engine.service.js';
-import { notifyStaff } from '../common/notify-customer.js';
+import { notifyStaff, notifyUser } from '../common/notify-customer.js';
 import { ownCustomers } from '../common/customer-scope.js';
-import { requireSiteProof } from '../common/site-proof.js';
+import { PaymentsService } from '../payments/payments.service.js';
 import { roadRoute } from './route-distance.js';
 import { countRows } from '../common/count-rows.js';
 
@@ -37,6 +38,7 @@ type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
 const DEFAULT_SETTINGS: TruckSettings = { baseFeePhp: 0, driverFeePhp: 0, extras: [], formula: null, rangePct: 10, region: 'NCR' };
 
 const peso = (n: number) => Math.round(n * 100) / 100;
+const php = (n: number) => `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const num = (v: string | null) => (v === null ? null : Number(v));
 
 function pins(body: TruckEstimateRequest) {
@@ -46,7 +48,10 @@ function pins(body: TruckEstimateRequest) {
   };
 }
 
-function toResponse(row: typeof truckRequests.$inferSelect): TruckRequestResponse {
+type Contact = { companyName: string | null; requesterName: string | null; requesterPhone: string | null };
+const NO_CONTACT: Contact = { companyName: null, requesterName: null, requesterPhone: null };
+
+function toResponse(row: typeof truckRequests.$inferSelect, contact: Contact = NO_CONTACT): TruckRequestResponse {
   return {
     id: row.id,
     code: row.code,
@@ -60,9 +65,13 @@ function toResponse(row: typeof truckRequests.$inferSelect): TruckRequestRespons
     price: row.price,
     agreedPricePhp: row.agreedPricePhp === null ? null : Number(row.agreedPricePhp),
     capPhp: num(row.capPhp),
+    acceptedPricePhp: num(row.acceptedPricePhp),
     callRequestedAt: row.callRequestedAt?.toISOString() ?? null,
     callConfirmedAt: row.callConfirmedAt?.toISOString() ?? null,
     projectSiteId: row.projectSiteId,
+    customerId: row.customerId,
+    loadDescription: row.loadDescription,
+    ...contact,
     driverName: row.driverName,
     helperName: row.helperName,
     pickupLat: num(row.pickupLat),
@@ -75,7 +84,10 @@ function toResponse(row: typeof truckRequests.$inferSelect): TruckRequestRespons
 
 @Injectable()
 export class TrucksService {
-  constructor(private readonly engine: PricingEngineService) {}
+  constructor(
+    private readonly engine: PricingEngineService,
+    private readonly payments: PaymentsService,
+  ) {}
 
   private async readSettings(tx: Tx, tenantId: string): Promise<TruckSettings> {
     const [row] = await tx.select().from(truckSettings).where(eq(truckSettings.tenantId, tenantId)).limit(1);
@@ -203,13 +215,19 @@ export class TrucksService {
   async create(ctx: RequestContext, body: TruckRequestCreate): Promise<TruckRequestResponse> {
     const { km } = await roadRoute(body.pickup, body.dropoff, pins(body));
     return withTenantTx(ctx, async (tx) => {
-      // Only one of the caller's own sites, and only once it has its proof.
-      const own = (await ownCustomers(tx, ctx)).map((row) => row.id);
-      const [site] = own.length
-        ? await tx.select({ id: projectSites.id }).from(projectSites).where(and(eq(projectSites.id, body.projectSiteId), inArray(projectSites.customerId, own))).limit(1)
-        : [];
-      if (!site) throw new NotFoundException({ error: 'project_site_not_found' });
-      await requireSiteProof(tx, site.id);
+      // Booked for one of the caller's own companies (never a client-trusted
+      // id); a site, when named, must be that company's. A truck trip serves
+      // the company, so the site needs no proof.
+      const company = (await ownCustomers(tx, ctx)).find((row) => row.id === body.customerId);
+      if (!company) throw new NotFoundException({ error: 'customer_not_found' });
+      if (body.projectSiteId) {
+        const [site] = await tx
+          .select({ id: projectSites.id })
+          .from(projectSites)
+          .where(and(eq(projectSites.id, body.projectSiteId), eq(projectSites.customerId, company.id)))
+          .limit(1);
+        if (!site) throw new NotFoundException({ error: 'project_site_not_found' });
+      }
       const price = await this.price(tx, ctx.tenantId, km);
       const [row] = await tx
         .insert(truckRequests)
@@ -220,20 +238,22 @@ export class TrucksService {
           dropoff: body.dropoff,
           scheduledFor: body.scheduledFor,
           notes: body.notes ?? null,
+          customerId: company.id,
+          loadDescription: body.loadDescription,
           estimatedKm: String(km),
           price,
-          // The high end of the estimate is locked as the most the customer
-          // can be charged without re-approving.
+          // The high end of the estimate: staff are warned before agreeing
+          // above it (a typo guard; the customer accepts every price anyway).
           capPhp: String(price.highPhp ?? price.totalPhp),
           pickupLat: body.pickupLat !== undefined ? String(body.pickupLat) : null,
           pickupLng: body.pickupLng !== undefined ? String(body.pickupLng) : null,
           dropoffLat: body.dropoffLat !== undefined ? String(body.dropoffLat) : null,
           dropoffLng: body.dropoffLng !== undefined ? String(body.dropoffLng) : null,
-          projectSiteId: site.id,
+          projectSiteId: body.projectSiteId ?? null,
         })
         .returning();
       await notifyStaff(tx, ctx.tenantId, 'truck_requested', { truck_request_id: row!.id });
-      return toResponse(row!);
+      return toResponse(row!, { companyName: company.companyName, requesterName: null, requesterPhone: null });
     });
   }
 
@@ -250,14 +270,26 @@ export class TrucksService {
         query.status === 'open' ? notInArray(truckRequests.status, closed) : undefined,
         query.status === 'closed' ? inArray(truckRequests.status, closed) : undefined,
       );
+      // Company and requester ride along, so staff can call the customer.
       const rows = await tx
-        .select()
+        .select({ row: truckRequests, companyName: customers.companyName, first: users.firstName, last: users.lastName, phone: users.phone })
         .from(truckRequests)
+        .leftJoin(customers, eq(customers.id, truckRequests.customerId))
+        .leftJoin(users, eq(users.id, truckRequests.requestedBy))
         .where(where)
         .orderBy(desc(truckRequests.createdAt), desc(truckRequests.id))
         .limit(query.limit)
         .offset(query.offset);
-      return { items: rows.map(toResponse), total: await countRows(tx, truckRequests, where) };
+      return {
+        items: rows.map((r) =>
+          toResponse(r.row, {
+            companyName: r.companyName,
+            requesterName: [r.first, r.last].filter(Boolean).join(' ') || null,
+            requesterPhone: r.phone,
+          }),
+        ),
+        total: await countRows(tx, truckRequests, where),
+      };
     });
   }
 
@@ -269,22 +301,32 @@ export class TrucksService {
     if (row.pickupLat === null || row.pickupLng === null || row.dropoffLat === null || row.dropoffLng === null) {
       throw new NotFoundException({ error: 'truck_pins_missing' });
     }
-    return roadRoute(row.pickup, row.dropoff, {
-      a: { lat: Number(row.pickupLat), lon: Number(row.pickupLng) },
-      b: { lat: Number(row.dropoffLat), lon: Number(row.dropoffLng) },
-    });
+    return roadRoute(
+      row.pickup,
+      row.dropoff,
+      { a: { lat: Number(row.pickupLat), lon: Number(row.pickupLng) }, b: { lat: Number(row.dropoffLat), lon: Number(row.dropoffLng) } },
+      // Staff get the turn list's toll hints for the toll picker.
+      ctx.role !== 'customer',
+    );
   }
 
   // The admin's km is final: the price is recomputed on it, with today's
   // inputs, and that is the figure the customer is charged.
-  async confirmKm(ctx: RequestContext, id: string, km: number, tollRateIds: string[] = []): Promise<TruckRequestResponse> {
+  // A manual toll amount replaces the picked tolls with one line.
+  async confirmKm(ctx: RequestContext, id: string, body: TruckKmConfirm): Promise<TruckRequestResponse> {
+    const { km, tollRateIds = [], manualTollPhp } = body;
     return withTenantTx(ctx, async (tx) => {
-      const tolls = tollRateIds.length
-        ? (await tx.select().from(tollRates).where(inArray(tollRates.id, tollRateIds))).map((t) => ({
-            label: t.name,
-            amountPhp: Number(t.feePhp),
-          }))
-        : [];
+      const tolls =
+        manualTollPhp !== undefined
+          ? manualTollPhp > 0
+            ? [{ label: 'Toll (manual)', amountPhp: peso(manualTollPhp) }]
+            : []
+          : tollRateIds.length
+            ? (await tx.select().from(tollRates).where(inArray(tollRates.id, tollRateIds))).map((t) => ({
+                label: t.name,
+                amountPhp: Number(t.feePhp),
+              }))
+            : [];
       const [row] = await tx.select().from(truckRequests).where(eq(truckRequests.id, id)).limit(1);
       if (!row) throw new NotFoundException({ error: 'truck_request_not_found' });
       if (row.status === 'cancelled') throw new ConflictException({ error: 'truck_request_cancelled' });
@@ -305,8 +347,10 @@ export class TrucksService {
 
   // A customer reaches only their own request; staff reach any in the
   // tenant (RLS scopes both to the JWT's tenant).
-  private async visibleRequest(tx: Tx, ctx: RequestContext, id: string) {
-    const [row] = await tx
+  // `lock` holds the row for a price or status change, so a staff price
+  // change and a customer accept or cancel never interleave.
+  private async visibleRequest(tx: Tx, ctx: RequestContext, id: string, lock = false) {
+    const query = tx
       .select()
       .from(truckRequests)
       .where(
@@ -315,6 +359,7 @@ export class TrucksService {
           : eq(truckRequests.id, id),
       )
       .limit(1);
+    const [row] = lock ? await query.for('update') : await query;
     if (!row) throw new NotFoundException({ error: 'truck_request_not_found' });
     return row;
   }
@@ -375,8 +420,6 @@ export class TrucksService {
     });
   }
 
-  // Staff accept a price, which the truck invoice then charges. Re-agreeing
-  // is allowed until the request is paid.
   // Names the driver and helper on a trip; shown in the site hub.
   async setCrew(ctx: RequestContext, id: string, crew: TruckCrew): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
@@ -390,17 +433,49 @@ export class TrucksService {
     });
   }
 
+  // Staff set the price the truck invoice charges; re-agreeing is allowed
+  // until the request is paid. Every change voids the unpaid invoice (and
+  // its PayMongo session/QR), needs the customer's accept again, and lands
+  // in the thread both sides read, as the price history.
   async agree(ctx: RequestContext, id: string, pricePhp: number): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const request = await this.visibleRequest(tx, ctx, id);
+      const request = await this.visibleRequest(tx, ctx, id, true);
       if (request.status === 'cancelled' || request.status === 'paid') {
         throw new ConflictException({ error: 'truck_request_closed', status: request.status });
       }
+      const was = num(request.agreedPricePhp);
+      if (request.status === 'agreed' && was === pricePhp) return toResponse(request);
+      await this.payments.voidUnpaid(tx, { truckRequestId: id });
       const [updated] = await tx
         .update(truckRequests)
-        .set({ agreedPricePhp: String(pricePhp), status: 'agreed' })
+        .set({ agreedPricePhp: String(pricePhp), status: 'agreed', acceptedPricePhp: null })
         .where(eq(truckRequests.id, id))
         .returning();
+      const body =
+        was === null
+          ? `Agreed price set to ${php(pricePhp)}. Please accept it before paying.`
+          : `Agreed price changed from ${php(was)} to ${php(pricePhp)}. Please accept the new price before paying.`;
+      await tx.insert(negotiationMessages).values({
+        tenantId: ctx.tenantId,
+        truckRequestId: id,
+        authorUserId: ctx.userId,
+        authorRole: 'staff',
+        body,
+        offerPhp: String(pricePhp),
+      });
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'truck_requests',
+        entityId: id,
+        reason: `agreed price ${was === null ? 'none' : php(was)} -> ${php(pricePhp)}`,
+      });
+      await notifyUser(tx, ctx.tenantId, request.requestedBy, 'truck_price_updated', {
+        truck_request_id: id,
+        price_php: pricePhp,
+        previous_php: was,
+      });
       return toResponse(updated!);
     });
   }
@@ -428,41 +503,67 @@ export class TrucksService {
         .where(eq(truckRequests.id, id))
         .returning();
       if (!updated) throw new NotFoundException({ error: 'truck_request_not_found' });
+      await notifyUser(tx, ctx.tenantId, updated.requestedBy, 'call_confirmed', { truck_request_id: id });
       return toResponse(updated);
     });
   }
 
-  // Staff agreed a price above the locked cap: only the customer's OK
-  // lifts the cap to that price.
-  async approveOverCap(ctx: RequestContext, id: string): Promise<TruckRequestResponse> {
+  // The customer accepts the agreed price they were shown. A staff change
+  // in between (pricePhp no longer the agreed one) is a 409: they re-read
+  // the new figure and accept that instead.
+  async acceptPrice(ctx: RequestContext, id: string, pricePhp: number): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
-      const [row] = await tx
-        .select()
-        .from(truckRequests)
-        .where(and(eq(truckRequests.id, id), eq(truckRequests.requestedBy, ctx.userId)))
-        .limit(1);
-      if (!row) throw new NotFoundException({ error: 'truck_request_not_found' });
+      const row = await this.visibleRequest(tx, ctx, id, true);
       if (row.status !== 'agreed' || row.agreedPricePhp === null) {
         throw new ConflictException({ error: 'price_not_agreed', status: row.status });
       }
+      if (Number(row.agreedPricePhp) !== pricePhp) {
+        throw new ConflictException({ error: 'price_changed', agreedPricePhp: Number(row.agreedPricePhp) });
+      }
+      if (num(row.acceptedPricePhp) === pricePhp) return toResponse(row);
       const [updated] = await tx
         .update(truckRequests)
-        .set({ capPhp: row.agreedPricePhp })
+        .set({ acceptedPricePhp: row.agreedPricePhp })
         .where(eq(truckRequests.id, id))
         .returning();
+      await tx.insert(negotiationMessages).values({
+        tenantId: ctx.tenantId,
+        truckRequestId: id,
+        authorUserId: ctx.userId,
+        authorRole: 'customer',
+        body: `Accepted the agreed price of ${php(pricePhp)}.`,
+        offerPhp: row.agreedPricePhp,
+      });
+      await notifyStaff(tx, ctx.tenantId, 'truck_price_accepted', { truck_request_id: id, price_php: pricePhp });
       return toResponse(updated!);
     });
   }
 
+  // The customer calls a trip off while it is still unpaid. Its unpaid
+  // invoice and any open PayMongo session go with it (a session already
+  // paid refuses: payment_in_progress); a paid trip is the rental team's
+  // to cancel and refund.
   async cancelOwn(ctx: RequestContext, id: string): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
+      const row = await this.visibleRequest(tx, ctx, id, true);
+      if (row.status === 'cancelled') throw new ConflictException({ error: 'already_cancelled' });
+      if (row.status === 'paid') throw new ConflictException({ error: 'cancel_after_payment' });
+      await this.payments.voidUnpaid(tx, { truckRequestId: id });
       const [updated] = await tx
         .update(truckRequests)
         .set({ status: 'cancelled' })
-        .where(and(eq(truckRequests.id, id), eq(truckRequests.requestedBy, ctx.userId)))
+        .where(eq(truckRequests.id, id))
         .returning();
-      if (!updated) throw new NotFoundException({ error: 'truck_request_not_found' });
-      return toResponse(updated);
+      await tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'UPDATE',
+        entity: 'truck_requests',
+        entityId: id,
+        reason: 'cancelled by the customer',
+      });
+      await notifyStaff(tx, ctx.tenantId, 'truck_cancelled', { truck_request_id: id });
+      return toResponse(updated!);
     });
   }
 }

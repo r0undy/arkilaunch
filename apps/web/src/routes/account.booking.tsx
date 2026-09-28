@@ -2,6 +2,7 @@ import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BookingDetailResponse } from '@arkilaunch/shared';
+import { WeeklyBillingCard } from './statement.js';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, equipmentQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
@@ -401,6 +402,7 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
       </Surface>
       )}
       {paid && <DepositCard booking={booking} />}
+      {paid && <WeeklyBillingCard rentalId={booking.id} scope="me" />}
       <ChangeRequests booking={booking} />
       </div>
     </div>

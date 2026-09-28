@@ -102,7 +102,7 @@ export class CustomersController {
     @Req() req: CtxRequest,
   ) {
     validateUpload(file);
-    return this.customers.scanDocument(req.ctx, body.documentType, file!.buffer);
+    return this.customers.scanDocument(req.ctx, body.documentType, file!.buffer, body.idType);
   }
 
   @Get('me/sites')

@@ -24,6 +24,7 @@ function toDraft(b: TenantBranding): Draft {
     headerColor: b.headerColor ?? '',
     font: b.font ?? '',
     facebookUrl: b.facebookUrl ?? '',
+    messengerUrl: b.messengerUrl ?? '',
     tagline: b.tagline ?? '',
     about: b.about ?? '',
     phone: b.phone ?? '',
@@ -41,6 +42,7 @@ function toRequest(d: Draft): TenantBrandingUpdateRequest {
     headerColor: orNull(d.headerColor.toLowerCase()),
     font: d.font === 'inter' || d.font === 'plex' ? d.font : null,
     facebookUrl: orNull(d.facebookUrl),
+    messengerUrl: orNull(d.messengerUrl),
     tagline: d.tagline.trim(),
     about: orNull(d.about),
     phone: orNull(d.phone),
@@ -384,6 +386,15 @@ export function BrandingForm({ basePath }: { basePath: string }) {
               placeholder="https://www.facebook.com/yourpage"
               onChange={(e) => edit({ facebookUrl: e.target.value })}
               hint="Shown as a Follow us link in your storefront footer."
+            />
+            <Input
+              label="Messenger link"
+              type="url"
+              maxLength={300}
+              value={current.messengerUrl}
+              placeholder="https://m.me/yourpage"
+              onChange={(e) => edit({ messengerUrl: e.target.value })}
+              hint="Customers can negotiate here or in the in-app chat. Leave blank to use the in-app chat only."
             />
           </div>
           <div>

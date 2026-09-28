@@ -13,7 +13,6 @@ import { Modal } from './modal.js';
 import { Tabs } from './tabs.js';
 import { StatusBadge } from './status-badge.js';
 import { RouteMap } from './route-map.js';
-import { TruckThread } from './truck-thread.js';
 import { NegotiationThread } from './negotiation-thread.js';
 import { BookingSide } from './booking-actions.js';
 
@@ -232,6 +231,21 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
       </Section>
       <Section title="Trip">
         <dl className="flex flex-col gap-1">
+          <Row label="Equipment to load">
+            <span className="font-medium">{truck.loadDescription ?? '--'}</span>
+          </Row>
+          <Row label="Company">{truck.companyName ?? '--'}</Row>
+          <Row label="Customer">
+            {truck.requesterName ?? '--'}
+            {truck.requesterPhone && (
+              <>
+                {' · '}
+                <a className="underline" href={`tel:${truck.requesterPhone.replace(/[^\d+]/g, '')}`}>
+                  {truck.requesterPhone}
+                </a>
+              </>
+            )}
+          </Row>
           <Row label="Pickup">{formatDateTime(truck.scheduledFor)}</Row>
           <Row label="Distance">
             <span className="font-mono tabular-nums">
@@ -250,8 +264,8 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
           <Row label="Agreed">
             <span className="font-mono tabular-nums">{truck.agreedPricePhp !== null ? formatPeso(truck.agreedPricePhp) : '--'}</span>
           </Row>
-          <Row label="Customer cap">
-            <span className="font-mono tabular-nums">{truck.capPhp !== null ? formatPeso(truck.capPhp) : '--'}</span>
+          <Row label="Customer accepted">
+            {truck.agreedPricePhp === null ? '--' : truck.acceptedPricePhp === truck.agreedPricePhp ? 'Yes' : 'Not yet'}
           </Row>
         </dl>
       </Section>
@@ -262,16 +276,19 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
 export function BookingDrawer({
   target,
   truck,
+  initialTab = 'overview',
   onClose,
 }: {
   target: BookingDrawerTarget | null;
   // The staff page looks the truck request up by its code.
   truck: TruckRequestResponse | undefined;
+  // A notification can open straight on the tab it is about (?tab=).
+  initialTab?: DrawerTab;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<DrawerTab>('overview');
-  // A different booking opens on its overview.
-  useEffect(() => setTab('overview'), [target?.id]);
+  const [tab, setTab] = useState<DrawerTab>(initialTab);
+  // A different booking opens on its overview, or the tab it was sent to.
+  useEffect(() => setTab(initialTab), [target?.id, initialTab]);
   const rentalId = target?.service === 'rental' ? target.id : null;
   const booking = useQuery({ ...bookingsQueries.detail(rentalId ?? ''), enabled: !!rentalId });
   const shownTruck = target?.service === 'truck' && truck?.id === target.id ? truck : undefined;
@@ -308,7 +325,7 @@ export function BookingDrawer({
             <>
               {tab === 'overview' && <RentalBody booking={booking.data} />}
               {tab === 'negotiation' && (
-                <NegotiationThread bookingId={rentalId} disabled={booking.data.status === 'cancelled'} />
+                <NegotiationThread base={`/bookings/${rentalId}`} disabled={booking.data.status === 'cancelled'} />
               )}
               {tab === 'actions' && <BookingSide booking={booking.data} />}
             </>
@@ -316,7 +333,12 @@ export function BookingDrawer({
           {shownTruck && (
             <>
               {tab === 'overview' && <TruckOverview truck={shownTruck} />}
-              {tab === 'negotiation' && <TruckThread base={`/truck-requests/${shownTruck.id}`} />}
+              {tab === 'negotiation' && (
+                <NegotiationThread
+                  base={`/truck-requests/${shownTruck.id}`}
+                  disabled={shownTruck.status === 'cancelled' || shownTruck.status === 'paid'}
+                />
+              )}
               {tab === 'actions' && <RequestRow r={shownTruck} />}
             </>
           )}

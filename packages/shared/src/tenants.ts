@@ -149,12 +149,34 @@ const FacebookUrlSchema = z
     return url.href;
   });
 
+// Same rule for the Facebook Messenger link (m.me/<page> or a Messenger or
+// Facebook URL), offered beside the in-app chat; DB CHECK in 0067.
+const MESSENGER_HOST = /^(m\.me|(www\.)?messenger\.com|([a-z0-9-]+\.)*facebook\.com)$/;
+const MessengerUrlSchema = z
+  .string()
+  .trim()
+  .max(300)
+  .transform((value, ctx) => {
+    let url: URL | null = null;
+    try {
+      url = new URL(value);
+    } catch {
+      // not a URL; reported below
+    }
+    if (!url || url.protocol !== 'https:' || !MESSENGER_HOST.test(url.hostname) || url.port || url.username || url.password) {
+      ctx.addIssue({ code: 'custom', message: 'Enter your Messenger link, like https://m.me/yourpage' });
+      return z.NEVER;
+    }
+    return url.href;
+  });
+
 export const TenantBrandingUpdateRequestSchema = z
   .object({
     primaryColor: z.string().toLowerCase().regex(HEX_COLOR).nullable(),
     headerColor: z.string().toLowerCase().regex(HEX_COLOR).nullable(),
     font: TenantFontSchema.nullable(),
     facebookUrl: FacebookUrlSchema.nullable(),
+    messengerUrl: MessengerUrlSchema.nullable().default(null),
     tagline: z.string().trim().min(1).max(160),
     about: optionalText(2000),
     phone: optionalText(50),
@@ -179,6 +201,7 @@ export const TenantBrandingSchema = z.object({
   headerColor: z.string().nullable(),
   font: TenantFontSchema.nullable(),
   facebookUrl: z.string().nullable(),
+  messengerUrl: z.string().nullable(),
   tagline: z.string().nullable(),
   about: z.string().nullable(),
   phone: z.string().nullable(),

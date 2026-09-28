@@ -65,6 +65,14 @@ export function requireRole(...roles: RoleCode[]) {
   };
 }
 
+// /login and /signup for someone already signed in: straight to their home
+// (a replace, so Back does not land on the login form again), never a
+// second sign-in over the first in the same tab (QA 17/18).
+export function redirectIfSignedIn() {
+  const token = getAccessToken();
+  if (token && !isTokenExpired(token)) throw redirect({ to: homeRouteForRole(getCurrentRole()), replace: true });
+}
+
 // Where the brand link goes: the landing page when signed out,
 // else the signed-in role's home.
 export function homeHref(): string {
