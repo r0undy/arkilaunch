@@ -23,6 +23,7 @@ import { CaptureField } from '../components/capture-field.js';
 import { IdCropDialog } from '../components/id-crop-dialog.js';
 import { Skeleton } from '../components/skeleton.js';
 import { useToast } from '../components/toast.js';
+import { Select } from '../components/select.js';
 
 // What the customer confirmed off their National ID. Sent with the ID
 // upload so the reviewer sees it beside what the OCR read.
@@ -184,21 +185,18 @@ function DocumentStep({
     <div className="flex flex-col gap-2">
       <p className="text-sm text-text-muted">{step.hint}</p>
       {isRegistration && showPrimary && (
-        <label className="flex flex-col gap-1 text-sm font-medium text-text">
-          Document type
-          <select
-            id="registration-type"
-            value={registrationType}
-            onChange={(e) => onRegistrationTypeChange(e.target.value as PrimaryRegistrationType)}
-            className="min-h-11 rounded-input border border-border bg-surface px-3 text-text"
-          >
-            {REGISTRATION_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select
+          label="Document type"
+          id="registration-type"
+          value={registrationType}
+          onChange={(e) => onRegistrationTypeChange(e.target.value as PrimaryRegistrationType)}
+        >
+          {REGISTRATION_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
       )}
       {(!isRegistration || showPrimary) && (
         <CroppableCapture
@@ -368,18 +366,15 @@ function IdReviewStep({
           value={value.birthDate}
           onChange={(e) => set({ birthDate: e.target.value })}
         />
-        <label className="flex flex-col gap-1 text-sm font-medium text-text">
-          Sex
-          <select
-            value={value.sex}
-            onChange={(e) => set({ sex: e.target.value as IdDetails['sex'] })}
-            className="min-h-11 rounded-input border border-border bg-surface px-3 text-base text-text"
-          >
-            <option value="">Select</option>
-            <option value="M">Male</option>
-            <option value="F">Female</option>
-          </select>
-        </label>
+        <Select
+          label="Sex"
+          value={value.sex}
+          onChange={(e) => set({ sex: e.target.value as IdDetails['sex'] })}
+        >
+          <option value="">Select</option>
+          <option value="M">Male</option>
+          <option value="F">Female</option>
+        </Select>
       </div>
       <Input
         label="Address on the ID"

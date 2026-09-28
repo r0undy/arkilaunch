@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { signInAsCustomer } from './sign-in.js';
+import { choose } from './select.js';
 
 // CR truck-booking-and-kyc-docs: the primary registration is a BIR COR or an
 // SEC certificate picked from a dropdown; DTI is optional and secondary.
@@ -30,17 +31,19 @@ test.describe('company documents', () => {
 
     // Step 2: the dropdown offers exactly BIR and SEC; DTI is never primary.
     const type = page.getByLabel('Document type');
-    await expect(type.locator('option')).toHaveText([
+    await type.click();
+    await expect(page.getByRole('option')).toHaveText([
       'BIR Certificate of Registration (Form 2303)',
       'SEC Certificate of Incorporation',
     ]);
+    await page.keyboard.press('Escape');
     const next = page.getByRole('button', { name: 'Next: check the details' });
     // DTI alone cannot move the application on.
     await page.getByTestId('doc-dti_certificate-file').setInputFiles(file('dti.png'));
     await page.getByRole('button', { name: 'Skip cropping' }).click();
     await expect(next).toBeDisabled();
 
-    await type.selectOption('sec_certificate');
+    await choose(type, 'sec_certificate');
     await page.getByTestId('doc-company_registration-file').setInputFiles(file('sec.png'));
     await page.getByRole('button', { name: 'Skip cropping' }).click();
     await expect(next).toBeEnabled();

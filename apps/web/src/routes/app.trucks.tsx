@@ -17,6 +17,7 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { SiteProofAdmin } from '../components/site-proof.js';
 import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
 import { EditButton, SummaryCard } from '../components/summary-card.js';
+import { Select } from '../components/select.js';
 
 export const settingsQuery = {
   queryKey: ['truck-settings'] as const,
@@ -134,17 +135,10 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
                   <Input label="Charge" value={x.label} onChange={(e) => setExtra(i, { label: e.target.value })} />
                 </div>
                 <Input label="₱" type="number" min={0} numeric value={String(x.amountPhp)} onChange={(e) => setExtra(i, { amountPhp: Number(e.target.value) })} />
-                <label className="flex flex-col gap-1 text-sm font-medium text-text">
-                  Per
-                  <select
-                    className="min-h-11 rounded-input border border-border bg-surface px-2"
-                    value={x.per}
-                    onChange={(e) => setExtra(i, { per: e.target.value as TruckExtra['per'] })}
-                  >
-                    <option value="trip">trip</option>
-                    <option value="km">km</option>
-                  </select>
-                </label>
+                <Select label="Per" value={x.per} onChange={(e) => setExtra(i, { per: e.target.value as TruckExtra['per'] })}>
+                  <option value="trip">trip</option>
+                  <option value="km">km</option>
+                </Select>
                 <Button variant="ghost" onClick={() => setExtras((xs) => xs.filter((_, j) => j !== i))}>
                   Remove
                 </Button>
@@ -260,7 +254,6 @@ export function TollsEditor() {
       ),
     },
   ];
-  const selectClass = 'min-h-11 rounded-input border border-border bg-surface px-2 text-sm text-text';
   const tollDescription = (
     <>
       Class 3 (large trucks) expressway fees, picked by entry and exit when you confirm a trip&apos;s km.
@@ -278,9 +271,8 @@ export function TollsEditor() {
   );
   const tollFilter = (
     <div className="flex flex-wrap gap-2">
-          <select
-            aria-label="Expressway"
-            className={selectClass}
+          <Select labelHidden
+            label="Expressway"
             value={road}
             onChange={(e) => {
               setRoad(e.target.value);
@@ -292,7 +284,7 @@ export function TollsEditor() {
               <option key={x}>{x}</option>
             ))}
             {rows.some((t) => !t.expressway) && <option value={OTHER}>Other tolls</option>}
-          </select>
+          </Select>
           <input
             type="search"
             aria-label="Find a toll"
@@ -368,7 +360,6 @@ function TollPicker({ tolls, value, onChange }: { tolls: TollRateResponse[]; val
       : onRoad.find((t) => (t.entryPoint === a && t.exitPoint === b) || (t.entryPoint === b && t.exitPoint === a));
   const picked = value.map((id) => tolls.find((t) => t.id === id)).filter((t): t is TollRateResponse => Boolean(t));
   const expressways = [...new Set(tolls.filter((t) => t.expressway).map((t) => t.expressway!))];
-  const selectClass = 'min-h-11 rounded-input border border-border bg-surface px-2 text-sm';
   return (
     <fieldset className="flex flex-col gap-2 text-sm">
       <legend className="mb-1 text-xs text-text-muted">Tolls on this route</legend>
@@ -383,37 +374,37 @@ function TollPicker({ tolls, value, onChange }: { tolls: TollRateResponse[]; val
         </div>
       ))}
       <div className="flex flex-wrap items-center gap-2">
-        <select aria-label="Expressway" className={selectClass} value={expressway} onChange={(e) => { setExpressway(e.target.value); setA(''); setB(''); }}>
+        <Select labelHidden className="min-w-44" label="Expressway" value={expressway} onChange={(e) => { setExpressway(e.target.value); setA(''); setB(''); }}>
           <option value="">Expressway</option>
           {expressways.map((x) => (
             <option key={x}>{x}</option>
           ))}
           {tolls.some((t) => !t.expressway) && <option value={OTHER}>Other tolls</option>}
-        </select>
+        </Select>
         {expressway === OTHER ? (
-          <select aria-label="Toll" className={selectClass} value={a} onChange={(e) => setA(e.target.value)}>
+          <Select labelHidden className="min-w-40" label="Toll" value={a} onChange={(e) => setA(e.target.value)}>
             <option value="">Toll</option>
             {onRoad.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
               </option>
             ))}
-          </select>
+          </Select>
         ) : (
           expressway && (
             <>
-              <select aria-label="Entry" className={selectClass} value={a} onChange={(e) => setA(e.target.value)}>
+              <Select labelHidden className="min-w-40" label="Entry" value={a} onChange={(e) => setA(e.target.value)}>
                 <option value="">Entry</option>
                 {points.map((pt) => (
                   <option key={pt}>{pt}</option>
                 ))}
-              </select>
-              <select aria-label="Exit" className={selectClass} value={b} onChange={(e) => setB(e.target.value)}>
+              </Select>
+              <Select labelHidden className="min-w-40" label="Exit" value={b} onChange={(e) => setB(e.target.value)}>
                 <option value="">Exit</option>
                 {points.filter((pt) => pt !== a).map((pt) => (
                   <option key={pt}>{pt}</option>
                 ))}
-              </select>
+              </Select>
             </>
           )
         )}

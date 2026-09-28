@@ -180,19 +180,20 @@ function UserActions({ user }: { user: UserRow }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {ASSIGNABLE_ROLES.includes(user.roleName as AssignableRole) && (
-        <select
-          aria-label={`Change role for ${user.email}`}
+        <Select
+          labelHidden
+          label={`Change role for ${user.email}`}
           value={user.roleName}
           disabled={changeRole.isPending}
           onChange={(e) => setPendingRole(e.target.value as AssignableRole)}
-          className="min-h-11 rounded-input border border-border bg-surface px-2 text-sm text-text"
+          className="min-w-36 text-sm"
         >
           {ASSIGNABLE_ROLES.map((role) => (
             <option key={role} value={role}>
               {formatRole(role)}
             </option>
           ))}
-        </select>
+        </Select>
       )}
       {user.status === 'invited' && (
         <Button

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { signIn, signInAsCustomer } from './sign-in.js';
+import { choose } from './select.js';
 
 // The self-loading truck as a bookable service (CR truck-booking-and-kyc-docs):
 // dropdown locations + map pins -> estimate range -> request -> request a
@@ -9,9 +10,9 @@ import { signIn, signInAsCustomer } from './sign-in.js';
 // OSM geocoder/router the estimate uses.
 
 async function pickLocation(page: Page, label: string, city: string) {
-  await page.getByLabel(`${label} region`).selectOption({ label: 'NCR (National Capital Region)' });
-  await page.getByLabel(`${label} province`).selectOption({ label: 'Metro Manila' });
-  await page.getByLabel(`${label} city or municipality`).selectOption({ label: city });
+  await choose(page.getByLabel(`${label} region`), { label: 'NCR (National Capital Region)' });
+  await choose(page.getByLabel(`${label} province`), { label: 'Metro Manila' });
+  await choose(page.getByLabel(`${label} city or municipality`), { label: city });
 }
 
 // The map is the booking screen: pick which pin, then tap right of the
@@ -49,8 +50,7 @@ test.describe('self-loading truck', () => {
     // The trip serves one of the customer's own sites, with its proof on
     // file (the seeded Demo Customer Site).
     const sitePicker = customer.getByLabel('Project site this trip serves');
-    const demoSite = sitePicker.locator('option', { hasText: 'Demo Customer Site' });
-    await sitePicker.selectOption({ value: (await demoSite.first().getAttribute('value'))! });
+    await choose(sitePicker, { label: 'Demo Customer Site' });
     await customer.getByRole('button', { name: 'Request truck' }).click();
     await expect(customer.getByText('Truck requested')).toBeVisible({ timeout: 30_000 });
 

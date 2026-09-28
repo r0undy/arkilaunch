@@ -11,6 +11,7 @@ import { apiErrorText, apiGet, apiPostForm } from '../lib/api-client.js';
 import { formatDate, formatStatus } from '../lib/format.js';
 import { useToast } from './toast.js';
 import { Button } from './button.js';
+import { Select } from './select.js';
 
 const label = (type: string) => SITE_DOCUMENT_LABELS[type as SiteDocumentType] ?? formatStatus(type);
 
@@ -40,21 +41,18 @@ export function SiteProofFields({
         Needed before the site can take a booking or a truck trip, so the rental team knows the site is real and yours to work
         on.
       </p>
-      <label className="flex flex-col gap-1 text-sm font-medium text-text">
-        Document
-        <select
-          id={`${idPrefix}-proof-type`}
-          value={proofType}
-          onChange={(e) => onProofTypeChange(e.target.value as SiteDocumentType)}
-          className="min-h-11 rounded-input border border-border bg-surface px-3 text-text"
-        >
-          {SITE_PROOF_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {label(type)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Select
+        label="Document"
+        id={`${idPrefix}-proof-type`}
+        value={proofType}
+        onChange={(e) => onProofTypeChange(e.target.value as SiteDocumentType)}
+      >
+        {SITE_PROOF_TYPES.map((type) => (
+          <option key={type} value={type}>
+            {label(type)}
+          </option>
+        ))}
+      </Select>
       <input
         id={`${idPrefix}-proof-file`}
         aria-label={label(proofType)}

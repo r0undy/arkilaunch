@@ -1,4 +1,5 @@
 import PH_LOCATIONS from '../data/ph-locations.json';
+import { Select } from './select.js';
 
 // Region -> province -> city/municipality, from the PSA PSGC list
 // (psgc.gitlab.io, 1,634 cities and municipalities). The value is
@@ -17,9 +18,6 @@ export function locationLabel(location: PhLocation): string {
   return location.city ? `${location.city}, ${location.province}` : '';
 }
 
-const selectClass =
-  'min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-text disabled:opacity-50';
-
 export function LocationPicker({
   label,
   value,
@@ -35,9 +33,8 @@ export function LocationPicker({
   return (
     <fieldset className="flex flex-col gap-2">
       <legend className="mb-1 text-sm font-medium text-text">{label}</legend>
-      <select
-        aria-label={`${label} region`}
-        className={selectClass}
+      <Select labelHidden
+        label={`${label} region`}
         value={value.region}
         onChange={(e) => onChange({ region: e.target.value, province: '', city: '' })}
       >
@@ -45,10 +42,9 @@ export function LocationPicker({
         {PH_LOCATIONS.map((r) => (
           <option key={r.region}>{r.region}</option>
         ))}
-      </select>
-      <select
-        aria-label={`${label} province`}
-        className={selectClass}
+      </Select>
+      <Select labelHidden
+        label={`${label} province`}
         disabled={!region}
         value={value.province}
         onChange={(e) => onChange({ ...value, province: e.target.value, city: '' })}
@@ -57,10 +53,9 @@ export function LocationPicker({
         {region?.provinces.map((p) => (
           <option key={p.name}>{p.name}</option>
         ))}
-      </select>
-      <select
-        aria-label={`${label} city or municipality`}
-        className={selectClass}
+      </Select>
+      <Select labelHidden
+        label={`${label} city or municipality`}
         disabled={!province}
         value={value.city}
         onChange={(e) => onChange({ ...value, city: e.target.value })}
@@ -69,7 +64,7 @@ export function LocationPicker({
         {province?.cities.map((c) => (
           <option key={c}>{c}</option>
         ))}
-      </select>
+      </Select>
     </fieldset>
   );
 }

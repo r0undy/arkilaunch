@@ -62,6 +62,9 @@ export function Modal({
       // both, and the drawer's trap pulled focus out of the confirm.
       const active = document.activeElement;
       if (!panel.current || !(active instanceof Element) || active.closest('[role="dialog"]') !== panel.current) return;
+      // An open dropdown (components/select.tsx) owns its own Escape: it
+      // closes the menu, not the dialog around it.
+      if (event.key === 'Escape' && active.getAttribute('role') === 'combobox' && active.getAttribute('aria-expanded') === 'true') return;
       if (event.key === 'Escape') {
         event.stopPropagation();
         onCloseRef.current();
