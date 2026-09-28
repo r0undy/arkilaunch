@@ -1,6 +1,7 @@
 import { Fragment, useState, type MouseEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Container, type ContainerHeaderProps } from './container.js';
+import { useMediaQuery } from '../lib/use-media-query.js';
 
 /**
  * What a column holds, which decides its alignment everywhere (DSD §8):
@@ -62,10 +63,11 @@ function cellClass(kind: ColumnKind): string {
   ].join(' ');
 }
 
-// Console-tier list primitive (DSD §8: tight radii, no backdrop-filter).
-// Rows stay 44px+; the table scrolls sideways inside its own card, never
-// the page.
-export function Table<T>({
+// Below 768px a row is a card (DSD §4.1, CR: console-components): the first
+// text column is its title, the status sits top-right, the other columns are
+// label/value pairs and the actions wrap underneath. Same columns, same
+// cells, so no list needs a phone layout of its own.
+function RowCards<T>({
   columns,
   rows,
   rowKey,
@@ -73,11 +75,102 @@ export function Table<T>({
   rowLabel,
   renderExpanded,
   expandLabel,
-  header,
-  footer,
   empty,
-}: TableProps<T>) {
+  expanded,
+  toggle,
+}: Omit<TableProps<T>, 'header' | 'footer'> & { expanded: Set<string>; toggle: (key: string) => void }) {
+  const title = columns.find((c) => c.kind === 'text') ?? columns[0];
+  const status = columns.find((c) => c.kind === 'status');
+  const actions = columns.filter((c) => c.kind === 'action' && c !== title);
+  const pairs = columns.filter((c) => c !== title && c !== status && !actions.includes(c));
+
+  if (rows.length === 0) return empty ? <p className="px-4 py-8 text-center text-sm text-text-muted">{empty}</p> : null;
+  return (
+    <ul className="text-sm text-text">
+      {rows.map((row) => {
+        const key = rowKey(row);
+        const isOpen = expanded.has(key);
+        return (
+          <li
+            key={key}
+            className={['border-b border-border px-4 py-3 last:border-0', onRowClick ? 'cursor-pointer' : ''].join(' ')}
+            {...(onRowClick
+              ? {
+                  onClick: (event: MouseEvent) => {
+                    if ((event.target as HTMLElement).closest('a,button,input,select,label,summary')) return;
+                    onRowClick(row);
+                  },
+                }
+              : {})}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 break-words font-medium">{title?.cell(row)}</div>
+              <div className="flex shrink-0 items-center gap-1">
+                {status?.cell(row)}
+                {onRowClick && (
+                  <button
+                    type="button"
+                    onClick={() => onRowClick(row)}
+                    className="-my-2 -mr-2 inline-flex h-11 w-11 items-center justify-center rounded-sm text-text-muted hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+                  >
+                    <ChevronRight aria-hidden className="h-4 w-4" />
+                    <span className="sr-only">{rowLabel ? rowLabel(row) : 'View'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+            {pairs.length > 0 && (
+              <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
+                {pairs.map((col, i) => (
+                  <div key={i} className="min-w-0">
+                    <dt className="text-xs text-text-muted">{col.header}</dt>
+                    <dd
+                      className={[
+'break-words',
+                        col.kind === 'number' || col.kind === 'money' ? 'font-mono tabular-nums' : '',
+                      ].join(' ')}
+                    >
+                      {col.cell(row)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {actions.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {actions.map((col, i) => (
+                  <Fragment key={i}>{col.cell(row)}</Fragment>
+                ))}
+              </div>
+            )}
+            {renderExpanded && (
+              <>
+                <button
+                  type="button"
+                  aria-expanded={isOpen}
+                  onClick={() => toggle(key)}
+                  className="mt-2 inline-flex min-h-11 items-center gap-1 text-accent hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+                >
+                  {isOpen ? <ChevronDown aria-hidden className="h-4 w-4" /> : <ChevronRight aria-hidden className="h-4 w-4" />}
+                  {expandLabel ? expandLabel(row) : 'Show details'}
+                </button>
+                {isOpen && <div className="mt-2 rounded-sm bg-surface-sunk/60 p-3">{renderExpanded(row)}</div>}
+              </>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// Console-tier list primitive (DSD §8: tight radii, no backdrop-filter).
+// Rows stay 44px+; a wide table scrolls sideways inside its own card, never
+// the page, and turns into cards on a phone.
+export function Table<T>(props: TableProps<T>) {
+  const { columns, rows, rowKey, onRowClick, rowLabel, renderExpanded, expandLabel, header, footer, empty } = props;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const narrow = useMediaQuery('(max-width: 767px)');
   const fixed = columns.some((c) => c.width);
   const span = columns.length + (onRowClick ? 1 : 0) + (renderExpanded ? 1 : 0);
 
@@ -88,6 +181,14 @@ export function Table<T>({
       else next.add(key);
       return next;
     });
+  }
+
+  if (narrow) {
+    return (
+      <Container header={header} footer={footer} flush>
+        <RowCards {...props} expanded={expanded} toggle={toggle} />
+      </Container>
+    );
   }
 
   return (
