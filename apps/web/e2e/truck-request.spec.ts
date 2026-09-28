@@ -43,14 +43,13 @@ test.describe('self-loading truck', () => {
     await pickLocation(customer, 'Pickup location', 'City of Mandaluyong');
     await pickLocation(customer, 'Drop-off location', 'City of Muntinlupa');
     await customer.getByLabel('Pickup street or landmark (optional)').fill('SM Megamall loading bay');
-    await expect(customer.getByText(/Near-point estimate; tolls and route may change the final price, never above ₱[\d,.]+ without your OK\./).first()).toBeVisible();
+    await expect(customer.getByText(/Near-point estimate; the rental team confirms the km and tolls/).first()).toBeVisible();
 
     const note = `e2e ${Date.now()}`;
     await customer.getByLabel('Notes (optional)').fill(note);
-    // The trip serves one of the customer's own sites, with its proof on
-    // file (the seeded Demo Customer Site).
-    const sitePicker = customer.getByLabel('Project site this trip serves');
-    await choose(sitePicker, { label: 'Demo Customer Site' });
+    // QA 14: the trip is for the customer's company; a site is optional
+    // and needs no proof. What goes on the truck is required.
+    await customer.getByLabel('Equipment to load').fill('1 excavator, about 20 t');
     await customer.getByRole('button', { name: 'Request truck' }).click();
     await expect(customer.getByText('Truck requested')).toBeVisible({ timeout: 30_000 });
 
@@ -60,7 +59,7 @@ test.describe('self-loading truck', () => {
     await card.getByRole('button', { name: 'Request call' }).click();
     await expect(card.getByText(/Call requested/)).toBeVisible();
     await card.getByLabel('Message').fill(`Can you do 4321? ${note}`);
-    await card.getByLabel('Offer (PHP, optional)').fill('4321');
+    await card.getByLabel('Counter-offer (PHP, optional)').fill('4321');
     await card.getByRole('button', { name: 'Send' }).click();
     await expect(card.getByText('Offer: ₱4,321.00')).toBeVisible();
 
@@ -80,11 +79,12 @@ test.describe('self-loading truck', () => {
     await expect(drawer.getByText('Offer: ₱4,321.00')).toBeVisible();
     await drawer.getByRole('tab', { name: 'Actions' }).click();
     await expect(drawer.getByText('The customer asked for a call')).toBeVisible();
+    await expect(drawer.getByText('1 excavator, about 20 t')).toBeVisible();
     await drawer.getByLabel('Agreed price (PHP)').fill('4321');
-    await drawer.getByRole('button', { name: 'Accept price' }).click();
-    // Accepting a price asks first.
-    await admin.getByRole('alertdialog', { name: 'Accept this price?' }).getByRole('button', { name: 'Accept price' }).click();
-    await expect(admin.getByText('Price accepted')).toBeVisible();
+    await drawer.getByRole('button', { name: 'Set agreed price' }).click();
+    // Setting a price asks first.
+    await admin.getByRole('alertdialog', { name: 'Set the agreed price?' }).getByRole('button', { name: 'Set price' }).click();
+    await expect(admin.getByText('Price set')).toBeVisible();
     await drawer.getByRole('button', { name: 'Confirmed by phone' }).click();
     await admin.getByRole('alertdialog', { name: 'Mark as confirmed by phone?' }).getByRole('button', { name: 'Yes, we spoke' }).click();
     await expect(admin.getByText('Confirmed by phone').first()).toBeVisible();
@@ -96,9 +96,8 @@ test.describe('self-loading truck', () => {
     await expect(trip.getByText('₱4,321.00')).toBeVisible();
     await trip.click();
     const booked = customer.getByRole('dialog', { name: code });
-    // Above the estimate's cap only the customer can lift it.
-    const approve = booked.getByRole('button', { name: /^Approve / });
-    if (await approve.isVisible()) await approve.click();
+    // QA 21: the customer accepts every agreed price before paying.
+    await booked.getByRole('button', { name: 'Accept ₱4,321.00' }).click();
     await booked.getByRole('button', { name: 'Pay cash at the office' }).click();
     await expect(customer).toHaveURL(/\/account\/invoices\//, { timeout: 30_000 });
     await expect(customer.getByText('₱4,321.00').first()).toBeVisible();

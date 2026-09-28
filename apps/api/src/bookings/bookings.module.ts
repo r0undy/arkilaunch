@@ -3,9 +3,10 @@ import { EventsService } from '../events/events.service.js';
 import { BookingsController } from './bookings.controller.js';
 import { BookingsService } from './bookings.service.js';
 import { QuotesModule } from '../quotes/quotes.module.js';
+import { PaymentsModule } from '../payments/payments.module.js';
 
 @Module({
-  imports: [QuotesModule],
+  imports: [QuotesModule, PaymentsModule],
   controllers: [BookingsController],
   providers: [BookingsService, EventsService],
 })

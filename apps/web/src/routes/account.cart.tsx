@@ -23,6 +23,7 @@ import { apiPost } from '../lib/api-client.js';
 import { bookingAlternatives, explainBookingError } from '../lib/booking-error.js';
 import { catalogQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
 import { SiteDialog } from '../components/site-dialog.js';
+import { NegotiateChoice } from '../components/negotiate-choice.js';
 import { formatPeso, shortCode } from '../lib/format.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import {
@@ -310,9 +311,9 @@ function CartPage() {
               than the frame's dropdown: it is two options, and the app has no
               menu primitive worth building one for. */}
           <div className="flex flex-wrap gap-2">
-            <Link to="/account/negotiation/$bookingId/chat" params={{ bookingId: booking.id }}>
-              <Button variant="primary">Negotiate via messenger</Button>
-            </Link>
+            <NegotiateChoice
+              onInApp={() => void navigate({ to: '/account/negotiation/$bookingId/chat', params: { bookingId: booking.id } })}
+            />
             <Link to="/account/negotiation/$bookingId/call" params={{ bookingId: booking.id }}>
               <Button variant="secondary">Negotiate by phone</Button>
             </Link>

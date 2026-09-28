@@ -73,11 +73,16 @@ export function feedAreaOf(pathname: string): FeedArea {
   return first === 'account' || first === 'field' || first === 'admin' ? first : 'app';
 }
 
-// Staff open a booking in the drawer by its code; the full page is the
-// fallback for a row that somehow has no code.
-function staffBooking(p: Record<string, unknown>, label = 'Open booking'): NonNullable<Described['action']> {
+// Staff open a booking in the drawer by its code, on the tab the
+// notification is about (a call request opens Actions); the full page is
+// the fallback for a row that somehow has no code.
+function staffBooking(
+  p: Record<string, unknown>,
+  label = 'Open booking',
+  tab?: 'actions' | 'negotiation',
+): NonNullable<Described['action']> {
   const code = typeof p.booking_code === 'string' ? p.booking_code : null;
-  if (code) return { label, to: '/app/bookings', params: {}, search: { open: code } };
+  if (code) return { label, to: '/app/bookings', params: {}, search: { open: code, ...(tab ? { tab } : {}) } };
   const rentalId = typeof p.rental_id === 'string' ? p.rental_id : null;
   return rentalId
     ? { label, to: '/app/bookings/$bookingId', params: { bookingId: rentalId } }
@@ -98,11 +103,31 @@ function describeForStaff(type: string, p: Record<string, unknown>): Described |
       return {
         title: 'Call requested',
         body: `The customer on ${ref} asked for a call${trip ? '' : ' before paying'}.`,
-        action: staffBooking(p),
+        action: staffBooking(p, 'Call the customer', 'actions'),
+      };
+    case 'truck_price_accepted':
+      return {
+        title: 'Price accepted',
+        body: `The customer accepted ${typeof p.price_php === 'number' ? formatPeso(p.price_php) : 'the agreed price'} on ${ref}.`,
+        action: staffBooking(p, 'Open booking', 'actions'),
+      };
+    case 'booking_cancelled':
+      return { title: 'Booking cancelled', body: `The customer cancelled ${ref}. Its unpaid invoice was voided.`, action: staffBooking(p) };
+    case 'truck_cancelled':
+      return { title: 'Trip cancelled', body: `The customer cancelled ${ref}. Its unpaid invoice was voided.`, action: staffBooking(p) };
+    case 'payment_on_void_invoice':
+      return {
+        title: 'Refund needed',
+        body: `A payment came in on ${ref} after its invoice was voided (price changed or cancelled). Refund it in PayMongo.`,
+        action: { label: 'Open payments', to: '/app/payments', params: {} },
       };
     case 'customer_message': {
       const offer = typeof p.offer_php === 'number' ? ` with an offer of ${formatPeso(p.offer_php)}` : '';
-      return { title: 'Customer message', body: `The customer replied on ${ref}${offer}.`, action: staffBooking(p, 'Open conversation') };
+      return {
+        title: 'Customer message',
+        body: `The customer replied on ${ref}${offer}.`,
+        action: staffBooking(p, 'Open conversation', trip ? 'negotiation' : undefined),
+      };
     }
     case 'quote_accepted':
     case 'quote_declined':
@@ -285,15 +310,21 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
     const offer = typeof p.offer_php === 'number' ? ` with an offer of ${formatPeso(p.offer_php)}` : '';
     const bodies: Record<string, string> = {
       negotiation_reply: `The rental team replied on ${code}${offer}.`,
-      call_confirmed: `${code} is confirmed by phone. You can pay for it now.`,
+      call_confirmed: `${code} is confirmed by phone.`,
+      truck_price_updated: `The rental team set the price of ${code} at ${typeof p.price_php === 'number' ? formatPeso(p.price_php) : 'a new figure'}${typeof p.previous_php === 'number' ? ` (was ${formatPeso(p.previous_php)})` : ''}. Accept it to pay.`,
       payment_received: `${code} is paid.`,
       payment_failed: `The payment for ${code} did not go through. Nothing was charged.`,
       payment_refunded: `A refund was issued on ${code}.`,
     };
     return {
-      title: formatStatus(type),
+      title: type === 'truck_price_updated' ? 'Price to accept' : formatStatus(type),
       body: bodies[type] ?? `${code} was updated.`,
-      action: { label: 'Open truck requests', to: '/account/trucks', params: {} },
+      action: {
+        label: 'Open trip',
+        to: '/account/trucks',
+        params: {},
+        ...(typeof p.booking_code === 'string' ? { search: { open: p.booking_code } } : {}),
+      },
     };
   }
   const rentalId = typeof p.rental_id === 'string' ? p.rental_id : null;

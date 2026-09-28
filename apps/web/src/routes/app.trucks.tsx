@@ -1,7 +1,7 @@
 import { createRoute, redirect } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
+import { DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, suggestTolls, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
 import { formatDate, formatPeso } from '../lib/format.js';
@@ -13,7 +13,7 @@ import { Modal } from '../components/modal.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
-import { SiteProofAdmin } from '../components/site-proof.js';
+import { trucksQueries } from '../lib/queries.js';
 import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
 import { EditButton, SummaryCard } from '../components/summary-card.js';
 import { Select } from '../components/select.js';
@@ -427,6 +427,16 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   const queryClient = useQueryClient();
   const tolls = useQuery(tollsQuery);
   const [tollIds, setTollIds] = useState<string[]>([]);
+  // The road route's expressways preselect their tolls once; the admin
+  // changes them freely, or types one manual amount that replaces them.
+  const route = useQuery({ ...trucksQueries.route(r.id), enabled: r.pickupLat !== null && r.dropoffLat !== null });
+  const suggested = useMemo(
+    () => (route.data?.tollHints && tolls.data ? suggestTolls(route.data.tollHints, tolls.data) : []),
+    [route.data, tolls.data],
+  );
+  const [touchedTolls, setTouchedTolls] = useState(false);
+  const pickedTolls = touchedTolls ? tollIds : suggested;
+  const [manualToll, setManualToll] = useState('');
   const [km, setKm] = useState(String(r.confirmedKm ?? r.estimatedKm));
   useEffect(() => setKm(String(r.confirmedKm ?? r.estimatedKm)), [r.confirmedKm, r.estimatedKm]);
   const refresh = () => void queryClient.invalidateQueries({ queryKey: TRUCK_REQUESTS });
@@ -442,7 +452,10 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   });
   const confirm = useMutation({
     mutationFn: () =>
-      apiPatch<TruckRequestResponse>(`/truck-requests/${r.id}/km`, { km: Number(km), tollRateIds: tollIds }),
+      apiPatch<TruckRequestResponse>(`/truck-requests/${r.id}/km`, {
+        km: Number(km),
+        ...(manualToll.trim() !== '' ? { manualTollPhp: Number(manualToll) } : { tollRateIds: pickedTolls }),
+      }),
     onSuccess: () => {
       refresh();
       toast.success('Distance confirmed');
@@ -457,7 +470,7 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
     onSuccess: () => {
       setAsking(false);
       refresh();
-      toast.success('Price accepted', 'The customer can now pay online or in cash.');
+      toast.success('Price set', 'The customer is notified and must accept it before paying.');
     },
     onError: (e) => {
       setAsking(false);
@@ -466,22 +479,51 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   });
   const open = r.status !== 'cancelled' && r.status !== 'paid';
   const overCap = r.capPhp !== null && Number(price) > r.capPhp;
+  // Typo guard: a price far from the route's own figure is called out.
+  const offBy = r.price.totalPhp > 0 ? Math.abs(Number(price) - r.price.totalPhp) / r.price.totalPhp : 0;
   const section = 'flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0';
   const heading = 'text-heading-md text-text';
 
   return (
     <div className="flex flex-col gap-4">
-      {r.projectSiteId && (
-        <section className={section}>
-          <h3 className={heading}>Site proof</h3>
-          <SiteProofAdmin siteId={r.projectSiteId} />
-        </section>
-      )}
+      <section className={section}>
+        <h3 className={heading}>Customer</h3>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+          <dt className="text-text-muted">Name</dt>
+          <dd className="text-text">{r.requesterName ?? 'Not given'}</dd>
+          {r.companyName && (
+            <>
+              <dt className="text-text-muted">Company</dt>
+              <dd className="text-text">{r.companyName}</dd>
+            </>
+          )}
+          <dt className="text-text-muted">Mobile</dt>
+          <dd className="text-text">
+            {r.requesterPhone ? (
+              <a className="font-medium underline" href={`tel:${r.requesterPhone.replace(/[^\d+]/g, '')}`}>
+                {r.requesterPhone}
+              </a>
+            ) : (
+              'Not on file; reply in the Negotiation tab'
+            )}
+          </dd>
+          {r.loadDescription && (
+            <>
+              <dt className="text-text-muted">Equipment to load</dt>
+              <dd className="font-medium text-text">{r.loadDescription}</dd>
+            </>
+          )}
+        </dl>
+      </section>
       {open && (
         <section className={section}>
           <h3 className={heading}>Phone confirmation</h3>
           <p className="text-sm text-text-muted">
-            {r.callConfirmedAt ? 'Confirmed by phone.' : r.callRequestedAt ? 'The customer asked for a call.' : 'Not yet called. The customer cannot pay until you confirm.'}
+            {r.callConfirmedAt
+              ? 'Confirmed by phone.'
+              : r.callRequestedAt
+                ? 'The customer asked for a call. Call them on the number above, then mark it confirmed.'
+                : 'Not yet called. Call the customer (or take their call), then mark it confirmed; they cannot pay until you do.'}
           </p>
           {!r.callConfirmedAt && (
             <div>
@@ -499,7 +541,31 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
             Routed estimate <span className="font-mono tabular-nums">{r.estimatedKm} km</span>. Confirm the real
             distance; the price is recomputed on it.
           </p>
-          {(tolls.data?.length ?? 0) > 0 && <TollPicker tolls={tolls.data!} value={tollIds} onChange={setTollIds} />}
+          {suggested.length > 0 && !touchedTolls && (
+            <p className="text-xs text-text-muted">Tolls below are suggested from the road route. Check them before confirming.</p>
+          )}
+          {(tolls.data?.length ?? 0) > 0 && manualToll.trim() === '' && (
+            <TollPicker
+              tolls={tolls.data!}
+              value={pickedTolls}
+              onChange={(ids) => {
+                setTouchedTolls(true);
+                setTollIds(ids);
+              }}
+            />
+          )}
+          <div className="w-48">
+            <Input
+              label="Manual toll amount (PHP)"
+              hint="Replaces the tolls above. 0 = no tolls."
+              type="number"
+              min={0}
+              step="0.01"
+              numeric
+              value={manualToll}
+              onChange={(e) => setManualToll(e.target.value)}
+            />
+          </div>
           <div className="flex flex-wrap items-end gap-2">
             <div className="w-32">
               <Input label="Confirmed km" type="number" min={0.1} step={0.1} numeric value={km} onChange={(e) => setKm(e.target.value)} />
@@ -515,7 +581,7 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
           {r.confirmedKm !== null ? 'Final price' : 'Estimate'} · <span className="font-mono">{formatPeso(r.price.totalPhp)}</span>
         </h3>
         <PriceBreakdown price={r.price} />
-        {r.capPhp !== null && <p className="text-xs text-text-muted">Customer cap {formatPeso(r.capPhp)}</p>}
+        {r.capPhp !== null && <p className="text-xs text-text-muted">Top of the customer's estimate {formatPeso(r.capPhp)}</p>}
       </section>
       {open && (
         <section className={section}>
@@ -525,12 +591,15 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
               <Input label="Agreed price (PHP)" type="number" min={1} numeric value={price} onChange={(e) => setPrice(e.target.value)} />
             </div>
             <Button variant="approve" disabled={!(Number(price) > 0) || agree.isPending} onClick={() => setAsking(true)}>
-              {r.status === 'agreed' ? 'Update agreed price' : 'Accept price'}
+              {r.status === 'agreed' ? 'Update agreed price' : 'Set agreed price'}
             </Button>
           </div>
           {r.agreedPricePhp !== null && (
             <p className="text-sm font-medium text-text">
-              Agreed: <span className="font-mono tabular-nums">{formatPeso(r.agreedPricePhp)}</span>
+              Agreed: <span className="font-mono tabular-nums">{formatPeso(r.agreedPricePhp)}</span>{' '}
+              <span className="font-normal text-text-muted">
+                {r.acceptedPricePhp === r.agreedPricePhp ? '· accepted by the customer' : '· waiting for the customer to accept'}
+              </span>
             </p>
           )}
         </section>
@@ -548,16 +617,29 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
       <ConfirmDialog
         open={asking}
         tone="approve"
-        title={r.status === 'agreed' ? 'Update the agreed price?' : 'Accept this price?'}
+        title={r.status === 'agreed' ? 'Update the agreed price?' : 'Set the agreed price?'}
         body={
-          <p>
-            The truck invoice will charge <span className="font-mono font-semibold">{formatPeso(Number(price))}</span>.
-            {overCap
-              ? ` That is above the customer's ${formatPeso(r.capPhp!)} cap, so they must approve it before paying.`
-              : ' The customer can then pay online or in cash.'}
-          </p>
+          <div className="flex flex-col gap-2">
+            <p>
+              {r.agreedPricePhp !== null ? (
+                <>
+                  <span className="font-mono">{formatPeso(r.agreedPricePhp)}</span> becomes{' '}
+                </>
+              ) : (
+                'The truck invoice will charge '
+              )}
+              <span className="font-mono font-semibold">{formatPeso(Number(price))}</span>. The customer is notified and
+              must accept it before paying; any unpaid invoice and payment link at the old price is voided.
+            </p>
+            {(offBy > 0.3 || overCap) && (
+              <Alert type="warning" header="Double-check the figure">
+                That is {Math.round(offBy * 100)}% away from the route price of {formatPeso(r.price.totalPhp)}
+                {overCap ? `, and above the ${formatPeso(r.capPhp!)} top of the customer's estimate` : ''}.
+              </Alert>
+            )}
+          </div>
         }
-        confirmLabel={r.status === 'agreed' ? 'Update price' : 'Accept price'}
+        confirmLabel={r.status === 'agreed' ? 'Update price' : 'Set price'}
         pending={agree.isPending}
         onConfirm={() => agree.mutate()}
         onCancel={() => setAsking(false)}

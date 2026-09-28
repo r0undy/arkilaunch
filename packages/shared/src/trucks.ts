@@ -62,14 +62,24 @@ export const TruckRequestCreateSchema = TruckEstimateRequestSchema.extend({
   // A pickup in the past can never be run.
   scheduledFor: z.coerce.date().refine((d) => d.getTime() > Date.now(), { message: 'scheduledFor must be in the future' }),
   notes: z.string().trim().max(1000).optional(),
-  // The customer's project site this trip serves; it needs its proof on
-  // file (site photo + permit/NTP/title/clearance) and staff open it.
-  projectSiteId: z.string().uuid(),
+  // The company the trip is booked for (one of the caller's own; checkout
+  // needs it verified), and what goes on the truck, which both sides read.
+  customerId: z.string().uuid(),
+  loadDescription: z.string().trim().min(1).max(300),
+  // Optional: one of that company's sites, which pins the drop-off. A
+  // truck trip serves the company, so the site needs no proof.
+  projectSiteId: z.string().uuid().optional(),
 }).strict();
 export type TruckRequestCreate = z.infer<typeof TruckRequestCreateSchema>;
 
 export const TruckAgreeSchema = z.object({ pricePhp: z.number().positive().max(100_000_000) }).strict();
 export type TruckAgree = z.infer<typeof TruckAgreeSchema>;
+
+// POST /me/truck-requests/:id/approve-price: the customer accepts the price
+// they were shown. A staff change in between makes it a 409, never a
+// silent accept of a figure they did not see.
+export const TruckAcceptPriceSchema = z.object({ pricePhp: z.number().positive().max(100_000_000) }).strict();
+export type TruckAcceptPrice = z.infer<typeof TruckAcceptPriceSchema>;
 
 // PATCH /truck-requests/:id/crew: who drives and loads (site hub personnel).
 export const TruckCrewSchema = z
@@ -80,8 +90,14 @@ export const TruckCrewSchema = z
   .strict();
 export type TruckCrew = z.infer<typeof TruckCrewSchema>;
 
+// A manual toll amount, when given, replaces the picked tolls with one
+// line (0 = no tolls on this trip).
 export const TruckKmConfirmSchema = z
-  .object({ km: z.number().positive().max(5000), tollRateIds: z.array(z.string().uuid()).max(20).optional() })
+  .object({
+    km: z.number().positive().max(5000),
+    tollRateIds: z.array(z.string().uuid()).max(20).optional(),
+    manualTollPhp: z.number().nonnegative().max(1_000_000).optional(),
+  })
   .strict();
 export type TruckKmConfirm = z.infer<typeof TruckKmConfirmSchema>;
 
@@ -104,6 +120,15 @@ export interface TruckRoute {
   km: number;
   minutes: number;
   line: [number, number][];
+  // Staff route only: the expressways the road route runs on, for the toll
+  // picker's suggestion (ph-tolls.ts suggestTolls).
+  tollHints?: TollHint[];
+}
+
+export interface TollHint {
+  expressway: string;
+  entry: string | null;
+  exit: string | null;
 }
 
 // POST /me/truck-requests/estimate. `route` is null when the router gave
@@ -228,12 +253,23 @@ export interface TruckRequestResponse {
   // The negotiated price staff accepted; what the invoice charges. Null
   // until agreed.
   agreedPricePhp: number | null;
-  // Locked at request time; charging above it needs the customer's OK.
+  // The high end of the request-time estimate; staff are warned when the
+  // agreed price goes above it.
   capPhp: number | null;
+  // The agreed price the customer last accepted. Checkout needs it to equal
+  // agreedPricePhp: every staff price change is accepted again.
+  acceptedPricePhp: number | null;
   callRequestedAt: string | null;
   callConfirmedAt: string | null;
-  // Null on requests made before sites were required (0055).
+  // Optional since 0066; null on requests made before 0055.
   projectSiteId: string | null;
+  // 0066: the company the trip is for and what it carries (null on older
+  // requests), and who asked, so staff can call them.
+  customerId: string | null;
+  companyName: string | null;
+  loadDescription: string | null;
+  requesterName: string | null;
+  requesterPhone: string | null;
   // Crew on the trip (0059); null until staff name them.
   driverName: string | null;
   helperName: string | null;

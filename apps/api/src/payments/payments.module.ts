@@ -11,5 +11,7 @@ import { PAYMENTS_PORT } from './payments.tokens.js';
 @Module({
   controllers: [PaymentsController, TruckPaymentsController, PaymentsWebhookController, CouponsController],
   providers: [PaymentsService, CouponsService, EventsService, { provide: PAYMENTS_PORT, useFactory: createPaymentsAdapter }],
+  // Trucks and bookings void unpaid invoices when a price or booking changes.
+  exports: [PaymentsService],
 })
 export class PaymentsModule {}

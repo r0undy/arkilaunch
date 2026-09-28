@@ -268,6 +268,7 @@ export interface TenantBrandingInput {
   headerColor: string | null;
   font: string | null;
   facebookUrl: string | null;
+  messengerUrl: string | null;
   tagline: string | null;
   about: string | null;
   phone: string | null;
@@ -293,7 +294,7 @@ export async function updateTenantBranding(
   try {
     await db.execute(
       sql`select tenants_update_branding(${tenantId}, ${actorUserId}, ${b.primaryColor}, ${b.headerColor}, ${b.font},
-        ${b.tagline}, ${b.about}, ${b.phone}, ${b.contactEmail}, ${b.address}, ${b.city}, ${b.province}, ${b.facebookUrl})`,
+        ${b.tagline}, ${b.about}, ${b.phone}, ${b.contactEmail}, ${b.address}, ${b.city}, ${b.province}, ${b.facebookUrl}, ${b.messengerUrl})`,
     );
   } catch (err) {
     rethrowCompanyNotFound(err);
@@ -356,6 +357,7 @@ export async function getTenantBranding(
     header_color: string | null;
     font: string | null;
     facebook_url: string | null;
+    messenger_url: string | null;
     tagline: string | null;
     about: string | null;
     phone: string | null;
@@ -376,6 +378,7 @@ export async function getTenantBranding(
     headerColor: r.header_color,
     font: r.font,
     facebookUrl: r.facebook_url,
+    messengerUrl: r.messenger_url,
     tagline: r.tagline,
     about: r.about,
     phone: r.phone,

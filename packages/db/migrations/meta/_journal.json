@@ -456,6 +456,13 @@
       "when": 1790400026000,
       "tag": "0065_equipment_options_photo_credit",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1790400027000,
+      "tag": "0066_qa_batch_14_22",
+      "breakpoints": true
     }
   ]
 }

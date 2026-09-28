@@ -2,7 +2,7 @@ import { createRoute } from '@tanstack/react-router';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Suspense, useState } from 'react';
 import { LocateFixed, X } from 'lucide-react';
-import type { TruckEstimateResponse, TruckRequestResponse } from '@arkilaunch/shared';
+import type { CustomerSiteResponse, TruckEstimateResponse, TruckRequestResponse } from '@arkilaunch/shared';
 import { PinMap, type LatLng } from '../components/pin-map.js';
 import { PageHeader } from '../components/page-header.js';
 import { formatDrive, hasWebGL, pinned, TripCanvas, type Which } from '../components/route-map.js';
@@ -16,7 +16,7 @@ import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { Select } from '../components/select.js';
 import { Tabs } from '../components/tabs.js';
-import { customerSitesQueries, MY_TRUCK_REQUESTS, trucksQueries } from '../lib/queries.js';
+import { companiesQueries, customerSitesQueries, MY_TRUCK_REQUESTS, trucksQueries } from '../lib/queries.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { EstimateRange, PriceBreakdown, TruckRequestCard } from '../components/truck-trip.js';
 import { EMPTY_LOCATION, LocationPicker, locationLabel, type PhLocation } from '../components/location-picker.js';
@@ -50,7 +50,9 @@ function tomorrowMorning() {
 type Tab = 'book' | 'requests';
 
 function TrucksPage() {
-  const [tab, setTab] = useState<Tab>('book');
+  // ?open=TRK-... (a notification) opens that trip on Your requests.
+  const { open } = accountTrucksRoute.useSearch();
+  const [tab, setTab] = useState<Tab>(open ? 'requests' : 'book');
   const [justCreated, setJustCreated] = useState<string | null>(null);
   const active = useQuery(trucksQueries.mine(1, 0, '', 'open'));
   return (
@@ -77,7 +79,7 @@ function TrucksPage() {
             }}
           />
         ) : (
-          <YourRequests openId={justCreated} />
+          <YourRequests openId={justCreated} openCode={open ?? null} />
         )}
       </div>
     </div>
@@ -95,9 +97,17 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
   const [notes, setNotes] = useState('');
   const [when, setWhen] = useState(tomorrowMorning);
   const [locating, setLocating] = useState(false);
+  const [load, setLoad] = useState('');
+  // The trip is booked for a company (the only one, else the first verified
+  // one, until the customer picks); its sites are an optional drop-off.
+  const companies = useQuery(companiesQueries.mine());
+  const [pickedCompany, setPickedCompany] = useState('');
+  const companyId =
+    pickedCompany ||
+    (companies.data?.length === 1 ? companies.data[0]!.id : (companies.data?.find((c) => c.kycStatus === 'approved')?.id ?? ''));
   const sites = useQuery(customerSitesQueries.mine());
+  const companySites = (sites.data ?? []).filter((site) => site.customerId === companyId);
   const [siteId, setSiteId] = useState('');
-  const chosenSite = (sites.data ?? []).find((site) => site.id === siteId);
   const gl = hasWebGL();
 
   const update = (which: Which, patch: Partial<Side>) => setSides((s) => ({ ...s, [which]: { ...s[which], ...patch } }));
@@ -116,6 +126,21 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
       .filter(Boolean)
       .join(', ');
     update(which, { detail, place: place ?? EMPTY_LOCATION });
+  }
+
+  // A site is a destination: it pins the drop-off at the site and names it
+  // by the site's own address, not a geocoder's guess.
+  function chooseSite(site: CustomerSiteResponse | undefined) {
+    setSiteId(site?.id ?? '');
+    if (!site) return;
+    const detail = [site.line1, site.barangay && `Brgy. ${site.barangay}`].filter(Boolean).join(', ');
+    const place = matchPhLocation({ street: '', barangay: '', city: site.city ?? '', province: site.province ?? '', region: '', postalCode: '' });
+    update('dropoff', {
+      pin: { lat: site.latitude, lng: site.longitude },
+      detail: place ? detail : [detail, site.city, site.province].filter(Boolean).join(', '),
+      place: place ?? EMPTY_LOCATION,
+    });
+    setPlacing('pickup');
   }
 
   function locateMe() {
@@ -167,13 +192,17 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
         ...pinBody,
         scheduledFor: new Date(when).toISOString(),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
-        projectSiteId: siteId,
+        customerId: companyId,
+        loadDescription: load.trim(),
+        ...(siteId ? { projectSiteId: siteId } : {}),
       }),
     onSuccess: (r) => {
       toast.success('Truck requested', 'The rental team will confirm the distance and final price.');
       setSides({ pickup: EMPTY_SIDE, dropoff: EMPTY_SIDE });
       setPlacing('pickup');
       setNotes('');
+      setLoad('');
+      setSiteId('');
       void queryClient.invalidateQueries({ queryKey: MY_TRUCK_REQUESTS });
       onCreated(r);
     },
@@ -318,26 +347,54 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
             onChange={(e) => setWhen(e.target.value)}
             {...(whenError ? { error: whenError } : {})}
           />
+          {(companies.data?.length ?? 0) > 1 && (
+            <Select
+              id="truck-company"
+              label="Company"
+              value={companyId}
+              onChange={(e) => {
+                setPickedCompany(e.target.value);
+                setSiteId('');
+              }}
+            >
+              <option value="">Choose a company...</option>
+              {companies.data!.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.companyName}
+                  {c.kycStatus === 'approved' ? '' : ' (not verified yet)'}
+                </option>
+              ))}
+            </Select>
+          )}
+          {companies.data?.length === 0 && (
+            <p className="text-sm text-text-muted">Add your company under Applications first; the trip is booked for it.</p>
+          )}
           <Select
             id="truck-site"
-            label="Project site this trip serves"
+            label="Deliver to one of your sites (optional)"
+            hint="Pins the drop-off at the site."
             value={siteId}
-            onChange={(e) => setSiteId(e.target.value)}
-            {...(chosenSite && !chosenSite.proofComplete
-              ? { error: 'This site needs its proof first (a site photo and a permit, NTP, title or clearance). Add it under your company.' }
-              : {})}
+            onChange={(e) => chooseSite(companySites.find((site) => site.id === e.target.value))}
           >
-            <option value="">{(sites.data ?? []).length === 0 ? 'Add a project site under your company first' : 'Choose a site...'}</option>
-            {(sites.data ?? []).map((site) => (
+            <option value="">{companySites.length === 0 ? 'No saved sites; tap the map instead' : 'Choose a site...'}</option>
+            {companySites.map((site) => (
               <option key={site.id} value={site.id}>
-                {site.line1}, {site.city}
-                {site.proofComplete ? '' : ' (proof needed)'}
+                {[site.line1, site.city].filter(Boolean).join(', ')}
               </option>
             ))}
           </Select>
+          <Input
+            label="Equipment to load"
+            hint="What goes on the truck, so the rental team sends the right one."
+            placeholder="e.g. 1 CAT 320 excavator, about 22 t"
+            required
+            maxLength={300}
+            value={load}
+            onChange={(e) => setLoad(e.target.value)}
+          />
           <Button
             className="w-full"
-            disabled={!ready || !when || Boolean(whenError) || !chosenSite?.proofComplete}
+            disabled={!ready || !when || Boolean(whenError) || !companyId || !load.trim()}
             loading={submit.isPending}
             onClick={() => submit.mutate()}
           >
@@ -369,12 +426,16 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
   );
 }
 
-function YourRequests({ openId }: { openId: string | null }) {
+function YourRequests({ openId, openCode }: { openId: string | null; openCode: string | null }) {
   const [status, setStatus] = useState<'open' | 'closed'>('open');
   const [offset, setOffset] = useState(0);
   const list = useQuery(trucksQueries.mine(PAGE_SIZE, offset, '', status));
+  // The linked trip, open or past, found by its code.
+  const linked = useQuery({ ...trucksQueries.mine(1, 0, openCode ?? ''), enabled: !!openCode });
+  const linkedTrip = linked.data?.items.find((r) => r.code === openCode);
   return (
     <div className="flex flex-col gap-4">
+      {linkedTrip && <TruckRequestCard key={`linked-${linkedTrip.id}`} request={linkedTrip} initiallyOpen />}
       <div role="radiogroup" aria-label="Show" className="inline-flex w-fit rounded-md border border-border p-0.5">
         {(['open', 'closed'] as const).map((s) => (
           <button
@@ -420,5 +481,7 @@ function YourRequests({ openId }: { openId: string | null }) {
 export const accountTrucksRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/trucks',
+  validateSearch: (search: Record<string, unknown>): { open?: string } =>
+    typeof search.open === 'string' && /^TRK-\d{4}-\d+$/i.test(search.open) ? { open: search.open.toUpperCase() } : {},
   component: TrucksPage,
 });

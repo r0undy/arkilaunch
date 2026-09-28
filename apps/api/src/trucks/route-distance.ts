@@ -1,5 +1,5 @@
 import { UnprocessableEntityException, ServiceUnavailableException } from '@nestjs/common';
-import type { TruckRoute } from '@arkilaunch/shared';
+import { tollHintsFromSteps, type TruckRoute } from '@arkilaunch/shared';
 
 // Road distance between two free-text Philippine addresses: Nominatim to
 // geocode, OSRM to route. Native fetch, no SDK. The result is only ever an
@@ -41,7 +41,12 @@ type Pin = { lat: number; lon: number };
 
 type OsrmBody = {
   code?: string;
-  routes?: { distance?: number; duration?: number; geometry?: { coordinates?: unknown } }[];
+  routes?: {
+    distance?: number;
+    duration?: number;
+    geometry?: { coordinates?: unknown };
+    legs?: { steps?: { name?: string; ref?: string; destinations?: string; exits?: string }[] }[];
+  }[];
 };
 
 // OSRM's answer as km, minutes and the simplified GeoJSON line. A route
@@ -57,20 +62,27 @@ export function parseOsrm(body: OsrmBody): TruckRoute {
         .filter((c): c is number[] => Array.isArray(c) && c.length >= 2 && c.every((n) => Number.isFinite(n)))
         .map((c) => [c[0]!, c[1]!] as [number, number])
     : [];
+  const steps = route?.legs?.flatMap((leg) => leg.steps ?? []) ?? [];
   return {
     km: Math.max(0.1, Math.round(meters / 100) / 10),
     minutes: Math.round((route?.duration ?? 0) / 60),
     line,
+    ...(steps.length ? { tollHints: tollHintsFromSteps(steps) } : {}),
   };
 }
 
 // A map pin is routed as-is; only a missing pin falls back to geocoding
-// the typed place name.
-export async function roadRoute(pickup: string, dropoff: string, pins: { a?: Pin; b?: Pin } = {}): Promise<TruckRoute> {
+// the typed place name. `steps` adds the turn list, read for toll hints.
+export async function roadRoute(
+  pickup: string,
+  dropoff: string,
+  pins: { a?: Pin; b?: Pin } = {},
+  steps = false,
+): Promise<TruckRoute> {
   const a = pins.a ?? (await geocode(pickup));
   const b = pins.b ?? (await geocode(dropoff));
   const body = (await getJson(
-    new URL(`${OSRM}/${a.lon},${a.lat};${b.lon},${b.lat}?overview=simplified&geometries=geojson`),
+    new URL(`${OSRM}/${a.lon},${a.lat};${b.lon},${b.lat}?overview=simplified&geometries=geojson${steps ? '&steps=true' : ''}`),
   )) as OsrmBody;
   return parseOsrm(body);
 }

@@ -180,7 +180,7 @@ function NegotiationPage({ bookingId }: { bookingId: string }) {
       {booking.isError && <LoadFailed error={booking.error} onRetry={() => booking.refetch()} />}
       {booking.data && (
         <div className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,360px)]">
-          <NegotiationThread bookingId={bookingId} disabled={booking.data.status === 'cancelled'} />
+          <NegotiationThread base={`/bookings/${bookingId}`} disabled={booking.data.status === 'cancelled'} />
           <QuoteCard booking={booking.data} />
         </div>
       )}

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiErrorText, apiPost } from '../lib/api-client.js';
-import { bookingsQueries } from '../lib/queries.js';
+import type { NegotiationMessageResponse } from '@arkilaunch/shared';
+import { apiErrorText, apiGet, apiPost } from '../lib/api-client.js';
 import { formatDateTime, formatPeso } from '../lib/format.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
@@ -12,23 +12,32 @@ import { Input } from './input.js';
 // conversation on the booking instead, so an offer sits next to the quote
 // it is about. One component for both sides: the API derives who is
 // speaking from the JWT, so the customer account and the staff console
-// mount the same thread.
-export function NegotiationThread({ bookingId, disabled = false }: { bookingId: string; disabled?: boolean }) {
+// mount the same thread. Trucks and rentals share it too (the same
+// negotiation_messages rows): `base` is '/bookings/:id' for a rental,
+// '/me/truck-requests/:id' or '/truck-requests/:id' for a truck.
+// Polled, not pushed: a counter-offer landing ten seconds late costs nothing.
+export function NegotiationThread({ base, disabled = false }: { base: string; disabled?: boolean }) {
   const queryClient = useQueryClient();
-  const messages = useQuery(bookingsQueries.messages(bookingId));
+  const queryKey = ['thread', base] as const;
+  const messages = useQuery({
+    queryKey,
+    queryFn: () => apiGet<NegotiationMessageResponse[]>(`${base}/messages`),
+    refetchInterval: 10_000,
+  });
+  const fieldId = base.replace(/\W/g, '-');
   const [body, setBody] = useState('');
   const [offer, setOffer] = useState('');
 
   const send = useMutation({
     mutationFn: () =>
-      apiPost(`/bookings/${bookingId}/messages`, {
+      apiPost(`${base}/messages`, {
         body: body.trim(),
         ...(offer ? { offerPhp: Number(offer) } : {}),
       }),
     onSuccess: () => {
       setBody('');
       setOffer('');
-      return queryClient.invalidateQueries({ queryKey: ['booking', bookingId, 'messages'] });
+      return queryClient.invalidateQueries({ queryKey });
     },
   });
 
@@ -78,11 +87,11 @@ export function NegotiationThread({ bookingId, disabled = false }: { bookingId: 
       {!disabled && (
         <form onSubmit={submit} className="flex flex-col gap-3 border-t border-border px-4 py-4">
           <div className="flex flex-col gap-1">
-            <label htmlFor={`message-${bookingId}`} className="text-sm font-medium text-text">
+            <label htmlFor={`message${fieldId}`} className="text-sm font-medium text-text">
               Message
             </label>
             <textarea
-              id={`message-${bookingId}`}
+              id={`message${fieldId}`}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               maxLength={2000}
@@ -95,7 +104,7 @@ export function NegotiationThread({ bookingId, disabled = false }: { bookingId: 
             <div className="w-48">
               <Input
                 label="Counter-offer (PHP, optional)"
-                id={`offer-${bookingId}`}
+                id={`offer${fieldId}`}
                 type="number"
                 min={1}
                 step="0.01"

@@ -65,6 +65,12 @@ export const truckRequests = pgTable(
     // 0059: who drives and loads, for the site hub's personnel tab.
     driverName: text('driver_name'),
     helperName: text('helper_name'),
+    // 0066: the company the trip is booked for (the site is optional), what
+    // it carries, and the agreed price the customer last accepted. FK in
+    // SQL, like project_site_id.
+    customerId: uuid('customer_id'),
+    loadDescription: text('load_description'),
+    acceptedPricePhp: numeric('accepted_price_php', { precision: 14, scale: 2 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -72,6 +78,8 @@ export const truckRequests = pgTable(
     check('truck_requests_status_valid', sql`${t.status} IN ('estimated','km_confirmed','agreed','paid','cancelled')`),
     index('truck_requests_tenant_id_idx').on(t.tenantId),
     index('truck_requests_requested_by_idx').on(t.requestedBy),
+    index('truck_requests_customer_id_idx').on(t.customerId),
+    check('truck_requests_load_description_len', sql`${t.loadDescription} IS NULL OR char_length(${t.loadDescription}) BETWEEN 1 AND 300`),
   ],
 );
 

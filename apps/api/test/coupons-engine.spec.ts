@@ -17,7 +17,7 @@ import { fixtureCompanyId } from './fixture-company.js';
 describe('Coupons at checkout', () => {
   const events = new EventsService();
   const quotes = new QuotesService(new PricingEngineService(), events);
-  const bookings = new BookingsService(events, quotes);
+  const bookings = new BookingsService(events, quotes, new PaymentsService(new StubPaymentsAdapter(), new EventsService()));
   const couponsService = new CouponsService();
   let sessions = 0;
   const expired: string[] = [];
