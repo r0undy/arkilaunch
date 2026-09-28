@@ -15,6 +15,7 @@ import { BookingDrawer, type BookingDrawerTarget } from '../components/booking-d
 import { BookingSide } from '../components/booking-actions.js';
 import { StatusBadge } from '../components/status-badge.js';
 import { Tabs } from '../components/tabs.js';
+import { Alert } from '../components/alert.js';
 import { bookingCodeSearchPrefix, parseBookingCode } from '@arkilaunch/shared';
 import { formatDate, formatPeso, formatStatus, siteName } from '../lib/format.js';
 
@@ -146,7 +147,7 @@ function BookingsPage() {
         ]}
       />
       <div role="tabpanel" aria-label={service === 'truck' ? 'Truck service' : 'Equipment rental'}>
-        {list.isError && <p className="text-sm text-error">{apiErrorText(list.error)}</p>}
+        {list.isError && <Alert type="error">{apiErrorText(list.error)}</Alert>}
         {service === 'rental' ? (
           <Table
             columns={RENTAL_COLUMNS}
@@ -188,7 +189,7 @@ function BookingPage() {
           </Link>
         }
       />
-      {booking.isError && <p className="text-sm text-error">{apiErrorText(booking.error)}</p>}
+      {booking.isError && <Alert type="error">{apiErrorText(booking.error)}</Alert>}
       {booking.data && (
         <div className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,360px)]">
           <NegotiationThread bookingId={bookingId} disabled={booking.data.status === 'cancelled'} />

@@ -442,7 +442,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
         size="lg"
         footer={
           <>
-            <Button type="button" variant="secondary" onClick={() => setPreviewOpen(false)}>
+            <Button type="button" variant="ghost" onClick={() => setPreviewOpen(false)}>
               Close
             </Button>
             <Button type="button" onClick={create} loading={busy === 'create'}>

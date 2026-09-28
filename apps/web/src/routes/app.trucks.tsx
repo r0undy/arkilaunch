@@ -6,7 +6,6 @@ import { appLayoutRoute } from './_app.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
 import { formatDate, formatPeso } from '../lib/format.js';
 import { PriceBreakdown } from '../components/truck-trip.js';
-import { Surface } from '../components/surface.js';
 import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
@@ -18,6 +17,7 @@ import { SiteProofAdmin } from '../components/site-proof.js';
 import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
 import { EditButton, SummaryCard } from '../components/summary-card.js';
 import { Select } from '../components/select.js';
+import { Alert } from '../components/alert.js';
 
 export const settingsQuery = {
   queryKey: ['truck-settings'] as const,
@@ -105,7 +105,7 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
         size="xl"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setEditing(false)}>
+            <Button variant="ghost" onClick={() => setEditing(false)}>
               Cancel
             </Button>
             <Button loading={save.isPending} onClick={() => save.mutate()}>
@@ -300,7 +300,7 @@ export function TollsEditor() {
   );
   return (
     <section aria-label="Toll rates" className="flex flex-col gap-3">
-      {tolls.isError && <p className="text-sm text-error">{apiErrorText(tolls.error)}</p>}
+      {tolls.isError && <Alert type="error">{apiErrorText(tolls.error)}</Alert>}
       <Table
         columns={columns}
         rows={shown.slice(safeOffset, safeOffset + PAGE_SIZE)}
@@ -316,7 +316,7 @@ export function TollsEditor() {
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setAdding(false)}>
+            <Button variant="ghost" onClick={() => setAdding(false)}>
               Cancel
             </Button>
             <Button loading={add.isPending} disabled={!name.trim() || fee === ''} onClick={() => add.mutate()}>

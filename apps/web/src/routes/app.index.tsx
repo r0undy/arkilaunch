@@ -1,6 +1,6 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { useRef, useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import type { IncidentResponse, InvoiceSummaryResponse, WeatherSeverity } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { getCurrentRole } from '../lib/guards.js';
@@ -21,6 +21,11 @@ import { PageHeader } from '../components/page-header.js';
 import { WeatherBanner, type WeatherTone } from '../components/weather-banner.js';
 import { Surface } from '../components/surface.js';
 import { Modal } from '../components/modal.js';
+import { Container } from '../components/container.js';
+import { Tabs } from '../components/tabs.js';
+import { Alert } from '../components/alert.js';
+import { Button } from '../components/button.js';
+import { ExpandableSection } from '../components/expandable-section.js';
 import { formatRelativeTime } from '../lib/format-time.js';
 import { explainAdvisory } from '../lib/weather-explain.js';
 import {
@@ -29,7 +34,6 @@ import {
   formatInvoiceType,
   formatPeso,
   formatSeverity,
-  formatStatus,
   shortCode,
   weekStart,
 } from '../lib/format.js';
@@ -57,36 +61,12 @@ const SEVERITY_META: Record<
   },
 };
 
-// The dashboard's one repeated shape: a titled panel whose header carries its
-// running count on the right, so the queue size reads before the rows do.
-// Local to this route on purpose -- nothing else uses it yet.
-function ConsoleCard({
-  title,
-  badge,
-  children,
-}: {
-  title: ReactNode;
-  badge?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <Surface radius="md" elevation="sm" className="overflow-hidden p-0">
-      {/* AWS container header: title left, the count right, a divider. */}
-      <div className="flex items-center justify-between gap-2 border-b border-border px-5 py-3">
-        <div className="text-heading-lg text-text">{title}</div>
-        {badge && <p className="text-sm text-text-muted">{badge}</p>}
-      </div>
-      {children}
-    </Surface>
-  );
-}
-
 // One headline figure. Four of these replaced a seven-row summary rail: the
 // rail printed every number the API had, which left nothing looking more
 // important than anything else.
 function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'success' }) {
   return (
-    <div className="flex flex-col gap-0.5 border-r border-border px-4 py-3 last:border-r-0">
+    <div className="flex flex-col gap-0.5 border-r border-border px-4 py-3 even:border-r-0 sm:even:border-r sm:last:border-r-0">
       <span className="text-sm font-medium text-text-muted">
         {label}
       </span>
@@ -101,6 +81,11 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'suc
     </div>
   );
 }
+
+// A queue row: what it is on the left, the figure or next step on the right.
+const ROW =
+  'flex w-full items-center justify-between gap-3 border-b border-border px-5 py-2.5 text-left text-sm last:border-0 hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring';
+const FOOT_LINK = 'block border-t border-border px-5 py-2.5 text-sm font-medium text-accent hover:underline';
 
 type QueueTab = 'payments' | 'incidents' | 'weather';
 
@@ -135,11 +120,6 @@ function AdminDashboardPage() {
   // with a human decision attached (the review queue) was the third thing
   // read. They share one panel now, one visible at a time.
   const [tab, setTab] = useState<QueueTab>('payments');
-  const tabRefs = useRef<Record<QueueTab, HTMLButtonElement | null>>({
-    payments: null,
-    incidents: null,
-    weather: null,
-  });
   // Advisories opened as a stack of full banners above everything else --
   // on a bad weather day that pushed the entire dashboard below the fold.
   const [advisoriesOpen, setAdvisoriesOpen] = useState(false);
@@ -194,15 +174,6 @@ function AdminDashboardPage() {
     snapshot?.utilization.fleet.reduce((sum, u) => sum + u.runtimeHours, 0) ?? null;
   const pendingInvoices = invoices?.items ?? [];
 
-  function onTabKeyDown(event: React.KeyboardEvent, index: number) {
-    const delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-    if (delta === 0) return;
-    event.preventDefault();
-    const next = TABS[(index + delta + TABS.length) % TABS.length]!;
-    setTab(next.id);
-    tabRefs.current[next.id]?.focus();
-  }
-
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title="Dashboard" description="Fleet, weather, and work-queue overview." />
@@ -229,22 +200,82 @@ function AdminDashboardPage() {
           />
         </div>
         {/* Counts that tell you where to navigate, not what to decide. */}
-        <p className="border-t border-border px-4 py-2 text-sm text-text-muted">
-          {sites?.total ?? '--'} sites &middot; {fleet?.total ?? '--'} machines &middot;{' '}
-          {fleet ? inMaintenance : '--'} in maintenance &middot;{' '}
-          {fleet ? fleetItems.filter((e) => e.availabilityStatus === 'available').length : '--'}{' '}
-          available
-        </p>
+        <div className="border-t border-border px-4">
+          <ExpandableSection header={<span className="text-sm font-medium">Fleet details</span>}>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 pb-3 text-sm sm:grid-cols-4">
+              {(
+                [
+                  ['Sites', sites?.total],
+                  ['Machines', fleet?.total],
+                  ['In maintenance', fleet ? inMaintenance : null],
+                  ['Available', fleet ? fleetItems.filter((e) => e.availabilityStatus === 'available').length : null],
+                ] as const
+              ).map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-text-muted">{label}</dt>
+                  <dd className="font-mono tabular-nums text-text">{value ?? '--'}</dd>
+                </div>
+              ))}
+            </dl>
+          </ExpandableSection>
+        </div>
       </Surface>
 
-      {/* ---- Work waiting, each a click from its queue ---- */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatTile
-          label="Field logs to review"
-          value={reviewCount.data?.total ?? null}
-          hint="Logs the two-source match could not settle."
-          action={<Link to="/app/ocr" className="hover:underline">Open field logs</Link>}
+      {alerts.length > 0 && (
+        <Alert
+          type="warning"
+          header={`${alerts.length} ${alerts.length === 1 ? 'site is' : 'sites are'} under a weather advisory`}
+          action={
+            <Button variant="secondary" onClick={() => setAdvisoriesOpen(true)}>
+              Read the advisories
+            </Button>
+          }
         />
+      )}
+
+      {/* ---- The one queue with a human decision attached (RFC-2) ---- */}
+      <Container
+        flush
+        header={{
+          title: 'Needs you',
+          count: reviewCount.data?.total ?? null,
+          description: 'Field logs the two-source match could not settle.',
+        }}
+        footer={
+          <Link to="/app/ocr" className={FOOT_LINK}>
+            Open field logs
+          </Link>
+        }
+      >
+        {reviewItems.length === 0 ? (
+          <p className="px-5 py-3 text-sm text-text-muted">
+            {edtrList ? 'Queue clear. No field logs waiting on a human decision.' : 'Loading...'}
+          </p>
+        ) : (
+          reviewGroups.slice(0, 5).map((group) => (
+            <Link
+              key={`${group.equipmentId}|${group.week}`}
+              to="/app/ocr"
+              search={{
+                ...(group.equipmentId ? { equipment: group.equipmentId } : {}),
+                ...(group.week ? { week: group.week } : {}),
+              }}
+              className={ROW}
+            >
+              <span className="flex flex-col">
+                <span className="font-medium text-text">{machineName(group.equipmentId)}</span>
+                <span className="text-xs text-text-muted">{weekLabel(group.week)}</span>
+              </span>
+              <span className="shrink-0 text-accent">
+                Review {group.count} {group.count === 1 ? 'log' : 'logs'}
+              </span>
+            </Link>
+          ))
+        )}
+      </Container>
+
+      {/* ---- Other work waiting, each a click from its queue ---- */}
+      <div className="grid gap-3 sm:grid-cols-2">
         <StatTile
           label="Open truck requests"
           value={openTrucks.data?.total ?? null}
@@ -265,184 +296,63 @@ function AdminDashboardPage() {
         )}
       </div>
 
-      {alerts.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setAdvisoriesOpen(true)}
-          className="flex w-full items-center justify-between gap-3 rounded-md border-l-[3px] border-error bg-surface px-4 py-3 text-left hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-        >
-          <span className="min-w-0 text-sm font-medium text-text">
-            {alerts.length} {alerts.length === 1 ? 'site is' : 'sites are'} under a weather advisory
-          </span>
-          <span className="shrink-0 text-sm font-medium text-accent">Read the advisories</span>
-        </button>
-      )}
-
-      {/* ---- The one queue with a human decision attached (RFC-2) ---- */}
-      <ConsoleCard
-        title="Needs you"
-        badge={<span>Waiting: {edtrList ? reviewGroups.length : '--'}</span>}
-      >
-        {reviewItems.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-text-muted">
-            {edtrList ? 'Queue clear. No field logs waiting on a human decision.' : 'Loading...'}
-          </p>
-        ) : (
-          reviewGroups.slice(0, 5).map((group) => (
-            <Link
-              key={`${group.equipmentId}|${group.week}`}
-              to="/app/ocr"
-              search={{
-                ...(group.equipmentId ? { equipment: group.equipmentId } : {}),
-                ...(group.week ? { week: group.week } : {}),
-              }}
-              className="flex items-center justify-between border-b border-border px-4 py-2.5 text-sm last:border-0 hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
-            >
-              <span className="flex flex-col">
-                <span className="font-medium text-text">{machineName(group.equipmentId)}</span>
-                <span className="text-xs text-text-muted">{weekLabel(group.week)}</span>
-              </span>
-              <span className="text-accent">
-                Review {group.count} {group.count === 1 ? 'log' : 'logs'}
-              </span>
-            </Link>
-          ))
-        )}
-        <Link
-          to="/app/ocr"
-          className="block border-t border-border px-4 py-2 text-sm font-medium text-accent hover:underline"
-        >
-          Open field logs
-        </Link>
-      </ConsoleCard>
-
       {/* ---- Everything else, one at a time ---- */}
-      <ConsoleCard
-        title={
-          <div role="tablist" aria-label="Secondary queues" className="-my-3 -ml-5 flex">
-            {TABS.map((entry, index) => (
-              <button
-                key={entry.id}
-                ref={(node) => {
-                  tabRefs.current[entry.id] = node;
-                }}
-                type="button"
-                role="tab"
-                id={`queue-tab-${entry.id}`}
-                aria-selected={tab === entry.id}
-                aria-controls={`queue-panel-${entry.id}`}
-                tabIndex={tab === entry.id ? 0 : -1}
-                onClick={() => setTab(entry.id)}
-                onKeyDown={(event) => onTabKeyDown(event, index)}
-                className={[
-'-mb-px min-h-12 border-b-2 px-5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
-                  tab === entry.id ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text',
-                ].join(' ')}
-              >
-                {entry.label}
-              </button>
-            ))}
-          </div>
-        }
-      >
+      <Container flush>
+        <Tabs label="Secondary queues" items={TABS} value={tab} onChange={setTab} />
+
         {tab === 'payments' && (
-          <div id="queue-panel-payments" role="tabpanel" aria-labelledby="queue-tab-payments">
+          <div role="tabpanel" aria-label="Payments">
             {pendingInvoices.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-text-muted">
+              <p className="px-5 py-3 text-sm text-text-muted">
                 {invoices ? 'Nothing awaiting payment.' : 'Loading...'}
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-text">
-                  <thead>
-                    <tr className="border-b border-border text-left text-sm text-text-muted">
-                      <th className="px-4 py-2 font-medium">Invoice</th>
-                      <th className="px-4 py-2 font-medium">Type</th>
-                      <th className="px-4 py-2 text-right font-medium">Amount</th>
-                      <th className="px-4 py-2 font-medium">Due</th>
-                      <th className="px-4 py-2 text-center font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pendingInvoices.slice(0, 6).map((invoice) => (
-                      <tr
-                        key={invoice.id}
-                        onClick={() => setInvoiceOpen(invoice)}
-                        className="cursor-pointer border-b border-border last:border-0 hover:bg-surface-sunk"
-                      >
-                        <td className="px-4 py-2 font-mono">
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setInvoiceOpen(invoice);
-                            }}
-                            className="text-accent hover:underline"
-                          >
-                            {shortCode('invoice', invoice.id)}
-                          </button>
-                        </td>
-                        <td className="px-4 py-2">{formatInvoiceType(invoice.invoiceType)}</td>
-                        <td className="px-4 py-2 text-right font-mono tabular-nums">
-                          {formatPeso(invoice.amount)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2 tabular-nums text-text-muted">{formatDate(invoice.dueDate)}</td>
-                        <td className="px-4 py-2 text-center text-text-muted">{formatStatus(invoice.status)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              pendingInvoices.slice(0, 6).map((invoice) => (
+                <button type="button" key={invoice.id} onClick={() => setInvoiceOpen(invoice)} className={ROW}>
+                  <span className="flex flex-col">
+                    <span className="font-medium text-text">{formatInvoiceType(invoice.invoiceType)}</span>
+                    <span className="text-xs text-text-muted">Due {formatDate(invoice.dueDate)}</span>
+                  </span>
+                  <span className="shrink-0 font-mono tabular-nums text-text">{formatPeso(invoice.amount)}</span>
+                </button>
+              ))
             )}
-            <Link
-              to="/app/payments"
-              className="block border-t border-border px-4 py-2 text-sm font-medium text-accent hover:underline"
-            >
+            <Link to="/app/payments" className={FOOT_LINK}>
               Open invoices
             </Link>
           </div>
         )}
 
         {tab === 'incidents' && (
-          <div id="queue-panel-incidents" role="tabpanel" aria-labelledby="queue-tab-incidents">
+          <div role="tabpanel" aria-label="Incidents">
             {(incidents?.items ?? []).length === 0 ? (
-              <p className="px-4 py-3 text-sm text-text-muted">
+              <p className="px-5 py-3 text-sm text-text-muted">
                 {incidents ? 'No weather incidents logged.' : 'Loading...'}
               </p>
             ) : (
               (incidents?.items ?? []).slice(0, 5).map((incident) => (
-                <button
-                  type="button"
-                  key={incident.id}
-                  onClick={() => setIncidentOpen(incident)}
-                  className="flex w-full items-center justify-between border-b border-border px-4 py-2.5 text-left text-sm last:border-0 hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
-                >
-                  <span className="flex flex-col border-l-[3px] border-error pl-3">
+                <button type="button" key={incident.id} onClick={() => setIncidentOpen(incident)} className={ROW}>
+                  <span className="flex flex-col">
                     <span className="font-medium text-text">
                       {incident.siteCity ?? incident.siteProvince ?? 'Unnamed site'}
                       {incident.severity ? ` - ${formatSeverity(incident.severity)}` : ''}
                     </span>
-                    <span className="text-xs text-text-muted">
-                      {formatDateTime(incident.occurredAt)}
-                    </span>
+                    <span className="text-xs text-text-muted">{formatDateTime(incident.occurredAt)}</span>
                   </span>
-                  <span className="text-accent">View</span>
+                  <span className="shrink-0 text-accent">View</span>
                 </button>
               ))
             )}
-            <Link
-              to="/app/incidents"
-              className="block border-t border-border px-4 py-2 text-sm font-medium text-accent hover:underline"
-            >
+            <Link to="/app/incidents" className={FOOT_LINK}>
               Open the incident log
             </Link>
           </div>
         )}
 
         {tab === 'weather' && (
-          <div id="queue-panel-weather" role="tabpanel" aria-labelledby="queue-tab-weather">
+          <div role="tabpanel" aria-label="Weather">
             {(sites?.items ?? []).length === 0 ? (
-              <p className="px-4 py-3 text-sm text-text-muted">
+              <p className="px-5 py-3 text-sm text-text-muted">
                 {sites ? 'No sites registered yet.' : 'Loading...'}
               </p>
             ) : (
@@ -452,30 +362,20 @@ function AdminDashboardPage() {
                 .sort((a, b) => Number(!!b.latestSeverity && b.latestSeverity !== 'none') - Number(!!a.latestSeverity && a.latestSeverity !== 'none'))
                 .slice(0, 8)
                 .map((site) => (
-                  <button
-                    type="button"
-                    key={site.id}
-                    onClick={() => setSiteOpen(site.id)}
-                    className="flex w-full items-center justify-between border-b border-border px-4 py-2 text-left text-sm last:border-0 hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
-                  >
-                    <span className="truncate text-text">
-                      {site.city ?? site.province ?? 'Unnamed site'}
-                    </span>
-                    <span className="text-text-muted">
+                  <button type="button" key={site.id} onClick={() => setSiteOpen(site.id)} className={ROW}>
+                    <span className="truncate text-text">{site.city ?? site.province ?? 'Unnamed site'}</span>
+                    <span className="shrink-0 text-text-muted">
                       {SEVERITY_META[(site.latestSeverity ?? 'none') as WeatherSeverity].headline}
                     </span>
                   </button>
                 ))
             )}
-            <Link
-              to="/app/deployment"
-              className="block border-t border-border px-4 py-2 text-sm font-medium text-accent hover:underline"
-            >
+            <Link to="/app/deployment" className={FOOT_LINK}>
               Open sites
             </Link>
           </div>
         )}
-      </ConsoleCard>
+      </Container>
 
       <Modal
         open={advisoriesOpen}

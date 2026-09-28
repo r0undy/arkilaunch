@@ -7,8 +7,8 @@ import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { CaptureModal } from '../components/capture-modal.js';
 import { DeploymentScanList } from '../components/deployment-scan-list.js';
 import { PageHeader } from '../components/page-header.js';
-import { Surface } from '../components/surface.js';
 import { useToast } from '../components/toast.js';
+import { Alert } from '../components/alert.js';
 
 // The screen a scan starts from: pick the deployment, then the camera opens
 // already scoped to it. Before this, capture was reached from the review
@@ -30,11 +30,7 @@ function DeploymentScanPage({ billingTo }: { billingTo?: string }) {
       />
 
       {error != null && (
-        <Surface radius="md" elevation="sm" className="border-error p-4">
-          <p className="text-sm text-error">
-            The deployment list could not be loaded, so scanning is unavailable right now.
-          </p>
-        </Surface>
+        <Alert type="error">The deployment list could not be loaded, so scanning is unavailable right now.</Alert>
       )}
 
       <DeploymentScanList

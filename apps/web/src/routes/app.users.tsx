@@ -14,6 +14,7 @@ import { useToast } from '../components/toast.js';
 import { formatRole } from '../lib/format.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { Button } from '../components/button.js';
+import { CopyButton } from '../components/copy-button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Modal } from '../components/modal.js';
@@ -198,7 +199,6 @@ function UserActions({ user }: { user: UserRow }) {
       {user.status === 'invited' && (
         <Button
           variant="secondary"
-          size="field"
           onClick={() => reinvite.mutate()}
           loading={reinvite.isPending}
         >
@@ -207,7 +207,6 @@ function UserActions({ user }: { user: UserRow }) {
       )}
       <Button
         variant="secondary"
-        size="field"
         onClick={() => setConfirmingReset(true)}
         loading={resetPassword.isPending}
       >
@@ -216,7 +215,6 @@ function UserActions({ user }: { user: UserRow }) {
       {user.status === 'disabled' ? (
         <Button
           variant="secondary"
-          size="field"
           onClick={() => setConfirmingReactivate(true)}
           loading={reactivate.isPending}
         >
@@ -225,17 +223,18 @@ function UserActions({ user }: { user: UserRow }) {
       ) : (
         <Button
           variant="secondary"
-          size="field"
           onClick={() => setConfirmingDeactivate(true)}
           loading={deactivate.isPending}
         >
           Remove access
         </Button>
       )}
+      {/* The raw token is long; copy it rather than print it in the row. */}
       {lastToken && (
-        <code className="rounded-sm bg-surface-sunk px-1.5 py-0.5 font-mono text-xs">
-          {lastToken}
-        </code>
+        <span className="inline-flex items-center gap-1 text-sm text-text-muted">
+          Invite token
+          <CopyButton value={lastToken} label="the invite token" />
+        </span>
       )}
 
       <ConfirmDialog

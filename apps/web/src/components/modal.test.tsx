@@ -33,6 +33,18 @@ describe('Modal', () => {
     await userEvent.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  // Cloudscape Modal: focus opens on the first field, never the dismiss X.
+  it('opens with focus on the first field', () => {
+    render(
+      <Modal open onClose={() => undefined} title="Add a coupon" footer={<button type="button">Save</button>}>
+        <label>
+          Code <input />
+        </label>
+      </Modal>,
+    );
+    expect(screen.getByRole('textbox', { name: 'Code' })).toHaveFocus();
+  });
 });
 
 describe('ConfirmDialog', () => {
@@ -74,5 +86,21 @@ describe('ConfirmDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('is an alert dialog that opens on Cancel, the safe choice', () => {
+    render(
+      <ConfirmDialog
+        open
+        title="Delete coupon?"
+        body={<p>Customers can no longer use it.</p>}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={() => undefined}
+        onCancel={() => undefined}
+      />,
+    );
+    expect(screen.getByRole('alertdialog', { name: 'Delete coupon?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
   });
 });

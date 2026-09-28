@@ -471,3 +471,17 @@ There is no tight 2–3px tier. Even the smallest service-tag chip starts at 4px
 - **Product surfaces:** this DESIGN.md captures the marketing homepage only. The AWS Console, the service-specific marketing pages (S3, EC2, Bedrock, SageMaker), and the AWS documentation site each carry their own visual systems — Cloudscape for the Console, a different editorial system for documentation.
 - **Mobile-first breakpoints:** the marketing homepage reflows aggressively below 1024px (hero switches to single-column, card grid collapses to 1-up) but breakpoint-specific token overrides are not captured here.
 - **Animation:** the hero thumbnail strip appears to auto-advance through gradient combinations on a timer; easing curves and transition duration are not represented in the extracted static tokens.
+
+## Console Components (Cloudscape)
+
+Added 2026-09-28 (CR: console-components) to close the Known Gap above for the signed-in app. These are the Cloudscape design system's component rules as ArkiLaunch applies them; the colors stay Yardboard's (DSD §2.1). Spacing follows Cloudscape's container rhythm (20px inside containers and dialogs), not the marketing card's 24px.
+
+- **Modal:** header (title, optional description, a dismiss X), scrolling content, footer with right-aligned actions: a link-style "Cancel", then one primary button. Escape and the X dismiss. Focus opens inside the content. Actions never sit in the content.
+- **Delete / confirm pattern:** the title is the question ("Delete coupon SAVE10?"); the body names the consequence; Cancel (link) then the confirm button. Announced as an alert dialog.
+- **Flashbar:** page-level feedback at the top of the content area. Types: success, error, warning, info (plus in-progress, not used). Each bar: icon, header, optional content, optional action, dismiss X. Errors persist until dismissed.
+- **Alert:** in-context feedback inside a page or container. Types: info, success, warning, error. Icon, optional header, content, optional action, optionally dismissible. Not for transient confirmations (that is the Flashbar).
+- **Status indicator:** a colored status icon followed by a text label; no fill, no border. The standard for a resource's state in tables and detail pages.
+- **Badge:** a small filled label for counts and short metadata, never a status.
+- **Key-value pairs:** label above value, in columns; the value is the emphasis.
+- **Expandable section:** a caret plus header that shows or hides secondary content; collapsed by default unless the content is primary.
+- **Table on narrow screens:** Cloudscape offers Cards as the alternative collection view; ArkiLaunch switches a table to cards below 768px.

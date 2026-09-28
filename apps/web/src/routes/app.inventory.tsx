@@ -17,6 +17,7 @@ import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { EquipmentFormModal } from '../components/equipment-form-modal.js';
 import { MaintenanceModal } from '../components/maintenance-modal.js';
 import { useToast } from '../components/toast.js';
+import { Alert } from '../components/alert.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { getCurrentRole } from '../lib/guards.js';
 import { Boxes } from 'lucide-react';
@@ -113,7 +114,7 @@ function BlocksEndingSoon({ manageable }: { manageable: boolean }) {
   });
   if (!soon.data || soon.data.length === 0) return null;
   return (
-    <div role="status" className="flex flex-col gap-1 rounded-md border border-warning px-3 py-2 text-sm">
+    <Alert type="info" header="Blocks ending soon">
       {soon.data.map((w) => {
         const hours = Math.max(0, Math.round((new Date(w.endsAt).getTime() - Date.now()) / 3_600_000));
         return (
@@ -130,7 +131,7 @@ function BlocksEndingSoon({ manageable }: { manageable: boolean }) {
           </div>
         );
       })}
-    </div>
+    </Alert>
   );
 }
 

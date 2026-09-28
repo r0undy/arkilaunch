@@ -4,8 +4,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { BookingDetailResponse, RescheduleSuggestion } from '@arkilaunch/shared';
 import { bookingsQueries } from '../lib/queries.js';
 import { apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
-import { formatDate, formatPeso, formatStatus, shortCode } from '../lib/format.js';
-import { Surface } from './surface.js';
+import { formatDate, formatDateTime, formatPeso, formatStatus } from '../lib/format.js';
+import { Container } from './container.js';
+import { Alert } from './alert.js';
 import { Button } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { SiteProofAdmin } from './site-proof.js';
@@ -18,7 +19,6 @@ import { useToast } from './toast.js';
 // drawer's Actions tab and the full /app/bookings/$bookingId page. The API
 // guards every status; these cards only arrange it.
 
-const heading = 'text-heading-md text-text';
 
 function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();
@@ -41,8 +41,8 @@ function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
   const [ask, setAsk] = useState<{ request: BookingDetailResponse['changeRequests'][number]; decision: 'approved' | 'rejected' } | null>(null);
 
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
-      <h2 className={heading}>Change requests</h2>
+    <Container header={{ title: 'Change requests' }}>
+      <div className="flex flex-col gap-3">
       {booking.changeRequests.length === 0 && <p className="text-sm text-text-muted">None.</p>}
       {booking.changeRequests.map((request) => (
         <div key={request.id} className="flex flex-col gap-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
@@ -90,41 +90,46 @@ function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
         }}
         onCancel={() => setAsk(null)}
       />
-    </Surface>
+      </div>
+    </Container>
   );
 }
 
 // When a confirmed booking must move: the nearest free same-length window on
 // each unit, then other free units of the same type. Advice only; staff
 // agree the move with the customer in the thread.
-function RescheduleCard({ bookingId }: { bookingId: string }) {
+function RescheduleCard({ booking }: { booking: BookingDetailResponse }) {
+  const bookingId = booking.id;
+  const nameOf = (id: string) => booking.items.find((i) => i.equipmentId === id)?.equipmentName ?? 'This machine';
   const suggest = useMutation({
     mutationFn: () => apiGet<RescheduleSuggestion>(`/bookings/${bookingId}/reschedule-suggestion`),
   });
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5 text-sm">
-      <h2 className={heading}>Reschedule</h2>
+    <Container header={{ title: 'Reschedule' }}>
+      <div className="flex flex-col gap-3 text-sm">
       <div>
         <Button variant="secondary" loading={suggest.isPending} onClick={() => suggest.mutate()}>
           Suggest a new slot
         </Button>
       </div>
-      {suggest.isError && <p className="text-error">{apiErrorText(suggest.error)}</p>}
+      {suggest.isError && <Alert type="error">{apiErrorText(suggest.error)}</Alert>}
       {suggest.data?.items.map((item) => (
         <div key={item.equipmentId} className="flex flex-col gap-1">
           <p className="text-text">
-            {shortCode('equipment', item.equipmentId)}:{' '}
+            {nameOf(item.equipmentId)}:{' '}
             {item.sameUnit
-              ? `${new Date(item.sameUnit.start).toLocaleString()} - ${new Date(item.sameUnit.end).toLocaleString()}`
+              ? `${formatDateTime(item.sameUnit.start)} - ${formatDateTime(item.sameUnit.end)}`
               : 'no free window within 60 days'}
           </p>
           <p className="text-text-muted">
-            Other free units:{' '}
-            {item.alternatives.length ? item.alternatives.map((id) => shortCode('equipment', id)).join(', ') : 'none'}
+            {item.alternatives.length
+              ? `${item.alternatives.length} other free ${item.alternatives.length === 1 ? 'unit' : 'units'} of this type`
+              : 'No other free unit of this type'}
           </p>
         </div>
       ))}
-    </Surface>
+      </div>
+    </Container>
   );
 }
 
@@ -143,8 +148,8 @@ function CallCard({ booking }: { booking: BookingDetailResponse }) {
     onError: (e) => toast.error('Not saved', apiErrorText(e)),
   });
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
-      <h2 className={heading}>Phone confirmation</h2>
+    <Container header={{ title: 'Phone confirmation' }}>
+      <div className="flex flex-col gap-3">
       <p className="text-sm text-text-muted">
         {booking.callConfirmedAt
           ? `Confirmed ${formatDate(booking.callConfirmedAt)}.`
@@ -167,7 +172,8 @@ function CallCard({ booking }: { booking: BookingDetailResponse }) {
         onConfirm={() => confirm.mutate()}
         onCancel={() => setAsking(false)}
       />
-    </Surface>
+      </div>
+    </Container>
   );
 }
 
@@ -193,8 +199,8 @@ function DeliveryCard({ booking }: { booking: BookingDetailResponse }) {
   if (booking.status !== 'confirmed' && booking.status !== 'active') return null;
   const deliver = booking.status === 'confirmed';
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
-      <h2 className={heading}>Delivery</h2>
+    <Container header={{ title: 'Delivery' }}>
+      <div className="flex flex-col gap-3">
       <p className="text-sm text-text-muted">
         {deliver ? 'Paid. Mark delivered once the machines are on site.' : 'On site. Mark returned once every machine is back.'}
       </p>
@@ -214,7 +220,8 @@ function DeliveryCard({ booking }: { booking: BookingDetailResponse }) {
         onConfirm={() => move.mutate(deliver ? 'deliver' : 'return')}
         onCancel={() => setAsking(false)}
       />
-    </Surface>
+      </div>
+    </Container>
   );
 }
 
@@ -223,8 +230,8 @@ export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <CallCard booking={booking} />
-      <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
-        <h2 className={heading}>Quote</h2>
+      <Container header={{ title: 'Quote' }}>
+        <div className="flex flex-col gap-3">
         {quote ? (
           <p className="text-sm text-text">
             Revision {quote.revision} &middot; {formatStatus(quote.status)} &middot;{' '}
@@ -247,9 +254,10 @@ export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
             <Button variant="secondary">Print quote</Button>
           </Link>
         )}
-      </Surface>
-      <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5 text-sm">
-        <h2 className={heading}>Site</h2>
+        </div>
+      </Container>
+      <Container header={{ title: 'Site' }}>
+        <div className="flex flex-col gap-2 text-sm">
         <p className="text-text">{booking.siteCity ?? booking.siteProvince ?? '--'}</p>
         {booking.siteContact && <p className="text-text-muted">Contact: {booking.siteContact}</p>}
         {booking.siteNotes && <p className="text-text-muted">Access: {booking.siteNotes}</p>}
@@ -257,15 +265,16 @@ export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
         {booking.status === 'active' && <SiteEquipmentWeather siteId={booking.projectSiteId} />}
         {booking.items.map((item) => (
           <p key={`${item.equipmentId}-${String(item.start)}`} className="text-text-muted">
-            {shortCode('equipment', item.equipmentId)}: {formatDate(item.start)} - {formatDate(item.end)}
+            {item.equipmentName ?? 'Machine'}: {formatDate(item.start)} - {formatDate(item.end)}
           </p>
         ))}
-      </Surface>
+        </div>
+      </Container>
       <DeliveryCard booking={booking} />
       {/* The field sheet is for machines on site: hidden until delivered. */}
       {['active', 'completed'].includes(booking.status) && <EdtrSheetCard bookingId={booking.id} printable />}
       <PendingRequests booking={booking} />
-      {booking.status === 'confirmed' && <RescheduleCard bookingId={booking.id} />}
+      {booking.status === 'confirmed' && <RescheduleCard booking={booking} />}
     </div>
   );
 }

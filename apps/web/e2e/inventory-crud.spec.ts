@@ -56,7 +56,7 @@ test('a machine can be added, edited and retired from the inventory', async ({ p
 
   // --- retire ------------------------------------------------------------
   await card.getByRole('button', { name: 'Delete' }).click();
-  const confirm = page.getByRole('dialog');
+  const confirm = page.getByRole('alertdialog');
   await expect(confirm.getByRole('heading', { name: 'Delete Asset?' })).toBeVisible();
   // The confirm must not repeat the frame's promise to destroy the logs.
   await expect(confirm.getByText(/history, field logs and the invoices they priced are kept/i))

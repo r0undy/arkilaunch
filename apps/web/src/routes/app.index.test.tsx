@@ -84,7 +84,8 @@ describe('Admin dashboard', () => {
 
     // One site is under advisory, one is clear: the summary counts the
     // advisory, and the full banner is not on the page until asked for.
-    const trigger = await screen.findByRole('button', { name: /1 site is under a weather advisory/ });
+    expect(await screen.findByText('1 site is under a weather advisory')).toBeInTheDocument();
+    const trigger = screen.getByRole('button', { name: 'Read the advisories' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
     await userEvent.click(trigger);

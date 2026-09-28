@@ -93,7 +93,7 @@ function SetupChecklist() {
         description="You can request quotes any time; payment opens once your company is verified."
         footer={
           <>
-            <Button variant="secondary" onClick={close}>
+            <Button variant="ghost" onClick={close}>
               Later
             </Button>
             <Link to={next.to} onClick={close}>

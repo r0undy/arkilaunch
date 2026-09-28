@@ -646,7 +646,7 @@ function ApproveModal({ item, machine, onClose, onApproved, toast }: ApproveModa
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={onClose}>
+            <Button variant="ghost" onClick={onClose}>
               Not now
             </Button>
             <Button

@@ -14,6 +14,7 @@ import { StatusBadge } from '../components/status-badge.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { useToast } from '../components/toast.js';
+import { Alert } from '../components/alert.js';
 import { formatDate, formatPeso } from '../lib/format.js';
 
 // cr-arkilaunch-coupons.md: the company's coupon codes. A coupon comes off
@@ -76,7 +77,7 @@ function CreateCouponModal({ open, onClose }: { open: boolean; onClose: () => vo
       description="Customers enter the code at checkout. It comes off the rent, never the deposit."
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" form="new-coupon" variant="primary" loading={create.isPending}>
@@ -158,7 +159,13 @@ const COLUMNS: TableColumn<CouponResponse>[] = [
   { header: 'Discount', kind: 'text', cell: discountText },
   {
     header: 'Uses', kind: 'number',
-    cell: (c) => `${c.redeemedCount}${c.maxUses ? ` of ${c.maxUses}` : ''}${c.oncePerCustomer ? ', once per company' : ''}`,
+    cell: (c) => (
+      <>
+        {c.redeemedCount}
+        {c.maxUses ? ` / ${c.maxUses}` : ''}
+        {c.oncePerCustomer && <span className="block font-sans text-xs text-text-muted">once per company</span>}
+      </>
+    ),
   },
   { header: 'Expires', kind: 'date', cell: (c) => (c.expiresAt ? formatDate(c.expiresAt) : 'Never') },
   { header: 'Status', kind: 'status', cell: (c) => <StatusBadge status={c.active ? 'active' : 'inactive'} label={c.active ? 'Active' : 'Off'} /> },
@@ -176,7 +183,7 @@ function CouponsPage() {
         description="Codes your customers enter at checkout. A coupon comes off the rent, never the consumable deposit."
         actions={<Button onClick={() => setCreating(true)}>New coupon</Button>}
       />
-      {coupons.isError && <p className="text-sm text-error">{apiErrorText(coupons.error)}</p>}
+      {coupons.isError && <Alert type="error">{apiErrorText(coupons.error)}</Alert>}
       <Table
         columns={COLUMNS}
         rows={coupons.data?.items ?? []}

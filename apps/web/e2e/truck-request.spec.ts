@@ -73,7 +73,8 @@ test.describe('self-loading truck', () => {
     // Truck service lives under Bookings now; /app/trucks lands on its tab.
     await admin.goto('/app/trucks');
     await expect(admin.getByRole('tab', { name: /Truck service/ })).toHaveAttribute('aria-selected', 'true');
-    await admin.getByRole('row', { name: new RegExp(code) }).click();
+    // A table row on desktop, a card on a phone (Table, CR: console-components).
+    await admin.locator('tr, li').filter({ hasText: code }).first().click();
     const drawer = admin.getByRole('dialog', { name: code });
     await drawer.getByRole('tab', { name: 'Negotiation' }).click();
     await expect(drawer.getByText('Offer: ₱4,321.00')).toBeVisible();
@@ -82,10 +83,10 @@ test.describe('self-loading truck', () => {
     await drawer.getByLabel('Agreed price (PHP)').fill('4321');
     await drawer.getByRole('button', { name: 'Accept price' }).click();
     // Accepting a price asks first.
-    await admin.getByRole('dialog', { name: 'Accept this price?' }).getByRole('button', { name: 'Accept price' }).click();
+    await admin.getByRole('alertdialog', { name: 'Accept this price?' }).getByRole('button', { name: 'Accept price' }).click();
     await expect(admin.getByText('Price accepted')).toBeVisible();
     await drawer.getByRole('button', { name: 'Confirmed by phone' }).click();
-    await admin.getByRole('dialog', { name: 'Mark as confirmed by phone?' }).getByRole('button', { name: 'Yes, we spoke' }).click();
+    await admin.getByRole('alertdialog', { name: 'Mark as confirmed by phone?' }).getByRole('button', { name: 'Yes, we spoke' }).click();
     await expect(admin.getByText('Confirmed by phone').first()).toBeVisible();
 
     // The customer finds it under My Bookings > Self-loading truck, agreed.
@@ -104,7 +105,7 @@ test.describe('self-loading truck', () => {
 
     // Cash is settled only by staff, on the invoice.
     await admin.goto('/app/payments');
-    await admin.getByRole('row', { name: /₱4,321\.00/ }).first().click();
+    await admin.locator('tr, li').filter({ hasText: '₱4,321.00' }).first().click();
     await admin.getByRole('button', { name: 'Record cash payment' }).click();
     await admin.getByRole('button', { name: 'Record payment' }).click();
     await expect(admin.getByText('Cash payment recorded')).toBeVisible();
