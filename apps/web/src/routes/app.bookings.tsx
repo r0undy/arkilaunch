@@ -9,6 +9,7 @@ import { PageHeader } from '../components/page-header.js';
 import { Button } from '../components/button.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
+import { WeeklyBillingCard } from './statement.js';
 import { NegotiationThread } from '../components/negotiation-thread.js';
 import { BookingCode } from '../components/booking-code.js';
 import { BookingDrawer, type BookingDrawerTarget } from '../components/booking-drawer.js';
@@ -200,6 +201,9 @@ function BookingPage() {
           <NegotiationThread base={`/bookings/${bookingId}`} disabled={booking.data.status === 'cancelled'} />
           <BookingSide booking={booking.data} />
         </div>
+      )}
+      {booking.data && booking.data.status !== 'pending' && booking.data.status !== 'cancelled' && (
+        <WeeklyBillingCard rentalId={bookingId} scope="staff" />
       )}
     </div>
   );

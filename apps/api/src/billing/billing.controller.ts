@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
+import { UuidParamPipe } from '../common/uuid-param.pipe.js';
 import { BillingService } from './billing.service.js';
 import { InvoiceListQueryDto } from './dto.js';
 
@@ -32,6 +33,20 @@ export class BillingController {
   @RequirePermission('booking:read')
   mine(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.billing.getInvoice(req.ctx, id);
+  }
+
+  // Statement of Account (QA 19): staff on any rental, a customer on their
+  // own (ownership checked in the service).
+  @Get('rentals/:id/statement')
+  @RequirePermission('billing:read')
+  statement(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+    return this.billing.statement(req.ctx, id);
+  }
+
+  @Get('me/rentals/:id/statement')
+  @RequirePermission('booking:read')
+  myStatement(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+    return this.billing.statement(req.ctx, id);
   }
 
   @Get('rentals/:id/deposit')

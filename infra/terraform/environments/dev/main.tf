@@ -254,3 +254,24 @@ output "azure_di_endpoint" {
 output "registry_login_server" {
   value = module.container_registry.login_server
 }
+
+# QA 19: rolls each rental's reconciled hours past the deposit into one
+# weekly invoice (jobs/src/weekly-billing.ts), so a rental's bills stack
+# week by week and the Statement of Account reads them.
+module "weekly_billing_job" {
+  source                       = "../../modules/cron_job"
+  name                         = "${local.name}-weekly-billing"
+  entrypoint                   = "weekly-billing"
+  cron_expression              = var.weekly_billing_cron
+  resource_group_name          = module.resource_group.name
+  location                     = var.location
+  container_app_environment_id = module.container_apps_environment.id
+  registry_login_server        = module.container_registry.login_server
+  identity_id                  = module.acr_identity.id
+  image_tag                    = var.image_tag
+  env_vars                     = local.common_env_vars
+  secrets                      = local.secrets
+  secret_env_vars              = local.secret_env_vars
+  tags                         = local.tags
+  depends_on                   = [module.acr_identity]
+}

@@ -105,3 +105,41 @@ export const DepositLedgerResponseSchema = z.object({
   ),
 });
 export type DepositLedgerResponse = z.infer<typeof DepositLedgerResponseSchema>;
+
+// GET /rentals/:id/statement and /me/rentals/:id/statement (QA 19): a
+// rental's Statement of Account. Reconciled hours are stacked by the ISO
+// week (Mon-Sun, Asia/Manila report dates) they were worked in; money is
+// every live invoice and payment on the booking.
+export interface StatementWeek {
+  weekStart: string; // YYYY-MM-DD, a Monday
+  weekEnd: string; // the Sunday
+  hours: number;
+  amount: number;
+  // Of `amount`: taken from the deposit, on a weekly invoice, not yet invoiced.
+  fromDeposit: number;
+  invoiced: number;
+  unbilled: number;
+}
+
+export interface StatementOfAccount {
+  rentalId: string;
+  bookingCode: string | null;
+  status: string;
+  rentalStart: string;
+  rentalEnd: string | null;
+  company: { name: string; tin: string | null; billingAddress: string | null } | null;
+  weeks: StatementWeek[];
+  invoices: { id: string; invoiceType: string; amount: number; status: string; createdAt: string; dueDate: string }[];
+  payments: { id: string; invoiceId: string; method: string; amount: number; status: string; createdAt: string }[];
+  deposit: { required: number; deducted: number; remaining: number };
+  totals: {
+    // Every live invoice except deposit deductions (paid from the deposit
+    // already on the booking invoice).
+    charged: number;
+    paid: number;
+    // Reconciled hours past the deposit not yet on a weekly invoice.
+    unbilled: number;
+    balanceDue: number;
+  };
+  generatedAt: string;
+}
