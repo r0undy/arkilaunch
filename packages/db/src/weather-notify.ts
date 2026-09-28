@@ -36,7 +36,7 @@ interface Recipient {
 }
 
 // Everyone told about a site's weather: its timekeepers, the customers who
-// rent machines on it, and the tenant's active admins. A user who is more
+// rent machines on it, and the tenant's active admins and owners. A user who is more
 // than one of these is told once, as the most specific: timekeeper first.
 export async function siteRecipients(ex: Executor, tenantId: string, siteId: string, rentalIds: string[]): Promise<Recipient[]> {
   const byUser = new Map<string, Recipient>();
@@ -77,7 +77,7 @@ export async function siteRecipients(ex: Executor, tenantId: string, siteId: str
     .select(cols)
     .from(users)
     .innerJoin(roles, eq(roles.id, users.roleId))
-    .where(and(eq(users.tenantId, tenantId), eq(roles.name, 'admin'), eq(users.status, 'active')));
+    .where(and(eq(users.tenantId, tenantId), inArray(roles.name, ['admin', 'owner']), eq(users.status, 'active')));
   for (const row of admins) add(row, 'staff');
 
   return [...byUser.values()];

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { describeNotification, feedAreaOf, notificationIcon, type FeedArea } from './notification-feed.js';
+import { routeTree } from '../router.js';
 
 // Every notification type the backend writes, by who receives it. Each must
 // resolve to a real destination in that person's console, so a row is
@@ -30,11 +31,18 @@ const WRITTEN: Record<FeedArea, [string, Record<string, unknown>][]> = {
     ['equipment_weather_alert', { ...RENTAL, level: 'caution' }],
     ['equipment_weather_briefing', { project_site_id: '44444444-4444-4444-8444-444444444444', site_name: 'Lot 5, Pasig', level: 'stop_work', machines: [{ equipmentId: 'e1', rentalId: RENTAL.rental_id, equipmentName: 'Crane', equipmentType: 'Crane', level: 'stop_work', reasons: ['Gusts 70 km/h'], hours: ['13:00', '14:00'] }] }],
     ['equipment_weather_outlook', { project_site_id: '44444444-4444-4444-8444-444444444444', site_name: 'Lot 5, Pasig', level: 'stop_work', machines: [{ equipmentId: 'e1', rentalId: RENTAL.rental_id, equipmentName: 'Crane', equipmentType: 'Crane', level: 'stop_work', reasons: ['Gusts 70 km/h'], hours: ['13:00', '14:00'] }] }],
-    ['company_submitted', { company_name: 'Acme' }],
-    ['company_reapplied', { company_name: 'Acme' }],
+    ['company_submitted', { company_name: 'Acme', customer_id: 'c1' }],
+    ['company_reapplied', { company_name: 'Acme', customer_id: 'c1' }],
     ['password_reset_requested', { email: 'a@b.c' }],
+    ['booking_cancelled', RENTAL],
+    ['truck_price_accepted', { ...TRUCK, price_php: 5000 }],
+    ['truck_cancelled', TRUCK],
+    ['payment_on_void_invoice', { invoice_id: '33333333-3333-4333-8333-333333333333', booking_code: 'EQR-2026-0001' }],
+    ['hold_expired', { ...RENTAL, audience: 'staff' }],
   ],
-  admin: [['password_reset_requested', { email: 'a@b.c' }]],
+  admin: [
+    ['tenant_registered', { application_id: '55555555-5555-4555-8555-555555555555', company_name: 'New Rentals Inc.' }],
+  ],
   account: [
     ['quote_ready', { ...RENTAL, total_php: 1000 }],
     ['negotiation_reply', RENTAL],
@@ -53,7 +61,8 @@ const WRITTEN: Record<FeedArea, [string, Record<string, unknown>][]> = {
     ['daily_log_approved', { ...RENTAL, report_date: '2026-09-21' }],
     ['equipment_weather_warning', { ...RENTAL, level: 'caution' }],
     ['equipment_weather_briefing', { project_site_id: '44444444-4444-4444-8444-444444444444', site_name: 'Lot 5, Pasig', level: 'stop_work', machines: [{ equipmentId: 'e1', rentalId: RENTAL.rental_id, equipmentName: 'Crane', equipmentType: 'Crane', level: 'stop_work', reasons: ['Gusts 70 km/h'], hours: ['13:00', '14:00'] }] }],
-    ['company_verified', { company_name: 'Acme' }],
+    ['company_verified', { company_name: 'Acme', customer_id: 'c1' }],
+    ['hold_expired', { ...RENTAL, audience: 'customer' }],
     ['company_rejected', { company_name: 'Acme', customer_id: 'c1' }],
     ['company_review_comment', { company_name: 'Acme', company_id: 'c1', comment: 'Re-upload' }],
   ],
@@ -68,15 +77,27 @@ const WRITTEN: Record<FeedArea, [string, Record<string, unknown>][]> = {
   ],
 };
 
+function registeredPaths(route: { fullPath?: string; children?: unknown }): string[] {
+  const children = (route.children ?? []) as { fullPath?: string; children?: unknown }[];
+  return [...(typeof route.fullPath === 'string' ? [route.fullPath] : []), ...children.flatMap(registeredPaths)];
+}
+const ROUTES = new Set(registeredPaths(routeTree as never));
+
 describe('describeNotification: every written type has a destination', () => {
   for (const [area, cases] of Object.entries(WRITTEN) as [FeedArea, [string, Record<string, unknown>][]][]) {
     for (const [type, payload] of cases) {
       it(`${area}: ${type}${payload.truck_request_id ? ' (truck)' : ''}`, () => {
         const described = describeNotification(type, payload, area);
-        expect(described?.action?.to, `${type} in ${area}`).toBeTruthy();
-        // A staff link stays in the staff console, a customer's in theirs.
-        const prefix = area === 'admin' ? '/app' : `/${area}`;
-        expect(described!.action!.to.startsWith(prefix)).toBe(true);
+        const action = described?.action;
+        expect(action?.to, `${type} in ${area}`).toBeTruthy();
+        // Each console links into itself only: the platform host serves no
+        // /app screen, and a customer bounces off every staff one (QA 26).
+        expect(action!.to.startsWith(`/${area}`)).toBe(true);
+        // ...to a route that exists, with every path param filled.
+        expect(ROUTES).toContain(action!.to);
+        for (const param of action!.to.match(/\$(\w+)/g) ?? []) {
+          expect(action!.params[param.slice(1)], `${type}: ${param}`).toBeTruthy();
+        }
       });
     }
   }
@@ -109,11 +130,24 @@ describe('describeNotification: every written type has a destination', () => {
     expect(describeNotification('payment_received', RENTAL, 'account')?.body).toContain('EQR-2026-0001');
   });
 
-  it('reads the console from the path', () => {
-    expect(feedAreaOf('/account/notifications')).toBe('account');
-    expect(feedAreaOf('/field/notifications')).toBe('field');
-    expect(feedAreaOf('/app/notifications')).toBe('app');
-    expect(feedAreaOf('/admin/notifications')).toBe('admin');
+  it('reads the console from the role, the path only when signed out', () => {
+    expect(feedAreaOf('/account/notifications', null)).toBe('account');
+    expect(feedAreaOf('/field/notifications', null)).toBe('field');
+    expect(feedAreaOf('/app/notifications', null)).toBe('app');
+    expect(feedAreaOf('/admin/notifications', null)).toBe('admin');
+    // A customer's bell on the storefront (/equipment) links to their own screens.
+    expect(feedAreaOf('/equipment', 'customer')).toBe('account');
+    expect(feedAreaOf('/equipment', 'owner')).toBe('app');
+    expect(feedAreaOf('/', 'platform_admin')).toBe('admin');
+    expect(feedAreaOf('/', 'timekeeper')).toBe('field');
+  });
+
+  it('opens payments, change requests and messages on the booking tab they are about', () => {
+    expect(describeNotification('payment_paid', RENTAL, 'app')?.action).toMatchObject({ to: '/app/bookings', search: { open: 'EQR-2026-0001', tab: 'actions' } });
+    expect(describeNotification('change_request_submitted', RENTAL, 'app')?.action?.search).toMatchObject({ tab: 'actions' });
+    expect(describeNotification('customer_message', RENTAL, 'app')?.action?.search).toMatchObject({ tab: 'negotiation' });
+    expect(describeNotification('company_submitted', { customer_id: 'c1' }, 'app')?.action?.search).toEqual({ open: 'c1' });
+    expect(describeNotification('maintenance_due', { serial_no: 'SN-9' }, 'app')?.action?.search).toEqual({ q: 'SN-9' });
   });
 });
 

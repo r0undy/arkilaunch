@@ -121,9 +121,13 @@ export async function notifyBookingCustomer(
   await notifyUser(tx, tenantId, row.userId, notificationType, { rental_id: rentalId, ...payload });
 }
 
-// Staff who act on customer requests. Owners read, they do not approve
-// quotes or requests, so they are left out.
-const STAFF_ALERT_ROLES = ['admin'];
+// Staff told about customer requests: admins act on them, and owners see
+// their company's bookings and payments too (QA 26), even where only an
+// admin can approve.
+const STAFF_ALERT_ROLES = ['admin', 'owner'];
+// These open admin-only screens (the registration queues, People), which
+// an owner's link would bounce off.
+const ADMIN_ONLY_ALERTS = new Set(['company_submitted', 'company_reapplied', 'password_reset_requested']);
 
 // Drops a row into every active tenant admin's feed, so a customer's
 // booking, counter-offer or request is seen without watching a list.
@@ -137,7 +141,7 @@ export async function notifyStaff(
     .select({ id: users.id, email: users.email, prefs: users.notificationPrefs })
     .from(users)
     .innerJoin(roles, eq(roles.id, users.roleId))
-    .where(and(inArray(roles.name, STAFF_ALERT_ROLES), eq(users.status, 'active')));
+    .where(and(inArray(roles.name, ADMIN_ONLY_ALERTS.has(notificationType) ? ['admin'] : STAFF_ALERT_ROLES), eq(users.status, 'active')));
   if (staff.length === 0) return;
   await tx.insert(notifications).values(staff.map((user) => ({ tenantId, userId: user.id, notificationType, payload })));
   await queueEmails(tx, staff, notificationType, payload, 'staff');

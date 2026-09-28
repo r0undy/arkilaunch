@@ -477,6 +477,13 @@
       "when": 1790400029000,
       "tag": "0068_qa_batch_23_28",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1790400030000,
+      "tag": "0069_platform_registration_notify",
+      "breakpoints": true
     }
   ]
 }

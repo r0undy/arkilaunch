@@ -31,6 +31,8 @@ export async function runMaintenanceNotify(): Promise<void> {
       .select({
         equipmentId: equipment.id,
         tenantId: equipment.tenantId,
+        serialNo: equipment.serialNo,
+        model: equipment.model,
         runtimeHours: equipment.runtimeHours,
         nextDue: maintenanceSchedules.nextDue,
         scheduleId: maintenanceSchedules.id,
@@ -122,6 +124,9 @@ export async function runMaintenanceNotify(): Promise<void> {
           notificationType: type,
           payload: {
             equipment_id: item.equipmentId,
+            // The feed links to the unit by serial (/app/inventory?q=).
+            serial_no: item.serialNo,
+            model: item.model,
             schedule_id: item.scheduleId,
             task: item.task,
             threshold: item.nextDue,

@@ -169,7 +169,12 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   // The same bar renders inside the account shell, where /app/* is a role
   // bounce rather than a destination.
   const isCustomer = role === 'customer';
-  const notificationsPath = isCustomer ? '/account/notifications' : '/app/notifications';
+  // Each console has its own feed; the platform host serves no /app route.
+  const notificationsPath = isCustomer
+    ? '/account/notifications'
+    : role === 'platform_admin'
+      ? '/admin/notifications'
+      : '/app/notifications';
 
   const notifications = useQuery({ ...notificationsQueries.unreadCount(), retry: false });
   // GET /edtr is staff-only, so this fired a guaranteed 403 on every page a
