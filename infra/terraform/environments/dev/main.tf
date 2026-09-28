@@ -52,6 +52,7 @@ locals {
     paymongo-secret-key           = var.paymongo_secret_key
     paymongo-webhook-secret       = var.paymongo_webhook_secret
     turnstile-secret-key          = var.turnstile_secret_key
+    vapid-private-key             = var.vapid_private_key
     appinsights-connection-string = module.log_analytics.app_insights_connection_string
   }
   secrets = { for k, v in local.all_secrets : k => v if v != "" }
@@ -68,6 +69,7 @@ locals {
     PAYMONGO_SECRET_KEY                   = "paymongo-secret-key"
     PAYMONGO_WEBHOOK_SECRET               = "paymongo-webhook-secret"
     TURNSTILE_SECRET_KEY                  = "turnstile-secret-key"
+    VAPID_PRIVATE_KEY                     = "vapid-private-key"
     APPLICATIONINSIGHTS_CONNECTION_STRING = "appinsights-connection-string"
   }
   secret_env_vars = { for k, v in local.all_secret_env_vars : k => v if contains(keys(local.secrets), v) }
@@ -85,6 +87,8 @@ locals {
     ENABLE_OCR_KYC               = tostring(var.enable_ocr_kyc)
     ENABLE_WEATHER_POLL          = tostring(var.enable_weather_poll)
     WEATHER_POLL_MAX_SITES       = tostring(var.weather_poll_max_sites)
+    VAPID_PUBLIC_KEY             = var.vapid_public_key
+    VAPID_SUBJECT                = var.vapid_subject
     ENABLE_DIESEL_SCRAPE         = tostring(var.enable_diesel_scrape)
     ENABLE_PAYMENTS              = tostring(var.enable_payments)
     TURNSTILE_ENABLED            = tostring(var.enable_turnstile)
@@ -172,6 +176,25 @@ module "weather_poll_job" {
   name                         = "${local.name}-weather-poll"
   entrypoint                   = "weather-poll"
   cron_expression              = var.weather_poll_cron
+  resource_group_name          = module.resource_group.name
+  location                     = var.location
+  container_app_environment_id = module.container_apps_environment.id
+  registry_login_server        = module.container_registry.login_server
+  identity_id                  = module.acr_identity.id
+  image_tag                    = var.image_tag
+  env_vars                     = local.common_env_vars
+  secrets                      = local.secrets
+  secret_env_vars              = local.secret_env_vars
+  tags                         = local.tags
+  depends_on                   = [module.acr_identity]
+}
+
+# Pre-workday weather briefing (docs/cr-arkilaunch-weather-monitoring.md).
+module "weather_briefing_job" {
+  source                       = "../../modules/cron_job"
+  name                         = "${local.name}-weather-briefing"
+  entrypoint                   = "weather-briefing"
+  cron_expression              = var.weather_briefing_cron
   resource_group_name          = module.resource_group.name
   location                     = var.location
   container_app_environment_id = module.container_apps_environment.id

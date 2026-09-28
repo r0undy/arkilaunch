@@ -326,6 +326,15 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
         )}
 
         <p className="text-center text-xs text-text-muted">
+          While the equipment is on your site, we monitor the weather there. Your timekeeper and you are warned when it may affect
+          a machine, and daily time records are checked against the recorded weather. Mismatches go to a person for review and are
+          never charged automatically.{' '}
+          <Link to="/terms" hash="weather-monitoring" className="underline">
+            How weather monitoring works
+          </Link>
+        </p>
+
+        <p className="text-center text-xs text-text-muted">
           You finish paying on PayMongo&rsquo;s secure page. By paying you agree to the{' '}
           <Link to="/terms" className="underline">rental agreement</Link> and{' '}
           <Link to="/privacy" className="underline">privacy policy</Link>.

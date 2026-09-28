@@ -11,6 +11,7 @@
     "test": "vitest run",
     "worker:edtr": "tsx src/edtr-ocr-worker.ts",
     "worker:weather": "tsx src/weather-poll.ts",
+    "worker:weather-briefing": "tsx src/weather-briefing.ts",
     "worker:diesel": "tsx src/diesel.ts",
     "worker:pm-notify": "tsx src/maintenance-notify.ts",
     "worker:weekly-billing": "tsx src/weekly-billing.ts",

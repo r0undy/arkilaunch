@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   FORECAST_DAYS,
   type DailyForecast,
+  type HourlyForecast,
+  type HourlyForecastPort,
   type WeatherForecastPort,
   type WeatherObservation,
   type WeatherPort,
@@ -111,7 +113,23 @@ const OpenMeteoForecastResponseSchema = z.object({
   daily: DailySchema,
 });
 
-export class OpenMeteoAdapter implements WeatherPort, WeatherForecastPort {
+// The hourly block (pre-workday briefing, hourly watch) asks for the same
+// fields as the current block, with the same pinned units, so a forecast
+// hour runs the same per-equipment rules as a live reading.
+const OpenMeteoHourlyResponseSchema = z.object({
+  hourly_units: CurrentUnitsSchema,
+  hourly: z.object({
+    time: z.array(z.string()),
+    temperature_2m: z.array(z.number()),
+    wind_speed_10m: z.array(z.number()),
+    precipitation: z.array(z.number()),
+    weather_code: z.array(z.number()),
+    wind_gusts_10m: z.array(z.number().nullable()).optional(),
+    relative_humidity_2m: z.array(z.number().nullable()).optional(),
+  }),
+});
+
+export class OpenMeteoAdapter implements WeatherPort, WeatherForecastPort, HourlyForecastPort {
   // One wire path for both reads: the fetch, the 429, the non-2xx, the JSON
   // and the schema check are identical whichever block is being asked for,
   // and duplicating ~45 lines of them is how two subtly different error
@@ -231,5 +249,40 @@ export class OpenMeteoAdapter implements WeatherPort, WeatherForecastPort {
       precipMm: daily.precipitation_sum[i]!,
       code: daily.weather_code[i]!,
     }));
+  }
+
+  async getHourlyForecast(latitude: number, longitude: number, hours: number): Promise<HourlyForecast[]> {
+    const { hourly } = await this.request(
+      latitude,
+      longitude,
+      { hourly: CURRENT_FIELDS, forecast_hours: String(hours) },
+      OpenMeteoHourlyResponseSchema,
+    );
+    // Same rule as the daily block: ragged or short is malformed, never padded.
+    const columns = [hourly.temperature_2m, hourly.wind_speed_10m, hourly.precipitation, hourly.weather_code];
+    if (columns.some((column) => column.length !== hourly.time.length)) {
+      throw new WeatherObservationError('malformed_response', 'open-meteo hourly block had columns of differing lengths');
+    }
+    if (hourly.time.length < hours) {
+      throw new WeatherObservationError(
+        'malformed_response',
+        `open-meteo returned ${hourly.time.length} forecast hours, expected ${hours}`,
+      );
+    }
+    return hourly.time.slice(0, hours).map((time, i) => {
+      const gust = hourly.wind_gusts_10m?.[i];
+      const humidity = hourly.relative_humidity_2m?.[i];
+      return {
+        time,
+        observed: {
+          tempC: hourly.temperature_2m[i]!,
+          windKph: hourly.wind_speed_10m[i]!,
+          precipMm: hourly.precipitation[i]!,
+          code: hourly.weather_code[i]!,
+          ...(typeof gust === 'number' ? { gustKph: gust } : {}),
+          ...(typeof humidity === 'number' ? { humidityPct: humidity } : {}),
+        },
+      };
+    });
   }
 }

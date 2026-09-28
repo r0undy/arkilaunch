@@ -54,6 +54,21 @@ export interface WeatherForecastPort {
 
 export const FORECAST_DAYS = 5;
 
+// One hour of the forecast, in the shape the per-equipment rules judge
+// (evaluateSiteEquipment), so a forecast hour and a live reading run the
+// same rules. `time` is site-local (YYYY-MM-DDTHH:00, Asia/Manila).
+export interface HourlyForecast {
+  time: string;
+  observed: WeatherObservation;
+}
+
+// Its own interface for the same reason as WeatherForecastPort: only the
+// pre-workday briefing and the hourly watch read it (jobs/src/weather-briefing.ts).
+export interface HourlyForecastPort {
+  /** The next `hours` hours from the current hour. Throws, never a short array. */
+  getHourlyForecast(latitude: number, longitude: number, hours: number): Promise<HourlyForecast[]>;
+}
+
 // 'no_credentials' stays in the union for symmetry with
 // ExtractionUnavailableReason's shared vocabulary, but is unreachable in
 // production now that the free tier needs no key -- there is nothing left
@@ -83,7 +98,7 @@ export class WeatherUnavailableError extends Error {
 // Throwing means jobs/src/weather-poll.ts writes no weather_alerts row at
 // all, and sites.service.ts's existing `!latest` branch already reports
 // that honestly as `isStale: true, polledAt: null`.
-export class UnavailableWeatherAdapter implements WeatherPort, WeatherForecastPort {
+export class UnavailableWeatherAdapter implements WeatherPort, WeatherForecastPort, HourlyForecastPort {
   constructor(private readonly reason: WeatherUnavailableReason = 'no_adapter') {}
 
   async getConditions(_latitude: number, _longitude: number): Promise<WeatherObservation> {
@@ -94,6 +109,10 @@ export class UnavailableWeatherAdapter implements WeatherPort, WeatherForecastPo
   // reads as a real forecast. An empty array in the rail would render as a
   // blank week rather than "unavailable".
   async getForecast(_latitude: number, _longitude: number): Promise<DailyForecast[]> {
+    throw new WeatherUnavailableError(this.reason);
+  }
+
+  async getHourlyForecast(_latitude: number, _longitude: number, _hours: number): Promise<HourlyForecast[]> {
     throw new WeatherUnavailableError(this.reason);
   }
 }

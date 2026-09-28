@@ -83,11 +83,30 @@ function toWeatherAdvisoryResponse(
 }
 
 // EDTR v2 discrepancy rules (packages/shared/src/weather-attestation.ts).
-function discrepancyDetail(rule?: string, date?: string, half?: string): string {
+function discrepancyDetail(
+  rule?: string,
+  date?: string,
+  half?: string,
+  system?: { totalPrecipMm?: number; maxWindKph?: number },
+  readings?: { minute: number; precip_mm: number }[],
+): string {
   const when = `${date ?? ''}${half && half !== 'day' ? ` ${half.toUpperCase()}` : ''}`;
-  if (rule === 'D1') return `Idle hours put down to weather, but the site readings show no rain or wind (${when}).`;
-  if (rule === 'D2') return `Worked through a weather warning the timekeeper marked clear or cloudy (${when}).`;
-  return `Weather report discrepancy (${when}).`;
+  const base =
+    rule === 'D1'
+      ? `Idle hours put down to weather, but the site readings show no rain or wind (${when}).`
+      : rule === 'D2'
+        ? `Worked through a weather warning the timekeeper marked clear or cloudy (${when}).`
+        : `Weather report discrepancy (${when}).`;
+  // The recorded evidence next to the claim: how much rain, how windy, and
+  // for how long it kept raining (readings are every 30 minutes).
+  const evidence: string[] = [];
+  if (typeof system?.totalPrecipMm === 'number') evidence.push(`${system.totalPrecipMm} mm rain recorded`);
+  if (typeof system?.maxWindKph === 'number') evidence.push(`wind up to ${Math.round(system.maxWindKph)} km/h`);
+  if (readings?.length) {
+    const wet = readings.filter((r) => r.precip_mm > 0).length;
+    evidence.push(`rain in ${wet} of ${readings.length} half-hourly readings`);
+  }
+  return `${base}${evidence.length ? ` Recorded: ${evidence.join(', ')}.` : ''} For review, not a finding.`;
 }
 
 @Injectable()
@@ -611,6 +630,7 @@ export class SitesService {
           hours_active?: number;
           warned_at?: string;
           equipment_id?: string;
+          readings?: { minute: number; precip_mm: number }[];
         };
         const discrepancy = row.name === 'edtr_weather_discrepancy';
         const ignored = row.name === 'equipment_used_despite_warning';
@@ -631,7 +651,13 @@ export class SitesService {
                 properties.warned_at ? ` at ${new Date(properties.warned_at).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' })}` : ''
               }${properties.reasons?.length ? `: ${properties.reasons.join('; ')}` : ''}.`
             : discrepancy
-              ? discrepancyDetail(properties.rule, properties.date, properties.half)
+              ? discrepancyDetail(
+                  properties.rule,
+                  properties.date,
+                  properties.half,
+                  properties.system as { totalPrecipMm?: number; maxWindKph?: number } | undefined,
+                  properties.readings,
+                )
               : null,
         };
       });

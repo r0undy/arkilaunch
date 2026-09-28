@@ -1,9 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, type SQL } from 'drizzle-orm';
-import { notifications, sendEmail, withTenantTx } from '@arkilaunch/db';
+import { notifications, pushSubscriptions, sendEmail, withTenantTx } from '@arkilaunch/db';
 import { tenantEmailContext } from '../common/notify-customer.js';
 import { notificationEmail, renderEmailHtml } from '@arkilaunch/shared';
-import type { NotificationListQuery, NotificationListResponse, RequestContext, TestEmailRequest } from '@arkilaunch/shared';
+import type {
+  NotificationListQuery,
+  NotificationListResponse,
+  PushSubscriptionCreate,
+  RequestContext,
+  TestEmailRequest,
+} from '@arkilaunch/shared';
 
 // Global nav notifications feed (PRD §5.2: "notifications (PM alerts,
 // weather advisories, review-queue count)... on every authed screen").
@@ -90,5 +96,29 @@ export class NotificationsService {
     await sendEmail(body.to, `[Test] ${mail.subject}`, mail.text, renderEmailHtml(brand, mail.text));
     // Without RESEND_API_KEY the email is only logged; say so on screen.
     return { sent: true, delivered: Boolean(process.env.RESEND_API_KEY) };
+  }
+
+  // A browser's Web Push subscription for the caller. The endpoint is unique per tenant:
+  // re-subscribing the same browser (or the same browser after a
+  // sign-in as someone else) moves it to the caller rather than duplicating.
+  async subscribePush(ctx: RequestContext, body: PushSubscriptionCreate) {
+    return withTenantTx(ctx, async (tx) => {
+      await tx
+        .insert(pushSubscriptions)
+        .values({ tenantId: ctx.tenantId, userId: ctx.userId, endpoint: body.endpoint, p256dh: body.keys.p256dh, auth: body.keys.auth })
+        .onConflictDoUpdate({
+          target: [pushSubscriptions.tenantId, pushSubscriptions.endpoint],
+          set: { userId: ctx.userId, p256dh: body.keys.p256dh, auth: body.keys.auth },
+        });
+      return { subscribed: true };
+    });
+  }
+
+  async unsubscribePush(ctx: RequestContext, endpoint: string): Promise<void> {
+    await withTenantTx(ctx, async (tx) => {
+      await tx
+        .delete(pushSubscriptions)
+        .where(and(eq(pushSubscriptions.endpoint, endpoint), eq(pushSubscriptions.userId, ctx.userId)));
+    });
   }
 }

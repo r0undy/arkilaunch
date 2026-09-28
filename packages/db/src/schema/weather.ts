@@ -1,4 +1,4 @@
-import { index, boolean, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, boolean, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 import { projectSites } from './rentals.js';
@@ -66,5 +66,31 @@ export const pagasaAdvisories = pgTable(
   },
   (table) => [tenantIsolationPolicy(),
     index('pagasa_advisories_tenant_id_idx').on(table.tenantId),
+  ],
+);
+
+// 0066: Web Push subscriptions (W3C Push API with our own VAPID keys, no
+// third-party SDK or account): one per browser a user turned weather
+// alerts on in. A 404/410 from the push endpoint deletes the row.
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    tenantIsolationPolicy(),
+    unique('push_subscriptions_tenant_endpoint_uq').on(table.tenantId, table.endpoint),
+    index('push_subscriptions_tenant_id_idx').on(table.tenantId),
+    index('push_subscriptions_user_id_idx').on(table.userId),
   ],
 );

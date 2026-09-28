@@ -1,5 +1,6 @@
 import {
   UnavailableWeatherAdapter,
+  type HourlyForecastPort,
   type WeatherForecastPort,
   type WeatherPort,
 } from '@arkilaunch/shared';
@@ -23,7 +24,7 @@ export { OpenMeteoAdapter, WeatherObservationError };
 // implement the pair, so callers that only need conditions are unaffected.
 export function createWeatherAdapter(
   env: Record<string, string | undefined> = process.env,
-): WeatherPort & WeatherForecastPort {
+): WeatherPort & WeatherForecastPort & HourlyForecastPort {
   if (env.ENABLE_WEATHER_POLL !== 'true') {
     return new UnavailableWeatherAdapter('flag_disabled');
   }

@@ -2,7 +2,14 @@ import { useState } from 'react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryOptions } from '@tanstack/react-query';
-import { WEATHER_LEVEL_INFO, type NotificationListResponse, type NotificationResponse } from '@arkilaunch/shared';
+import {
+  isWeatherNotice,
+  weatherNoticeText,
+  type NotificationListResponse,
+  type NotificationResponse,
+  type WeatherAudience,
+  type WeatherNoticeType,
+} from '@arkilaunch/shared';
 import { apiGet, apiPatch } from '../lib/api-client.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
@@ -220,8 +227,30 @@ function describeForField(type: string, p: Record<string, unknown>): Described |
   }
 }
 
+function describeWeather(type: WeatherNoticeType, p: Record<string, unknown>, area: FeedArea): Described {
+  const audience: WeatherAudience = area === 'field' ? 'timekeeper' : area === 'account' ? 'customer' : 'staff';
+  const { title, body } = weatherNoticeText(type, p, audience);
+  const machines = Array.isArray(p.machines) ? (p.machines as { rentalId?: string }[]) : [];
+  const bookingId = typeof p.rental_id === 'string' ? p.rental_id : (machines[0]?.rentalId ?? '');
+  const siteId = typeof p.project_site_id === 'string' ? p.project_site_id : '';
+  const action: Described['action'] =
+    audience === 'customer'
+      ? bookingId
+        ? { label: 'Open booking', to: '/account/bookings/$bookingId', params: { bookingId } }
+        : { label: 'My bookings', to: '/account/bookings', params: {} }
+      : audience === 'timekeeper'
+        ? { label: 'Open dashboard', to: '/field', params: {} }
+        : siteId
+          ? { label: 'Open site', to: '/app/deployment/$siteId', params: { siteId } }
+          : { label: 'Open incidents', to: '/app/incidents', params: {} };
+  return { title, body, action };
+}
+
 export function describeNotification(type: string, payload: unknown, area: FeedArea = 'app'): Described | null {
   const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+  // Weather monitoring: the same words as the email and the push
+  // (weatherNoticeText); the link follows the console reading it.
+  if (isWeatherNotice(type)) return describeWeather(type, p, area);
   if (area === 'field') return describeForField(type, p);
   if (area === 'app' || area === 'admin') {
     const staff = describeForStaff(type, p);
@@ -280,21 +309,6 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
             params: { companyId: String(p.customer_id ?? '') },
           },
         };
-  }
-  if (type === 'equipment_weather_warning' || type === 'equipment_weather_alert') {
-    const level = typeof p.level === 'string' && p.level in WEATHER_LEVEL_INFO ? (p.level as keyof typeof WEATHER_LEVEL_INFO) : 'caution';
-    const info = WEATHER_LEVEL_INFO[level];
-    const name = typeof p.equipment_name === 'string' ? p.equipment_name : 'A machine';
-    const why = Array.isArray(p.reasons) && p.reasons.length ? ` ${(p.reasons as string[]).join('; ')}.` : '';
-    const bookingId = String(p.rental_id ?? '');
-    return {
-      title: `${info.label.toUpperCase()}: ${name}`,
-      body: type === 'equipment_weather_warning' ? `${why} ${info.action} ${info.tagalog}`.trim() : `${name} on a customer site is at ${info.label}.${why}`,
-      action:
-        type === 'equipment_weather_warning'
-          ? { label: 'Open booking', to: '/account/bookings/$bookingId', params: { bookingId } }
-          : { label: 'Open booking', to: '/app/bookings/$bookingId', params: { bookingId } },
-    };
   }
   if (type === 'company_reapplied') {
     const name = typeof p.company_name === 'string' ? p.company_name : 'A company';

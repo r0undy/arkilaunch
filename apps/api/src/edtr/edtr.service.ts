@@ -21,6 +21,7 @@ import {
   notifications,
   rateCards,
   flagUsedDespiteWarning,
+  logWeatherDiscrepancies,
   reconcileEdtr,
   rentals,
   resolveDepositLedger,
@@ -39,6 +40,7 @@ import {
   lineItemsToDayHours,
   OFFICE_LOG_NOTE,
   validateDayEntry,
+  WEATHER_CODES,
   type ApprovedDayHours,
   type EdtrLineItemsInput,
   type EdtrReviewRequest,
@@ -51,6 +53,8 @@ import {
   type HourDeltas,
   type OcrPayload,
   type ReconciliationReason,
+  type ReportedWeatherDay,
+  type WeatherCode,
   type RequestContext,
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
@@ -151,6 +155,22 @@ async function insertLineItem(
     reviewFlags,
     notes,
   });
+}
+
+// A captured entry's weather in the shape compareReportedWeather reads:
+// the AM/PM ticks when they are valid codes, and weather hours as idle
+// hours put down to weather.
+function reportedWeatherDay(li: EdtrLineItemsInput): ReportedWeatherDay {
+  const code = (v: string | null | undefined): WeatherCode | null =>
+    v && (WEATHER_CODES as readonly string[]).includes(v) ? (v as WeatherCode) : null;
+  const weatherHours = li.hoursWeather ?? 0;
+  return {
+    weatherAm: code(li.weatherAm),
+    weatherPm: code(li.weatherPm),
+    idleHours: weatherHours > 0 ? weatherHours : (li.hoursIdle ?? null),
+    idleReason: weatherHours > 0 ? 'weather' : null,
+    hoursActive: li.hoursActive,
+  };
 }
 
 @Injectable()
@@ -283,6 +303,25 @@ export class EdtrService {
         await reconcileEdtr(tx, ctx.tenantId, created.id);
         // Hours on a machine warned to stop work that day: incident log only.
         await flagUsedDespiteWarning(tx, ctx.tenantId, created.id);
+        // The entry's weather against the site's recorded readings
+        // (docs/cr-arkilaunch-weather-monitoring.md). A discrepancy is a
+        // review flag plus an incident-log row -- it never changes the
+        // status, the approval or money (RFC-2).
+        const weatherFlags = await logWeatherDiscrepancies(
+          tx,
+          ctx.tenantId,
+          created.id,
+          body.rentalId,
+          body.reportDate,
+          reportedWeatherDay(body.lineItems),
+        );
+        if (weatherFlags.length > 0) {
+          const added = [...new Set(weatherFlags.map((f) => `weather_${f.rule}`))];
+          await tx
+            .update(edtrLineItems)
+            .set({ reviewFlags: sql`${edtrLineItems.reviewFlags} || ${JSON.stringify(added)}::jsonb` })
+            .where(eq(edtrLineItems.edtrId, created.id));
+        }
         // reconcileEdtr writes the authoritative status; re-read rather than
         // re-deriving it here so the two can never drift apart.
         const [refetched] = await tx.select().from(edtr).where(eq(edtr.id, created.id)).limit(1);

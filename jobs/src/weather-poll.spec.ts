@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeAll } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { addresses, events, projectSites, rentals, weatherAlerts } from '@arkilaunch/db';
+import { addresses, equipment, equipmentAssignments, equipmentTypes, events, projectSites, rentals, weatherAlerts } from '@arkilaunch/db';
 import { FixtureWeatherAdapter } from '@arkilaunch/shared/testing';
 import type { WeatherPort } from '@arkilaunch/shared';
 import { runWeatherPoll } from './weather-poll.js';
@@ -17,9 +18,10 @@ import { makeJobDb } from './db-client.js';
 // this site's id in the jsonb payload, not just "latest for the tenant" --
 // several other active sites under the same tenant can legitimately be
 // non-calm at the same time.
-describe('weather-poll (PRD-F5)', () => {
+describe('weather-poll (PRD-F5)', { timeout: 180_000 }, () => {
   let tenantId: string;
   let siteId: string;
+  let bareSiteId: string;
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL_DIRECT;
@@ -41,13 +43,39 @@ describe('weather-poll (PRD-F5)', () => {
       .values({ tenantId, addressId: address!.id, latitude: '14.676000', longitude: '121.043700' })
       .returning();
     siteId = site!.id;
-    await db.insert(rentals).values({
-      tenantId,
-      customerId,
-      projectSiteId: siteId,
-      status: 'active',
-      startDate: new Date('2020-01-01T00:00:00Z'),
-    });
+    const [rental] = await db
+      .insert(rentals)
+      .values({
+        tenantId,
+        customerId,
+        projectSiteId: siteId,
+        status: 'active',
+        startDate: new Date('2020-01-01T00:00:00Z'),
+      })
+      .returning();
+    // Only a site with a delivered machine is monitored.
+    const [type] = await db.select().from(equipmentTypes).where(eq(equipmentTypes.name, 'Excavator')).limit(1);
+    const [unit] = await db
+      .insert(equipment)
+      .values({ tenantId, equipmentTypeId: type!.id, model: 'Poll Test Excavator', serialNo: `WP-${randomUUID().slice(0, 8)}` })
+      .returning();
+    await db
+      .insert(equipmentAssignments)
+      .values({ tenantId, equipmentId: unit!.id, rentalId: rental!.id, start: new Date('2020-01-01T00:00:00Z'), status: 'active' });
+
+    // A booked site with nothing delivered yet: never polled.
+    const [bareAddress] = await db
+      .insert(addresses)
+      .values({ tenantId, line1: 'Undelivered Site Rd', city: 'Quezon City', province: 'Metro Manila', country: 'PH' })
+      .returning();
+    const [bare] = await db
+      .insert(projectSites)
+      .values({ tenantId, addressId: bareAddress!.id, latitude: '14.600000', longitude: '121.000000' })
+      .returning();
+    bareSiteId = bare!.id;
+    await db
+      .insert(rentals)
+      .values({ tenantId, customerId, projectSiteId: bareSiteId, status: 'active', startDate: new Date('2020-01-01T00:00:00Z') });
     await client.end();
   });
 
@@ -122,6 +150,12 @@ describe('weather-poll (PRD-F5)', () => {
     const row = await latestAlertFor(siteId);
     expect(row?.severity).toBe('none');
     expect(row?.status).toBe('cleared');
+  });
+
+  it('polls only sites with deployed equipment: an active rental with nothing delivered is skipped', async () => {
+    await runWeatherPoll(new FixtureWeatherAdapter({ tempC: 30, windKph: 5, precipMm: 0, code: 1 }));
+    expect(await latestAlertFor(siteId)).not.toBeNull();
+    expect(await latestAlertFor(bareSiteId)).toBeNull();
   });
 
   // QAD-T5.

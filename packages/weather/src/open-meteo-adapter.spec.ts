@@ -247,3 +247,75 @@ describe('OpenMeteoAdapter.getForecast', () => {
     });
   });
 });
+
+const HOURLY_UNITS = {
+  temperature_2m: '°C',
+  wind_speed_10m: 'km/h',
+  precipitation: 'mm',
+  wind_gusts_10m: 'km/h',
+  relative_humidity_2m: '%',
+};
+
+function hourlyBody(hours: number, overrides: Record<string, unknown> = {}) {
+  const fill = <T,>(v: T) => Array.from({ length: hours }, () => v);
+  return {
+    hourly_units: HOURLY_UNITS,
+    hourly: {
+      time: Array.from({ length: hours }, (_, i) => `2026-09-28T${String(7 + i).padStart(2, '0')}:00`),
+      temperature_2m: fill(29),
+      wind_speed_10m: fill(12),
+      precipitation: fill(4.2),
+      weather_code: fill(61),
+      wind_gusts_10m: fill(30),
+      relative_humidity_2m: fill(80),
+      ...overrides,
+    },
+  };
+}
+
+describe('OpenMeteoAdapter.getHourlyForecast', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('asks for the hourly block with the same fields and pinned units as the live reading', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(200, hourlyBody(3)));
+    await new OpenMeteoAdapter().getHourlyForecast(14.676, 121.0437, 3);
+
+    const url = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]![0] as URL;
+    expect(url.searchParams.get('hourly')).toBe(
+      'temperature_2m,wind_speed_10m,precipitation,weather_code,wind_gusts_10m,relative_humidity_2m',
+    );
+    expect(url.searchParams.get('forecast_hours')).toBe('3');
+    expect(url.searchParams.get('timezone')).toBe('Asia/Manila');
+  });
+
+  it('zips each hour into an observation the per-equipment rules read', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(200, hourlyBody(3)));
+    const hours = await new OpenMeteoAdapter().getHourlyForecast(14.676, 121.0437, 3);
+    expect(hours).toHaveLength(3);
+    expect(hours[0]).toEqual({
+      time: '2026-09-28T07:00',
+      observed: { tempC: 29, windKph: 12, precipMm: 4.2, code: 61, gustKph: 30, humidityPct: 80 },
+    });
+  });
+
+  it('throws on a short block rather than a shorter forecast', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(200, hourlyBody(2)));
+    await expect(new OpenMeteoAdapter().getHourlyForecast(14.676, 121.0437, 3)).rejects.toMatchObject({
+      kind: 'malformed_response',
+    });
+  });
+
+  it('throws on a mis-scaled unit', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      jsonResponse(200, { ...hourlyBody(3), hourly_units: { ...HOURLY_UNITS, wind_speed_10m: 'm/s' } }),
+    );
+    await expect(new OpenMeteoAdapter().getHourlyForecast(14.676, 121.0437, 3)).rejects.toBeInstanceOf(
+      WeatherObservationError,
+    );
+  });
+});

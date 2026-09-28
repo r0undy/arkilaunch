@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import {
   EQUIPMENT_WEATHER_CLASS_INFO,
   TCWS_WIND,
@@ -127,6 +128,12 @@ export function MyEquipmentWeather({ siteId }: { siteId: string }) {
     <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5" aria-label="Weather for your equipment">
       <h2 className="text-sm font-medium text-text-muted">Weather for your equipment</h2>
       <EquipmentWeatherList data={query.data} />
+      <p className="text-xs text-text-muted">
+        Weather monitoring is on for this site. You and your timekeeper are warned before and during the workday.{' '}
+        <Link to="/terms" hash="weather-monitoring" className="underline">
+          How it works
+        </Link>
+      </p>
     </Surface>
   );
 }

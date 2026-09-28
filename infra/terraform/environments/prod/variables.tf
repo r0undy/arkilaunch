@@ -88,6 +88,32 @@ variable "weather_poll_max_sites" {
   default = 200
 }
 
+# Pre-workday weather briefing: 05:30 Asia/Manila = 21:30 UTC the day
+# before (docs/cr-arkilaunch-weather-monitoring.md).
+variable "weather_briefing_cron" {
+  type    = string
+  default = "30 21 * * *"
+}
+
+# Web Push (W3C Push API) keys: generate once with
+# `npx web-push generate-vapid-keys`. Free, no third-party account. Empty =
+# push is skipped and only logged; in-app and email still go out.
+variable "vapid_public_key" {
+  type    = string
+  default = ""
+}
+
+variable "vapid_private_key" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "vapid_subject" {
+  type    = string
+  default = "mailto:support@arkilaunch.app"
+}
+
 variable "edtr_ocr_worker_cron" {
   type    = string
   default = "*/5 * * * *"

@@ -1,11 +1,8 @@
-import { and, eq, gte, lt, sql } from 'drizzle-orm';
-import { edtr, edtrLineItems, events, flagUsedDespiteWarning, reconcileEdtr, rentals, weatherAlerts } from '@arkilaunch/db';
+import { and, eq, lt, sql } from 'drizzle-orm';
+import { edtr, edtrLineItems, events, flagUsedDespiteWarning, logWeatherDiscrepancies, reconcileEdtr } from '@arkilaunch/db';
 import {
   CONFIDENCE_GATE,
   OcrPayloadSchema,
-  compareReportedWeather,
-  type TimedReading,
-  type WeatherObservation,
   documentIntelligenceAvailability,
   parseEdtrSheet,
   validateDayEntry,
@@ -37,36 +34,6 @@ const CLAIM_BATCH_SIZE = 10;
 // worker that is still legitimately working on it.
 const STALE_LOCK_MS = 15 * 60 * 1000;
 const API_VERSION = '2024-11-30';
-
-type Tx = Parameters<Parameters<ReturnType<typeof makeJobDb>['db']['transaction']>[0]>[0];
-
-// The site's polled readings on one Manila day, as minutes since Manila
-// midnight (weather_alerts keeps one row per 30-minute poll).
-async function siteReadingsOn(
-  tx: Tx,
-  tenantId: string,
-  rentalId: string,
-  reportDate: string,
-): Promise<{ siteId: string; readings: TimedReading[] } | null> {
-  const [rental] = await tx.select({ siteId: rentals.projectSiteId }).from(rentals).where(eq(rentals.id, rentalId)).limit(1);
-  if (!rental?.siteId) return null;
-  const dayStart = new Date(`${reportDate}T00:00:00+08:00`);
-  const rows = await tx
-    .select({ at: weatherAlerts.effectiveAt, observed: weatherAlerts.observed })
-    .from(weatherAlerts)
-    .where(
-      and(
-        eq(weatherAlerts.tenantId, tenantId),
-        eq(weatherAlerts.projectSiteId, rental.siteId),
-        gte(weatherAlerts.effectiveAt, dayStart),
-        lt(weatherAlerts.effectiveAt, new Date(dayStart.getTime() + 86_400_000)),
-      ),
-    );
-  const readings = rows
-    .filter((r) => r.observed)
-    .map((r) => ({ minute: Math.floor((r.at.getTime() - dayStart.getTime()) / 60_000), observed: r.observed as WeatherObservation }));
-  return { siteId: rental.siteId, readings };
-}
 
 // One day's reading, as the ocr_payload JSONB contract (RFC-2 §3).
 //
@@ -351,24 +318,10 @@ export async function runEdtrOcrWorker(
             // money (RFC-2). tenant_id comes from the claimed row, never
             // from the sheet or its QR code.
             if (day.v2) {
-              const site = await siteReadingsOn(tx, row.tenantId, row.rentalId, day.reportDate);
-              const flags = site ? compareReportedWeather({ ...day.v2, hoursActive: day.hoursActive }, site.readings) : [];
-              for (const flag of flags) {
-                await tx.insert(events).values({
-                  tenantId: row.tenantId,
-                  name: 'edtr_weather_discrepancy',
-                  properties: {
-                    edtr_id: edtrId,
-                    rental_id: row.rentalId,
-                    project_site_id: site!.siteId,
-                    date: day.reportDate,
-                    half: flag.half,
-                    rule: flag.rule,
-                    reported: flag.reported,
-                    system: flag.system,
-                  },
-                });
-              }
+              const flags = await logWeatherDiscrepancies(tx, row.tenantId, edtrId, row.rentalId, day.reportDate, {
+                ...day.v2,
+                hoursActive: day.hoursActive,
+              });
               if (flags.length > 0) {
                 const reason = `weather_${flags.map((f) => `${f.rule}:${f.half}`).join(',')}`;
                 await tx
