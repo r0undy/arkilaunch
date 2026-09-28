@@ -106,4 +106,19 @@ describe('Select', () => {
     await userEvent.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('an open menu picks up options that arrive late', async () => {
+    const ui = (opts: string[]) => (
+      <Select label="Category" value="" onChange={() => {}}>
+        <option value="">Choose a category</option>
+        {opts.map((o) => (
+          <option key={o}>{o}</option>
+        ))}
+      </Select>
+    );
+    const { rerender } = render(ui([]));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Category' }));
+    rerender(ui(['Backhoe', 'Others']));
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Choose a category', 'Backhoe', 'Others']);
+  });
 });

@@ -362,6 +362,7 @@ No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the mo
 - Padding: `12px 14px`; label above the field (never placeholder-as-label).
 - Numeric inputs (hours, km, rates): IBM Plex Mono, right-aligned, `inputmode="decimal"`, tabular.
 - Min touch height: 44px; 48px on the field console.
+- **Dropdown (CR: directory-and-dropdown):** a select-only combobox, never the OS list. Trigger: the square input shape with a caret. Menu: `--radius-sm`, `--shadow-lg`, 44px rows, highlighted row `--color-surface-sunk`, chosen row accent + check + 2px accent edge. A `value=""` prompt reads muted and is never marked chosen. Escape closes the menu before any dialog.
 
 ### Surfaces (Cards, Modals, Panels)
 

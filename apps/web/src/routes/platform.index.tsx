@@ -2,22 +2,30 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
 import {
+  ArrowRight,
   Calculator,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
   Mail,
+  MapPin,
   Phone,
   Receipt,
+  Search,
+  SearchX,
   Store,
+  X,
   type LucideIcon,
 } from 'lucide-react';
-import type { CatalogTenantListResponse } from '@arkilaunch/shared';
+import type { CatalogTenantListItem, CatalogTenantListResponse } from '@arkilaunch/shared';
 import { Button } from '../components/button.js';
-import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { SkipLink } from '../components/skip-link.js';
+import { EmptyState } from '../components/empty-state.js';
+import { LoadError } from '../components/load-error.js';
+import { Pagination } from '../components/pagination.js';
 import { apiGet } from '../lib/api-client.js';
+import { onPrimaryFor } from '../lib/brand.js';
 import { tenantOrigin } from '../lib/host.js';
 
 // ArkiLaunch's own landing page (platform host only; see routes/index.tsx).
@@ -85,105 +93,276 @@ const STEPS = [
   { title: 'Go live', body: 'Your storefront and back office open at your own address, in your colors.' },
 ];
 
-// The directory filters live in the URL (?q=&category=&location=) so a
-// filtered list can be shared. `/` is also the tenant home, so the search
+// The directory filters live in the URL (?q=&category=&location=&page=) so
+// a filtered list can be shared. `/` is also the tenant home, so the search
 // is read loosely rather than through a route-level validateSearch.
-type DirectorySearch = { q?: string; category?: string; location?: string };
+type DirectorySearch = { q?: string | undefined; category?: string | undefined; location?: string | undefined; page?: number | undefined };
+const DIRECTORY_PAGE = 9;
 
 function readSearch(raw: Record<string, unknown>): DirectorySearch {
-  const pick = (k: string) => (typeof raw[k] === 'string' && raw[k] !== '' ? (raw[k] as string) : undefined);
   const out: DirectorySearch = {};
   for (const k of ['q', 'category', 'location'] as const) {
-    const v = pick(k);
-    if (v) out[k] = v;
+    const v = raw[k];
+    if (typeof v === 'string' && v !== '') out[k] = v;
   }
+  // A number, not a string: the router JSON-quotes numeric strings (?page=%222%22).
+  const page = Number(raw.page);
+  if (Number.isInteger(page) && page > 1) out.page = page;
   return out;
+}
+
+// One company in the directory, in its own brand color: a strip across the
+// top and, without a logo, the initial tile.
+function CompanyCard({ t }: { t: CatalogTenantListItem }) {
+  const place = [t.city, t.province].filter(Boolean).join(', ');
+  const href = tenantOrigin(t.slug);
+  const brand = t.primaryColor ? { backgroundColor: t.primaryColor, color: onPrimaryFor(t.primaryColor) } : undefined;
+  const more = t.categories.length - 3;
+  return (
+    <a
+      href={href}
+      className="group flex h-full flex-col overflow-hidden rounded-md border border-border bg-surface transition duration-200 hover:-translate-y-1 hover:shadow-md focus-visible:-translate-y-1 focus-visible:shadow-md"
+    >
+      <span aria-hidden="true" className="h-1 shrink-0 bg-primary" style={brand} />
+      <span className="flex flex-1 flex-col gap-4 p-5">
+        <span className="flex gap-4">
+          {t.logoUrl ? (
+            <img src={t.logoUrl} alt="" className="size-14 shrink-0 object-contain" />
+          ) : (
+            <span
+              aria-hidden="true"
+              style={brand}
+              className="flex size-14 shrink-0 items-center justify-center rounded-sm bg-primary text-heading-lg text-on-primary"
+            >
+              {t.name.charAt(0)}
+            </span>
+          )}
+          <span className="flex min-w-0 flex-col gap-1">
+            <span className="text-heading-md text-text">{t.name}</span>
+            {t.tagline && <span className="text-sm text-text-muted">{t.tagline}</span>}
+            {place && (
+              <span className="flex items-center gap-1 text-xs text-text-muted">
+                <MapPin aria-hidden className="size-3.5 shrink-0" />
+                {place}
+              </span>
+            )}
+          </span>
+        </span>
+        {t.categories.length > 0 && (
+          <span className="flex flex-wrap gap-1.5">
+            <span className="sr-only">Rents out:</span>
+            {t.categories.slice(0, 3).map((c) => (
+              <span key={c} className="rounded-xs border border-border px-2 py-0.5 font-mono text-xs text-text-muted">
+                {c}
+              </span>
+            ))}
+            {more > 0 && (
+              <span className="rounded-xs border border-border px-2 py-0.5 font-mono text-xs text-text-muted">+{more}</span>
+            )}
+          </span>
+        )}
+      </span>
+      {/* Always there on touch; with a mouse it slides in on hover. */}
+      <span className="flex items-center justify-between gap-3 border-t border-border px-5 py-3 text-sm transition group-hover:bg-surface-sunk">
+        <span className="min-w-0 truncate font-mono text-xs text-text-muted">{new URL(href).host}</span>
+        <span className="flex shrink-0 items-center gap-1 font-medium text-accent transition duration-200 pointer-fine:translate-y-1 pointer-fine:opacity-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
+          Visit storefront
+          <ArrowRight aria-hidden className="size-4 transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </span>
+    </a>
+  );
 }
 
 function Directory() {
   const navigate = useNavigate();
+  const section = useRef<HTMLElement>(null);
   const search = readSearch(useSearch({ strict: false }) as Record<string, unknown>);
+  const page = search.page ?? 1;
+  const offset = (page - 1) * DIRECTORY_PAGE;
   const [q, setQ] = useState(search.q ?? '');
-  const [location, setLocation] = useState(search.location ?? '');
-  const params = new URLSearchParams({ limit: '60', ...search }).toString();
-  const { data, isPending, isError } = useQuery({
+  const { page: _page, ...filters } = search;
+  const params = new URLSearchParams({ limit: String(DIRECTORY_PAGE), offset: String(offset), ...(filters as Record<string, string>) }).toString();
+  const { data, isPending, isError, isPlaceholderData, refetch } = useQuery({
     queryKey: ['catalog', 'tenants', params] as const,
     queryFn: () => apiGet<CatalogTenantListResponse>(`/catalog/tenants?${params}`),
     placeholderData: keepPreviousData,
   });
 
+  // Any filter change goes back to page 1; only the pager sets a page.
+  // resetScroll: false, or every keystroke would jump to the top.
   function apply(next: DirectorySearch) {
-    void navigate({ to: '/', search: readSearch({ ...search, ...next }) as never, replace: true });
+    void navigate({
+      to: '/',
+      search: readSearch({ ...search, page: undefined, ...next }) as never,
+      replace: true,
+      resetScroll: false,
+    });
   }
 
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    apply({ q: q.trim(), location: location.trim() });
+  // Live search: the typed name reaches the URL (and the query) 300ms after
+  // the last keystroke.
+  useEffect(() => {
+    const next = q.trim();
+    if (next === (search.q ?? '')) return;
+    const timer = setTimeout(() => apply({ q: next }), 300);
+    return () => clearTimeout(timer);
+  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function clearAll() {
+    setQ('');
+    void navigate({ to: '/', search: {} as never, replace: true, resetScroll: false });
   }
+
+  const applied = [
+    search.q && {
+      label: `“${search.q}”`,
+      clear: () => {
+        setQ('');
+        apply({ q: '' });
+      },
+    },
+    search.category && { label: search.category, clear: () => apply({ category: '' }) },
+    search.location && { label: search.location, clear: () => apply({ location: '' }) },
+  ].filter((f): f is { label: string; clear: () => void } => Boolean(f));
+
+  const categories = data?.categories ?? [];
+  const locations = data?.locations ?? [];
+  const total = data?.total ?? 0;
+  const chip = (on: boolean) =>
+    [
+      'min-h-11 shrink-0 rounded-pill border px-4 text-sm font-medium transition-colors',
+      on ? 'border-nav bg-nav text-text-inverse' : 'border-border bg-surface text-text hover:border-border-strong',
+    ].join(' ');
 
   return (
-    <section aria-labelledby="directory-title" className="flex flex-col gap-6">
-      <h2 id="directory-title" className="text-display-md text-text lg:text-display-lg">
-        Find a rental company
-      </h2>
-      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto] lg:items-end">
-        <Input label="Company name" type="search" value={q} onChange={(e) => setQ(e.target.value)} maxLength={100} />
-        <Select
-          label="Equipment"
-          value={search.category ?? ''}
-          onChange={(e) => apply({ category: e.target.value })}
+    <section ref={section} aria-labelledby="directory-title" className="flex scroll-mt-20 flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <h2 id="directory-title" className="text-display-md text-text lg:text-display-lg">
+          Find a rental company
+        </h2>
+        <p className="text-body-lg text-text-muted">Rental companies already taking bookings on ArkiLaunch.</p>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-[1fr_16rem] sm:items-end">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="directory-q" className="text-sm font-medium text-text">
+              Company name
+            </label>
+            <div className="relative">
+              <Search aria-hidden className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-text-muted" />
+              <input
+                id="directory-q"
+                type="search"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                maxLength={100}
+                placeholder="Search by name"
+                className="min-h-11 w-full rounded-input border border-border bg-surface py-2.5 pl-12 pr-4 text-base text-text hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+              />
+            </div>
+          </div>
+          <Select label="City" value={search.location ?? ''} onChange={(e) => apply({ location: e.target.value })}>
+            <option value="">Any city</option>
+            {locations.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+            {search.location && !locations.includes(search.location) && (
+              <option value={search.location}>{search.location}</option>
+            )}
+          </Select>
+        </div>
+
+        <div
+          role="group"
+          aria-label="Equipment"
+          className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden"
         >
-          <option value="">Any equipment</option>
-          {(data?.categories ?? []).map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </Select>
-        <Input
-          label="City or province"
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
-          maxLength={100}
-        />
-        <Button type="submit">Search</Button>
-      </form>
-      {isError ? (
-        <p className="text-sm text-text-muted">The directory could not be loaded. Try again in a moment.</p>
-      ) : isPending ? (
-        <p className="text-sm text-text-muted">Loading companies…</p>
-      ) : data.items.length === 0 ? (
-        <p className="text-sm text-text-muted">No rental companies match these filters.</p>
-      ) : (
-        <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3" aria-live="polite">
-          {data.items.map((t) => {
-            const place = [t.city, t.province].filter(Boolean).join(', ');
+          {['', ...categories].map((c) => {
+            const on = (search.category ?? '') === c;
             return (
-              <li key={t.slug}>
-                <a
-                  href={tenantOrigin(t.slug)}
-                  className="flex h-full gap-4 rounded-md border border-border bg-surface p-5 transition-shadow hover:shadow-md"
-                >
-                  {t.logoUrl ? (
-                    <img src={t.logoUrl} alt="" className="size-14 shrink-0 object-contain" />
-                  ) : (
-                    <span
-                      aria-hidden="true"
-                      className="flex size-14 shrink-0 items-center justify-center rounded-sm bg-primary text-heading-lg text-on-primary"
-                    >
-                      {t.name.charAt(0)}
-                    </span>
-                  )}
-                  <span className="flex min-w-0 flex-col gap-1">
-                    <span className="text-heading-md text-text">{t.name}</span>
-                    {t.tagline && <span className="text-sm text-text-muted">{t.tagline}</span>}
-                    {place && <span className="text-xs text-text-muted">{place}</span>}
-                  </span>
-                </a>
-              </li>
+              <button key={c || 'all'} type="button" aria-pressed={on} onClick={() => apply({ category: c })} className={chip(on)}>
+                {c || 'All equipment'}
+              </button>
             );
           })}
-        </ul>
+        </div>
+
+        <div className="flex min-h-11 flex-wrap items-center gap-2 text-sm">
+          <p aria-live="polite" className="mr-2 font-medium text-text">
+            {isPending ? 'Searching…' : `${total} ${total === 1 ? 'company' : 'companies'}`}
+          </p>
+          {applied.map((f) => (
+            <button
+              key={f.label}
+              type="button"
+              onClick={f.clear}
+              aria-label={`Remove filter ${f.label}`}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-pill border border-border bg-surface-sunk px-3 text-text hover:border-border-strong"
+            >
+              {f.label}
+              <X aria-hidden className="size-4" />
+            </button>
+          ))}
+          {applied.length > 0 && (
+            <button type="button" onClick={clearAll} className="min-h-11 rounded-sm px-2 font-medium text-accent hover:underline">
+              Clear all
+            </button>
+          )}
+        </div>
+      </div>
+
+      {isError ? (
+        <LoadError message="The directory could not be loaded. Check your connection and try again." onRetry={() => void refetch()} />
+      ) : isPending ? (
+        <div role="status" className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <span className="sr-only">Loading companies</span>
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} aria-hidden="true" className="h-48 animate-pulse rounded-md bg-border/60" />
+          ))}
+        </div>
+      ) : data.items.length === 0 ? (
+        <EmptyState
+          icon={SearchX}
+          title="No rental companies match"
+          description="Try another name or city, or show every kind of equipment."
+          action={
+            applied.length > 0 ? (
+              <Button variant="secondary" onClick={clearAll}>
+                Clear filters
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <>
+          {/* Keyed by what is shown, so each new result set plays its rise-in once. */}
+          <ul
+            key={`${offset}:${data.items.map((t) => t.slug).join()}`}
+            className={['grid gap-6 transition-opacity sm:grid-cols-2 lg:grid-cols-3', isPlaceholderData ? 'opacity-60' : ''].join(' ')}
+          >
+            {data.items.map((t, i) => (
+              <li key={t.slug} className="animate-rise" style={{ animationDelay: `${i * 50}ms` }}>
+                <CompanyCard t={t} />
+              </li>
+            ))}
+          </ul>
+          <Pagination
+            offset={offset}
+            limit={DIRECTORY_PAGE}
+            total={total}
+            noun="companies"
+            busy={isPlaceholderData}
+            onOffsetChange={(next) => {
+              const n = next / DIRECTORY_PAGE + 1;
+              apply({ page: n });
+              section.current?.scrollIntoView({ block: 'start' });
+            }}
+          />
+        </>
       )}
     </section>
   );

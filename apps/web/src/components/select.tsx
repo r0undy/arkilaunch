@@ -253,7 +253,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
             onMouseDown={(e) => e.preventDefault()}
             className="fixed z-[100] overflow-y-auto rounded-sm border border-border bg-surface py-1 shadow-lg"
           >
-            {opts.map((o, i) => (
+            {opts.map((o, i) => {
+              // A value="" prompt is never shown as a choice made.
+              const chosen = i === selected && o.value !== '';
+              return (
               <li
                 key={`${i}-${o.value}`}
                 id={optId(i)}
@@ -266,16 +269,15 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
                 className={[
                   'flex min-h-11 items-center gap-3 border-l-2 px-4 text-base',
                   i === active ? 'bg-surface-sunk' : '',
-                  i === selected ? 'border-accent font-medium text-accent' : 'border-transparent text-text',
+                  chosen ? 'border-accent font-medium text-accent' : 'border-transparent text-text',
                   o.disabled ? 'cursor-not-allowed text-text-muted' : 'cursor-pointer',
                 ].join(' ')}
               >
-                <span className={['min-w-0 flex-1 truncate', o.value === '' && i !== selected ? 'text-text-muted' : ''].join(' ')}>
-                  {o.label}
-                </span>
-                {i === selected && <Check aria-hidden className="size-4 shrink-0" />}
+                <span className={['min-w-0 flex-1 truncate', o.value === '' ? 'text-text-muted' : ''].join(' ')}>{o.label}</span>
+                {chosen && <Check aria-hidden className="size-4 shrink-0" />}
               </li>
-            ))}
+              );
+            })}
           </ul>,
           document.body,
         )}
