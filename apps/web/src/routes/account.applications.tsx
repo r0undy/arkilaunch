@@ -11,7 +11,13 @@ import { Button } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { Skeleton } from '../components/skeleton.js';
 import { LoadError } from '../components/load-error.js';
-import { VerificationPill } from '../components/company-card.js';
+import {
+  companyRemark,
+  DOC_LABELS,
+  registrationNumber,
+  VerificationPill,
+} from '../components/company-card.js';
+import { formatStatus } from '../lib/format.js';
 
 // Figma 251:1945 "Company Applications". The companies one login has
 // registered to rent under, their verification state, and where to manage
@@ -27,8 +33,8 @@ import { VerificationPill } from '../components/company-card.js';
 type StatusFilter = 'all' | 'pending' | 'approved';
 
 const TABS: { value: StatusFilter; label: string }[] = [
-  { value: 'all', label: 'All Applications' },
-  { value: 'pending', label: 'Pending Approval' },
+  { value: 'all', label: 'All applications' },
+  { value: 'pending', label: 'Pending approval' },
   { value: 'approved', label: 'Approved' },
 ];
 
@@ -78,6 +84,9 @@ function RegistrationThumbnail({ company }: { company: CompanyResponse }) {
 }
 
 function ApplicationCard({ company }: { company: CompanyResponse }) {
+  const number = registrationNumber(company);
+  const remark = companyRemark(company);
+  const submitted = company.documents.map((d) => DOC_LABELS[d.documentType] ?? formatStatus(d.documentType));
   return (
     <Surface
       radius="md"
@@ -92,8 +101,25 @@ function ApplicationCard({ company }: { company: CompanyResponse }) {
         <span className="self-start">
           <VerificationPill status={company.kycStatus} />
         </span>
+        {number && (
+          <p className="text-sm text-text-muted">
+            {number.label} <span className="font-mono text-text">{number.value}</span>
+          </p>
+        )}
         <p className="text-sm text-text-muted">
-          Registration number <span className="font-mono text-text">{company.secNumber ?? 'Not provided'}</span>
+          Submitted: {submitted.length > 0 ? submitted.join(', ') : 'no documents yet'}
+        </p>
+        <p className="text-sm text-text">
+          {remark.text}{' '}
+          {remark.action === 'upload' && (
+            <Link
+              to="/account/companies/$companyId/documents"
+              params={{ companyId: company.id }}
+              className="text-accent underline"
+            >
+              Upload
+            </Link>
+          )}
         </p>
       </div>
       <Link to="/account/companies/$companyId" params={{ companyId: company.id }}>
@@ -137,19 +163,19 @@ function ApplicationsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        title="Company Applications"
-        description="Manage and track company applications."
+        title="Applications"
+        description="The companies you rent under, and where each verification stands."
         actions={
           <Link to="/account/companies/new">
-            <Button variant="primary">Add New Company</Button>
+            <Button variant="primary">Add company</Button>
           </Link>
         }
       />
 
       <dl className="grid gap-4 sm:grid-cols-3">
-        <CounterTile value={counts.total} label="Total Applications" />
+        <CounterTile value={counts.total} label="Total applications" />
         <CounterTile value={counts.approved} label="Approved" />
-        <CounterTile value={counts.pending} label="Pending Approval" />
+        <CounterTile value={counts.pending} label="Pending approval" />
       </dl>
 
       <div className="flex flex-col gap-4">
@@ -194,7 +220,7 @@ function ApplicationsPage() {
           description="We need the company you are renting for before a booking: its TIN, billing address, an ID and its registration."
           action={
             <Link to="/account/companies/new">
-              <Button variant="primary">Add New Company</Button>
+              <Button variant="primary">Add company</Button>
             </Link>
           }
         />
@@ -202,7 +228,7 @@ function ApplicationsPage() {
       {companies.isSuccess && rows.length > 0 && shown.length === 0 && (
         <EmptyState
           title="No companies match"
-          description="Try a different search, or switch back to All Applications."
+          description="Try a different search, or switch back to All applications."
         />
       )}
       {shown.map((company) => (

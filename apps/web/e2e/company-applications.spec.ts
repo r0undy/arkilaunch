@@ -12,11 +12,11 @@ test.describe('company applications', () => {
     await signIn(page);
     await page.goto('/account/applications');
 
-    await expect(page.getByRole('heading', { name: 'Company Applications' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Applications', exact: true })).toBeVisible();
 
     // The seeded customer owns at least one company, so Total is non-zero and
     // the cards are on the page.
-    const total = page.getByText('Total Applications').locator('xpath=preceding-sibling::dd[1]');
+    const total = page.getByText('Total applications').locator('xpath=preceding-sibling::dd[1]');
     await expect(total).not.toHaveText('0');
     const cards = page.getByRole('group');
     await expect(cards.first()).toBeVisible();
@@ -25,13 +25,13 @@ test.describe('company applications', () => {
     // Each tab is a subset of All, and the two together account for every
     // card -- a company is pending or approved, never both and never neither
     // once rejected ones are excluded.
-    await page.getByRole('button', { name: 'Pending Approval' }).click();
+    await page.getByRole('button', { name: 'Pending approval' }).click();
     const pending = await page.getByRole('group').count();
     await page.getByRole('button', { name: 'Approved' }).click();
     const approved = await page.getByRole('group').count();
     expect(pending + approved).toBeLessThanOrEqual(all);
 
-    await page.getByRole('button', { name: 'All Applications' }).click();
+    await page.getByRole('button', { name: 'All applications' }).click();
     await expect(page.getByRole('group')).toHaveCount(all);
   });
 
@@ -54,7 +54,7 @@ test.describe('company applications', () => {
     await expect(page.getByText(/No companies match/i)).toBeVisible();
   });
 
-  test('Manage opens that company, and Add New Company opens the form', async ({ page }) => {
+  test('Manage opens that company, and Add company opens the form', async ({ page }) => {
     await signIn(page);
     await page.goto('/account/applications');
 
@@ -70,7 +70,7 @@ test.describe('company applications', () => {
     await page.getByRole('link', { name: 'Back to applications' }).click();
     await expect(page).toHaveURL(/\/account\/applications$/);
 
-    await page.getByRole('link', { name: 'Add New Company' }).click();
+    await page.getByRole('link', { name: 'Add company' }).click();
     await expect(page).toHaveURL(/\/account\/companies\/new$/);
   });
 
@@ -80,6 +80,6 @@ test.describe('company applications', () => {
     await signIn(page);
     await page.goto('/account/companies');
     await expect(page).toHaveURL(/\/account\/applications$/);
-    await expect(page.getByRole('heading', { name: 'Company Applications' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Applications', exact: true })).toBeVisible();
   });
 });
