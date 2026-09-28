@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './sign-in.js';
+import { choose } from './select.js';
 
 // End-to-end cover for the inventory CRUD surface (Figma 292:1344,
 // 293:2668, 293:3256) against the real fleet endpoints.
@@ -25,10 +26,10 @@ test('a machine can be added, edited and retired from the inventory', async ({ p
 
   await addDialog.getByLabel('Equipment name').fill('E2E Backhoe');
   // The first real option; index 0 is the "Choose a category" placeholder.
-  await addDialog.getByLabel('Category').selectOption({ index: 1 });
+  await choose(addDialog.getByLabel('Category'), { index: 1 });
   await addDialog.getByLabel('Serial / ID number').fill(serial);
   await addDialog.getByLabel('Weight / capacity (tons)').fill('22.5');
-  await addDialog.getByLabel('Fuel type').selectOption('Diesel');
+  await choose(addDialog.getByLabel('Fuel type'), { label: 'Diesel' });
   await addDialog.getByRole('button', { name: 'Add equipment' }).click();
 
   await expect(addDialog).toBeHidden();

@@ -1,5 +1,6 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
 import { signIn, TENANT_HEADERS } from './sign-in.js';
+import { choose } from './select.js';
 
 // Customer feedback round: crop the National ID, check what it says before
 // upload, company fields that follow the uploaded papers, and an admin card
@@ -175,7 +176,7 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
 
     // Step 3: SEC as the primary paper, DTI as the secondary.
     await expect(page.getByText(/Step 3 of 3/)).toBeVisible();
-    await page.getByLabel('Document type').selectOption('sec_certificate');
+    await choose(page.getByLabel('Document type'), 'sec_certificate');
     // Every photo opens the cropper, certificates included.
     await page.getByTestId('doc-company_registration-file').setInputFiles(file('sec.png', secPng));
     await page.getByRole('dialog', { name: 'Crop your document' }).getByRole('button', { name: 'Use this crop' }).click();

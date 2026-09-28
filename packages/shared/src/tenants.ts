@@ -210,12 +210,18 @@ export const CatalogTenantListItemSchema = z.object({
   tagline: z.string().nullable(),
   city: z.string().nullable(),
   province: z.string().nullable(),
+  // The company's brand color (#rrggbb) and the equipment types it rents out.
+  primaryColor: z.string().nullable(),
+  categories: z.array(z.string()),
 });
 export type CatalogTenantListItem = z.infer<typeof CatalogTenantListItemSchema>;
 
 export const CatalogTenantListResponseSchema = z.object({
   items: z.array(CatalogTenantListItemSchema),
-  // Filter options: equipment types listed companies rent out.
+  total: z.number().int(),
+  // Filter options: equipment types listed companies rent out, and the
+  // cities they are in.
   categories: z.array(z.string()),
+  locations: z.array(z.string()),
 });
 export type CatalogTenantListResponse = z.infer<typeof CatalogTenantListResponseSchema>;

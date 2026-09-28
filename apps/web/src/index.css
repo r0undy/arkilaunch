@@ -113,6 +113,15 @@
 }
 
 @theme {
+  /* A card settling into place when its result set arrives (§5, platform directory). */
+  --animate-rise: rise 400ms ease-out both;
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(0.5rem);
+    }
+  }
+
   /* Fonts (§2.3). One sans for every heading and paragraph; data uses static Mono 500
      (the gauge rule). Inter stands in for Amazon Ember; a tenant may pick Plex. */
   --font-sans: 'Inter', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;

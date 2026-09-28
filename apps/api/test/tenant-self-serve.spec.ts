@@ -86,6 +86,13 @@ describe('self-serve rental company', () => {
 
     const found = await catalog.listTenants({ q: 'self serve', location: 'cebu', limit: 50, offset: 0 });
     expect(found.items.map((t) => t.slug)).toContain(slug);
+    // CR: directory-and-dropdown (migration 0062): the card carries the brand
+    // color, the list pages with a total, and the company's city is a filter.
+    const card = found.items.find((t) => t.slug === slug)!;
+    expect(card.primaryColor).toBe('#1e5f8c');
+    expect(card.categories).toEqual([]);
+    expect(found.total).toBeGreaterThanOrEqual(found.items.length);
+    expect(found.locations.map((c) => c.toLowerCase())).toContain('cebu city');
     const otherProvince = await catalog.listTenants({ q: 'self serve', location: 'Davao', limit: 50, offset: 0 });
     expect(otherProvince.items.map((t) => t.slug)).not.toContain(slug);
 

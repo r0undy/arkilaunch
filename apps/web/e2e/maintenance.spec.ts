@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './sign-in.js';
+import { choose } from './select.js';
 
 // Phase 2: an "Others" machine carries a free-text category, and logging a
 // service resets that task's hours since service. The retire at the end is
@@ -14,7 +15,7 @@ test('admin adds an Others machine, corrects its meter and logs a service that r
   await page.getByRole('button', { name: 'Add equipment' }).click();
   const add = page.getByRole('dialog');
   await add.getByLabel('Equipment name').fill('E2E Paver');
-  await add.getByLabel('Category').selectOption({ label: 'Others' });
+  await choose(add.getByLabel('Category'), { label: 'Others' });
   // Required once "Others" is picked.
   await expect(add.getByRole('button', { name: 'Add equipment' })).toBeDisabled();
   await add.getByLabel('Describe the category').fill('Asphalt paver');

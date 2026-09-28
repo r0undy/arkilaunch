@@ -163,8 +163,8 @@ export async function getCatalogTenantForSlug(slug: string): Promise<CatalogTena
   };
 }
 
-// GET /catalog/tenants (@Public). The platform directory (migration 0051):
-// active rental companies only, public columns only. NULL filter = none.
+// GET /catalog/tenants (@Public). The platform directory (migrations 0051,
+// 0062): active rental companies only, public columns only. NULL filter = none.
 export interface CatalogTenantListRow {
   slug: string;
   name: string;
@@ -172,13 +172,15 @@ export interface CatalogTenantListRow {
   tagline: string | null;
   city: string | null;
   province: string | null;
+  primaryColor: string | null;
+  categories: string[];
 }
 
 export async function listCatalogTenants(
   filters: { q: string | null; category: string | null; location: string | null },
   limit: number,
   offset: number,
-): Promise<CatalogTenantListRow[]> {
+): Promise<{ rows: CatalogTenantListRow[]; total: number }> {
   const rows = await db.execute<{
     slug: string;
     name: string;
@@ -186,17 +188,33 @@ export async function listCatalogTenants(
     tagline: string | null;
     city: string | null;
     province: string | null;
+    primary_color: string | null;
+    categories: string[] | null;
+    total_count: string | number;
   }>(
     sql`select * from catalog_list_tenants(${filters.q}, ${filters.category}, ${filters.location}) limit ${limit} offset ${offset}`,
   );
-  return rows.map((r) => ({
-    slug: r.slug,
-    name: r.name,
-    logoKey: r.logo_key,
-    tagline: r.tagline,
-    city: r.city,
-    province: r.province,
-  }));
+  // total_count rides on every row; a page past the end has no rows, so it
+  // reads 0 there -- the client only ever asks for pages inside the total.
+  return {
+    total: rows.length ? Number(rows[0]!.total_count) : 0,
+    rows: rows.map((r) => ({
+      slug: r.slug,
+      name: r.name,
+      logoKey: r.logo_key,
+      tagline: r.tagline,
+      city: r.city,
+      province: r.province,
+      primaryColor: r.primary_color,
+      categories: r.categories ?? [],
+    })),
+  };
+}
+
+// The directory's City dropdown (migration 0062): cities listed companies are in.
+export async function listCatalogLocations(): Promise<string[]> {
+  const rows = await db.execute<{ city: string }>(sql`select city from catalog_list_locations()`);
+  return rows.map((r) => r.city);
 }
 
 // The directory's category filter options: equipment types some listed

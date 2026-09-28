@@ -428,6 +428,13 @@
       "when": 1790400022000,
       "tag": "0061_tenant_font_plex",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1790400023000,
+      "tag": "0062_directory_cards",
+      "breakpoints": true
     }
   ]
 }
