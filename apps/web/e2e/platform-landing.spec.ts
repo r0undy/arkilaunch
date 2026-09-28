@@ -17,9 +17,9 @@ test.describe('platform landing', () => {
   test('has a rental company directory whose filters live in the URL', async ({ page }) => {
     await page.goto(platformUrl('/'));
     await expect(page.getByRole('heading', { name: 'Find a rental company' })).toBeVisible();
-    await page.getByLabel('City or province').fill('Cebu');
-    await page.getByRole('button', { name: 'Search' }).click();
-    await expect(page).toHaveURL(/location=Cebu/);
+    // Searches as you type (debounced); no Search button.
+    await page.getByLabel('Company name').fill('Almara');
+    await expect(page).toHaveURL(/q=Almara/);
   });
 
   test('fits a phone screen with no sideways scroll', async ({ page }) => {

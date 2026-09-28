@@ -73,7 +73,8 @@ test.describe('self-loading truck', () => {
     // Truck service lives under Bookings now; /app/trucks lands on its tab.
     await admin.goto('/app/trucks');
     await expect(admin.getByRole('tab', { name: /Truck service/ })).toHaveAttribute('aria-selected', 'true');
-    await admin.getByRole('row', { name: new RegExp(code) }).click();
+    // A table row on desktop, a card on a phone (Table, CR: console-components).
+    await admin.locator('tr, li').filter({ hasText: code }).first().click();
     const drawer = admin.getByRole('dialog', { name: code });
     await drawer.getByRole('tab', { name: 'Negotiation' }).click();
     await expect(drawer.getByText('Offer: ₱4,321.00')).toBeVisible();

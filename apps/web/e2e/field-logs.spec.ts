@@ -14,8 +14,8 @@ test('field logs are grouped by rental with hours and deposit, and collapse', as
 
   const rows = group.locator('table, [role="table"], ul').first();
   await expect(rows).toBeVisible();
-  await group.locator('summary').click();
+  await group.locator('summary').click({ position: { x: 4, y: 4 } });
   await expect(rows).toBeHidden();
-  await group.locator('summary').click();
+  await group.locator('summary').click({ position: { x: 4, y: 4 } });
   await expect(rows).toBeVisible();
 });
