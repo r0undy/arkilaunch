@@ -15,7 +15,7 @@ import { Surface } from '../components/surface.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { EquipmentSchematic } from '../components/equipment-schematic.js';
 import { CheckIcon, TruckIcon, WrenchIcon } from '../components/icons.js';
-import { Button } from '../components/button.js';
+import { Button, chipClass } from '../components/button.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { EquipmentFormModal } from '../components/equipment-form-modal.js';
 import { MaintenanceModal } from '../components/maintenance-modal.js';
@@ -160,11 +160,6 @@ function FleetFilters({
   onChange: (next: EquipmentListFilters) => void;
 }) {
   const all = categories.reduce((sum, c) => sum + c.count, 0);
-  const chip = (active: boolean) =>
-    [
-      'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
-      active ? 'border-accent bg-accent text-white' : 'border-border bg-surface text-text hover:bg-surface-sunk',
-    ].join(' ');
   return (
     <div className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -197,7 +192,7 @@ function FleetFilters({
         <button
           type="button"
           aria-pressed={!filters.typeId}
-          className={chip(!filters.typeId)}
+          className={chipClass(!filters.typeId)}
           onClick={() => onChange({ ...filters, typeId: '' })}
         >
           All ({all})
@@ -207,7 +202,7 @@ function FleetFilters({
             key={c.equipmentTypeId}
             type="button"
             aria-pressed={filters.typeId === c.equipmentTypeId}
-            className={chip(filters.typeId === c.equipmentTypeId)}
+            className={chipClass(filters.typeId === c.equipmentTypeId)}
             onClick={() => onChange({ ...filters, typeId: c.equipmentTypeId })}
           >
             {c.name} ({c.count})

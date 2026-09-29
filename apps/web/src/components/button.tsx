@@ -36,6 +36,13 @@ export function buttonClass(variant: ButtonVariant = 'primary', size: ButtonSize
   ].join(' ');
 }
 
+// A filter chip; pair it with aria-pressed.
+export const chipClass = (active: boolean) =>
+  [
+    'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
+    active ? 'border-accent bg-accent text-white' : 'border-border bg-surface text-text hover:bg-surface-sunk',
+  ].join(' ');
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'primary', size = 'default', loading = false, disabled, className = '', children, type, ...rest },
   ref,

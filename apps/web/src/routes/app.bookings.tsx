@@ -6,7 +6,7 @@ import { appLayoutRoute } from './_app.js';
 import { bookingsQueries, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
 import { PageHeader } from '../components/page-header.js';
-import { Button, buttonClass } from '../components/button.js';
+import { Button, buttonClass, chipClass } from '../components/button.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { WeeklyBillingCard } from './statement.js';
@@ -60,11 +60,6 @@ const STATUS_CHIPS: { id: BookingStatus | undefined; label: string }[] = [
   { id: 'cancelled', label: 'Cancelled' },
 ];
 
-const chip = (active: boolean) =>
-  [
-    'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
-    active ? 'border-accent bg-accent text-white' : 'border-border bg-surface text-text hover:bg-surface-sunk',
-  ].join(' ');
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const TRUCK_COLUMNS: TableColumn<TruckRequestResponse>[] = [
@@ -194,7 +189,7 @@ function BookingsPage() {
                   const counts = rentals.data?.statusCounts;
                   const n = counts ? (c.id ? (counts[c.id] ?? 0) : Object.values(counts).reduce((a, b) => a + b, 0)) : null;
                   return (
-                    <button key={c.label} type="button" aria-pressed={status === c.id} className={chip(status === c.id)} onClick={() => setFilters({ status: c.id })}>
+                    <button key={c.label} type="button" aria-pressed={status === c.id} className={chipClass(status === c.id)} onClick={() => setFilters({ status: c.id })}>
                       {c.label}
                       {n !== null && <span className="ml-1.5 tabular-nums opacity-80">{n}</span>}
                     </button>

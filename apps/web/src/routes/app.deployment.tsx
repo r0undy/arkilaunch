@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { manilaDate, type SiteDeploymentFilter, type SiteHubResponse, type SiteResponse } from '@arkilaunch/shared';
+import { chipClass } from '../components/button.js';
 import { appLayoutRoute } from './_app.js';
 import { sitesQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
@@ -153,11 +154,6 @@ function validateDeploymentSearch(search: Record<string, unknown>): { deployment
     : {};
 }
 
-const chip = (active: boolean) =>
-  [
-    'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
-    active ? 'border-accent bg-accent text-white' : 'border-border bg-surface text-text hover:bg-surface-sunk',
-  ].join(' ');
 
 function DeploymentPage() {
   const { deployment } = appDeploymentRoute.useSearch();
@@ -170,7 +166,7 @@ function DeploymentPage() {
   const filters = (
     <div role="group" aria-label="Show sites" className="flex flex-wrap gap-2">
       {FILTERS.map((f) => (
-        <button key={f.label} type="button" aria-pressed={deployment === f.id} className={chip(deployment === f.id)} onClick={() => setFilter(f.id)}>
+        <button key={f.label} type="button" aria-pressed={deployment === f.id} className={chipClass(deployment === f.id)} onClick={() => setFilter(f.id)}>
           {f.label}
         </button>
       ))}

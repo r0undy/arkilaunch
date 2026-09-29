@@ -15,7 +15,7 @@ import { Skeleton } from '../components/skeleton.js';
 import { LoadError } from '../components/load-error.js';
 import { Modal } from '../components/modal.js';
 import { Input } from '../components/input.js';
-import { Button } from '../components/button.js';
+import { Button, chipClass } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
 import { WeatherInsights, weatherInsightsVisible } from '../components/weather-insights.js';
@@ -228,10 +228,7 @@ function EquipmentPage() {
                 setCategory(value);
                 setOffset(0);
               }}
-              className={[
-                'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
-                category === value ? 'border-accent bg-accent text-white' : 'border-border bg-surface text-text hover:bg-surface-sunk',
-              ].join(' ')}
+              className={chipClass(category === value)}
             >
               {label}
             </button>
