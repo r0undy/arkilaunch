@@ -8,7 +8,7 @@
 
 ## Decision
 
-Truck estimates use OpenRouteService `driving-hgv` with native `fetch` and `ORS_API_KEY`. If the key is absent or ORS fails, the existing OSRM car route remains available but is labelled **Car route - verify truck access** on customer and staff maps. An HGV profile is a routing aid; staff still check vehicle dimensions, road restrictions and permits.
+Truck estimates use OpenRouteService `driving-hgv` with native `fetch` and `ORS_API_KEY` at the [current HeiGIT endpoint](https://ask.openrouteservice.org/t/deprecating-api-openrouteservice-org-in-favour-of-api-heigit-org/7912). If the key is absent or ORS fails, the existing OSRM car route remains available but is labelled **Car route - verify truck access** on customer and staff maps. An HGV profile is a routing aid; staff still check vehicle dimensions, road restrictions and permits.
 
 The API samples a route at approximately 5 km intervals, capped at 20 interior points plus endpoints, and serializes search and reverse requests to Nominatim at one request per second per API process. Ordered unique cities are stored on `truck_requests.route_cities` after creation without blocking the response. Staff route reads backfill older null rows. The staff drawer names each city so permits and extra fees can be discussed during price negotiation. The public Nominatim service's limit applies to the whole application, so this pilot implementation needs one API replica or a replacement geocoder before scaling.
 
