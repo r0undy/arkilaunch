@@ -1,5 +1,5 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   bookingDays,
@@ -38,8 +38,8 @@ import {
 import { RangeCalendar, availabilityProblem, localDate, rentalLengthProblem, useAvailability } from '../components/availability-days.js';
 import { SiteProofStatus } from '../components/site-proof.js';
 import {
-  getCart,
   removeFromCart,
+  useCart,
   clearCart,
   updateCartItem,
   type CartItem,
@@ -172,7 +172,7 @@ function CartItemDates({
 // booking request and the price arrives as a quote to negotiate.
 function CartPage() {
   const navigate = useNavigate();
-  const [items, setItems] = useState<CartItem[]>(() => getCart());
+  const items = useCart();
   const [chosenCompanyId, setCompanyId] = useState('');
   const [projectSiteId, setProjectSiteId] = useState('');
   const [siteOpen, setSiteOpen] = useState(false);
@@ -228,14 +228,12 @@ function CartPage() {
 
   function handleRemove(index: number) {
     removeFromCart(index);
-    setItems(getCart());
   }
 
   function handleSwap(equipmentId: string, model: string) {
     items.forEach((item, index) => {
       if (item.equipmentId === swap?.equipmentId) updateCartItem(index, { equipmentId, model, selectedOptions: undefined });
     });
-    setItems(getCart());
     setSwap(null);
     setError(null);
   }
@@ -243,22 +241,15 @@ function CartPage() {
   function handleDate(index: number, field: 'start' | 'end', value: string, hour: number) {
     if (!value) return;
     updateCartItem(index, { [field]: fromDateInput(value, hour) });
-    setItems(getCart());
   }
   // Availability problems per cart line; any one blocks submit.
   const [problems, setProblems] = useState<Record<number, string | null>>({});
-  const reportProblem = useCallback(
-    (index: number, problem: string | null) =>
-      setProblems((prev) => (prev[index] === problem ? prev : { ...prev, [index]: problem })),
-    [],
-  );
+  const reportProblem = (index: number, problem: string | null) =>
+    setProblems((prev) => (prev[index] === problem ? prev : { ...prev, [index]: problem }));
   const unavailable = items.some((_, index) => problems[index]);
   const [estimates, setEstimates] = useState<Record<number, number | null>>({});
-  const reportEstimate = useCallback(
-    (index: number, estimate: number | null) =>
-      setEstimates((prev) => (prev[index] === estimate ? prev : { ...prev, [index]: estimate })),
-    [],
-  );
+  const reportEstimate = (index: number, estimate: number | null) =>
+    setEstimates((prev) => (prev[index] === estimate ? prev : { ...prev, [index]: estimate }));
   const rates = useQuery(catalogQueries.equipment());
   const rateById = new Map(rates.data?.items.map((eq) => [eq.id, eq.rateValue ?? null]));
   const optionGroupsById = new Map(rates.data?.items.map((eq) => [eq.id, eq.optionGroups ?? []]));
@@ -291,7 +282,6 @@ function CartPage() {
     onSuccess: (data: BookingCreateResponse) => {
       void navigate({ to: '/account/cart', search: { booked: data.id, code: data.code }, replace: true });
       clearCart();
-      setItems([]);
     },
     onError: (err: unknown) => {
       setError(explainBookingError(err));
@@ -426,7 +416,10 @@ function CartPage() {
         <div className="flex min-w-0 flex-col gap-4">
           <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
             <h2 className={heading}>Selected equipment ({items.length})</h2>
-            {items.map((item, index) => (
+            {items.map((item, index) => {
+              const groups = optionGroupsById.get(item.equipmentId) ?? [];
+              const picks = resolvedOptions(item, groups);
+              return (
               <div
                 key={`${item.equipmentId}-${index}`}
                 role="group"
@@ -476,22 +469,14 @@ function CartPage() {
                     Remove
                   </Button>
                 </div>
-                {(optionGroupsById.get(item.equipmentId) ?? []).length > 0 && (
+                {groups.length > 0 && (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {(optionGroupsById.get(item.equipmentId) ?? []).map((group) => (
+                    {groups.map((group) => (
                       <Select
                         key={group.name}
                         label={group.name}
-                        value={resolvedOptions(item, optionGroupsById.get(item.equipmentId) ?? [])[group.name]}
-                        onChange={(e) => {
-                          updateCartItem(index, {
-                            selectedOptions: {
-                              ...resolvedOptions(item, optionGroupsById.get(item.equipmentId) ?? []),
-                              [group.name]: e.target.value,
-                            },
-                          });
-                          setItems(getCart());
-                        }}
+                        value={picks[group.name]}
+                        onChange={(e) => updateCartItem(index, { selectedOptions: { ...picks, [group.name]: e.target.value } })}
                       >
                         {group.values.map((value) => (
                           <option key={value} value={value}>
@@ -506,10 +491,7 @@ function CartPage() {
                   item={item}
                   rate={rateById.get(item.equipmentId)}
                   onDate={(field, value, hour) => handleDate(index, field, value, hour)}
-                  onHours={(hours) => {
-                    updateCartItem(index, { hours });
-                    setItems(getCart());
-                  }}
+                  onHours={(hours) => updateCartItem(index, { hours })}
                   onProblem={(problem) => reportProblem(index, problem)}
                   onEstimate={(estimate) => reportEstimate(index, estimate)}
                 />
@@ -519,7 +501,8 @@ function CartPage() {
                   </p>
                 )}
               </div>
-            ))}
+              );
+            })}
             <Link to="/equipment" className={buttonClass('secondary', 'default', 'self-start')}>Add another machine</Link>
           </Surface>
 
