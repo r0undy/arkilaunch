@@ -6,7 +6,7 @@
 // URLs and extracted fields are sensitive personal information).
 const SENSITIVE_KEY =
   /(authorization|api[-_]?key|apikey|token|secret|password|passwd|cookie|signature|credential|session)/i;
-const URL_ATTRIBUTE_KEYS = ['url.full', 'http.url', 'url.query', 'http.target'];
+const URL_ATTRIBUTE_KEYS = ['url.full', 'http.url', 'http.target'];
 
 export function redactUrl(value: string): string {
   try {
@@ -22,7 +22,7 @@ export function redactUrl(value: string): string {
 
 export function redactAttributes(attrs: Record<string, unknown>): void {
   for (const key of Object.keys(attrs)) {
-    if (SENSITIVE_KEY.test(key)) {
+    if (SENSITIVE_KEY.test(key) || key === 'url.query') {
       delete attrs[key];
       continue;
     }
