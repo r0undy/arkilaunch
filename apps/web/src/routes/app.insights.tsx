@@ -1,38 +1,17 @@
 import { createRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { appLayoutRoute } from './_app.js';
-import { reportQueries, type ReportsSnapshot } from '../lib/queries.js';
+import { fleetUtilizationPct, reportQueries, type ReportsSnapshot } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
+import { MachineName } from '../components/machine-name.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon, WrenchIcon } from '../components/icons.js';
-import { useQuery } from '@tanstack/react-query';
-import { equipmentQueries, fleetUtilizationPct } from '../lib/queries.js';
 import { StatTile } from '../components/stat-tile.js';
-import { formatHours, formatInvoiceType, formatPeso, shortCode } from '../lib/format.js';
+import { formatHours, formatInvoiceType, formatPeso } from '../lib/format.js';
 import { TrendingUp } from 'lucide-react';
-
-// The utilization report identifies a unit only by id. Rather than print a
-// UUID stub in the column a yard manager reads first, look the machine up in
-// the fleet list that is already cached for the Equipment screen.
-function MachineName({ equipmentId }: { equipmentId: string }) {
-  const fleet = useQuery(equipmentQueries.list());
-  const match = fleet.data?.items.find((item) => item.id === equipmentId);
-  if (!match)
-    return (
-      <span className="font-mono text-xs text-text-muted">
-        {shortCode('equipment', equipmentId)}
-      </span>
-    );
-  return (
-    <span className="flex flex-col">
-      <span>{match.model}</span>
-      <span className="font-mono text-xs text-text-muted">{match.serialNo}</span>
-    </span>
-  );
-}
 
 const UTILIZATION_COLUMNS: TableColumn<ReportsSnapshot['utilization']['fleet'][number]>[] = [
   { header: 'Machine', kind: 'text', cell: (row) => <MachineName equipmentId={row.equipmentId} /> },

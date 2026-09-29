@@ -1,33 +1,17 @@
 import { createRoute, Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
-import { equipmentQueries, reportQueries, type ReportsSnapshot } from '../lib/queries.js';
+import { reportQueries, type ReportsSnapshot } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Container } from '../components/container.js';
 import { ExpandableSection } from '../components/expandable-section.js';
 import { StatTile } from '../components/stat-tile.js';
+import { MachineName } from '../components/machine-name.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { Button } from '../components/button.js';
 import { PrintFrame } from '../components/print-frame.js';
-import { formatDate, formatHours, formatInvoiceType, formatPeso, shortCode } from '../lib/format.js';
+import { formatDate, formatHours, formatInvoiceType, formatPeso } from '../lib/format.js';
 import { CalendarRange } from 'lucide-react';
-
-// The utilization report identifies a unit only by id, same as the Insights
-// screen -- look the machine up in the fleet list that screen already caches
-// rather than printing a UUID stub in the column a yard manager reads first.
-function MachineName({ equipmentId }: { equipmentId: string }) {
-  const fleet = useQuery(equipmentQueries.list());
-  const match = fleet.data?.items.find((item) => item.id === equipmentId);
-  if (!match)
-    return <span className="font-mono text-xs text-text-muted">{shortCode('equipment', equipmentId)}</span>;
-  return (
-    <span className="flex flex-col">
-      <span className="font-semibold text-text">{match.model}</span>
-      <span className="font-mono text-xs text-text-muted">{match.serialNo}</span>
-    </span>
-  );
-}
 
 function Statement({ snapshot }: { snapshot: ReportsSnapshot }) {
   const { utilization, financial } = snapshot;

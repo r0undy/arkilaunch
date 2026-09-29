@@ -33,6 +33,7 @@ import type {
 import { apiGet, apiPost } from './api-client.js';
 import {
   getCustomers,
+  getEquipment,
   getEquipmentTypes,
   getProjectSites,
   getRateCards,
@@ -295,6 +296,7 @@ export const referenceQueries = {
     }),
   rateCards: () =>
     queryOptions({ queryKey: ['reference', 'rate-cards'] as const, queryFn: getRateCards }),
+  equipment: () => queryOptions({ queryKey: ['reference', 'equipment'] as const, queryFn: getEquipment }),
   rentals: () => queryOptions({ queryKey: ['reference', 'rentals'] as const, queryFn: getRentals }),
   customers: () =>
     queryOptions({ queryKey: ['reference', 'customers'] as const, queryFn: getCustomers }),

@@ -7,7 +7,7 @@ import { getCurrentRole } from '../lib/guards.js';
 import {
   companiesQueries,
   edtrQueries,
-  equipmentQueries,
+  referenceQueries,
   fleetUtilizationPct,
   incidentsQueries,
   invoicesQueries,
@@ -107,7 +107,7 @@ function AdminDashboardPage() {
   // invoice missed unpaid ones once paid ones filled that page.
   const { data: invoices } = useQuery(invoicesQueries.list(6, 0, 'issued'));
   const { data: incidents } = useQuery(incidentsQueries.list());
-  const { data: fleet } = useQuery(equipmentQueries.list());
+  const { data: fleet } = useQuery(referenceQueries.equipment());
   // Work waiting on staff, as real totals (not a page's length).
   const reviewCount = useQuery(edtrQueries.reviewCount());
   const openTrucks = useQuery(trucksQueries.list(1, 0, '', 'open'));
@@ -164,11 +164,11 @@ function AdminDashboardPage() {
   // Name the machine rather than print a UUID stub: this is the first work
   // list anyone sees after signing in.
   function machineName(equipmentId: string | undefined): string {
-    const match = (fleet?.items ?? []).find((item) => item.id === equipmentId);
+    const match = fleet?.find((item) => item.id === equipmentId);
     return match ? match.model : 'Unknown machine';
   }
 
-  const fleetItems = fleet?.items ?? [];
+  const fleetItems = fleet ?? [];
   const inMaintenance = fleetItems.filter((e) => e.availabilityStatus === 'maintenance').length;
   const recoveredHours =
     snapshot?.utilization.fleet.reduce((sum, u) => sum + u.runtimeHours, 0) ?? null;
@@ -206,7 +206,7 @@ function AdminDashboardPage() {
               {(
                 [
                   ['Sites', sites?.total],
-                  ['Machines', fleet?.total],
+                  ['Machines', fleet?.length],
                   ['In maintenance', fleet ? inMaintenance : null],
                   ['Available', fleet ? fleetItems.filter((e) => e.availabilityStatus === 'available').length : null],
                 ] as const
