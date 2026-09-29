@@ -56,7 +56,6 @@ RUN pnpm --filter "@arkilaunch/api..." --filter "@arkilaunch/jobs..." build
 # means adding it here. ---
 FROM node:24-slim AS runtime
 ENV NODE_ENV=production
-RUN corepack enable && corepack prepare pnpm@11.11.0 --activate
 WORKDIR /app
 
 COPY --from=build /app/node_modules node_modules
