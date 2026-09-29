@@ -2,10 +2,12 @@ import { describe, expect, it, beforeAll } from 'vitest';
 import { ConflictException, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import postgres from 'postgres';
-import type { RequestContext } from '@arkilaunch/shared';
+import { manilaDate, type RequestContext } from '@arkilaunch/shared';
 import { FleetService } from '../src/fleet/fleet.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { PermissionsGuard } from '../src/common/guards/permissions.guard.js';
+import { FleetController } from '../src/fleet/fleet.controller.js';
+import { PERMISSION_KEY } from '../src/common/decorators/require-permission.decorator.js';
 
 // PRD-F4 (Fleet Inventory, Maintenance & Reporting): QAD-T16 (deploy a
 // flagged/busy unit), QAD-T19 (owner denied a data-entry permission),
@@ -212,6 +214,50 @@ describe('FleetService (PRD-F4)', () => {
     expect(report.period.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(report.period.to).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(Array.isArray(report.fleet)).toBe(true);
+  });
+
+  it('counts an approved matched pair once in utilization and the equipment report', async () => {
+    const unit = await fleet.create(adminCtx, {
+      equipmentTypeId,
+      model: 'Utilization Test Unit',
+      serialNo: `fleet-util-${Date.now()}`,
+      availabilityStatus: 'available',
+    });
+    const today = manilaDate(new Date());
+    const billed = { running: 8, billable: 8, idle: 0, breakdown: 0, weather: 0, otherDowntime: 0 };
+    const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    const [rental] = await sql`select id from rentals where tenant_id = ${adminCtx.tenantId} limit 1`;
+    const logs = await sql`
+      insert into edtr (tenant_id, rental_id, equipment_id, source, report_date, status)
+      values (${adminCtx.tenantId}, ${(rental as { id: string }).id}, ${unit.id}, 'paper_ocr', ${today}, 'reconciled'),
+             (${adminCtx.tenantId}, ${(rental as { id: string }).id}, ${unit.id}, 'digital_entry', ${today}, 'reconciled')
+      returning id`;
+    const [a, b] = logs.map((row) => (row as { id: string }).id);
+    await sql`insert into edtr_line_items (tenant_id, edtr_id, hours_active, hours_idle) values (${adminCtx.tenantId}, ${a!}, 8, 0), (${adminCtx.tenantId}, ${b!}, 8, 0)`;
+    await sql`
+      insert into edtr_reconciliations (tenant_id, edtr_id, counterpart_edtr_id, tolerance, status, adjustments)
+      values (${adminCtx.tenantId}, ${a!}, ${b!}, 0.5, 'approved', ${sql.json({ billed })}),
+             (${adminCtx.tenantId}, ${b!}, ${a!}, 0.5, 'approved', null)`;
+    await sql.end();
+
+    const report = await fleet.utilizationReport(adminCtx, { from: today, to: today });
+    expect(report.fleet.find((row) => row.equipmentId === unit.id)?.utilizationPct).toBe(100);
+    const unitReport = await fleet.report(adminCtx, unit.id);
+    expect(unitReport.totals.hours).toBe(8);
+    expect(unitReport.months.at(-1)?.hours).toBe(8);
+  });
+
+  it('GET /equipment/:id/report needs report:read, which a timekeeper lacks', async () => {
+    expect(new Reflector().get(PERMISSION_KEY, FleetController.prototype.report)).toEqual(['report:read']);
+    const reflector = new Reflector();
+    reflector.getAllAndOverride = () => ['report:read'];
+    const req = { ctx: { tenantId: adminCtx.tenantId, userId: adminCtx.userId, role: 'timekeeper' } };
+    const context = {
+      switchToHttp: () => ({ getRequest: () => req }),
+      getHandler: () => {},
+      getClass: () => class {},
+    } as unknown as ExecutionContext;
+    expect(await new PermissionsGuard(reflector).canActivate(context)).toBe(false);
   });
 
   // QAD-T19: an owner (report:read only, no fleet:manage) is denied a

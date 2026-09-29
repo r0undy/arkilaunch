@@ -74,7 +74,7 @@ function mergeSpans(rows: { start: Date; end: Date | null }[]): ReportSpan {
 // The figures an approved day was billed on. approve() stores them on the
 // reconciliation it approves (adjustments.billed); a day approved before
 // that falls back to its line item through classifyHours, the same rule.
-function approvedHours(
+export function approvedHours(
   recon: { adjustments: unknown },
   item: typeof edtrLineItems.$inferSelect | undefined,
 ): ApprovedDayHours | null {

@@ -1,11 +1,12 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, count, desc, eq, gt, gte, ilike, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, ilike, inArray, isNull, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import {
   type Tx,
   auditLogs,
   customers,
   edtr,
   edtrLineItems,
+  edtrReconciliations,
   equipment,
   equipmentAssignments,
   equipmentTypes,
@@ -48,9 +49,10 @@ import type {
   UtilizationQuery,
   UtilizationReportResponse,
 } from '@arkilaunch/shared';
-import { round2HalfUp } from '@arkilaunch/shared';
+import { manilaDate, round2HalfUp, type ApprovedDayHours } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { countRows } from '../common/count-rows.js';
+import { approvedHours } from '../common/field-logs.js';
 import { dayAvailability, readCalendar } from '../common/equipment-availability.js';
 
 // Documented simplification (same category as the deposit-ledger balance
@@ -131,6 +133,27 @@ function defaultFromDate(to: string, days: number): string {
   const date = new Date(`${to}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() - days);
   return date.toISOString().slice(0, 10);
+}
+
+// One approved day per equipment-day: a matched pair approves two reconciliations, and only one carries the billed figures.
+async function approvedDays(tx: Tx, where: SQL | undefined) {
+  const rows = await tx
+    .select({ equipmentId: edtr.equipmentId, reportDate: edtr.reportDate, adjustments: edtrReconciliations.adjustments, item: edtrLineItems })
+    .from(edtr)
+    .innerJoin(edtrReconciliations, eq(edtrReconciliations.edtrId, edtr.id))
+    .leftJoin(edtrLineItems, eq(edtrLineItems.edtrId, edtr.id))
+    .where(and(eq(edtrReconciliations.status, 'approved'), where));
+  const billed = (row: (typeof rows)[number]) => !!(row.adjustments as { billed?: unknown } | null)?.billed;
+  const byDay = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    const key = `${row.equipmentId}|${row.reportDate}`;
+    const kept = byDay.get(key);
+    if (!kept || (!billed(kept) && billed(row))) byDay.set(key, row);
+  }
+  return [...byDay.values()].flatMap((row) => {
+    const hours: ApprovedDayHours | null = approvedHours(row, row.item ?? undefined);
+    return hours ? [{ equipmentId: row.equipmentId, reportDate: row.reportDate, hours }] : [];
+  });
 }
 
 @Injectable()
@@ -610,25 +633,16 @@ export class FleetService {
       const [unit] = await tx.select().from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
       if (!unit) throw new NotFoundException({ error: 'equipment_not_found' });
 
-      const since = new Date();
-      since.setMonth(since.getMonth() - 5, 1);
-      const month = sql<string>`to_char(${edtr.reportDate}, 'YYYY-MM')`;
-      const hourRows = await tx
-        .select({ month, hours: sql<string>`coalesce(sum(${edtrLineItems.hoursActive}), 0)` })
-        .from(edtrLineItems)
-        .innerJoin(edtr, eq(edtr.id, edtrLineItems.edtrId))
-        .where(and(eq(edtr.equipmentId, equipmentId), ne(edtr.status, 'hard_failed'), gte(edtr.reportDate, since.toISOString().slice(0, 10))))
-        .groupBy(month);
-      const [allHours] = await tx
-        .select({ hours: sql<string>`coalesce(sum(${edtrLineItems.hoursActive}), 0)` })
-        .from(edtrLineItems)
-        .innerJoin(edtr, eq(edtr.id, edtrLineItems.edtrId))
-        .where(and(eq(edtr.equipmentId, equipmentId), ne(edtr.status, 'hard_failed')));
+      const days = await approvedDays(tx, eq(edtr.equipmentId, equipmentId));
       const [params] = await tx.select({ fuel: pricingParameters.fuelLPerHour }).from(pricingParameters).orderBy(desc(pricingParameters.effectiveFrom)).limit(1);
       const fuel = params ? Number(params.fuel) : null;
       const litres = (hours: number) => (fuel === null ? null : round2HalfUp(hours * fuel));
 
-      const byMonth = new Map(hourRows.map((row) => [row.month, Number(row.hours)]));
+      const byMonth = new Map<string, number>();
+      for (const day of days) {
+        const key = day.reportDate.slice(0, 7);
+        byMonth.set(key, (byMonth.get(key) ?? 0) + day.hours.running);
+      }
       const months: EquipmentReportResponse['months'] = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date();
@@ -685,7 +699,7 @@ export class FleetService {
         return row?.n ?? 0;
       };
 
-      const totalHours = round2HalfUp(Number(allHours?.hours ?? 0));
+      const totalHours = round2HalfUp(days.reduce((sum, day) => sum + day.hours.running, 0));
       return {
         equipmentId,
         model: unit.model,
@@ -809,19 +823,13 @@ export class FleetService {
     ctx: RequestContext,
     query: UtilizationQuery,
   ): Promise<UtilizationReportResponse> {
-    const to = query.to ?? new Date().toISOString().slice(0, 10);
+    const to = query.to ?? manilaDate(new Date());
     const from = query.from ?? defaultFromDate(to, DEFAULT_REPORT_WINDOW_DAYS);
 
     return withTenantTx(ctx, async (tx) => {
       const equipmentRows = await tx.select().from(equipment);
       const scheduleRows = await tx.select().from(maintenanceSchedules);
-      const hoursRows = await tx
-        .select({ equipmentId: edtr.equipmentId, hoursActive: edtrLineItems.hoursActive })
-        .from(edtr)
-        .innerJoin(edtrLineItems, eq(edtrLineItems.edtrId, edtr.id))
-        .where(
-          and(eq(edtr.status, 'reconciled'), gte(edtr.reportDate, from), lte(edtr.reportDate, to)),
-        );
+      const days = await approvedDays(tx, and(gte(edtr.reportDate, from), lte(edtr.reportDate, to)));
 
       const runtimeById = new Map(equipmentRows.map((row) => [row.id, Number(row.runtimeHours)]));
       // Due when ANY task schedule is crossed, not just the newest one.
@@ -834,11 +842,8 @@ export class FleetService {
       );
 
       const activeHoursByEquipment = new Map<string, number>();
-      for (const row of hoursRows) {
-        activeHoursByEquipment.set(
-          row.equipmentId,
-          (activeHoursByEquipment.get(row.equipmentId) ?? 0) + Number(row.hoursActive),
-        );
+      for (const day of days) {
+        activeHoursByEquipment.set(day.equipmentId, (activeHoursByEquipment.get(day.equipmentId) ?? 0) + day.hours.running);
       }
 
       const totalPossibleHours = daysBetweenInclusive(from, to) * BUSINESS_HOURS_PER_DAY;
@@ -869,7 +874,7 @@ export class FleetService {
     ctx: RequestContext,
     query: UtilizationQuery,
   ): Promise<FinancialReportResponse> {
-    const to = query.to ?? new Date().toISOString().slice(0, 10);
+    const to = query.to ?? manilaDate(new Date());
     const from = query.from ?? defaultFromDate(to, DEFAULT_REPORT_WINDOW_DAYS);
 
     return withTenantTx(ctx, async (tx) => {
@@ -878,8 +883,8 @@ export class FleetService {
         .from(invoices)
         .where(
           and(
-            gte(invoices.createdAt, new Date(`${from}T00:00:00Z`)),
-            lte(invoices.createdAt, new Date(`${to}T23:59:59.999Z`)),
+            gte(invoices.createdAt, new Date(`${from}T00:00:00+08:00`)),
+            lt(invoices.createdAt, new Date(new Date(`${to}T00:00:00+08:00`).getTime() + 86_400_000)),
           ),
         );
 
