@@ -36,7 +36,7 @@ interface Recipient {
 // Everyone told about a site's weather: its timekeepers, the customers who
 // rent machines on it, and the tenant's active admins and owners. A user who is more
 // than one of these is told once, as the most specific: timekeeper first.
-export async function siteRecipients(ex: Executor, tenantId: string, siteId: string, rentalIds: string[]): Promise<Recipient[]> {
+async function siteRecipients(ex: Executor, tenantId: string, siteId: string, rentalIds: string[]): Promise<Recipient[]> {
   const byUser = new Map<string, Recipient>();
   const add = (row: { id: string; email: string; prefs: Recipient['prefs'] }, audience: WeatherAudience, rentalId?: string) => {
     const existing = byUser.get(row.id);
@@ -144,7 +144,7 @@ export async function notifySiteWeather(
   const origin = tenant ? tenantWebOrigin(tenant.slug, webOrigin, process.env.PLATFORM_DOMAIN) : webOrigin;
   const brand = { name: tenant?.name ?? 'ArkiLaunch', logoUrl: publicPhotoUrl(tenant?.logoKey ?? null), color: tenant?.color ?? null };
 
-  const deliveries: { r: Recipient; body: Record<string, unknown> }[] = [];
+  const deliveries: { r: Recipient; body: Record<string, unknown>; noticeType: WeatherNoticeType }[] = [];
   for (const r of recipients) {
     let body: Record<string, unknown> = { ...payload, audience: r.audience };
     if (r.audience === 'customer') {
@@ -156,23 +156,17 @@ export async function notifySiteWeather(
         continue;
       }
     }
-    deliveries.push({ r, body });
+    // The live warning keeps its two historical types: the customer's links to their booking, everyone else's to the site.
+    const noticeType = type === 'equipment_weather_warning' && r.audience !== 'customer' ? 'equipment_weather_alert' : type;
+    deliveries.push({ r, body, noticeType });
   }
   if (deliveries.length === 0) return [];
 
   await ex.insert(notifications).values(
-    deliveries.map(({ r, body }) => ({
-      tenantId,
-      userId: r.userId,
-      // The live warning keeps its two historical types: the customer's
-      // links to their booking, everyone else's to the site.
-      notificationType: type === 'equipment_weather_warning' && r.audience !== 'customer' ? 'equipment_weather_alert' : type,
-      payload: body,
-    })),
+    deliveries.map(({ r, body, noticeType }) => ({ tenantId, userId: r.userId, notificationType: noticeType, payload: body })),
   );
 
-  for (const { r, body } of deliveries) {
-    const noticeType = type === 'equipment_weather_warning' && r.audience !== 'customer' ? 'equipment_weather_alert' : type;
+  for (const { r, body, noticeType } of deliveries) {
     if (r.prefs.email) {
       const mail = weatherEmail(noticeType, body, r.audience, origin);
       await sendEmail(r.email, mail.subject, mail.text, renderEmailHtml(brand, mail.text)).catch((err) =>
