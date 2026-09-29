@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, type SQL } from 'drizzle-orm';
 import {
   type Tx,
   auditLogs,
@@ -138,8 +138,9 @@ export class BillingService {
       if (query.rentalId) conditions.push(eq(invoices.rentalId, query.rentalId));
       if (query.invoiceType) conditions.push(eq(invoices.invoiceType, query.invoiceType));
       if (query.status) conditions.push(eq(invoices.status, query.status));
-      if (query.from) conditions.push(gte(invoices.createdAt, new Date(`${query.from}T00:00:00Z`)));
-      if (query.to) conditions.push(lte(invoices.createdAt, new Date(`${query.to}T23:59:59.999Z`)));
+      // Manila days: [from 00:00 +08:00, the day after `to`).
+      if (query.from) conditions.push(gte(invoices.createdAt, new Date(`${query.from}T00:00:00+08:00`)));
+      if (query.to) conditions.push(lt(invoices.createdAt, new Date(new Date(`${query.to}T00:00:00+08:00`).getTime() + 86_400_000)));
 
       const rows = await tx
         .select()
@@ -216,7 +217,7 @@ export class BillingService {
         rentalId,
         depositRequired: ledger.depositRequired,
         totalDeducted: ledger.totalDeducted,
-        balanceRemaining: Math.max(0, ledger.depositRequired - ledger.totalDeducted),
+        balanceRemaining: round2HalfUp(Math.max(0, ledger.depositRequired - ledger.totalDeducted)),
         unbilledAccrued: ledger.unbilledAccrued,
         hoursUsed: ledger.hoursUsed,
         hoursOrdered: ledger.hoursOrdered,

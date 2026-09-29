@@ -249,6 +249,21 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     expect(items.every((item) => item.rentalId === depositRentalId && item.invoiceType === 'deposit_deduction')).toBe(true);
   });
 
+  it('GET /invoices date filters are Manila days', async () => {
+    const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    const [row] = await sql`
+      insert into invoices (tenant_id, rental_id, invoice_type, amount, status, due_date, created_at)
+      values (${adminCtxA.tenantId}, ${depositRentalId}, 'deposit', 0, 'void', '2026-08-31T23:00:00Z', '2026-08-31T23:00:00Z')
+      returning id`;
+    await sql.end();
+    const id = (row as { id: string }).id;
+    const list = (from: string, to: string) =>
+      billing.listInvoices(adminCtxA, { rentalId: depositRentalId, from, to, limit: 50, offset: 0 }).then((r) => r.items.map((i) => i.id));
+
+    expect(await list('2026-09-01', '2026-09-01')).toContain(id);
+    expect(await list('2026-08-31', '2026-08-31')).not.toContain(id);
+  });
+
   // QAD-T23: cross-tenant read is denied by RLS itself, not an app-level filter.
   it('QAD-T23: a tenant B admin cannot read tenant A rental deposit ledger or invoices', async () => {
     await expect(billing.depositLedger(adminCtxB, depositRentalId)).rejects.toThrow(NotFoundException);
