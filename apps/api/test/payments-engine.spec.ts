@@ -1,5 +1,5 @@
 import type { QuotesService } from '../src/quotes/quotes.service.js';
-import { describe, expect, it, beforeAll } from 'vitest';
+import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { ForbiddenException, HttpException } from '@nestjs/common';
 import postgres from 'postgres';
@@ -23,6 +23,13 @@ describe('PaymentsService (PRD-F2)', () => {
   let customerIdA: string;
 
   let fixtureCustomerId: string;
+
+  // The checkout throttle is tenant-wide: age this spec's checkouts out of the window so the next spec starts clean.
+  afterAll(async () => {
+    const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    await sql`update payments set created_at = created_at - interval '10 minutes' where tenant_id = ${customerCtxA.tenantId} and created_at > now() - interval '5 minutes'`;
+    await sql.end();
+  });
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL_DIRECT;
