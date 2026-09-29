@@ -352,6 +352,11 @@ const blankBan: TruckBanRuleInput = {
   minGvwKg: null, permitNote: '', verified: false,
 };
 
+const BAN_FIELDS: Record<string, string> = {
+  days: 'Days', windows: 'Ban hours', minGvwKg: 'Minimum GVW', city: 'City', province: 'Province', permitNote: 'Permit note',
+};
+class RuleInputError extends Error {}
+
 export function BanRulesEditor() {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -371,17 +376,22 @@ export function BanRulesEditor() {
   };
   const save = useMutation({
     mutationFn: async () => {
-      const body = TruckBanRuleSchema.parse({ ...draft,
-        days: daysText.split(',').map((s) => Number(s.trim())),
+      const parsed = TruckBanRuleSchema.safeParse({ ...draft,
+        days: daysText.split(',').map((s) => s.trim()).filter(Boolean).map(Number),
         windows: windowsText.split(',').map((s) => {
           const [from, to] = s.trim().split('-');
           return { from, to };
         }),
       });
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        throw new RuleInputError(`${BAN_FIELDS[String(issue?.path[0])] ?? 'Rule'}: ${issue?.message}`);
+      }
+      const body = parsed.data;
       return editing === 'new' ? apiPost('/truck-ban-rules', body) : apiPut(`/truck-ban-rules/${(editing as TruckBanRule).id}`, body);
     },
     onSuccess: () => { setEditing(null); refresh(); toast.success('Truck ban rule saved'); },
-    onError: (error) => toast.error('Rule not saved', apiErrorText(error)),
+    onError: (error) => toast.error('Rule not saved', error instanceof RuleInputError ? error.message : apiErrorText(error)),
   });
   const remove = useMutation({
     mutationFn: (id: string) => apiDelete(`/truck-ban-rules/${id}`),
