@@ -87,14 +87,14 @@ function saveCart(items: CartItem[]): void {
 }
 
 export function addToCart(item: CartItem): void {
-  saveCart([...getCart(), item]);
+  saveCart([...readSnapshot(), item]);
 }
 
 // Keeps end after start: moving the start past the end drags the end along
 // by a day, since the API refuses an end that is not after the start.
 export function updateCartItem(index: number, patch: Partial<CartItem>): void {
   saveCart(
-    getCart().map((item, i) => {
+    readSnapshot().map((item, i) => {
       if (i !== index) return item;
       const next = { ...item, ...patch };
       if (new Date(next.end) <= new Date(next.start)) {
@@ -108,7 +108,7 @@ export function updateCartItem(index: number, patch: Partial<CartItem>): void {
 }
 
 export function removeFromCart(index: number): void {
-  saveCart(getCart().filter((_, i) => i !== index));
+  saveCart(readSnapshot().filter((_, i) => i !== index));
 }
 
 export function clearCart(): void {

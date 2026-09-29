@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, renderHook, screen, waitFor } from '@testing-library/react';
+import { useCart } from '../lib/cart-client.js';
 import userEvent from '@testing-library/user-event';
 import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
@@ -62,8 +63,11 @@ describe('LoginPage: redirect preservation', () => {
 
     const second = makeToken(makeValidClaims({ sub: 'customer-2' }));
     stubFetch({ accessToken: second, refreshToken: 'refresh-2', expiresIn: 600 });
-    await login({ email: 'second@example.com', password: 'password123' });
+    const { result } = renderHook(() => useCart());
+    expect(result.current).toHaveLength(1);
+    await act(() => login({ email: 'second@example.com', password: 'password123' }));
     expect(sessionStorage.getItem('arkilaunch.cart')).toBeNull();
+    expect(result.current).toHaveLength(0);
   });
 
   it('after a successful login, navigates back to the ?redirect= destination rather than the role home', async () => {

@@ -1,6 +1,7 @@
 import { tenantSlug } from './host.js';
 import { decodeAccessToken } from './jwt.js';
 import { clearOwner, currentOwner, markOwner, watchOwner } from './session-owner.js';
+import { clearCart } from './cart-client.js';
 import type {
   CustomerSignup,
   AuthTokens,
@@ -63,7 +64,9 @@ function storeTokens(tokens: AuthTokens): void {
   if (!userId) return;
   const previousUser = tabUser();
   if (previousUser && previousUser !== userId) {
-    for (const key of USER_TAB_KEYS) sessionStorage.removeItem(key);
+    // clearCart publishes, so an open cart view drops the previous user's machines too.
+    clearCart();
+    sessionStorage.removeItem('setup-modal-seen');
   } else if (!previousUser) {
     // A visitor's cart belongs to this login flow. Keep it across the
     // redirect, while resetting signed-in-only welcome state.

@@ -85,4 +85,19 @@ describe('useCart', () => {
     expect(() => getCart()).not.toThrow();
     spy.mockRestore();
   });
+
+  it('keeps earlier items when storage is blocked', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const { result } = renderHook(() => useCart());
+    act(() => addToCart(machine('A')));
+    act(() => addToCart(machine('B')));
+    expect(result.current.map((i) => i.model)).toEqual(['A', 'B']);
+    get.mockRestore();
+    set.mockRestore();
+  });
 });
