@@ -92,7 +92,9 @@ describe('Quotes', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 
     await userEvent.click(screen.getByRole('tab', { name: 'Trucking' }));
-    expect(await screen.findByRole('heading', { name: 'Truck pricing' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Customer quotation' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Negotiation' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Internal trip cost' })).toBeInTheDocument();
     // Mob/demob is rental only.
     expect(screen.queryByLabelText('Mobilization (PHP)')).not.toBeInTheDocument();
   });
