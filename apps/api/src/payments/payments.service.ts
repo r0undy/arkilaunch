@@ -79,6 +79,8 @@ export class PaymentsService {
       if (ctx.role === 'customer') {
         if (!(await ownsCustomer(tx, ctx, rental.customerId))) throw new NotFoundException({ error: 'booking_not_found' });
       }
+      // A cancel or hold expiry that won the lock first leaves nothing to pay for.
+      if (rental.status === 'cancelled') throw new ConflictException({ error: 'booking_cancelled' });
 
       // Money moves only once staff have verified the company.
       const [company] = await tx.select().from(customers).where(eq(customers.id, rental.customerId)).limit(1);

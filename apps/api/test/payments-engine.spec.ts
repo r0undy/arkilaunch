@@ -182,6 +182,14 @@ describe('PaymentsService (PRD-F2)', () => {
     expect(pending).toHaveLength(1);
   });
 
+  it('checkout of a cancelled booking is refused and issues nothing', async () => {
+    const bookingId = await createBooking(14);
+    await withTenantTx(customerCtxA, (tx) => tx.update(rentals).set({ status: 'cancelled' }).where(eq(rentals.id, bookingId)));
+    await expect(payments_.checkout(customerCtxA, bookingId)).rejects.toMatchObject({ response: { error: 'booking_cancelled' } });
+    const issued = await withTenantTx(customerCtxA, (tx) => tx.select().from(invoices).where(eq(invoices.rentalId, bookingId)));
+    expect(issued).toHaveLength(0);
+  });
+
   it('QAD-T28: a valid signed webhook confirms payment and moves invoice/rental status', async () => {
     const bookingId = await createBooking(3);
     const result = await payments_.checkout(customerCtxA, bookingId);
