@@ -17,7 +17,7 @@ import { Throttle } from '@nestjs/throttler';
 import { EQUIPMENT_PHOTO_MAX_BYTES } from '@arkilaunch/shared';
 import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
 import { EQUIPMENT_PHOTO_RULES, validateUpload } from '../storage/upload-validation.js';
-import { StorageService } from '../storage/storage.service.js';
+import { StorageService, equipmentBucket } from '../storage/storage.service.js';
 import { FleetService } from './fleet.service.js';
 import {
   EquipmentCreateDto,
@@ -33,11 +33,6 @@ import {
   TenantCalendarDto,
 } from './dto.js';
 import type { CtxRequest, MulterFile } from '../common/request.js';
-
-// Deliberately not the KYC bucket: that one holds RA 10173 personal data
-// under its own retention posture. See fleet.service.ts publicPhotoUrl.
-const equipmentBucket = () =>
-  process.env.SUPABASE_STORAGE_BUCKET_EQUIPMENT ?? 'equipment-photos';
 
 // PRD-F4 (Fleet Inventory, Maintenance & Reporting). Reads are open to any
 // authenticated tenant member (RLS is the isolation boundary, matching

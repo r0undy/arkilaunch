@@ -31,14 +31,10 @@ import {
 import { AuthService } from '../auth/auth.service.js';
 import { RefreshTokenService } from '../auth/refresh-token.service.js';
 import { EventsService } from '../events/events.service.js';
-import { StorageService } from '../storage/storage.service.js';
+import { StorageService, kycBucket } from '../storage/storage.service.js';
 import { countRows } from '../common/count-rows.js';
 
 type Ctx = RequestContext;
-
-// Profile pictures are personal data, so they live in the private KYC bucket
-// (signed URLs only), not the public equipment-photos one.
-export const avatarBucket = () => process.env.SUPABASE_STORAGE_BUCKET_KYC ?? 'kyc-documents';
 
 @Injectable()
 export class UsersService {
@@ -116,7 +112,7 @@ export class UsersService {
     // Storage outage costs the picture, never the whole profile.
     const tenantTin = await getTenantTin(ctx.tenantId).catch(() => null);
     const avatarUrl = row.avatarKey
-      ? await this.storage.createSignedDownloadUrl(avatarBucket(), row.avatarKey).catch(() => null)
+      ? await this.storage.createSignedDownloadUrl(kycBucket(), row.avatarKey).catch(() => null)
       : null;
     return {
       id: row.id,

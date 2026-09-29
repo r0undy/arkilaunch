@@ -14,8 +14,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { MAX_UPLOAD_BYTES } from '@arkilaunch/shared';
 import { validateUpload } from '../storage/upload-validation.js';
-import { StorageService } from '../storage/storage.service.js';
-import { avatarBucket, UsersService } from './users.service.js';
+import { StorageService, kycBucket } from '../storage/storage.service.js';
+import { UsersService } from './users.service.js';
 import { UserPasswordChangeDto, UserSelfUpdateDto } from './dto.js';
 import type { CtxRequest, MulterFile } from '../common/request.js';
 
@@ -54,7 +54,7 @@ export class UserProfileController {
     if (!validated.contentType.startsWith('image/'))
       throw new UnprocessableEntityException({ error: 'avatar_must_be_image' });
     const key = this.storage.buildObjectKey(req.ctx.tenantId, validated.extension);
-    await this.storage.uploadObject(avatarBucket(), key, file!.buffer, validated.contentType);
+    await this.storage.uploadObject(kycBucket(), key, file!.buffer, validated.contentType);
     return this.usersService.setAvatar(req.ctx, key);
   }
 

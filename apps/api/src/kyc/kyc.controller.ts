@@ -4,16 +4,11 @@ import { Throttle } from '@nestjs/throttler';
 import { MAX_UPLOAD_BYTES, type KycExtractRequest } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { validateUpload } from '../storage/upload-validation.js';
-import { StorageService } from '../storage/storage.service.js';
+import { StorageService, requireEnv } from '../storage/storage.service.js';
 import { KycService } from './kyc.service.js';
 import { KycConfirmDto, KycExtractDto } from './dto.js';
 import type { CtxRequest, MulterFile } from '../common/request.js';
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is required`);
-  return value;
-}
 
 @Controller('kyc')
 export class KycController {

@@ -17,7 +17,7 @@ import {
 } from '@arkilaunch/shared';
 import { KYC_MODEL_ID } from '@arkilaunch/document-intelligence';
 import { EventsService } from '../events/events.service.js';
-import { StorageService } from '../storage/storage.service.js';
+import { StorageService, kycBucket } from '../storage/storage.service.js';
 import { DOCUMENT_INTELLIGENCE_PORT } from './kyc.tokens.js';
 
 interface KycOcrPayload {
@@ -78,7 +78,7 @@ export class KycService {
         // all -- StorageService itself is not exercised there since these
         // tests inject a stub in place of it).
         const signedUrl = await this.storage.createSignedDownloadUrl(
-          process.env.SUPABASE_STORAGE_BUCKET_KYC ?? 'kyc-documents',
+          kycBucket(),
           body.fileUri,
         );
         const res = await fetch(signedUrl);

@@ -39,11 +39,10 @@ import type {
 } from '@arkilaunch/shared';
 import { isTenantSlug, PlatformCompanyListResponseSchema } from '@arkilaunch/shared';
 import { AuthService } from '../auth/auth.service.js';
-import { StorageService } from '../storage/storage.service.js';
+import { StorageService, equipmentBucket } from '../storage/storage.service.js';
 import { DISPLAY_IMAGE_TYPES, validateUpload } from '../storage/upload-validation.js';
 import { toBranding } from '../common/branding.js';
 
-const brandingBucket = () => process.env.SUPABASE_STORAGE_BUCKET_EQUIPMENT ?? 'equipment-photos';
 const logger = new Logger('TenantsService');
 
 @Injectable()
@@ -235,7 +234,7 @@ If you did not register, ignore this email.`,
     if (file) {
       const validated = validateUpload(file, { allow: DISPLAY_IMAGE_TYPES });
       key = this.storage.buildObjectKey(tenantId, validated.extension);
-      await this.storage.uploadObject(brandingBucket(), key, file.buffer, validated.contentType);
+      await this.storage.uploadObject(equipmentBucket(), key, file.buffer, validated.contentType);
     }
     try {
       await setTenantBrandingImage(tenantId, ctx.userId, kind, key);

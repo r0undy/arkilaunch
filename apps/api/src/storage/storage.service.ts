@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, ServiceUnavailableException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
 // Calls the Supabase Storage REST API directly with native fetch rather
@@ -70,8 +70,26 @@ export class StorageService {
   }
 }
 
-function requireEnv(name: string): string {
+export function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+// KYC documents and avatars share the RA 10173 bucket; equipment and branding images are public.
+export const kycBucket = () => process.env.SUPABASE_STORAGE_BUCKET_KYC ?? 'kyc-documents';
+export const equipmentBucket = () => process.env.SUPABASE_STORAGE_BUCKET_EQUIPMENT ?? 'equipment-photos';
+
+// No default: a missing EDTR bucket is operator misconfiguration, answered as a 503 that names the setting.
+export function edtrBucket(): string {
+  const name = 'SUPABASE_STORAGE_BUCKET_EDTR';
+  const value = process.env[name];
+  if (!value) {
+    throw new ServiceUnavailableException({
+      error: 'storage_not_configured',
+      missing: name,
+      detail: 'Document storage is not configured in this environment, so the scan was not saved.',
+    });
+  }
   return value;
 }

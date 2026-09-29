@@ -6,7 +6,6 @@ import {
   Post,
   Query,
   Req,
-  ServiceUnavailableException,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -15,27 +14,10 @@ import { Throttle } from '@nestjs/throttler';
 import { MAX_UPLOAD_BYTES, type EdtrCaptureRequest } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { validateUpload } from '../storage/upload-validation.js';
-import { StorageService } from '../storage/storage.service.js';
+import { StorageService, edtrBucket } from '../storage/storage.service.js';
 import { EdtrService } from './edtr.service.js';
 import { EdtrApproveDto, EdtrCaptureDto, EdtrListQueryDto, EdtrRejectDto, EdtrReviewDto } from './dto.js';
 import type { CtxRequest, MulterFile } from '../common/request.js';
-
-const EDTR_BUCKET = () => requireEnv('SUPABASE_STORAGE_BUCKET_EDTR');
-// A missing storage bucket is an operator misconfiguration, not a bad
-// request. Thrown as a bare Error it surfaced to the user as an opaque 500
-// "Internal server error" that named nothing and looked like data loss; say
-// which setting is absent and that the log was not stored.
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new ServiceUnavailableException({
-      error: 'storage_not_configured',
-      missing: name,
-      detail: 'Document storage is not configured in this environment, so the scan was not saved.',
-    });
-  }
-  return value;
-}
 
 @Controller('edtr')
 export class EdtrController {
@@ -72,7 +54,7 @@ export class EdtrController {
     if (body.source === 'paper_ocr') {
       const validated = validateUpload(file);
       const key = this.storage.buildObjectKey(req.ctx.tenantId, validated.extension);
-      await this.storage.uploadObject(EDTR_BUCKET(), key, file!.buffer, validated.contentType);
+      await this.storage.uploadObject(edtrBucket(), key, file!.buffer, validated.contentType);
       rawFileUri = key;
     }
 
@@ -103,7 +85,7 @@ export class EdtrController {
   @RequirePermission('edtr:read')
   async image(@Param('id') id: string, @Req() req: CtxRequest) {
     const key = await this.edtr.rawFileKey(req.ctx, id);
-    const url = await this.storage.createSignedDownloadUrl(EDTR_BUCKET(), key);
+    const url = await this.storage.createSignedDownloadUrl(edtrBucket(), key);
     return { url, expiresInSeconds: 300 };
   }
 
