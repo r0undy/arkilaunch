@@ -76,6 +76,13 @@ export async function apiDelete(path: string): Promise<void> {
 // with the underscores taken out, so this is a formatter rather than a
 // per-screen message table. Screens with a real vocabulary of failures still
 // get their own mapper (lib/booking-error.ts, lib/edtr-error.ts).
+// Leaves for a real http(s) payment page only; the stub adapter answers "about:blank?...".
+export function followCheckout(url: string | null): boolean {
+  if (!url || !/^https?:\/\//i.test(url)) return false;
+  window.location.assign(url);
+  return true;
+}
+
 export function apiErrorText(error: unknown): string {
   if (error instanceof ApiError) {
     const code = error.message;

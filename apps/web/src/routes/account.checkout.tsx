@@ -5,7 +5,7 @@ import type { BookingDetailResponse, CheckoutMethod, CouponPreviewResponse } fro
 import { localPhMobile } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, companiesQueries } from '../lib/queries.js';
-import { ApiError, apiErrorText, apiPost } from '../lib/api-client.js';
+import { ApiError, apiErrorText, apiPost, followCheckout } from '../lib/api-client.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
@@ -195,15 +195,7 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
         void navigate({ to: '/account/invoices/$invoiceId', params: { invoiceId: data.invoiceId } });
         return;
       }
-      // With no payment provider configured the API answers with the stub
-      // adapter's placeholder ("about:blank?amount=..."), a successful
-      // response carrying a URL that is not a payment page. Check the
-      // destination is a real http(s) page before leaving the app.
-      if (/^https?:\/\//i.test(data.checkoutUrl)) {
-        window.location.assign(data.checkoutUrl);
-        return;
-      }
-      setUnavailable(true);
+      if (!followCheckout(data.checkoutUrl)) setUnavailable(true);
     },
   });
 
