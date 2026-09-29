@@ -169,7 +169,7 @@ export class TrucksController {
   }
 
   @Get('truck-ban-rules')
-  @RequirePermission('pricing:manage')
+  @RequirePermission('pricing:manage', 'report:read')
   banRules(@Req() req: CtxRequest) { return this.trucks.listBanRules(req.ctx); }
 
   @Post('truck-ban-rules')

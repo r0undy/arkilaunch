@@ -2,7 +2,7 @@
 
 **Project slug:** `arkilaunch`
 **Maintained by:** ArkiLaunch Team (Almara Construction capstone)
-**Last updated:** 2026-09-28
+**Last updated:** 2026-09-29
 **Built on FMD:** v1.28.1
 
 ---
@@ -24,15 +24,15 @@
 | BRD · Business Requirements | [brd-arkilaunch.md](brd-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
 | UES · Unit Economics Sheet | [ues-arkilaunch.md](ues-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
 | PRD · Product Requirements | [prd-arkilaunch.md](prd-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-19 |
-| DSD · Design System | [dsd-arkilaunch.md](dsd-arkilaunch.md) | 0.1 | Locked | 2026-09-28 | 2026-09-28 |
-| SDD · System Design | [sdd-arkilaunch.md](sdd-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-07 |
+| DSD · Design System | [dsd-arkilaunch.md](dsd-arkilaunch.md) | 0.1 | Locked | 2026-09-29 | 2026-09-29 |
+| SDD · System Design | [sdd-arkilaunch.md](sdd-arkilaunch.md) | 0.1 | Locked | 2026-09-29 | 2026-09-29 |
 | QAD · QA & Test Plan | [qad-arkilaunch.md](qad-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-07 |
 | SAD · Subagents | [sad-arkilaunch.md](sad-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
 | BUILD · Build Guide | [build-arkilaunch.md](build-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
 | CLR · Compliance & Legal | [clr-arkilaunch.md](clr-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
 | AIA · AI Assurance Dossier | [aia-arkilaunch.md](aia-arkilaunch.md) | 0.1 | Draft | 2026-09-19 | N/A |
 | GTM · Go-To-Market | [gtm-arkilaunch.md](gtm-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
-| OPS · Ops & Observability | [ops-arkilaunch.md](ops-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
+| OPS · Ops & Observability | [ops-arkilaunch.md](ops-arkilaunch.md) | 0.1 | Draft | 2026-09-29 | N/A |
 | LOG · Build Session Log | [log-arkilaunch.md](log-arkilaunch.md) | 0.1 | Draft (append-only) | 2026-09-07 | N/A |
 
 ### Runbooks (operational procedure, not suite docs)
@@ -90,6 +90,7 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 
 | CR ID | Date | Summary | Trigger doc | Docs touched | File |
 |-------|------|---------|-------------|--------------|------|
+| cr-arkilaunch-qa-truck-routing | 2026-09-29 | HGV routing with flagged car fallback, ordered route cities, editable unverified Metro Manila ban rules, paid-trip dispatch and customer ETA (migration 0070) | QA feedback 2026-09-29 | SDD §3/§4, DSD §4, OPS, index.md §2 | [cr-arkilaunch-qa-truck-routing.md](cr-arkilaunch-qa-truck-routing.md) |
 | cr-arkilaunch-weather-monitoring | 2026-09-28 | Weather monitoring and verification for sites with **delivered** equipment (the poll no longer counts a rental with nothing on site). A 05:30 Manila pre-workday briefing judges each forecast hour per machine with the live rules, plus an hourly watch that runs only for sites a briefing put on watch. Notices go to the site's timekeepers, the renting customer (their own machines only) and admins, in-app plus email plus **Web Push** (W3C/VAPID with `web-push`; no Firebase or GCP; no SMS). Migration 0066 adds `push_subscriptions` with full RLS. Digital EDTRs now run the D1/D2 weather check too, as a review flag plus an incident-log row that carries the half-hourly rain evidence, with no hold and no money effect. `/terms#weather-monitoring` is published and linked from checkout. Also fixes the equipment class map, which had stopped matching the renamed catalog types, so cranes were being judged as `general`. Open item: the call budget on all-watch days exceeds the free tier at the 200-site ceiling | Owner request 2026-09-28 | index.md §2; extends cr-arkilaunch-open-meteo-free-tier.md, proposal-edtr-weather-attestation.md | [cr-arkilaunch-weather-monitoring.md](cr-arkilaunch-weather-monitoring.md) |
 | cr-arkilaunch-equipment-options | 2026-09-28 | Rental options per unit (`equipment.option_groups`, e.g. bucket size and arm, chosen in the cart, stored on `equipment_assignments.selected_options`, checked server-side, 422 `invalid_options`); photo credit and source page on equipment, shown under a reference photo; `Self-Loading Truck` category; Almara catalog seeded (excavators, Cat backhoe loader, bulldozers, self-loading and dump trucks); admin fleet filters (category chips with counts, status, search, missing photo/price) grouped by category, and a storefront category filter | Owner catalog request 2026-09-28 | sdd §3 `equipment_types`, `equipment`, `equipment_assignments`, `POST /bookings`, `GET /equipment`; index.md §2 | [cr-arkilaunch-equipment-options.md](cr-arkilaunch-equipment-options.md) |
 | cr-arkilaunch-qa-batch-14-22 | 2026-09-29 | Truck trips booked for a company (`truck_requests.customer_id`), optional site that pins the drop-off with no proof, required `load_description`; every staff price change voids the unpaid invoice/PayMongo session and needs the customer's accept (`accepted_price_php`, thread as price history, `price_changed`/`price_not_accepted`); customer cancel voids invoices (trucks and pending rentals); call-request opens Actions; toll suggestions plus manual toll; Messenger or in-app negotiation (`tenants.messenger_url`); Statement of Account and weekly billing cron; branded print letterhead/footer with tenant TIN; one account per browser; Back/Forward fixes; any Philippine primary ID; Metro Manila pin province fix | Owner QA items 14-22 (2026-09-28) | sdd §3 `truck_requests`, `tenants`; truck, billing, KYC contracts | [cr-arkilaunch-qa-batch-14-22.md](cr-arkilaunch-qa-batch-14-22.md) |

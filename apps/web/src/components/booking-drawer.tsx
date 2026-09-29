@@ -244,6 +244,7 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
                   <strong>{place.city}</strong> - trucks banned {rule.windows.map((w) => `${w.from}-${w.to}`).join(' & ')},
                   {' '}{rule.days.map((day) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][day]).join(', ')}
                   {hit ? ' | pickup falls inside: permit or reschedule' : ' | pickup outside listed hours'}
+                  {rule.minGvwKg !== null && ` | applies from ${rule.minGvwKg} kg GVW (vehicle weight not recorded)`}
                   {!rule.verified && ' | rule not verified'}
                   {rule.permitNote && ` | ${rule.permitNote}`}
                 </p>;

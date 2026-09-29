@@ -5,7 +5,7 @@
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Locked
-**Last reconciled:** 2026-09-07 (see docs/index.md §1); §3's `delta_hours` definition and §4's 409 body corrected 2026-09-07 by `docs/cr-arkilaunch-m4-money-path-gates.md`; frontend prerender amendment recorded via Change Record `docs/cr-arkilaunch-frontend-storefront-shell.md`; §2/§4/§5/§6/§7 amended 2026-08-20 by `docs/cr-arkilaunch-open-meteo-free-tier.md`
+**Last reconciled:** 2026-09-29 (CR: qa-truck-routing, §3/§4 truck route and dispatch); §3's `delta_hours` definition and §4's 409 body corrected 2026-09-07 by `docs/cr-arkilaunch-m4-money-path-gates.md`; frontend prerender amendment recorded via Change Record `docs/cr-arkilaunch-frontend-storefront-shell.md`; §2/§4/§5/§6/§7 amended 2026-08-20 by `docs/cr-arkilaunch-open-meteo-free-tier.md`
 **PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
 **Event / context:** FMD engine v1.28.1; Scale Full.
 
@@ -323,6 +323,8 @@ Full column definitions follow for the multi-tenant additions and the load-beari
 
 *Added after lock by [cr-arkilaunch-coupons.md](cr-arkilaunch-coupons.md) (migration 0057; not renumbered):* `coupons` (tenant-scoped; code, discount_type, discount_value, expires_at, max_uses, once_per_customer, redeemed_count, active) and `coupon_redemptions` (tenant-scoped; coupon_id, customer_id, invoice_id UNIQUE, discount_php).
 
+*Truck routing addendum ([cr-arkilaunch-qa-truck-routing.md](cr-arkilaunch-qa-truck-routing.md), migration 0070):* `truck_requests` retains ordered `route_cities` JSONB, `route_minutes`, `dispatched_at` and `eta_at`; `dispatched` follows `paid`. New tenant-scoped `truck_ban_rules` stores city, province, weekday numbers, JSONB time windows, optional minimum GVW, permit note and verified flag. It has `(tenant_id, city, province)` uniqueness, tenant-leading index and full FORCE RLS. Unverified Metro Manila examples are seeded for existing tenants and on future tenant insertion.
+
 **Key relationships:**
 - Tenant has many Users, Customers, Equipment, RateCards, ProjectSites, Subscriptions (1:N), and is the isolation root for every tenant-owned row.
 - Customer has many Rentals, Quotations, KYCDocuments (1:N); a Rental belongs to one Customer and one ProjectSite.
@@ -462,6 +464,8 @@ erDiagram
 ---
 
 ## 4. API Design & External Integrations
+
+**Truck routing addendum (CR: qa-truck-routing):** `POST /me/truck-requests/estimate` and request creation prefer ORS `driving-hgv` via `ORS_API_KEY`; failed or absent ORS uses OSRM with `truckSafe=false`. Staff route reads return ordered cities, which are populated asynchronously after creation and lazily for older requests. `GET /truck-ban-rules` requires `pricing:manage` or `report:read` (admin/owner); `POST /truck-ban-rules` and `PUT/DELETE /truck-ban-rules/:id` require `pricing:manage`. Every query is tenant scoped. `POST /truck-requests/:id/dispatch` requires a paid trip and `pricing:manage`, stores the arrival ETA after applying route-city ban windows, and notifies the customer. Route-city geocoding and external routing run outside tenant transactions.
 
 **API style:** REST over HTTPS, JSON, versioned under `/api/v1`. Passport-JWT bearer auth; every tenant route runs inside the RLS transaction described in §3. Request and response bodies validated with Zod (shared client/server schemas via `nestjs-zod` under evaluation).
 
