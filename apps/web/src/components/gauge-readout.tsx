@@ -9,8 +9,6 @@ export interface GaugeReadoutProps {
   className?: string;
 }
 
-// DESIGN.md §4 domain components: "the interface's signature moment" -- a bezelled
-// mono numeric tile for one key figure (diesel price, deposit balance, utilization %).
 export function GaugeReadout({
   label,
   value,

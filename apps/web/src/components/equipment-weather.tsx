@@ -14,7 +14,6 @@ import { formatDateTime } from '../lib/format.js';
 import { Surface } from './surface.js';
 import { OPEN_METEO_URL } from './weather-banner.js';
 
-// PAGASA-style colours, text always beside them (never colour alone).
 const CHIP: Record<WeatherLevel, string> = {
   normal: 'border-success text-text',
   advisory: 'border-warning bg-warning/10 text-text',
@@ -31,7 +30,6 @@ export function LevelChip({ level }: { level: WeatherLevel }) {
   );
 }
 
-// What each level means, the same for customer and staff.
 export function LevelLegend() {
   return (
     <details className="text-sm">
@@ -57,7 +55,6 @@ export function LevelLegend() {
   );
 }
 
-// Every machine on a site with its level, why, and what to do.
 export function EquipmentWeatherList({ data }: { data: SiteEquipmentWeatherResponse }) {
   return (
     <div className="flex flex-col gap-3">
@@ -122,8 +119,6 @@ export function EquipmentWeatherList({ data }: { data: SiteEquipmentWeatherRespo
   );
 }
 
-// The customer's machines on one of their sites. A site that is not theirs
-// (the yard's own) answers 404, which simply shows nothing.
 export function MyEquipmentWeather({ siteId }: { siteId: string }) {
   const query = useQuery({
     ...customerSitesQueries.equipmentWeather(siteId),
@@ -146,7 +141,6 @@ export function MyEquipmentWeather({ siteId }: { siteId: string }) {
   );
 }
 
-// Staff: every machine on a site.
 export function SiteEquipmentWeather({ siteId }: { siteId: string }) {
   const query = useQuery({
     ...sitesQueries.equipmentWeather(siteId),

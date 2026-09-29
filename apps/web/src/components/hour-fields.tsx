@@ -1,10 +1,6 @@
 import { classifyHours, lineItemsToDayHours, type EdtrLineItemsInput } from '@arkilaunch/shared';
 import { Input } from './input.js';
 
-// The EDTR v3 hour columns as form fields, in the printed sheet's order and
-// with its labels, so what a timekeeper types lines up with the paper for
-// double entry (cr-arkilaunch-edtr-v3-sheet.md). Used by the timekeeper's
-// submit form and the site hub's review panel.
 
 export interface HourFieldValues {
   total: string;

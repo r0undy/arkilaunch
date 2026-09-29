@@ -1,9 +1,6 @@
 import type { ReactNode } from 'react';
 import { CircleCheck, CircleX, Info, TriangleAlert, type LucideIcon } from 'lucide-react';
 
-// Cloudscape Alert: the one inline message inside a page, container or
-// dialog (DSD §4, CR: console-components). Page-level save/error feedback is
-// the Flashbar (toast.tsx), not this.
 
 export type AlertType = 'info' | 'success' | 'warning' | 'error';
 
@@ -19,7 +16,6 @@ export interface AlertProps {
   type?: AlertType;
   header?: ReactNode;
   children?: ReactNode;
-  // A button on the right, e.g. Retry.
   action?: ReactNode;
   className?: string;
 }

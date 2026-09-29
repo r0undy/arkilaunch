@@ -11,11 +11,6 @@ const LINKS = [
   { label: 'Contact', to: '/contact' },
 ];
 
-// The public top nav (DSD §4, the AWS reference's top-nav): a sticky steel
-// bar, 56px, 14px links on 8px hover tiles, sign-in and a primary pill on the
-// right. A tenant header color paints it instead, and everything on it takes
-// that bar's black or white. Below sm the links and actions move into a burger
-// panel -- at the 360px baseline there is no room for them on one row.
 export function FloatingNav() {
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -28,7 +23,6 @@ export function FloatingNav() {
   const linkClass = (active: boolean) =>
     ['inline-flex min-h-11 items-center', tile, active ? 'font-medium underline decoration-2 underline-offset-8' : ''].join(' ');
 
-  // A route change (following a link from the panel) should close it.
   useEffect(() => {
     setOpen(false);
   }, [pathname]);

@@ -13,9 +13,6 @@ import { useToast } from './toast.js';
 
 const thisMonday = () => weekStart(localDate(new Date()));
 
-// EDTR v3 sheet for one unit and week, pre-printed from the booking, or the
-// blank fallback (docs/cr-arkilaunch-edtr-v3-sheet.md). The renderer (and
-// pdf-lib) load only on click.
 export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; printable: boolean }) {
   const toast = useToast();
   const context = useQuery({ ...bookingsQueries.edtrSheet(bookingId), enabled: printable });

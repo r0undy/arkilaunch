@@ -17,7 +17,6 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   approve: 'bg-success text-white hover:bg-success-hover',
 };
 
-// DESIGN.md §4 Buttons: 44x44px min everywhere, 48x48px on the timekeeper console / field actions.
 const SIZE_CLASSES: Record<ButtonSize, string> = {
   default: 'min-h-11 px-6 py-2.5',
   field: 'min-h-12 px-6 py-3',
@@ -59,7 +58,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     >
       {loading ? (
         <>
-          {/* animate-spin freezes under the global prefers-reduced-motion override (index.css) */}
           <svg className="h-4 w-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path

@@ -2,17 +2,12 @@ import { useState, type ReactNode } from 'react';
 import { Modal } from './modal.js';
 import { Button } from './button.js';
 
-// Every consequential action in the console fired on a single click, with no
-// confirmation and, in the case of the role <select>, on a stray arrow key.
-// This is the one gate they all now pass through.
 
 export type ConfirmTone = 'danger' | 'approve' | 'neutral';
 
 export interface ConfirmDialogProps {
   open: boolean;
   title: string;
-  // What the reader is agreeing to, in their own terms -- not a restatement
-  // of the button they just pressed.
   body: ReactNode;
   confirmLabel: string;
   cancelLabel?: string;
@@ -52,12 +47,10 @@ export function ConfirmDialog({
       title={title}
       size="sm"
       role="alertdialog"
-      // A destructive choice should take a deliberate click, never a stray
-      // one on the backdrop.
+      // Destructive: never close on a stray backdrop click.
       dismissOnScrim={false}
       footer={
         <>
-          {/* Cloudscape: Cancel is the link-style action, the act is the one button. */}
           <Button variant="ghost" onClick={onCancel} disabled={working}>
             {cancelLabel}
           </Button>

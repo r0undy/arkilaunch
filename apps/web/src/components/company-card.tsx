@@ -19,11 +19,6 @@ import { Check, Clock, TriangleAlert } from 'lucide-react';
 import { SiteDialog } from './site-dialog.js';
 import { SiteProofStatus } from './site-proof.js';
 
-// The full detail of one company: verification state, its KYC documents and
-// what is still missing, and the project sites it delivers to. Lifted out of
-// account.companies.tsx when the Figma company list (251:1945) moved to
-// /account/applications -- the list shows a summary card, this is what
-// "Manage" opens.
 const heading = 'text-heading-md text-text';
 export const DOC_LABELS: Record<string, string> = {
   government_id: 'Government-issued ID',
@@ -38,15 +33,10 @@ export const DOC_LABELS: Record<string, string> = {
   secretary_certificate: "Secretary's Certificate or Board Resolution naming you",
 };
 
-// Submitted and waiting on the rental team: read-only until they approve
-// or reject it.
 export function isWaitingForReview(company: CompanyResponse): boolean {
   return company.kycStatus === 'pending' && hasRequiredCompanyDocuments(company.documents);
 }
 
-// The number off the paper the customer actually uploaded: a TIN from the
-// BIR Form 2303, an SEC number from the SEC certificate. The card used to
-// read secNumber only, so a BIR-only company always said "Not provided".
 export function registrationNumber(company: CompanyResponse): { label: string; value: string } | null {
   const has = (type: string) => company.documents.some((d) => d.documentType === type);
   if (company.tin && (has('bir_cor') || !company.secNumber)) return { label: 'TIN', value: company.tin };
@@ -54,7 +44,6 @@ export function registrationNumber(company: CompanyResponse): { label: string; v
   return null;
 }
 
-// What the rental team still needs before it can review the company.
 export function missingDocuments(company: CompanyResponse): string[] {
   const has = (test: (type: string) => boolean) => company.documents.some((d) => test(d.documentType));
   return [
@@ -64,8 +53,6 @@ export function missingDocuments(company: CompanyResponse): string[] {
   ];
 }
 
-// The one line that tells the customer where the application stands and
-// what, if anything, they do next.
 export function companyRemark(company: CompanyResponse): { text: string; action?: 'upload' | 'fix' } {
   if (company.kycStatus === 'approved') return { text: 'Verified: you can book and pay under this company.' };
   if (company.kycStatus === 'rejected') {
@@ -78,8 +65,6 @@ export function companyRemark(company: CompanyResponse): { text: string; action?
   return { text: "Under review: the rental team is checking your documents. We'll notify you when it's done." };
 }
 
-// One document picked and uploaded on its own: the selfie, or a paper that
-// cures a rejection. The selfie opens the front camera on a phone.
 function DocumentUpload({ company, documentType, done }: { company: CompanyResponse; documentType: string; done: boolean }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -123,8 +108,6 @@ function DocumentUpload({ company, documentType, done }: { company: CompanyRespo
   );
 }
 
-// A rejected company: the reason, what fixes it, an upload for each paper,
-// and Reapply once they are all in. A final rejection only explains itself.
 function RejectionPanel({ company }: { company: CompanyResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -194,11 +177,8 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
   const [siteOpen, setSiteOpen] = useState(false);
   const mine = (sites.data ?? []).filter((site) => site.customerId === company.id);
   const has = (test: (type: string) => boolean) => company.documents.some((d) => test(d.documentType));
-  // The selfie has its own upload below, so it is left out of this list.
   const missing = missingDocuments(company).filter((label) => label !== DOC_LABELS.selfie_with_id);
   const waiting = isWaitingForReview(company);
-  // The selfie has its own upload here; the ID and registration go through
-  // the document steps.
   const needsSelfie = company.kycStatus === 'pending' && !waiting && !has((t) => t === 'selfie_with_id');
 
   return (

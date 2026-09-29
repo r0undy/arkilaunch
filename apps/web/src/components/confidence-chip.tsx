@@ -11,7 +11,6 @@ export interface ConfidenceChipProps {
 
 const TONE_CLASSES: Record<ConfidenceTone, string> = {
   match: 'bg-recon-match text-white',
-  // Below-gate chips are visually louder (DESIGN.md §4), not quieter: bold weight + a ring.
   review: 'bg-recon-review text-text font-semibold ring-2 ring-offset-1 ring-recon-review',
   failed: 'bg-recon-failed text-white font-semibold ring-2 ring-offset-1 ring-recon-failed',
 };
@@ -22,8 +21,6 @@ const TONE_ICON: Record<ConfidenceTone, typeof Check> = {
   failed: CircleX,
 };
 
-// The OCR per-field marker at reconciliation and KYC (DESIGN.md §4). The confidence
-// value is always shown in mono next to the tone, never color-only.
 export function ConfidenceChip({ tone, confidence, fieldLabel, className = '' }: ConfidenceChipProps) {
   const Icon = TONE_ICON[tone];
   return (

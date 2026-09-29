@@ -17,21 +17,9 @@ import { ScanReview } from './scan-review.js';
 import { referenceQueries } from '../lib/queries.js';
 import { useToast } from './toast.js';
 
-// Lifted out of routes/edtr.tsx so the timekeeper console can open the same
-// modal. Recording a field log is the timekeeper's whole job (PRD US-02,
-// S21), and until this moved there was no route in the app that let that
-// role do it: /app/ocr is guarded to admin/owner/platform_admin, so a
-// timekeeper was redirected away from the only screen that could open this.
-// The server was never the constraint -- POST /edtr requires `edtr:create`,
-// which the timekeeper role has held all along.
 
-// Statuses the capture poll stops on: past these, nothing more arrives
-// without a human.
 const TERMINAL_STATUSES = new Set(['review', 'reconciled', 'hard_failed']);
 
-// Shown beside the viewfinder. Worth saying because every one of them is a
-// reason a sheet comes back unreadable and the day has to be transcribed by
-// hand instead.
 const SCANNING_TIPS = [
   {
     title: 'Good light',
@@ -48,15 +36,8 @@ export interface CaptureModalProps {
   equipmentList: EquipmentRef[];
   rentalLabel: (rental: RentalRef) => string;
   onCaptured: () => void;
-  /** Pre-scope the log to one rental, as "Scan DTR" on a deployment does. */
   initialRentalId?: string;
-  /** Open straight on the scanner rather than the typed-entry form. */
   initialSource?: 'digital_entry' | 'paper_ocr';
-  /**
-   * The timekeeper's form (cr-arkilaunch-edtr-site-hub-approval.md): scan +
-   * typed hours, sent to the office as Pending. No source choice and no
-   * read-back of the log, which only staff may read.
-   */
   submitOnly?: boolean;
 }
 
@@ -81,9 +62,7 @@ export function CaptureModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  // The server decides whether a paper scan may carry typed hours. With the
-  // OCR pipeline on it may not (422 line_items_not_accepted), and until this
-  // was asked the client sent them anyway and every scan failed.
+  // With the OCR pipeline on, a paper scan must not carry typed hours (422 line_items_not_accepted).
   const capabilities = useQuery(referenceQueries.capabilities());
   const ocrPipeline = capabilities.data?.ocrPipeline ?? false;
 
@@ -91,8 +70,6 @@ export function CaptureModal({
   const [detail, setDetail] = useState<EdtrDetailResponse | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // A rental chosen on the deployment list wins over the first-in-the-list
-  // default, including when the same modal is reopened for another row.
   useEffect(() => {
     if (initialRentalId) setRentalId(initialRentalId);
   }, [initialRentalId]);
@@ -168,8 +145,7 @@ export function CaptureModal({
           lineItems,
         });
       } else {
-        // Multipart carries strings only, so transcribed hours travel as a
-        // JSON-encoded field the API decodes back into an object.
+        // Multipart carries strings only: hours travel JSON-encoded.
         const transcribed = !ocrPipeline && lineItems ? { lineItems: JSON.stringify(lineItems) } : {};
         res = await apiPostForm<EdtrCaptureResponse>(
           '/edtr',
@@ -178,7 +154,6 @@ export function CaptureModal({
         );
       }
       if (submitOnly) {
-        // The timekeeper cannot read logs back; the office reviews it.
         toast.success('Sent to the office', `${formatDate(reportDate)} is pending approval.`);
         onCaptured();
         handleClose();
@@ -202,8 +177,6 @@ export function CaptureModal({
 
   const explained = error != null ? explainEdtrError(error) : null;
 
-  // The session panel names what this scan will be attached to, so a
-  // mis-picked machine is caught before the shutter rather than at review.
   const equipment = equipmentList.find((eq) => eq.id === equipmentId);
   const equipmentLabel = equipment ? `${equipment.model} (${equipment.serialNo})` : 'Not set';
   const rental = rentals.find((r) => r.id === rentalId);
@@ -356,9 +329,6 @@ export function CaptureModal({
             {detail.lineItems[0] && (
               <p className="text-sm text-text-muted">
                 {formatHours(detail.lineItems[0].hoursActive)} working
-                {/* A paper sheet has no idle column, so idle is genuinely
-                    unrecorded rather than zero. Saying "0.0 idle" would
-                    report a reading nobody took. */}
                 {detail.lineItems[0].hoursIdle === null
                   ? '. Idle hours not recorded on this sheet.'
                   : `, ${formatHours(detail.lineItems[0].hoursIdle)} idle.`}

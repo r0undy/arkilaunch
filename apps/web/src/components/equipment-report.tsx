@@ -20,8 +20,6 @@ function monthLabel(key: string) {
   return new Date(y!, m! - 1, 1).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' });
 }
 
-// One unit's working life at a glance: four numbers up top, the months
-// and the detail folded underneath so the admin opens only what they need.
 export function EquipmentReport({ equipmentId }: { equipmentId: string }) {
   const report = useQuery(equipmentQueries.report(equipmentId));
   if (report.isPending) return <p className="text-sm text-text-muted">Loading report...</p>;

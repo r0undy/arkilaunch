@@ -7,13 +7,10 @@ import { Button } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { useToast } from './toast.js';
 
-// The approve/reject pair, shared by the Applications queue and a single application's page.
 
 export function ApplicationActions({ application }: { application: TenantApplication }) {
   const queryClient = useQueryClient();
   const [activation, setActivation] = useState<{ token: string; slug: string | undefined } | null>(null);
-  // ['tenants'] covers both the application lists and /admin/companies:
-  // an approval adds a company there.
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['tenants'] });
 
   const toast = useToast();
@@ -60,7 +57,6 @@ export function ApplicationActions({ application }: { application: TenantApplica
         <span className="text-sm text-text-muted">
           Send this sign-up link to the owner:{' '}
           <code className="rounded-sm bg-surface-sunk px-1.5 py-0.5 font-mono text-xs">
-            {/* The owner activates and signs in on their company's own host. */}
             {`${activation.slug ? tenantOrigin(activation.slug) : window.location.origin}/activate?token=${encodeURIComponent(activation.token)}`}
           </code>
         </span>

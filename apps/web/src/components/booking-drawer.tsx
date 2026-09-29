@@ -17,15 +17,9 @@ import { RouteMap } from './route-map.js';
 import { NegotiationThread } from './negotiation-thread.js';
 import { BookingSide, SiteRepContact } from './booking-actions.js';
 
-// One drawer for both services (cr-arkilaunch-uniform-booking-codes.md):
-// the admin reads and works a booking start to end without leaving the
-// list -- overview, negotiation thread and every action, in tabs. The full
-// page (/app/bookings/$bookingId) shows the same pieces for a deep link.
 
 const heading = 'text-heading-md text-text';
 
-// request → call → quote → paid → deployed → returned. Derived, not
-// stored: each step is a fact already on the booking.
 export function rentalSteps(b: Pick<BookingDetailResponse, 'status' | 'callConfirmedAt' | 'quotation'>): TripStep[] {
   const paid = ['confirmed', 'active', 'completed'].includes(b.status);
   return [
@@ -178,8 +172,6 @@ const TABS: { id: DrawerTab; label: string }[] = [
   { id: 'actions', label: 'Actions' },
 ];
 
-// A truck trip at a glance: the route map (when the customer pinned both
-// ends), the schedule and the money.
 function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
   const pickup = useMemo(
     () => (truck.pickupLat !== null && truck.pickupLng !== null ? { lat: truck.pickupLat, lng: truck.pickupLng } : null),
@@ -291,14 +283,11 @@ export function BookingDrawer({
   onClose,
 }: {
   target: BookingDrawerTarget | null;
-  // The staff page looks the truck request up by its code.
   truck: TruckRequestResponse | undefined;
-  // A notification can open straight on the tab it is about (?tab=).
   initialTab?: DrawerTab;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<DrawerTab>(initialTab);
-  // A different booking opens on its overview, or the tab it was sent to.
   useEffect(() => setTab(initialTab), [target?.id, initialTab]);
   const rentalId = target?.service === 'rental' ? target.id : null;
   const booking = useQuery({ ...bookingsQueries.detail(rentalId ?? ''), enabled: !!rentalId });

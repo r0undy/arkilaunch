@@ -16,24 +16,16 @@ const REASON: Record<string, string> = {
   operator: 'No operator',
 };
 
-// Office closed (a closed weekday or a holiday) stops pickup and return
-// only: a rental may run through it, e.g. Saturday to Monday. Everything
-// else means the unit itself is taken that day.
+// Office-closed days stop only pickup and return; a rental may run through them.
 const OFFICE_CLOSED = new Set(['closed', 'holiday']);
 const isTaken = (reason: string | null | undefined) => Boolean(reason) && !OFFICE_CLOSED.has(reason!);
 
-// Local YYYY-MM-DD. The API speaks Manila dates.
-// ponytail: assumes the browser is on Manila time (every customer today);
-// pass a timezone to the API if the yard ever books across zones.
+// ponytail: assumes the browser is on Manila time; pass a timezone to the API if bookings cross zones.
 export function localDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// Free/taken days from today through the chosen return (at least
-// DAYS_AHEAD days), so a booking of any length is checked end to end.
-// Signed-out visitors get nothing (the endpoint is authenticated); the
-// server check still guards.
 export function useAvailability(equipmentId: string, end?: string) {
   const from = localDate(new Date());
   const minTo = localDate(new Date(Date.now() + (DAYS_AHEAD - 1) * 86_400_000));
@@ -44,8 +36,6 @@ export function useAvailability(equipmentId: string, end?: string) {
   });
 }
 
-// The first unavailable day the window touches, or null. Also checks the
-// pickup/return times against office hours.
 export function availabilityProblem(data: AvailabilityResponse | undefined, startIso: string, endIso: string): string | null {
   if (!data || !startIso || !endIso) return null;
   const start = new Date(startIso);
@@ -69,8 +59,6 @@ export function availabilityProblem(data: AvailabilityResponse | undefined, star
   return null;
 }
 
-// The window is shorter than the tenant rents for, or null. Its minimum is
-// hours, but a crew runs only so many a day, so it is really a length.
 export function rentalLengthProblem(data: AvailabilityResponse | undefined, startIso: string, endIso: string): string | null {
   if (!data || !startIso || !endIso) return null;
   const minDays = minRentalDays(data.dailyHours, data.minHours);
@@ -91,10 +79,6 @@ const daysBetween = (a: string, b: string) =>
 const prettyDate = (date: string) =>
   new Date(`${date}T00:00:00`).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 
-// A month calendar for the rental span: the first click sets pickup, the
-// second sets return (the span previews on hover), the next click starts
-// over. Pages month by month with no limit; past and taken days are
-// disabled. Each visible month reads its own availability.
 export function RangeCalendar({
   equipmentId,
   start,
@@ -110,7 +94,6 @@ export function RangeCalendar({
   const first = start ? localDate(new Date(start)) : '';
   const last = end ? localDate(new Date(end)) : '';
   const [month, setMonth] = useState(() => (first && first > today ? first : today).slice(0, 7));
-  // Pickup chosen, return not yet.
   const [anchor, setAnchor] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
 
@@ -133,8 +116,6 @@ export function RangeCalendar({
   const spanStart = anchor ?? first;
   const spanEnd = anchor ? (hover && hover >= anchor ? hover : anchor) : last;
 
-  // A return that would run the rental through a booked or maintenance day
-  // starts a new pickup instead; office-closed days in between are fine.
   const spansTaken = (from: string, to: string) =>
     cells.some((d) => d > from && d < to && isTaken(byDate.get(d)?.reason ?? null));
 

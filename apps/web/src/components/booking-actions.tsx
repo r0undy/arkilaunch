@@ -15,10 +15,6 @@ import { SiteEquipmentWeather } from './equipment-weather.js';
 import { EdtrSheetCard } from './edtr-sheet-card.js';
 import { useToast } from './toast.js';
 
-// The staff actions on one rental booking: phone confirmation, quote, site,
-// delivery, change requests and rescheduling. Shared by the booking
-// drawer's Actions tab and the full /app/bookings/$bookingId page. The API
-// guards every status; these cards only arrange it.
 
 
 function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
@@ -37,8 +33,6 @@ function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
       toast.error('Could not resolve the request', apiErrorText(err));
     },
   });
-  // Approving an extension moves the booking's end date; approving a
-  // cancellation cancels it. Neither undoes, so each asks first.
   const [ask, setAsk] = useState<{ request: BookingDetailResponse['changeRequests'][number]; decision: 'approved' | 'rejected' } | null>(null);
 
   return (
@@ -98,9 +92,6 @@ function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-// When a confirmed booking must move: the nearest free same-length window on
-// each unit, then other free units of the same type. Advice only; staff
-// agree the move with the customer in the thread.
 function RescheduleCard({ booking }: { booking: BookingDetailResponse }) {
   const bookingId = booking.id;
   const nameOf = (id: string) => booking.items.find((i) => i.equipmentId === id)?.equipmentName ?? 'This machine';
@@ -136,7 +127,6 @@ function RescheduleCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-// Checkout stays closed until staff have phoned the customer.
 function CallCard({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -180,8 +170,6 @@ function CallCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-// QA 25: an unpaid request holds its dates until holdExpiresAt, then frees
-// them for other customers. Staff can give a customer more time to pay.
 function HoldCard({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -212,8 +200,6 @@ function HoldCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-// Staff mark a paid booking delivered (machines on site, field sheet
-// unlocked) and later returned. Both endpoints already guard the status.
 function DeliveryCard({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -260,7 +246,6 @@ function DeliveryCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-// The site rep's name and a tap-to-call link to their mobile.
 export function SiteRepContact({ name, mobile }: { name: string | null; mobile?: string | null | undefined }) {
   return (
     <>
@@ -296,7 +281,6 @@ export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
         {quote && quote.status === 'approved' && !quote.inNegotiation && (
           <p className="text-sm text-text-muted">Priced from the price book and sent. You can revise it once the customer negotiates.</p>
         )}
-        {/* No quote: the price book could not price it (no rate card), so staff quote it once. */}
         {booking.status !== 'cancelled' && (!quote || quote.inNegotiation) && (
           <Link to="/app/quotes" search={{ bookingId: booking.id }} className={buttonClass('primary')}>{quote ? 'Revise quote' : 'Quote this booking'}</Link>
         )}
@@ -324,7 +308,6 @@ export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
         </div>
       </Container>
       <DeliveryCard booking={booking} />
-      {/* The field sheet is for machines on site: hidden until delivered. */}
       {['active', 'completed'].includes(booking.status) && <EdtrSheetCard bookingId={booking.id} printable />}
       <PendingRequests booking={booking} />
       {booking.status === 'confirmed' && <RescheduleCard booking={booking} />}

@@ -1,10 +1,5 @@
 import type { ReactElement } from 'react';
 
-// BRAND.md §3: flat two-colour (steel + amber) technical schematics where
-// documentary photography is unavailable -- not soft rounded 3D blobs, not
-// a stock photo. Keyed by equipment type name with a generic fallback.
-// Accepts an optional real photo URL so documentary imagery can drop in
-// later without touching layout.
 
 export interface EquipmentSchematicProps {
   typeName: string;
