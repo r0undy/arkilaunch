@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BookingDetailResponse, BookingService, TruckRequestResponse } from '@arkilaunch/shared';
+import { tripSteps, type TripStep } from './truck-trip.js';
 import { banHits, localPhMobile } from '@arkilaunch/shared';
 import { bookingsQueries, truckBanRulesQuery, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
@@ -23,14 +24,9 @@ import { BookingSide } from './booking-actions.js';
 
 const heading = 'text-heading-md text-text';
 
-export interface Step {
-  label: string;
-  done: boolean;
-}
-
 // request → call → quote → paid → deployed → returned. Derived, not
 // stored: each step is a fact already on the booking.
-export function rentalSteps(b: Pick<BookingDetailResponse, 'status' | 'callConfirmedAt' | 'quotation'>): Step[] {
+export function rentalSteps(b: Pick<BookingDetailResponse, 'status' | 'callConfirmedAt' | 'quotation'>): TripStep[] {
   const paid = ['confirmed', 'active', 'completed'].includes(b.status);
   return [
     { label: 'Requested', done: true },
@@ -42,14 +38,7 @@ export function rentalSteps(b: Pick<BookingDetailResponse, 'status' | 'callConfi
   ];
 }
 
-// estimated → km confirmed → agreed → paid.
-export function truckSteps(t: Pick<TruckRequestResponse, 'status'>): Step[] {
-  const order = ['estimated', 'km_confirmed', 'agreed', 'paid', 'dispatched'];
-  const at = order.indexOf(t.status);
-  return ['Estimated', 'Km confirmed', 'Agreed', 'Paid', 'Dispatched'].map((label, i) => ({ label, done: at >= i }));
-}
-
-function Stepper({ steps, cancelled }: { steps: Step[]; cancelled: boolean }) {
+function Stepper({ steps, cancelled }: { steps: TripStep[]; cancelled: boolean }) {
   return (
     <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" aria-label="Progress">
       {steps.map((step, i) => (
@@ -213,7 +202,7 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
   const cities = route.data?.cities ?? truck.routeCities ?? [];
   return (
     <div className="flex flex-col gap-4">
-      <Stepper steps={truckSteps(truck)} cancelled={truck.status === 'cancelled'} />
+      <Stepper steps={tripSteps(truck)} cancelled={truck.status === 'cancelled'} />
       <Section title="Route">
         <p className="text-sm font-medium text-text">
           {truck.pickup} → {truck.dropoff}
