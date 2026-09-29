@@ -57,6 +57,12 @@ export function condenseIds(text: string, kind: CodeKind = 'recon'): string {
 
 // ---------------------------------------------------------------- enum labels
 
+// Table lookup, else the value title-cased, else `empty`.
+const labeler =
+  (table: Record<string, string>, empty: string) =>
+  (value: string | null | undefined): string =>
+    value ? (table[value] ?? titleCase(value)) : empty;
+
 const STATUS_LABELS: Record<string, string> = {
   // lifecycle
   active: 'Active',
@@ -110,10 +116,7 @@ function titleCase(value: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-export function formatStatus(value: string | null | undefined): string {
-  if (!value) return 'Unknown';
-  return STATUS_LABELS[value] ?? titleCase(value);
-}
+export const formatStatus = labeler(STATUS_LABELS, 'Unknown');
 
 const ROLE_LABELS: Record<string, string> = {
   platform_admin: 'Platform administrator',
@@ -123,10 +126,7 @@ const ROLE_LABELS: Record<string, string> = {
   customer: 'Customer',
 };
 
-export function formatRole(value: string | null | undefined): string {
-  if (!value) return 'Unknown role';
-  return ROLE_LABELS[value] ?? titleCase(value);
-}
+export const formatRole = labeler(ROLE_LABELS, 'Unknown role');
 
 const INVOICE_TYPE_LABELS: Record<string, string> = {
   deposit: 'Deposit',
@@ -137,10 +137,7 @@ const INVOICE_TYPE_LABELS: Record<string, string> = {
   booking: 'Rental and deposit',
 };
 
-export function formatInvoiceType(value: string | null | undefined): string {
-  if (!value) return '--';
-  return INVOICE_TYPE_LABELS[value] ?? titleCase(value);
-}
+export const formatInvoiceType = labeler(INVOICE_TYPE_LABELS, '--');
 
 const SOURCE_LABELS: Record<string, string> = {
   paper_ocr: 'Paper sheet',
@@ -148,10 +145,7 @@ const SOURCE_LABELS: Record<string, string> = {
   manual_transcription: 'Typed from the sheet',
 };
 
-export function formatLogSource(value: string | null | undefined): string {
-  if (!value) return '--';
-  return SOURCE_LABELS[value] ?? titleCase(value);
-}
+export const formatLogSource = labeler(SOURCE_LABELS, '--');
 
 const SEVERITY_LABELS: Record<string, string> = {
   none: 'Clear',
@@ -160,10 +154,7 @@ const SEVERITY_LABELS: Record<string, string> = {
   stop_work: 'Stop work',
 };
 
-export function formatSeverity(value: string | null | undefined): string {
-  if (!value) return 'No reading';
-  return SEVERITY_LABELS[value] ?? titleCase(value);
-}
+export const formatSeverity = labeler(SEVERITY_LABELS, 'No reading');
 
 // ------------------------------------------------------------------- numbers
 
