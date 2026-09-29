@@ -62,29 +62,15 @@ export async function resolveBookingRef(
   payload: { rental_id?: unknown; truck_request_id?: unknown; invoice_id?: unknown },
 ): Promise<BookingRef | null> {
   const str = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : null);
-  let rentalId = str(payload.rental_id);
-  let truckId = str(payload.truck_request_id);
+  let ref = { rentalId: str(payload.rental_id), truckRequestId: str(payload.truck_request_id) };
   const invoiceId = str(payload.invoice_id);
-  if (!rentalId && !truckId && invoiceId) {
+  if (!ref.rentalId && !ref.truckRequestId && invoiceId) {
     const [invoice] = await tx
       .select({ rentalId: invoices.rentalId, truckRequestId: invoices.truckRequestId })
       .from(invoices)
       .where(eq(invoices.id, invoiceId))
       .limit(1);
-    rentalId = invoice?.rentalId ?? null;
-    truckId = invoice?.truckRequestId ?? null;
+    if (invoice) ref = invoice;
   }
-  if (rentalId) {
-    const [row] = await tx.select({ code: rentals.code }).from(rentals).where(eq(rentals.id, rentalId)).limit(1);
-    return row ? { service: 'rental', id: rentalId, code: row.code } : null;
-  }
-  if (truckId) {
-    const [row] = await tx
-      .select({ code: truckRequests.code })
-      .from(truckRequests)
-      .where(eq(truckRequests.id, truckId))
-      .limit(1);
-    return row ? { service: 'truck', id: truckId, code: row.code } : null;
-  }
-  return null;
+  return invoiceBookingRef(ref, await bookingCodes(tx, { rentalIds: [ref.rentalId], truckRequestIds: [ref.truckRequestId] }));
 }
