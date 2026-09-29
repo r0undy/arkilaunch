@@ -325,6 +325,7 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
                 <p className="font-mono text-sm font-semibold tabular-nums text-text">
                   {route ? formatDrive(route) : `~${estimate.data.km} km by road`}
                 </p>
+                {route?.truckSafe === false && <p className="text-xs font-semibold text-warning">Car route - verify truck access</p>}
                 {!route && a && b && (
                   <p className="text-xs text-text-muted">The road route is unavailable right now; the line is as the crow flies.</p>
                 )}

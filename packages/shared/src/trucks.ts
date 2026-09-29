@@ -120,6 +120,7 @@ export interface TruckRoute {
   km: number;
   minutes: number;
   line: [number, number][];
+  truckSafe?: boolean;
   // Staff route only: the expressways the road route runs on, for the toll
   // picker's suggestion (ph-tolls.ts suggestTolls).
   tollHints?: TollHint[];

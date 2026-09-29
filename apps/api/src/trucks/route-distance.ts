@@ -2,14 +2,12 @@ import { UnprocessableEntityException, ServiceUnavailableException } from '@nest
 import { tollHintsFromSteps, type TruckRoute } from '@arkilaunch/shared';
 
 // Road distance between two free-text Philippine addresses: Nominatim to
-// geocode, OSRM to route. Native fetch, no SDK. The result is only ever an
+// geocode, ORS HGV to route (OSRM car route only as a flagged fallback). The result is only ever an
 // ESTIMATE -- the admin confirms the km a customer is charged on.
 //
-// ponytail: public OSM demo servers (Nominatim 1 req/s, OSRM demo) -- fine
-// for a pilot's handful of requests. Move to a self-hosted OSRM or a paid
-// routing API (with truck profiles) before real volume.
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const OSRM = 'https://router.project-osrm.org/route/v1/driving';
+const ORS = 'https://api.openrouteservice.org/v2/directions/driving-hgv/geojson';
 const TIMEOUT_MS = 10_000;
 const USER_AGENT = 'ArkiLaunch/0.1 (truck distance estimate)';
 
@@ -49,6 +47,32 @@ type OsrmBody = {
   }[];
 };
 
+type OrsBody = { features?: { geometry?: { coordinates?: unknown }; properties?: {
+  summary?: { distance?: number; duration?: number };
+  segments?: { steps?: { name?: string; instruction?: string; ref?: string }[] }[];
+} }[] };
+
+const routeLine = (coords: unknown): [number, number][] => Array.isArray(coords)
+  ? coords.filter((c): c is number[] => Array.isArray(c) && c.length >= 2 && c.every((n) => Number.isFinite(n)))
+    .map((c) => [c[0]!, c[1]!])
+  : [];
+
+export function parseOrs(body: OrsBody): TruckRoute {
+  const feature = body.features?.[0];
+  const meters = feature?.properties?.summary?.distance;
+  if (!Number.isFinite(meters) || !feature?.geometry) throw new UnprocessableEntityException({ error: 'no_route_found' });
+  const steps = feature.properties?.segments?.flatMap((segment) => segment.steps ?? []) ?? [];
+  return {
+    km: Math.max(0.1, Math.round(meters! / 100) / 10),
+    minutes: Math.round((feature.properties?.summary?.duration ?? 0) / 60),
+    line: routeLine(feature.geometry.coordinates),
+    truckSafe: true,
+    ...(steps.length ? { tollHints: tollHintsFromSteps(steps.map((step) => ({
+      name: step.name ?? step.instruction, ref: step.ref,
+    }))) } : {}),
+  };
+}
+
 // OSRM's answer as km, minutes and the simplified GeoJSON line. A route
 // with no usable geometry still prices: `line` comes back empty.
 export function parseOsrm(body: OsrmBody): TruckRoute {
@@ -56,17 +80,13 @@ export function parseOsrm(body: OsrmBody): TruckRoute {
   const meters = route?.distance;
   if (body.code !== 'Ok' || typeof meters !== 'number')
     throw new UnprocessableEntityException({ error: 'no_route_found' });
-  const coords = route?.geometry?.coordinates;
-  const line = Array.isArray(coords)
-    ? coords
-        .filter((c): c is number[] => Array.isArray(c) && c.length >= 2 && c.every((n) => Number.isFinite(n)))
-        .map((c) => [c[0]!, c[1]!] as [number, number])
-    : [];
+  const line = routeLine(route?.geometry?.coordinates);
   const steps = route?.legs?.flatMap((leg) => leg.steps ?? []) ?? [];
   return {
     km: Math.max(0.1, Math.round(meters / 100) / 10),
     minutes: Math.round((route?.duration ?? 0) / 60),
     line,
+    truckSafe: false,
     ...(steps.length ? { tollHints: tollHintsFromSteps(steps) } : {}),
   };
 }
@@ -81,6 +101,21 @@ export async function roadRoute(
 ): Promise<TruckRoute> {
   const a = pins.a ?? (await geocode(pickup));
   const b = pins.b ?? (await geocode(dropoff));
+  const key = process.env.ORS_API_KEY?.trim();
+  if (key) {
+    try {
+      const response = await fetch(ORS, {
+        method: 'POST',
+        headers: { Authorization: key, 'Content-Type': 'application/json', Accept: 'application/geo+json' },
+        body: JSON.stringify({ coordinates: [[a.lon, a.lat], [b.lon, b.lat]], instructions: steps }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!response.ok) throw new Error(`ORS returned ${response.status}`);
+      return parseOrs((await response.json()) as OrsBody);
+    } catch (error) {
+      console.warn('ORS HGV routing failed; using flagged car route', error);
+    }
+  }
   const body = (await getJson(
     new URL(`${OSRM}/${a.lon},${a.lat};${b.lon},${b.lat}?overview=simplified&geometries=geojson${steps ? '&steps=true' : ''}`),
   )) as OsrmBody;
