@@ -16,7 +16,6 @@ import {
   TruckSettingsSchema,
 } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
-import { UuidParamPipe } from '../common/uuid-param.pipe.js';
 import { TrucksService } from './trucks.service.js';
 import type { CtxRequest } from '../common/request.js';
 
@@ -66,50 +65,50 @@ export class TrucksController {
   @Get('me/truck-requests/:id/route')
   @RequirePermission('booking:read')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  myRoute(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  myRoute(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.trucks.route(req.ctx, id);
   }
 
   @Post('me/truck-requests/:id/cancel')
   @RequirePermission('booking:create')
-  cancel(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  cancel(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.trucks.cancelOwn(req.ctx, id);
   }
 
   @Get('me/truck-requests/:id/messages')
   @RequirePermission('booking:read')
-  myMessages(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  myMessages(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.trucks.listMessages(req.ctx, id);
   }
 
   @Post('me/truck-requests/:id/messages')
   @RequirePermission('booking:create')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  postMyMessage(@Param('id', UuidParamPipe) id: string, @Body() body: TruckMessageDto, @Req() req: CtxRequest) {
+  postMyMessage(@Param('id') id: string, @Body() body: TruckMessageDto, @Req() req: CtxRequest) {
     return this.trucks.postMessage(req.ctx, id, body);
   }
 
   @Get('truck-requests/:id/messages')
   @RequirePermission('pricing:manage')
-  messages(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  messages(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.trucks.listMessages(req.ctx, id);
   }
 
   @Post('truck-requests/:id/messages')
   @RequirePermission('pricing:manage')
-  postMessage(@Param('id', UuidParamPipe) id: string, @Body() body: TruckMessageDto, @Req() req: CtxRequest) {
+  postMessage(@Param('id') id: string, @Body() body: TruckMessageDto, @Req() req: CtxRequest) {
     return this.trucks.postMessage(req.ctx, id, body);
   }
 
   @Patch('truck-requests/:id/agree')
   @RequirePermission('quote:approve')
-  agree(@Param('id', UuidParamPipe) id: string, @Body() body: TruckAgreeDto, @Req() req: CtxRequest) {
+  agree(@Param('id') id: string, @Body() body: TruckAgreeDto, @Req() req: CtxRequest) {
     return this.trucks.agree(req.ctx, id, body.pricePhp);
   }
 
   @Patch('truck-requests/:id/crew')
   @RequirePermission('pricing:manage')
-  crew(@Param('id', UuidParamPipe) id: string, @Body() body: TruckCrewDto, @Req() req: CtxRequest) {
+  crew(@Param('id') id: string, @Body() body: TruckCrewDto, @Req() req: CtxRequest) {
     return this.trucks.setCrew(req.ctx, id, body);
   }
 
@@ -124,32 +123,32 @@ export class TrucksController {
   @Get('truck-requests/:id/route')
   @RequirePermission('pricing:manage')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  route(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  route(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.trucks.route(req.ctx, id);
   }
 
   @Patch('truck-requests/:id/km')
   @RequirePermission('pricing:manage')
-  confirmKm(@Param('id', UuidParamPipe) id: string, @Body() body: TruckKmConfirmDto, @Req() req: CtxRequest) {
+  confirmKm(@Param('id') id: string, @Body() body: TruckKmConfirmDto, @Req() req: CtxRequest) {
     return this.trucks.confirmKm(req.ctx, id, body);
   }
 
   @Post('me/truck-requests/:id/request-call')
   @RequirePermission('booking:create')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  requestCall(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  requestCall(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.trucks.requestCall(req.ctx, id);
   }
 
   @Post('me/truck-requests/:id/approve-price')
   @RequirePermission('booking:create')
-  approvePrice(@Param('id', UuidParamPipe) id: string, @Body() body: TruckAcceptPriceDto, @Req() req: CtxRequest) {
+  approvePrice(@Param('id') id: string, @Body() body: TruckAcceptPriceDto, @Req() req: CtxRequest) {
     return this.trucks.acceptPrice(req.ctx, id, body.pricePhp);
   }
 
   @Post('truck-requests/:id/call-confirmed')
   @RequirePermission('quote:approve')
-  confirmCall(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  confirmCall(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.trucks.confirmCall(req.ctx, id);
   }
 
@@ -161,7 +160,7 @@ export class TrucksController {
 
   @Post('truck-requests/:id/dispatch')
   @RequirePermission('pricing:manage')
-  dispatch(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  dispatch(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.trucks.dispatch(req.ctx, id);
   }
 
@@ -175,13 +174,13 @@ export class TrucksController {
 
   @Put('truck-ban-rules/:id')
   @RequirePermission('pricing:manage')
-  updateBanRule(@Param('id', UuidParamPipe) id: string, @Body() body: TruckBanRuleDto, @Req() req: CtxRequest) {
+  updateBanRule(@Param('id') id: string, @Body() body: TruckBanRuleDto, @Req() req: CtxRequest) {
     return this.trucks.updateBanRule(req.ctx, id, body);
   }
 
   @Delete('truck-ban-rules/:id')
   @RequirePermission('pricing:manage')
-  removeBanRule(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) { return this.trucks.removeBanRule(req.ctx, id); }
+  removeBanRule(@Param('id') id: string, @Req() req: CtxRequest) { return this.trucks.removeBanRule(req.ctx, id); }
 
   @Post('toll-rates')
   @RequirePermission('pricing:manage')
@@ -197,13 +196,13 @@ export class TrucksController {
 
   @Patch('toll-rates/:id')
   @RequirePermission('pricing:manage')
-  updateToll(@Param('id', UuidParamPipe) id: string, @Body() body: TollRateUpdateDto, @Req() req: CtxRequest) {
+  updateToll(@Param('id') id: string, @Body() body: TollRateUpdateDto, @Req() req: CtxRequest) {
     return this.trucks.updateToll(req.ctx, id, body);
   }
 
   @Delete('toll-rates/:id')
   @RequirePermission('pricing:manage')
-  removeToll(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  removeToll(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.trucks.removeToll(req.ctx, id);
   }
 

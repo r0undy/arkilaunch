@@ -19,7 +19,6 @@ import { Public } from '../common/decorators/public.decorator.js';
 import { TurnstileGuard } from '../common/turnstile.js';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { MAX_UPLOAD_BYTES } from '@arkilaunch/shared';
-import { UuidParamPipe } from '../common/uuid-param.pipe.js';
 import { TenantsService } from './tenants.service.js';
 import {
   CompanyStatusUpdateDto,
@@ -112,7 +111,7 @@ export class TenantsController {
   @Patch(':id/status')
   @RequirePermission('tenant:approve')
   setStatus(
-    @Param('id', UuidParamPipe) id: string,
+    @Param('id') id: string,
     @Body() body: CompanyStatusUpdateDto,
     @Req() req: CtxRequest,
   ) {
@@ -122,14 +121,14 @@ export class TenantsController {
   // Platform admin edits any rental company's branding from /admin/companies.
   @Get(':id/branding')
   @RequirePermission('tenant:approve')
-  companyBranding(@Param('id', UuidParamPipe) id: string) {
+  companyBranding(@Param('id') id: string) {
     return this.tenants.getBranding(id);
   }
 
   @Patch(':id/branding')
   @RequirePermission('tenant:approve')
   updateCompanyBranding(
-    @Param('id', UuidParamPipe) id: string,
+    @Param('id') id: string,
     @Body() body: TenantBrandingUpdateDto,
     @Req() req: CtxRequest,
   ) {
@@ -142,14 +141,14 @@ export class TenantsController {
   // (payments.service.ts startOnline, TODO(paymongo-child-accounts)).
   @Get(':id/paymongo-account')
   @RequirePermission('tenant:approve')
-  companyPaymongoAccount(@Param('id', UuidParamPipe) id: string) {
+  companyPaymongoAccount(@Param('id') id: string) {
     return this.tenants.getPaymongoAccount(id);
   }
 
   @Patch(':id/paymongo-account')
   @RequirePermission('tenant:approve')
   setCompanyPaymongoAccount(
-    @Param('id', UuidParamPipe) id: string,
+    @Param('id') id: string,
     @Body() body: PaymongoAccountUpdateDto,
     @Req() req: CtxRequest,
   ) {
@@ -161,7 +160,7 @@ export class TenantsController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
   uploadCompanyImage(
-    @Param('id', UuidParamPipe) id: string,
+    @Param('id') id: string,
     @Param('kind') kind: string,
     @UploadedFile() file: MulterFile | undefined,
     @Req() req: CtxRequest,
@@ -172,7 +171,7 @@ export class TenantsController {
 
   @Delete(':id/branding/:kind')
   @RequirePermission('tenant:approve')
-  removeCompanyImage(@Param('id', UuidParamPipe) id: string, @Param('kind') kind: string, @Req() req: CtxRequest) {
+  removeCompanyImage(@Param('id') id: string, @Param('kind') kind: string, @Req() req: CtxRequest) {
     return this.tenants.setBrandingImage(req.ctx, id, imageKind(kind), null);
   }
 

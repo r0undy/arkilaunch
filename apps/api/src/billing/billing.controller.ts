@@ -1,6 +1,5 @@
 import { Controller, Get, Param, Query, Req } from '@nestjs/common';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
-import { UuidParamPipe } from '../common/uuid-param.pipe.js';
 import { BillingService } from './billing.service.js';
 import { InvoiceListQueryDto } from './dto.js';
 import type { CtxRequest } from '../common/request.js';
@@ -36,13 +35,13 @@ export class BillingController {
   // own (ownership checked in the service).
   @Get('rentals/:id/statement')
   @RequirePermission('billing:read')
-  statement(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  statement(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.billing.statement(req.ctx, id);
   }
 
   @Get('me/rentals/:id/statement')
   @RequirePermission('booking:read')
-  myStatement(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  myStatement(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.billing.statement(req.ctx, id);
   }
 
