@@ -127,6 +127,8 @@ export function CaptureModal({
 
   async function capture(event: FormEvent) {
     event.preventDefault();
+    // Enter in the date field still submits the form after the button is disabled.
+    if (pollUrl) return;
     setError(null);
     setSubmitting(true);
     try {

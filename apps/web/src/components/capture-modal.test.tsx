@@ -66,5 +66,8 @@ describe('CaptureModal', () => {
     expect(gets).toEqual([`/api/v1/edtr/${LOG_ID}`]);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Record log' })).toBeDisabled());
     expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+
+    fireEvent.submit(screen.getByLabelText(/day worked/i).closest('form')!);
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
   });
 });
