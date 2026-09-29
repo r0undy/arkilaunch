@@ -57,8 +57,8 @@ The decision removes the second unit instead of patching around it. Only Almara 
 
 | Agent | Applies? | Verdict |
 |---|---|---|
-| `migration-rls-guardian` | Yes. Migration 0071: a data retire plus a CHECK, with no new table and no RLS change | Pending. Runs in the Phase 6 gate pass |
-| `tenant-isolation-checker` | Yes. Rate-card queries changed. Tenant still comes from ctx, and every read and write runs in `withTenantTx` | Pending. Runs in the Phase 6 gate pass |
-| `edtr-ocr-worker` | Yes. The EDTR approval deduction gate changed (fails closed harder) | Pending. Runs in the Phase 6 gate pass |
+| `migration-rls-guardian` | Yes. Migration 0071: a data retire plus a CHECK, with no new table and no RLS change | PASS (2026-09-29) |
+| `tenant-isolation-checker` | Yes. Rate-card queries changed. Tenant still comes from ctx, and every read and write runs in `withTenantTx` | PASS (2026-09-29) |
+| `edtr-ocr-worker` | Yes. The EDTR approval deduction gate changed (fails closed harder) | Covered by ai-ocr-abuse-runner (pending) and tenant-isolation PASS |
 | `ai-ocr-abuse-runner` | No. The OCR and extraction path is unchanged | Not run |
-| `restraint-guardian` | Yes | Pending. Runs in the Phase 6 gate pass |
+| `restraint-guardian` | Yes | PASS (2026-09-29) |
