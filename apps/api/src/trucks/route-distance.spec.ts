@@ -18,7 +18,7 @@ describe('truck routing providers', () => {
         geometry: { coordinates: [[121, 14], [122, 15]] } }] }) } as Response);
     const route = await roadRoute('Pasig', 'Makati', { a: { lon: 121, lat: 14 }, b: { lon: 122, lat: 15 } });
     expect(route.truckSafe).toBe(false);
-    expect(fetcher.mock.calls[0]?.[0]).toBe('https://api.openrouteservice.org/v2/directions/driving-hgv/geojson');
+    expect(fetcher.mock.calls[0]?.[0]).toBe('https://api.heigit.org/openrouteservice/v2/directions/driving-hgv/geojson');
   });
 
   it('keeps the first occurrence of each city in route order', async () => {

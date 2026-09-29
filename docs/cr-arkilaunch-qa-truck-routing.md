@@ -8,7 +8,7 @@
 
 ## Decision
 
-Truck estimates use OpenRouteService `driving-hgv` with native `fetch` and `ORS_API_KEY`. If the key is absent or ORS fails, the existing OSRM car route remains available but is labelled **Car route - verify truck access** on customer and staff maps. An HGV profile is a routing aid; staff still check vehicle dimensions, road restrictions and permits.
+Truck estimates use OpenRouteService `driving-hgv` with native `fetch` and `ORS_API_KEY` at the [current HeiGIT endpoint](https://ask.openrouteservice.org/t/deprecating-api-openrouteservice-org-in-favour-of-api-heigit-org/7912). If the key is absent or ORS fails, the existing OSRM car route remains available but is labelled **Car route - verify truck access** on customer and staff maps. An HGV profile is a routing aid; staff still check vehicle dimensions, road restrictions and permits.
 
 The API samples a route at approximately 5 km intervals, capped at 20 interior points plus endpoints, and serializes search and reverse requests to Nominatim at one request per second per API process. Ordered unique cities are stored on `truck_requests.route_cities` after creation without blocking the response. Staff route reads backfill older null rows. The staff drawer names each city so permits and extra fees can be discussed during price negotiation. The public Nominatim service's limit applies to the whole application, so this pilot implementation needs one API replica or a replacement geocoder before scaling.
 
@@ -24,7 +24,7 @@ A paid truck can be dispatched once. The API stores `dispatched_at`, `route_minu
 
 ## Operations and verification
 
-- Set `ORS_API_KEY` in each deployment environment as the `ors-api-key` secret before relying on HGV routing. Confirm an ORS route returns `truckSafe=true` and inspect a fallback route's warning.
+- Set `ORS_API_KEY` as a GitHub environment secret in dev and prod. The deploy workflow passes it as `TF_VAR_ors_api_key`; Terraform creates the Container App `ors-api-key` secret and maps it to the API environment. Confirm an ORS route returns `truckSafe=true` and inspect a fallback route's warning.
 - Review every seeded truck-ban rule with current MMDA and LGU sources. Update city hours, road scope, GVW and permit notes; mark verified only after checking. A city-level rule cannot express a road-specific exemption.
 - API shape was checked against the [OpenRouteService directions documentation](https://giscience.github.io/openrouteservice/api-reference/endpoints/directions/requests-and-return-types). The [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) requires application-wide throttling, an identifying User-Agent and caching; route results are stored per request here, but shared caching and multi-replica coordination remain a deployment follow-up.
 - Shared (261 tests), web (390 tests) and focused API routing (3 tests) suites passed locally. API database and E2E cases were added for isolation, dispatch and customer ETA. Database-backed integration and browser E2E execution require a disposable migrated database and running API/web services; none were available locally, and no production or pilot database was used. Lint and build passed; lint reported two existing warnings in generated Wrangler types.

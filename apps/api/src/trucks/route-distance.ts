@@ -8,7 +8,7 @@ import { nominatimJson } from './nominatim.js';
 //
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const OSRM = 'https://router.project-osrm.org/route/v1/driving';
-const ORS = 'https://api.openrouteservice.org/v2/directions/driving-hgv/geojson';
+const ORS = 'https://api.heigit.org/openrouteservice/v2/directions/driving-hgv/geojson';
 const TIMEOUT_MS = 10_000;
 const USER_AGENT = 'ArkiLaunch/0.1 (truck distance estimate)';
 
