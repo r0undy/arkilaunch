@@ -150,6 +150,11 @@ jobs:
           test/tenant-isolation.spec.ts
           test/rls-enumeration.spec.ts
           test/audit-log-immutability.spec.ts
+          test/after-commit.spec.ts
+          test/seed-identities.spec.ts
+          src/deposit-ledger.spec.ts
+          src/diesel-gaswatch.spec.ts
+          src/send-email.spec.ts
 
   migration-expand-contract-check:
     runs-on: ubuntu-latest
@@ -228,6 +233,8 @@ jobs:
       - run: pnpm db:seed:test
         env:
           DATABASE_URL_DIRECT: ${{ secrets.DATABASE_URL_DIRECT }}
+          # Deliberate opt-in: this seeds the fixed-password test tenants into the live project.
+          ALLOW_WEAK_SEED_CREDENTIALS: 'true'
       - run: pnpm test
         env:
           DATABASE_URL_DIRECT: ${{ secrets.DATABASE_URL_DIRECT }}
