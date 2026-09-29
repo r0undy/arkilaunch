@@ -41,7 +41,10 @@ export function MaintenanceModal({
     queryKey: key,
     queryFn: () => apiGet<MaintenanceDetailResponse>(`/equipment/${equipment.id}/maintenance`),
   });
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: ['equipment'] });
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ['equipment'] });
+    void queryClient.invalidateQueries({ queryKey: ['maintenance-windows', 'ending-soon'] });
+  };
 
   const [preset, setPreset] = useState(MAINTENANCE_PRESETS[0]!.task);
   const [task, setTask] = useState(MAINTENANCE_PRESETS[0]!.task);
@@ -77,7 +80,6 @@ export function MaintenanceModal({
       }),
     onSuccess: () => {
       refresh();
-      void queryClient.invalidateQueries({ queryKey: ['maintenance-windows', 'ending-soon'] });
       toast.success('Block extended by a day');
     },
     onError: (error) => toast.error('Could not extend the block', apiErrorText(error)),
