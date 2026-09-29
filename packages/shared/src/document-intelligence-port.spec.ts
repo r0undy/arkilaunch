@@ -26,38 +26,12 @@ describe('documentIntelligenceAvailability', () => {
     });
   });
 
-  // The load-bearing assertion of this whole file. Omitting hasAdapter (or
-  // passing false) must never make the system believe it can extract, no
-  // matter how real the credentials look -- a caller that forgets to wire a
-  // real adapter must fail closed, not silently start reporting available.
-  it('reports no_adapter when credentials are set but hasAdapter is not asserted', () => {
-    const withCredentials = documentIntelligenceAvailability({
+  it('reports available when both credentials are set', () => {
+    const result = documentIntelligenceAvailability({
       AZURE_DI_ENDPOINT: 'https://real.cognitiveservices.azure.com',
       AZURE_DI_KEY: 'a-real-looking-key',
     });
-    expect(withCredentials).toEqual({ available: false, reason: 'no_adapter' });
-  });
-
-  // Since docs/cr-arkilaunch-azure-di-provisioning.md: a real adapter exists
-  // (@arkilaunch/document-intelligence). Its factory is the only caller
-  // allowed to pass hasAdapter: true, and only once it has actually
-  // constructed the adapter -- see apps/api/src/ports/document-intelligence.port.ts.
-  it('reports available only when credentials are set AND hasAdapter is asserted', () => {
-    const result = documentIntelligenceAvailability(
-      {
-        AZURE_DI_ENDPOINT: 'https://real.cognitiveservices.azure.com',
-        AZURE_DI_KEY: 'a-real-looking-key',
-      },
-      true,
-    );
     expect(result).toEqual({ available: true });
-  });
-
-  it('still reports no_credentials when hasAdapter is true but credentials are missing', () => {
-    expect(documentIntelligenceAvailability({}, true)).toEqual({
-      available: false,
-      reason: 'no_credentials',
-    });
   });
 
   it('does not read process.env (stays safe to import from the browser bundle)', () => {

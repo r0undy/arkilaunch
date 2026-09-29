@@ -23,7 +23,7 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { AzureDocumentIntelligenceAdapter } from '@arkilaunch/document-intelligence';
+import { createDocumentIntelligenceAdapter } from '@arkilaunch/document-intelligence';
 import { OCR_CORPUS_FLOOR, normalize } from '@arkilaunch/shared';
 import type { DocumentExtractionResult, GoldSample } from '@arkilaunch/shared';
 
@@ -199,11 +199,7 @@ async function runExtract(opts: Options) {
     throw new Error('AZURE_DI_ENDPOINT and AZURE_DI_KEY are required for --mode=extract');
   }
 
-  const adapter = new AzureDocumentIntelligenceAdapter({
-    endpoint,
-    apiKey,
-    ...(process.env.AZURE_DI_MAX_PAGES ? { maxPagesPerDocument: Number(process.env.AZURE_DI_MAX_PAGES) } : {}),
-  });
+  const adapter = createDocumentIntelligenceAdapter(process.env);
 
   for (const kind of opts.kinds) {
     const samples = await loadSamples(opts.staging, kind);

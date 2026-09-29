@@ -10,7 +10,7 @@ import {
   type EdtrSheetDay,
   type OcrPayload,
 } from '@arkilaunch/shared';
-import { AzureDocumentIntelligenceAdapter, EDTR_MODEL_ID } from '@arkilaunch/document-intelligence';
+import { createDocumentIntelligenceAdapter, EDTR_MODEL_ID } from '@arkilaunch/document-intelligence';
 import { makeJobDb } from './db-client.js';
 import { fetchStorageObject } from './storage.js';
 import { runJobIfMain } from './telemetry.js';
@@ -100,7 +100,7 @@ export async function runEdtrOcrWorker(
   // Returning early leaves every queued row exactly as it was, so the
   // moment a real adapter is configured the backlog drains normally.
   if (!port) {
-    const availability = documentIntelligenceAvailability(process.env, true);
+    const availability = documentIntelligenceAvailability(process.env);
     if (!availability.available) {
       console.log(
         `edtr-ocr-worker: document extraction unavailable (${availability.reason}); claiming nothing.`,
@@ -123,14 +123,7 @@ export async function runEdtrOcrWorker(
       }
       return;
     }
-    // Reached only once documentIntelligenceAvailability() returns
-    // available:true, which now requires the flag check above to have
-    // passed AND real AZURE_DI_* credentials AND a real adapter to exist.
-    port = new AzureDocumentIntelligenceAdapter({
-      endpoint: process.env.AZURE_DI_ENDPOINT!,
-      apiKey: process.env.AZURE_DI_KEY!,
-      ...(process.env.AZURE_DI_MAX_PAGES ? { maxPagesPerDocument: Number(process.env.AZURE_DI_MAX_PAGES) } : {}),
-    });
+    port = createDocumentIntelligenceAdapter(process.env);
   }
 
   const { db, client } = makeJobDb();

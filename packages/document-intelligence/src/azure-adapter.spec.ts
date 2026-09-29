@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { ExtractionUnavailableError } from '@arkilaunch/shared';
 import { AzureDocumentIntelligenceAdapter, DocumentAnalysisError } from './azure-adapter.js';
 import { EDTR_MODEL_ID, resolveModelRequest } from './model-registry.js';
+import { createDocumentIntelligenceAdapter } from './index.js';
 
 const ENDPOINT = 'https://di-arkilaunch-dev.cognitiveservices.azure.com';
 const OPERATION_LOCATION = `${ENDPOINT}/documentintelligence/documentModels/prebuilt-layout/analyzeResults/abc123`;
@@ -387,5 +388,16 @@ describe('AzureDocumentIntelligenceAdapter', () => {
     // table of dated rows. Asked for the same sheet's Operator against the
     // live resource, queryFields returned the letterhead at 0.883.
     expect(resolveModelRequest(EDTR_MODEL_ID)).toEqual({ kind: 'model', modelId: 'prebuilt-layout' });
+  });
+});
+
+describe('createDocumentIntelligenceAdapter', () => {
+  it('fails closed without both credentials', async () => {
+    const adapter = createDocumentIntelligenceAdapter({ AZURE_DI_ENDPOINT: ENDPOINT });
+    await expect(adapter.analyze(EDTR_MODEL_ID, Buffer.from('x'))).rejects.toMatchObject({ reason: 'no_credentials' });
+  });
+
+  it('builds the Azure adapter when credentials are set', () => {
+    expect(createDocumentIntelligenceAdapter({ AZURE_DI_ENDPOINT: ENDPOINT, AZURE_DI_KEY: 'k' })).toBeInstanceOf(AzureDocumentIntelligenceAdapter);
   });
 });
