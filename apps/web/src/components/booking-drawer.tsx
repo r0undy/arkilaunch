@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BookingDetailResponse, BookingService, TruckRequestResponse } from '@arkilaunch/shared';
 import { tripSteps, type TripStep } from './truck-trip.js';
-import { banHits, localPhMobile } from '@arkilaunch/shared';
+import { banHits } from '@arkilaunch/shared';
 import { bookingsQueries, truckBanRulesQuery, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
 import { formatDate, formatDateTime, formatInvoiceType, formatPeso, formatStatus, WEEKDAYS } from '../lib/format.js';
@@ -15,7 +15,7 @@ import { Tabs } from './tabs.js';
 import { StatusBadge } from './status-badge.js';
 import { RouteMap } from './route-map.js';
 import { NegotiationThread } from './negotiation-thread.js';
-import { BookingSide } from './booking-actions.js';
+import { BookingSide, SiteRepContact } from './booking-actions.js';
 
 // One drawer for both services (cr-arkilaunch-uniform-booking-codes.md):
 // the admin reads and works a booking start to end without leaving the
@@ -83,15 +83,7 @@ function RentalBody({ booking }: { booking: BookingDetailResponse }) {
         <dl className="flex flex-col gap-1">
           <Row label="Company">{booking.customerName ?? '--'}</Row>
           <Row label="Site rep">
-            {booking.siteContact ?? '--'}
-            {booking.siteContactMobile && (
-              <>
-                {' · '}
-                <a href={`tel:${booking.siteContactMobile}`} className="underline">
-                  +63 {localPhMobile(booking.siteContactMobile)}
-                </a>
-              </>
-            )}
+            <SiteRepContact name={booking.siteContact ?? '--'} mobile={booking.siteContactMobile} />
           </Row>
         </dl>
       </Section>
@@ -213,11 +205,11 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
             {route.isError && (
               <p className="text-xs text-text-muted">The road route is unavailable; the pins are joined in a straight line.</p>
             )}
-            {(route.data?.cities ?? truck.routeCities)?.length ? (
+            {cities.length ? (
               <div className="text-xs text-text-muted">
                 <p>Route passes through:</p>
                 <ol className="mt-1 flex flex-wrap items-center gap-1">
-                  {(route.data?.cities ?? truck.routeCities ?? []).map((place, index) => (
+                  {cities.map((place, index) => (
                     <li key={`${place.city}-${place.province}-${index}`} className="rounded border border-border px-2 py-1">
                       {place.city}{place.province ? `, ${place.province}` : ''}
                     </li>

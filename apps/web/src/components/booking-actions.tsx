@@ -260,6 +260,23 @@ function DeliveryCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
+// The site rep's name and a tap-to-call link to their mobile.
+export function SiteRepContact({ name, mobile }: { name: string | null; mobile?: string | null | undefined }) {
+  return (
+    <>
+      {name}
+      {mobile && (
+        <>
+          {name ? ' · ' : ''}
+          <a href={`tel:${mobile}`} className="underline">
+            +63 {localPhMobile(mobile)}
+          </a>
+        </>
+      )}
+    </>
+  );
+}
+
 export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
   const quote = booking.quotation;
   return (
@@ -293,15 +310,7 @@ export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
         <p className="text-text">{booking.siteCity ?? booking.siteProvince ?? '--'}</p>
         {(booking.siteContact || booking.siteContactMobile) && (
           <p className="text-text-muted">
-            Contact: {booking.siteContact}
-            {booking.siteContactMobile && (
-              <>
-                {booking.siteContact ? ' · ' : ''}
-                <a href={`tel:${booking.siteContactMobile}`} className="underline">
-                  +63 {localPhMobile(booking.siteContactMobile)}
-                </a>
-              </>
-            )}
+            Contact: <SiteRepContact name={booking.siteContact} mobile={booking.siteContactMobile} />
           </p>
         )}
         {booking.siteNotes && <p className="text-text-muted">Access: {booking.siteNotes}</p>}
