@@ -13,9 +13,6 @@ export type Discount = z.infer<typeof DiscountSchema>;
 
 const PhpAmount = z.number().finite().min(0).max(99_999_999.99);
 
-// A catalog machine priced off its rate card. estimatedHours is the hire
-// length in hours (days x the tenant's hours per day); the card's own unit
-// decides how it is charged (rentFor).
 export const EquipmentQuoteItemSchema = z.object({
   // Optional so older clients (and a line with no kind) mean equipment.
   kind: z.literal('equipment').optional(),
@@ -23,8 +20,7 @@ export const EquipmentQuoteItemSchema = z.object({
   quantity: z.number().int().min(1),
   rateCardId: z.string().uuid(),
   estimatedHours: z.number().finite().min(0),
-  // Hire length in days, for daily and monthly cards; when set it wins
-  // over estimatedHours (days x the tenant's hours per day).
+  // Hire length in days; when set it wins over estimatedHours (days x the tenant's hours per day).
   days: z.number().finite().min(0).max(3650).optional(),
   // Legacy per-km transport; mobilization is now a flat amount per quote.
   mobilizationKm: z.number().finite().min(0).default(0),
@@ -59,40 +55,17 @@ export const QuoteRequestSchema = z.object({
 });
 export type QuoteRequest = z.infer<typeof QuoteRequestSchema>;
 
+// daily/monthly survive only on historic quotations' stored rent parts.
 export type RentUnit = 'hourly' | 'daily' | 'monthly';
-export const DAYS_PER_MONTH = 30;
 
-// One "rate x count" piece of a line's rent, e.g. 8000/day x 12.
 export interface RentPart {
   rateType: RentUnit;
   ratePhp: number;
   count: number;
 }
 
-// A machine's rent in its card's own unit. hours is the hire length in
-// hours; daily and monthly cards turn it back into days. A monthly card
-// charges whole months, then leftover days at the daily card if there is
-// one, else pro-rated over 30 days (45 days = 1 month + 15 days).
-export function rentFor(
-  rateType: RentUnit,
-  ratePhp: number,
-  hours: number,
-  dailyHours: number,
-  dailyRatePhp: number | null = null,
-): { rentPhp: number; parts: RentPart[] } {
-  if (rateType === 'hourly') return { rentPhp: ratePhp * hours, parts: [{ rateType, ratePhp, count: hours }] };
-  const days = hours / dailyHours;
-  if (rateType === 'daily') return { rentPhp: ratePhp * days, parts: [{ rateType, ratePhp, count: days }] };
-  const months = Math.floor(days / DAYS_PER_MONTH);
-  const rest = days - months * DAYS_PER_MONTH;
-  if (rest > 0 && dailyRatePhp !== null) {
-    const parts: RentPart[] = [];
-    if (months > 0) parts.push({ rateType, ratePhp, count: months });
-    parts.push({ rateType: 'daily', ratePhp: dailyRatePhp, count: rest });
-    return { rentPhp: months * ratePhp + rest * dailyRatePhp, parts };
-  }
-  const count = days / DAYS_PER_MONTH;
-  return { rentPhp: ratePhp * count, parts: [{ rateType, ratePhp, count }] };
+export function rentFor(ratePhp: number, hours: number): { rentPhp: number; parts: RentPart[] } {
+  return { rentPhp: ratePhp * hours, parts: [{ rateType: 'hourly', ratePhp, count: hours }] };
 }
 
 // How long a customer has to accept an approved quote before its diesel

@@ -28,10 +28,8 @@ export const PricingParametersInputSchema = z.object({
 });
 export type PricingParametersInput = z.infer<typeof PricingParametersInputSchema>;
 
-// S18 Rate Cards & Tenant Settings (PRD-F1/F7). rate_cards.rate_type is a
-// free-text column; this enum is the boundary validation for it. A card is
-// charged in its own unit (see rentFor in quotes.ts).
-export const RateTypeSchema = z.enum(['hourly', 'daily', 'monthly']);
+// Heavy-equipment cards are hourly only; the DB CHECK (0071) backstops this.
+export const RateTypeSchema = z.literal('hourly');
 export type RateType = z.infer<typeof RateTypeSchema>;
 
 export const RateCardCreateRequestSchema = z
