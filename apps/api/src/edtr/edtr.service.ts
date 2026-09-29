@@ -32,6 +32,7 @@ import {
 } from '@arkilaunch/db';
 import {
   round2HalfUp,
+  EDTR_TIME_ZONE,
   CONFIDENCE_GATE,
   OCR_CORPUS_FLOOR,
   assertAccuracyGate,
@@ -61,14 +62,8 @@ import {
 } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
-import { unitReportSpan } from '../common/field-logs.js';
+import { num, unitReportSpan } from '../common/field-logs.js';
 import { isOcrPipelineEnabled } from '../ports/document-intelligence.port.js';
-
-// Calendar day that a bare `date` column means. Fixed rather than
-// per-tenant because the product is PH-only (docs/clr-arkilaunch.md gap E1,
-// and the Azure region is southeastasia for the same reason); if tenants
-// ever span zones, this belongs on `tenants` and not in a constant here.
-const TENANT_TIME_ZONE = 'Asia/Manila';
 
 // QAD-T39 at runtime.
 //
@@ -106,7 +101,6 @@ function attestedOcrAccuracyFailure(): string | null {
   return gate.passed ? null : gate.reason;
 }
 
-const num = (v: string | null) => (v === null ? null : Number(v));
 
 // The hour meter a new reading should start from: the latest APPROVED end
 // reading for this unit before the report date.
@@ -729,8 +723,8 @@ export class EdtrService {
                 // A unit's own card overrides its type's (0038).
                 or(eq(rateCards.equipmentId, record.equipmentId), isNull(rateCards.equipmentId)),
                 eq(rateCards.rateType, 'hourly'),
-                sql`(${rateCards.effectiveFrom} at time zone ${TENANT_TIME_ZONE})::date <= ${record.reportDate}::date`,
-                sql`(${rateCards.effectiveTo} is null or (${rateCards.effectiveTo} at time zone ${TENANT_TIME_ZONE})::date > ${record.reportDate}::date)`,
+                sql`(${rateCards.effectiveFrom} at time zone ${EDTR_TIME_ZONE})::date <= ${record.reportDate}::date`,
+                sql`(${rateCards.effectiveTo} is null or (${rateCards.effectiveTo} at time zone ${EDTR_TIME_ZONE})::date > ${record.reportDate}::date)`,
               ),
             )
             .orderBy(sql`${rateCards.equipmentId} is null`, desc(rateCards.effectiveFrom))

@@ -35,7 +35,7 @@ import {
 // (cr-arkilaunch-edtr-site-hub-approval.md). Runs in the caller's tenant
 // transaction, so RLS scopes every query. Totals count APPROVED days only.
 
-const num = (v: string | null) => (v === null ? null : Number(v));
+export const num = (v: string | null) => (v === null ? null : Number(v));
 
 export function personName(u: { firstName: string | null; lastName: string | null; email: string } | undefined) {
   if (!u) return null;

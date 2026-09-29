@@ -24,6 +24,7 @@ import {
 } from '@arkilaunch/db';
 import {
   DTI_REGEX,
+  manilaDate,
   ExtractionUnavailableError,
   findSameCompany,
   hasRequiredCompanyDocuments,
@@ -1225,7 +1226,7 @@ async function withScores(tx: Tx, companies: CompanyReviewResponse[]): Promise<C
   const byPcn = holders(ids.map((d) => ({ customerId: d.customerId, key: pcnOf(d.payload) })));
   const shared = (map: Map<string, Set<string>>, key: string, self: string) =>
     !!key && [...(map.get(key) ?? [])].some((other) => other !== self);
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
+  const today = manilaDate(new Date());
 
   return companies.map((company) => {
     const phone = phones.find((p) => p.customerId === company.id)?.value ?? null;

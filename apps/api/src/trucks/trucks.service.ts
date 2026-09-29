@@ -38,11 +38,11 @@ import { PaymentsService } from '../payments/payments.service.js';
 import { roadRoute } from './route-distance.js';
 import { routeCities } from './route-cities.js';
 import { countRows } from '../common/count-rows.js';
+import { num } from '../common/field-logs.js';
 
 const DEFAULT_SETTINGS: TruckSettings = { baseFeePhp: 0, driverFeePhp: 0, extras: [], formula: null, rangePct: 10, region: 'NCR' };
 
 const php = (n: number) => `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const num = (v: string | null) => (v === null ? null : Number(v));
 
 function pins(body: TruckEstimateRequest) {
   return {

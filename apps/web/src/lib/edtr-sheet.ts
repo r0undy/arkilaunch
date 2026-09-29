@@ -1,6 +1,6 @@
 import QRCode from 'qrcode';
 import { PDFDocument } from 'pdf-lib';
-import { WEATHER_CODES, type EdtrSheetContext } from '@arkilaunch/shared';
+import { WEATHER_CODES, manilaDate, type EdtrSheetContext } from '@arkilaunch/shared';
 
 // EDTR v3 printable sheet (docs/cr-arkilaunch-edtr-v3-sheet.md). One SVG
 // template in millimetres on Letter or Legal landscape, rendered to a 300
@@ -142,14 +142,6 @@ function weekDates(weekStart: string): string[] {
   });
 }
 
-// Asia/Manila calendar date of an instant (the rental span is stored as
-// timestamps; the sheet is about Manila days).
-function manila(iso: string): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(
-    new Date(iso),
-  );
-}
-
 const shortDate = (iso: string) => {
   const d = new Date(`${iso}T00:00:00Z`);
   return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
@@ -191,8 +183,8 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   const tenantName = context?.tenant?.name ?? input.companyName ?? '';
   const spanStartIso = machine?.start ?? context?.rentalStart;
   const spanEndIso = machine?.start ? (machine.end ?? null) : (context?.rentalEnd ?? null);
-  const spanFrom = spanStartIso ? manila(spanStartIso) : null;
-  const spanTo = spanEndIso ? manila(spanEndIso) : null;
+  const spanFrom = spanStartIso ? manilaDate(spanStartIso) : null;
+  const spanTo = spanEndIso ? manilaDate(spanEndIso) : null;
   const outside = (iso: string) => !!spanFrom && (iso < spanFrom || (spanTo !== null && iso > spanTo));
   const out: string[] = [];
 
@@ -209,7 +201,7 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   if (input.tin) out.push(text(lx, 25.5, `TIN ${fit(input.tin, 30)}`, 2.5, { fill: MUTED }));
   out.push(text(W / 2, 14, 'EQUIPMENT DAILY TIME REPORT', 5.2, { bold: true, anchor: 'middle' }));
   const sheetNo =
-    context && spanStartIso && weekStart ? sheetIndex(manila(spanStartIso), spanTo, weekStart) : null;
+    context && spanStartIso && weekStart ? sheetIndex(manilaDate(spanStartIso), spanTo, weekStart) : null;
   out.push(
     text(
       W / 2,
@@ -412,7 +404,7 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
     context?.bookingCode ?? 'Booking ______________',
     machine ? `Unit SN ${machine.serialNo}` : 'Unit SN ________',
     weekStart ? `Week of ${weekStart}` : 'Week of ________',
-    `Printed ${manila(new Date().toISOString())}`,
+    `Printed ${manilaDate(new Date().toISOString())}`,
     'One sheet per unit per week',
   ].join(' · ');
   out.push(text(M, H - 3.5, footer, 2, { fill: MUTED }));
