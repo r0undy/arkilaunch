@@ -58,11 +58,13 @@ const PAGE_TITLES: Record<string, string> = {
   '/privacy': 'Privacy policy',
 };
 
+const trimSlash = (path: string) => (path.length > 1 ? path.replace(/\/$/, '') : path);
+
 // Document title for a path on a tenant's host. An equipment page is titled
 // with its model (`detail`); without one this returns null, so the caller
 // leaves the title to that page rather than overwriting it.
 export function pageTitle(pathname: string, name: string, detail?: string): string | null {
-  const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
+  const path = trimSlash(pathname);
   if (/^\/equipment\/[^/]+$/.test(path)) return detail ? `${detail} | ${name}` : null;
   const page = PAGE_TITLES[path];
   return page ? `${page} | ${name}` : name;
@@ -73,7 +75,7 @@ export function pageTitle(pathname: string, name: string, detail?: string): stri
 const INDEXABLE = ['/', '/equipment', '/contact', '/help', '/terms', '/privacy'];
 
 export function isIndexable(pathname: string): boolean {
-  const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
+  const path = trimSlash(pathname);
   return INDEXABLE.includes(path) || /^\/equipment\/[^/]+$/.test(path);
 }
 
@@ -93,7 +95,7 @@ export interface PageDetail {
 // description, canonical, Open Graph/Twitter, favicon, theme color, and the
 // Organization JSON-LD on the home page. Only the tenant's own row feeds it.
 export function headTags(t: CatalogTenant, url: URL, detail?: PageDetail | null): string {
-  const path = url.pathname.length > 1 ? url.pathname.replace(/\/$/, '') : url.pathname;
+  const path = trimSlash(url.pathname);
   const canonical = `${url.origin}${path === '/' ? '/' : path}`;
   const title = pageTitle(path, t.name, detail?.title) ?? t.name;
   const description =
