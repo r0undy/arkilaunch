@@ -520,6 +520,14 @@ export class EdtrService {
           approvedReconciliationId: counterpartRecon.id,
         });
       }
+      // RFC-2: a pair whose other side was rejected is not a passing reconciliation.
+      if (counterpartRecon?.status === 'rejected') {
+        throw new ConflictException({
+          error: 'counterpart_rejected',
+          reconciliationId: reconciliation.id,
+          rejectedReconciliationId: counterpartRecon.id,
+        });
+      }
     }
 
     const [rental] = await tx

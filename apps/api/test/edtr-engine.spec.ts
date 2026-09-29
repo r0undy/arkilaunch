@@ -546,6 +546,31 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     expect((await edtr.get(adminCtx, paperId)).status).toBe(paperBefore.status);
   });
 
+  it('approve refuses a pair whose other side was rejected, and leaves the rejection in place', async () => {
+    const reportDate = '2021-03-15';
+    const paperId = await insertExtractedPaperCounterpart(reportDate, 6, 0);
+    const { reconcileEdtr } = await import('@arkilaunch/db');
+    await withTenantTx(adminCtx, (tx) => reconcileEdtr(tx, adminCtx.tenantId, paperId));
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 6, hoursIdle: 0 },
+    });
+    const polled = await edtr.get(adminCtx, digital.id);
+    expect(polled.reconciliation?.counterpartEdtrId).toBe(paperId);
+    await edtr.reject(adminCtx, paperId, { reason: 'illegible' });
+
+    await expect(
+      edtr.approve(adminCtx, digital.id, { reconciliationId: polled.reconciliation!.id }),
+    ).rejects.toThrow(ConflictException);
+    const [paperRecon] = await withTenantTx(adminCtx, (tx) =>
+      tx.select().from(edtrReconciliations).where(eq(edtrReconciliations.edtrId, paperId)),
+    );
+    expect(paperRecon?.status).toBe('rejected');
+  });
+
   it('a log captured after its counterpart was rejected does not pair with the rejected row', async () => {
     const reportDate = '2021-03-12';
     const paperId = await insertExtractedPaperCounterpart(reportDate, 3, 0);
