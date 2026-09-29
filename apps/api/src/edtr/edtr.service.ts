@@ -67,24 +67,7 @@ import { num, unitReportSpan } from '../common/field-logs.js';
 import { countRows } from '../common/count-rows.js';
 import { isOcrPipelineEnabled } from '../ports/document-intelligence.port.js';
 
-// QAD-T39 at runtime.
-//
-// The threshold, the corpus floor and the gate function have existed in
-// packages/shared/src/ocr-accuracy.ts since the money-path pass, but the
-// only things that ever called them were a spec and the fixture puller:
-// nothing on the path that actually moves money consulted the gate, so
-// ENABLE_OCR_PIPELINE=true on its own was enough to route model output
-// into a deposit deduction whether or not the golden set had ever been
-// measured, let alone met (audit-ocr-money-path.md #8).
-//
-// The measurement itself is produced offline by the accuracy harness
-// against the labeled golden set, so the runtime cannot recompute it. It
-// reads the attested result instead, and fails closed when there is
-// none -- which is the correct state today: the EDTR model is untrained
-// and the corpus does not exist, so the pilot's only approvable path is
-// human transcription, exactly as RFC-2 and the pilot-honesty record say.
-// Reuses assertAccuracyGate rather than re-implementing the comparison,
-// so the empty-corpus rule stays in one place.
+// RFC-2 gate: model output may drive a deduction only with an attested accuracy measurement; fails closed without one.
 function attestedOcrAccuracyFailure(): string | null {
   const overall = Number(process.env.OCR_MEASURED_ACCURACY);
   const sampleCount = Number(process.env.OCR_MEASURED_SAMPLES);
@@ -104,8 +87,6 @@ function attestedOcrAccuracyFailure(): string | null {
 }
 
 
-// The hour meter a new reading should start from: the latest APPROVED end
-// reading for this unit before the report date.
 async function lastApprovedMeterEnd(tx: Tx, equipmentId: string, beforeDate: string): Promise<number | null> {
   const [row] = await tx
     .select({ end: edtrLineItems.hourMeterEnd })
@@ -127,8 +108,6 @@ async function lastApprovedMeterEnd(tx: Tx, equipmentId: string, beforeDate: str
 
 const opt = (v: number | null | undefined) => (v == null ? null : String(v));
 
-// One line item from captured hours. The v3 categories are written only
-// when sent, so a v2 client's row keeps NULL (not recorded) there.
 async function insertLineItem(
   tx: Tx,
   tenantId: string,
@@ -154,9 +133,6 @@ async function insertLineItem(
   });
 }
 
-// A captured entry's weather in the shape compareReportedWeather reads:
-// the AM/PM ticks when they are valid codes, and weather hours as idle
-// hours put down to weather.
 function reportedWeatherDay(li: EdtrLineItemsInput): ReportedWeatherDay {
   const code = (v: string | null | undefined): WeatherCode | null =>
     v && (WEATHER_CODES as readonly string[]).includes(v) ? (v as WeatherCode) : null;
@@ -174,8 +150,6 @@ function reportedWeatherDay(li: EdtrLineItemsInput): ReportedWeatherDay {
 export class EdtrService {
   constructor(private readonly events: EventsService) {}
 
-  // POST /api/v1/edtr (RFC-2 §3). Enforces the US-02 AC2 site-scope check
-  // for timekeepers before anything is written.
   async capture(ctx: RequestContext, body: EdtrCaptureRequest): Promise<EdtrCaptureResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, body.rentalId)).limit(1);
@@ -222,31 +196,13 @@ export class EdtrService {
         if (!unit) throw new NotFoundException({ error: 'equipment_not_found' });
       }
 
-      // A field log may only carry a date inside the unit's live rental
-      // span (its assignment window, else the rental's dates). Hard-blocked
-      // for everyone: a day outside the rental cannot be billed, so there is
-      // nothing a reviewer could approve it into
-      // (cr-arkilaunch-edtr-site-hub-approval.md).
+      // Hard block for everyone: a day outside the rental cannot be billed.
       const span = await unitReportSpan(tx, rental, body.equipmentId);
       if (!isInReportSpan(body.reportDate, span)) {
         throw new BadRequestException({ error: 'report_date_outside_rental', reportDate: body.reportDate, span });
       }
 
-      // Manual transcription (cr-arkilaunch-pilot-honesty.md §2.1).
-      //
-      // Reconciliation pairs one paper_ocr row with one digital_entry row
-      // (packages/db/src/reconciliation.ts uses ne(source)). With no OCR
-      // adapter a paper row could never carry line items, so no pair could
-      // ever form, so every log stalled at single_source -> pending and
-      // approve() rejected it with 422 -- meaning NO deposit deduction was
-      // approvable at all. RFC-2 already specifies that a hard extraction
-      // failure "routes to manual entry and re-enters the pipeline as a
-      // second log"; this makes that path reachable at capture time.
-      //
-      // The two logs stay genuinely independent (the timekeeper's reading
-      // at the site, the PM's from their own record), so the tolerance
-      // gate, the FOR UPDATE pair lock, and 409 already_approved all keep
-      // working at full strength.
+      // Without OCR, a paper row carries the transcribed hours so it can still pair with the digital log.
       const ocrWillRun = isOcrPipelineEnabled();
       if (body.source === 'paper_ocr') {
         if (ocrWillRun && body.lineItems) {
@@ -266,8 +222,6 @@ export class EdtrService {
       }
 
       const useManualTranscription = body.source === 'paper_ocr' && !ocrWillRun && !!body.lineItems;
-      // A transcribed paper row is 'extracted' immediately: there is no
-      // worker step left for it to wait on.
       const initialStatus =
         body.source === 'digital_entry' || useManualTranscription ? 'extracted' : 'queued';
 
@@ -279,14 +233,7 @@ export class EdtrService {
           equipmentId: body.equipmentId,
           source: body.source,
           reportDate: body.reportDate,
-          // The controller's Zod schema (superRefine) already guarantees
-          // rawFileUri is present for paper_ocr and lineItems for
-          // digital_entry before this service method ever runs.
           rawFileUri: body.source === 'paper_ocr' ? (body.rawFileUri ?? null) : null,
-          // Records HOW the hours were obtained, permanently and queryably,
-          // so a transcription can never later be mistaken for a real
-          // extraction. digital_entry keeps a null payload exactly as
-          // before.
           submittedBy: ctx.userId,
           ocrPayload:
             useManualTranscription && body.lineItems
@@ -302,9 +249,6 @@ export class EdtrService {
       if (!created) throw new Error('edtr insert returned no row');
 
       let finalStatus: string = created.status;
-      // Reconcile whenever line items are present, whatever the source --
-      // previously this ran only for digital_entry, which is why a paper
-      // row could never enter the gate.
       if (body.lineItems) {
         const flags = validateDayEntry({
           ...lineItemsToDayHours(body.lineItems),
@@ -315,12 +259,8 @@ export class EdtrService {
         });
         await insertLineItem(tx, ctx.tenantId, created.id, body.lineItems, flags);
         await reconcileEdtr(tx, ctx.tenantId, created.id);
-        // Hours on a machine warned to stop work that day: incident log only.
         await flagUsedDespiteWarning(tx, ctx.tenantId, created.id);
-        // The entry's weather against the site's recorded readings
-        // (docs/cr-arkilaunch-weather-monitoring.md). A discrepancy is a
-        // review flag plus an incident-log row -- it never changes the
-        // status, the approval or money (RFC-2).
+        // Weather discrepancies only flag for review; never status, approval or money.
         const weatherFlags = await logWeatherDiscrepancies(
           tx,
           ctx.tenantId,
@@ -336,14 +276,12 @@ export class EdtrService {
             .set({ reviewFlags: sql`${edtrLineItems.reviewFlags} || ${JSON.stringify(added)}::jsonb` })
             .where(eq(edtrLineItems.edtrId, created.id));
         }
-        // reconcileEdtr writes the authoritative status; re-read rather than
-        // re-deriving it here so the two can never drift apart.
+        // reconcileEdtr owns the status; re-read it rather than re-derive.
         const [refetched] = await tx.select().from(edtr).where(eq(edtr.id, created.id)).limit(1);
         finalStatus = refetched?.status ?? created.status;
       }
 
       await this.events.emit(ctx, 'edtr_uploaded', { edtr_id: created.id, source: body.source });
-      // The office sees a timekeeper's submission waiting in its site hub.
       if (ctx.role === 'timekeeper') {
         await notifyStaff(tx, ctx.tenantId, 'edtr_submitted', {
           rental_id: rental.id,
@@ -357,13 +295,7 @@ export class EdtrService {
     });
   }
 
-  // GET /api/v1/edtr?... (S8 review queue, cr-arkilaunch-f9-read-surface.md).
-  // A timekeeper sees only EDTRs tied to a site they are assigned to (the
-  // same US-02 AC2 boundary capture() already enforces, extended to reads
-  // -- QAD-T29); staff see the whole tenant. `review` rows sort first
-  // (single-source-pending and tolerance-exceeded discrepancies both land
-  // there, packages/db/src/reconciliation.ts:87,112) so the queue surfaces
-  // actionable items before already-settled ones.
+  // Timekeepers see only EDTRs on their assigned sites.
   async list(ctx: RequestContext, query: EdtrListQuery) {
     return withTenantTx(ctx, async (tx) => {
       const conditions: SQL[] = [];
@@ -433,7 +365,6 @@ export class EdtrService {
     });
   }
 
-  // GET /api/v1/edtr/:id (poll target, RFC-2 §3).
   async get(ctx: RequestContext, id: string): Promise<EdtrDetailResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select().from(edtr).where(eq(edtr.id, id)).limit(1);
@@ -462,9 +393,7 @@ export class EdtrService {
         source: row.source as 'paper_ocr' | 'digital_entry',
         lineItems: lineItems.map((item) => ({
           hoursActive: Number(item.hoursActive),
-          // Number(null) is 0, which would render "0.0 idle" for a paper
-          // sheet that never recorded idle hours at all -- the same
-          // fabricated reading migration 0017 exists to stop. Stays null.
+          // Stays null: Number(null) is 0, which would fabricate a 0.0 idle reading.
           hoursIdle: item.hoursIdle === null ? null : Number(item.hoursIdle),
           hoursTotal: num(item.hoursTotal),
           hoursBreakdown: num(item.hoursBreakdown),
@@ -476,8 +405,7 @@ export class EdtrService {
           reviewFlags: item.reviewFlags,
         })),
         fields,
-        // Provenance, so the client cannot render a human transcription's
-        // confidence of 1.00 as though a model were certain.
+        // Provenance: a human transcription's 1.00 confidence must not read as model certainty.
         extraction: payload
           ? {
               modelId: payload.model_id,
@@ -499,11 +427,7 @@ export class EdtrService {
     });
   }
 
-  // The storage key of the scanned page, for the review overlay. Read
-  // inside withTenantTx so RLS -- not a client-supplied key -- decides
-  // which row is visible; another tenant's id is simply not there, and
-  // reads as 404 rather than 403 (RFC-1: the tenant comes from the
-  // verified JWT, never from the request).
+  // RLS, not a client-supplied key, decides visibility; another tenant's id reads as 404.
   async rawFileKey(ctx: RequestContext, id: string): Promise<string> {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx
@@ -517,15 +441,7 @@ export class EdtrService {
     });
   }
 
-  // POST /api/v1/edtr/:id/approve (RFC-2 §3): the ONLY path that deducts.
-  // Asserts matched-or-human-resolved before opening the deduction write;
-  // there is no override edge (AGENTS.md "Never": deduct without a passing
-  // reconciliation or explicit human approval).
-  // Approve addressed by the reconciliation itself. The review queue knows a
-  // reconciliation id, not the EDTR that owns it, so requiring the caller to
-  // supply both made the gate reachable only from the capture screen that had
-  // just created the pair. Resolution happens here; every gate, lock and
-  // deduction rule still runs in approve() below, unchanged.
+  // Resolves the owning EDTR, then runs every approve() gate unchanged.
   async approveByReconciliation(ctx: RequestContext, reconciliationId: string, body: EdtrApproveRequest) {
     const edtrId = await withTenantTx(ctx, async (tx) => {
       const [row] = await tx
@@ -543,10 +459,8 @@ export class EdtrService {
     return withTenantTx(ctx, (tx) => this.approveInTx(tx, ctx, edtrId, body));
   }
 
-  // The approval itself, inside the caller's transaction, so the site hub's
-  // review() can write the office log and approve in ONE transaction: a gate
-  // that refuses (deposit_not_paid, rate_card_not_effective, ...) rolls the
-  // office log back with it.
+  // RFC-2: the ONLY path that deducts, with no override edge. Runs in the caller's tx so a
+  // refused gate also rolls back the site hub's office log.
   private async approveInTx(tx: Tx, ctx: RequestContext, edtrId: string, body: EdtrApproveRequest) {
     const [record] = await tx.select().from(edtr).where(eq(edtr.id, edtrId)).limit(1);
     if (!record) throw new NotFoundException({ error: 'edtr_not_found' });
@@ -559,15 +473,9 @@ export class EdtrService {
       .limit(1)
       .for('update');
     if (!reconciliation) {
-      // RLS scopes the select above, so another tenant's reconciliation is
-      // indistinguishable from a nonexistent one here -- which is the
-      // intended isolation behaviour, not a gap.
+      // RLS: another tenant's reconciliation reads as not found, by design.
       throw new NotFoundException({ error: 'reconciliation_not_found' });
     }
-    // A reconciliation belongs to exactly one EDTR. Reporting a mismatch as
-    // 'not found' told a reviewer the row did not exist when it did, which
-    // is the wrong thing to act on; name the real problem and hand back the
-    // EDTR that actually owns it so the caller can retry correctly.
     if (reconciliation.edtrId !== edtrId) {
       throw new UnprocessableEntityException({
         error: 'reconciliation_belongs_to_other_edtr',
@@ -576,13 +484,7 @@ export class EdtrService {
       });
     }
 
-    // A pair is approved ONCE, not once per side. reconcileEdtr()
-    // (packages/db/src/reconciliation.ts) writes two reconciliation rows
-    // per matched pair, one keyed on each EDTR id, so the same day's work
-    // can be approved from either side -- but approve() now flips BOTH
-    // rows to 'approved' together (below), so a second call against
-    // either side always finds status 'approved' here and is rejected
-    // before any money moves (cr-arkilaunch-edtr-double-approve.md).
+    // A pair is approved once: both rows flip to 'approved' together, so a retry on either side stops here.
     if (reconciliation.status === 'approved') {
       throw new ConflictException({ error: 'already_approved', reconciliationId: reconciliation.id });
     }
@@ -590,24 +492,13 @@ export class EdtrService {
     if (reconciliation.status !== 'matched' && reconciliation.status !== 'discrepancy') {
       throw new UnprocessableEntityException({ error: 'not_approvable', status: reconciliation.status });
     }
-    // A discrepancy can only proceed if a human has resolved it by
-    // supplying corrected adjustments in this same call; otherwise the
-    // gate holds and nothing is deducted (US-01 AC2, QAD-T26).
+    // RFC-2 gate: a discrepancy proceeds only with human-supplied adjustments in this call.
     if (reconciliation.status === 'discrepancy' && !body.adjustments) {
-      // deltaHours is one scalar for a multi-dimension check, so the
-      // per-dimension breakdown rides along: without it a reviewer is
-      // told the pair diverged but not whether the disagreement is in
-      // billable active hours or only in idle classification, which is
-      // the whole basis for deciding what to approve.
       const stored = reconciliation.adjustments as
         | { reason?: ReconciliationReason; deltas?: HourDeltas }
         | null;
       throw new ConflictException({
         error: 'reconciliation_discrepancy',
-        // `reason` matters as much as the numbers: an 'unreadable' block
-        // carries null deltas because one log recorded no hours at all,
-        // and without the reason that reads as a missing value rather
-        // than as the reason the pair was stopped.
         reason: stored?.reason ?? null,
         deltaHours: reconciliation.deltaHours !== null ? Number(reconciliation.deltaHours) : null,
         deltas: stored?.deltas ?? null,
@@ -615,7 +506,7 @@ export class EdtrService {
       });
     }
 
-    // The counterpart is locked too, so the pair is approved once across both sides (QAD-T26).
+    // The counterpart is locked too, so the pair is approved once across both sides.
     if (reconciliation.counterpartEdtrId) {
       const [counterpartRecon] = await tx
         .select()
@@ -640,15 +531,7 @@ export class EdtrService {
       throw new UnprocessableEntityException({ error: 'report_date_outside_rental', reportDate: record.reportDate });
     }
 
-    // A deduction carried by MODEL output may only proceed if the
-    // model's accuracy has actually been measured and met (QAD-T39).
-    //
-    // Both sides, not just the row being approved: approve() is called
-    // on whichever side the reviewer opened, and for the pilot pairing
-    // that is usually the digital_entry row, which has no payload at
-    // all. Checking only `record` would let a model-extracted paper
-    // counterpart carry the deduction untested. Human transcription is
-    // unaffected -- there is no model output for the gate to be about.
+    // RFC-2 gate: model-sourced hours on either side of the pair need attested OCR accuracy.
     const pairPayloads: unknown[] = [record.ocrPayload];
     if (reconciliation.counterpartEdtrId) {
       const [counterpartRow] = await tx
@@ -669,11 +552,7 @@ export class EdtrService {
     }
 
     const lineItems = await tx.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, edtrId));
-    // What is billed and what runs the hour meter, from ONE rule
-    // (classifyHours, packages/shared/src/edtr.ts). Downtime is never
-    // billed; idle is billed only on a categorised (v3) row. A pre-v3 row
-    // therefore prices on running hours alone, exactly as before, and an
-    // adjustment that does not name the categories keeps the row's own.
+    // classifyHours is the one billing rule: downtime never billed, idle only on a categorised (v3) row.
     const stored = lineItems[0];
     const adj = body.adjustments;
     const {
@@ -693,17 +572,7 @@ export class EdtrService {
     });
     const billed: ApprovedDayHours = { running: runningHours, billable: billableHoursActive, idle, breakdown, weather, otherDowntime };
 
-    // A reviewer's override has to reach the evidence, not just the
-    // price. AdjustmentsSchema requires hoursIdle and approve() used to
-    // read only hoursActive, so correcting 8.0/1.0 to 7.0/2.0 produced
-    // the right deduction and left the edtr_line_items row still saying
-    // 8.0/1.0 -- the row's own evidence permanently contradicting the
-    // figure it was approved at, with idle reporting and the audit trail
-    // reading the stale numbers (audit-ocr-money-path.md #10).
-    //
-    // The machine's original extraction is not lost: it stays in
-    // edtr.ocr_payload, which is what the accuracy harness measures
-    // against. This corrects the human-facing record of hours worked.
+    // Overrides rewrite the line items too; the original extraction stays in ocr_payload.
     if (body.adjustments) {
       await tx
         .update(edtrLineItems)
@@ -729,7 +598,7 @@ export class EdtrService {
             and(
               eq(rateCards.tenantId, ctx.tenantId),
               eq(rateCards.equipmentTypeId, equipmentRow.equipmentTypeId),
-              // A unit's own card overrides its type's (0038).
+              // A unit's own card overrides its type's.
               or(eq(rateCards.equipmentId, record.equipmentId), isNull(rateCards.equipmentId)),
               eq(rateCards.rateType, 'hourly'),
               sql`(${rateCards.effectiveFrom} at time zone ${EDTR_TIME_ZONE})::date <= ${record.reportDate}::date`,
@@ -765,28 +634,15 @@ export class EdtrService {
     const hourlyRate = rateCard ? Number(rateCard.rateValue) : 0;
     const deductedAmount = round2HalfUp(billableHoursActive * hourlyRate);
 
-    // Deposit ledger: the rental's contract deposit_required, else the
-    // tenant's minimum deposit, less every prior deposit_deduction --
-    // shared with billing.service.ts via resolveDepositLedger() so the
-    // two never disagree (audit-ocr-money-path.md #5).
-    //
-    // Rollover: a charge past the balance no longer fails with
-    // deposit_exhausted. The part the deposit covers is deducted; the
-    // rest becomes an unbilled accrual that jobs/src/weekly-billing.ts
-    // invoices weekly. Reaching this line already required a reconciled
-    // or human-approved pair (RFC-2), so both halves carry that gate.
-    // Lock the rental so two pairs approved at once can't both read the
-    // same balance and over-draw the deposit.
+    // Past the deposit balance, the remainder becomes an unbilled accrual invoiced later.
+    // Lock the rental so concurrent approvals can't both read the same balance and over-draw.
     const [lockedRental] = await tx
       .select({ id: rentals.id, code: rentals.code })
       .from(rentals)
       .where(eq(rentals.id, record.rentalId))
       .for('update');
     const bookingCode = lockedRental?.code ?? null;
-    // A deduction draws on money actually held: the rental's deposit (or
-    // booking invoice, which carries the deposit line) must be paid --
-    // online via PayMongo or a staff-recorded cash receipt. The ledger
-    // alone only knows what was *required* (cr-arkilaunch-paymongo-linked-accounts.md).
+    // RFC-2 fail closed: a deduction draws only on a paid deposit or booking invoice.
     const [depositPaid] = await tx
       .select({ id: invoices.id })
       .from(invoices)
@@ -826,14 +682,8 @@ export class EdtrService {
       await tx.insert(invoiceLineItems).values({
         tenantId: ctx.tenantId,
         invoiceId: inserted.id,
-        // The evidence link is this column, not the sentence below it. The
-        // description stays because it is what a human reads on an
-        // invoice, but it is no longer load-bearing: it was the only tie
-        // between a deduction and the reconciliation justifying it, parsed
-        // back out with a regex (audit-db-tenant-isolation.md #3).
+        // The evidence link to the reconciliation; the description is for humans only.
         reconciliationId: reconciliation.id,
-        // What a person reads: the booking code, the machine, the day and
-        // the hours split (cr-arkilaunch-uniform-booking-codes.md).
         description: [
           bookingCode,
           equipmentRow?.model ?? 'Equipment',
@@ -865,19 +715,8 @@ export class EdtrService {
       await notifyStaff(tx, ctx.tenantId, 'deposit_low', payload);
     }
 
-    // A pair is approved ONCE, not once per side: both reconciliation
-    // rows for this matched pair transition together, so the counterpart
-    // is never independently approvable afterward (the lock/check above
-    // already proved neither row was 'approved' before this point).
-    // Merged, not replaced, following reject()'s precedent below. A bare
-    // spread of body.adjustments overwrote the whole column, erasing the
-    // machine's own finding (`reason`, and the per-dimension `deltas`
-    // behind delta_hours) exactly on the discrepancy-resolution path
-    // where "what the gate concluded vs what the human overrode" is the
-    // audit question. The keys do not collide, so the merge is lossless.
-    // `billed` records the figures this approval charged, so every read
-    // model (site hub, booking rollup, portal) totals what was billed
-    // rather than re-deriving it.
+    // Both pair rows flip together. Adjustments merge, never replace, so the gate's own finding
+    // survives; `billed` is what every read model totals.
     const priorAdjustments = (reconciliation.adjustments as Record<string, unknown> | null) ?? {};
     await tx
       .update(edtrReconciliations)
@@ -894,15 +733,10 @@ export class EdtrService {
         .where(eq(edtrReconciliations.edtrId, reconciliation.counterpartEdtrId));
     }
 
-    // PRD-F4 QAD-T4: accrue the unit's cumulative runtime from this
-    // approved EDTR. Unconditional now: reaching this point already
-    // proves neither side of the pair was previously approved, so this
-    // can only run once per matched pair.
+    // Runs once per pair: the gates above proved neither side was approved.
     await tx
       .update(equipment)
-      // RUNNING hours only: idle and downtime do not wear the engine, and
-      // the maintenance job (jobs/src/maintenance-notify.ts) raises the
-      // PMS notice from this figure.
+      // Running hours only: idle and downtime don't wear the engine (feeds the PMS notice).
       .set({ runtimeHours: sql`${equipment.runtimeHours} + ${runningHours}` })
       .where(eq(equipment.id, record.equipmentId));
     await this.events.emit(ctx, 'equipment_runtime_accrued', {
@@ -911,8 +745,6 @@ export class EdtrService {
       edtr_id: record.id,
     });
 
-    // The customer's daily log is now visible on their booking page, and
-    // whoever submitted the day hears it went through.
     const dayPayload = {
       rental_id: record.rentalId,
       edtr_id: record.id,
@@ -958,8 +790,7 @@ export class EdtrService {
     };
   }
 
-  // Tells the timekeeper(s) who recorded these logs, never the reviewer
-  // themself (the office log is theirs).
+  // Never notifies the reviewer themself.
   private async notifySubmitters(
     tx: Tx,
     ctx: RequestContext,
@@ -977,20 +808,8 @@ export class EdtrService {
       .values(userIds.map((userId) => ({ tenantId: ctx.tenantId, userId, notificationType, payload })));
   }
 
-  // POST /api/v1/edtr/:id/review (site hub, cr-arkilaunch-edtr-site-hub-approval.md).
-  //
-  // approve: the admin's confirmed figures become the OFFICE LOG -- RFC-2's
-  // second, independent log -- written on the other source and pinned to
-  // this submission, then the pair reconciles through the unchanged gate
-  // and approveInTx() runs every money-path check it always has. The
-  // admin's figures ride in as adjustments, so a disagreement between the
-  // two logs is resolved by this explicit human approval (verified_by set),
-  // never auto-accepted. edtr_recon_matched_needs_counterpart_chk still
-  // holds: there is always a counterpart.
-  //
-  // needs_correction / reject: the reconciliation closes as rejected with
-  // the reason, the timekeeper is told, and a corrected resubmission is a
-  // new row for the same day.
+  // approve: the admin's figures become the independent office log, then every approveInTx() gate runs;
+  // a disagreement is resolved by this explicit human approval, never auto-accepted.
   async review(ctx: RequestContext, edtrId: string, body: EdtrReviewRequest) {
     return withTenantTx(ctx, async (tx) => {
       const [record] = await tx.select().from(edtr).where(eq(edtr.id, edtrId)).limit(1);
@@ -1067,8 +886,7 @@ export class EdtrService {
             source: officeSource,
             reportDate: record.reportDate,
             submittedBy: ctx.userId,
-            // A paper-side office log is the admin reading the signed sheet:
-            // recorded as a human transcription, never as model output.
+            // The admin reading the signed sheet: a human transcription, never model output.
             ocrPayload:
               officeSource === 'paper_ocr'
                 ? buildManualTranscriptionPayload({
@@ -1099,8 +917,6 @@ export class EdtrService {
           hoursOtherDowntime: hours.hoursOtherDowntime ?? null,
         },
       });
-      // The submission's own line item carries the confirmed meter
-      // readings and remark too (the adjustment covers the hours).
       await tx
         .update(edtrLineItems)
         .set({
@@ -1121,13 +937,7 @@ export class EdtrService {
     });
   }
 
-  // POST /api/v1/edtr/:id/reject (S8, PRD §5.3 "Review -> Rejected ->
-  // Capture"). Deducts nothing -- a rejected reconciliation never reaches
-  // approve()'s gate. Scoped to only this edtr's own reconciliation row
-  // (edtr_reconciliations.edtr_id is unique per row); unlike approve(),
-  // this deliberately does not force the counterpart's row to reject in
-  // lockstep -- rejecting doesn't move money, so there is no double-spend
-  // invariant to protect the way approve()'s pair-lock protects one.
+  // Deducts nothing, so only this side's row is rejected (no pair lock needed).
   async reject(ctx: RequestContext, edtrId: string, body: EdtrRejectRequest) {
     return withTenantTx(ctx, async (tx) => {
       const [record] = await tx.select().from(edtr).where(eq(edtr.id, edtrId)).limit(1);
