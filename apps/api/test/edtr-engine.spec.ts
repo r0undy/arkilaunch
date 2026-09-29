@@ -1,9 +1,12 @@
 import { describe, expect, it, beforeAll } from 'vitest';
-import { ConflictException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import postgres from 'postgres';
 import {
   addresses,
   edtr as edtrTable,
+  edtrReconciliations,
+  equipmentAssignments,
+  invoices,
   edtrLineItems,
   projectSites,
   quotations,
@@ -12,6 +15,7 @@ import {
   withTenantTx,
 } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
+import { and, eq, inArray } from 'drizzle-orm';
 import { EdtrService } from '../src/edtr/edtr.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { ensurePaidDeposit } from './paid-deposit.js';
@@ -348,6 +352,13 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
   });
 
   it('QAD-T29: a timekeeper cannot submit an EDTR for a site they are not assigned to', async () => {
+    const denials = async () => {
+      const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+      const [row] = await sql`select count(*)::int as n from audit_logs where entity = 'edtr_site_scope_denied' and entity_id = ${unassignedRentalId}`;
+      await sql.end();
+      return (row as { n: number }).n;
+    };
+    const before = await denials();
     await expect(
       edtr.capture(timekeeperCtx, {
         source: 'digital_entry',
@@ -357,6 +368,97 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
         lineItems: { hoursActive: 8, hoursIdle: 0 },
       }),
     ).rejects.toThrow(ForbiddenException);
+    expect(await denials()).toBe(before + 1);
+  });
+
+  it('capture refuses a unit that is not on the rental, and a unit this tenant cannot see', async () => {
+    const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    const [other] = await sql`
+      insert into equipment (tenant_id, equipment_type_id, model, serial_no)
+      select tenant_id, equipment_type_id, 'EDTR Off-Rental Unit', ${`test-tenant-a-serial-edtr-off-${Date.now()}`}
+      from equipment where id = ${equipmentId}
+      returning id`;
+    const [foreign] = await sql`
+      select e.id from equipment e join tenants t on t.id = e.tenant_id where t.slug = 'test-tenant-b' limit 1`;
+    await sql.end();
+
+    const assignedRentalId = await withTenantTx(adminCtx, async (tx) => {
+      const [base] = await tx.select().from(rentals).where(eq(rentals.id, rentalId));
+      const [row] = await tx
+        .insert(rentals)
+        .values({ tenantId: adminCtx.tenantId, customerId: base!.customerId, projectSiteId: base!.projectSiteId, status: 'active', startDate: base!.startDate })
+        .returning();
+      await tx.insert(equipmentAssignments).values({
+        tenantId: adminCtx.tenantId,
+        equipmentId,
+        rentalId: row!.id,
+        start: new Date('2020-01-01T00:00:00Z'),
+        status: 'active',
+      });
+      return row!.id;
+    });
+    const entry = { source: 'digital_entry' as const, reportDate: '2021-03-13', lineItems: { hoursActive: 8, hoursIdle: 0 } };
+
+    await expect(
+      edtr.capture(adminCtx, { ...entry, rentalId: assignedRentalId, equipmentId: (other as { id: string }).id }),
+    ).rejects.toMatchObject({ response: { error: 'equipment_not_on_rental' } });
+    await expect(
+      edtr.capture(adminCtx, { ...entry, rentalId, equipmentId: (foreign as { id: string }).id }),
+    ).rejects.toThrow(NotFoundException);
+    const written = await withTenantTx(adminCtx, (tx) =>
+      tx.select().from(edtrTable).where(and(eq(edtrTable.reportDate, '2021-03-13'), inArray(edtrTable.rentalId, [rentalId, assignedRentalId]))),
+    );
+    expect(written).toHaveLength(0);
+  });
+
+  it('approve refuses a report date outside the rental, and bills nothing', async () => {
+    const reportDate = '2019-12-01';
+    const paperId = await insertExtractedPaperCounterpart(reportDate, 8, 0);
+    const { reconcileEdtr } = await import('@arkilaunch/db');
+    await withTenantTx(adminCtx, (tx) => reconcileEdtr(tx, adminCtx.tenantId, paperId));
+    const deductions = () =>
+      withTenantTx(adminCtx, (tx) =>
+        tx.select().from(invoices).where(and(eq(invoices.rentalId, rentalId), eq(invoices.invoiceType, 'deposit_deduction'))),
+      ).then((rows) => rows.length);
+    const before = await deductions();
+
+    await expect(
+      edtr.review(adminCtx, paperId, { decision: 'approve', hours: { hoursActive: 8, hoursIdle: 0 } }),
+    ).rejects.toMatchObject({ response: { error: 'report_date_outside_rental' } });
+    expect(await deductions()).toBe(before);
+  });
+
+  it('an approve that waits on a concurrent reject sees the rejection and deducts nothing', async () => {
+    const reportDate = '2021-03-14';
+    await insertExtractedPaperCounterpart(reportDate, 7, 0);
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 7, hoursIdle: 0 },
+    });
+    const reconId = (await edtr.get(adminCtx, digital.id)).reconciliation!.id;
+
+    const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    let outcome: unknown;
+    await sql.begin(async (t) => {
+      await t`select id from edtr_reconciliations where id = ${reconId} for update`;
+      const pending = edtr.approve(adminCtx, digital.id, { reconciliationId: reconId }).then(
+        () => 'approved',
+        (err: unknown) => err,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await t`update edtr_reconciliations set status = 'rejected' where id = ${reconId}`;
+      outcome = pending;
+    });
+    await sql.end();
+
+    expect(await outcome).toBeInstanceOf(UnprocessableEntityException);
+    const [recon] = await withTenantTx(adminCtx, (tx) =>
+      tx.select().from(edtrReconciliations).where(eq(edtrReconciliations.id, reconId)),
+    );
+    expect(recon?.status).toBe('rejected');
   });
 
   it('a timekeeper CAN submit an EDTR for their assigned site', async () => {

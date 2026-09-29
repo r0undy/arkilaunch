@@ -6,7 +6,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import {
   type Tx,
   auditLogs,
@@ -17,6 +17,7 @@ import {
   edtrLineItems,
   edtrReconciliations,
   equipment,
+  equipmentAssignments,
   invoiceLineItems,
   invoices,
   notifications,
@@ -63,6 +64,7 @@ import {
 import { EventsService } from '../events/events.service.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { num, unitReportSpan } from '../common/field-logs.js';
+import { countRows } from '../common/count-rows.js';
 import { isOcrPipelineEnabled } from '../ports/document-intelligence.port.js';
 
 // QAD-T39 at runtime.
@@ -123,6 +125,8 @@ async function lastApprovedMeterEnd(tx: Tx, equipmentId: string, beforeDate: str
   return row ? num(row.end) : null;
 }
 
+const opt = (v: number | null | undefined) => (v == null ? null : String(v));
+
 // One line item from captured hours. The v3 categories are written only
 // when sent, so a v2 client's row keeps NULL (not recorded) there.
 async function insertLineItem(
@@ -133,7 +137,6 @@ async function insertLineItem(
   reviewFlags: string[],
   notes: string | null = null,
 ) {
-  const opt = (v: number | null | undefined) => (v === undefined || v === null ? null : String(v));
   await tx.insert(edtrLineItems).values({
     tenantId,
     edtrId,
@@ -190,16 +193,33 @@ export class EdtrService {
             ),
           );
         if (assigned.length === 0) {
-          await tx.insert(auditLogs).values({
-            tenantId: ctx.tenantId,
-            actorId: ctx.userId,
-            action: 'CREATE',
-            entity: 'edtr_site_scope_denied',
-            entityId: rental.id,
-          });
+          // Own transaction: the throw below rolls back tx, and the denial must stay on the audit trail.
+          await withTenantTx(ctx, (t) =>
+            t.insert(auditLogs).values({
+              tenantId: ctx.tenantId,
+              actorId: ctx.userId,
+              action: 'CREATE',
+              entity: 'edtr_site_scope_denied',
+              entityId: rental.id,
+            }),
+          );
           await this.events.emit(ctx, 'edtr_site_scope_denied', { rental_id: rental.id, project_site_id: rental.projectSiteId });
           throw new ForbiddenException({ error: 'site_not_assigned' });
         }
+      }
+
+      const onRental = await tx
+        .select({ equipmentId: equipmentAssignments.equipmentId })
+        .from(equipmentAssignments)
+        .where(and(eq(equipmentAssignments.rentalId, rental.id), ne(equipmentAssignments.status, 'cancelled')));
+      if (onRental.length > 0) {
+        if (!onRental.some((a) => a.equipmentId === body.equipmentId)) {
+          throw new UnprocessableEntityException({ error: 'equipment_not_on_rental' });
+        }
+      } else {
+        // The edtr FK bypasses RLS, so the unit must be visible to this tenant.
+        const [unit] = await tx.select({ id: equipment.id }).from(equipment).where(eq(equipment.id, body.equipmentId)).limit(1);
+        if (!unit) throw new NotFoundException({ error: 'equipment_not_found' });
       }
 
       // A field log may only carry a date inside the unit's live rental
@@ -378,7 +398,7 @@ export class EdtrService {
         .orderBy(priority, desc(edtr.createdAt))
         .limit(query.limit)
         .offset(query.offset);
-      const total = (await tx.select().from(edtr).where(and(...conditions))).length;
+      const total = await countRows(tx, edtr, and(...conditions));
 
       const reconRows = rows.length
         ? await tx
@@ -528,426 +548,414 @@ export class EdtrService {
   // that refuses (deposit_not_paid, rate_card_not_effective, ...) rolls the
   // office log back with it.
   private async approveInTx(tx: Tx, ctx: RequestContext, edtrId: string, body: EdtrApproveRequest) {
-    {
-      const [record] = await tx.select().from(edtr).where(eq(edtr.id, edtrId)).limit(1);
-      if (!record) throw new NotFoundException({ error: 'edtr_not_found' });
+    const [record] = await tx.select().from(edtr).where(eq(edtr.id, edtrId)).limit(1);
+    if (!record) throw new NotFoundException({ error: 'edtr_not_found' });
 
-      const [reconciliation] = await tx
-        .select()
-        .from(edtrReconciliations)
-        .where(eq(edtrReconciliations.id, body.reconciliationId))
-        .limit(1);
-      if (!reconciliation) {
-        // RLS scopes the select above, so another tenant's reconciliation is
-        // indistinguishable from a nonexistent one here -- which is the
-        // intended isolation behaviour, not a gap.
-        throw new NotFoundException({ error: 'reconciliation_not_found' });
-      }
-      // A reconciliation belongs to exactly one EDTR. Reporting a mismatch as
-      // 'not found' told a reviewer the row did not exist when it did, which
-      // is the wrong thing to act on; name the real problem and hand back the
-      // EDTR that actually owns it so the caller can retry correctly.
-      if (reconciliation.edtrId !== edtrId) {
-        throw new UnprocessableEntityException({
-          error: 'reconciliation_belongs_to_other_edtr',
-          reconciliationId: reconciliation.id,
-          edtrId: reconciliation.edtrId,
-        });
-      }
-
-      // A pair is approved ONCE, not once per side. reconcileEdtr()
-      // (packages/db/src/reconciliation.ts) writes two reconciliation rows
-      // per matched pair, one keyed on each EDTR id, so the same day's work
-      // can be approved from either side -- but approve() now flips BOTH
-      // rows to 'approved' together (below), so a second call against
-      // either side always finds status 'approved' here and is rejected
-      // before any money moves (cr-arkilaunch-edtr-double-approve.md).
-      if (reconciliation.status === 'approved') {
-        throw new ConflictException({ error: 'already_approved', reconciliationId: reconciliation.id });
-      }
-
-      if (reconciliation.status !== 'matched' && reconciliation.status !== 'discrepancy') {
-        throw new UnprocessableEntityException({ error: 'not_approvable', status: reconciliation.status });
-      }
-      // A discrepancy can only proceed if a human has resolved it by
-      // supplying corrected adjustments in this same call; otherwise the
-      // gate holds and nothing is deducted (US-01 AC2, QAD-T26).
-      if (reconciliation.status === 'discrepancy' && !body.adjustments) {
-        // deltaHours is one scalar for a multi-dimension check, so the
-        // per-dimension breakdown rides along: without it a reviewer is
-        // told the pair diverged but not whether the disagreement is in
-        // billable active hours or only in idle classification, which is
-        // the whole basis for deciding what to approve.
-        const stored = reconciliation.adjustments as
-          | { reason?: ReconciliationReason; deltas?: HourDeltas }
-          | null;
-        throw new ConflictException({
-          error: 'reconciliation_discrepancy',
-          // `reason` matters as much as the numbers: an 'unreadable' block
-          // carries null deltas because one log recorded no hours at all,
-          // and without the reason that reads as a missing value rather
-          // than as the reason the pair was stopped.
-          reason: stored?.reason ?? null,
-          deltaHours: reconciliation.deltaHours !== null ? Number(reconciliation.deltaHours) : null,
-          deltas: stored?.deltas ?? null,
-          tolerance: Number(reconciliation.tolerance),
-        });
-      }
-
-      // Lock this reconciliation row and its counterpart before any money
-      // moves. A plain read-then-check above would still race a
-      // concurrent double-approve on the SAME side (QAD-T26: "direct API,
-      // replayed, or race"); `for('update')` closes that by serializing
-      // concurrent calls on this row and the counterpart's row.
-      const [lockedRecon] = await tx
-        .select()
-        .from(edtrReconciliations)
-        .where(eq(edtrReconciliations.id, reconciliation.id))
-        .for('update');
-      if (lockedRecon?.status === 'approved') {
-        throw new ConflictException({ error: 'already_approved', reconciliationId: reconciliation.id });
-      }
-      if (reconciliation.counterpartEdtrId) {
-        const [counterpartRecon] = await tx
-          .select()
-          .from(edtrReconciliations)
-          .where(eq(edtrReconciliations.edtrId, reconciliation.counterpartEdtrId))
-          .for('update');
-        if (counterpartRecon?.status === 'approved') {
-          throw new ConflictException({
-            error: 'already_approved',
-            reconciliationId: reconciliation.id,
-            approvedReconciliationId: counterpartRecon.id,
-          });
-        }
-      }
-
-      // A deduction carried by MODEL output may only proceed if the
-      // model's accuracy has actually been measured and met (QAD-T39).
-      //
-      // Both sides, not just the row being approved: approve() is called
-      // on whichever side the reviewer opened, and for the pilot pairing
-      // that is usually the digital_entry row, which has no payload at
-      // all. Checking only `record` would let a model-extracted paper
-      // counterpart carry the deduction untested. Human transcription is
-      // unaffected -- there is no model output for the gate to be about.
-      const pairPayloads: unknown[] = [record.ocrPayload];
-      if (reconciliation.counterpartEdtrId) {
-        const [counterpartRow] = await tx
-          .select({ ocrPayload: edtr.ocrPayload })
-          .from(edtr)
-          .where(eq(edtr.id, reconciliation.counterpartEdtrId))
-          .limit(1);
-        if (counterpartRow) pairPayloads.push(counterpartRow.ocrPayload);
-      }
-      const modelSourced = pairPayloads.some(
-        (payload) => payload !== null && !isManualTranscription(payload as { model_id?: string }),
-      );
-      if (modelSourced) {
-        const failure = attestedOcrAccuracyFailure();
-        if (failure) {
-          throw new ConflictException({ error: 'ocr_accuracy_gate_unmet', reason: failure });
-        }
-      }
-
-      const lineItems = await tx.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, edtrId));
-      // What is billed and what runs the hour meter, from ONE rule
-      // (classifyHours, packages/shared/src/edtr.ts). Downtime is never
-      // billed; idle is billed only on a categorised (v3) row. A pre-v3 row
-      // therefore prices on running hours alone, exactly as before, and an
-      // adjustment that does not name the categories keeps the row's own.
-      const stored = lineItems[0];
-      const adj = body.adjustments;
-      const classified = classifyHours({
-        running: adj?.hoursActive ?? lineItems.reduce((sum, item) => sum + Number(item.hoursActive), 0),
-        idle: adj ? adj.hoursIdle : stored ? num(stored.hoursIdle) : null,
-        breakdown: adj?.hoursBreakdown !== undefined ? adj.hoursBreakdown : stored ? num(stored.hoursBreakdown) : null,
-        weather: adj?.hoursWeather !== undefined ? adj.hoursWeather : stored ? num(stored.hoursWeather) : null,
-        otherDowntime:
-          adj?.hoursOtherDowntime !== undefined ? adj.hoursOtherDowntime : stored ? num(stored.hoursOtherDowntime) : null,
+    // Locked first, so every gate below runs on data a concurrent reject or approve cannot change.
+    const [reconciliation] = await tx
+      .select()
+      .from(edtrReconciliations)
+      .where(eq(edtrReconciliations.id, body.reconciliationId))
+      .limit(1)
+      .for('update');
+    if (!reconciliation) {
+      // RLS scopes the select above, so another tenant's reconciliation is
+      // indistinguishable from a nonexistent one here -- which is the
+      // intended isolation behaviour, not a gap.
+      throw new NotFoundException({ error: 'reconciliation_not_found' });
+    }
+    // A reconciliation belongs to exactly one EDTR. Reporting a mismatch as
+    // 'not found' told a reviewer the row did not exist when it did, which
+    // is the wrong thing to act on; name the real problem and hand back the
+    // EDTR that actually owns it so the caller can retry correctly.
+    if (reconciliation.edtrId !== edtrId) {
+      throw new UnprocessableEntityException({
+        error: 'reconciliation_belongs_to_other_edtr',
+        reconciliationId: reconciliation.id,
+        edtrId: reconciliation.edtrId,
       });
-      const billableHoursActive = classified.billable;
-      const runningHours = classified.running;
-      const billed: ApprovedDayHours = {
-        running: classified.running,
-        billable: classified.billable,
-        idle: classified.idle,
-        breakdown: classified.breakdown,
-        weather: classified.weather,
-        otherDowntime: classified.otherDowntime,
-      };
+    }
 
-      // A reviewer's override has to reach the evidence, not just the
-      // price. AdjustmentsSchema requires hoursIdle and approve() used to
-      // read only hoursActive, so correcting 8.0/1.0 to 7.0/2.0 produced
-      // the right deduction and left the edtr_line_items row still saying
-      // 8.0/1.0 -- the row's own evidence permanently contradicting the
-      // figure it was approved at, with idle reporting and the audit trail
-      // reading the stale numbers (audit-ocr-money-path.md #10).
-      //
-      // The machine's original extraction is not lost: it stays in
-      // edtr.ocr_payload, which is what the accuracy harness measures
-      // against. This corrects the human-facing record of hours worked.
-      if (body.adjustments) {
-        await tx
-          .update(edtrLineItems)
-          .set({
-            hoursActive: String(body.adjustments.hoursActive),
-            hoursIdle: String(body.adjustments.hoursIdle),
-            ...(body.adjustments.hoursBreakdown !== undefined
-              ? { hoursBreakdown: body.adjustments.hoursBreakdown === null ? null : String(body.adjustments.hoursBreakdown) }
-              : {}),
-            ...(body.adjustments.hoursWeather !== undefined
-              ? { hoursWeather: body.adjustments.hoursWeather === null ? null : String(body.adjustments.hoursWeather) }
-              : {}),
-            ...(body.adjustments.hoursOtherDowntime !== undefined
-              ? {
-                  hoursOtherDowntime:
-                    body.adjustments.hoursOtherDowntime === null ? null : String(body.adjustments.hoursOtherDowntime),
-                }
-              : {}),
-          })
-          .where(eq(edtrLineItems.edtrId, edtrId));
+    // A pair is approved ONCE, not once per side. reconcileEdtr()
+    // (packages/db/src/reconciliation.ts) writes two reconciliation rows
+    // per matched pair, one keyed on each EDTR id, so the same day's work
+    // can be approved from either side -- but approve() now flips BOTH
+    // rows to 'approved' together (below), so a second call against
+    // either side always finds status 'approved' here and is rejected
+    // before any money moves (cr-arkilaunch-edtr-double-approve.md).
+    if (reconciliation.status === 'approved') {
+      throw new ConflictException({ error: 'already_approved', reconciliationId: reconciliation.id });
+    }
+
+    if (reconciliation.status !== 'matched' && reconciliation.status !== 'discrepancy') {
+      throw new UnprocessableEntityException({ error: 'not_approvable', status: reconciliation.status });
+    }
+    // A discrepancy can only proceed if a human has resolved it by
+    // supplying corrected adjustments in this same call; otherwise the
+    // gate holds and nothing is deducted (US-01 AC2, QAD-T26).
+    if (reconciliation.status === 'discrepancy' && !body.adjustments) {
+      // deltaHours is one scalar for a multi-dimension check, so the
+      // per-dimension breakdown rides along: without it a reviewer is
+      // told the pair diverged but not whether the disagreement is in
+      // billable active hours or only in idle classification, which is
+      // the whole basis for deciding what to approve.
+      const stored = reconciliation.adjustments as
+        | { reason?: ReconciliationReason; deltas?: HourDeltas }
+        | null;
+      throw new ConflictException({
+        error: 'reconciliation_discrepancy',
+        // `reason` matters as much as the numbers: an 'unreadable' block
+        // carries null deltas because one log recorded no hours at all,
+        // and without the reason that reads as a missing value rather
+        // than as the reason the pair was stopped.
+        reason: stored?.reason ?? null,
+        deltaHours: reconciliation.deltaHours !== null ? Number(reconciliation.deltaHours) : null,
+        deltas: stored?.deltas ?? null,
+        tolerance: Number(reconciliation.tolerance),
+      });
+    }
+
+    // The counterpart is locked too, so the pair is approved once across both sides (QAD-T26).
+    if (reconciliation.counterpartEdtrId) {
+      const [counterpartRecon] = await tx
+        .select()
+        .from(edtrReconciliations)
+        .where(eq(edtrReconciliations.edtrId, reconciliation.counterpartEdtrId))
+        .for('update');
+      if (counterpartRecon?.status === 'approved') {
+        throw new ConflictException({
+          error: 'already_approved',
+          reconciliationId: reconciliation.id,
+          approvedReconciliationId: counterpartRecon.id,
+        });
       }
+    }
 
-      // Priced at the hourly card in force on report_date (Manila calendar dates), never at `now`.
-      const [equipmentRow] = await tx.select().from(equipment).where(eq(equipment.id, record.equipmentId)).limit(1);
-      const [rateCard] = equipmentRow
-        ? await tx
-            .select()
-            .from(rateCards)
-            .where(
-              and(
-                eq(rateCards.tenantId, ctx.tenantId),
-                eq(rateCards.equipmentTypeId, equipmentRow.equipmentTypeId),
-                // A unit's own card overrides its type's (0038).
-                or(eq(rateCards.equipmentId, record.equipmentId), isNull(rateCards.equipmentId)),
-                eq(rateCards.rateType, 'hourly'),
-                sql`(${rateCards.effectiveFrom} at time zone ${EDTR_TIME_ZONE})::date <= ${record.reportDate}::date`,
-                sql`(${rateCards.effectiveTo} is null or (${rateCards.effectiveTo} at time zone ${EDTR_TIME_ZONE})::date > ${record.reportDate}::date)`,
-              ),
-            )
-            .orderBy(sql`${rateCards.equipmentId} is null`, desc(rateCards.effectiveFrom))
-            .limit(1)
-        : [];
-      // RFC-2 fail closed: a type with any card (even a retired non-hourly one) but no in-force hourly card must never post a 0 deduction.
-      if (equipmentRow && !rateCard) {
-        const [anyCard] = await tx
-          .select({ id: rateCards.id })
+    const [rental] = await tx
+      .select({ id: rentals.id, startDate: rentals.startDate, endDate: rentals.endDate })
+      .from(rentals)
+      .where(eq(rentals.id, record.rentalId))
+      .limit(1);
+    if (!rental || !isInReportSpan(record.reportDate, await unitReportSpan(tx, rental, record.equipmentId))) {
+      throw new UnprocessableEntityException({ error: 'report_date_outside_rental', reportDate: record.reportDate });
+    }
+
+    // A deduction carried by MODEL output may only proceed if the
+    // model's accuracy has actually been measured and met (QAD-T39).
+    //
+    // Both sides, not just the row being approved: approve() is called
+    // on whichever side the reviewer opened, and for the pilot pairing
+    // that is usually the digital_entry row, which has no payload at
+    // all. Checking only `record` would let a model-extracted paper
+    // counterpart carry the deduction untested. Human transcription is
+    // unaffected -- there is no model output for the gate to be about.
+    const pairPayloads: unknown[] = [record.ocrPayload];
+    if (reconciliation.counterpartEdtrId) {
+      const [counterpartRow] = await tx
+        .select({ ocrPayload: edtr.ocrPayload })
+        .from(edtr)
+        .where(eq(edtr.id, reconciliation.counterpartEdtrId))
+        .limit(1);
+      if (counterpartRow) pairPayloads.push(counterpartRow.ocrPayload);
+    }
+    const modelSourced = pairPayloads.some(
+      (payload) => payload !== null && !isManualTranscription(payload as { model_id?: string }),
+    );
+    if (modelSourced) {
+      const failure = attestedOcrAccuracyFailure();
+      if (failure) {
+        throw new ConflictException({ error: 'ocr_accuracy_gate_unmet', reason: failure });
+      }
+    }
+
+    const lineItems = await tx.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, edtrId));
+    // What is billed and what runs the hour meter, from ONE rule
+    // (classifyHours, packages/shared/src/edtr.ts). Downtime is never
+    // billed; idle is billed only on a categorised (v3) row. A pre-v3 row
+    // therefore prices on running hours alone, exactly as before, and an
+    // adjustment that does not name the categories keeps the row's own.
+    const stored = lineItems[0];
+    const adj = body.adjustments;
+    const {
+      running: runningHours,
+      billable: billableHoursActive,
+      idle,
+      breakdown,
+      weather,
+      otherDowntime,
+    } = classifyHours({
+      running: adj?.hoursActive ?? lineItems.reduce((sum, item) => sum + Number(item.hoursActive), 0),
+      idle: adj ? adj.hoursIdle : stored ? num(stored.hoursIdle) : null,
+      breakdown: adj?.hoursBreakdown !== undefined ? adj.hoursBreakdown : stored ? num(stored.hoursBreakdown) : null,
+      weather: adj?.hoursWeather !== undefined ? adj.hoursWeather : stored ? num(stored.hoursWeather) : null,
+      otherDowntime:
+        adj?.hoursOtherDowntime !== undefined ? adj.hoursOtherDowntime : stored ? num(stored.hoursOtherDowntime) : null,
+    });
+    const billed: ApprovedDayHours = { running: runningHours, billable: billableHoursActive, idle, breakdown, weather, otherDowntime };
+
+    // A reviewer's override has to reach the evidence, not just the
+    // price. AdjustmentsSchema requires hoursIdle and approve() used to
+    // read only hoursActive, so correcting 8.0/1.0 to 7.0/2.0 produced
+    // the right deduction and left the edtr_line_items row still saying
+    // 8.0/1.0 -- the row's own evidence permanently contradicting the
+    // figure it was approved at, with idle reporting and the audit trail
+    // reading the stale numbers (audit-ocr-money-path.md #10).
+    //
+    // The machine's original extraction is not lost: it stays in
+    // edtr.ocr_payload, which is what the accuracy harness measures
+    // against. This corrects the human-facing record of hours worked.
+    if (body.adjustments) {
+      await tx
+        .update(edtrLineItems)
+        .set({
+          hoursActive: String(body.adjustments.hoursActive),
+          hoursIdle: String(body.adjustments.hoursIdle),
+          ...(body.adjustments.hoursBreakdown !== undefined ? { hoursBreakdown: opt(body.adjustments.hoursBreakdown) } : {}),
+          ...(body.adjustments.hoursWeather !== undefined ? { hoursWeather: opt(body.adjustments.hoursWeather) } : {}),
+          ...(body.adjustments.hoursOtherDowntime !== undefined
+            ? { hoursOtherDowntime: opt(body.adjustments.hoursOtherDowntime) }
+            : {}),
+        })
+        .where(eq(edtrLineItems.edtrId, edtrId));
+    }
+
+    // Priced at the hourly card in force on report_date (Manila calendar dates), never at `now`.
+    const [equipmentRow] = await tx.select().from(equipment).where(eq(equipment.id, record.equipmentId)).limit(1);
+    const [rateCard] = equipmentRow
+      ? await tx
+          .select()
           .from(rateCards)
           .where(
             and(
               eq(rateCards.tenantId, ctx.tenantId),
               eq(rateCards.equipmentTypeId, equipmentRow.equipmentTypeId),
+              // A unit's own card overrides its type's (0038).
+              or(eq(rateCards.equipmentId, record.equipmentId), isNull(rateCards.equipmentId)),
+              eq(rateCards.rateType, 'hourly'),
+              sql`(${rateCards.effectiveFrom} at time zone ${EDTR_TIME_ZONE})::date <= ${record.reportDate}::date`,
+              sql`(${rateCards.effectiveTo} is null or (${rateCards.effectiveTo} at time zone ${EDTR_TIME_ZONE})::date > ${record.reportDate}::date)`,
             ),
           )
-          .limit(1);
-        if (anyCard) {
-          throw new UnprocessableEntityException({
-            error: 'rate_card_not_effective',
-            equipmentTypeId: equipmentRow.equipmentTypeId,
-            reportDate: record.reportDate,
-            message:
-              'No hourly rate card was in force on this EDTR report date; fix the rate card before approving.',
-          });
-        }
-      }
-
-      const hourlyRate = rateCard ? Number(rateCard.rateValue) : 0;
-      const deductedAmount = round2HalfUp(billableHoursActive * hourlyRate);
-
-      // Deposit ledger: the rental's contract deposit_required, else the
-      // tenant's minimum deposit, less every prior deposit_deduction --
-      // shared with billing.service.ts via resolveDepositLedger() so the
-      // two never disagree (audit-ocr-money-path.md #5).
-      //
-      // Rollover: a charge past the balance no longer fails with
-      // deposit_exhausted. The part the deposit covers is deducted; the
-      // rest becomes an unbilled accrual that jobs/src/weekly-billing.ts
-      // invoices weekly. Reaching this line already required a reconciled
-      // or human-approved pair (RFC-2), so both halves carry that gate.
-      // Lock the rental so two pairs approved at once can't both read the
-      // same balance and over-draw the deposit.
-      const [lockedRental] = await tx
-        .select({ id: rentals.id, code: rentals.code })
-        .from(rentals)
-        .where(eq(rentals.id, record.rentalId))
-        .for('update');
-      const bookingCode = lockedRental?.code ?? null;
-      // A deduction draws on money actually held: the rental's deposit (or
-      // booking invoice, which carries the deposit line) must be paid --
-      // online via PayMongo or a staff-recorded cash receipt. The ledger
-      // alone only knows what was *required* (cr-arkilaunch-paymongo-linked-accounts.md).
-      const [depositPaid] = await tx
-        .select({ id: invoices.id })
-        .from(invoices)
+          .orderBy(sql`${rateCards.equipmentId} is null`, desc(rateCards.effectiveFrom))
+          .limit(1)
+      : [];
+    // RFC-2 fail closed: a type with any card (even a retired non-hourly one) but no in-force hourly card must never post a 0 deduction.
+    if (equipmentRow && !rateCard) {
+      const [anyCard] = await tx
+        .select({ id: rateCards.id })
+        .from(rateCards)
         .where(
           and(
-            eq(invoices.rentalId, record.rentalId),
-            inArray(invoices.invoiceType, ['deposit', 'booking']),
-            eq(invoices.status, 'paid'),
+            eq(rateCards.tenantId, ctx.tenantId),
+            eq(rateCards.equipmentTypeId, equipmentRow.equipmentTypeId),
           ),
         )
         .limit(1);
-      if (!depositPaid) throw new ConflictException({ error: 'deposit_not_paid' });
-      const ledger = await resolveDepositLedger(tx, record.rentalId, ctx.tenantId);
-      const balanceBefore = round2HalfUp(Math.max(0, ledger.depositRequired - ledger.totalDeducted));
-      const split = splitDeduction(balanceBefore, deductedAmount);
-      const balanceAfter = split.balanceAfter;
-      // Hours split in the same ratio, so hours-used adds up across both.
-      const deductedHours =
-        deductedAmount > 0 ? round2HalfUp((billableHoursActive * split.deducted) / deductedAmount) : billableHoursActive;
-
-      let invoice: { id: string } | null = null;
-      if (split.deducted > 0 || split.accrued === 0) {
-        const [inserted] = await tx
-          .insert(invoices)
-          .values({
-            tenantId: ctx.tenantId,
-            rentalId: record.rentalId,
-            invoiceType: 'deposit_deduction',
-            amount: String(split.deducted),
-            status: 'issued',
-            dueDate: new Date(),
-          })
-          .returning();
-        if (!inserted) throw new Error('invoice insert returned no row');
-        invoice = inserted;
-
-        await tx.insert(invoiceLineItems).values({
-          tenantId: ctx.tenantId,
-          invoiceId: inserted.id,
-          // The evidence link is this column, not the sentence below it. The
-          // description stays because it is what a human reads on an
-          // invoice, but it is no longer load-bearing: it was the only tie
-          // between a deduction and the reconciliation justifying it, parsed
-          // back out with a regex (audit-db-tenant-isolation.md #3).
-          reconciliationId: reconciliation.id,
-          // What a person reads: the booking code, the machine, the day and
-          // the hours split (cr-arkilaunch-uniform-booking-codes.md).
-          description: [
-            bookingCode,
-            equipmentRow?.model ?? 'Equipment',
-            record.reportDate,
-            `${runningHours.toFixed(1)} h running${billed.idle > 0 && billableHoursActive > runningHours ? ` + ${billed.idle.toFixed(1)} h idle` : ''}`,
-          ]
-            .filter(Boolean)
-            .join(' · '),
-          quantity: String(deductedHours),
-          unitPrice: String(hourlyRate),
-          amount: String(split.deducted),
+      if (anyCard) {
+        throw new UnprocessableEntityException({
+          error: 'rate_card_not_effective',
+          equipmentTypeId: equipmentRow.equipmentTypeId,
+          reportDate: record.reportDate,
+          message:
+            'No hourly rate card was in force on this EDTR report date; fix the rate card before approving.',
         });
       }
-      if (split.accrued > 0) {
-        await tx.insert(depositAccruals).values({
+    }
+
+    const hourlyRate = rateCard ? Number(rateCard.rateValue) : 0;
+    const deductedAmount = round2HalfUp(billableHoursActive * hourlyRate);
+
+    // Deposit ledger: the rental's contract deposit_required, else the
+    // tenant's minimum deposit, less every prior deposit_deduction --
+    // shared with billing.service.ts via resolveDepositLedger() so the
+    // two never disagree (audit-ocr-money-path.md #5).
+    //
+    // Rollover: a charge past the balance no longer fails with
+    // deposit_exhausted. The part the deposit covers is deducted; the
+    // rest becomes an unbilled accrual that jobs/src/weekly-billing.ts
+    // invoices weekly. Reaching this line already required a reconciled
+    // or human-approved pair (RFC-2), so both halves carry that gate.
+    // Lock the rental so two pairs approved at once can't both read the
+    // same balance and over-draw the deposit.
+    const [lockedRental] = await tx
+      .select({ id: rentals.id, code: rentals.code })
+      .from(rentals)
+      .where(eq(rentals.id, record.rentalId))
+      .for('update');
+    const bookingCode = lockedRental?.code ?? null;
+    // A deduction draws on money actually held: the rental's deposit (or
+    // booking invoice, which carries the deposit line) must be paid --
+    // online via PayMongo or a staff-recorded cash receipt. The ledger
+    // alone only knows what was *required* (cr-arkilaunch-paymongo-linked-accounts.md).
+    const [depositPaid] = await tx
+      .select({ id: invoices.id })
+      .from(invoices)
+      .where(
+        and(
+          eq(invoices.rentalId, record.rentalId),
+          inArray(invoices.invoiceType, ['deposit', 'booking']),
+          eq(invoices.status, 'paid'),
+        ),
+      )
+      .limit(1);
+    if (!depositPaid) throw new ConflictException({ error: 'deposit_not_paid' });
+    const ledger = await resolveDepositLedger(tx, record.rentalId, ctx.tenantId);
+    const balanceBefore = round2HalfUp(Math.max(0, ledger.depositRequired - ledger.totalDeducted));
+    const split = splitDeduction(balanceBefore, deductedAmount);
+    const balanceAfter = split.balanceAfter;
+    // Hours split in the same ratio, so hours-used adds up across both.
+    const deductedHours =
+      deductedAmount > 0 ? round2HalfUp((billableHoursActive * split.deducted) / deductedAmount) : billableHoursActive;
+
+    let invoice: { id: string } | null = null;
+    if (split.deducted > 0 || split.accrued === 0) {
+      const [inserted] = await tx
+        .insert(invoices)
+        .values({
           tenantId: ctx.tenantId,
           rentalId: record.rentalId,
-          reconciliationId: reconciliation.id,
-          hours: String(round2HalfUp(billableHoursActive - deductedHours)),
-          unitPrice: String(hourlyRate),
-          amount: String(split.accrued),
-        });
-      }
+          invoiceType: 'deposit_deduction',
+          amount: String(split.deducted),
+          status: 'issued',
+          dueDate: new Date(),
+        })
+        .returning();
+      if (!inserted) throw new Error('invoice insert returned no row');
+      invoice = inserted;
 
-      const { lowBalancePct } = await getBillingSettings(tx, ctx.tenantId);
-      if (crossesLowBalance(ledger.depositRequired, balanceBefore, balanceAfter, lowBalancePct)) {
-        const payload = { rental_id: record.rentalId, balance_php: balanceAfter, deposit_php: ledger.depositRequired };
-        await notifyBookingCustomer(tx, ctx.tenantId, record.rentalId, 'deposit_low', payload);
-        await notifyStaff(tx, ctx.tenantId, 'deposit_low', payload);
-      }
+      await tx.insert(invoiceLineItems).values({
+        tenantId: ctx.tenantId,
+        invoiceId: inserted.id,
+        // The evidence link is this column, not the sentence below it. The
+        // description stays because it is what a human reads on an
+        // invoice, but it is no longer load-bearing: it was the only tie
+        // between a deduction and the reconciliation justifying it, parsed
+        // back out with a regex (audit-db-tenant-isolation.md #3).
+        reconciliationId: reconciliation.id,
+        // What a person reads: the booking code, the machine, the day and
+        // the hours split (cr-arkilaunch-uniform-booking-codes.md).
+        description: [
+          bookingCode,
+          equipmentRow?.model ?? 'Equipment',
+          record.reportDate,
+          `${runningHours.toFixed(1)} h running${billed.idle > 0 && billableHoursActive > runningHours ? ` + ${billed.idle.toFixed(1)} h idle` : ''}`,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        quantity: String(deductedHours),
+        unitPrice: String(hourlyRate),
+        amount: String(split.deducted),
+      });
+    }
+    if (split.accrued > 0) {
+      await tx.insert(depositAccruals).values({
+        tenantId: ctx.tenantId,
+        rentalId: record.rentalId,
+        reconciliationId: reconciliation.id,
+        hours: String(round2HalfUp(billableHoursActive - deductedHours)),
+        unitPrice: String(hourlyRate),
+        amount: String(split.accrued),
+      });
+    }
 
-      // A pair is approved ONCE, not once per side: both reconciliation
-      // rows for this matched pair transition together, so the counterpart
-      // is never independently approvable afterward (the lock/check above
-      // already proved neither row was 'approved' before this point).
-      // Merged, not replaced, following reject()'s precedent below. A bare
-      // spread of body.adjustments overwrote the whole column, erasing the
-      // machine's own finding (`reason`, and the per-dimension `deltas`
-      // behind delta_hours) exactly on the discrepancy-resolution path
-      // where "what the gate concluded vs what the human overrode" is the
-      // audit question. The keys do not collide, so the merge is lossless.
-      // `billed` records the figures this approval charged, so every read
-      // model (site hub, booking rollup, portal) totals what was billed
-      // rather than re-deriving it.
-      const priorAdjustments = (reconciliation.adjustments as Record<string, unknown> | null) ?? {};
+    const { lowBalancePct } = await getBillingSettings(tx, ctx.tenantId);
+    if (crossesLowBalance(ledger.depositRequired, balanceBefore, balanceAfter, lowBalancePct)) {
+      const payload = { rental_id: record.rentalId, balance_php: balanceAfter, deposit_php: ledger.depositRequired };
+      await notifyBookingCustomer(tx, ctx.tenantId, record.rentalId, 'deposit_low', payload);
+      await notifyStaff(tx, ctx.tenantId, 'deposit_low', payload);
+    }
+
+    // A pair is approved ONCE, not once per side: both reconciliation
+    // rows for this matched pair transition together, so the counterpart
+    // is never independently approvable afterward (the lock/check above
+    // already proved neither row was 'approved' before this point).
+    // Merged, not replaced, following reject()'s precedent below. A bare
+    // spread of body.adjustments overwrote the whole column, erasing the
+    // machine's own finding (`reason`, and the per-dimension `deltas`
+    // behind delta_hours) exactly on the discrepancy-resolution path
+    // where "what the gate concluded vs what the human overrode" is the
+    // audit question. The keys do not collide, so the merge is lossless.
+    // `billed` records the figures this approval charged, so every read
+    // model (site hub, booking rollup, portal) totals what was billed
+    // rather than re-deriving it.
+    const priorAdjustments = (reconciliation.adjustments as Record<string, unknown> | null) ?? {};
+    await tx
+      .update(edtrReconciliations)
+      .set({
+        status: 'approved',
+        verifiedBy: ctx.userId,
+        adjustments: { ...priorAdjustments, ...(body.adjustments ?? {}), billed },
+      })
+      .where(eq(edtrReconciliations.id, reconciliation.id));
+    if (reconciliation.counterpartEdtrId) {
       await tx
         .update(edtrReconciliations)
-        .set({
-          status: 'approved',
-          verifiedBy: ctx.userId,
-          adjustments: { ...priorAdjustments, ...(body.adjustments ?? {}), billed },
-        })
-        .where(eq(edtrReconciliations.id, reconciliation.id));
-      if (reconciliation.counterpartEdtrId) {
-        await tx
-          .update(edtrReconciliations)
-          .set({ status: 'approved', verifiedBy: ctx.userId })
-          .where(eq(edtrReconciliations.edtrId, reconciliation.counterpartEdtrId));
-      }
-
-      // PRD-F4 QAD-T4: accrue the unit's cumulative runtime from this
-      // approved EDTR. Unconditional now: reaching this point already
-      // proves neither side of the pair was previously approved, so this
-      // can only run once per matched pair.
-      await tx
-        .update(equipment)
-        // RUNNING hours only: idle and downtime do not wear the engine, and
-        // the maintenance job (jobs/src/maintenance-notify.ts) raises the
-        // PMS notice from this figure.
-        .set({ runtimeHours: sql`${equipment.runtimeHours} + ${runningHours}` })
-        .where(eq(equipment.id, record.equipmentId));
-      await this.events.emit(ctx, 'equipment_runtime_accrued', {
-        equipment_id: record.equipmentId,
-        hours_accrued: runningHours,
-        edtr_id: record.id,
-      });
-
-      // The customer's daily log is now visible on their booking page, and
-      // whoever submitted the day hears it went through.
-      const dayPayload = {
-        rental_id: record.rentalId,
-        edtr_id: record.id,
-        equipment_id: record.equipmentId,
-        report_date: record.reportDate,
-      };
-      await notifyBookingCustomer(tx, ctx.tenantId, record.rentalId, 'daily_log_approved', dayPayload);
-      await this.notifySubmitters(tx, ctx, [record.id, reconciliation.counterpartEdtrId], 'edtr_approved', dayPayload);
-
-      await tx.insert(auditLogs).values({
-        tenantId: ctx.tenantId,
-        actorId: ctx.userId,
-        action: 'DEDUCT',
-        entity: invoice ? 'invoices' : 'edtr_reconciliations',
-        entityId: invoice?.id ?? reconciliation.id,
-      });
-
-      await this.events.emit(ctx, 'deposit_deduction_committed', {
-        invoice_id: invoice?.id ?? null,
-        accrued_php: split.accrued,
-        hours: billableHoursActive,
-        gate_passed: true,
-      });
-      await this.events.emit(ctx, 'billable_hours_reconciled', {
-        equipment_id: record.equipmentId,
-        billed_hours: billableHoursActive,
-        source_logs: [record.id, reconciliation.counterpartEdtrId],
-      });
-
-      return {
-        reconciliation: {
-          id: reconciliation.id,
-          status: 'approved',
-          deltaHours: reconciliation.deltaHours !== null ? Number(reconciliation.deltaHours) : null,
-          tolerance: Number(reconciliation.tolerance),
-        },
-        invoiceLine: {
-          invoiceId: invoice?.id ?? null,
-          hours: billableHoursActive,
-          sourceLogs: [record.id, reconciliation.counterpartEdtrId],
-        },
-        deposit: { balanceBefore, deducted: split.deducted, accrued: split.accrued, balanceAfter },
-      };
+        .set({ status: 'approved', verifiedBy: ctx.userId })
+        .where(eq(edtrReconciliations.edtrId, reconciliation.counterpartEdtrId));
     }
+
+    // PRD-F4 QAD-T4: accrue the unit's cumulative runtime from this
+    // approved EDTR. Unconditional now: reaching this point already
+    // proves neither side of the pair was previously approved, so this
+    // can only run once per matched pair.
+    await tx
+      .update(equipment)
+      // RUNNING hours only: idle and downtime do not wear the engine, and
+      // the maintenance job (jobs/src/maintenance-notify.ts) raises the
+      // PMS notice from this figure.
+      .set({ runtimeHours: sql`${equipment.runtimeHours} + ${runningHours}` })
+      .where(eq(equipment.id, record.equipmentId));
+    await this.events.emit(ctx, 'equipment_runtime_accrued', {
+      equipment_id: record.equipmentId,
+      hours_accrued: runningHours,
+      edtr_id: record.id,
+    });
+
+    // The customer's daily log is now visible on their booking page, and
+    // whoever submitted the day hears it went through.
+    const dayPayload = {
+      rental_id: record.rentalId,
+      edtr_id: record.id,
+      equipment_id: record.equipmentId,
+      report_date: record.reportDate,
+    };
+    await notifyBookingCustomer(tx, ctx.tenantId, record.rentalId, 'daily_log_approved', dayPayload);
+    await this.notifySubmitters(tx, ctx, [record.id, reconciliation.counterpartEdtrId], 'edtr_approved', dayPayload);
+
+    await tx.insert(auditLogs).values({
+      tenantId: ctx.tenantId,
+      actorId: ctx.userId,
+      action: 'DEDUCT',
+      entity: invoice ? 'invoices' : 'edtr_reconciliations',
+      entityId: invoice?.id ?? reconciliation.id,
+    });
+
+    await this.events.emit(ctx, 'deposit_deduction_committed', {
+      invoice_id: invoice?.id ?? null,
+      accrued_php: split.accrued,
+      hours: billableHoursActive,
+      gate_passed: true,
+    });
+    await this.events.emit(ctx, 'billable_hours_reconciled', {
+      equipment_id: record.equipmentId,
+      billed_hours: billableHoursActive,
+      source_logs: [record.id, reconciliation.counterpartEdtrId],
+    });
+
+    return {
+      reconciliation: {
+        id: reconciliation.id,
+        status: 'approved',
+        deltaHours: reconciliation.deltaHours !== null ? Number(reconciliation.deltaHours) : null,
+        tolerance: Number(reconciliation.tolerance),
+      },
+      invoiceLine: {
+        invoiceId: invoice?.id ?? null,
+        hours: billableHoursActive,
+        sourceLogs: [record.id, reconciliation.counterpartEdtrId],
+      },
+      deposit: { balanceBefore, deducted: split.deducted, accrued: split.accrued, balanceAfter },
+    };
   }
 
   // Tells the timekeeper(s) who recorded these logs, never the reviewer
@@ -991,7 +999,8 @@ export class EdtrService {
         .select()
         .from(edtrReconciliations)
         .where(eq(edtrReconciliations.edtrId, edtrId))
-        .limit(1);
+        .limit(1)
+        .for('update');
       if (!reconciliation) {
         // A paper row still queued for the OCR worker has no hours yet.
         throw new UnprocessableEntityException({ error: 'not_reviewable', status: record.status });
@@ -1128,7 +1137,8 @@ export class EdtrService {
         .select()
         .from(edtrReconciliations)
         .where(eq(edtrReconciliations.edtrId, edtrId))
-        .limit(1);
+        .limit(1)
+        .for('update');
       if (!reconciliation) throw new NotFoundException({ error: 'reconciliation_not_found' });
       if (reconciliation.status === 'approved') {
         throw new ConflictException({ error: 'already_approved', reconciliationId: reconciliation.id });
