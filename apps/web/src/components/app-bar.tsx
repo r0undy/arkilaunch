@@ -116,10 +116,10 @@ function NotificationBell({
                   <div className="min-w-0">
                   <p className="flex items-center gap-2 text-sm font-semibold text-text">
                     {n.status === 'unread' && (
-                      <span
-                        aria-label="Unread"
-                        className="h-2 w-2 shrink-0 rounded-full bg-primary"
-                      />
+                      <>
+                        <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-primary" />
+                        <span className="sr-only">Unread: </span>
+                      </>
                     )}
                     {described?.title ?? formatStatus(n.notificationType)}
                   </p>
