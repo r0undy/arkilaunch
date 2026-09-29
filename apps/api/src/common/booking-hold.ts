@@ -1,9 +1,8 @@
 import { ConflictException } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
-import { equipment, equipmentAssignments, getBillingSettings, rentals, type db } from '@arkilaunch/db';
+import { type Tx, equipment, equipmentAssignments, getBillingSettings, rentals } from '@arkilaunch/db';
 import { availabilityBlockers } from './equipment-availability.js';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // QA 25: an unpaid request holds its dates for billing_settings.hold_hours,
 // restarting when staff send the quote; payment is the hard lock.

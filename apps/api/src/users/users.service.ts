@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import {
+  type Tx,
   auditLogs,
   permissions,
   rolePermissions,
@@ -421,7 +422,7 @@ export class UsersService {
   }
 
   private async loadTargetForMutation(
-    tx: Parameters<Parameters<typeof withTenantTx>[1]>[0],
+    tx: Tx,
     ctx: Ctx,
     id: string,
     protect = true,
@@ -445,7 +446,7 @@ export class UsersService {
     return target;
   }
 
-  private selectUserWithRole(tx: Parameters<Parameters<typeof withTenantTx>[1]>[0], id: string) {
+  private selectUserWithRole(tx: Tx, id: string) {
     return tx
       .select({
         id: users.id,
@@ -465,7 +466,7 @@ export class UsersService {
   // user:manage -- the same role_permissions join PermissionsGuard itself
   // uses, so this can never disagree with what the guard would allow.
   private async countOtherActiveUserManagers(
-    tx: Parameters<Parameters<typeof withTenantTx>[1]>[0],
+    tx: Tx,
     tenantId: string,
     excludeUserId: string,
   ): Promise<number> {
@@ -487,7 +488,7 @@ export class UsersService {
   }
 
   private async audit(
-    tx: Parameters<Parameters<typeof withTenantTx>[1]>[0],
+    tx: Tx,
     ctx: Ctx,
     action: string,
     entityId: string,

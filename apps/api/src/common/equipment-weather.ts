@@ -1,5 +1,5 @@
 import { desc, eq } from 'drizzle-orm';
-import { weatherAlerts, type db } from '@arkilaunch/db';
+import { type Tx, weatherAlerts } from '@arkilaunch/db';
 import {
   WEATHER_STALE_AFTER_MINUTES,
   type EquipmentWeather,
@@ -7,7 +7,6 @@ import {
   type WeatherLevel,
 } from '@arkilaunch/shared';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 type StoredReading = { level?: WeatherLevel; equipment?: EquipmentWeather[]; pagasa?: SiteEquipmentWeatherResponse['pagasa'] };
 

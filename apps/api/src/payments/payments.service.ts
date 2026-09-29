@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, gte, inArray, like, ne } from 'drizzle-orm';
 import {
+  type Tx,
   auditLogs,
   couponRedemptions,
   coupons,
@@ -52,7 +53,6 @@ const CHECKOUT_RATE_LIMIT = 20;
 // cr-arkilaunch-f2-f8-bookings-payments.md); this ctx exists only to carry
 // the resolved tenant_id into withTenantTx's GUCs, which RLS reads. userId
 // participates in no policy or query here.
-type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
 
 const WEBHOOK_SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
 

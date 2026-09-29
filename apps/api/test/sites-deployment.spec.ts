@@ -7,6 +7,7 @@ import {
   projectSites,
   rentals,
   withTenantTx,
+  type Tx,
 } from '@arkilaunch/db';
 import type { RequestContext, SiteDeploymentFilter, SiteResponse } from '@arkilaunch/shared';
 import { SitesService } from '../src/sites/sites.service.js';
@@ -60,7 +61,6 @@ describe('GET /sites deployment state (QA-23)', () => {
     customerNameA = (customerA as { company_name: string }).company_name;
     const stamp = Date.now();
 
-    type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
     const make = {
       site: async (tx: Tx, tenant: 'A' | 'B', customerId: string | null) => {
         const ctx = tenant === 'A' ? ctxA : ctxB;

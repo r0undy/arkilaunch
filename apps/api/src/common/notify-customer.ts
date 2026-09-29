@@ -1,8 +1,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import {
+  type Tx,
   afterCommit,
   customers,
-  db,
   invoices,
   notifications,
   publicPhotoUrl,
@@ -15,7 +15,6 @@ import {
 } from '@arkilaunch/db';
 import { notificationEmail, renderEmailHtml, tenantWebOrigin, type EmailBrand, type InvoiceInfo } from '@arkilaunch/shared';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // The invoice a money notification is about, read in the caller's tenant
 // transaction (RLS). Null for a notification without an invoice_id.

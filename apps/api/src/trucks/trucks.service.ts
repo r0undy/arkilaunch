@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNotNull, like, notInArray } from 'drizzle-orm';
-import { auditLogs, customers, negotiationMessages, notifications, projectSites, tollRates, truckBanRules, truckRequests, truckSettings, users, withTenantTx } from '@arkilaunch/db';
+import { type Tx, auditLogs, customers, negotiationMessages, notifications, projectSites, tollRates, truckBanRules, truckRequests, truckSettings, users, withTenantTx } from '@arkilaunch/db';
 import {
   bookingCodeSearchPrefix,
   CLOSED_TRUCK_STATUSES,
@@ -38,7 +38,6 @@ import { roadRoute } from './route-distance.js';
 import { routeCities } from './route-cities.js';
 import { countRows } from '../common/count-rows.js';
 
-type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
 const DEFAULT_SETTINGS: TruckSettings = { baseFeePhp: 0, driverFeePhp: 0, extras: [], formula: null, rangePct: 10, region: 'NCR' };
 
 const peso = (n: number) => Math.round(n * 100) / 100;

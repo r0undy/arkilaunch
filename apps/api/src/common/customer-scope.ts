@@ -1,9 +1,8 @@
 import { ConflictException } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { customers, db, invoices, rentals, truckRequests } from '@arkilaunch/db';
+import { type Tx, customers, invoices, rentals, truckRequests } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // The caller's OWN `customers` rows for a `customer`-role caller: one login
 // may own several companies (customer prerequisites CR), each a customers

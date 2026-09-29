@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, like, lt, ne, or, type SQL } from 'drizzle-orm';
 import {
+  type Tx,
   addresses,
   auditLogs,
   bookingChangeRequests,
@@ -22,7 +23,6 @@ import {
   tenants,
   users,
   withTenantTx,
-  type db,
 } from '@arkilaunch/db';
 import type {
   ChangeRequestCreate,
@@ -64,7 +64,6 @@ import { publicPhotoUrl } from '../fleet/fleet.service.js';
 import { countRows } from '../common/count-rows.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // Once money has moved the customer asks rather than acts: a paid booking
 // is cancelled or moved only by staff, who also handle the manual refund.

@@ -1,8 +1,7 @@
 import { eq, inArray } from 'drizzle-orm';
-import { db, invoices, rentals, truckRequests } from '@arkilaunch/db';
+import { type Tx, invoices, rentals, truckRequests } from '@arkilaunch/db';
 import type { BookingService } from '@arkilaunch/shared';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // The one place that turns a rental / truck request / invoice id into the
 // booking reference people read (EQR-… / TRK-…, cr-arkilaunch-uniform-

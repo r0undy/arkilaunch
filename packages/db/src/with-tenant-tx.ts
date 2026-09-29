@@ -1,8 +1,11 @@
 import { sql } from 'drizzle-orm';
+import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { RequestContext } from '@arkilaunch/shared';
 import { db } from './client.js';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Executor = PgDatabase<any, any, any>;
 
 // Side effects (emails) queued by code running inside a withTenantTx, run
 // only once it commits: a rolled-back payment never mails "you paid".

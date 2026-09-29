@@ -1,9 +1,8 @@
 import { ConflictException } from '@nestjs/common';
 import { desc, eq, inArray } from 'drizzle-orm';
-import { projectSites, siteDocuments, type db } from '@arkilaunch/db';
+import { type Tx, projectSites, siteDocuments } from '@arkilaunch/db';
 import { hasSiteProof, type SiteDocument } from '@arkilaunch/shared';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // A site's proof documents, newest first, keyed by site. Rejected ones are
 // listed (staff see what was refused) but never count as proof.

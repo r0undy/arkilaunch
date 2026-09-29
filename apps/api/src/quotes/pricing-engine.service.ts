@@ -1,6 +1,6 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { and, desc, eq, gte, isNull, lte, or } from 'drizzle-orm';
-import { db, dieselPriceReadings, getBillingSettings, pricingParameters, rateCards } from '@arkilaunch/db';
+import { type Tx, dieselPriceReadings, getBillingSettings, pricingParameters, rateCards } from '@arkilaunch/db';
 import { rentFor, type Discount, type QuoteItemInput, type QuoteRequest, type RentPart } from '@arkilaunch/shared';
 
 const FORMULA_VERSION = '2.0';
@@ -8,7 +8,6 @@ const FORMULA_VERSION = '2.0';
 // Tuesdays), so a week-old reading is still usable, just labeled stale.
 const STALENESS_WINDOW_DAYS = 7;
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // RFC-3 §3: monetary outputs round half-up to 2 decimals; intermediate
 // values stay full-precision. Number.EPSILON guards the classic

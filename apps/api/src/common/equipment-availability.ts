@@ -1,8 +1,7 @@
 import { and, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
-import { db, equipment, equipmentAssignments, maintenanceWindows, rentals, tenantCalendar } from '@arkilaunch/db';
+import { type Tx, equipment, equipmentAssignments, maintenanceWindows, rentals, tenantCalendar } from '@arkilaunch/db';
 import type { AvailabilityBlocker, AvailabilityResponse, TenantCalendar } from '@arkilaunch/shared';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export interface AvailabilityWindow {
   start: string;

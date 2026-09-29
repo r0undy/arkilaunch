@@ -6,10 +6,9 @@ import {
   type HourDeltas,
   type ReconciliationReason,
 } from '@arkilaunch/shared';
-import { db } from './client.js';
+import type { Tx } from './with-tenant-tx.js';
 import { edtr, edtrLineItems, edtrReconciliations } from './schema/index.js';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export interface ReconcileResult {
   edtrId: string;

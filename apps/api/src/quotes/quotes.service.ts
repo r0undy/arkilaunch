@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import {
+  type Tx,
   auditLogs,
   customers,
   depositForQuote,
@@ -68,7 +69,6 @@ export interface QuoteResponse {
   bookingCode?: string;
 }
 
-type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
 type QuoteState = { rentalId: string | null; status: string; createdAt: Date };
 
 // Whether staff may re-quote a booking's latest quote. A draft is still
@@ -466,7 +466,7 @@ export class QuotesService {
   // A staff-agreed line price is a manual override of the engine, so it is
   // audit-logged against the quote it lives on.
   private async auditAgreedPrices(
-    tx: Parameters<Parameters<typeof withTenantTx>[1]>[0],
+    tx: Tx,
     ctx: RequestContext,
     quotationId: string,
     body: QuoteRequest,
@@ -486,7 +486,7 @@ export class QuotesService {
   // Accept/decline are the customer's call on their own quote: 404 for
   // anyone else's (never confirm the id exists) and for staff, who approve
   // rather than accept.
-  private async customerQuote(tx: Parameters<Parameters<typeof withTenantTx>[1]>[0], ctx: RequestContext, quotationId: string) {
+  private async customerQuote(tx: Tx, ctx: RequestContext, quotationId: string) {
     const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
     const mine = ctx.role === 'customer' && quotation ? await ownsCustomer(tx, ctx, quotation.customerId) : false;
     if (!quotation || !mine) {

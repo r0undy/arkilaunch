@@ -1,9 +1,9 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, count, desc, eq, gt, gte, ilike, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import {
+  type Tx,
   auditLogs,
   customers,
-  db,
   edtr,
   edtrLineItems,
   equipment,
@@ -60,7 +60,6 @@ import { dayAvailability, readCalendar } from '../common/equipment-availability.
 const BUSINESS_HOURS_PER_DAY = 8;
 const DEFAULT_REPORT_WINDOW_DAYS = 30;
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // Equipment photos live in their own bucket, deliberately not the KYC one:
 // that holds RA 10173 personal data under its own retention posture, and a

@@ -1,9 +1,8 @@
 import { ConflictException } from '@nestjs/common';
 import { and, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
-import { couponRedemptions, coupons, type withTenantTx } from '@arkilaunch/db';
+import { type Tx, couponRedemptions, coupons } from '@arkilaunch/db';
 import { round2HalfUp } from '../quotes/pricing-engine.service.js';
 
-type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
 type Coupon = typeof coupons.$inferSelect;
 
 // cr-arkilaunch-coupons.md. What a coupon takes off the rent: percent of

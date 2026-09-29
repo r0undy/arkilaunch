@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, type SQL } from 'drizzle-orm';
 import {
+  type Tx,
   auditLogs,
   customers,
-  db,
   depositAccruals,
   edtr,
   edtrReconciliations,
@@ -30,7 +30,6 @@ import { bookingCodes, invoiceBookingRef } from '../common/booking-ref.js';
 import { countRows } from '../common/count-rows.js';
 import { customerOwnsInvoice, ownsCustomer } from '../common/customer-scope.js';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 const cents = (n: number) => Math.round(n * 100) / 100;
 

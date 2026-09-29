@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
-import type { PgDatabase } from 'drizzle-orm/pg-core';
+import type { Executor } from './with-tenant-tx.js';
 import {
   compareReportedWeather,
   estimatePagasa,
@@ -25,8 +25,6 @@ import { notifySiteWeather } from './weather-notify.js';
 
 // Shared by the weather poll (service_role, so every query names the
 // tenant explicitly -- RFC-2 §8) and the API (RLS-scoped transactions).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Executor = PgDatabase<any, any, any>;
 
 export interface PagasaInForce {
   tcws: number;

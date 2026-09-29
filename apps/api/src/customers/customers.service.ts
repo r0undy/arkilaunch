@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import {
+  type Tx,
   addresses,
   auditLogs,
   customerContacts,
@@ -20,7 +21,6 @@ import {
   siteDocuments,
   users,
   withTenantTx,
-  type db,
 } from '@arkilaunch/db';
 import {
   DTI_REGEX,
@@ -79,7 +79,6 @@ import { siteDocumentsFor, siteProofComplete } from '../common/site-proof.js';
 import { latestEquipmentWeather } from '../common/equipment-weather.js';
 import { countRows } from '../common/count-rows.js';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // Customer prerequisites CR: the companies a customer login owns (Figma
 // 582:3946 "Add New Company"), their verification documents, and the

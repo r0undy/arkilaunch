@@ -1,5 +1,5 @@
 import { and, eq, inArray } from 'drizzle-orm';
-import type { PgDatabase } from 'drizzle-orm/pg-core';
+import type { Executor } from './with-tenant-tx.js';
 import webpush from 'web-push';
 import {
   renderEmailHtml,
@@ -23,8 +23,6 @@ import { publicPhotoUrl } from './public-url.js';
 // tenant explicitly -- RFC-2 §8). Free channels only: the in-app feed,
 // email (Resend) and standard Web Push signed with our own VAPID keys --
 // no Firebase/GCP SDK or account, and no SMS.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Executor = PgDatabase<any, any, any>;
 
 interface Recipient {
   userId: string;

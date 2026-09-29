@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, gte, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import {
+  type Tx,
   auditLogs,
   crossesLowBalance,
   depositAccruals,
@@ -105,7 +106,6 @@ function attestedOcrAccuracyFailure(): string | null {
   return gate.passed ? null : gate.reason;
 }
 
-type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
 const num = (v: string | null) => (v === null ? null : Number(v));
 
 // The hour meter a new reading should start from: the latest APPROVED end

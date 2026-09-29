@@ -1,6 +1,6 @@
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import {
-  db,
+  type Tx,
   depositAccruals,
   edtr,
   edtrLineItems,
@@ -28,7 +28,6 @@ import {
   type ReportSpan,
 } from '@arkilaunch/shared';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // One read of every field log behind a set of rentals, turned into the
 // site hub's day x unit grid and the booking rollup

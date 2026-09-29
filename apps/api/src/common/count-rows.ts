@@ -1,7 +1,6 @@
 import { count, type SQL } from 'drizzle-orm';
-import { db } from '@arkilaunch/db';
+import type { Tx } from '@arkilaunch/db';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Selectable = Parameters<ReturnType<Tx['select']>['from']>[0];
 
 // The unpaged total for a paged list.

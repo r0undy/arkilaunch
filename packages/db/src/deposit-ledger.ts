@@ -1,9 +1,8 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { billingSettings, depositAccruals, invoiceLineItems, invoices } from './schema/billing.js';
 import { quotationItems, quotations, rentalContracts } from './schema/rentals.js';
-import { db } from './client.js';
+import type { Tx } from './with-tenant-tx.js';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // Default for billing_settings.min_deposit_php when a tenant never set one.
 // The tenant setting (getBillingSettings) is what checkout charges and what
