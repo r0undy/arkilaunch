@@ -263,7 +263,7 @@ function EquipmentPage() {
                 make={eq.equipmentTypeName}
                 {...(rentLocked ? { rentLabel: 'Verify to rent' } : {})}
                 onRent={() =>
-                  rentLocked ? navigate({ to: '/account/companies' }) : setConfiguring(eq)
+                  rentLocked ? navigate({ to: '/account/applications' }) : setConfiguring(eq)
                 }
                 onViewDetails={() =>
                   navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })

@@ -217,7 +217,9 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
             : `The rental team is checking ${company.companyName}'s documents. Your quote is safe; you will get a notification when payment opens.`
         }
         action={
-          <Link to="/account/companies" className={buttonClass('primary')}>View company</Link>
+          <Link to="/account/companies/$companyId" params={{ companyId: company.id }} className={buttonClass('primary')}>
+            View company
+          </Link>
         }
       />
     );

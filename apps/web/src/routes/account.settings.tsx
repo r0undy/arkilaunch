@@ -221,7 +221,7 @@ function CompanyTab() {
         <p className="text-sm text-text-muted">You have not registered a company yet.</p>
       )}
       {companies.data?.map((c) => <CompanyForm key={c.id} company={c} />)}
-      <Link to="/account/companies" className="text-sm font-medium text-text underline">
+      <Link to="/account/applications" className="text-sm font-medium text-text underline">
         Manage companies and documents
       </Link>
     </Section>

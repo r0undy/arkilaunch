@@ -643,7 +643,7 @@ function NewCompanyPage() {
                 Back
               </Button>
             ) : (
-              <Link to="/account/companies" className={buttonClass('ghost')}>Cancel</Link>
+              <Link to="/account/applications" className={buttonClass('ghost')}>Cancel</Link>
             )}
           </div>
           <p className="text-xs text-text-muted">
@@ -780,7 +780,7 @@ function NewCompanyPage() {
             <Button type="submit" variant="primary" loading={busy} disabled={!accepted || Boolean(existing)}>
               Submit
             </Button>
-            <Link to="/account/companies" className={buttonClass('ghost')}>
+            <Link to="/account/applications" className={buttonClass('ghost')}>
               Cancel
             </Link>
           </div>

@@ -129,7 +129,7 @@ function EquipmentDetailPage() {
         disabled={unavailable}
         onClick={() => {
           if (rentLocked) {
-            void navigate({ to: '/account/companies' });
+            void navigate({ to: '/account/applications' });
             return;
           }
           addToCart({

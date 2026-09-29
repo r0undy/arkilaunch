@@ -24,12 +24,12 @@ export function setupSteps(
   const hasDocs = companies.some((c) => hasRequiredCompanyDocuments(c.documents));
   return [
     { label: 'Add your company', done: companies.length > 0, to: '/account/companies/new' },
-    { label: 'Upload its ID and registration', done: hasDocs, to: '/account/companies' },
-    { label: 'Add a project site', done: siteCount > 0, to: '/account/companies' },
+    { label: 'Upload its ID and registration', done: hasDocs, to: '/account/applications' },
+    { label: 'Add a project site', done: siteCount > 0, to: '/account/applications' },
     {
       label: 'Get verified by the rental team',
       done: companies.some((c) => c.kycStatus === 'approved'),
-      to: '/account/companies',
+      to: '/account/applications',
     },
   ];
 }
