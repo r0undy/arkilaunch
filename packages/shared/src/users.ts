@@ -45,6 +45,12 @@ export const UserActivateRequestSchema = z.object({
 });
 export type UserActivateRequest = z.infer<typeof UserActivateRequestSchema>;
 
+export const NotificationPrefsSchema = z.object({
+  email: z.boolean(),
+  sms: z.boolean(),
+  inApp: z.boolean(),
+});
+
 // GET /users/me. Self-service profile read -- distinct route from the
 // user:manage-gated UsersController (that controller is class-level gated;
 // a caller reading their OWN record is not a privileged action). No PATCH
@@ -70,17 +76,9 @@ export const UserSelfResponseSchema = z.object({
   address: z.string().nullable().optional(),
   // A short-lived signed URL, or null when no picture is set.
   avatarUrl: z.string().nullable().optional(),
-  notificationPrefs: z
-    .object({ email: z.boolean(), sms: z.boolean(), inApp: z.boolean() })
-    .optional(),
+  notificationPrefs: NotificationPrefsSchema.optional(),
 });
 export type UserSelfResponse = z.infer<typeof UserSelfResponseSchema>;
-
-export const NotificationPrefsSchema = z.object({
-  email: z.boolean(),
-  sms: z.boolean(),
-  inApp: z.boolean(),
-});
 
 // PATCH /users/me. Only what the user owns: never email, role or names.
 export const UserSelfUpdateSchema = z
