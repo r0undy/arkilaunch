@@ -4,13 +4,8 @@ import { round2HalfUp, notificationEmail, renderEmailHtml, tenantWebOrigin } fro
 import { makeJobDb } from './db-client.js';
 import { runJobIfMain } from './telemetry.js';
 
-// Weekly: every rental's unbilled deposit_accruals (reconciled hours billed
-// past the deposit balance, edtr.service.ts approve) roll into ONE
-// invoice_type='weekly' invoice, payable by PayMongo or cash through the
-// existing flows (POST /me/invoices/:id/checkout, /invoices/:id/cash-payment).
-// This job moves no money and prices nothing: it only bills rows a
-// reconciled or human-approved pair already created (RFC-2). Superuser
-// connection, so every write carries the row's own tenant_id explicitly.
+// RFC-2: bills only accruals a reconciled or human-approved pair created.
+// RLS is bypassed on this connection, so every write names its tenant_id.
 export async function runWeeklyBilling(): Promise<number> {
   const { db, client } = makeJobDb();
   let issued = 0;
@@ -75,7 +70,6 @@ export async function runWeeklyBilling(): Promise<number> {
             notificationType: 'weekly_invoice',
             payload: { rental_id: rentalId, invoice_id: invoice.id, amount_php: amount },
           });
-          // Superuser connection: the tenant is named explicitly.
           const [tenant] = await tx
             .select({ name: tenants.legalName, slug: tenants.slug, logoKey: tenants.logoKey, color: tenants.primaryColor })
             .from(tenants)

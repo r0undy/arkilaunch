@@ -12,13 +12,8 @@ import {
 import { makeJobDb } from './db-client.js';
 import { runJobIfMain } from './telemetry.js';
 
-// PRD-F4 (PM-threshold notification), SDD §4: "No money movement and no
-// autonomous state change: it notifies, a human schedules the
-// maintenance." Recording a maintenance log (apps/api/src/fleet's
-// recordMaintenanceLog) is the only path that advances the countdown --
-// this job only ever writes a `notifications` row.
+// Notifies only: no money movement and no state change.
 const NOTIFICATION_TYPE = 'maintenance_due';
-// An early heads-up once a unit has run 90% of a task's interval.
 const WARNING_TYPE = 'maintenance_warning';
 const WARNING_REMAINDER = 0.1; // warn with 10% of the interval left
 const RECIPIENT_PERMISSION = 'fleet:manage';
@@ -54,9 +49,7 @@ export async function runMaintenanceNotify(): Promise<void> {
 
     console.log(`maintenance-notify: ${due.length} schedule(s) at or past 90% of their interval.`);
 
-    // One read for every dedup key and one per tenant for recipients: a
-    // round trip per schedule timed the job out once a few hundred schedules
-    // sat past 90%.
+    // Batched reads: a round trip per schedule times the job out.
     const seen = new Set(
       (
         await db
@@ -73,17 +66,11 @@ export async function runMaintenanceNotify(): Promise<void> {
     for (const item of due) {
       const type =
         Number(item.runtimeHours) >= Number(item.nextDue) ? NOTIFICATION_TYPE : WARNING_TYPE;
-      // Dedup on (equipment, threshold value): once a maintenance log
-      // resets next_due, the threshold value changes and a fresh
-      // notification can fire again for the next interval, but the SAME
-      // threshold never re-notifies every 30-minute cycle it stays crossed.
+      // Dedup on (equipment, threshold value): re-arms only when a log resets next_due.
       const key = `${type}|${item.equipmentId}|${item.scheduleId}|${String(item.nextDue)}`;
       if (seen.has(key)) continue;
       seen.add(key);
 
-      // A1: notifications.user_id is NOT NULL, so the recipient set is
-      // every active user holding fleet:manage in this tenant, not an
-      // invented default.
       const recipients =
         recipientsByTenant.get(item.tenantId) ??
         (await db
@@ -124,7 +111,6 @@ export async function runMaintenanceNotify(): Promise<void> {
           notificationType: type,
           payload: {
             equipment_id: item.equipmentId,
-            // The feed links to the unit by serial (/app/inventory?q=).
             serial_no: item.serialNo,
             model: item.model,
             schedule_id: item.scheduleId,

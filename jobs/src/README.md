@@ -1,10 +1,10 @@
 # ACA Job entrypoints
 
-- `diesel.ts` — weekly GasWatch PH national-average diesel price (customer feedback 3), gated behind `ENABLE_DIESEL_SCRAPE` (on in dev and prod tfvars). Was the RFC-3 `QUOTE-04` DOE scrape.
-- `edtr-ocr-worker.ts` — claim/lock/retry loop against the Azure DI port, reconciliation gate (RFC-2, `RFC2-02`). **Landed**; runs the real `AzureDocumentIntelligenceAdapter` (`@arkilaunch/document-intelligence`) behind `ENABLE_OCR_PIPELINE`.
-- `weather-poll.ts` — Open-Meteo poll per active site, severity evaluation, liability-incident logging (PRD-F5). **Landed**, gated behind `ENABLE_WEATHER_POLL`; runs the real `OpenMeteoAdapter` (`@arkilaunch/weather`, free tier, keyless -- `docs/cr-arkilaunch-open-meteo-free-tier.md`) once the flag is on, with a `WEATHER_POLL_MAX_SITES` ceiling that aborts the cycle rather than exceeding the free tier's daily call cap.
-- `weather-briefing.ts` — Pre-workday weather briefing (05:30 Manila) for every site with deployed equipment, plus the hourly watch `weather-poll` runs for sites on watch; notifies timekeepers, the renting customer and admins (in-app, email, Web Push). Gated behind `ENABLE_WEATHER_POLL` (`docs/cr-arkilaunch-weather-monitoring.md`).
-- `maintenance-notify.ts` — preventive-maintenance threshold notifications (PRD-F4). **Landed**; notifies only, no state change (recording a maintenance log is the only path that advances the threshold).
-- `hold-expiry.ts` — hourly (`hold_expiry_cron`, :05). Cancels unpaid `pending` requests whose date hold (`rentals.hold_expires_at`, `billing_settings.hold_hours`) lapsed, voids their unpaid invoices, and notifies the customer and admins/owners (`hold_expired`). Skips any request with an online payment still pending (`docs/cr-arkilaunch-qa-batch-23-28.md`).
-- `weekly-billing.ts` — issues weekly invoices for unbilled `deposit_accruals` rows (usage past a spent deposit, `docs/cr-arkilaunch-feedback-batch.md`). **Not scheduled**: no Terraform cron job exists yet, so it runs only by hand (`pnpm --filter @arkilaunch/jobs worker:weekly-billing`).
+- `diesel.ts` — weekly GasWatch PH national-average diesel price, gated behind `ENABLE_DIESEL_SCRAPE`.
+- `edtr-ocr-worker.ts` — claim/lock/retry loop against the Azure DI port plus the RFC-2 reconciliation gate, behind `ENABLE_OCR_PIPELINE`.
+- `weather-poll.ts` — Open-Meteo poll per active site, severity evaluation, liability-incident logging, behind `ENABLE_WEATHER_POLL`; `WEATHER_POLL_MAX_SITES` aborts the cycle rather than exceed the free tier's daily cap.
+- `weather-briefing.ts` — pre-workday briefing (05:30 Manila) for every site with deployed equipment, plus the hourly watch `weather-poll` runs for sites on watch. Behind `ENABLE_WEATHER_POLL`.
+- `maintenance-notify.ts` — preventive-maintenance threshold notifications; notifies only, no state change.
+- `hold-expiry.ts` — hourly (`hold_expiry_cron`, :05). Cancels unpaid `pending` requests whose date hold lapsed, voids their unpaid invoices, notifies (`hold_expired`). Skips any request with an online payment still pending.
+- `weekly-billing.ts` — weekly (`weekly_billing_cron`). Issues invoices for unbilled `deposit_accruals` rows (usage past a spent deposit).
 - `ocr-fixtures-pull.ts` — CLI, not a cron: stages labeled EDTR/KYC scans for the OCR evals (`pnpm ocr:fixtures:pull`, `docs/runbook-ocr-fixtures.md`).

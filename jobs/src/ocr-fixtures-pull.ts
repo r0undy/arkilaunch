@@ -1,24 +1,3 @@
-// `pnpm ocr:fixtures:pull` -- the fixture ingestion QAD §2 already assumes
-// exists ("labeled golden set of scanned EDTR + KYC field images with
-// ground-truth values"). Lives in jobs/ rather than packages/db because this
-// package already depends on db, document-intelligence and shared; putting it
-// in db would add a db -> document-intelligence edge for a dev-only script.
-//
-// Three modes, because a golden sample cannot be built from ground truth
-// alone -- it needs what the model actually returned:
-//
-//   training  read <staging>/{edtr,kyc}/*.{jpg,png,pdf} + <name>.labels.json,
-//             emit the Azure DI field schema + a manifest for DI Studio.
-//   extract   run a trained model over those documents, writing the raw
-//             extraction results to <staging>/<kind>/extractions/<name>.json.
-//   golden    pair ground truth with extraction results and regenerate
-//             packages/db/src/seed/ocr-fixtures/golden-set.ts.
-//
-// What this deliberately does NOT do: synthesize Azure's per-field
-// `boundingBoxes`. Those come from drawing on the page in DI Studio and
-// cannot be derived from a value alone. Emitting a labels file with
-// fabricated regions would produce a model trained on nonsense, so `training`
-// emits the field schema and stops there.
 import { createHash } from 'node:crypto';
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -27,23 +6,17 @@ import { createDocumentIntelligenceAdapter } from '@arkilaunch/document-intellig
 import { OCR_CORPUS_FLOOR, normalize } from '@arkilaunch/shared';
 import type { DocumentExtractionResult, GoldSample } from '@arkilaunch/shared';
 
-// QAD §2's corpus floor is defined once in @arkilaunch/shared, alongside the
-// gate that consumes it -- a second copy here is exactly how the generator
-// and the harness would end up disagreeing about what a full corpus is.
 const MIN_EDTR_SAMPLES = OCR_CORPUS_FLOOR.edtr;
 const MIN_KYC_SAMPLES = OCR_CORPUS_FLOOR.kyc;
 
 const DOC_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.pdf', '.tif', '.tiff'];
 
-// RA 10173: every KYC field, plus these EDTR fields, is PII and must never land in a committed
-// fixture. Both sides hash the normalized value, so exact-match accuracy is preserved.
+// RA 10173 PII: every KYC field plus these; never committed unhashed.
 const PII_FIELD_TYPES = new Set(['sec_number', 'tin', 'company_name', 'address', 'operator_name']);
 
 export type Kind = 'edtr' | 'kyc';
 
 interface LabelFile {
-  // Ground truth only. Keyed by the same snake_case field names the port
-  // contract promises (packages/shared/src/document-intelligence-port.ts).
   fields: Record<string, string | number>;
 }
 
@@ -124,9 +97,6 @@ async function loadSamples(staging: string, kind: Kind): Promise<Sample[]> {
   }
 
   if (missing.length > 0) {
-    // An unlabeled document is not a zero-field document. Refuse the whole
-    // run rather than quietly training on a smaller corpus than the operator
-    // believes they supplied.
     throw new Error(
       `${missing.length} ${kind} document(s) have no sibling .labels.json: ` +
         `${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ', ...' : ''}`,
@@ -143,11 +113,6 @@ async function runTraining(opts: Options) {
     const outDir = path.join(opts.out, kind);
     await mkdir(outDir, { recursive: true });
 
-    // Azure DI custom-model field schema. Every field is declared `string`:
-    // the adapter's extractValue() already accepts valueNumber/valueString/
-    // valueDate and the worker does its own numeric parse, so a narrower
-    // declared type here would only add a second place for the two to
-    // disagree.
     await writeFile(
       path.join(outDir, 'fields.json'),
       `${JSON.stringify(
@@ -210,9 +175,6 @@ async function runExtract(opts: Options) {
         await writeFile(path.join(outDir, `${sample.name}.json`), `${JSON.stringify(result, null, 2)}\n`);
         ok += 1;
       } catch (err) {
-        // Recorded as a failure, never as an empty extraction -- a document
-        // the model could not read must not become a sample that scores as
-        // a wrong answer, and must not silently vanish either.
         const message = err instanceof Error ? err.message : String(err);
         await writeFile(
           path.join(outDir, `${sample.name}.error.json`),
@@ -239,10 +201,6 @@ async function runGolden(opts: Options) {
         const raw = await readFile(path.join(extractionsDir, `${sample.name}.json`), 'utf8');
         result = JSON.parse(raw) as DocumentExtractionResult;
       } catch {
-        // No extraction for this document (never run, or it hard-failed).
-        // Excluded from the accuracy corpus and counted, because a document
-        // the model refused is a different measurement from a field it got
-        // wrong, and folding the two together would flatter the model.
         skipped[kind] += 1;
         continue;
       }
@@ -250,10 +208,7 @@ async function runGolden(opts: Options) {
       for (const [fieldType, groundTruth] of Object.entries(sample.labels.fields)) {
         const extracted = result.fields[fieldType];
         if (!extracted) {
-          // The model returned nothing for a field we have ground truth for.
-          // That IS a wrong answer at confidence 0 -- it is scored, not
-          // skipped, or the corpus would measure only what the model chose
-          // to answer.
+          // Scored as wrong at confidence 0, not skipped, or accuracy is flattered.
           built[kind].push({
             fieldType,
             extractedValue: redactValue(kind, fieldType, ''),
@@ -289,9 +244,6 @@ async function runGolden(opts: Options) {
     );
   }
 
-  // Anchored to this module, not to cwd: `pnpm ocr:fixtures:pull` runs with
-  // cwd = jobs/, so a repo-relative resolve would write (or fail) at
-  // jobs/packages/db/... depending on where the operator invoked it from.
   const target = path.resolve(fileURLToPath(import.meta.url), '../../../packages/db/src/seed/ocr-fixtures/golden-set.ts');
   await writeFile(target, renderGoldenSet(built, { partial: opts.partial, skipped }));
 
@@ -354,7 +306,6 @@ async function main() {
   else await runGolden(opts);
 }
 
-// Not runJobIfMain: an operator CLI, uninstrumented, printing only the message.
 const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMainModule) {
   main().catch((err) => {

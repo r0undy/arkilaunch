@@ -21,20 +21,7 @@ import { createWeatherAdapter } from '@arkilaunch/weather';
 import { makeJobDb } from './db-client.js';
 import { runJobIfMain } from './telemetry.js';
 
-// Weather monitoring before and during the workday
-// (docs/cr-arkilaunch-weather-monitoring.md). Monitoring and verification
-// only: it warns the site's timekeepers, the renting customer and the
-// admins; it never decides that an incident happened and never touches
-// money (RFC-2).
-//
-// - runWeatherBriefing: ACA Job at 05:30 Manila. Every site with deployed
-//   equipment gets its workday (07:00-17:00) forecast judged per machine by
-//   the same per-equipment rules as a live reading. A site with any machine
-//   forecast at Caution or worse is told, and goes "on watch" for the day.
-// - hourlyWatch (called from weather-poll once an hour): for sites on watch
-//   only, the next hours are re-forecast and a changed outlook is sent.
-//   Calm sites are left to the 30-minute live readings -- no noise, and no
-//   free-tier quota spent on them.
+// Warns only; never decides an incident happened and never touches money (RFC-2).
 
 type JobDb = ReturnType<typeof makeJobDb>['db'];
 
@@ -50,13 +37,7 @@ export interface DeployedSite {
   name: string;
 }
 
-// "Site with deployed equipment" = at least one delivered ('active')
-// equipment assignment on one of its rentals -- the same definition as
-// machinesOnSite(). A booked site with nothing delivered is not monitored.
-// Deliberately cross-tenant (the job serves every tenant, as the poll
-// always has), but every join is pinned to the site's own tenant so a row
-// can never pair across tenants (RFC-2 §8); each site then carries its
-// tenantId into every later query.
+// Cross-tenant by design, but every join is pinned to the site's own tenant.
 export async function sitesWithDeployedEquipment(db: JobDb): Promise<DeployedSite[]> {
   return db
     .selectDistinct({
@@ -84,12 +65,9 @@ export function manilaNow(now = new Date()): { date: string; hour: number; minut
 export interface ForecastOutlook {
   level: WeatherLevel;
   machines: WeatherNoticeMachine[];
-  // True when any machine is forecast at Caution or worse.
   watch: boolean;
 }
 
-// Every forecast hour judged per machine; each machine keeps its worst
-// level, the reasons at that level, and the hours at Caution or worse.
 export async function judgeForecast(db: JobDb, site: DeployedSite, hours: HourlyForecast[]): Promise<ForecastOutlook> {
   const machines = await machinesOnSite(db, site.tenantId, site.id);
   const byMachine = new Map<string, WeatherNoticeMachine>();
@@ -120,8 +98,6 @@ export async function judgeForecast(db: JobDb, site: DeployedSite, hours: Hourly
   return { level, machines: list, watch: LEVEL_RANK[level] >= LEVEL_RANK.caution };
 }
 
-// A stable fingerprint of what an outlook tells people, so the hourly
-// watch re-sends only when the message would change.
 function signature(outlook: ForecastOutlook): string {
   return outlook.machines
     .filter((m) => LEVEL_RANK[m.level] >= LEVEL_RANK.caution)
@@ -155,8 +131,6 @@ export async function briefSite(db: JobDb, port: HourlyForecastPort, site: Deplo
         ...new Set(payload.machines.map((m) => m.rentalId)),
       ])
     : [];
-  // Logged every morning, calm or not: the record that the site was checked
-  // before work, and whether it is on watch today.
   await db.insert(events).values({
     tenantId: site.tenantId,
     name: 'equipment_weather_briefing',
@@ -178,8 +152,7 @@ export async function runWeatherBriefing(port: HourlyForecastPort = createWeathe
       try {
         await briefSite(db, port, site, now);
       } catch (err) {
-        // No forecast is not a calm forecast: nothing is sent, and the
-        // outage is logged rather than read as an all-clear.
+        // No forecast is not a calm forecast.
         console.error(`weather-briefing: site ${site.id} failed.`, err);
         await db.insert(events).values({
           tenantId: site.tenantId,
@@ -199,9 +172,6 @@ export async function runWeatherBriefing(port: HourlyForecastPort = createWeathe
   }
 }
 
-// The hourly watch, run by weather-poll in the first half of each hour
-// during working hours. Only sites whose briefing or a later outlook today
-// said "watch" are re-forecast.
 export async function hourlyWatch(db: JobDb, port: HourlyForecastPort, sites: DeployedSite[], now = new Date()): Promise<number> {
   const { date, hour, minute } = manilaNow(now);
   if (minute >= 30 || hour < WORKDAY_START_HOUR - 1 || hour >= WORKDAY_END_HOUR) return 0;
@@ -212,7 +182,7 @@ export async function hourlyWatch(db: JobDb, port: HourlyForecastPort, sites: De
     .from(events)
     .where(
       and(
-        // Named tenants only (RFC-2 §8), then matched per site below.
+        // Named tenants only, then matched per site below.
         inArray(events.tenantId, [...new Set(sites.map((s) => s.tenantId))]),
         inArray(events.name, ['equipment_weather_briefing', 'equipment_weather_outlook']),
         gte(events.occurredAt, dayStart),
@@ -234,9 +204,6 @@ export async function hourlyWatch(db: JobDb, port: HourlyForecastPort, sites: De
       const forecast = await port.getHourlyForecast(Number(site.latitude), Number(site.longitude), OUTLOOK_HOURS);
       const outlook = await judgeForecast(db, site, forecast);
       const sig = signature(outlook);
-      // Unchanged since the last thing people were told (the briefing or
-      // the last outlook): say nothing. A calm outlook after a bad one is
-      // logged (the watch record) but not sent.
       const lastSig = (history[0]?.properties as { signature?: string } | undefined)?.signature;
       if (lastSig === sig) continue;
       const payload = noticePayload(site, date, outlook);

@@ -19,11 +19,7 @@ import {
 } from '@arkilaunch/db';
 import { makeJobDb } from './db-client.js';
 
-// CR pricebook-kyc-weather: each machine on a site gets its own PAGASA-style
-// level; rising to Caution/Stop work warns the customer, and hours logged on
-// a machine warned to stop that day land in the incident log. A dedicated
-// site with a crane and a roller side by side, so the two classes can be
-// told apart on one reading.
+// A crane and a roller side by side, so the two classes differ on one reading.
 describe('per-equipment weather (warning -> used despite warning)', () => {
   let tenantId: string;
   let siteId: string;
