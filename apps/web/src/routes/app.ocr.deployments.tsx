@@ -9,7 +9,7 @@ import { DeploymentScanList } from '../components/deployment-scan-list.js';
 import { PageHeader } from '../components/page-header.js';
 import { Alert } from '../components/alert.js';
 
-function DeploymentScanPage({ billingTo }: { billingTo?: string }) {
+function DeploymentScanPage({ billingTo, submitOnly = false }: { billingTo?: string; submitOnly?: boolean }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { rentals, equipmentList, rentalLabel, error } = useScanDeployments();
@@ -41,6 +41,7 @@ function DeploymentScanPage({ billingTo }: { billingTo?: string }) {
         rentalLabel={rentalLabel}
         {...(scanRentalId ? { initialRentalId: scanRentalId } : {})}
         initialSource="paper_ocr"
+        submitOnly={submitOnly}
         onCaptured={() => {
           void queryClient.invalidateQueries({ queryKey: ['edtr'] });
         }}
@@ -55,9 +56,10 @@ export const appOcrDeploymentsRoute = createRoute({
   component: () => <DeploymentScanPage billingTo="/app/billing/weekly" />,
 });
 
-// Same server permission (edtr:create); only the layout guard differs.
+// Same server permission (edtr:create); only the layout guard differs. Timekeepers lack edtr:read, so the
+// modal must not poll the log it just sent.
 export const fieldScanRoute = createRoute({
   getParentRoute: () => fieldLayoutRoute,
   path: '/field/scan',
-  component: () => <DeploymentScanPage />,
+  component: () => <DeploymentScanPage submitOnly />,
 });
