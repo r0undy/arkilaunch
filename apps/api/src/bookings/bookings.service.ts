@@ -102,13 +102,16 @@ export class BookingsService {
         const own = await ownCustomers(tx, ctx);
         if (own.length === 0) throw new ForbiddenException({ error: 'customer_profile_not_found' });
         if (body.customerId && !own.some((row) => row.id === body.customerId)) {
-          await tx.insert(auditLogs).values({
-            tenantId: ctx.tenantId,
-            actorId: ctx.userId,
-            action: 'CREATE',
-            entity: 'booking_customer_scope_denied',
-            entityId: own[0]!.id,
-          });
+          // Own transaction: the throw below rolls back tx, and the denial must stay on the audit trail.
+          await withTenantTx(ctx, (t) =>
+            t.insert(auditLogs).values({
+              tenantId: ctx.tenantId,
+              actorId: ctx.userId,
+              action: 'CREATE',
+              entity: 'booking_customer_scope_denied',
+              entityId: own[0]!.id,
+            }),
+          );
           await this.events.emit(ctx, 'booking_customer_scope_denied', { customer_id: body.customerId });
           throw new ForbiddenException({ error: 'customer_scope_denied' });
         }
@@ -965,6 +968,9 @@ export class BookingsService {
   // PayMongo session, so nothing stays payable on a cancelled booking, and
   // tells staff when the customer did it.
   private async cancelRental(tx: Tx, ctx: RequestContext, id: string) {
+    const [rental] = await tx.select({ status: rentals.status }).from(rentals).where(eq(rentals.id, id)).for('update');
+    if (rental?.status === 'active') throw new ConflictException({ error: 'already_on_site' });
+    if (rental?.status === 'completed') throw new ConflictException({ error: 'booking_closed', status: rental.status });
     await this.payments.voidUnpaid(tx, { rentalId: id });
     await tx.update(rentals).set({ status: 'cancelled' }).where(eq(rentals.id, id));
     await tx.update(equipmentAssignments).set({ status: 'cancelled' }).where(eq(equipmentAssignments.rentalId, id));

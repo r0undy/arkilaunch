@@ -125,6 +125,13 @@ describe('BookingsService (PRD-F8)', () => {
 
   it('a customer cannot book on behalf of a different customer', async () => {
     const { start, end } = window(3);
+    const denials = async () => {
+      const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+      const [row] = await sql`select count(*)::int as n from audit_logs where entity = 'booking_customer_scope_denied' and actor_id = ${customerCtxA.userId}`;
+      await sql.end();
+      return (row as { n: number }).n;
+    };
+    const before = await denials();
     await expect(
       bookings.create(customerCtxA, {
         customerId: '00000000-0000-0000-0000-000000000000',
@@ -132,6 +139,7 @@ describe('BookingsService (PRD-F8)', () => {
         items: [{ equipmentId: equipmentIdA, start, end }],
       }),
     ).rejects.toThrow(ForbiddenException);
+    expect(await denials()).toBe(before + 1);
   });
 
   it('QAD-T23/T24: a booking under tenant A is invisible to tenant B (RLS)', async () => {
