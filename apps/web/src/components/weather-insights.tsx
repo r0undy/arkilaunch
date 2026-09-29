@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Surface } from './surface.js';
 import { Skeleton } from './skeleton.js';
 import { LoadError } from './load-error.js';
-import { getAccessToken } from '../lib/auth-client.js';
 import { ApiError, payloadField } from '../lib/api-client.js';
 import { customerSitesQueries, forecastQueries } from '../lib/queries.js';
 import { describeWeatherCode, weekdayLabel } from '../lib/weather-code.js';
@@ -90,7 +89,8 @@ function ForecastRows({ siteId }: { siteId?: string }) {
   );
 }
 
-function WeatherRail() {
+// Signed-in customers only: a visitor has no project site to forecast.
+export function WeatherInsights() {
   const sites = useQuery(customerSitesQueries.mine());
 
   // The customer's first site stands in for "where this is going". A picker
@@ -127,15 +127,4 @@ function WeatherRail() {
         )}
     </Surface>
   );
-}
-
-// The forecast is a customer's own data: a signed-out visitor has no project
-// site and no endpoint to read, so there is nothing to render for them. The
-// page checks the same thing before reserving a column for it.
-export function weatherInsightsVisible(): boolean {
-  return Boolean(getAccessToken());
-}
-
-export function WeatherInsights() {
-  return <WeatherRail />;
 }

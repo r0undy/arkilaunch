@@ -18,7 +18,7 @@ import { Input } from '../components/input.js';
 import { Button, chipClass } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
-import { WeatherInsights, weatherInsightsVisible } from '../components/weather-insights.js';
+import { WeatherInsights } from '../components/weather-insights.js';
 import { getAccessToken } from '../lib/auth-client.js';
 import { RangeCalendar, availabilityProblem, rentalLengthProblem, useAvailability } from '../components/availability-days.js';
 
@@ -200,7 +200,7 @@ function EquipmentPage() {
   // had already given 240px to the account sidebar, leaving the catalog ~440px
   // and three cards squeezed to 201px with the machine names wrapping -- so it
   // stacks under the catalog there rather than crowding it or vanishing.
-  const showWeather = weatherInsightsVisible();
+  const showWeather = signedIn;
   // In the signed-in shell the main column already pads; public pages pad here.
   const inShell = useShellNav() !== null;
   return (
