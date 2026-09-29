@@ -7,7 +7,7 @@ import { accountLayoutRoute } from './_account.js';
 import { companiesQueries } from '../lib/queries.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { buttonClass } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { Skeleton } from '../components/skeleton.js';
 import { LoadError } from '../components/load-error.js';
@@ -120,9 +120,7 @@ function ApplicationCard({ company }: { company: CompanyResponse }) {
           )}
         </p>
       </div>
-      <Link to="/account/companies/$companyId" params={{ companyId: company.id }}>
-        <Button variant="secondary">Manage</Button>
-      </Link>
+      <Link to="/account/companies/$companyId" params={{ companyId: company.id }} className={buttonClass('secondary')}>Manage</Link>
     </Surface>
   );
 }
@@ -164,9 +162,7 @@ function ApplicationsPage() {
         title="Applications"
         description="The companies you rent under, and where each verification stands."
         actions={
-          <Link to="/account/companies/new">
-            <Button variant="primary">Add company</Button>
-          </Link>
+          <Link to="/account/companies/new" className={buttonClass('primary')}>Add company</Link>
         }
       />
 
@@ -217,9 +213,7 @@ function ApplicationsPage() {
           title="Add your company first"
           description="We need the company you are renting for before a booking: its TIN, billing address, an ID and its registration."
           action={
-            <Link to="/account/companies/new">
-              <Button variant="primary">Add company</Button>
-            </Link>
+            <Link to="/account/companies/new" className={buttonClass('primary')}>Add company</Link>
           }
         />
       )}

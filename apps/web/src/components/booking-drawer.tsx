@@ -8,7 +8,7 @@ import { apiErrorText } from '../lib/api-client.js';
 import { formatDate, formatDateTime, formatInvoiceType, formatPeso, formatStatus } from '../lib/format.js';
 import { Alert } from './alert.js';
 import { RequestRow } from '../routes/app.trucks.js';
-import { Button } from './button.js';
+import { buttonClass } from './button.js';
 import { Modal } from './modal.js';
 import { Tabs } from './tabs.js';
 import { StatusBadge } from './status-badge.js';
@@ -335,9 +335,7 @@ export function BookingDrawer({
       description={target?.service === 'truck' ? 'Truck service' : 'Equipment rental'}
       footer={
         rentalId ? (
-          <Link to="/app/bookings/$bookingId" params={{ bookingId: rentalId }}>
-            <Button variant="ghost">Open as a full page</Button>
-          </Link>
+          <Link to="/app/bookings/$bookingId" params={{ bookingId: rentalId }} className={buttonClass('ghost')}>Open as a full page</Link>
         ) : undefined
       }
     >

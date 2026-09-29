@@ -5,7 +5,7 @@ import { accountLayoutRoute } from './_account.js';
 import { apiPost } from '../lib/api-client.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { buttonClass } from '../components/button.js';
 import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon } from '../components/icons.js';
 
@@ -55,12 +55,10 @@ function CheckoutSuccessPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {invoiceId && (
-            <Link to="/account/invoices/$invoiceId" params={{ invoiceId }}>
-              <Button variant="primary">View invoice</Button>
-            </Link>
+            <Link to="/account/invoices/$invoiceId" params={{ invoiceId }} className={buttonClass('primary')}>View invoice</Link>
           )}
-          <Link to="/account/bookings">
-            <Button variant={invoiceId ? 'secondary' : 'primary'}>View my bookings</Button>
+          <Link to="/account/bookings" className={buttonClass(invoiceId ? 'secondary' : 'primary')}>
+            View my bookings
           </Link>
         </div>
       </Surface>

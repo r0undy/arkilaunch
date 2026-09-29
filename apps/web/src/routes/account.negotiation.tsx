@@ -8,7 +8,7 @@ import { formatDate, formatPeso, shortCode } from '../lib/format.js';
 import { amountDue } from './account.checkout.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon, ClockIcon } from '../components/icons.js';
@@ -117,9 +117,7 @@ function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
         </p>
       )}
       {quote.status === 'accepted' && (
-        <Link to="/account/negotiation/$bookingId/final" params={{ bookingId: booking.id }}>
-          <Button variant="primary">Review and pay</Button>
-        </Link>
+        <Link to="/account/negotiation/$bookingId/final" params={{ bookingId: booking.id }} className={buttonClass('primary')}>Review and pay</Link>
       )}
 
       <Link
@@ -156,9 +154,7 @@ function NotFound() {
       title="Booking not found"
       description="This booking does not exist, or it belongs to another account."
       action={
-        <Link to="/account/bookings">
-          <Button variant="primary">My bookings</Button>
-        </Link>
+        <Link to="/account/bookings" className={buttonClass('primary')}>My bookings</Link>
       }
     />
   );
@@ -173,9 +169,7 @@ function NegotiationPage({ bookingId }: { bookingId: string }) {
         title={booking.data ? `Booking ${booking.data.code}` : 'Booking'}
         description="Agree the price with the rental team before you pay."
         actions={
-          <Link to="/account/bookings/$bookingId" params={{ bookingId }}>
-            <Button variant="ghost">Booking details</Button>
-          </Link>
+          <Link to="/account/bookings/$bookingId" params={{ bookingId }} className={buttonClass('ghost')}>Booking details</Link>
         }
       />
       {booking.isPending && <Skeleton label="Loading your booking" rows={3} />}
@@ -221,12 +215,8 @@ function NegotiationCallRoute() {
           the price you pay is always the one written down.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Link to="/contact">
-            <Button variant="primary">Contact page</Button>
-          </Link>
-          <Link to="/account/negotiation/$bookingId" params={{ bookingId }}>
-            <Button variant="secondary">Back to the conversation</Button>
-          </Link>
+          <Link to="/contact" className={buttonClass('primary')}>Contact page</Link>
+          <Link to="/account/negotiation/$bookingId" params={{ bookingId }} className={buttonClass('secondary')}>Back to the conversation</Link>
         </div>
       </Surface>
     </div>
@@ -251,9 +241,7 @@ function NegotiationFinalRoute() {
         title="Nothing agreed yet"
         description="Accept the quote on the negotiation page first; this summary appears once you have."
         action={
-          <Link to="/account/negotiation/$bookingId" params={{ bookingId }}>
-            <Button variant="primary">Back to negotiation</Button>
-          </Link>
+          <Link to="/account/negotiation/$bookingId" params={{ bookingId }} className={buttonClass('primary')}>Back to negotiation</Link>
         }
       />
     );
@@ -298,15 +286,11 @@ function NegotiationFinalRoute() {
         <Button variant="ghost" className="flex-1" onClick={() => window.print()}>
           Print quote
         </Button>
-        <Link to="/account/checkout/$bookingId" params={{ bookingId }} className="flex-1">
-          <Button variant="primary" className="w-full">
-            Proceed to payment
-          </Button>
+        <Link to="/account/checkout/$bookingId" params={{ bookingId }} className={buttonClass('primary', 'default', 'flex-1 w-full')}>
+          Proceed to payment
         </Link>
-        <Link to="/account/bookings/$bookingId" params={{ bookingId }} className="flex-1">
-          <Button variant="secondary" className="w-full">
-            Booking details
-          </Button>
+        <Link to="/account/bookings/$bookingId" params={{ bookingId }} className={buttonClass('secondary', 'default', 'flex-1 w-full')}>
+          Booking details
         </Link>
       </div>
     </div>

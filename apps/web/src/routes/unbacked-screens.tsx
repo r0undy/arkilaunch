@@ -5,7 +5,7 @@ import { adminLayoutRoute } from './_admin.js';
 import { fieldLayoutRoute } from './_field.js';
 import { PageHeader } from '../components/page-header.js';
 import { EmptyState } from '../components/empty-state.js';
-import { Button } from '../components/button.js';
+import { buttonClass } from '../components/button.js';
 
 // The Figma prototype's remaining screens, mounted so the information
 // architecture is complete and reviewable. Every one of them is here
@@ -49,9 +49,7 @@ export const appTicketsRoute = createRoute({
       gapTitle="There is no ticket store yet"
       gap="Nothing in the schema holds a support ticket and no endpoint creates, lists or closes one. Until that exists this screen can only show invented tickets, so it shows none. Customers reaching for help today go through the contact page, which is a real destination."
       action={
-        <Link to="/contact">
-          <Button variant="primary">Open the contact page</Button>
-        </Link>
+        <Link to="/contact" className={buttonClass('primary')}>Open the contact page</Link>
       }
     />
   ),
@@ -67,9 +65,7 @@ export const appSecurityLogsRoute = createRoute({
       gapTitle="Audit events are recorded but not readable"
       gap="Approvals and deductions write an audit trail -- an invoice can show its own -- but there is no endpoint that reads audit events across the tenant, so there is nothing to list here. Wiring this needs an audit query and its own Change Record; inventing rows on a security screen would be the worst possible place to do it."
       action={
-        <Link to="/app/incidents">
-          <Button variant="primary">Open the incident log</Button>
-        </Link>
+        <Link to="/app/incidents" className={buttonClass('primary')}>Open the incident log</Link>
       }
     />
   ),
@@ -85,9 +81,7 @@ export const adminSecurityLogsRoute = createRoute({
       gapTitle="Audit events are recorded but not readable"
       gap="Approvals and deductions write an audit trail -- an invoice can show its own -- but there is no endpoint that reads audit events across the tenant, so there is nothing to list here. Wiring this needs an audit query and its own Change Record; inventing rows on a security screen would be the worst possible place to do it."
       action={
-        <Link to="/admin/applications">
-          <Button variant="primary">Open applications</Button>
-        </Link>
+        <Link to="/admin/applications" className={buttonClass('primary')}>Open applications</Link>
       }
     />
   ),
@@ -103,9 +97,7 @@ export const fieldSettingsRoute = createRoute({
       gapTitle="Nothing is adjustable from here yet"
       gap="The operator console has no per-user preferences to store and no endpoint to store them in. Your role, your sites and your access are set by an administrator."
       action={
-        <Link to="/field/profile">
-          <Button variant="primary">See my profile</Button>
-        </Link>
+        <Link to="/field/profile" className={buttonClass('primary')}>See my profile</Link>
       }
     />
   ),

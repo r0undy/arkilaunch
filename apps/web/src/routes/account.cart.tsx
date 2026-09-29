@@ -12,7 +12,7 @@ import {
 import { accountLayoutRoute } from './_account.js';
 import { EmptyState } from '../components/empty-state.js';
 import { PageHeader } from '../components/page-header.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { MobileInput } from '../components/mobile-input.js';
 import { Select } from '../components/select.js';
@@ -332,12 +332,8 @@ function CartPage() {
             <NegotiateChoice
               onInApp={() => void navigate({ to: '/account/negotiation/$bookingId/chat', params: { bookingId: booking.id } })}
             />
-            <Link to="/account/negotiation/$bookingId/call" params={{ bookingId: booking.id }}>
-              <Button variant="secondary">Negotiate by phone</Button>
-            </Link>
-            <Link to="/account/bookings/$bookingId" params={{ bookingId: booking.id }}>
-              <Button variant="ghost">Booking details</Button>
-            </Link>
+            <Link to="/account/negotiation/$bookingId/call" params={{ bookingId: booking.id }} className={buttonClass('secondary')}>Negotiate by phone</Link>
+            <Link to="/account/bookings/$bookingId" params={{ bookingId: booking.id }} className={buttonClass('ghost')}>Booking details</Link>
           </div>
         </Surface>
       </div>
@@ -352,9 +348,7 @@ function CartPage() {
           title="Your cart is empty"
           description="Add equipment from the catalog to start a booking."
           action={
-            <Link to="/equipment">
-              <Button variant="primary">Browse equipment</Button>
-            </Link>
+            <Link to="/equipment" className={buttonClass('primary')}>Browse equipment</Link>
           }
         />
       </div>
@@ -369,9 +363,7 @@ function CartPage() {
           title="Add your company first"
           description="Your cart is saved. Tell us which company you are renting for, then come back to request a quote."
           action={
-            <Link to="/account/companies/new">
-              <Button variant="primary">Add a company</Button>
-            </Link>
+            <Link to="/account/companies/new" className={buttonClass('primary')}>Add a company</Link>
           }
         />
       </div>
@@ -394,9 +386,7 @@ function CartPage() {
               : 'Verification was declined for the companies on your account. Your cart is saved — add another company or contact the rental team.'
           }
           action={
-            <Link to="/account/applications">
-              <Button variant="primary">See your applications</Button>
-            </Link>
+            <Link to="/account/applications" className={buttonClass('primary')}>See your applications</Link>
           }
         />
       </div>
@@ -534,9 +524,7 @@ function CartPage() {
                 )}
               </div>
             ))}
-            <Link to="/equipment" className="self-start">
-              <Button variant="secondary">Add another machine</Button>
-            </Link>
+            <Link to="/equipment" className={buttonClass('secondary', 'default', 'self-start')}>Add another machine</Link>
           </Surface>
 
           <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">

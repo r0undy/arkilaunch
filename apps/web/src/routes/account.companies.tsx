@@ -21,7 +21,7 @@ import { companiesQueries } from '../lib/queries.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { Alert } from '../components/alert.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { MobileInput } from '../components/mobile-input.js';
 import { EmptyState } from '../components/empty-state.js';
@@ -627,9 +627,7 @@ function NewCompanyPage() {
                 Back
               </Button>
             ) : (
-              <Link to="/account/companies">
-                <Button variant="ghost">Cancel</Button>
-              </Link>
+              <Link to="/account/companies" className={buttonClass('ghost')}>Cancel</Link>
             )}
           </div>
           <p className="text-xs text-text-muted">
@@ -766,10 +764,8 @@ function NewCompanyPage() {
             <Button type="submit" variant="primary" loading={busy} disabled={!accepted || Boolean(existing)}>
               Submit
             </Button>
-            <Link to="/account/companies">
-              <Button type="button" variant="ghost">
-                Cancel
-              </Button>
+            <Link to="/account/companies" className={buttonClass('ghost')}>
+              Cancel
             </Link>
           </div>
           <p className="text-xs text-text-muted">
@@ -878,9 +874,7 @@ function CompanyDocumentsPage() {
             <p className="text-sm text-text-muted">
               Your documents are with the rental team and cannot be changed unless they ask you to.
             </p>
-            <Link to="/account/companies/$companyId" params={{ companyId }}>
-              <Button variant="secondary">Back to the company</Button>
-            </Link>
+            <Link to="/account/companies/$companyId" params={{ companyId }} className={buttonClass('secondary')}>Back to the company</Link>
           </div>
         ) : stage === 'id_details' && idScan ? (
           <IdReviewStep
@@ -959,9 +953,7 @@ function CompanyDetailPage() {
         title={company?.companyName ?? 'Company'}
         description="Verification, documents and the sites you deliver to."
         actions={
-          <Link to="/account/applications">
-            <Button variant="secondary">Back to applications</Button>
-          </Link>
+          <Link to="/account/applications" className={buttonClass('secondary')}>Back to applications</Link>
         }
       />
       {companies.isPending && <Skeleton label="Loading this company" rows={2} />}

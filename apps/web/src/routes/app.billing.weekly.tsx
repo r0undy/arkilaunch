@@ -8,7 +8,7 @@ import { ExpandableSection } from '../components/expandable-section.js';
 import { StatTile } from '../components/stat-tile.js';
 import { MachineName } from '../components/machine-name.js';
 import { Table, type TableColumn } from '../components/table.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { PrintFrame } from '../components/print-frame.js';
 import { formatDate, formatHours, formatInvoiceType, formatPeso } from '../lib/format.js';
 import { CalendarRange } from 'lucide-react';
@@ -111,9 +111,7 @@ function WeeklyBillingPage() {
         description="Hours run against money invoiced, for the current reporting period."
         actions={
           <>
-            <Link to="/app/payments">
-              <Button variant="ghost">Back</Button>
-            </Link>
+            <Link to="/app/payments" className={buttonClass('ghost')}>Back</Link>
             <Button variant="secondary" onClick={() => window.print()}>
               Print statement
             </Button>

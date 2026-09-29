@@ -2,7 +2,7 @@ import { createRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { accountLayoutRoute } from './_account.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { PageHeader } from '../components/page-header.js';
 import { Modal } from '../components/modal.js';
 import { hasRequiredCompanyDocuments } from '@arkilaunch/shared';
@@ -96,9 +96,7 @@ function SetupChecklist() {
             <Button variant="ghost" onClick={close}>
               Later
             </Button>
-            <Link to={next.to} onClick={close}>
-              <Button variant="primary">{next.label}</Button>
-            </Link>
+            <Link to={next.to} onClick={close} className={buttonClass('primary')}>{next.label}</Link>
           </>
         }
       >
@@ -158,10 +156,8 @@ function AccountHomePage() {
           <p className="mt-1 text-sm text-text-muted">
             Browse the fleet and book equipment for your project.
           </p>
-          <Link to="/equipment">
-            <Button variant="primary" className="mt-4">
-              Browse equipments
-            </Button>
+          <Link to="/equipment" className={buttonClass('primary', 'default', 'mt-4')}>
+            Browse equipments
           </Link>
         </div>
         <div className="rounded-md border border-border bg-surface p-6">
@@ -169,10 +165,8 @@ function AccountHomePage() {
           <p className="mt-1 text-sm text-text-muted">
             View active rentals and their return dates.
           </p>
-          <Link to="/account/bookings">
-            <Button variant="secondary" className="mt-4">
-              View bookings
-            </Button>
+          <Link to="/account/bookings" className={buttonClass('secondary', 'default', 'mt-4')}>
+            View bookings
           </Link>
         </div>
       </div>

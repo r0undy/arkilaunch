@@ -6,7 +6,7 @@ import { appLayoutRoute } from './_app.js';
 import { bookingsQueries, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
 import { PageHeader } from '../components/page-header.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { WeeklyBillingCard } from './statement.js';
@@ -230,9 +230,7 @@ function BookingsPage() {
         title="Bookings"
         description="Equipment rentals and truck service requests. Open one to negotiate, confirm and move it along."
         actions={
-          <Link to="/app/quotes">
-            <Button variant="secondary">Price book</Button>
-          </Link>
+          <Link to="/app/quotes" className={buttonClass('secondary')}>Price book</Link>
         }
       />
       <Tabs
@@ -282,9 +280,7 @@ function BookingPage() {
         title={booking.data ? `Booking ${booking.data.code}` : 'Booking'}
         {...(booking.data ? { description: formatStatus(booking.data.status) } : {})}
         actions={
-          <Link to="/app/bookings">
-            <Button variant="ghost">All bookings</Button>
-          </Link>
+          <Link to="/app/bookings" className={buttonClass('ghost')}>All bookings</Link>
         }
       />
       {booking.isError && <Alert type="error">{apiErrorText(booking.error)}</Alert>}

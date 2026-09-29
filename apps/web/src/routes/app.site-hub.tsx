@@ -17,7 +17,7 @@ import { apiDelete, apiErrorText, apiGet, apiPost } from '../lib/api-client.js';
 import { formatDate, formatPeso, formatStatus } from '../lib/format.js';
 import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { BookingCode } from '../components/booking-code.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { CaptureModal } from '../components/capture-modal.js';
 import { HourFields, hourValuesFrom, toLineItems, type HourFieldValues, EMPTY_HOURS } from '../components/hour-fields.js';
 import { Modal } from '../components/modal.js';
@@ -370,9 +370,7 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
             {hub.rentals
               .filter((r) => r.status === 'active')
               .map((r) => (
-                <Link key={r.id} to="/app/bookings/$bookingId" params={{ bookingId: r.id }}>
-                  <Button variant="secondary">Extend {r.code}</Button>
-                </Link>
+                <Link key={r.id} to="/app/bookings/$bookingId" params={{ bookingId: r.id }} className={buttonClass('secondary')}>Extend {r.code}</Link>
               ))}
           </div>
         </Alert>
@@ -816,9 +814,7 @@ function SiteHubPage() {
         title={hub.data ? hub.data.site.address || 'Project site' : 'Project site'}
         {...(hub.data?.site.customerName ? { description: hub.data.site.customerName } : {})}
         actions={
-          <Link to="/app/deployment">
-            <Button variant="ghost">All sites</Button>
-          </Link>
+          <Link to="/app/deployment" className={buttonClass('ghost')}>All sites</Link>
         }
       />
       <Tabs

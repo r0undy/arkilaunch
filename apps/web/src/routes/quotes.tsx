@@ -8,7 +8,7 @@ import { apiGet, apiPost, apiErrorText } from '../lib/api-client.js';
 import { getEquipmentTypes, getRateCards, type EquipmentTypeRef, type RateCardRef } from '../lib/reference-client.js';
 import type { QuoteDetail } from '../lib/queries.js';
 import { formatPeso, formatStatus, shortCode } from '../lib/format.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
@@ -422,10 +422,8 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
             >
               {result.status === 'approved' ? 'Approved' : 'Approve'}
             </Button>
-            <Link to="/app/quotes/$quoteId/print" params={{ quoteId }}>
-              <Button type="button" variant="secondary">
-                Print quote
-              </Button>
+            <Link to="/app/quotes/$quoteId/print" params={{ quoteId }} className={buttonClass('secondary')}>
+              Print quote
             </Link>
           </div>
         </Surface>

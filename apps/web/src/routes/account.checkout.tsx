@@ -9,7 +9,7 @@ import { ApiError, apiErrorText, apiPost } from '../lib/api-client.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { EmptyState } from '../components/empty-state.js';
 import { StatusPill } from '../components/status-pill.js';
@@ -225,9 +225,7 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
             : `The rental team is checking ${company.companyName}'s documents. Your quote is safe; you will get a notification when payment opens.`
         }
         action={
-          <Link to="/account/companies">
-            <Button variant="primary">View company</Button>
-          </Link>
+          <Link to="/account/companies" className={buttonClass('primary')}>View company</Link>
         }
       />
     );
@@ -239,9 +237,7 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
         title="Agree the price first"
         description="This booking has a quote you have not accepted yet. Accept it, or negotiate it, and then come back to pay."
         action={
-          <Link to="/account/negotiation/$bookingId" params={{ bookingId: booking.id }}>
-            <Button variant="primary">Go to negotiation</Button>
-          </Link>
+          <Link to="/account/negotiation/$bookingId" params={{ bookingId: booking.id }} className={buttonClass('primary')}>Go to negotiation</Link>
         }
       />
     );
@@ -354,9 +350,7 @@ function CheckoutPage() {
         title="Payment information"
         description="Choose how to settle this booking."
         actions={
-          <Link to="/account/bookings/$bookingId" params={{ bookingId }}>
-            <Button variant="ghost">Back</Button>
-          </Link>
+          <Link to="/account/bookings/$bookingId" params={{ bookingId }} className={buttonClass('ghost')}>Back</Link>
         }
       />
       <DataPanel
@@ -385,12 +379,8 @@ function CheckoutFailedPage() {
           booking is unchanged. You can try again with the same or a different method.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Link to="/account/bookings">
-            <Button variant="primary">My bookings</Button>
-          </Link>
-          <Link to="/contact">
-            <Button variant="secondary">Get help</Button>
-          </Link>
+          <Link to="/account/bookings" className={buttonClass('primary')}>My bookings</Link>
+          <Link to="/contact" className={buttonClass('secondary')}>Get help</Link>
         </div>
       </Surface>
     </div>

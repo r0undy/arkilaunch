@@ -14,7 +14,7 @@ import {
   shortCode,
   siteName,
 } from '../lib/format.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { BookingCode } from '../components/booking-code.js';
@@ -553,9 +553,7 @@ function FieldLogDrawer({
       footer={
         <div className="flex flex-wrap justify-end gap-2">
           {bookingCode && (
-            <Link to="/app/bookings" search={{ open: bookingCode }}>
-              <Button variant="ghost">Open booking</Button>
-            </Link>
+            <Link to="/app/bookings" search={{ open: bookingCode }} className={buttonClass('ghost')}>Open booking</Link>
           )}
           {canBill && (
             <Button variant="approve" onClick={onReview}>

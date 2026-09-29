@@ -2,7 +2,7 @@ import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { storefrontLayoutRoute } from './_storefront.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { EquipmentSchematic } from '../components/equipment-schematic.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
@@ -62,9 +62,7 @@ function EquipmentDetailPage() {
           title="Equipment not found"
           description="That listing may have been rented out or removed."
           action={
-            <Link to="/equipment">
-              <Button variant="secondary">Back to equipments</Button>
-            </Link>
+            <Link to="/equipment" className={buttonClass('secondary')}>Back to equipments</Link>
           }
         />
       </div>

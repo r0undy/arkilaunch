@@ -5,7 +5,7 @@ import { quotesQueries, usersQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
 import { formatDate, shortCode } from '../lib/format.js';
 import { quoteExpiresAt } from '@arkilaunch/shared';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { QuoteLines } from '../components/quote-lines.js';
 import { PrintFrame } from '../components/print-frame.js';
 
@@ -25,9 +25,7 @@ function QuotePrintPage() {
         <Button variant="primary" onClick={() => window.print()}>
           Print
         </Button>
-        <Link to="/app/quotes">
-          <Button variant="ghost">Back to quotes</Button>
-        </Link>
+        <Link to="/app/quotes" className={buttonClass('ghost')}>Back to quotes</Link>
       </div>
       <PrintFrame
         title="Quotation"

@@ -7,7 +7,7 @@ import { DataPanel } from '../components/data-panel.js';
 import { EmptyState } from '../components/empty-state.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { buttonClass } from '../components/button.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import {
@@ -107,9 +107,7 @@ function CompanyApplicationPage() {
         title={application?.companyName ?? 'Company application'}
         description="Who applied, and what they told us."
         actions={
-          <Link to="/admin/applications">
-            <Button variant="ghost">Back</Button>
-          </Link>
+          <Link to="/admin/applications" className={buttonClass('ghost')}>Back</Link>
         }
       />
 

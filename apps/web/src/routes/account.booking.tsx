@@ -8,7 +8,7 @@ import { bookingsQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { CheckIcon, ClockIcon } from '../components/icons.js';
 import { Input } from '../components/input.js';
@@ -173,17 +173,13 @@ function NextStep({ booking }: { booking: BookingDetailResponse }) {
   const paid = booking.status === 'confirmed' || booking.payments.some((payment) => payment.status === 'paid');
   if (booking.status === 'cancelled' || paid) return null;
   const toNegotiation = (label: string) => (
-    <Link to="/account/negotiation/$bookingId" params={{ bookingId: booking.id }}>
-      <Button variant="primary">{label}</Button>
-    </Link>
+    <Link to="/account/negotiation/$bookingId" params={{ bookingId: booking.id }} className={buttonClass('primary')}>{label}</Link>
   );
   if (!quote) return toNegotiation('Talk to the rental team');
   if (quote.status === 'approved') return toNegotiation('Review your quote');
   if (quote.status === 'accepted') {
     return (
-      <Link to="/account/checkout/$bookingId" params={{ bookingId: booking.id }}>
-        <Button variant="primary">Pay now</Button>
-      </Link>
+      <Link to="/account/checkout/$bookingId" params={{ bookingId: booking.id }} className={buttonClass('primary')}>Pay now</Link>
     );
   }
   return toNegotiation('Open negotiation');
@@ -507,9 +503,7 @@ function BookingDetailPage() {
               />
             )}
             {booking.data && bookingStage(booking.data).paid && !bookingStage(booking.data).cancelled && (
-              <Link to="/account/bookings/$bookingId/extend" params={{ bookingId }}>
-                <Button variant="secondary">Extend rental</Button>
-              </Link>
+              <Link to="/account/bookings/$bookingId/extend" params={{ bookingId }} className={buttonClass('secondary')}>Extend rental</Link>
             )}
             {booking.data && <CancelAction booking={booking.data} />}
           </>
@@ -632,9 +626,7 @@ function ExtendRentalPage() {
             <Button type="submit" variant="primary" loading={request.isPending} disabled={!end || !unit}>
               Request extension
             </Button>
-            <Link to="/account/bookings/$bookingId" params={{ bookingId }}>
-              <Button variant="ghost">Cancel</Button>
-            </Link>
+            <Link to="/account/bookings/$bookingId" params={{ bookingId }} className={buttonClass('ghost')}>Cancel</Link>
           </div>
           {request.isError && <p role="alert" className="text-sm text-error">{apiErrorText(request.error)}</p>}
         </form>

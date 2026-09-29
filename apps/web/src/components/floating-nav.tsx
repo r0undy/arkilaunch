@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { getAccessToken } from '../lib/auth-client.js';
 import { homeHref } from '../lib/guards.js';
 import { useHeaderColor, useTenant } from '../lib/tenant.js';
-import { Button } from './button.js';
+import { Button, buttonClass } from './button.js';
 import { CloseIcon, MenuIcon } from './icons.js';
 
 const LINKS = [
@@ -42,9 +42,7 @@ export function FloatingNav() {
       <Link to="/login" className={`text-sm ${linkClass(false)}`}>
         Sign in
       </Link>
-      <Link to="/signup">
-        <Button variant="primary">Register</Button>
-      </Link>
+      <Link to="/signup" className={buttonClass('primary')}>Register</Link>
     </>
   );
 

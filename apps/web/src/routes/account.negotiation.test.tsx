@@ -42,5 +42,7 @@ describe('Negotiation finalised', () => {
 
     expect((await screen.findAllByText('₱100,000.00')).length).toBeGreaterThan(0);
     expect(screen.queryByText('₱120,000.00')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Proceed to payment' })).toBeInTheDocument();
+    expect(document.querySelector('a button')).toBeNull();
   });
 });

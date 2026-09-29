@@ -8,7 +8,7 @@ import { apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 import { formatDate, formatDateTime, formatPeso, formatStatus } from '../lib/format.js';
 import { Container } from './container.js';
 import { Alert } from './alert.js';
-import { Button } from './button.js';
+import { Button, buttonClass } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { SiteProofAdmin } from './site-proof.js';
 import { SiteEquipmentWeather } from './equipment-weather.js';
@@ -281,14 +281,10 @@ export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
         )}
         {/* No quote: the price book could not price it (no rate card), so staff quote it once. */}
         {booking.status !== 'cancelled' && (!quote || quote.inNegotiation) && (
-          <Link to="/app/quotes" search={{ bookingId: booking.id }}>
-            <Button variant="primary">{quote ? 'Revise quote' : 'Quote this booking'}</Button>
-          </Link>
+          <Link to="/app/quotes" search={{ bookingId: booking.id }} className={buttonClass('primary')}>{quote ? 'Revise quote' : 'Quote this booking'}</Link>
         )}
         {quote && (
-          <Link to="/app/quotes/$quoteId/print" params={{ quoteId: quote.id }}>
-            <Button variant="secondary">Print quote</Button>
-          </Link>
+          <Link to="/app/quotes/$quoteId/print" params={{ quoteId: quote.id }} className={buttonClass('secondary')}>Print quote</Link>
         )}
         </div>
       </Container>

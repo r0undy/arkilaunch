@@ -8,7 +8,7 @@ import { invoicesQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { CheckIcon, AlertIcon, ClockIcon } from '../components/icons.js';
 import { PrintFrame } from '../components/print-frame.js';
@@ -224,9 +224,7 @@ function AccountInvoicePage() {
         description="What was charged, and the evidence behind it."
         actions={
           <>
-            <Link to="/account/bookings" data-print-hide>
-              <Button variant="ghost">Back</Button>
-            </Link>
+            <Link to="/account/bookings" data-print-hide className={buttonClass('ghost')}>Back</Link>
             {/* The frame's "Download PDF" / "Print Statement" pair: print is
                 the browser's and needs no endpoint. A generated PDF does, so
                 it is left out rather than offered and broken. */}

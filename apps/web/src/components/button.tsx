@@ -23,6 +23,19 @@ const SIZE_CLASSES: Record<ButtonSize, string> = {
   field: 'min-h-12 px-6 py-3',
 };
 
+// For a <Link> or <a> that looks like a button: never nest a <button> in an <a>.
+export function buttonClass(variant: ButtonVariant = 'primary', size: ButtonSize = 'default', className = ''): string {
+  return [
+    'inline-flex min-w-11 items-center justify-center gap-2 rounded-pill font-sans text-sm font-medium',
+    'transition-colors duration-[120ms] ease-out',
+    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+    'disabled:cursor-not-allowed disabled:opacity-40',
+    VARIANT_CLASSES[variant],
+    SIZE_CLASSES[size],
+    className,
+  ].join(' ');
+}
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'primary', size = 'default', loading = false, disabled, className = '', children, type, ...rest },
   ref,
@@ -34,15 +47,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type ?? 'button'}
       disabled={isDisabled}
       aria-busy={loading || undefined}
-      className={[
-'inline-flex min-w-11 items-center justify-center gap-2 rounded-pill font-sans text-sm font-medium',
-        'transition-colors duration-[120ms] ease-out',
-        'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
-        'disabled:cursor-not-allowed disabled:opacity-40',
-        VARIANT_CLASSES[variant],
-        SIZE_CLASSES[size],
-        className,
-      ].join(' ')}
+      className={buttonClass(variant, size, className)}
       {...rest}
     >
       {loading ? (

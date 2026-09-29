@@ -10,7 +10,7 @@ import { Tabs } from '../components/tabs.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { formatDate, formatStatus, siteName } from '../lib/format.js';
-import { Button } from '../components/button.js';
+import { buttonClass } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { TruckRequestCard } from '../components/truck-trip.js';
 
@@ -146,9 +146,7 @@ function TruckBookings({ codePrefix }: { codePrefix: string }) {
         title="No truck bookings yet"
         description="Book the self-loading truck to move equipment or materials between two places."
         action={
-          <Link to="/account/trucks">
-            <Button variant="primary">Book a truck</Button>
-          </Link>
+          <Link to="/account/trucks" className={buttonClass('primary')}>Book a truck</Link>
         }
       />
     );
