@@ -21,6 +21,8 @@ describe('SiteProofFields', () => {
     const photo = document.querySelector<HTMLInputElement>('#t-photo')!;
     await userEvent.upload(photo, new File(['big'], 'IMG_0001.jpg', { type: 'image/jpeg' }));
 
-    await waitFor(() => expect(onPhotoFile).toHaveBeenCalledWith(prepared));
+    await waitFor(() => expect(onPhotoFile).toHaveBeenCalled());
+    expect(prepareUpload).toHaveBeenCalledWith(expect.objectContaining({ name: 'IMG_0001.jpg' }));
+    expect(onPhotoFile.mock.calls[0]![0]).toBe(prepared);
   });
 });

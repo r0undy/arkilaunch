@@ -56,7 +56,9 @@ function FilePick({
           onChange={(e) => {
             const file = e.target.files?.[0] ?? null;
             setName(file?.name ?? null);
-            onFile(file);
+            if (!file) return onFile(null);
+            // Shrunk at pick time, so a local refusal never lands after the site is created.
+            prepareUpload(file).then(onFile, () => onFile(file));
           }}
         />
       </label>

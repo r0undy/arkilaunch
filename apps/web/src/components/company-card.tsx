@@ -91,7 +91,10 @@ function DocumentUpload({ company, documentType, done }: { company: CompanyRespo
       await queryClient.invalidateQueries({ queryKey: companiesQueries.mine().queryKey });
       toast.success('Uploaded', DOC_LABELS[documentType]);
     },
-    onError: (e) => toast.error('Not uploaded', apiErrorText(e)),
+    onError: (e) => {
+      const { title, detail } = e instanceof UploadPrepareError ? describeUploadProblem(e) : { title: 'Not uploaded', detail: apiErrorText(e) };
+      toast.error(title, detail);
+    },
   });
   const id = `upload-${company.id}-${documentType}`;
   return (
