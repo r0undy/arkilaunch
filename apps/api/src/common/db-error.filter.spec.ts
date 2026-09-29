@@ -4,7 +4,7 @@ import { DbErrorFilter } from './db-error.filter.js';
 
 function run(exception: unknown) {
   const json = vi.fn();
-  const status = vi.fn(() => ({ json }));
+  const status = vi.fn((_code: number) => ({ json }));
   const host = { switchToHttp: () => ({ getResponse: () => ({ status }) }) } as unknown as ArgumentsHost;
   new DbErrorFilter().catch(exception, host);
   return { status: status.mock.calls[0]?.[0], body: json.mock.calls[0]?.[0] };
