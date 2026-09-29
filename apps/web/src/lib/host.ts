@@ -7,7 +7,7 @@ import { isTenantSlug } from '@arkilaunch/shared';
 // resolving to a tenant that cannot exist.
 export type HostKind = { kind: 'platform' } | { kind: 'tenant'; slug: string };
 
-const PLATFORM_DOMAIN = import.meta.env.VITE_PLATFORM_DOMAIN ?? 'arkilaunch.app';
+export const PLATFORM_DOMAIN = import.meta.env.VITE_PLATFORM_DOMAIN ?? 'arkilaunch.app';
 const ROOT_DOMAINS = ['localhost', PLATFORM_DOMAIN];
 
 export function resolveHost(hostname: string): HostKind {

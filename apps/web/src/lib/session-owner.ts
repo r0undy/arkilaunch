@@ -1,3 +1,5 @@
+import { PLATFORM_DOMAIN } from './host.js';
+
 // One signed-in account per browser (QA 18), last sign-in wins. Every
 // sign-in records WHO is signed in (the user id, never a token) in:
 //  - localStorage: shared by every tab of this site, with a `storage` event
@@ -12,8 +14,7 @@ const KEY = 'arkilaunch.sessionOwner';
 const COOKIE = 'arki_owner';
 
 function parentDomain(hostname: string): string | null {
-  const platform = import.meta.env.VITE_PLATFORM_DOMAIN ?? 'arkilaunch.app';
-  return hostname === platform || hostname.endsWith(`.${platform}`) ? platform : null;
+  return hostname === PLATFORM_DOMAIN || hostname.endsWith(`.${PLATFORM_DOMAIN}`) ? PLATFORM_DOMAIN : null;
 }
 
 function writeCookie(value: string, maxAge?: number) {
