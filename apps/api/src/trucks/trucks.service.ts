@@ -44,12 +44,20 @@ const DEFAULT_SETTINGS: TruckSettings = { baseFeePhp: 0, driverFeePhp: 0, extras
 
 const php = (n: number) => `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function pins(body: TruckEstimateRequest) {
+function pins(body: Pick<TruckEstimateRequest, 'pickupLat' | 'pickupLng' | 'dropoffLat' | 'dropoffLng'>) {
   return {
     ...(body.pickupLat !== undefined && body.pickupLng !== undefined ? { a: { lat: body.pickupLat, lon: body.pickupLng } } : {}),
     ...(body.dropoffLat !== undefined && body.dropoffLng !== undefined ? { b: { lat: body.dropoffLat, lon: body.dropoffLng } } : {}),
   };
 }
+
+const rowPins = (row: typeof truckRequests.$inferSelect) =>
+  pins({
+    pickupLat: num(row.pickupLat) ?? undefined,
+    pickupLng: num(row.pickupLng) ?? undefined,
+    dropoffLat: num(row.dropoffLat) ?? undefined,
+    dropoffLng: num(row.dropoffLng) ?? undefined,
+  });
 
 type Contact = { companyName: string | null; requesterName: string | null; requesterPhone: string | null };
 const NO_CONTACT: Contact = { companyName: null, requesterName: null, requesterPhone: null };
@@ -350,7 +358,7 @@ export class TrucksService {
     const route = await roadRoute(
       row.pickup,
       row.dropoff,
-      { a: { lat: Number(row.pickupLat), lon: Number(row.pickupLng) }, b: { lat: Number(row.dropoffLat), lon: Number(row.dropoffLng) } },
+      rowPins(row),
       // Staff get the turn list's toll hints for the toll picker.
       ctx.role !== 'customer',
     );
@@ -375,10 +383,7 @@ export class TrucksService {
     let minutes = current.routeMinutes;
     let cities = current.routeCities;
     if (minutes === null || cities === null) {
-      const route = await roadRoute(current.pickup, current.dropoff, {
-        ...(current.pickupLat !== null && current.pickupLng !== null ? { a: { lat: Number(current.pickupLat), lon: Number(current.pickupLng) } } : {}),
-        ...(current.dropoffLat !== null && current.dropoffLng !== null ? { b: { lat: Number(current.dropoffLat), lon: Number(current.dropoffLng) } } : {}),
-      });
+      const route = await roadRoute(current.pickup, current.dropoff, rowPins(current));
       minutes ??= route.minutes;
       if (cities === null) cities = await routeCities(route.line);
     }
