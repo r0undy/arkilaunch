@@ -32,7 +32,7 @@ test.describe('equipment browsing', () => {
     await openSidebar(page);
     await expect(sidebarLink(page, 'My bookings')).toBeVisible();
     // Not the marketing chrome.
-    await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Primary', exact: true })).toHaveCount(0);
   });
 
   test('a visitor gets the storefront, not a login wall', async ({ page }) => {

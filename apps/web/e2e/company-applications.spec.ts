@@ -12,7 +12,7 @@ test.describe('company applications', () => {
 
     // The seeded customer owns at least one company, so Total is non-zero and
     // the cards are on the page.
-    const total = page.getByText('Total applications').locator('xpath=preceding-sibling::dd[1]');
+    const total = page.getByText('Total applications').locator('xpath=following-sibling::dd[1]');
     await expect(total).not.toHaveText('0');
     const cards = page.getByRole('group');
     await expect(cards.first()).toBeVisible();
