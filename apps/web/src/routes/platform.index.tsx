@@ -204,7 +204,8 @@ function Directory() {
   function apply(next: DirectorySearch) {
     void navigate({
       to: '/',
-      search: readSearch({ ...search, page: undefined, ...next }) as never,
+      // From the live URL, not this render's copy: the debounced q timer fires later.
+      search: ((prev: Record<string, unknown>) => readSearch({ ...prev, page: undefined, ...next })) as never,
       replace: true,
       resetScroll: false,
     });
