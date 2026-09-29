@@ -3,6 +3,7 @@ import {
   Catch,
   HttpException,
   InternalServerErrorException,
+  Logger,
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
@@ -21,18 +22,24 @@ import { pgError } from '@arkilaunch/db';
 const INVALID_TEXT_REPRESENTATION = '22P02';
 
 const pgCode = (error: unknown) => pgError(error).code;
+const logger = new Logger('ExceptionsHandler');
 
 @Catch()
 export class DbErrorFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
 
+    const code = pgCode(exception);
     const mapped =
       exception instanceof HttpException
         ? exception
-        : pgCode(exception) === INVALID_TEXT_REPRESENTATION
+        : code === INVALID_TEXT_REPRESENTATION
           ? new BadRequestException({ error: 'invalid_input_syntax' })
           : new InternalServerErrorException({ error: 'internal_error' });
+    if (!(exception instanceof HttpException) && code !== INVALID_TEXT_REPRESENTATION) {
+      // A database error's message echoes query parameters (emails, names), so only its code is logged.
+      logger.error(code ? `database error ${code}` : exception instanceof Error ? exception.stack : String(exception));
+    }
 
     response.status(mapped.getStatus()).json(mapped.getResponse());
   }
