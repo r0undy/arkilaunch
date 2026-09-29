@@ -23,6 +23,9 @@ import { runJobIfMain } from './telemetry.js';
 // still pending is skipped (the availability check keeps it held too), so
 // a PayMongo session in flight can never land on a cancelled booking.
 const STAFF_ROLES = ['admin', 'owner'];
+const noPendingOnlinePayment = sql`NOT EXISTS (SELECT 1 FROM payments p JOIN invoices i ON i.id = p.invoice_id
+  WHERE i.tenant_id = ${rentals.tenantId} AND p.tenant_id = ${rentals.tenantId}
+    AND i.rental_id = ${rentals.id} AND p.status = 'pending' AND p.method <> 'cash')`;
 
 export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: string[] }> {
   const { db, client } = makeJobDb();
@@ -38,9 +41,7 @@ export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: stri
         and(
           eq(rentals.status, 'pending'),
           lt(rentals.holdExpiresAt, now),
-          sql`NOT EXISTS (SELECT 1 FROM payments p JOIN invoices i ON i.id = p.invoice_id
-            WHERE i.tenant_id = ${rentals.tenantId} AND p.tenant_id = ${rentals.tenantId}
-              AND i.rental_id = ${rentals.id} AND p.status = 'pending' AND p.method <> 'cash')`,
+          noPendingOnlinePayment,
         ),
       );
     console.log(`hold-expiry: ${lapsed.length} lapsed hold(s).`);
@@ -62,6 +63,12 @@ export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: stri
           )
           .for('update');
         if (!still) return;
+        // A separate statement: only a fresh snapshot sees a checkout that committed while we waited on the lock.
+        const [unpaid] = await tx
+          .select({ id: rentals.id })
+          .from(rentals)
+          .where(and(eq(rentals.tenantId, hold.tenantId), eq(rentals.id, hold.id), noPendingOnlinePayment));
+        if (!unpaid) return;
 
         const open = await tx
           .select({ id: invoices.id })

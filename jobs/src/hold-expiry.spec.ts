@@ -84,4 +84,31 @@ describe('hold-expiry', () => {
     expect(await statusOf(live.rental)).toBe('pending');
     expect(await statusOf(paying.rental)).toBe('pending');
   });
+
+  it('leaves a hold alone when an online payment commits while the sweep waits on the lock', async () => {
+    const racing = await request(-2);
+    const probe = postgres(process.env.DATABASE_URL_DIRECT ?? '', { max: 1 });
+    let job: ReturnType<typeof runHoldExpiry> | undefined;
+    try {
+      await sql.begin(async (tx) => {
+        await tx`select id from rentals where id = ${racing.rental} for update`;
+        await tx`insert into payments (tenant_id, invoice_id, method, amount, status)
+                 values (${tenantId}, ${racing.invoice}, 'gcash', 5000, 'pending')`;
+        const [{ pid }] = (await tx`select pg_backend_pid() as pid`) as unknown as [{ pid: number }];
+        job = runHoldExpiry();
+        for (let i = 0; i < 300; i++) {
+          const [row] = await probe`select count(*)::int as n from pg_stat_activity where ${pid} = any(pg_blocking_pids(pid))`;
+          if ((row as { n: number }).n > 0) break;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      });
+      const { cancelled } = await job!;
+      expect(cancelled).not.toContain(racing.rental);
+    } finally {
+      await probe.end();
+    }
+    expect(await statusOf(racing.rental)).toBe('pending');
+    const [invoice] = await sql`select status from invoices where id = ${racing.invoice}`;
+    expect((invoice as { status: string }).status).toBe('issued');
+  });
 });
