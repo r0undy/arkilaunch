@@ -147,13 +147,7 @@ export async function listPendingTenantApplications(
 }
 
 function isApplicationNotPending(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'message' in err &&
-    typeof (err as { message: string }).message === 'string' &&
-    (err as { message: string }).message.includes('application_not_pending')
-  );
+  return /application_not_pending/.test(String(pgError(err).message));
 }
 
 function isDuplicatePendingApplication(err: unknown): boolean {
@@ -245,11 +239,7 @@ export async function setPlatformCompanyStatus(
   try {
     await db.execute(sql`select * from tenants_set_status(${tenantId}, ${status}, ${actorUserId})`);
   } catch (err) {
-    const e = err as { message?: unknown; cause?: { message?: unknown } };
-    if (/company_not_found/.test(`${String(e?.message)} ${String(e?.cause?.message)}`)) {
-      throw new CompanyNotFoundError('company_not_found');
-    }
-    throw err;
+    rethrowCompanyNotFound(err);
   }
 }
 
@@ -279,8 +269,7 @@ export interface TenantBrandingInput {
 }
 
 function rethrowCompanyNotFound(err: unknown): never {
-  const e = err as { message?: unknown; cause?: { message?: unknown } };
-  if (/company_not_found/.test(`${String(e?.message)} ${String(e?.cause?.message)}`)) {
+  if (/company_not_found/.test(String(pgError(err).message))) {
     throw new CompanyNotFoundError('company_not_found');
   }
   throw err;
