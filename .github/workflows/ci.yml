@@ -5,17 +5,6 @@ on:
     branches: [main]
   pull_request:
 
-# QAD §CI: "A PR cannot merge if any automated check fails ... The CI
-# pipeline is the single source of truth for what is live." Jobs the F3/F1
-# slice will populate (OCR accuracy gate, Newman API suite, money-path
-# Playwright E2E) are declared and explicitly marked skipped, not omitted,
-# so their absence is visible rather than silent.
-#
-# node-unit-tests and api-integration-suite were added by
-# cr-arkilaunch-pilot-honesty.md. Before them this pipeline ran only the
-# apps/web suite, so 33 already-written spec files -- including every
-# AI-adversarial (AI-01..AI-06) and money-gate test -- had never gated a
-# single pull request.
 jobs:
   lint-typecheck-build:
     runs-on: ubuntu-latest
@@ -30,14 +19,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-      # Typecheck resolves workspace imports through each package's built
-      # .d.ts, not its source, so the packages have to be built first.
-      # Without this step `pnpm typecheck` fails on TS2307 "cannot find
-      # module '@arkilaunch/shared'" from packages/document-intelligence and
-      # packages/weather -- which it had been doing on every run since those
-      # two packages landed (2026-08-15 and 2026-08-20). The apps typechecked
-      # only because they are ordered after packages/shared in the recursive
-      # run and so saw the dist the earlier build had already produced.
+      # Typecheck resolves workspace imports via each package's built .d.ts, so build first.
       - name: Build workspace packages the typecheck resolves against
         run: pnpm -r --filter=./packages/* build
       - run: pnpm typecheck
@@ -60,13 +42,6 @@ jobs:
 
   node-unit-tests:
     runs-on: ubuntu-latest
-    # packages/shared (Zod schemas, the reconciliation gate, weather
-    # severity, OCR accuracy math), packages/document-intelligence (the
-    # Azure DI adapter, stubbed fetch), and packages/weather (the Open-Meteo
-    # adapter, stubbed fetch) are all pure logic with no DB dependency, so
-    # they run without a service container. document-intelligence and
-    # weather were previously built by lint-typecheck-build but never
-    # tested in any CI job (docs/cr-arkilaunch-open-meteo-free-tier.md).
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -84,11 +59,6 @@ jobs:
 
   api-integration-suite:
     runs-on: ubuntu-latest
-    # The apps/api, jobs, and packages/db suites are integration tests
-    # against a real Postgres, not unit tests -- packages/db/src/client.ts
-    # throws at import unless DATABASE_URL_POOLED is set. Before this job
-    # existed, 33 spec files (including the whole AI-adversarial and
-    # money-gate suite) ran in no CI job at all.
     services:
       postgres:
         image: postgres:17
@@ -101,14 +71,10 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # Throwaway credentials for an ephemeral container that is destroyed
-      # with the runner. Never reuse this shape for a real environment.
+      # Throwaway credentials for an ephemeral container; never reuse for a real environment.
       APP_AUTHENTICATED_PASSWORD: ci_throwaway_not_a_secret
       DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/postgres
-      # Load-bearing: the pooled URL connects as app_authenticated, NOT as
-      # postgres. postgres is a superuser and superusers bypass RLS
-      # regardless of FORCE, so running the suite as postgres would make
-      # every tenant-isolation assertion pass vacuously (RFC-1 §3).
+      # Must be app_authenticated, not postgres: superusers bypass RLS and isolation tests pass vacuously.
       DATABASE_URL_POOLED: postgresql://app_authenticated:ci_throwaway_not_a_secret@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
@@ -123,10 +89,7 @@ jobs:
       - name: Build workspace packages the apps import
         run: pnpm -r --filter=./packages/* build
       - name: Generate a throwaway RS256 keypair
-        # RS256 per RFC-1. The suite reads these with .replace(/\\n/g,'\n')
-        # (see apps/api/src/auth/auth.module.ts), so the PEM is flattened to
-        # a single line with literal \n escapes, matching the runbook's
-        # documented .env format.
+        # The suite un-escapes literal \n, so the PEM is flattened to one line.
         run: |
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/jwt.key
           openssl rsa -in /tmp/jwt.key -pubout -out /tmp/jwt.pub
@@ -141,10 +104,8 @@ jobs:
       - name: jobs suite
         run: pnpm --filter @arkilaunch/jobs test
       - name: packages/db pooler-independent suites
-        # Explicit file list, never a silent skipIf: guc-pooler-leak.spec.ts
-        # genuinely needs Supavisor and runs in cross-tenant-isolation-suite
-        # below. Naming the files here means a security test cannot quietly
-        # vanish from CI by being skipped at runtime.
+        # Explicit file list so a security test can't vanish via a runtime skip;
+        # guc-pooler-leak.spec.ts needs Supavisor and runs in cross-tenant-isolation-suite.
         run: >-
           pnpm --filter @arkilaunch/db exec vitest run
           test/tenant-isolation.spec.ts
@@ -184,40 +145,21 @@ jobs:
         env:
           DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/postgres
 
-      # packages/shared resolves through its built dist (see its package.json
-      # "main"), and the seed's permission catalog imports ROLE_CODES and
-      # PERMISSION_CODES from it, so it has to exist before the seed runs.
       - name: Build the shared package the seed imports
         run: pnpm --filter @arkilaunch/shared build
 
-      # The anchor seed ran in no CI job at all -- api-integration-suite
-      # seeds the two-tenant isolation fixtures instead -- so a break in it
-      # surfaced only when a developer ran `pnpm db:seed` by hand. It is the
-      # seed that creates the five RBAC sign-in accounts, so it is worth a
-      # gate. Runs here rather than in api-integration-suite because this
-      # job owns a clean throwaway database and no test asserts against it,
-      # so seeding Almara cannot collide with the test tenants.
-      #
-      # Run twice on purpose: the seed claims to be idempotent, and the
-      # second run is what proves it -- it exercises every
-      # onConflictDoUpdate and the legacy-email migration's "already taken"
-      # branch, neither of which the first run reaches.
+      # Run twice: the second run proves the seed is idempotent.
       - name: Anchor seed runs, and is idempotent
         run: |
           pnpm --filter @arkilaunch/db seed:anchor
           pnpm --filter @arkilaunch/db seed:anchor
         env:
-          # localhost, so assertSeedTargetIsLocal() permits the weak
-          # development credentials this seed writes.
+          # localhost, so assertSeedTargetIsLocal() permits the weak dev credentials.
           DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/postgres
 
   cross-tenant-isolation-suite:
     runs-on: ubuntu-latest
-    # QAD §3: "A test that 'confirms isolation' against a single-tenant
-    # database proves nothing." The GUC-no-leak-under-pooler test
-    # specifically needs Supabase's Supavisor pooler (BUILD §3), so this
-    # job runs against the Supabase project named by the repo secrets, not
-    # the throwaway Postgres above.
+    # QAD §3: the GUC-no-leak test needs the Supavisor pooler, so this runs against the live project.
     if: ${{ vars.RUN_LIVE_DB_TESTS == 'true' }}
     needs: migration-expand-contract-check
     steps:
@@ -242,18 +184,8 @@ jobs:
 
   ocr-accuracy-gate:
     runs-on: ubuntu-latest
-    # QAD-T39. Runs the accuracy harness and the threshold-enforcement unit
-    # tests for real, and deliberately does NOT assert >= 90.06%: the gate's
-    # input does not exist yet. The golden set is a synthetic placeholder
-    # that scores 6/8 = 75% by construction, and arkilaunch-edtr-neural-v1
-    # has never been trained (no labeled Almara sheets exist). Asserting the
-    # product threshold against synthetic fixtures would be a green check
-    # that means nothing.
-    #
-    # What this job does enforce is that assertAccuracyGate() still fails
-    # correctly -- below threshold, and on an empty corpus -- so the
-    # enforcement code cannot rot before the fixtures land. QAD-T39's
-    # release checkbox stays unchecked until it can be measured honestly.
+    # QAD-T39: proves assertAccuracyGate() fails closed; does not assert >= 90.06%
+    # until a real golden set and trained model exist.
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -273,27 +205,13 @@ jobs:
 
   newman-api-suite:
     runs-on: ubuntu-latest
-    # Still a stub, and still declared rather than omitted so it stays
-    # visible. Waiting on a committed Postman collection: the assertions it
-    # would carry (PayMongo webhook idempotency, and the 409
-    # reconciliation-discrepancy gate) are covered today by
-    # apps/api/test/payments-engine.spec.ts and the money-path-e2e job
-    # below, so this job is a documentation gap rather than a coverage one.
     steps:
       - run: 'echo "skipped: needs a committed Postman collection; assertions currently covered by payments-engine.spec.ts + money-path-e2e"'
 
   money-path-e2e:
     runs-on: ubuntu-latest
-    # QAD-T26 ("deduction without reconciliation": 409, deducts nothing) and
-    # QAD-T40 ("0% reconciliation discrepancy before deduction") -- RFC-2's
-    # central invariant, which had no CI enforcement at all until now.
-    #
-    # Named files, not a whole-package run, following the same reasoning as
-    # api-integration-suite's packages/db step: naming them means a money
-    # -path test cannot quietly vanish from CI by being skipped at runtime.
-    # These files also run inside api-integration-suite; the duplication is
-    # deliberate, so that a failure here points at the money path by name
-    # rather than being one red line in a 300-test run.
+    # QAD-T26 / QAD-T40 (RFC-2): no deduction without reconciliation.
+    # Named files so a money-path test can't vanish via a runtime skip.
     services:
       postgres:
         image: postgres:17
@@ -306,15 +224,10 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # Throwaway credentials for an ephemeral container that is destroyed
-      # with the runner. Never reuse this shape for a real environment.
+      # Throwaway credentials for an ephemeral container; never reuse for a real environment.
       APP_AUTHENTICATED_PASSWORD: ci_throwaway_not_a_secret
       DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/postgres
-      # Load-bearing, same as api-integration-suite: the pooled URL connects
-      # as app_authenticated, NOT as postgres. postgres is a superuser and
-      # superusers bypass RLS regardless of FORCE, which would make the
-      # tenant-registry assertions in rls-enumeration.spec.ts pass
-      # vacuously (RFC-1 §3).
+      # Must be app_authenticated, not postgres: superusers bypass RLS and isolation tests pass vacuously.
       DATABASE_URL_POOLED: postgresql://app_authenticated:ci_throwaway_not_a_secret@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
@@ -355,14 +268,6 @@ jobs:
 
   console-e2e:
     runs-on: ubuntu-latest
-    # The Playwright suite had no CI job at all. Worse, its sign-in helper
-    # soft-skipped on failure, so the authed console specs reported green on
-    # any machine without a seeded database and a running API -- which was
-    # every machine, since nothing ran them. signIn now throws, and this is
-    # the job that guarantees it has somewhere to run.
-    #
-    # Covers the inventory CRUD round trip (add -> edit -> retire) plus the
-    # console design-pass specs.
     services:
       postgres:
         image: postgres:17
@@ -375,36 +280,21 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # Throwaway credentials for an ephemeral container destroyed with the
-      # runner. Never reuse this shape for a real environment.
+      # Throwaway credentials for an ephemeral container; never reuse for a real environment.
       APP_AUTHENTICATED_PASSWORD: ci_throwaway_not_a_secret
       DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/postgres
       DATABASE_URL_POOLED: postgresql://app_authenticated:ci_throwaway_not_a_secret@localhost:5432/postgres
-      # seed:anchor creates the five RBAC sign-in accounts the specs use.
       SEED_PASSWORD: ci_throwaway_not_a_secret
-      # StorageService reads these in field initializers, so the API cannot
-      # boot without them. Nothing in this suite uploads, so they only have to
-      # exist -- this is the first CI job that starts the real API process,
-      # which is why no other job ever needed them.
+      # StorageService reads these at boot; nothing uploads, they only have to exist.
       SUPABASE_URL: http://localhost:54321
       SUPABASE_SERVICE_ROLE_KEY: ci_throwaway_not_a_secret
       SUPABASE_STORAGE_BUCKET_EQUIPMENT: equipment-photos
-      # The whole browser suite shares one loopback IP; at the real 30/min
-      # public catalog limit the later specs read 429 instead of the tenant
-      # and catalog (catalog.controller.ts).
+      # One loopback IP for the whole suite; the real 30/min catalog limit would 429.
       PUBLIC_CATALOG_THROTTLE_LIMIT: "2000"
-      # scripts/dev-cert.mjs is not run here, so vite serves plain HTTP and
-      # the config's https:// default would only find ERR_EMPTY_RESPONSE.
-      # This also keeps the page and auth-client.ts's absolute
-      # http://localhost:3000 API base on the same scheme -- over HTTPS the
-      # browser blocks that call as mixed content, and login.tsx's bare catch
-      # reports the blocked request as "Incorrect email or password", which
-      # is a genuinely confusing way to discover a transport problem.
-      # The specs drive the Almara tenant; bare localhost is the ArkiLaunch
-      # platform (lib/host.ts). Chromium resolves *.localhost to loopback.
+      # Plain HTTP (no dev cert in CI); HTTPS would block the http://localhost:3000 API as mixed content.
+      # Bare localhost is the platform; Chromium resolves *.localhost to loopback.
       PLAYWRIGHT_BASE_URL: http://almara.localhost:5173
-      # Must match the origin vite serves on; the API's CORS default is this
-      # value, set explicitly so a port change here fails loudly.
+      # Must match vite's origin (API CORS default).
       WEB_ORIGIN: http://localhost:5173
     steps:
       - uses: actions/checkout@v4
@@ -434,9 +324,7 @@ jobs:
       - name: Start the API and wait for it
         run: |
           pnpm start:api > /tmp/api.log 2>&1 &
-          # Without this the API dying at boot looks like a 90s timeout with
-          # no cause in the log, which is exactly how long it took to find
-          # the missing SUPABASE_URL the first time.
+          # Dump the log so a boot crash isn't a silent 90s timeout.
           npx --yes wait-on http://localhost:3000/health --timeout 90000 || {
             echo "::error::The API did not come up. Its output follows."
             cat /tmp/api.log
