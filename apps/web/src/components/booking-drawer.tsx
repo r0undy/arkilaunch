@@ -2,8 +2,8 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BookingDetailResponse, BookingService, TruckRequestResponse } from '@arkilaunch/shared';
-import { localPhMobile } from '@arkilaunch/shared';
-import { bookingsQueries, trucksQueries } from '../lib/queries.js';
+import { banHits, localPhMobile } from '@arkilaunch/shared';
+import { bookingsQueries, truckBanRulesQuery, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
 import { formatDate, formatDateTime, formatInvoiceType, formatPeso, formatStatus } from '../lib/format.js';
 import { Alert } from './alert.js';
@@ -209,6 +209,8 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
     [truck.dropoffLat, truck.dropoffLng],
   );
   const route = useQuery({ ...trucksQueries.route(truck.id), enabled: !!pickup && !!dropoff });
+  const rules = useQuery(truckBanRulesQuery);
+  const cities = route.data?.cities ?? truck.routeCities ?? [];
   return (
     <div className="flex flex-col gap-4">
       <Stepper steps={truckSteps(truck)} cancelled={truck.status === 'cancelled'} />
@@ -234,6 +236,19 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
                 </ol>
               </div>
             ) : null}
+            {cities.map((place, index) => {
+              const match = rules.data?.filter((rule) => rule.city.toLowerCase().replace(/ city$/, '') === place.city.toLowerCase().replace(/ city$/, '')) ?? [];
+              return match.map((rule) => {
+                const hit = banHits([place], [rule], new Date(truck.scheduledFor)).length > 0;
+                return <p key={`${rule.id}-${index}`} className="text-xs text-text-muted">
+                  <strong>{place.city}</strong> - trucks banned {rule.windows.map((w) => `${w.from}-${w.to}`).join(' & ')},
+                  {' '}{rule.days.map((day) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][day]).join(', ')}
+                  {hit ? ' | pickup falls inside: permit or reschedule' : ' | pickup outside listed hours'}
+                  {!rule.verified && ' | rule not verified'}
+                  {rule.permitNote && ` | ${rule.permitNote}`}
+                </p>;
+              });
+            })}
           </>
         ) : (
           <p className="text-sm text-text-muted">

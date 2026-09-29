@@ -1,12 +1,15 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNotNull, like, notInArray } from 'drizzle-orm';
-import { auditLogs, customers, negotiationMessages, notifications, projectSites, tollRates, truckRequests, truckSettings, users, withTenantTx } from '@arkilaunch/db';
+import { auditLogs, customers, negotiationMessages, notifications, projectSites, tollRates, truckBanRules, truckRequests, truckSettings, users, withTenantTx } from '@arkilaunch/db';
 import {
   bookingCodeSearchPrefix,
   CLOSED_TRUCK_STATUSES,
   PH_CLASS3_TOLLS,
   PH_TOLLS_AS_OF,
   priceTruckTrip,
+  banHits,
+  type TruckBanRuleInput,
+  type TruckBanRule,
   type TollRateCreate,
   type TollRateUpdate,
   type TollRateResponse,
@@ -180,6 +183,37 @@ export class TrucksService {
     return withTenantTx(ctx, async (tx) => {
       await tx.delete(tollRates).where(and(eq(tollRates.id, id), eq(tollRates.tenantId, ctx.tenantId)));
       return { id };
+    });
+  }
+
+  listBanRules(ctx: RequestContext): Promise<TruckBanRule[]> {
+    return withTenantTx(ctx, async (tx) => (await tx.select().from(truckBanRules)
+      .where(eq(truckBanRules.tenantId, ctx.tenantId)).orderBy(asc(truckBanRules.city)))
+      .map(toBanRule));
+  }
+
+  addBanRule(ctx: RequestContext, body: TruckBanRuleInput): Promise<TruckBanRule> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.insert(truckBanRules).values({ tenantId: ctx.tenantId, ...body }).returning();
+      return toBanRule(row!);
+    });
+  }
+
+  updateBanRule(ctx: RequestContext, id: string, body: TruckBanRuleInput): Promise<TruckBanRule> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.update(truckBanRules).set(body)
+        .where(and(eq(truckBanRules.id, id), eq(truckBanRules.tenantId, ctx.tenantId))).returning();
+      if (!row) throw new NotFoundException({ error: 'truck_ban_rule_not_found' });
+      return toBanRule(row);
+    });
+  }
+
+  removeBanRule(ctx: RequestContext, id: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.delete(truckBanRules)
+        .where(and(eq(truckBanRules.id, id), eq(truckBanRules.tenantId, ctx.tenantId))).returning({ id: truckBanRules.id });
+      if (!row) throw new NotFoundException({ error: 'truck_ban_rule_not_found' });
+      return row;
     });
   }
 
@@ -601,4 +635,9 @@ function toToll(t: typeof tollRates.$inferSelect): TollRateResponse {
     vehicleClass: t.vehicleClass,
     asOf: t.asOf,
   };
+}
+
+function toBanRule(row: typeof truckBanRules.$inferSelect): TruckBanRule {
+  return { id: row.id, city: row.city, province: row.province, days: row.days,
+    windows: row.windows, minGvwKg: row.minGvwKg, permitNote: row.permitNote, verified: row.verified };
 }

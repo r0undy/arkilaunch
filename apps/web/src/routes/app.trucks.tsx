@@ -1,7 +1,7 @@
 import { createRoute, redirect } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, suggestTolls, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
+import { DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, suggestTolls, TruckBanRuleSchema, type TruckBanRule, type TruckBanRuleInput, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
 import { formatDate, formatPeso } from '../lib/format.js';
@@ -13,7 +13,7 @@ import { Modal } from '../components/modal.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
-import { trucksQueries } from '../lib/queries.js';
+import { truckBanRulesQuery, trucksQueries } from '../lib/queries.js';
 import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
 import { EditButton, SummaryCard } from '../components/summary-card.js';
 import { Select } from '../components/select.js';
@@ -344,6 +344,87 @@ export function TollsEditor() {
       />
     </section>
   );
+}
+
+const blankBan: TruckBanRuleInput = {
+  city: '', province: 'Metro Manila', days: [1, 2, 3, 4, 5, 6],
+  windows: [{ from: '06:00', to: '10:00' }, { from: '17:00', to: '22:00' }],
+  minGvwKg: null, permitNote: '', verified: false,
+};
+
+export function BanRulesEditor() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const rules = useQuery(truckBanRulesQuery);
+  const [editing, setEditing] = useState<TruckBanRule | 'new' | null>(null);
+  const [draft, setDraft] = useState<TruckBanRuleInput>(blankBan);
+  const [daysText, setDaysText] = useState('1,2,3,4,5,6');
+  const [windowsText, setWindowsText] = useState('06:00-10:00, 17:00-22:00');
+  const [removing, setRemoving] = useState<TruckBanRule | null>(null);
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: truckBanRulesQuery.queryKey });
+  const open = (rule?: TruckBanRule) => {
+    const value = rule ?? blankBan;
+    setDraft(value);
+    setDaysText(value.days.join(','));
+    setWindowsText(value.windows.map((w) => `${w.from}-${w.to}`).join(', '));
+    setEditing(rule ?? 'new');
+  };
+  const save = useMutation({
+    mutationFn: async () => {
+      const body = TruckBanRuleSchema.parse({ ...draft,
+        days: daysText.split(',').map((s) => Number(s.trim())),
+        windows: windowsText.split(',').map((s) => {
+          const [from, to] = s.trim().split('-');
+          return { from, to };
+        }),
+      });
+      return editing === 'new' ? apiPost('/truck-ban-rules', body) : apiPut(`/truck-ban-rules/${(editing as TruckBanRule).id}`, body);
+    },
+    onSuccess: () => { setEditing(null); refresh(); toast.success('Truck ban rule saved'); },
+    onError: (error) => toast.error('Rule not saved', apiErrorText(error)),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => apiDelete(`/truck-ban-rules/${id}`),
+    onSuccess: () => { setRemoving(null); refresh(); toast.success('Truck ban rule removed'); },
+    onError: (error) => toast.error('Rule not removed', apiErrorText(error)),
+  });
+  const columns: TableColumn<TruckBanRule>[] = [
+    { header: 'City', kind: 'text', cell: (r) => `${r.city}, ${r.province}` },
+    { header: 'Days', kind: 'text', cell: (r) => r.days.map((day) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][day]).join(', ') },
+    { header: 'Ban hours', kind: 'text', cell: (r) => r.windows.map((w) => `${w.from}-${w.to}`).join(', ') },
+    { header: 'Status', kind: 'text', cell: (r) => r.verified ? 'Verified' : 'Rule not verified' },
+    { header: 'Actions', kind: 'action', cell: (r) => <div className="flex gap-2">
+      <Button variant="ghost" onClick={() => open(r)}>Edit</Button>
+      <Button variant="ghost" onClick={() => setRemoving(r)}>Remove</Button>
+    </div> },
+  ];
+  return <section aria-label="Truck ban rules" className="flex flex-col gap-3">
+    {rules.isError && <Alert type="error">{apiErrorText(rules.error)}</Alert>}
+    <Table columns={columns} rows={rules.data ?? []} rowKey={(r) => r.id}
+      empty={rules.isPending ? 'Loading truck ban rules...' : 'No truck ban rules yet.'}
+      header={{ title: 'Truck ban rules', count: rules.data?.length ?? 0,
+        description: 'Metro Manila entries are starting points. Check current MMDA and city road rules, then mark verified.',
+        actions: <Button onClick={() => open()}>Add rule</Button> }} />
+    <Modal open={editing !== null} onClose={() => setEditing(null)} title={editing === 'new' ? 'Add truck ban rule' : 'Edit truck ban rule'}
+      size="sm" footer={<><Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+        <Button loading={save.isPending} onClick={() => save.mutate()}>Save rule</Button></>}>
+      <div className="flex flex-col gap-3">
+        <Input label="City" value={draft.city} onChange={(e) => setDraft({ ...draft, city: e.target.value })} />
+        <Input label="Province" value={draft.province} onChange={(e) => setDraft({ ...draft, province: e.target.value })} />
+        <Input label="Days (0 Sunday to 6 Saturday, comma separated)" value={daysText} onChange={(e) => setDaysText(e.target.value)} />
+        <Input label="Ban hours (HH:MM-HH:MM, comma separated)" value={windowsText} onChange={(e) => setWindowsText(e.target.value)} />
+        <Input label="Minimum GVW in kg (blank if unknown)" type="number" min={1} numeric value={draft.minGvwKg ?? ''}
+          onChange={(e) => setDraft({ ...draft, minGvwKg: e.target.value ? Number(e.target.value) : null })} />
+        <Input label="Permit note" value={draft.permitNote} onChange={(e) => setDraft({ ...draft, permitNote: e.target.value })} />
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.verified}
+          onChange={(e) => setDraft({ ...draft, verified: e.target.checked })} /> Verified against current local rule</label>
+      </div>
+    </Modal>
+    <ConfirmDialog open={removing !== null} tone="danger" title="Remove this truck ban rule?"
+      body={removing ? `${removing.city}, ${removing.province} will no longer appear on routes.` : ''}
+      confirmLabel="Remove rule" pending={remove.isPending} onConfirm={() => { if (removing) remove.mutate(removing.id); }}
+      onCancel={() => setRemoving(null)} />
+  </section>;
 }
 
 // Tolls a trip passes: expressway, then two points on it (either order),

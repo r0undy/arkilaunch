@@ -20,7 +20,7 @@ import { QuoteLines } from '../components/quote-lines.js';
 import { useToast } from '../components/toast.js';
 import { DieselPriceForm, PricingParametersForm, RateCardsPanel, RentalFeesForm } from './app.settings.js';
 import { Tabs } from '../components/tabs.js';
-import { SettingsEditor, TollsEditor, settingsQuery as truckSettingsQuery } from './app.trucks.js';
+import { BanRulesEditor, SettingsEditor, TollsEditor, settingsQuery as truckSettingsQuery } from './app.trucks.js';
 
 // A quote line as the builder edits it: a catalog machine priced off its
 // type's rate card, or a free-text item the admin prices by hand.
@@ -84,6 +84,7 @@ function PriceBook() {
           {truck.data && <SettingsEditor initial={truck.data} />}
           {truck.isError && <p className="text-sm text-error">{apiErrorText(truck.error)}</p>}
           <TollsEditor />
+          <BanRulesEditor />
         </>
       )}
     </div>

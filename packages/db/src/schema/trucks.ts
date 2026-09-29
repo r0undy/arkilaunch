@@ -1,6 +1,6 @@
-import { date, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uuid, check } from 'drizzle-orm/pg-core';
+import { boolean, date, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uuid, check, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { RouteCity, TruckExtra, TruckPrice } from '@arkilaunch/shared';
+import type { RouteCity, TruckBanRuleInput, TruckExtra, TruckPrice } from '@arkilaunch/shared';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 
@@ -126,4 +126,21 @@ export const tollRates = pgTable(
     check('toll_rates_fee_nonnegative', sql`${t.feePhp} >= 0`),
     index('toll_rates_tenant_id_idx').on(t.tenantId),
   ],
+);
+
+export const truckBanRules = pgTable(
+  'truck_ban_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+    city: text('city').notNull(),
+    province: text('province').notNull(),
+    days: integer('days').array().notNull(),
+    windows: jsonb('windows').$type<TruckBanRuleInput['windows']>().notNull(),
+    minGvwKg: integer('min_gvw_kg'),
+    permitNote: text('permit_note').notNull().default(''),
+    verified: boolean('verified').notNull().default(false),
+  },
+  (t) => [tenantIsolationPolicy(), index('truck_ban_rules_tenant_id_idx').on(t.tenantId),
+    uniqueIndex('truck_ban_rules_tenant_city_province_key').on(t.tenantId, t.city, t.province)],
 );
