@@ -7,17 +7,7 @@ import { PageHeader } from '../components/page-header.js';
 import { EmptyState } from '../components/empty-state.js';
 import { buttonClass } from '../components/button.js';
 
-// The Figma prototype's remaining screens, mounted so the information
-// architecture is complete and reviewable. Every one of them is here
-// WITHOUT a backend: no ticket table, no audit endpoint, no negotiation
-// model, no per-role settings write.
-//
-// They deliberately do not render sample rows. A queue full of invented
-// tickets or fabricated security events is worse than an empty one -- it
-// looks finished, it gets screenshotted into a report, and nobody can tell
-// which numbers were real. Each screen instead names the exact thing that
-// is missing, which is what the next Change Record has to build.
-// Recorded in docs/report-figma-route-alignment.md §5.
+// Deliberately no sample rows: invented data looks finished and gets reported as real.
 function GapScreen({
   title,
   description,
@@ -102,4 +92,3 @@ export const fieldSettingsRoute = createRoute({
     />
   ),
 });
-

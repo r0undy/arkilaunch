@@ -26,7 +26,6 @@ const SEVERITY_META: Record<string, { tone: StatusTone; icon: ReactElement }> = 
 const COLUMNS: TableColumn<SiteResponse>[] = [
   {
     header: 'Site', kind: 'text',
-    // Each site opens its hub: bookings, daily logs, machines, people.
     cell: (row) => (
       <Link to="/app/deployment/$siteId" params={{ siteId: row.id }} className="font-semibold text-accent underline">
         {siteName(row)}
@@ -35,7 +34,6 @@ const COLUMNS: TableColumn<SiteResponse>[] = [
   },
   { header: 'Customer', kind: 'text', cell: (row) => row.customerName ?? 'Company yard' },
   {
-    // First status column: the one a phone card shows top-right.
     header: 'Equipment', kind: 'status',
     cell: (row) => (
       <span className="inline-flex flex-col items-center gap-1">
@@ -61,9 +59,6 @@ const COLUMNS: TableColumn<SiteResponse>[] = [
 type Unit = SiteHubResponse['units'][number];
 type UnitGroup = 'now' | 'upcoming' | 'past';
 
-// Which part of the expanded row a unit belongs in, from its assignment:
-// delivered is on site, returned is past, the rest is upcoming (or past once
-// its dates are over without a delivery).
 function unitGroup(unit: Unit, today: string): UnitGroup {
   if (unit.onSite) return 'now';
   if (unit.returned || (unit.span.to !== null && unit.span.to < today)) return 'past';
@@ -76,8 +71,6 @@ const GROUPS: { id: UnitGroup; title: string }[] = [
   { id: 'past', title: 'Past' },
 ];
 
-// Under a site row: every machine booked there, split into on site now,
-// upcoming and past, each one a click from its booking or its field logs.
 function SiteEquipment({ site }: { site: SiteResponse }) {
   const hub = useQuery(sitesQueries.hub(site.id));
   if (hub.isPending) return <p className="text-sm text-text-muted">Loading equipment...</p>;
@@ -146,13 +139,11 @@ const FILTERS: { id: SiteDeploymentFilter | undefined; label: string }[] = [
   { id: 'idle', label: 'Idle' },
 ];
 
-// ?deployment=active|upcoming|idle keeps the chip across back and a shared link.
 function validateDeploymentSearch(search: Record<string, unknown>): { deployment?: SiteDeploymentFilter } {
   return search.deployment === 'active' || search.deployment === 'upcoming' || search.deployment === 'idle'
     ? { deployment: search.deployment }
     : {};
 }
-
 
 function DeploymentPage() {
   const { deployment } = appDeploymentRoute.useSearch();
@@ -174,8 +165,6 @@ function DeploymentPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Outside DataPanel: the header belongs to the page, not to the
-          response, so it stays put while the table is loading or empty. */}
       <PageHeader
         title="Sites"
         description="Where your machines are working, and the weather over each site."

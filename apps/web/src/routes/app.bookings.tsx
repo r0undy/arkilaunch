@@ -22,10 +22,6 @@ import { formatDate, formatDateTime, formatPeso, formatStatus, siteName } from '
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 
-// The staff side of the customer journey: every rental and truck trip, one
-// tab per service, each paged on the server. A row opens the booking
-// drawer, where the negotiation and every action live.
-
 const RENTAL_COLUMNS: TableColumn<BookingSummaryResponse>[] = [
   { header: 'Booking', kind: 'text', cell: (b) => <BookingCode code={b.code} /> },
   { header: 'Customer', kind: 'text', cell: (b) => b.customerName ?? '--' },
@@ -49,8 +45,6 @@ const RENTAL_COLUMNS: TableColumn<BookingSummaryResponse>[] = [
   },
 ];
 
-// QA 27: the rental list's status chips. "New requests" are unpaid
-// ('pending'); the rest follow the booking through payment and delivery.
 const STATUS_CHIPS: { id: BookingStatus | undefined; label: string }[] = [
   { id: undefined, label: 'All' },
   { id: 'pending', label: 'New requests' },
@@ -85,9 +79,6 @@ const TRUCK_COLUMNS: TableColumn<TruckRequestResponse>[] = [
   { header: 'Status', kind: 'status', cell: (t) => <StatusBadge status={t.status} /> },
 ];
 
-// ?open=EQR-2026-0001 deep-links the drawer (notifications, the site hub,
-// the app bar's code box); ?service=truck opens on the Trucks tab. The
-// rental filters live here too, so Back and a shared link keep them.
 export interface BookingsSearch {
   service?: Service;
   open?: string;
@@ -117,7 +108,6 @@ function BookingsPage() {
   const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState('');
   const codePrefix = bookingCodeSearchPrefix(search) ?? '';
-  // A code names its service, so typing TRK- flips to the Trucks tab.
   const service: Service = codePrefix.startsWith('TRK') ? 'truck' : codePrefix.startsWith('EQR') ? 'rental' : (fromUrl ?? 'rental');
   const setService = (next: Service) => {
     setOffset(0);
@@ -125,7 +115,6 @@ function BookingsPage() {
     void navigate({ search: (prev) => ({ ...prev, service: next }), replace: true });
   };
 
-  // Rentals search codes or a company name; trucks search codes only.
   const rentalQuery = codePrefix || search.trim();
   const filters = { ...(status ? { status: [status] } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(sort ? { sort } : {}) };
   const setFilters = (patch: { [K in 'status' | 'from' | 'to' | 'sort']?: BookingsSearch[K] | undefined }) => {
@@ -143,8 +132,6 @@ function BookingsPage() {
   const trucks = useQuery({ ...trucksQueries.list(PAGE_SIZE, offset, codePrefix), enabled: service === 'truck' });
   const openTrucks = useQuery(trucksQueries.list(1, 0, '', 'open'));
 
-  // The drawer is addressed by code in the URL, so a notification or the
-  // site hub can open it and the back button closes it.
   const openCode = open ? parseBookingCode(open) : null;
   const openRental = useQuery({ ...bookingsQueries.list(1, 0, open ?? ''), enabled: openCode?.service === 'rental' });
   const openTruck = useQuery({ ...trucksQueries.list(1, 0, open ?? ''), enabled: openCode?.service === 'truck' });

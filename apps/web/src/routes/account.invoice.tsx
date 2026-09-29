@@ -37,13 +37,6 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// The Figma frame (168:2304) pairs a left summary card with a right address
-// card, then an itemized table whose header band and totals band share one
-// accent fill. That accent is the prototype's teal; Yardboard's structural
-// equivalent is --color-success, already used for a table header band on the
-// dashboard, so the layout carries over without importing the palette.
-// A weekly invoice (hours past the deposit) is paid the same two ways as a
-// booking: PayMongo, or cash at the office which staff then record.
 function PayWeekly({ invoiceId }: { invoiceId: string }) {
   const toast = useToast();
   const [pending, setPending] = useState<'online' | 'cash' | null>(null);
@@ -120,10 +113,6 @@ function InvoiceDetail({ invoice }: { invoice: InvoiceDetailResponse }) {
           {invoice.invoiceType === 'weekly' && invoice.status === 'issued' && <PayWeekly invoiceId={invoice.id} />}
         </Surface>
 
-        {/* The prototype's billing/shipping address pair has no counterpart in
-            the API -- an invoice carries a rental, not an address. The slot
-            shows the deduction's evidence trail instead, which is what RFC-2
-            requires a customer be able to see behind a charge. */}
         <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-4 p-5">
           <h2 className="text-sm font-medium text-text-muted">
             Evidence for this charge
@@ -224,9 +213,6 @@ function AccountInvoicePage() {
         actions={
           <>
             <Link to="/account/bookings" data-print-hide className={buttonClass('ghost')}>Back</Link>
-            {/* The frame's "Download PDF" / "Print Statement" pair: print is
-                the browser's and needs no endpoint. A generated PDF does, so
-                it is left out rather than offered and broken. */}
             <Button variant="secondary" data-print-hide onClick={() => window.print()}>
               Print statement
             </Button>

@@ -14,16 +14,6 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { ApplicationActions } from '../components/application-actions.js';
 import { formatDate, shortCode } from '../lib/format.js';
 
-// Figma splits company approval across four frames: Pending Company Approval
-// (621:8341), Approved Companies (621:8533), Manage Company Application
-// (369:1589) and Registration Review (349:942). The API backs the first two:
-// GET /tenants/applications (pending), a SECURITY DEFINER read; approved
-// companies are managed as tenants on /admin/companies. There is no per-application query and no KYC
-// list, so the detail page reads from the pending list and says plainly what
-// it cannot show -- the same choice cr-arkilaunch-frontend-storefront-shell.md
-// made for the screens it could not wire. This pending queue is the platform
-// admin's home (the old /app/platform-applications duplicate is gone).
-
 function CompanyLink({ application }: { application: TenantApplication }) {
   return (
     <Link
@@ -141,12 +131,6 @@ function CompanyApplicationPage() {
               <ApplicationActions application={application} />
             </Surface>
 
-            {/* The frame also carries a compliance repository (business
-                permit, SEC certificate, tax ID, each with a verified date)
-                and a verification trail. GET /kyc/:id reads one document by
-                its own id and nothing lists a tenant's documents, so neither
-                panel can be populated. Recorded in the alignment report
-                rather than mocked up with sample filenames. */}
             <Surface radius="md" elevation="sm" className="flex flex-col gap-2 p-5">
               <h2 className="text-sm font-medium text-text-muted">
                 Compliance documents

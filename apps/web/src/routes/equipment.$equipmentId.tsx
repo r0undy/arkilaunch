@@ -21,8 +21,7 @@ function EquipmentDetailPage() {
   const { equipmentId } = equipmentDetailRoute.useParams();
   const navigate = useNavigate();
   const signedIn = Boolean(getAccessToken());
-  // Same lock as the catalog list: prices are public, renting is for
-  // verified companies (the API refuses the booking regardless).
+  // Renting is for verified companies; the API refuses the booking regardless.
   const { data: companies } = useQuery({ ...companiesQueries.mine(), enabled: signedIn });
   const rentLocked = Boolean(companies && !companies.some(isSelectableCompany));
   const {
@@ -32,8 +31,7 @@ function EquipmentDetailPage() {
     refetch,
   } = useQuery(catalogQueries.equipmentDetail(equipmentId));
 
-  // __root leaves this page's title alone; the model makes it specific, the
-  // same title the edge Worker writes (lib/brand.ts).
+  // The same title the edge Worker writes (lib/brand.ts).
   const tenantName = useTenantName();
   useEffect(() => {
     const title = equipment && tenantName ? pageTitle(`/equipment/${equipmentId}`, tenantName, equipment.model) : null;
@@ -87,8 +85,7 @@ function EquipmentDetailPage() {
         />
       </div>
       {imageUrl && equipment.photoCredit && (
-        // A reference photo is credited to its source, never passed off as
-        // this unit (migration 0065).
+        // A reference photo is credited to its source, never passed off as this unit.
         <p className="-mt-4 text-xs text-text-muted">
           Reference photo:{' '}
           {equipment.photoSourceUrl ? (
@@ -139,9 +136,6 @@ function EquipmentDetailPage() {
             photoUri: equipment.photoUri,
             ...defaultRentalWindow(),
           });
-          // Same rule as the catalog dialog: a signed-out visitor is sent
-          // to login on purpose, with the cart as the redirect, rather than
-          // being bounced there by requireAuth() with no explanation.
           void navigate(
             signedIn
               ? { to: '/account/cart' }

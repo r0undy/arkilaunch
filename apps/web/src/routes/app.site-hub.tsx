@@ -34,10 +34,6 @@ import { Table, type TableColumn } from '../components/table.js';
 import { SiteEquipmentWeather } from '../components/equipment-weather.js';
 import { useToast } from '../components/toast.js';
 
-// The per-site hub (cr-arkilaunch-edtr-site-hub-approval.md §7). Everything
-// about one project site in five tabs; the Daily logs tab is where the
-// office approves what timekeepers submit.
-
 const TABS = ['overview', 'logs', 'equipment', 'personnel', 'documents'] as const;
 type Tab = (typeof TABS)[number];
 const TAB_LABEL: Record<Tab, string> = {
@@ -48,9 +44,7 @@ const TAB_LABEL: Record<Tab, string> = {
   documents: 'Documents',
 };
 
-// Each day is a status indicator (Cloudscape): the icon carries the colour and
-// the label is spoken and shown on hover, so a week reads as a row of marks
-// rather than seven chips of text.
+// The icon carries the colour; the label is spoken and shown on hover.
 const STATUS_META: Record<FieldLogDayStatus, { label: string; icon: LucideIcon; className: string }> = {
   missing: { label: 'Missing', icon: CircleDashed, className: 'text-text-muted' },
   pending: { label: 'Pending', icon: Clock, className: 'text-accent' },
@@ -63,7 +57,6 @@ function inSpan(unit: FieldLogUnit, date: string): boolean {
   return date >= unit.span.from && (unit.span.to === null || date <= unit.span.to);
 }
 
-// Day X of Y through a rental, clamped to the span.
 function spanProgress(start: string, end: string | null, today: string): { day: number; of: number | null } {
   const from = manilaDate(start);
   const dayIndex = (a: string, b: string) =>
@@ -317,7 +310,6 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
   const dates = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysIso(week, i)), [week]);
   const byKey = useMemo(() => new Map(hub.days.map((d) => [`${d.equipmentId}|${d.date}`, d])), [hub.days]);
 
-  // A clean pending day: the timekeeper's figures with nothing flagged.
   const clean = dates.flatMap((date) =>
     hub.units
       .map((u) => byKey.get(`${u.equipmentId}|${date}`))
@@ -433,8 +425,6 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
 
 const weekday = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-PH', { weekday: 'short', timeZone: 'UTC' });
 
-// One day of one machine: outside the rental, not yet due, or a status mark
-// that opens the day's log.
 function DayCell({ unit, date, day, onOpen }: { unit: FieldLogUnit; date: string; day: FieldLogDay | undefined; onOpen: (d: FieldLogDay) => void }) {
   if (!inSpan(unit, date)) {
     return (
@@ -469,8 +459,6 @@ function DayCell({ unit, date, day, onOpen }: { unit: FieldLogUnit; date: string
   );
 }
 
-// The week as machines x days. On a phone each machine is a card with its
-// seven days in one row, so nothing scrolls sideways.
 function WeekGrid({
   hub,
   dates,

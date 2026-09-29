@@ -17,15 +17,11 @@ import { useToast } from '../components/toast.js';
 import { Alert } from '../components/alert.js';
 import { formatDate, formatPeso } from '../lib/format.js';
 
-// cr-arkilaunch-coupons.md: the company's coupon codes. A coupon comes off
-// the rent at checkout, never the consumable deposit. Codes are never edited
-// once issued (customers may already hold them); a wrong one is switched off
-// and a new one made.
+// A coupon comes off the rent, never the deposit; codes are never edited once issued.
 
 const discountText = (c: CouponResponse) =>
   c.discountType === 'percent' ? `${c.discountValue}% off rent` : `${formatPeso(c.discountValue)} off rent`;
 
-// Every coupons page shares this key prefix.
 const COUPONS = ['coupons'] as const;
 
 function CreateCouponModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -139,8 +135,6 @@ function ActiveToggle({ coupon }: { coupon: CouponResponse }) {
   const queryClient = useQueryClient();
   const toggle = useMutation({
     mutationFn: () => apiPatch<CouponResponse>(`/coupons/${coupon.id}`, { active: !coupon.active }),
-    // Reversible with the same button, so no confirm; the toast says what
-    // changed.
     onSuccess: (updated) => {
       toast.success(updated.active ? `${updated.code} switched on` : `${updated.code} switched off`);
       void queryClient.invalidateQueries({ queryKey: COUPONS });

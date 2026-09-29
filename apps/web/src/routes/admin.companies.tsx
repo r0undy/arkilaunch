@@ -17,11 +17,6 @@ import { apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { formatDate, formatPeso } from '../lib/format.js';
 import { tenantOrigin } from '../lib/host.js';
 
-// Every rental company on the platform, seeded or approved (GET
-// /tenants/companies, migration 0049), with its headline numbers, a link to
-// its own site and an active/inactive switch. The site link is built from
-// the current host, so it is `{slug}.localhost:5173` in dev and
-// `{slug}.arkilaunch.app` in production.
 const companiesQuery = () => ({
   queryKey: ['tenants', 'companies'] as const,
   queryFn: () => apiGet<PlatformCompanyListResponse>('/tenants/companies'),
@@ -42,8 +37,6 @@ function StatusBadge({ status }: { status: CompanyStatus }) {
   );
 }
 
-// A platform admin edits any company's storefront branding (the name stays
-// locked, same form the company's own owner/admin uses).
 function BrandingAction({ company }: { company: PlatformCompany }) {
   const [open, setOpen] = useState(false);
   return (
@@ -58,11 +51,7 @@ function BrandingAction({ company }: { company: PlatformCompany }) {
   );
 }
 
-// Online payments go to the company's own PayMongo account, a child of
-// ArkiLaunch's. The company signs up through ArkiLaunch's PayMongo invite
-// (Settings > Invitations) and does PayMongo's own verification; its org_
-// id is pasted here. Until then online payments land on ArkiLaunch's own
-// (parent) account.
+// Until its PayMongo org_ id is set, online payments land on ArkiLaunch's own (parent) account.
 function PaymongoForm({ company, onDone }: { company: PlatformCompany; onDone: () => void }) {
   const toast = useToast();
   const path = `/tenants/${company.tenantId}/paymongo-account`;

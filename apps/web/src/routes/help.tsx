@@ -5,15 +5,6 @@ import { useTenant } from '../lib/tenant.js';
 import { Surface } from '../components/surface.js';
 import { EmptyState } from '../components/empty-state.js';
 
-// Figma 750:6444 "Help Center" draws six sections. Four of them -- knowledge-base
-// search, the three category cards, Top Articles and the network-status meter --
-// sit on top of nothing: there is no article store and no status endpoint. The
-// Submit Support Ticket form needs the same ticket table that /app/tickets is a
-// GapScreen for. Only the direct channels are real, so only the direct channels
-// are here, for the reason unbacked-screens.tsx already gives: a page that looks
-// finished but answers nobody is worse than a short page that says where to go.
-// Recorded in docs/report-figma-route-alignment.md section 3.
-
 function HelpPage() {
   const tenant = useTenant();
   const tenantName = tenant?.name ?? '';
