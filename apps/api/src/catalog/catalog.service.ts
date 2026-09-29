@@ -21,6 +21,7 @@ import {
   type CatalogEquipmentListResponse,
   type CatalogTestimonialListResponse,
 } from '@arkilaunch/shared';
+import { toBranding } from '../common/branding.js';
 
 // photo_uri is a storage key, not something an <img> can load; every
 // storefront screen (list, detail, cart) reads the photo from here.
@@ -38,14 +39,7 @@ export class CatalogService {
   async getTenant(slug: string): Promise<CatalogTenant> {
     const tenant = await getCatalogTenantForSlug(slug);
     if (!tenant) throw new NotFoundException({ error: 'tenant_not_found' });
-    const { logoKey, heroKey, iconKey, ...rest } = tenant;
-    return {
-      ...rest,
-      font: rest.font === 'inter' || rest.font === 'plex' ? rest.font : null,
-      logoUrl: publicPhotoUrl(logoKey),
-      heroUrl: publicPhotoUrl(heroKey),
-      iconUrl: publicPhotoUrl(iconKey),
-    };
+    return toBranding(tenant);
   }
 
   // The platform directory: active rental companies, public columns only.

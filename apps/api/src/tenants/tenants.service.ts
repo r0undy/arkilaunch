@@ -22,7 +22,6 @@ import {
   tenantApplications,
   tenants,
   withTenantTx,
-  publicPhotoUrl,
   sendEmail,
 } from '@arkilaunch/db';
 import type {
@@ -42,6 +41,7 @@ import { isTenantSlug, PlatformCompanyListResponseSchema } from '@arkilaunch/sha
 import { AuthService } from '../auth/auth.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { DISPLAY_IMAGE_TYPES, validateUpload } from '../storage/upload-validation.js';
+import { toBranding } from '../common/branding.js';
 
 const brandingBucket = () => process.env.SUPABASE_STORAGE_BUCKET_EQUIPMENT ?? 'equipment-photos';
 const logger = new Logger('TenantsService');
@@ -195,14 +195,7 @@ If you did not register, ignore this email.`,
   async getBranding(tenantId: string): Promise<TenantBranding> {
     const row = await getTenantBranding(tenantId);
     if (!row) throw new NotFoundException({ error: 'company_not_found' });
-    const { logoKey, heroKey, iconKey, ...rest } = row;
-    return {
-      ...rest,
-      font: rest.font === 'inter' || rest.font === 'plex' ? rest.font : null,
-      logoUrl: publicPhotoUrl(logoKey),
-      heroUrl: publicPhotoUrl(heroKey),
-      iconUrl: publicPhotoUrl(iconKey),
-    };
+    return toBranding(row);
   }
 
   async updateBranding(ctx: RequestContext, tenantId: string, input: TenantBrandingUpdateRequest) {
