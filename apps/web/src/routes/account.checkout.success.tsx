@@ -8,6 +8,7 @@ import { Surface } from '../components/surface.js';
 import { buttonClass } from '../components/button.js';
 import { StatusPill } from '../components/status-pill.js';
 import { CheckIcon } from '../components/icons.js';
+import { isUuid } from '../lib/format.js';
 
 const POLL_MS = 3_000;
 const POLL_FOR_MS = 60_000;
@@ -66,12 +67,10 @@ function CheckoutSuccessPage() {
   );
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export const accountCheckoutSuccessRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/checkout/success',
   validateSearch: (search: Record<string, unknown>): { invoice?: string } =>
-    typeof search.invoice === 'string' && UUID_RE.test(search.invoice) ? { invoice: search.invoice } : {},
+    isUuid(search.invoice) ? { invoice: search.invoice } : {},
   component: CheckoutSuccessPage,
 });

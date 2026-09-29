@@ -5,7 +5,7 @@ import type { BookingDetailResponse, BookingService, TruckRequestResponse } from
 import { banHits, localPhMobile } from '@arkilaunch/shared';
 import { bookingsQueries, truckBanRulesQuery, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
-import { formatDate, formatDateTime, formatInvoiceType, formatPeso, formatStatus } from '../lib/format.js';
+import { formatDate, formatDateTime, formatInvoiceType, formatPeso, formatStatus, WEEKDAYS } from '../lib/format.js';
 import { Alert } from './alert.js';
 import { RequestRow } from '../routes/app.trucks.js';
 import { buttonClass } from './button.js';
@@ -242,7 +242,7 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
                 const hit = banHits([place], [rule], new Date(truck.scheduledFor)).length > 0;
                 return <p key={`${rule.id}-${index}`} className="text-xs text-text-muted">
                   <strong>{place.city}</strong> - trucks banned {rule.windows.map((w) => `${w.from}-${w.to}`).join(' & ')},
-                  {' '}{rule.days.map((day) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][day]).join(', ')}
+                  {' '}{rule.days.map((day) => WEEKDAYS[day]).join(', ')}
                   {hit ? ' | pickup falls inside: permit or reschedule' : ' | pickup outside listed hours'}
                   {rule.minGvwKg !== null && ` | applies from ${rule.minGvwKg} kg GVW (vehicle weight not recorded)`}
                   {!rule.verified && ' | rule not verified'}

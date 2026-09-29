@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, suggestTolls, TruckBanRuleSchema, type TruckBanRule, type TruckBanRuleInput, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
-import { formatDate, formatDateTime, formatPeso } from '../lib/format.js';
+import { formatDate, formatDateTime, formatPeso, WEEKDAYS } from '../lib/format.js';
 import { PriceBreakdown } from '../components/truck-trip.js';
 import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
@@ -400,7 +400,7 @@ export function BanRulesEditor() {
   });
   const columns: TableColumn<TruckBanRule>[] = [
     { header: 'City', kind: 'text', cell: (r) => `${r.city}, ${r.province}` },
-    { header: 'Days', kind: 'text', cell: (r) => r.days.map((day) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][day]).join(', ') },
+    { header: 'Days', kind: 'text', cell: (r) => r.days.map((day) => WEEKDAYS[day]).join(', ') },
     { header: 'Ban hours', kind: 'text', cell: (r) => r.windows.map((w) => `${w.from}-${w.to}`).join(', ') },
     { header: 'Status', kind: 'text', cell: (r) => r.verified ? 'Verified' : 'Rule not verified' },
     { header: 'Actions', kind: 'action', cell: (r) => <div className="flex gap-2">

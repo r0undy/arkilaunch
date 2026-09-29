@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { bookingDays, minRentalDays, type AvailabilityResponse } from '@arkilaunch/shared';
 import { apiGet } from '../lib/api-client.js';
 import { getAccessToken } from '../lib/auth-client.js';
+import { WEEKDAYS } from '../lib/format.js';
 
 const DAYS_AHEAD = 60;
 const REASON: Record<string, string> = {
@@ -87,7 +88,6 @@ export function rentalLengthProblem(data: AvailabilityResponse | undefined, star
 const heldLabel = (iso: string) =>
   new Date(iso).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const addDays = (date: string, n: number) => {
   const d = new Date(`${date}T00:00:00`);
   d.setDate(d.getDate() + n);

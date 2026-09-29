@@ -5,16 +5,7 @@ import { appLayoutRoute } from './_app.js';
 import { apiGet, apiPost } from '../lib/api-client.js';
 import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { explainEdtrError } from '../lib/edtr-error.js';
-import {
-  addDaysIso,
-  formatDate,
-  formatHours,
-  formatLogSource,
-  formatPeso,
-  formatStatus,
-  shortCode,
-  siteName,
-} from '../lib/format.js';
+import { addDaysIso, formatDate, formatHours, formatLogSource, formatPeso, formatStatus, isUuid, shortCode, siteName } from '../lib/format.js';
 import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
@@ -91,8 +82,6 @@ function MatchText({ row }: { row: EdtrListItem }) {
     </span>
   );
 }
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function EdtrPage() {
   const toast = useToast();
@@ -743,8 +732,8 @@ export const edtrRoute = createRoute({
   validateSearch: (
     search: Record<string, unknown>,
   ): { site?: string; equipment?: string; week?: string; status?: 'review' } => ({
-    ...(typeof search.site === 'string' && UUID.test(search.site) ? { site: search.site } : {}),
-    ...(typeof search.equipment === 'string' && UUID.test(search.equipment) ? { equipment: search.equipment } : {}),
+    ...(isUuid(search.site) ? { site: search.site } : {}),
+    ...(isUuid(search.equipment) ? { equipment: search.equipment } : {}),
     ...(typeof search.week === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(search.week) ? { week: search.week } : {}),
     ...(search.status === 'review' ? { status: 'review' as const } : {}),
   }),

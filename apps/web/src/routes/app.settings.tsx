@@ -20,7 +20,7 @@ import { EditButton, SummaryCard } from '../components/summary-card.js';
 import { LoadError } from '../components/load-error.js';
 import { Skeleton } from '../components/skeleton.js';
 import { Mail, Plus, Receipt } from 'lucide-react';
-import { formatDate, formatPeso } from '../lib/format.js';
+import { formatDate, formatPeso, WEEKDAYS } from '../lib/format.js';
 
 interface RateCardRow {
   id: string;
@@ -197,7 +197,6 @@ function RetireAction({ id, label }: { id: string; label: string }) {
   );
 }
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DEFAULT_CALENDAR: TenantCalendar = { openTime: '07:00', closeTime: '17:00', openDays: [1, 2, 3, 4, 5, 6], blackouts: [] };
 
 // Office hours + holidays/blackouts. Bookings must start and end inside
@@ -242,7 +241,7 @@ function BusinessCalendarForm() {
           current
             ? [
                 { label: 'Hours', value: `${current.openTime} to ${current.closeTime}` },
-                { label: 'Open days', value: current.openDays.map((d) => DAY_NAMES[d]).join(', ') || 'None' },
+                { label: 'Open days', value: current.openDays.map((d) => WEEKDAYS[d]).join(', ') || 'None' },
                 {
                   label: 'Holidays and blackouts',
                   value: current.blackouts.length ? current.blackouts.map((b) => b.date).join(', ') : 'None',
@@ -282,7 +281,7 @@ function BusinessCalendarForm() {
           </div>
           <fieldset className="flex flex-wrap gap-3">
             <legend className="mb-1 text-sm font-medium text-text">Open days</legend>
-            {DAY_NAMES.map((name, day) => (
+            {WEEKDAYS.map((name, day) => (
               <label key={name} className="flex min-h-11 items-center gap-1.5 text-sm text-text">
                 <input
                   type="checkbox"

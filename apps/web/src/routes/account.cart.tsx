@@ -24,7 +24,7 @@ import { bookingAlternatives, explainBookingError } from '../lib/booking-error.j
 import { catalogQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
 import { SiteDialog } from '../components/site-dialog.js';
 import { NegotiateChoice } from '../components/negotiate-choice.js';
-import { formatPeso, shortCode } from '../lib/format.js';
+import { formatPeso, isUuid, shortCode } from '../lib/format.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import {
   validateCart,
@@ -692,7 +692,7 @@ export const accountCartRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/cart',
   validateSearch: (search: Record<string, unknown>): { booked?: string; code?: string } =>
-    typeof search.booked === 'string' && /^[0-9a-f-]{36}$/i.test(search.booked) && typeof search.code === 'string'
+    isUuid(search.booked) && typeof search.code === 'string'
       ? { booked: search.booked, code: search.code.slice(0, 20) }
       : {},
   component: CartPage,

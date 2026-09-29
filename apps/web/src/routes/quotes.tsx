@@ -7,7 +7,7 @@ import { requireRole } from '../lib/guards.js';
 import { apiGet, apiPost, apiErrorText } from '../lib/api-client.js';
 import { getEquipmentTypes, getRateCards, type EquipmentTypeRef, type RateCardRef } from '../lib/reference-client.js';
 import type { QuoteDetail } from '../lib/queries.js';
-import { formatPeso, formatStatus, shortCode } from '../lib/format.js';
+import { formatPeso, formatStatus, isUuid, shortCode } from '../lib/format.js';
 import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
@@ -39,14 +39,13 @@ type Line = EquipmentLine | CustomLine;
 
 let nextKey = 1;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ?bookingId= arrives from a booking in negotiation ("Revise quote"). With
 // no booking the page is the standard price book: quotes are never drawn up
 // per company; every booking is priced from the book automatically.
 function validateQuoteSearch(search: Record<string, unknown>): { bookingId?: string } {
   const out: { bookingId?: string } = {};
-  if (typeof search.bookingId === 'string' && UUID.test(search.bookingId)) out.bookingId = search.bookingId;
+  if (isUuid(search.bookingId)) out.bookingId = search.bookingId;
   return out;
 }
 

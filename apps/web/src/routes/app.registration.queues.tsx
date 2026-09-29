@@ -32,7 +32,7 @@ import { useToast } from '../components/toast.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { companiesQueries } from '../lib/queries.js';
-import { formatDate, formatStatus } from '../lib/format.js';
+import { formatDate, formatStatus, isUuid } from '../lib/format.js';
 import { DOC_LABELS } from '../components/company-card.js';
 
 type ReviewDocument = CompanyReviewResponse['documents'][number];
@@ -776,7 +776,7 @@ function RegistrationsPage({ kycStatus }: { kycStatus: Queue }) {
 }
 
 function queueSearch(search: Record<string, unknown>): { open?: string } {
-  return typeof search.open === 'string' && /^[0-9a-f-]{36}$/i.test(search.open) ? { open: search.open } : {};
+  return isUuid(search.open) ? { open: search.open } : {};
 }
 
 export const appRegistrationPendingRoute = createRoute({
