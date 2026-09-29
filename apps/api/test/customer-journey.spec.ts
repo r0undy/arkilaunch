@@ -140,6 +140,10 @@ describe('Customer journey', () => {
     expect(detail.quotation?.status).toBe('approved');
     expect(detail.quotation?.totalPhp).toBeGreaterThan(0);
     expect(await notificationTypes(booking.id)).toContain('quote_ready');
+    const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    const audit = await sql`select reason from audit_logs where entity = 'quotations' and action = 'APPROVE' and entity_id = ${detail.quotation!.id}`;
+    await sql.end();
+    expect(audit.map((row) => (row as { reason: string | null }).reason)).toEqual(['auto-quoted from rate cards']);
   });
 
 

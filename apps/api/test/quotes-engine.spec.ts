@@ -334,6 +334,15 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     expect(parentAfter.total).toBe(original.total); // parent's numbers are unchanged
   });
 
+  it('/revise refuses a customer other than the one on the quote', async () => {
+    const rentalId = await bookingFor(customerIdA);
+    const body = { customerId: customerIdA, projectSiteId: siteIdA, rentalId, discount: { type: 'none' as const, value: 0 }, items: itemsFor(rateCardIdA, equipmentTypeIdA) };
+    const original = await quotes.create(ctxA, body);
+    await expect(quotes.revise(ctxA, original.id, { ...body, customerId: '00000000-0000-4000-8000-000000000000' })).rejects.toMatchObject({
+      response: { error: 'quote_customer_mismatch' },
+    });
+  });
+
   // Standard price book: an approved quote stands until the customer
   // negotiates (writes in the booking's thread, or declines it).
   it('re-quoting an approved quote needs a negotiation from the customer', async () => {

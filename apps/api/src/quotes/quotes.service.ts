@@ -17,7 +17,7 @@ import {
   rentals,
   withTenantTx,
 } from '@arkilaunch/db';
-import { quoteExpiresAt, type QuoteRequest, type RentPart, type RequestContext } from '@arkilaunch/shared';
+import { bookingDays, quoteExpiresAt, type QuoteRequest, type RentPart, type RequestContext } from '@arkilaunch/shared';
 import { ownsCustomer, requireVerifiedCompany } from '../common/customer-scope.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { holdDeadline } from '../common/booking-hold.js';
@@ -120,26 +120,8 @@ export class QuotesService {
 
   // POST /quotes/preview: compute only, nothing persisted (RFC-3 §3).
   async preview(ctx: RequestContext, body: QuoteRequest): Promise<QuoteResponse> {
-    const priced = await withTenantTx(ctx, (tx) =>
-      this.pricingEngine.priceQuote(tx, ctx.tenantId, body),
-    );
-    return {
-      id: '',
-      revision: 0,
-      status: 'preview',
-      dieselPrice: priced.diesel.pricePhp,
-      dieselPriceDate: priced.diesel.observedDate,
-      dieselPriceSource: priced.diesel.source,
-      priceStale: priced.diesel.stale,
-      currency: 'PHP',
-      lineItems: toLineItems(priced),
-      mobilization: priced.mobilizationPhp,
-      demobilization: priced.demobilizationPhp,
-      subtotal: priced.subtotalPhp,
-      discount: priced.discountPhp,
-      total: priced.totalPhp,
-      printableUrl: null,
-    };
+    const priced = await withTenantTx(ctx, (tx) => this.pricingEngine.priceQuote(tx, ctx.tenantId, body));
+    return this.toResponse('', 0, 'preview', priced, null);
   }
 
   // POST /quotes: persist a draft, freeze the snapshot (RFC-3 §3).
@@ -176,58 +158,8 @@ export class QuotesService {
 
       const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body);
 
-      const [quotation] = await tx
-        .insert(quotations)
-        .values({
-          tenantId: ctx.tenantId,
-          customerId: body.customerId,
-          rentalId: body.rentalId,
-          revision,
-          parentQuotationId,
-          status: 'draft',
-          dieselPriceSnapshot: String(priced.diesel.pricePhp),
-          priceStale: String(priced.diesel.stale),
-          dieselPriceReadingId: priced.diesel.readingId,
-          dieselPriceDate: priced.diesel.observedDate,
-          dieselPriceSource: priced.diesel.source,
-          pricingParamsId: priced.diesel.pricingParamsId,
-          discountType: body.discount.type,
-          discountValue: String(body.discount.value),
-          mobilizationPhp: String(priced.mobilizationPhp),
-          demobilizationPhp: String(priced.demobilizationPhp),
-          subtotalPhp: String(priced.subtotalPhp),
-          totalPhp: String(priced.totalPhp),
-        })
-        .returning();
-      if (!quotation) throw new Error('quotation insert returned no row');
-
-      await tx.insert(quotationItems).values(
-        priced.items.map((item) => ({
-          tenantId: ctx.tenantId,
-          quotationId: quotation.id,
-          kind: item.kind,
-          description: item.description,
-          equipmentTypeId: item.equipmentTypeId,
-          rateCardId: item.rateCardId,
-          quantity: item.quantity,
-          mobilizationKm: String(item.mobilizationKm),
-          demobilizationKm: String(item.demobilizationKm),
-          estimatedHours: String(item.estimatedHours),
-          pricingInputs: item.pricingInputs,
-          hourlyRatePhp: String(item.hourlyRatePhp),
-          operatingCostPhp: String(item.operatingCostPhp),
-          mobilizationCostPhp: String(item.mobilizationCostPhp),
-          demobilizationCostPhp: String(item.demobilizationCostPhp),
-          bufferPhp: String(item.bufferPhp),
-          subtotalPhp: String(item.subtotalPhp),
-        })),
-      );
-
-      await this.auditAgreedPrices(tx, ctx, quotation.id, body);
-      const printableUrl = `/app/quotes/${quotation.id}/print`;
-      await tx.update(quotations).set({ printableUrl }).where(eq(quotations.id, quotation.id));
-
-      return { quotation: { ...quotation, printableUrl }, priced };
+      const quotation = await this.insertRevision(tx, ctx, body, priced, { rentalId: body.rentalId, revision, parentQuotationId });
+      return { quotation, priced };
     });
 
     await this.events.emit(ctx, 'quote_generated', {
@@ -257,7 +189,7 @@ export class QuotesService {
       for (const line of lines) {
         // No end date: an open-ended hire has no days to price; manual quote.
         if (!line.end) return null;
-        const days = Math.max(1, Math.ceil((line.end.getTime() - line.start.getTime()) / 86_400_000));
+        const days = bookingDays(line.start, line.end);
         const [card] = await tx
           .select({ id: rateCards.id })
           .from(rateCards)
@@ -291,7 +223,7 @@ export class QuotesService {
     if (!body) return null;
     try {
       const quote = await this.create(ctx, body);
-      await this.approve(ctx, quote.id);
+      await this.approve(ctx, quote.id, 'auto-quoted from rate cards');
       return { ...quote, status: 'approved' };
     } catch (err) {
       // No pricing parameters or diesel price yet (422): staff quote by hand.
@@ -306,71 +238,27 @@ export class QuotesService {
       const [parent] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
       if (!parent) throw new NotFoundException({ error: 'quote_not_found' });
       if (parent.status === 'accepted') throw new ConflictException({ error: 'quote_already_accepted' });
+      if (body.customerId !== parent.customerId) throw new ConflictException({ error: 'quote_customer_mismatch' });
       await this.requireNegotiation(tx, parent);
       await requireVerifiedCompany(tx, body.customerId);
 
       const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body);
 
-      const [revised] = await tx
-        .insert(quotations)
-        .values({
-          tenantId: ctx.tenantId,
-          customerId: body.customerId,
-          rentalId: parent.rentalId,
-          revision: parent.revision + 1,
-          status: 'draft',
-          dieselPriceSnapshot: String(priced.diesel.pricePhp),
-          priceStale: String(priced.diesel.stale),
-          dieselPriceReadingId: priced.diesel.readingId,
-          dieselPriceDate: priced.diesel.observedDate,
-          dieselPriceSource: priced.diesel.source,
-          pricingParamsId: priced.diesel.pricingParamsId,
-          parentQuotationId: parent.id,
-          discountType: body.discount.type,
-          discountValue: String(body.discount.value),
-          mobilizationPhp: String(priced.mobilizationPhp),
-          demobilizationPhp: String(priced.demobilizationPhp),
-          subtotalPhp: String(priced.subtotalPhp),
-          totalPhp: String(priced.totalPhp),
-        })
-        .returning();
-      if (!revised) throw new Error('revised quotation insert returned no row');
-
-      await tx.insert(quotationItems).values(
-        priced.items.map((item) => ({
-          tenantId: ctx.tenantId,
-          quotationId: revised.id,
-          kind: item.kind,
-          description: item.description,
-          equipmentTypeId: item.equipmentTypeId,
-          rateCardId: item.rateCardId,
-          quantity: item.quantity,
-          mobilizationKm: String(item.mobilizationKm),
-          demobilizationKm: String(item.demobilizationKm),
-          estimatedHours: String(item.estimatedHours),
-          pricingInputs: item.pricingInputs,
-          hourlyRatePhp: String(item.hourlyRatePhp),
-          operatingCostPhp: String(item.operatingCostPhp),
-          mobilizationCostPhp: String(item.mobilizationCostPhp),
-          demobilizationCostPhp: String(item.demobilizationCostPhp),
-          bufferPhp: String(item.bufferPhp),
-          subtotalPhp: String(item.subtotalPhp),
-        })),
-      );
-
-      await this.auditAgreedPrices(tx, ctx, revised.id, body);
-      const printableUrl = `/app/quotes/${revised.id}/print`;
-      await tx.update(quotations).set({ printableUrl }).where(eq(quotations.id, revised.id));
+      const revised = await this.insertRevision(tx, ctx, body, priced, {
+        rentalId: parent.rentalId,
+        revision: parent.revision + 1,
+        parentQuotationId: parent.id,
+      });
 
       // The parent's numbers are unchanged (QAD-T47); only its status flips.
       await tx.update(quotations).set({ status: 'superseded' }).where(eq(quotations.id, parent.id));
 
-      return this.toResponse(revised.id, revised.revision, 'draft', priced, printableUrl);
+      return this.toResponse(revised.id, revised.revision, 'draft', priced, revised.printableUrl);
     });
   }
 
   // POST /quotes/:id/approve: draft -> approved, locks the snapshot (RFC-3 §3).
-  async approve(ctx: RequestContext, quotationId: string): Promise<{ id: string; status: string }> {
+  async approve(ctx: RequestContext, quotationId: string, reason?: string): Promise<{ id: string; status: string }> {
     return withTenantTx(ctx, async (tx) => {
       const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
       if (!quotation) throw new NotFoundException({ error: 'quote_not_found' });
@@ -385,6 +273,7 @@ export class QuotesService {
         action: 'APPROVE',
         entity: 'quotations',
         entityId: quotationId,
+        reason: reason ?? null,
       });
       if (quotation.rentalId) {
         // The customer's turn: a request's hold restarts with the quote (QA 25).
@@ -568,6 +457,65 @@ export class QuotesService {
         ...(booking ? { bookingCode: booking.code } : {}),
       };
     });
+  }
+
+  // A new draft revision with its frozen snapshot and line items.
+  private async insertRevision(
+    tx: Tx,
+    ctx: RequestContext,
+    body: QuoteRequest,
+    priced: PricedQuote,
+    link: { rentalId: string | null; revision: number; parentQuotationId: string | null },
+  ) {
+    const [quotation] = await tx
+      .insert(quotations)
+      .values({
+        tenantId: ctx.tenantId,
+        customerId: body.customerId,
+        ...link,
+        status: 'draft',
+        dieselPriceSnapshot: String(priced.diesel.pricePhp),
+        priceStale: String(priced.diesel.stale),
+        dieselPriceReadingId: priced.diesel.readingId,
+        dieselPriceDate: priced.diesel.observedDate,
+        dieselPriceSource: priced.diesel.source,
+        pricingParamsId: priced.diesel.pricingParamsId,
+        discountType: body.discount.type,
+        discountValue: String(body.discount.value),
+        mobilizationPhp: String(priced.mobilizationPhp),
+        demobilizationPhp: String(priced.demobilizationPhp),
+        subtotalPhp: String(priced.subtotalPhp),
+        totalPhp: String(priced.totalPhp),
+      })
+      .returning();
+    if (!quotation) throw new Error('quotation insert returned no row');
+
+    await tx.insert(quotationItems).values(
+      priced.items.map((item) => ({
+        tenantId: ctx.tenantId,
+        quotationId: quotation.id,
+        kind: item.kind,
+        description: item.description,
+        equipmentTypeId: item.equipmentTypeId,
+        rateCardId: item.rateCardId,
+        quantity: item.quantity,
+        mobilizationKm: String(item.mobilizationKm),
+        demobilizationKm: String(item.demobilizationKm),
+        estimatedHours: String(item.estimatedHours),
+        pricingInputs: item.pricingInputs,
+        hourlyRatePhp: String(item.hourlyRatePhp),
+        operatingCostPhp: String(item.operatingCostPhp),
+        mobilizationCostPhp: String(item.mobilizationCostPhp),
+        demobilizationCostPhp: String(item.demobilizationCostPhp),
+        bufferPhp: String(item.bufferPhp),
+        subtotalPhp: String(item.subtotalPhp),
+      })),
+    );
+
+    await this.auditAgreedPrices(tx, ctx, quotation.id, body);
+    const printableUrl = `/app/quotes/${quotation.id}/print`;
+    await tx.update(quotations).set({ printableUrl }).where(eq(quotations.id, quotation.id));
+    return { ...quotation, printableUrl };
   }
 
   private toResponse(
