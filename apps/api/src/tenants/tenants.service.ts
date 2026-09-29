@@ -58,9 +58,7 @@ export class TenantsService {
     return tenant;
   }
 
-  // GET /tenants/applications (tenant:approve, platform_admin only). Cross-
-  // tenant by nature, same rationale as decideApplication -- see
-  // tenants_list_pending_applications() in migrations/0011.
+  // Cross-tenant by nature, hence the SECURITY DEFINER function.
   async listApplications(query: TenantApplicationListQuery): Promise<TenantApplicationListResponse> {
     const [items, total] = await Promise.all([
       listPendingTenantApplications(query.limit, query.offset),
@@ -69,13 +67,12 @@ export class TenantsService {
     return { items, total };
   }
 
-  // GET /tenants/companies (tenant:approve). Cross-tenant aggregate read,
-  // same SECURITY DEFINER rationale as listApplications (migration 0049).
+  // Cross-tenant aggregate read via SECURITY DEFINER.
   async listCompanies(): Promise<PlatformCompanyListResponse> {
     return PlatformCompanyListResponseSchema.parse({ items: await listPlatformCompanies() });
   }
 
-  // PATCH /tenants/:id/status (tenant:approve). Audited in the function.
+  // Audited in the function.
   async setCompanyStatus(ctx: RequestContext, tenantId: string, status: CompanyStatus) {
     try {
       await setPlatformCompanyStatus(tenantId, status, ctx.userId);
@@ -86,9 +83,7 @@ export class TenantsService {
     }
   }
 
-  // GET /tenants/me/application (tenant:manage). An owner's own pending
-  // application, if any -- same-tenant, so this is a normal RLS-scoped read,
-  // not the cross-tenant SECURITY DEFINER path listApplications() uses.
+  // Same-tenant, so a normal RLS-scoped read.
   async myApplication(ctx: RequestContext): Promise<TenantApplication | null> {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx
@@ -111,19 +106,13 @@ export class TenantsService {
     });
   }
 
-  // POST /tenants/register (@Public). No JWT, so no tenant context -- see
-  // registerTenant()/tenants_register() for why this is a SECURITY DEFINER
-  // write. Auto-approved (migration 0051): the owner is created 'invited'
-  // with an unusable random password hash and is emailed an activation link
-  // at once; POST /auth/activate then takes the tenant live. The emailed
-  // token is the proof of email ownership. Slug is derived from the company
-  // name with a numeric suffix on collision, since tenants.slug is UNIQUE.
+  // No JWT, so no tenant context: the write goes through SECURITY DEFINER. The emailed activation token proves
+  // email ownership; POST /auth/activate takes the tenant live.
   async register(input: TenantRegisterRequest): Promise<TenantRegisterResponse> {
     const baseSlug = slugify(input.companyName);
     const placeholderHash = await hash(randomBytes(32).toString('hex'));
 
-    // A reserved label (www, admin, api, ...) is never minted: it would be
-    // unreachable as a host (lib/host.ts), so start at the suffixed form.
+    // A reserved label (www, admin, api, ...) would be unreachable as a host, so start at the suffixed form.
     let attempt = isTenantSlug(baseSlug) ? 0 : 1;
     while (attempt < 6) {
       const slug = attempt === 0 ? baseSlug : `${baseSlug}-${attempt}`;
@@ -159,10 +148,8 @@ export class TenantsService {
     throw new ConflictException({ error: 'slug_collision_retry_exhausted' });
   }
 
-  // The link opens on the platform host (WEB_ORIGIN): an onboarding
-  // tenant's own subdomain is not served until it is active.
-  // ponytail: a lost email leaves the owner stuck until the 409 guard is
-  // cleared by hand; add a "resend activation" route if that happens.
+  // The link opens on the platform host: an onboarding tenant's subdomain isn't served until it's active.
+  // ponytail: a lost email leaves the owner stuck until the 409 guard is cleared by hand; add a "resend activation" route if that happens.
   private async sendActivationEmail(
     email: string,
     companyName: string,
@@ -189,8 +176,7 @@ If you did not register, ignore this email.`,
     }
   }
 
-  // Branding (migration 0051). `tenantId` is the verified JWT's tenant for
-  // owner/admin, or the company a platform admin picked (controller decides).
+  // `tenantId` is the verified JWT's tenant, or the company a platform admin picked (the controller decides).
   async getBranding(tenantId: string): Promise<TenantBranding> {
     const row = await getTenantBranding(tenantId);
     if (!row) throw new NotFoundException({ error: 'company_not_found' });
@@ -221,9 +207,7 @@ If you did not register, ignore this email.`,
     return { accountId };
   }
 
-  // Logo, hero or icon image. Key built from the target tenant id, never
-  // request input; magic bytes sniffed, and display images only (JPEG, PNG,
-  // WebP; the allow-list refuses a PDF). Passing no file removes the image.
+  // Key built from the target tenant id, never request input; display images only. No file removes the image.
   async setBrandingImage(
     ctx: RequestContext,
     tenantId: string,
@@ -245,10 +229,7 @@ If you did not register, ignore this email.`,
     return this.getBranding(tenantId);
   }
 
-  // POST /tenants/:id/approve | /reject (tenant:approve, platform_admin
-  // only). Cross-tenant by nature (the reviewer's own RLS GUC is their own
-  // tenant), so this calls the SECURITY DEFINER function directly rather
-  // than withTenantTx -- see decideTenantApplication() for the rationale.
+  // Cross-tenant (the reviewer's GUC is their own tenant), so the SECURITY DEFINER function, not withTenantTx.
   async decideApplication(
     ctx: RequestContext,
     applicationId: string,
@@ -260,8 +241,7 @@ If you did not register, ignore this email.`,
         if (!result.ownerUserId || !result.passwordHash) {
           throw new Error('approved application has no invited owner user');
         }
-        // Relayed out-of-band by the platform admin, exactly like a user
-        // invite -- there is no email provider in the pinned stack.
+        // Relayed out-of-band by the platform admin, like a user invite.
         const activationToken = this.auth.signActivationToken(result.tenantId, result.ownerUserId, result.passwordHash);
         return { applicationId, status: decision, activationToken, tenantSlug: result.tenantSlug };
       }

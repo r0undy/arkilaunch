@@ -1,23 +1,14 @@
 import { PayloadTooLargeException, UnprocessableEntityException } from '@nestjs/common';
 import { EQUIPMENT_PHOTO_MAX_BYTES, MAX_UPLOAD_BYTES } from '@arkilaunch/shared';
 
-// RFC-2 §6 (Locked): "content-type allowlist (image/pdf), max size,
-// magic-byte sniff, and a decompression-bomb guard before the blob reaches
-// Storage. A forged content-type is rejected, not extracted." This runs
-// BEFORE apps/api/src/storage/storage.service.ts ever calls the Storage
-// REST API -- exactly where the RFC puts it, on the API container, not
-// after a direct-to-Storage signed upload.
-
+// RFC-2 Â§6: allowlist, size cap, magic-byte sniff and bomb guard run here, before any bytes reach Storage.
 const MAX_PDF_PAGES = 20;
 const MAX_PNG_PIXELS = 50_000_000; // crude decompression-bomb guard: a tiny file claiming huge dimensions
 
-// What every caller accepted before WebP existed here. KYC and EDTR keep it
-// exactly: Azure DI reads those bytes, and the web client only ever sends
-// them a JPEG or an untouched PDF.
+// KYC and EDTR keep these: Azure DI reads the bytes.
 const DEFAULT_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'] as const;
 
-// Images a browser renders directly. No PDF: a machine photo or a logo that
-// is really a document is refused, not stored.
+// No PDF: a machine photo or logo that is really a document is refused.
 export const DISPLAY_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
 export const EQUIPMENT_PHOTO_RULES = { allow: DISPLAY_IMAGE_TYPES, maxBytes: EQUIPMENT_PHOTO_MAX_BYTES };
@@ -35,9 +26,7 @@ const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
   'application/pdf': 'pdf',
 };
 
-// Sniffs the ACTUAL content type from the file's magic bytes -- never trusts
-// the client-supplied Content-Type/mimetype. Returns null when the bytes
-// don't match anything we know.
+// Never trusts the client-supplied Content-Type.
 function sniffContentType(buffer: Buffer): string | null {
   for (const [contentType, signature] of Object.entries(MAGIC_SIGNATURES)) {
     if (buffer.length >= signature.length && buffer.subarray(0, signature.length).equals(signature)) {
@@ -55,9 +44,7 @@ function sniffContentType(buffer: Buffer): string | null {
   return null;
 }
 
-// Canvas pixel count from the first WebP chunk header, or null when the
-// header is too short or not one of the three bitstream kinds. Same crude
-// bomb guard as the PNG IHDR read below.
+// Same crude bomb guard as the PNG IHDR read below.
 function webpPixels(buffer: Buffer): number | null {
   if (buffer.length < 30) return null;
   switch (buffer.toString('latin1', 12, 16)) {
@@ -83,12 +70,10 @@ export interface ValidatedUpload {
 export interface UploadRules {
   /** Sniffed types this endpoint accepts. Defaults to JPEG, PNG and PDF. */
   allow?: readonly string[];
-  /** Defaults to MAX_UPLOAD_BYTES. */
   maxBytes?: number;
 }
 
-// Throws a clean 4xx on any violation; never lets a forged/oversized/bomb
-// upload reach uploadObject(). Callers pass a multer memory-storage file.
+// Throws a clean 4xx; a forged/oversized/bomb upload never reaches uploadObject().
 export function validateUpload(
   file: { buffer: Buffer; size: number } | undefined,
   { allow = DEFAULT_ALLOWED_TYPES, maxBytes = MAX_UPLOAD_BYTES }: UploadRules = {},
@@ -100,18 +85,13 @@ export function validateUpload(
     throw new PayloadTooLargeException({ error: 'file_too_large', maxBytes });
   }
 
-  // A real file of a type this endpoint does not take gets the same refusal
-  // as a forged one: either way, nothing about it is stored.
   const contentType = sniffContentType(file.buffer);
   if (!contentType || !allow.includes(contentType)) {
     throw new UnprocessableEntityException({ error: 'unsupported_or_forged_content_type' });
   }
 
   if (contentType === 'application/pdf') {
-    // Cheap heuristic (not a full PDF parser): counts /Type /Page object
-    // markers, which is proportional to page count for the well-formed PDFs
-    // a phone scanning app produces. Caps runaway page counts, the PDF
-    // analogue of an image decompression bomb.
+    // Crude page count (/Type /Page markers): the PDF analogue of a decompression bomb.
     const pageMarkers = file.buffer.toString('latin1').match(/\/Type\s*\/Page(?!s)/g) ?? [];
     if (pageMarkers.length > MAX_PDF_PAGES) {
       throw new UnprocessableEntityException({ error: 'pdf_too_many_pages', maxPages: MAX_PDF_PAGES });
@@ -119,8 +99,7 @@ export function validateUpload(
   }
 
   if (contentType === 'image/png' && file.buffer.length >= 24) {
-    // PNG IHDR chunk: width/height are the first 8 bytes after the 8-byte
-    // signature + 4-byte length + 4-byte "IHDR" tag (offset 16/20).
+    // IHDR width/height at offsets 16/20.
     const width = file.buffer.readUInt32BE(16);
     const height = file.buffer.readUInt32BE(20);
     if (width * height > MAX_PNG_PIXELS) {
