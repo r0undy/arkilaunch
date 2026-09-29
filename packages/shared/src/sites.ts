@@ -2,9 +2,6 @@ import { z } from 'zod';
 import { WeatherSeveritySchema } from './weather.js';
 import { PaginationQuerySchema } from './pagination.js';
 
-// PRD-F4/F5 read+write surface backing S12/S13/S14 Sites, Weather, and
-// Liability Incidents (cr-arkilaunch-f9-read-surface.md).
-
 export const SiteAddressSchema = z.object({
   line1: z.string().min(1).max(200),
   line2: z.string().max(200).optional(),
@@ -22,8 +19,6 @@ export const SiteCreateRequestSchema = z.object({
 });
 export type SiteCreateRequest = z.infer<typeof SiteCreateRequestSchema>;
 
-// At least one field required -- an empty patch is not a meaningful
-// request (same shape as EquipmentUpdateRequestSchema).
 export const SiteUpdateRequestSchema = z
   .object({
     latitude: z.number().min(-90).max(90).optional(),
@@ -34,17 +29,10 @@ export const SiteUpdateRequestSchema = z
   });
 export type SiteUpdateRequest = z.infer<typeof SiteUpdateRequestSchema>;
 
-// POST /api/v1/sites/:id/deployments (PRD-F4, "deploy/return equipment").
-// Same {equipmentId, start, end} shape as BookingItemRequestSchema
-// (packages/shared/src/bookings.ts) so both surfaces feed the identical
-// overlap-check helper (apps/api/src/common/equipment-availability.ts)
-// without one importing the other's request type.
 export const DeploymentCreateRequestSchema = z
   .object({
     equipmentId: z.string().uuid(),
     rentalId: z.string().uuid(),
-    // The operator sent with the unit, when the job needs one; refused if
-    // they are already on another job in that window.
     operatorUserId: z.string().uuid().optional(),
     start: z.string().datetime({ offset: true }),
     end: z.string().datetime({ offset: true }),
@@ -54,17 +42,11 @@ export const DeploymentCreateRequestSchema = z
   });
 export type DeploymentCreateRequest = z.infer<typeof DeploymentCreateRequestSchema>;
 
-// GET /api/v1/incidents?projectSiteId=...
 export const IncidentListQuerySchema = PaginationQuerySchema.extend({
   projectSiteId: z.string().uuid().optional(),
-  // weather = auto-logged severity crossings; discrepancy = EDTR v2
-  // timekeeper reports the site readings contradict; used_despite_warning
-  // = hours logged on a machine warned to stop work. Omitted = all.
   kind: z.enum(['weather', 'discrepancy', 'used_despite_warning']).optional(),
 });
 
-// deployment: active = a machine on site now; upcoming = one arriving in
-// the next 14 days; idle = neither. Omitted = every site.
 export const SiteDeploymentFilterSchema = z.enum(['active', 'upcoming', 'idle']);
 export type SiteDeploymentFilter = z.infer<typeof SiteDeploymentFilterSchema>;
 export const SiteListQuerySchema = PaginationQuerySchema.extend({
@@ -72,9 +54,6 @@ export const SiteListQuerySchema = PaginationQuerySchema.extend({
 });
 export type SiteListQuery = z.infer<typeof SiteListQuerySchema>;
 export type IncidentListQuery = z.infer<typeof IncidentListQuerySchema>;
-
-// --- Response schemas (egress allowlists -- expose only what the frontend
-// renders, mirroring the discipline set by catalog_list_equipment). ---
 
 const SiteBaseResponseSchema = z.object({
   id: z.string().uuid(),
@@ -86,9 +65,6 @@ const SiteBaseResponseSchema = z.object({
   observedAt: z.string().datetime().nullable(),
 });
 
-// GET /sites row: the base plus what is working there. activeUnits = units
-// on site now; upcomingUnits/nextArrival = confirmed units arriving within
-// 14 days. customerName is null for the company's own yard sites.
 export const SiteResponseSchema = SiteBaseResponseSchema.extend({
   activeUnits: z.number().int(),
   upcomingUnits: z.number().int(),
@@ -103,8 +79,6 @@ export const SiteListResponseSchema = z.object({
 });
 export type SiteListResponse = z.infer<typeof SiteListResponseSchema>;
 
-// Response shape for the address sub-object: nullable (not optional) fields,
-// since these come back from a nullable DB column, not an omittable request field.
 export const SiteAddressResponseSchema = z.object({
   line1: z.string(),
   line2: z.string().nullable(),
@@ -129,7 +103,6 @@ export const IncidentResponseSchema = z.object({
   observed: z.unknown().nullable(),
   occurredAt: z.coerce.date(),
   kind: z.enum(['weather', 'discrepancy', 'used_despite_warning']),
-  // Human sentence for a discrepancy or a used-despite-warning incident.
   detail: z.string().nullable(),
 });
 export type IncidentResponse = z.infer<typeof IncidentResponseSchema>;
@@ -140,10 +113,7 @@ export const IncidentListResponseSchema = z.object({
 });
 export type IncidentListResponse = z.infer<typeof IncidentListResponseSchema>;
 
-// PATCH /sites/:id/deployments/:assignmentId/return. A unit whose span
-// still has unapproved or missing field-log days is refused (409
-// field_logs_incomplete) unless the admin confirms with a reason, which is
-// audit-logged (cr-arkilaunch-edtr-site-hub-approval.md).
+// Refused (409) while field-log days are unapproved or missing, unless the admin confirms with an audit-logged reason.
 export const DeploymentReturnSchema = z
   .object({
     confirmIncompleteLogs: z.boolean().optional(),
@@ -152,6 +122,5 @@ export const DeploymentReturnSchema = z
   .refine((b) => !b.confirmIncompleteLogs || !!b.reason, { message: 'a reason is required', path: ['reason'] });
 export type DeploymentReturnRequest = z.infer<typeof DeploymentReturnSchema>;
 
-// POST /sites/:id/timekeepers (site hub personnel tab).
 export const TimekeeperAssignRequestSchema = z.object({ userId: z.string().uuid() });
 export type TimekeeperAssignRequest = z.infer<typeof TimekeeperAssignRequestSchema>;

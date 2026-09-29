@@ -2,10 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseEdtrSheet, resolveSheetDate } from './edtr-sheet.js';
 import type { ExtractedTable } from './document-intelligence-port.js';
 
-// The header shape prebuilt-layout actually returned for the real Almara
-// sheet: row 0 groups, row 1 IN/OUT sub-labels, data from row 2. Verified
-// against the live di-arkilaunch-dev resource
-// (docs/cr-arkilaunch-edtr-real-form.md).
+// The header shape prebuilt-layout returned for the real Almara sheet: row 0 groups, row 1 IN/OUT, data from row 2.
 const HEADER = [
   ['DATE', 'AM', '', 'PM', '', 'OVERTIME', '', 'TOTAL HOURS', 'SIGNATURE'],
   ['', 'IN', 'OUT', 'IN', 'OUT', 'IN', 'OUT', '', ''],
@@ -50,9 +47,7 @@ describe('parseEdtrSheet', () => {
   });
 
   it('flags a row whose in/out times contradict the written total', () => {
-    // 07:00-11:30 plus 13:00-17:00 is 8.5 worked hours, but the sheet says
-    // 10.5. Two of the three readings on the page disagree, so this day
-    // must reach a human even though it parses cleanly.
+    // 8.5 worked hours against a written 10.5: the page disagrees with itself, so a human must see it.
     const result = parseEdtrSheet(
       [table([['03/01', '07:00', '11:30', '13:00', '17:00', '', '', '10.5', '']])],
       CAPTURE,
@@ -66,8 +61,7 @@ describe('parseEdtrSheet', () => {
   });
 
   it('refuses the whole sheet when a dated row has an unreadable total, naming the day', () => {
-    // The load-bearing case: silently dropping this row would lose a
-    // billable day, and nothing downstream could ever tell it had existed.
+    // Load-bearing: silently dropping this row would lose a billable day.
     const result = parseEdtrSheet(
       [
         table([
@@ -96,9 +90,7 @@ describe('parseEdtrSheet', () => {
   });
 
   it('leaves computedHours null rather than short when a time pair is half filled', () => {
-    // An IN with no OUT is an unknown, not zero worked time. Treating it as
-    // zero would invent a disagreement with the written total and send a
-    // good day to review.
+    // An IN with no OUT is unknown, not zero worked time.
     const result = parseEdtrSheet(
       [table([['03/01', '07:00', '', '13:00', '17:00', '', '', '8.0', '']])],
       CAPTURE,
@@ -111,9 +103,7 @@ describe('parseEdtrSheet', () => {
   });
 
   it('picks the timesheet out of the header tables on the same page', () => {
-    // prebuilt-layout returns the CHARGE TO / EQPT. TYPE block as its own
-    // 2x2 table; it has no DATE+TOTAL header pair and must not be mistaken
-    // for the grid.
+    // The CHARGE TO / EQPT. TYPE block is its own 2x2 table and must not be mistaken for the grid.
     const headerBlock: ExtractedTable = {
       rowCount: 2,
       columnCount: 2,
@@ -135,10 +125,7 @@ describe('parseEdtrSheet', () => {
   });
 
   it('reads the merged-header shape the real form actually produces', () => {
-    // After the adapter expands spans, "AM" repeats across its IN/OUT pair
-    // and "DATE"/"TOTAL HOURS" repeat down both header rows. This is the
-    // real grid, and the earlier blank-padded HEADER above is the
-    // already-separated variant; both must parse.
+    // The span-expanded real grid; the blank-padded HEADER above is the other variant, and both must parse.
     const merged = [
       ['DATE', 'AM', 'AM', 'PM', 'PM', 'OVERTIME', 'OVERTIME', 'TOTAL HOURS', 'SIGNATURE'],
       ['DATE', 'IN', 'OUT', 'IN', 'OUT', 'IN', 'OUT', 'TOTAL HOURS', 'SIGNATURE'],
@@ -194,9 +181,7 @@ describe('resolveSheetDate', () => {
   });
 
   it('rolls a December row back a year when captured in January', () => {
-    // The case that makes "just use the capture's year" wrong: a sheet
-    // filled through December and photographed on 2 January would
-    // otherwise be filed eleven months in the future.
+    // A December sheet photographed on 2 January must not be filed eleven months ahead.
     expect(resolveSheetDate('12/28', '2027-01-02')).toBe('2026-12-28');
   });
 
@@ -211,8 +196,7 @@ describe('resolveSheetDate', () => {
   });
 });
 
-// EDTR v3 (docs/cr-arkilaunch-edtr-v3-sheet.md): the printed header of the
-// v3 grid, one hour column per cause plus the hour meter.
+// EDTR v3 printed header: one hour column per cause plus the hour meter.
 const V3_HEADER = [
   ['DATE', 'DAY', 'AM', '', 'PM', '', 'OVERTIME', '', 'TOTAL HOURS', 'RUNNING HRS', 'IDLE HRS', 'BREAKDOWN HRS', 'WEATHER HRS', 'OTHER HRS', 'METER START', 'METER END', 'INITIAL'],
   ['', '', 'IN', 'OUT', 'IN', 'OUT', 'IN', 'OUT', '', '', '', '', '', '', '', '', ''],

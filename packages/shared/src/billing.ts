@@ -1,16 +1,6 @@
 import { z } from 'zod';
 import { PaginationQuerySchema } from './pagination.js';
 
-// PRD-F2/F3 read surface backing S9 Billing & Deposit Ledger
-// (cr-arkilaunch-f9-read-surface.md). Read-only: every write to
-// invoices/payments already happens in edtr.service.ts / payments.service.ts.
-
-// GET /invoices?... query is validated the same as any other external
-// input (AGENTS.md "Always: validate external input at the boundary with
-// Zod"). invoiceType/status stay plain strings (not an enum) because
-// invoices.status has no DB check constraint and payments.service.ts
-// already writes a 'disputed' value beyond the billing.ts schema comment's
-// informal list -- an enum here would reject a legitimate existing value.
 export const InvoiceListQuerySchema = PaginationQuerySchema.extend({
   rentalId: z.string().uuid().optional(),
   invoiceType: z.string().min(1).max(50).optional(),
@@ -26,14 +16,10 @@ export const InvoiceListQuerySchema = PaginationQuerySchema.extend({
 });
 export type InvoiceListQuery = z.infer<typeof InvoiceListQuerySchema>;
 
-// --- Response schemas (egress allowlists). ---
-
 export const InvoiceSummaryResponseSchema = z.object({
   id: z.string().uuid(),
   rentalId: z.string().uuid().nullable(),
   truckRequestId: z.string().uuid().nullable(),
-  // The booking the invoice bills, whichever service it is: EQR-… for a
-  // rental, TRK-… for a truck. Null only on a detached invoice.
   bookingCode: z.string().nullable(),
   invoiceType: z.string(),
   amount: z.number(),
@@ -76,8 +62,6 @@ export type AuditTrailEntry = z.infer<typeof AuditTrailEntrySchema>;
 
 export const InvoiceDetailResponseSchema = InvoiceSummaryResponseSchema.extend({
   lineItems: z.array(InvoiceLineItemResponseSchema),
-  // The company billed (the booking's, or the truck trip's since 0067), for
-  // the printed invoice. Null on an older trip with no company.
   billTo: z
     .object({ companyName: z.string(), tin: z.string().nullable(), billingAddress: z.string().nullable() })
     .nullable(),
@@ -91,8 +75,6 @@ export const DepositLedgerResponseSchema = z.object({
   depositRequired: z.number().nullable(),
   totalDeducted: z.number(),
   balanceRemaining: z.number().nullable(),
-  // Rollover (phase 7): reconciled work past the balance awaiting the
-  // weekly invoice, and billed hours vs the quote's hours.
   unbilledAccrued: z.number(),
   hoursUsed: z.number(),
   hoursOrdered: z.number().nullable(),
@@ -106,16 +88,12 @@ export const DepositLedgerResponseSchema = z.object({
 });
 export type DepositLedgerResponse = z.infer<typeof DepositLedgerResponseSchema>;
 
-// GET /rentals/:id/statement and /me/rentals/:id/statement (QA 19): a
-// rental's Statement of Account. Reconciled hours are stacked by the ISO
-// week (Mon-Sun, Asia/Manila report dates) they were worked in; money is
-// every live invoice and payment on the booking.
+// Hours are stacked by ISO week (Mon-Sun, Asia/Manila report dates).
 export interface StatementWeek {
   weekStart: string; // YYYY-MM-DD, a Monday
   weekEnd: string; // the Sunday
   hours: number;
   amount: number;
-  // Of `amount`: taken from the deposit, on a weekly invoice, not yet invoiced.
   fromDeposit: number;
   invoiced: number;
   unbilled: number;
@@ -133,11 +111,9 @@ export interface StatementOfAccount {
   payments: { id: string; invoiceId: string; method: string; amount: number; status: string; createdAt: string }[];
   deposit: { required: number; deducted: number; remaining: number };
   totals: {
-    // Every live invoice except deposit deductions (paid from the deposit
-    // already on the booking invoice).
+    // Excludes deposit deductions: those are paid from the deposit already on the booking invoice.
     charged: number;
     paid: number;
-    // Reconciled hours past the deposit not yet on a weekly invoice.
     unbilled: number;
     balanceDue: number;
   };

@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-// RFC-2 §3 KYC sub-flow (PRD-F6). File upload / Supabase Storage wiring is a
-// follow-up, same as EDTR capture: accepts an already-uploaded file
-// reference rather than a multipart body for now.
 export const KycExtractRequestSchema = z.object({
   customerId: z.string().uuid(),
   documentType: z.string().min(1),
@@ -10,49 +7,27 @@ export const KycExtractRequestSchema = z.object({
 });
 export type KycExtractRequest = z.infer<typeof KycExtractRequestSchema>;
 
-// POST /api/v1/kyc/extract wire contract (backend-unblock plan workstream
-// 4): the client-facing fields, WITHOUT fileUri -- the document now arrives
-// as a multipart `file` field, validated and uploaded to Supabase Storage
-// by the controller (RFC-2 §6), which derives fileUri itself as the
-// storage object key. A client can never supply fileUri directly.
+// No fileUri: the controller derives it from the upload; a client can never supply it.
 export const KycExtractFieldsSchema = z.object({
   customerId: z.string().uuid(),
   documentType: z.string().min(1),
 });
 export type KycExtractFields = z.infer<typeof KycExtractFieldsSchema>;
 
-// The human portal-confirmation step (RFC-2 §2 step 6). ORUS CAPTCHA blocks
-// automation by design (scrutiny FC-11) -- this is always a human filling
-// in what they saw on the SEC/BIR portals, never a scraped/automated value.
+// Always a human's reading of the SEC/BIR portals (CAPTCHA by design), never a scraped value.
 export const KycConfirmRequestSchema = z.object({
   registryStatus: z.enum(['active', 'suspended', 'revoked']),
   portalMatchScore: z.number().min(0).max(1),
 });
 export type KycConfirmRequest = z.infer<typeof KycConfirmRequestSchema>;
 
-// RFC-2 §3 format checks. TIN's format is a stable BIR convention; the SEC
-// registration number pattern is approximate here (exact format needs a
-// CLR-level confirmation against current SEC issuance conventions) --
-// flagged rather than asserted as authoritative.
-// The branch code is 3 digits on older CORs and 5 on the ones BIR now
-// issues (000-000-000-00000; eBIRForms widened it under RMC 36-2026).
 export const TIN_REGEX = /^\d{3}-\d{3}-\d{3}(-\d{3}|-\d{5})?$/;
-// SEC registration numbers as issued over the years: a letter prefix
-// (A, AS, CS, CN, PG, ...) plus digits, optionally with a dash after the
-// year digits (AS094-008814), or the eSPARC-era all-digit number with an
-// optional -00 suffix (2021060012345-00).
 // ponytail: prefix list is not exhaustive; widen only on a real rejected cert.
 export const SEC_REGEX = /^(?:[A-Z]{1,3}\d{3}-?\d{4,9}|\d{10,13}(?:-\d{2})?)$/i;
-// DTI Business Name registration number (BNRS certificate "Business Name
-// No."), 6-10 digits, sometimes printed with a BN prefix.
 // ponytail: checked against the BNRS sample layout only; tighten on real certs.
 export const DTI_REGEX = /^(?:BN-?)?\d{6,10}$/i;
-// PhilSys Card Number (PCN), the 16 digits printed on the National ID.
 export const PHILSYS_PCN_REGEX = /^\d{4}-\d{4}-\d{4}-\d{4}$/;
 
-// OCR and people both type these with spaces, no dashes or stray dashes.
-// When the digit count matches, re-dash into the canonical groups; otherwise
-// return the trimmed input untouched so the format check reports it.
 function regroupDigits(value: string, groupings: number[][]): string {
   const digits = value.replace(/\D/g, '');
   const groups = groupings.find((g) => g.reduce((a, b) => a + b, 0) === digits.length);
@@ -63,9 +38,6 @@ function regroupDigits(value: string, groupings: number[][]): string {
 export const normalizeTin = (value: string) => regroupDigits(value, [[3, 3, 3], [3, 3, 3, 3], [3, 3, 3, 5]]);
 export const normalizePcn = (value: string) => regroupDigits(value, [[4, 4, 4, 4]]);
 
-// QA 15: the Philippine primary IDs a customer may verify with, not only
-// the PhilSys National ID. The number format is checked per type; the
-// same layout-plus-query read (model-registry.ts) serves every card.
 // ponytail: formats are the numbers as printed on current cards; widen one
 // on a real card that fails, never drop the check.
 const upperAlnum = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -75,7 +47,6 @@ export interface PhIdType {
   placeholder: string;
   re: RegExp;
   normalize: (value: string) => string;
-  // What the reviewer checks the card against.
   verifyHint: string;
 }
 export const PH_ID_TYPES = {
@@ -162,8 +133,6 @@ export const idTypeOf = (value: unknown): PhIdTypeCode =>
   typeof value === 'string' && value in PH_ID_TYPES ? (value as PhIdTypeCode) : 'philsys';
 export const validIdNumber = (type: PhIdTypeCode, value: string) => PH_ID_TYPES[type].re.test(PH_ID_TYPES[type].normalize(value));
 
-// One TIN however it is written: the same 9-digit base, and the same branch
-// with a missing branch read as the head office (000 = 00000).
 export function sameTin(a: string, b: string): boolean {
   const split = (v: string) => {
     const d = v.replace(/\D/g, '');
@@ -174,17 +143,9 @@ export function sameTin(a: string, b: string): boolean {
   return baseA.length === 9 && baseA === baseB && branchA === branchB;
 }
 
-// SEC numbers are typed and OCR'd with stray spaces ("CS 2023 10876",
-// "2022090068683 - 02"); the printed number has none.
 export const normalizeSecNumber = (value: string) =>
   value.trim().toUpperCase().replace(/\s*-\s*/g, '-').replace(/\s+/g, '');
 
-// The public registries an admin checks a parsed number against. None of
-// them take a value in the URL, and each searches differently (checked in
-// Chromium, 2026-09): BIR's ORUS splits the TIN into three ### boxes beside
-// a registered-name field behind reCAPTCHA, and DTI's BNRS allows an exact
-// business-name search only. So the review card copies what each one
-// actually accepts as a paste and says how to fill in the rest.
 export const REGISTRY_LINKS = {
   sec_certificate: {
     registry: 'SEC',
@@ -210,15 +171,12 @@ export const REGISTRY_DOCUMENT_TYPES = Object.keys(REGISTRY_LINKS) as RegistryDo
 
 export type MatchBand = 'mismatch' | 'confirm_manually' | 'strong';
 
-// RFC-2 §3: <0.85 mismatch, 0.85-0.90 confirm_manually, >=0.90 strong. Even
-// a "strong" match still requires the human portal-confirm step (§2).
+// Even a "strong" match still requires the human portal-confirm step (RFC-2).
 export function matchBand(score: number): MatchBand {
   if (score < 0.85) return 'mismatch';
   if (score < 0.9) return 'confirm_manually';
   return 'strong';
 }
-
-// --- Response schemas (egress allowlists). ---
 
 export const KycExtractResponseSchema = z.object({
   kycDocumentId: z.string().uuid(),

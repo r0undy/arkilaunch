@@ -40,13 +40,7 @@ describe('computeAccuracy (RFC-2 §5, QAD-T39)', () => {
   });
 });
 
-// The QAD-T39 threshold enforcement itself. These tests exist so the
-// ocr-accuracy-gate CI job runs real enforcement code rather than an
-// `echo`: the gate's INPUT (a labeled golden corpus of real Almara sheets)
-// does not exist yet and arkilaunch-edtr-neural-v1 is untrained, so the
-// >= 90.06% product claim is deliberately NOT asserted anywhere. What is
-// asserted is that the decision function will fail correctly the moment
-// real fixtures do land.
+// Enforcement only: the >= 90.06% product claim is deliberately NOT asserted until a real golden corpus exists.
 describe('assertAccuracyGate (QAD-T39 threshold enforcement)', () => {
   const report = (over: Partial<AccuracyReport> = {}): AccuracyReport => ({
     overall: 1,
@@ -68,15 +62,11 @@ describe('assertAccuracyGate (QAD-T39 threshold enforcement)', () => {
   });
 
   it('fails the synthetic placeholder corpus, which is the honest result today', () => {
-    // 6 of 8 fixture samples correct by construction = 75%. The gate must
-    // report this as a failure rather than being softened to accommodate
-    // it; QAD-T39 stays unchecked until real labeled samples exist.
+    // 75% by construction: the gate must report a failure, never be softened to pass it.
     expect(assertAccuracyGate(report({ overall: 6 / 8, sampleCount: 8 })).passed).toBe(false);
   });
 
-  // The case a naive `!(overall < threshold)` spelling would wave through.
-  // A gate that greens because nobody supplied any evidence is worse than
-  // no gate at all.
+  // A naive `!(overall < threshold)` would wave this through.
   it('fails an empty golden set instead of vacuously passing', () => {
     const result = assertAccuracyGate(computeAccuracy([]));
     expect(result.passed).toBe(false);

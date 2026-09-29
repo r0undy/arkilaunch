@@ -67,12 +67,7 @@ describe('UnavailableDocumentIntelligenceAdapter', () => {
   });
 });
 
-// Port conformance suite. Every future DocumentIntelligencePort adapter --
-// starting with the real Azure DI one -- must be run through this. It is
-// written BEFORE that adapter deliberately: the rules below are exactly the
-// ones whose violation would silently produce a wrong NUMBER rather than a
-// visible error, and the confidence rule in particular cannot be discovered
-// after the fact (cr-arkilaunch-pilot-honesty.md §4).
+// Port conformance suite: every DocumentIntelligencePort adapter must pass it.
 export function assertDocumentIntelligenceConformance(
   name: string,
   makeAdapter: () => DocumentIntelligencePort,
@@ -89,11 +84,7 @@ export function assertDocumentIntelligenceConformance(
       }
     });
 
-    // The single highest-severity unknown on the AI path: it is not
-    // established that Azure DI query fields return a per-field confidence
-    // at all for PH corporate documents. If one is missing, it must floor
-    // to 0 (routing to human review), never to 1 (sailing through the 0.90
-    // gate). Defaulting the wrong way turns an unknown into an auto-accept.
+    // A missing field confidence must floor to 0 (human review), never 1 (auto-accept past the 0.90 gate).
     it('maps a missing or null confidence to 0, never to 1', async () => {
       const result = await makeAdapter().analyze(sample.modelId, sample.image);
       for (const [fieldName, field] of Object.entries(result.fields)) {
