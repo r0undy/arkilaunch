@@ -4,7 +4,6 @@ import { apiGet, apiPost } from '../lib/api-client.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
 
-
 type State = 'loading' | 'unsupported' | 'unconfigured' | 'denied' | 'off' | 'on';
 
 function base64UrlToBytes(value: string): Uint8Array {

@@ -7,7 +7,6 @@ import { Input } from './input.js';
 import { Surface } from './surface.js';
 import { PAGE_SIZE, Pagination } from './pagination.js';
 
-
 export interface DeploymentScanListProps {
   rentals: RentalRef[];
   rentalLabel: (rental: RentalRef) => string;

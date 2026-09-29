@@ -1,7 +1,6 @@
 import { PH_MOBILE_REGEX, type CompanyResponse } from '@arkilaunch/shared';
 import type { CartItem } from './cart-client.js';
 
-
 export interface CartFieldErrors {
   companyId?: string;
   projectSiteId?: string;

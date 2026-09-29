@@ -1,6 +1,5 @@
 import { useId, useRef, type KeyboardEvent } from 'react';
 
-
 export interface TabItem<T extends string> {
   id: T;
   label: string;

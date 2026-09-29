@@ -15,8 +15,6 @@ import { SiteEquipmentWeather } from './equipment-weather.js';
 import { EdtrSheetCard } from './edtr-sheet-card.js';
 import { useToast } from './toast.js';
 
-
-
 function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();

@@ -1,7 +1,6 @@
 import { BOOKING_SERVICE_LABEL, type BookingService } from '@arkilaunch/shared';
 import { CopyButton } from './copy-button.js';
 
-
 export function ServiceBadge({ service }: { service: BookingService }) {
   return (
     <span

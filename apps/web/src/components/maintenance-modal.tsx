@@ -13,7 +13,6 @@ import { EquipmentReport } from './equipment-report.js';
 import { apiDelete, apiErrorText, apiPatch, apiPost } from '../lib/api-client.js';
 import { formatDateTime } from '../lib/format.js';
 
-
 const DAY = 86_400_000;
 
 export function endsSoon(endsAt: string | Date, now = Date.now()): number | null {

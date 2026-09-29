@@ -2,7 +2,6 @@ import { useState, type ReactNode } from 'react';
 import { Modal } from './modal.js';
 import { Button } from './button.js';
 
-
 export type ConfirmTone = 'danger' | 'approve' | 'neutral';
 
 export interface ConfirmDialogProps {

@@ -5,11 +5,7 @@ import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken, clearTokens } from '../lib/auth-client.js';
 import { clearCart } from '../lib/cart-client.js';
 
-// The weather panel beside the catalog, driven through the real route.
-//
-// The thing that needs watching: an unavailable forecast must READ as
-// unavailable. A blank week or a row of zeros renders as five calm days,
-// which is the failure mode weather-port.spec.ts exists to stop.
+// An unavailable forecast must READ as unavailable, never as five calm days.
 
 const SITE = {
   id: '22222222-2222-2222-2222-222222222222',

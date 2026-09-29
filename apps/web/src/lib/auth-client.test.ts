@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Every case rewires window.location.replace for a spy without needing a
-// jsdom navigation, and clears sessionStorage between tests since
-// auth-client's module-level `inflightRefresh` is per-module-instance but
-// sessionStorage state must not leak across cases.
+// sessionStorage is cleared between tests so state never leaks across cases.
 describe('authorizedFetch: 401 handling', () => {
   let assignSpy: ReturnType<typeof vi.fn>;
 

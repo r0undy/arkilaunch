@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { CircleCheck, CircleX, Info, TriangleAlert, type LucideIcon } from 'lucide-react';
 
-
 export type AlertType = 'info' | 'success' | 'warning' | 'error';
 
 const TYPE: Record<AlertType, { icon: LucideIcon; box: string; iconClass: string }> = {

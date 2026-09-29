@@ -1,6 +1,5 @@
 import { ApiError, apiErrorText, payloadField } from './api-client.js';
 
-
 export interface EdtrErrorExplanation {
   readonly title: string;
   readonly detail: string;

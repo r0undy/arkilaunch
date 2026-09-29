@@ -1,11 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// Its own file because every other cart spec signs in first, and the whole
-// point here is the visitor path.
-//
-// /account/cart is behind requireAuth(), so "Book now" used to hand a
-// signed-out visitor a silent guard bounce with no destination -- from the
-// customer's side, indistinguishable from the button not working.
+// Its own file: every other cart spec signs in first.
 
 const EMAIL = process.env.SEED_CUSTOMER_EMAIL ?? 'customer@admin.com';
 const PASSWORD = process.env.SEED_PASSWORD ?? 'admin';

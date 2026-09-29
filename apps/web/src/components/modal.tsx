@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
-
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
 export interface ModalProps {

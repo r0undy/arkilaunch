@@ -1,7 +1,6 @@
 import { classifyHours, lineItemsToDayHours, type EdtrLineItemsInput } from '@arkilaunch/shared';
 import { Input } from './input.js';
 
-
 export interface HourFieldValues {
   total: string;
   running: string;

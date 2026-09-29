@@ -17,7 +17,6 @@ import { ScanReview } from './scan-review.js';
 import { referenceQueries } from '../lib/queries.js';
 import { useToast } from './toast.js';
 
-
 const TERMINAL_STATUSES = new Set(['review', 'reconciled', 'hard_failed']);
 
 const SCANNING_TIPS = [

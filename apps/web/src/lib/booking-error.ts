@@ -1,6 +1,5 @@
 import { payloadField } from './api-client.js';
 
-
 function str(error: unknown, key: string): string | null {
   const value = payloadField(error, key);
   return typeof value === 'string' ? value : null;

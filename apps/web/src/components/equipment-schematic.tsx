@@ -1,6 +1,5 @@
 import type { ReactElement } from 'react';
 
-
 export interface EquipmentSchematicProps {
   typeName: string;
   imageUrl?: string;

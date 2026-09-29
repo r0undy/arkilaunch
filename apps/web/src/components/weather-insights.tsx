@@ -7,7 +7,6 @@ import { ApiError, payloadField } from '../lib/api-client.js';
 import { customerSitesQueries, forecastQueries } from '../lib/queries.js';
 import { describeWeatherCode, weekdayLabel } from '../lib/weather-code.js';
 
-
 const heading = 'text-heading-md text-text';
 
 function unavailableReason(error: unknown): string | null {

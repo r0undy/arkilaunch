@@ -43,10 +43,7 @@ afterEach(() => {
 });
 
 describe('CaptureField', () => {
-  // jsdom has no navigator.mediaDevices, which is the same shape as an
-  // insecure origin or a device with no camera: the viewfinder must not be
-  // the only way in. Every test below therefore exercises the fallback,
-  // which is exactly the path that must never regress.
+  // jsdom has no navigator.mediaDevices, like an insecure origin: every test below exercises the fallback.
   it('falls back to the two file inputs when the viewfinder cannot open', () => {
     renderField();
     expect(screen.queryByTestId('scanFile-viewfinder')).not.toBeInTheDocument();
@@ -54,8 +51,7 @@ describe('CaptureField', () => {
     expect(screen.getByRole('button', { name: 'Choose a file' })).toBeInTheDocument();
   });
 
-  // The whole point of the change: one input forces the camera on mobile, so
-  // the file-picker input must NOT carry the capture attribute.
+  // The file-picker input must NOT carry the capture attribute.
   it('puts the camera attribute on the photo input only, so the other still opens the picker', () => {
     renderField();
     expect(screen.getByTestId('scanFile-camera')).toHaveAttribute('capture', 'environment');

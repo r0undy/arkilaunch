@@ -89,9 +89,7 @@ describe('WeatherBanner', () => {
     expect(html).not.toContain('View live map');
   });
 
-  // CC BY 4.0 requires attribution wherever Open-Meteo's data is displayed
-  // (docs/cr-arkilaunch-open-meteo-free-tier.md); this must render
-  // regardless of whether site coordinates are also available.
+  // CC BY 4.0: the attribution renders with or without coordinates.
   it('always renders the Open-Meteo CC BY 4.0 attribution link', () => {
     const html = renderToStaticMarkup(
       <WeatherBanner tone="clear" severityLabel="Clear" siteName="Bagumbayan" condition="No advisory" timestamp={null} />,

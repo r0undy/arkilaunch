@@ -10,10 +10,6 @@ import {
   defaultRentalWindow,
 } from './cart-client.js';
 
-// The cart is read by three places that do not know about each other -- the
-// cart page, the sidebar count and the browse rail. Before useCart they each
-// held a private copy and a change in one never reached the others.
-
 function machine(model: string) {
   return { equipmentId: `id-${model}`, model, ...defaultRentalWindow() };
 }
@@ -50,9 +46,7 @@ describe('useCart', () => {
     expect(result.current.map((i) => i.model)).toEqual(['B2']);
   });
 
-  // clearCart is the one mutator that does not route through saveCart, and it
-  // runs right after a booking is placed. Miss it and the sidebar keeps
-  // counting machines the customer has already booked.
+  // clearCart does not route through saveCart and must still publish.
   it('re-renders when the cart is cleared after checkout', () => {
     addToCart(machine('JCB 3CX'));
     const { result } = renderHook(() => useCart());

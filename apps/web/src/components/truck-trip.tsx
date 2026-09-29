@@ -16,7 +16,6 @@ import { NegotiateChoice } from './negotiate-choice.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { useTenant } from '../lib/tenant.js';
 
-
 // low-high band and the cap note shown with every estimate.
 export function EstimateRange({ price, capPhp }: { price: TruckPrice; capPhp?: number | null }) {
   if (price.lowPhp === undefined || price.highPhp === undefined) return null;

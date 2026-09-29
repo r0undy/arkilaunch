@@ -7,7 +7,6 @@ import { Button } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { useToast } from './toast.js';
 
-
 export function ApplicationActions({ application }: { application: TenantApplication }) {
   const queryClient = useQueryClient();
   const [activation, setActivation] = useState<{ token: string; slug: string | undefined } | null>(null);

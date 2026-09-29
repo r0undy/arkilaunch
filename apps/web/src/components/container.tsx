@@ -1,7 +1,6 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 import { Surface } from './surface.js';
 
-
 export interface ContainerHeaderProps {
   title: string;
   count?: number | null | undefined;

@@ -1,6 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-
 export { PAGE_SIZE } from '../lib/queries.js';
 
 export interface PaginationProps {

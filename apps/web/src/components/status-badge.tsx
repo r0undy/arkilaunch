@@ -1,7 +1,6 @@
 import { CircleCheck, CircleDashed, CircleDot, Clock, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { formatStatus } from '../lib/format.js';
 
-
 type Tone = 'success' | 'progress' | 'waiting' | 'danger' | 'muted';
 
 // The icon carries the colour, so warning yellow never has to pass as text.

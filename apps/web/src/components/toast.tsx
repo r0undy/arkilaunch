@@ -11,7 +11,6 @@ import {
 import { createPortal } from 'react-dom';
 import { Check, CircleX, Info, TriangleAlert, X } from 'lucide-react';
 
-
 export type ToastTone = 'success' | 'error' | 'info' | 'warning';
 
 export interface Toast {

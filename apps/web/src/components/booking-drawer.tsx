@@ -17,7 +17,6 @@ import { RouteMap } from './route-map.js';
 import { NegotiationThread } from './negotiation-thread.js';
 import { BookingSide, SiteRepContact } from './booking-actions.js';
 
-
 const heading = 'text-heading-md text-text';
 
 export function rentalSteps(b: Pick<BookingDetailResponse, 'status' | 'callConfirmedAt' | 'quotation'>): TripStep[] {

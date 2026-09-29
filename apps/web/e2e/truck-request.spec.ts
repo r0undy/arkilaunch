@@ -2,12 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { signIn, signInAsCustomer } from './sign-in.js';
 import { choose } from './select.js';
 
-// The self-loading truck as a bookable service (CR truck-booking-and-kyc-docs):
-// dropdown locations + map pins -> estimate range -> request -> request a
-// call -> negotiate -> staff accept a price and confirm by phone -> My
-// Bookings truck tab -> cash invoice -> staff record the cash.
-// Needs the seeded anchor tenant, the API, and outbound access to the public
-// OSM geocoder/router the estimate uses.
+// Needs the seeded anchor tenant, the API, and outbound access to the public OSM geocoder/router.
 
 async function pickLocation(page: Page, label: string, city: string) {
   await choose(page.getByLabel(`${label} region`), { label: 'NCR (National Capital Region)' });
@@ -47,8 +42,7 @@ test.describe('self-loading truck', () => {
 
     const note = `e2e ${Date.now()}`;
     await customer.getByLabel('Notes (optional)').fill(note);
-    // QA 14: the trip is for the customer's company; a site is optional
-    // and needs no proof. What goes on the truck is required.
+    // The trip is for the customer's company; a site is optional and needs no proof. What goes on the truck is required.
     await customer.getByLabel('Equipment to load').fill('1 excavator, about 20 t');
     await customer.getByRole('button', { name: 'Request truck' }).click();
     await expect(customer.getByText('Truck requested')).toBeVisible({ timeout: 30_000 });
@@ -72,7 +66,7 @@ test.describe('self-loading truck', () => {
     // Truck service lives under Bookings now; /app/trucks lands on its tab.
     await admin.goto('/app/trucks');
     await expect(admin.getByRole('tab', { name: /Truck service/ })).toHaveAttribute('aria-selected', 'true');
-    // A table row on desktop, a card on a phone (Table, CR: console-components).
+    // A table row on desktop, a card on a phone.
     await admin.locator('tr, li').filter({ hasText: code }).first().click();
     const drawer = admin.getByRole('dialog', { name: code });
     await drawer.getByRole('tab', { name: 'Negotiation' }).click();
@@ -96,7 +90,7 @@ test.describe('self-loading truck', () => {
     await expect(trip.getByText('₱4,321.00')).toBeVisible();
     await trip.click();
     const booked = customer.getByRole('dialog', { name: code });
-    // QA 21: the customer accepts every agreed price before paying.
+    // The customer accepts every agreed price before paying.
     await booked.getByRole('button', { name: 'Accept ₱4,321.00' }).click();
     await booked.getByRole('button', { name: 'Pay cash at the office' }).click();
     await expect(customer).toHaveURL(/\/account\/invoices\//, { timeout: 30_000 });

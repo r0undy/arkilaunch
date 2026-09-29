@@ -23,8 +23,7 @@ describe('explainBookingError', () => {
   const generic = explainBookingError({ status: 500, payload: { error: 'internal_error' } });
   const fail = (status: number, payload: Record<string, unknown>) => explainBookingError({ status, payload });
 
-  // Every refusal BookingsService.create can answer (QA 24): none may fall
-  // through to the "try again in a moment" line meant for a server fault.
+  // Every refusal BookingsService.create can answer: none may fall through to the server-fault line.
   it.each([
     [403, { error: 'customer_profile_not_found' }],
     [403, { error: 'customer_scope_denied' }],
