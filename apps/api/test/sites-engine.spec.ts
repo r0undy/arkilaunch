@@ -165,6 +165,32 @@ describe('SitesService (PRD-F4/F5)', () => {
     ).rejects.toThrow(ConflictException);
   });
 
+  it('refuses to deploy a retired unit, even one still marked available', async () => {
+    const [retired] = await withTenantTx(adminCtxA, (tx) =>
+      tx
+        .insert(equipmentTable)
+        .values({
+          tenantId: adminCtxA.tenantId,
+          equipmentTypeId: equipmentTypeIdA,
+          model: 'Retired Sites Test Unit',
+          serialNo: `test-tenant-a-serial-sites-retired-${Date.now()}`,
+          retiredAt: new Date(),
+        })
+        .returning(),
+    );
+
+    await expect(
+      sites.createDeployment(adminCtxA, siteIdA, {
+        equipmentId: retired!.id,
+        rentalId: dedicatedRentalId,
+        start: '2031-04-01T00:00:00.000Z',
+        end: '2031-04-05T00:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({ response: { error: 'equipment_unavailable' } });
+    const [after] = await withTenantTx(adminCtxA, (tx) => tx.select().from(equipmentTable).where(eq(equipmentTable.id, retired!.id)));
+    expect(after?.availabilityStatus).toBe('available');
+  });
+
   // QAD-T24: a spoofed/foreign site id is denied by RLS, not an app filter.
   it('QAD-T24: a tenant B admin cannot deploy equipment against tenant A\'s site', async () => {
     await expect(

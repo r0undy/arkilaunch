@@ -383,7 +383,7 @@ export class SitesService {
         .for('update');
       if (!equipmentRow) throw new NotFoundException({ error: 'equipment_not_found' });
 
-      if (equipmentRow.availabilityStatus !== 'available') {
+      if (equipmentRow.availabilityStatus !== 'available' || equipmentRow.retiredAt) {
         const alternatives = await findAvailableAlternatives(
           tx,
           equipmentRow.equipmentTypeId,
