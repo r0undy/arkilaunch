@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll } from 'vitest';
+import { describe, expect, it, beforeAll, vi } from 'vitest';
 import { ConflictException, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import postgres from 'postgres';
@@ -239,6 +239,28 @@ describe('FleetService (PRD-F4)', () => {
     const unitReport = await fleet.report(adminCtx, unit.id);
     expect(unitReport.totals.hours).toBe(8);
     expect(unitReport.months.at(-1)?.hours).toBe(8);
+  });
+
+  it("the equipment report ends on Manila's month, not a UTC server's", async () => {
+    const unit = await fleet.create(adminCtx, {
+      equipmentTypeId,
+      model: 'Month Bucket Unit',
+      serialNo: `fleet-month-${Date.now()}`,
+      availabilityStatus: 'available',
+    });
+    const tz = process.env.TZ;
+    process.env.TZ = 'UTC';
+    vi.useFakeTimers({ toFake: ['Date'] });
+    // 20:00 UTC on Sep 30 is already Oct 1 in Manila.
+    vi.setSystemTime(new Date('2026-09-30T20:00:00Z'));
+    try {
+      const unitReport = await fleet.report(adminCtx, unit.id);
+      expect(unitReport.months.map((m) => m.month)).toEqual(['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10']);
+    } finally {
+      vi.useRealTimers();
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
   });
 
   it('GET /equipment/:id/report needs report:read, which a timekeeper lacks', async () => {

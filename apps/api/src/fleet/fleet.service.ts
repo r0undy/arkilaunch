@@ -589,10 +589,11 @@ export class FleetService {
         byMonth.set(key, (byMonth.get(key) ?? 0) + day.hours.running);
       }
       const months: EquipmentReportResponse['months'] = [];
+      // Manila's current month, not the server's: report dates are Manila days.
+      const [year, month] = manilaDate(new Date()).split('-').map(Number) as [number, number];
       for (let i = 5; i >= 0; i--) {
-        const d = new Date();
-        d.setMonth(d.getMonth() - i, 1);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const d = new Date(Date.UTC(year, month - 1 - i, 1));
+        const key = d.toISOString().slice(0, 7);
         const hours = round2HalfUp(byMonth.get(key) ?? 0);
         months.push({ month: key, hours, fuelLitres: litres(hours) });
       }
