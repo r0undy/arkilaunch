@@ -11,7 +11,7 @@ import {
   users,
 } from '@arkilaunch/db';
 import { makeJobDb } from './db-client.js';
-import { runInstrumentedJob } from './telemetry.js';
+import { runJobIfMain } from './telemetry.js';
 
 // QA 25 (cr-arkilaunch-qa-batch-23-28.md): an unpaid request holds its
 // dates until rentals.hold_expires_at. The availability check already stops
@@ -134,13 +134,4 @@ export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: stri
   }
 }
 
-const isMainModule =
-  process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
-if (isMainModule) {
-  runInstrumentedJob('hold-expiry', async () => {
-    await runHoldExpiry();
-  }).catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+runJobIfMain(import.meta.url, 'hold-expiry', runHoldExpiry);

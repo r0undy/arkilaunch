@@ -19,7 +19,7 @@ import {
 } from '@arkilaunch/shared';
 import { createWeatherAdapter } from '@arkilaunch/weather';
 import { makeJobDb } from './db-client.js';
-import { runInstrumentedJob } from './telemetry.js';
+import { runJobIfMain } from './telemetry.js';
 
 // Weather monitoring before and during the workday
 // (docs/cr-arkilaunch-weather-monitoring.md). Monitoring and verification
@@ -258,10 +258,4 @@ export async function hourlyWatch(db: JobDb, port: HourlyForecastPort, sites: De
   return sent;
 }
 
-const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
-if (isMainModule) {
-  runInstrumentedJob('weather-briefing', () => runWeatherBriefing()).catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+runJobIfMain(import.meta.url, 'weather-briefing', runWeatherBriefing);

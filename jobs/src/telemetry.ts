@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { useAzureMonitor, shutdownAzureMonitor } from '@azure/monitor-opentelemetry';
 
 let initialized = false;
@@ -51,4 +52,15 @@ export async function runInstrumentedJob(jobName: string, fn: () => Promise<void
       await shutdownAzureMonitor().catch(() => {});
     }
   }
+}
+
+// pathToFileURL, not `file://${argv[1]}`: on Windows the latter never matches import.meta.url.
+export function runJobIfMain(importMetaUrl: string, jobName: string, fn: () => Promise<unknown>): void {
+  if (!process.argv[1] || pathToFileURL(process.argv[1]).href !== importMetaUrl) return;
+  runInstrumentedJob(jobName, async () => {
+    await fn();
+  }).catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 }

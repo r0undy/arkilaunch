@@ -13,7 +13,7 @@ import {
 import { AzureDocumentIntelligenceAdapter, EDTR_MODEL_ID } from '@arkilaunch/document-intelligence';
 import { makeJobDb } from './db-client.js';
 import { fetchStorageObject } from './storage.js';
-import { runInstrumentedJob } from './telemetry.js';
+import { runJobIfMain } from './telemetry.js';
 
 // RFC-2 §2/§3 (RFC2-02): claim/lock/retry loop + extraction + reconciliation
 // gate.
@@ -354,10 +354,4 @@ export async function runEdtrOcrWorker(
   }
 }
 
-const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
-if (isMainModule) {
-  runInstrumentedJob('edtr-ocr-worker', () => runEdtrOcrWorker()).catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+runJobIfMain(import.meta.url, 'edtr-ocr-worker', runEdtrOcrWorker);

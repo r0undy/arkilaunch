@@ -10,7 +10,7 @@ import {
   users,
 } from '@arkilaunch/db';
 import { makeJobDb } from './db-client.js';
-import { runInstrumentedJob } from './telemetry.js';
+import { runJobIfMain } from './telemetry.js';
 
 // PRD-F4 (PM-threshold notification), SDD §4: "No money movement and no
 // autonomous state change: it notifies, a human schedules the
@@ -140,11 +140,4 @@ export async function runMaintenanceNotify(): Promise<void> {
   }
 }
 
-const isMainModule =
-  process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
-if (isMainModule) {
-  runInstrumentedJob('pm-notify', () => runMaintenanceNotify()).catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+runJobIfMain(import.meta.url, 'pm-notify', runMaintenanceNotify);

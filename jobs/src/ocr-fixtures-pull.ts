@@ -362,11 +362,7 @@ async function main() {
   else await runGolden(opts);
 }
 
-// pathToFileURL rather than the `file://${argv[1]}` idiom the four workers
-// use: on Windows that spelling yields `file://C:/...` where Node reports
-// `file:///C:/...`, so the guard never matches and the script exits silently
-// with status 0. The workers only ever run on Linux in a container, where the
-// two spellings agree; this script is run by an operator on their own machine.
+// Not runJobIfMain: an operator CLI, uninstrumented, printing only the message.
 const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMainModule) {
   main().catch((err) => {

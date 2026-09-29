@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { customers, depositAccruals, invoiceLineItems, invoices, notifications, publicPhotoUrl, rentals, sendEmail, tenants, users } from '@arkilaunch/db';
 import { round2HalfUp, notificationEmail, renderEmailHtml, tenantWebOrigin } from '@arkilaunch/shared';
 import { makeJobDb } from './db-client.js';
-import { runInstrumentedJob } from './telemetry.js';
+import { runJobIfMain } from './telemetry.js';
 
 // Weekly: every rental's unbilled deposit_accruals (reconciled hours billed
 // past the deposit balance, edtr.service.ts approve) roll into ONE
@@ -112,13 +112,4 @@ export async function runWeeklyBilling(): Promise<number> {
   }
 }
 
-const isMainModule =
-  process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
-if (isMainModule) {
-  runInstrumentedJob('weekly-billing', async () => {
-    await runWeeklyBilling();
-  }).catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+runJobIfMain(import.meta.url, 'weekly-billing', runWeeklyBilling);

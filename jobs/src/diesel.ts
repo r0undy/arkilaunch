@@ -1,6 +1,6 @@
 import { events, recordGasWatchDieselReading } from '@arkilaunch/db';
 import { makeJobDb } from './db-client.js';
-import { runInstrumentedJob } from './telemetry.js';
+import { runJobIfMain } from './telemetry.js';
 
 // Weekly ACA Job cron (customer feedback 3; was the RFC-3 QUOTE-04 DOE
 // scrape). Records GasWatch PH's national average diesel price as a new
@@ -35,10 +35,4 @@ export async function runDieselRefresh(): Promise<void> {
   }
 }
 
-const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
-if (isMainModule) {
-  runInstrumentedJob('diesel', () => runDieselRefresh()).catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+runJobIfMain(import.meta.url, 'diesel', runDieselRefresh);
