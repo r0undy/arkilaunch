@@ -29,13 +29,8 @@ interface RotateResult {
   issued: IssuedRefreshToken;
 }
 
-// RFC-1 §3: rotating refresh tokens, family lineage, reuse detection. A
-// token replayed after rotation revokes the entire family and writes a
-// refresh_reuse_detected audit row (QAD abuse gate). Every write here runs
-// through withTenantTx (normal RLS path) once the tenant is known; only the
-// initial lookup-by-hash uses the SECURITY DEFINER function in
-// packages/db/src/auth-lookup.ts, because that lookup has no tenant
-// context yet by definition.
+// A token replayed after rotation revokes the whole family. Only the lookup-by-hash uses SECURITY DEFINER
+// (no tenant context yet); every write runs through withTenantTx.
 @Injectable()
 export class RefreshTokenService {
   async issue(
@@ -69,17 +64,12 @@ export class RefreshTokenService {
       throw new UnauthorizedException('invalid_refresh_token');
     }
 
-    // Re-read the user's current role rather than trusting anything about
-    // the old session: a role change or deactivation between refreshes
-    // takes effect immediately.
+    // Re-read the current role: a role change or deactivation takes effect at the next refresh.
     const current = await this.resolveCurrentUser(existing.tenantId, existing.userId);
     const ctx = { tenantId: existing.tenantId, userId: existing.userId, role: current.role };
 
     if (current.status !== 'active') {
-      // Without this check a deactivated user could keep rotating a refresh
-      // token for up to REFRESH_TOKEN_TTL_MS (30 days); deactivation would
-      // be cosmetic. Revoke the family too, so this refresh token cannot be
-      // replayed once the user is later reactivated.
+      // Else a deactivated user could keep rotating for 30 days; revoking the family stops a replay after reactivation.
       await this.revokeFamily(ctx, existing.familyId);
       throw new UnauthorizedException('user_inactive');
     }
@@ -151,10 +141,7 @@ export class RefreshTokenService {
     );
   }
 
-  // Reusable by any admin action that must take effect immediately rather
-  // than waiting out the access-token TTL: a role change or deactivation
-  // (S19) revokes every outstanding refresh-token family for the target
-  // user, in the caller's own tenant-scoped transaction.
+  // For admin actions that must take effect now rather than after the access-token TTL.
   async revokeAllForUser(
     ctx: { tenantId: string; userId: string; role: string },
     targetUserId: string,

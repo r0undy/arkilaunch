@@ -4,8 +4,7 @@ import { type Tx, dieselPriceReadings, getBillingSettings, pricingParameters, ra
 import { rentFor, round2HalfUp, type Discount, type QuoteItemInput, type QuoteRequest, type RentPart } from '@arkilaunch/shared';
 
 const FORMULA_VERSION = '2.0';
-// RFC-3 §3: default staleness window; DOE updates weekly (typically
-// Tuesdays), so a week-old reading is still usable, just labeled stale.
+// DOE updates weekly, so a week-old reading is usable, just labeled stale.
 const STALENESS_WINDOW_DAYS = 7;
 
 
@@ -34,8 +33,7 @@ export interface PricedItem {
   estimatedHours: number;
   mobilizationKm: number;
   demobilizationKm: number;
-  // Effective per-hour figure (rent / hours + operator, maintenance, fuel),
-  // so hours x quantity x hourlyRate = operatingCost (the deposit reads it).
+  // Effective per-hour figure, so hours x quantity x hourlyRate = operatingCost.
   hourlyRatePhp: number;
   rentPhp: number;
   rentParts: RentPart[];
@@ -59,8 +57,7 @@ export interface PricedQuote {
 
 @Injectable()
 export class PricingEngineService {
-  // RFC-3 §3 diesel-price resolution order: tenant override (fresh) -> latest
-  // reading (fresh) -> latest reading (stale, price_stale=true) -> 422.
+  // Resolution order: fresh tenant override -> fresh reading -> stale reading (price_stale) -> 422.
   async resolveDieselAndParams(tx: Tx, tenantId: string, region = 'NCR'): Promise<DieselResolution> {
     const now = new Date();
     const staleBefore = new Date(now.getTime() - STALENESS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
@@ -96,7 +93,6 @@ export class PricingEngineService {
       transportPhpPerKm: Number(params.transportPhpPerKm),
     };
 
-    // 1. Tenant override, if set and fresh.
     if (params.dieselOverridePhp && params.dieselOverrideDate) {
       const overrideDate = new Date(params.dieselOverrideDate);
       if (overrideDate >= staleBefore) {
@@ -111,7 +107,6 @@ export class PricingEngineService {
       }
     }
 
-    // 2/3. Latest reading for the region, fresh or stale.
     const [latest] = await tx
       .select()
       .from(dieselPriceReadings)
@@ -131,7 +126,7 @@ export class PricingEngineService {
       };
     }
 
-    // 4. Nothing at all: never price against an unknown value (US-03).
+    // Never price against an unknown value.
     throw new UnprocessableEntityException({
       error: 'no_diesel_price',
       message: `No diesel price available for region ${region}; enter one to continue.`,
@@ -166,11 +161,7 @@ export class PricingEngineService {
       throw new UnprocessableEntityException({ error: 'rate_card_not_found', rateCardId: input.rateCardId });
     }
 
-    // A rate card is append-only (only effective_to ever moves; see
-    // migration 0007 + PricingService.setPricingParameters, the existing
-    // precedent). Once superseded, its id must never be able to price a NEW
-    // quote at the old value -- QAD-T44/T48. `revise()` is the only path a
-    // rate change should reach a customer through.
+    // A superseded card must never price a NEW quote at the old value.
     const effectiveFrom = new Date(rateCard.effectiveFrom);
     const effectiveTo = rateCard.effectiveTo ? new Date(rateCard.effectiveTo) : null;
     if (effectiveFrom > now || (effectiveTo && effectiveTo <= now)) {
@@ -204,9 +195,7 @@ export class PricingEngineService {
     const itemBase = operatingCost + mobilizationCost + demobilizationCost;
     const buffer = itemBase * diesel.bufferPct;
     const computedSubtotal = round2HalfUp(itemBase + buffer);
-    // Negotiation: staff may set an agreed price for this line. It replaces
-    // the line subtotal on this quote only; the computed figure is kept
-    // beside it in pricing_inputs so the snapshot shows both.
+    // The agreed price replaces this line's subtotal; the computed figure stays in pricing_inputs beside it.
     const agreed = input.agreedSubtotalPhp;
     const subtotal = agreed !== undefined ? round2HalfUp(agreed) : computedSubtotal;
     const rentPhp = round2HalfUp(rent.rentPhp * input.quantity);
@@ -253,8 +242,6 @@ export class PricingEngineService {
     };
   }
 
-  // Subtotal = the lines plus the flat mobilization/demobilization; the
-  // discount comes off that.
   applyDiscount(
     items: PricedItem[],
     discount: Discount,
@@ -280,9 +267,7 @@ export class PricingEngineService {
     for (const item of request.items) {
       pricedItems.push(await this.priceItem(tx, tenantId, diesel, item, settings.dailyHours));
     }
-    // Equipment rental's fixed mobilization/demobilization from the price
-    // book; the same for every client, never set per quote. A negotiated
-    // reduction goes through the discount.
+    // Fixed from the price book, never set per quote; a negotiated reduction goes through the discount.
     const mobilizationPhp = round2HalfUp(settings.mobilizationPhp);
     const demobilizationPhp = round2HalfUp(settings.demobilizationPhp);
     const totals = this.applyDiscount(pricedItems, request.discount, mobilizationPhp + demobilizationPhp);

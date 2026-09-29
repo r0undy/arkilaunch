@@ -5,19 +5,11 @@ import { PaymentsService } from './payments.service.js';
 import { CheckoutRequestDto, CouponPreviewRequestDto, InvoiceAmountUpdateDto, RefundRequestDto } from './dto.js';
 import type { CtxRequest } from '../common/request.js';
 
-// PRD-F2 (PayMongo Payment Interface), SDD §4
-// `POST /api/v1/bookings/:id/checkout`.
 @Controller('bookings')
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
-  // HTTP-layer throttle (cr-arkilaunch-f9-read-surface.md), additional to
-  // -- not a replacement for -- payments.service.ts's existing tenant-scoped
-  // Postgres-backed CHECKOUT_RATE_LIMIT (QAD-T31, unit-tested in
-  // payments-engine.spec.ts). The two are deliberately not merged: this
-  // repo's engine specs call services directly, bypassing HTTP guards
-  // entirely, so an HTTP-only limiter would be invisible to that existing,
-  // passing test.
+  // HTTP throttle on top of the service's tenant-scoped limit (which the engine specs exercise directly).
   @Post(':id/checkout')
   @RequirePermission('payment:checkout')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
@@ -25,8 +17,7 @@ export class PaymentsController {
     return this.payments.checkout(req.ctx, id, body, req.headers.origin);
   }
 
-  // What a coupon would take off (cr-arkilaunch-coupons.md). Tight throttle:
-  // this is the endpoint a code guesser would hammer.
+  // Tight throttle: this is the endpoint a code guesser would hammer.
   @Post(':id/coupon')
   @RequirePermission('payment:checkout')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -35,8 +26,6 @@ export class PaymentsController {
   }
 }
 
-// The self-loading truck's checkout (same rules as a booking's) and the
-// staff-recorded cash receipt, which settles either kind of invoice.
 @Controller()
 export class TruckPaymentsController {
   constructor(private readonly payments: PaymentsService) {}
@@ -55,8 +44,7 @@ export class TruckPaymentsController {
     return this.payments.checkoutInvoice(req.ctx, id, body, req.headers.origin);
   }
 
-  // The success page's server-side check with PayMongo (any invoice kind
-  // the customer owns). Throttled: each call is an outbound PayMongo read.
+  // Throttled: each call is an outbound PayMongo read.
   @Post('me/invoices/:id/confirm-payment')
   @RequirePermission('payment:checkout')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
@@ -64,8 +52,6 @@ export class TruckPaymentsController {
     return this.payments.confirmPayment(req.ctx, id);
   }
 
-  // Same staff as cash receipts (quote:approve) issue refunds, of the
-  // invoice's paid online payment.
   @Post('invoices/:id/refund')
   @RequirePermission('quote:approve')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -73,7 +59,6 @@ export class TruckPaymentsController {
     return this.payments.refund(req.ctx, id, body);
   }
 
-  // quote:approve: the staff who agree prices lower one (audit-logged).
   @Post('invoices/:id/amount')
   @RequirePermission('quote:approve')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -81,7 +66,6 @@ export class TruckPaymentsController {
     return this.payments.adjustAmount(req.ctx, id, body);
   }
 
-  // quote:approve: the staff who agree prices are the ones who take cash.
   @Post('invoices/:id/cash-payment')
   @RequirePermission('quote:approve')
   recordCash(@Param('id') id: string, @Req() req: CtxRequest) {

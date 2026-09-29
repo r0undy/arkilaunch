@@ -55,16 +55,11 @@ function toInvoiceSummary(row: typeof invoices.$inferSelect, codes: Map<string, 
   };
 }
 
-// Legacy fallback only. invoice_line_items.reconciliation_id is now a real
-// FK and is what approve() writes and what this reader prefers; the
-// pattern below is kept for rows written before that column existed and
-// which the backfill could not resolve (audit-db-tenant-isolation.md #3).
-// A text description can be edited or reformatted; a foreign key cannot.
+// Legacy fallback for rows predating invoice_line_items.reconciliation_id; the FK is preferred.
 const EDTR_EVIDENCE_PATTERN =
   /^EDTR reconciliation ([0-9a-fA-F-]{36}) \(sources: ([0-9a-fA-F-]{36}), ([0-9a-fA-F-]{36}|n\/a)\)$/;
 
 async function findEdtrEvidence(tx: Tx, lineItems: (typeof invoiceLineItems.$inferSelect)[]) {
-  // Structured link first.
   for (const item of lineItems) {
     if (!item.reconciliationId) continue;
     const [reconciliation] = await tx
@@ -125,13 +120,8 @@ async function billTo(tx: Tx, invoice: typeof invoices.$inferSelect) {
   return company ?? null;
 }
 
-// PRD-F2/F3 read surface backing S9 Billing & Deposit Ledger
-// (cr-arkilaunch-f9-read-surface.md). Read-only: writes to invoices/
-// payments/edtr_reconciliations happen exclusively in edtr.service.ts and
-// payments.service.ts. billing:read-gated (owner is read-mostly, QAD-T19).
 @Injectable()
 export class BillingService {
-  // GET /api/v1/invoices?rentalId=&invoiceType=&status=&from=&to=&limit=&offset=
   async listInvoices(ctx: RequestContext, query: InvoiceListQuery): Promise<InvoiceListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const conditions: SQL[] = [];
@@ -159,16 +149,11 @@ export class BillingService {
     });
   }
 
-  // GET /api/v1/invoices/:id (evidence trail: the edtr_reconciliations row,
-  // both source edtr ids, and the audit_logs DEDUCT row -- SDD §4 "invoice
-  // line cites both source logs", QAD-T1).
   async getInvoice(ctx: RequestContext, id: string): Promise<InvoiceDetailResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, id)).limit(1);
       if (!invoice) throw new NotFoundException({ error: 'invoice_not_found' });
-      // A customer (GET /me/invoices/:id) reads only an invoice on their own
-      // booking or truck request; anything else is a 404, not a 403, so ids
-      // cannot be probed.
+      // A customer reads only their own booking's or truck request's invoice; 404, not 403, so ids can't be probed.
       if (ctx.role === 'customer' && !(await customerOwnsInvoice(tx, ctx, invoice))) {
         throw new NotFoundException({ error: 'invoice_not_found' });
       }
@@ -204,9 +189,7 @@ export class BillingService {
     });
   }
 
-  // GET /api/v1/rentals/:id/deposit (S9 deposit ledger). Same resolution
-  // path as edtr.service.ts's approve gate (resolveDepositLedger) so the
-  // two can never disagree about a rental's remaining deposit.
+  // resolveDepositLedger, same as the approve gate, so the two never disagree.
   async depositLedger(ctx: RequestContext, rentalId: string): Promise<DepositLedgerResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, rentalId)).limit(1);
@@ -226,10 +209,6 @@ export class BillingService {
     });
   }
 
-  // GET /rentals/:id/statement (staff) and /me/rentals/:id/statement (the
-  // customer's own booking). Read-only, computed from the rows that already
-  // hold the money: deposit-deduction lines and accruals (each tied to one
-  // reconciled EDTR day), invoices and payments.
   async statement(ctx: RequestContext, rentalId: string): Promise<StatementOfAccount> {
     return withTenantTx(ctx, async (tx) => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, rentalId)).limit(1);

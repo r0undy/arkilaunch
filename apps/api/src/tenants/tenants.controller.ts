@@ -34,11 +34,6 @@ function imageKind(kind: string): 'logo' | 'hero' | 'icon' {
   return kind;
 }
 
-// Demonstrates the full golden-path chain (AGENTS.md §4): JWT identity,
-// tenant-context derivation, RBAC, and an RLS-scoped read/write -- on a
-// resource this slice actually owns. JwtAuthGuard / TenantContextGuard /
-// PermissionsGuard are applied globally in app.module.ts; this controller
-// just declares the permission it needs.
 @Controller('tenants')
 export class TenantsController {
   constructor(private readonly tenants: TenantsService) {}
@@ -49,9 +44,7 @@ export class TenantsController {
     return this.tenants.me(req.ctx);
   }
 
-  // Branding (migration 0051). Owner/admin edit their own tenant; the tenant
-  // is always req.ctx.tenantId from the verified JWT (RFC-1), never input.
-  // legal_name/slug are not in the DTO (.strict()), so the name stays locked.
+  // The tenant is always req.ctx.tenantId from the verified JWT, never input; legal_name/slug aren't in the strict DTO.
   @Get('me/branding')
   @RequirePermission('tenant:manage')
   myBranding(@Req() req: CtxRequest) {
@@ -79,8 +72,7 @@ export class TenantsController {
     return this.tenants.setBrandingImage(req.ctx, req.ctx.tenantId, imageKind(kind), null);
   }
 
-  // POST /tenants/register (@Public, unauthenticated write -- tight
-  // throttle since there is no credential to rate-limit by).
+  // Unauthenticated write: tight throttle, since there is no credential to rate-limit by.
   @Post('register')
   @Public()
   @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
@@ -89,25 +81,20 @@ export class TenantsController {
     return this.tenants.register(body);
   }
 
-  // GET /tenants/applications (tenant:approve, platform_admin only). No
-  // GET ':id' route exists on this controller, so this literal path cannot
-  // collide with the ':id/approve' | ':id/reject' POST routes below.
+  // No GET ':id' route exists here, so this literal path can't collide with ':id/approve' | ':id/reject'.
   @Get('applications')
   @RequirePermission('tenant:approve')
   listApplications(@Query() query: TenantApplicationListQueryDto) {
     return this.tenants.listApplications(query);
   }
 
-  // GET /tenants/companies (tenant:approve, platform_admin only): every
-  // rental company past review, with headline counts (migration 0049).
   @Get('companies')
   @RequirePermission('tenant:approve')
   listCompanies() {
     return this.tenants.listCompanies();
   }
 
-  // PATCH /tenants/:id/status (tenant:approve): activate or deactivate a
-  // company. Deactivated = no sign-in, no session renewal, storefront offline.
+  // Deactivated = no sign-in, no session renewal, storefront offline.
   @Patch(':id/status')
   @RequirePermission('tenant:approve')
   setStatus(
@@ -118,7 +105,6 @@ export class TenantsController {
     return this.tenants.setCompanyStatus(req.ctx, id, body.status);
   }
 
-  // Platform admin edits any rental company's branding from /admin/companies.
   @Get(':id/branding')
   @RequirePermission('tenant:approve')
   companyBranding(@Param('id') id: string) {
@@ -135,10 +121,7 @@ export class TenantsController {
     return this.tenants.updateBranding(req.ctx, id, body);
   }
 
-  // The company's PayMongo child account (org_...), pasted by the platform
-  // admin after the company completes PayMongo's own onboarding. Until it
-  // is set, online payments are collected on ArkiLaunch's parent account
-  // (payments.service.ts startOnline, TODO(paymongo-child-accounts)).
+  // Until set, online payments are collected on ArkiLaunch's parent account (TODO(paymongo-child-accounts)).
   @Get(':id/paymongo-account')
   @RequirePermission('tenant:approve')
   companyPaymongoAccount(@Param('id') id: string) {
@@ -175,18 +158,12 @@ export class TenantsController {
     return this.tenants.setBrandingImage(req.ctx, id, imageKind(kind), null);
   }
 
-  // GET /tenants/me/application (tenant:manage) -- an owner's own pending
-  // application, if any. No platform-console UI exists yet for the list
-  // above, but this unblocks account.applications.tsx immediately.
   @Get('me/application')
   @RequirePermission('tenant:manage')
   myApplication(@Req() req: CtxRequest) {
     return this.tenants.myApplication(req.ctx);
   }
 
-  // POST /tenants/:id/approve | /reject (tenant:approve, platform_admin
-  // only). No platform-console UI exists yet -- this is an API/curl-level
-  // step for now (see the Change Record for this workstream).
   @Post(':id/approve')
   @RequirePermission('tenant:approve')
   approve(@Param('id') id: string, @Req() req: CtxRequest) {
