@@ -2,10 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { round2HalfUp } from '@arkilaunch/shared';
 import { PricingEngineService } from './pricing-engine.service.js';
 
-// RFC-3 §3/§6, QAD-T46: rounding and discount math are pure and DB-free, so
-// they are unit-tested in isolation. Diesel resolution order (QAD-T45) and
-// snapshot reproducibility (QAD-T44) need real rows and are covered by the
-// integration specs in apps/api/test (RFC-3 §7 QUOTE-07).
+// Pure math only; diesel resolution and snapshot reproducibility need rows and live in apps/api/test.
 describe('PricingEngineService: rounding and discount math', () => {
   it('round2HalfUp rounds half-up to 2 decimals, not banker\'s rounding', () => {
     expect(round2HalfUp(1.005)).toBe(1.01);

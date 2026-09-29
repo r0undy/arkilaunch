@@ -5,10 +5,7 @@ import type { RequestContext } from '@arkilaunch/shared';
 import { availabilityBlockers, dayAvailability } from '../src/common/equipment-availability.js';
 import { renewLapsedHold } from '../src/common/booking-hold.js';
 
-// QA 25: an unpaid 'pending' request holds its dates only until
-// hold_expires_at; an online payment in flight keeps it held; a lapsed
-// hold renews at checkout only while its dates are still free. A 2036
-// window nobody else books.
+// A 2036 window nobody else books.
 describe('booking holds (QA 25)', () => {
   const sql = postgres(process.env.DATABASE_URL_DIRECT ?? '', { max: 1 });
   let ctx: RequestContext;

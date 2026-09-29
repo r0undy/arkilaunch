@@ -20,9 +20,7 @@ import { EdtrService } from '../src/edtr/edtr.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { ensurePaidDeposit } from './paid-deposit.js';
 
-// RFC-2 §3/§7: the reconciliation-gated deduction endpoint. QAD-T1 (happy),
-// QAD-T11/QAD-T26 (sad/abuse: no deduction without the gate), QAD-T29
-// (timekeeper site-scope abuse).
+// QAD-T1 (happy), QAD-T11/QAD-T26 (no deduction without the gate), QAD-T29 (timekeeper site scope).
 describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
   const edtr = new EdtrService(new EventsService());
   let adminCtx: RequestContext;
@@ -32,13 +30,7 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
   let unassignedRentalId: string;
 
   beforeAll(async () => {
-    // QAD-T39 runtime gate (audit-ocr-money-path.md #8): this spec's
-    // fixtures carry a real model_id, i.e. model-extracted evidence, and
-    // a deduction from model output is refused unless the golden-set
-    // accuracy has been measured and met. These tests are about the
-    // reconciliation/deduction behaviour, not the accuracy gate, so they
-    // attest a passing measurement. money-path.spec.ts covers the
-    // unattested case failing closed.
+    // Fixtures are model-extracted, so attest a passing accuracy; money-path covers the unattested case.
     process.env.OCR_MEASURED_ACCURACY = '0.95';
     process.env.OCR_MEASURED_SAMPLES = '250';
     const url = process.env.DATABASE_URL_DIRECT;
@@ -52,19 +44,9 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     const [rental] = await sql`select id from rentals where tenant_id = ${tenantId} limit 1`;
     const [customer] = await sql`select id from customers where tenant_id = ${tenantId} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
 
-    // A dedicated equipment unit, not `select ... from equipment limit 1`.
-    // This spec asserts on equipment.runtime_hours as a delta around its own
-    // approve(), and money-path.spec.ts resolves its equipment with the same
-    // unordered limit-1 and also approves. Against this shared, never-reset
-    // test project the two can land on the same row and accrue into each
-    // other's window, which reads as runtime_hours jumping by twice the
-    // hours logged. billing-engine.spec.ts already dedicates its equipment
-    // for the same reason. The rate card is keyed by tenant+equipment type,
-    // so the type is taken from an hourly card to keep the deduction priced.
+    // A dedicated unit: runtime_hours is asserted as a delta, and a shared row accrues other specs' approvals.
     const [rateCardRow] =
-      // A type-wide card in force across this spec's 2021-03 report dates: a
-      // unit's own card would not price the new unit below, and on the shared
-      // database 'any hourly card' was often one of those.
+      // A type-wide card in force across this spec's 2021-03 dates.
       await sql`select equipment_type_id from rate_cards where tenant_id = ${tenantId} and rate_type = 'hourly' and equipment_id is null and effective_from <= '2021-03-01' and (effective_to is null or effective_to > '2021-03-07') order by effective_from limit 1`;
     const equipmentTypeId = (rateCardRow as { equipment_type_id: string }).equipment_type_id;
     const [equipment] = await sql`
@@ -78,20 +60,14 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     rentalId = (rental as { id: string }).id;
     equipmentId = (equipment as { id: string }).id;
 
-    // Idempotency: this spec re-uses fixed report dates, so a prior run's
-    // leftover rows for the same equipment-day would otherwise make
-    // reconcileEdtr's counterpart lookup pick a stale, unconfigured row.
+    // Fixed dates, so a prior run's rows would pair as stale counterparts.
     const testDates = ['2021-03-01', '2021-03-02', '2021-03-03', '2021-03-04', '2021-03-05', '2021-03-06'];
     const staleIds = await sql`
       select id from edtr where equipment_id = ${equipmentId} and report_date = any(${testDates})
     `;
     const ids = staleIds.map((row) => (row as { id: string }).id);
     if (ids.length > 0) {
-      // invoice_line_items.reconciliation_id is a real FK now, and it is
-      // deliberately RESTRICT: a deduction's evidence must not be
-      // deletable out from under it (audit-db-tenant-isolation.md #3). A
-      // prior run's deduction lines therefore have to be cleared before
-      // the reconciliations they cite.
+      // The FK is RESTRICT, so deduction lines go before the reconciliations they cite.
       await sql`
         delete from invoice_line_items
         where reconciliation_id in (
@@ -108,19 +84,7 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
 
     await sql.end();
 
-    // A dedicated rental with its own quotation + rental_contracts chain,
-    // the same isolation billing-engine.spec.ts already uses and for the
-    // same reason: the shared fixture rental is mutated concurrently by
-    // other spec files.
-    //
-    // It needs a REAL configured deposit now. Before
-    // audit-ocr-money-path.md #5 was fixed, a rental with no
-    // rental_contracts chain had no cap at all and deductions here were
-    // unbounded; the fallback now caps at the deposit checkout actually
-    // collects, and eight hours of heavy equipment exceeds that placeholder
-    // many times over. A quote-originated rental -- which is what the pilot
-    // path produces -- carries a real deposit, so that is what this spec
-    // exercises.
+    // A dedicated rental with a real contract deposit: the shared fixture rental is mutated concurrently.
     await withTenantTx(adminCtx, async (tx) => {
       const [rentalRow] = await tx
         .insert(rentals)
@@ -172,11 +136,7 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     await ensurePaidDeposit(adminCtx, rentalId, unassignedRentalId);
   });
 
-  // "Two independent logs" (RFC-2 §2) means one paper_ocr + one
-  // digital_entry (the two source values the schema distinguishes); this
-  // helper simulates an already-extracted paper_ocr counterpart directly,
-  // since driving the real OCR worker is covered separately in
-  // jobs/src/edtr-ocr-worker.spec.ts.
+  // Simulates an already-extracted paper counterpart; the real worker is covered in the jobs package.
   async function insertExtractedPaperCounterpart(reportDate: string, hoursActive: number, hoursIdle: number) {
     return withTenantTx(adminCtx, async (tx) => {
       const [row] = await tx
@@ -236,16 +196,7 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     expect(approved.invoiceLine.sourceLogs).toContain(digital.id);
   });
 
-  // PRD-F4 / QAD-T26 (extended): reconcileEdtr() deliberately writes two
-  // reconciliation rows per matched pair, one keyed on each EDTR id
-  // (packages/db/src/reconciliation.ts). In production that second row
-  // comes from the edtr-ocr-worker calling reconcileEdtr on the paper side
-  // too (jobs/src/edtr-ocr-worker.ts); simulated here directly since
-  // driving the real worker is covered in jobs/src/edtr-ocr-worker.spec.ts.
-  // Approving the SECOND side of an already-approved pair must be REJECTED
-  // (409 already_approved) -- not silently accepted with a skipped accrual
-  // -- so exactly one deposit_deduction invoice and one runtime accrual
-  // ever result from one day's work (cr-arkilaunch-edtr-double-approve.md).
+  // The second side of an approved pair must 409, so one day's work yields one deduction and one accrual.
   it('PRD-F4 / QAD-T26: approving the second side of an already-approved pair is rejected', async () => {
     const { reconcileEdtr, equipment: equipmentTable, eq: eqFn } = await import('@arkilaunch/db').then(async (db) => ({
       ...db,

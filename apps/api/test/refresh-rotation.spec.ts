@@ -17,12 +17,7 @@ describe('RefreshTokenService: rotation and reuse detection', () => {
     if (!url) throw new Error('DATABASE_URL_DIRECT is required');
     const sql = postgres(url, { max: 1 });
     const [tenant] = await sql`select id from tenants where slug = 'test-tenant-a'`;
-    // Filtered by the seed's own fixed email, not a bare unordered `limit
-    // 1` -- other spec files (e.g. users-admin.spec.ts) insert many more
-    // tenant-A user rows at runtime (mostly status='invited'), and an
-    // unordered query could nondeterministically pick one of those instead
-    // of the seed's active admin, which would then spuriously trip this
-    // file's own user_inactive check.
+    // By the seed's fixed email: other specs add many tenant-A users, so an unordered `limit 1` is unstable.
     const [user] = await sql`
       select id from users where tenant_id = ${(tenant as { id: string }).id} and email = 'admin@test-tenant-a.test'
     `;
@@ -69,9 +64,7 @@ describe('RefreshTokenService: rotation and reuse detection', () => {
   });
 
   describe('deactivation takes effect immediately, not after the token expires', () => {
-    // A DEDICATED user, never the shared seed admin: other spec files
-    // (e.g. auth-lockout.spec.ts) log in as admin@test-tenant-a.test
-    // concurrently, and flipping its status here would race them.
+    // A dedicated user: other specs log in as the seed admin concurrently.
     let dedicatedUserId: string;
 
     beforeAll(async () => {

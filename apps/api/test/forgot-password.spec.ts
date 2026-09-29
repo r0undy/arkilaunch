@@ -11,9 +11,6 @@ function jwtService(): JwtService {
   return new JwtService({ privateKey, publicKey, signOptions: { algorithm: 'RS256' } });
 }
 
-// POST /auth/forgot-password: the same answer for every email, so the form
-// cannot be used to find out which addresses have an account. A real
-// account's admins get a feed row. Uses the two-tenant seed.
 describe('AuthService.forgotPassword', () => {
   const auth = new AuthService(jwtService(), new RefreshTokenService(), new TotpService());
 

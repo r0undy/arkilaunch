@@ -20,10 +20,7 @@ import { EdtrService } from '../src/edtr/edtr.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { ensurePaidDeposit } from './paid-deposit.js';
 
-// docs/cr-arkilaunch-weather-monitoring.md: a digitally entered EDTR is
-// checked against the site's recorded weather like a paper one. A
-// discrepancy is a review flag plus an incident-log row; it never holds
-// the day or touches money.
+// A discrepancy is a review flag plus an incident-log row; it never holds the day or touches money.
 describe('EDTR weather verification (digital entry)', () => {
   const events_ = new EventsService();
   const service = new EdtrService(events_);

@@ -6,9 +6,7 @@ import { rateCards, withTenantTx } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
 import { PricingService } from '../src/pricing/pricing.service.js';
 
-// S18 Rate Cards & Tenant Settings (PRD-F1/F7, QAD-T44/T19/T24). Uses a
-// dedicated equipment_types row so this file's writes never touch the
-// shared seeded rate card quotes-engine.spec.ts prices against.
+// A dedicated equipment type, so writes never touch the shared card quotes-engine prices against.
 describe('PricingService: rate cards + tenant settings (S18)', () => {
   const pricing = new PricingService();
   let adminCtxA: RequestContext;

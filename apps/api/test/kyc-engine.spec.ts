@@ -6,18 +6,13 @@ import { KycService } from '../src/kyc/kyc.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import type { StorageService } from '../src/storage/storage.service.js';
 
-// KycService now fetches the document via a signed download URL before
-// calling port.analyze(); a data: URL lets native fetch() resolve it without
-// a real Supabase Storage round trip or mocking global fetch.
+// A data: URL lets native fetch() resolve the signed download without Storage or a fetch mock.
 const stubStorage = {
   createSignedDownloadUrl: async () =>
     `data:application/octet-stream;base64,${Buffer.from('fixture-bytes').toString('base64')}`,
 } as unknown as StorageService;
 
-// RFC-2 §2/§3 KYC sub-flow (PRD-F6). QAD-T6 (happy), QAD-T18 (sad: below
-// threshold / portal mismatch stays unverified), QAD-T32 (abuse: no
-// automated portal verification is ever attempted -- requiresHumanConfirmation
-// is a hardcoded constant, not a computed one).
+// QAD-T6 (happy), QAD-T18 (stays unverified), QAD-T32 (no automated portal verification, ever).
 describe('KycService: extraction, format checks, and human portal confirmation', () => {
   let ctx: RequestContext;
   let customerId: string;

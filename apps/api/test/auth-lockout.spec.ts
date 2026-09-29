@@ -11,12 +11,7 @@ function jwtService(): JwtService {
   return new JwtService({ privateKey, publicKey, signOptions: { algorithm: 'RS256' } });
 }
 
-// QAD-T22 (credential stuffing / brute force on /auth/login). Each `it`
-// below constructs its own AuthService so the in-memory lockout Map never
-// leaks between tests (or spec files -- two-fa.spec.ts's own AuthService
-// instance is entirely separate). Uses the test-two-tenant seed's users
-// directly by email; no per-test DB lookup needed since login() itself
-// resolves the user from the email it is given.
+// Each `it` builds its own AuthService so the in-memory lockout Map never leaks between tests.
 describe('AuthService: login lockout', () => {
   function freshAuth(): AuthService {
     return new AuthService(jwtService(), new RefreshTokenService(), new TotpService());
@@ -74,9 +69,6 @@ describe('AuthService: login lockout', () => {
   });
 });
 
-// Login is scoped to the request host's tenant (tenant-slug.decorator.ts):
-// the right password on the wrong host is the same invalid_credentials as a
-// wrong password, so a host reveals nothing about another tenant's users.
 describe('AuthService: host-scoped login', () => {
   const auth = new AuthService(jwtService(), new RefreshTokenService(), new TotpService());
 

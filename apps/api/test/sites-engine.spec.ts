@@ -7,10 +7,7 @@ import type { RequestContext } from '@arkilaunch/shared';
 import { SitesService } from '../src/sites/sites.service.js';
 import { EventsService } from '../src/events/events.service.js';
 
-// PRD-F4/F5 read+write surface backing S12/S13/S14
-// (cr-arkilaunch-f9-read-surface.md). Uses a dedicated equipment unit
-// (not the shared fixture units edtr-engine.spec.ts / bookings-engine.spec.ts
-// mutate) since deployment writes flip equipment.availabilityStatus.
+// A dedicated unit: deployment writes flip equipment.availabilityStatus.
 describe('SitesService (PRD-F4/F5)', () => {
   const sites = new SitesService(new EventsService());
   let adminCtxA: RequestContext;
@@ -38,10 +35,7 @@ describe('SitesService (PRD-F4/F5)', () => {
     adminCtxB = { tenantId: tenantIdB, userId: (adminB as { id: string }).id, role: 'admin' };
     equipmentTypeIdA = (equipmentType as { id: string }).id;
 
-    // A dedicated site + unit + rental (rental.project_site_id === this
-    // site) so this file's deployment writes never touch rows other spec
-    // files mutate concurrently, and createDeployment's own
-    // rental.projectSiteId === siteId check (sites.service.ts) always holds.
+    // Dedicated site + unit + rental, so deployment writes never touch rows other specs mutate.
     await withTenantTx(adminCtxA, async (tx) => {
       const [address] = await tx
         .insert(addresses)

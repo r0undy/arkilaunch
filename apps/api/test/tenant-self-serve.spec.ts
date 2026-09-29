@@ -32,9 +32,6 @@ const branding = {
   province: 'Cebu',
 };
 
-// CR: tenant-self-serve-branding (migration 0051). Registration is
-// auto-approved, owner activation takes the company live, branding is
-// editable except the name, and the directory lists only active companies.
 describe('self-serve rental company', () => {
   const auth = new AuthService(jwtService(), new RefreshTokenService(), new TotpService());
   const tenants = new TenantsService(auth, null as never);

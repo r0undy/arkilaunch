@@ -21,37 +21,19 @@ import { EdtrService } from '../src/edtr/edtr.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { ensurePaidDeposit } from './paid-deposit.js';
 
-// QAD-T26 ("deduction without reconciliation": 409, deducts nothing) and
-// QAD-T40 ("0% reconciliation discrepancy before deduction"), which the
-// money-path-e2e CI job runs this file by name to enforce. RFC-2's central
-// invariant is that no deposit deduction happens without a passing
-// reconciliation or an explicit human approval, so the assertions here are
-// deliberately about money NOT moving: a deduction-invoice count that
-// stayed put, not merely a thrown exception.
-//
-// The pairing used throughout is a manually transcribed paper sheet plus a
-// digital entry. That is not an arbitrary choice: with ENABLE_OCR_PIPELINE
-// off (the default, and the pilot's real posture) manual transcription is
-// the ONLY way a deduction can be approved at all, so it is the path that
-// actually needs guarding.
+// QAD-T26 / QAD-T40, run by name in the money-path-e2e CI job. Assertions are about money NOT moving.
 describe('the money path: no deduction without a passing reconciliation', () => {
   const edtr = new EdtrService(new EventsService());
   let adminCtx: RequestContext;
   let rentalId: string;
   let equipmentId: string;
-  // A second rental with NO quotation/rental_contracts chain, so the
-  // no-deposit fallback cap has something to be tested against.
+  // No quotation/rental_contracts chain, for the no-deposit fallback cap.
   let uncappedRentalId: string;
   let unpaidRentalId: string;
   let uncappedEquipmentId: string;
 
-  // Own date range, disjoint from every other suite's. Vitest runs spec
-  // files in parallel and they all draw the same seeded rental and
-  // equipment, so two suites sharing an equipment-day will pair against
-  // each other's rows -- and the beforeAll cleanup below will delete them.
-  // Taken as of this commit: 2020-02-0X (billing), 2021-03-01..10
-  // (edtr-engine), 2021-04-01..02 (ai-abuse), 2021-05-01..03 (fleet).
-  // 2021-06 is free; check this list before adding a date here.
+  // Own date range: suites share equipment, so overlapping days pair across suites.
+  // Taken: 2020-02-0X (billing), 2021-03-01..10 (edtr-engine), 2021-04-01..02 (ai-abuse), 2021-05-01..03 (fleet).
   const DATES = {
     swap: '2021-06-01',
     asymmetric: '2021-06-02',
@@ -75,12 +57,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     `;
     const [equipment] = await sql`select id from equipment where tenant_id = ${tenantId} limit 1`;
 
-    // A private equipment type + unit + rate card for the no-deposit cap
-    // test. Its own type, not the shared one: a rate card is keyed on
-    // (tenant, equipment_type), so a card added against the shared type
-    // reprices every other spec's deductions -- which is exactly what a
-    // first attempt at this did to billing-engine. Scoped to 2021 as well
-    // as to its own type, so it cannot reach anything pricing at `now`.
+    // Its own equipment type: a card on the shared type would reprice every other spec's deductions.
     const [cappedType] = await sql`
       insert into equipment_types (name) values (${`Money Path Cap Fixture ${Date.now()}`}) returning id
     `;
@@ -101,29 +78,21 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     adminCtx = { tenantId, userId: (admin as { id: string }).id, role: 'admin' };
     equipmentId = (equipment as { id: string }).id;
 
-    // Fixed report dates, so a prior run's rows for the same equipment-day
-    // would make the counterpart lookup pair against stale data. Same
-    // idempotency guard as edtr-engine.spec.ts.
+    // Fixed dates, so a prior run's rows would pair as stale counterparts.
     const dates = Object.values(DATES);
     const staleIds = await sql`
       select id from edtr where equipment_id = ${equipmentId} and report_date = any(${dates})
     `;
     const ids = staleIds.map((row) => (row as { id: string }).id);
     if (ids.length > 0) {
-      // invoice_line_items.reconciliation_id is a real FK now, and it is
-      // deliberately RESTRICT: a deduction's evidence must not be
-      // deletable out from under it (audit-db-tenant-isolation.md #3). A
-      // prior run's deduction lines therefore have to be cleared before
-      // the reconciliations they cite.
+      // The FK is RESTRICT, so deduction lines go before the reconciliations they cite.
       await sql`
         delete from invoice_line_items
         where reconciliation_id in (
           select id from edtr_reconciliations
           where edtr_id = any(${ids}) or counterpart_edtr_id = any(${ids})
         )`;
-      // A prior run's over-the-deposit approval leaves an accrual citing
-      // its reconciliation (also RESTRICT), so a re-run against the same
-      // database would otherwise stop right here.
+      // Accruals also RESTRICT on their reconciliation.
       await sql`
         delete from deposit_accruals
         where reconciliation_id in (
@@ -137,16 +106,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
 
     await sql.end();
 
-    // Two dedicated rentals, the same isolation edtr-engine.spec.ts uses:
-    // the shared fixture rental is mutated concurrently by other spec
-    // files, and its deduction ledger accumulates across runs.
-    //
-    // `rentalId` carries a real rental_contracts deposit, which is what a
-    // quote-originated rental -- the pilot path -- actually has. It needs
-    // one now: since audit-ocr-money-path.md #5 was fixed, a rental with
-    // no configured deposit caps at what checkout collects, and six hours
-    // of equipment prices well past that placeholder. Testing the deduct
-    // path against the no-deposit fallback was testing the wrong branch.
+    // Dedicated rentals: the shared fixture rental is mutated concurrently. `rentalId` carries a real contract deposit.
     await withTenantTx(adminCtx, async (tx) => {
       const [withDeposit] = await tx
         .insert(rentals)
@@ -202,11 +162,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     await ensurePaidDeposit(adminCtx, rentalId, uncappedRentalId);
   });
 
-  // An already-extracted paper counterpart carrying a manual-transcription
-  // payload: min_field_confidence 1, because a human read the sheet and
-  // there is no model output for the 0.90 gate to gate. That leaves the
-  // tolerance check as the only live control, which is what these tests
-  // probe.
+  // Manual transcription: no model output, so tolerance is the only live control.
   async function insertTranscribedPaperCounterpart(
     reportDate: string,
     hoursActive: number,
@@ -248,18 +204,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     });
   }
 
-  // Counted by reconciliation id, not by rental. The seeded fixtures give
-  // every suite in this package the same first rental, and vitest runs spec
-  // files in parallel by default, so a rental-wide count would race
-  // edtr-engine.spec.ts's own approvals and fail intermittently. The
-  // description written at edtr.service.ts:446 embeds the reconciliation
-  // id, which makes the count exact and immune to anything else running.
-  // Counted by the invoice_line_items.reconciliation_id FK -- the evidence
-  // link approve() writes and findEdtrEvidence() reads -- not by the UUID
-  // appearing in the description. The description is for people and now
-  // reads "EQR-2026-0001 · model · date · hours"
-  // (cr-arkilaunch-uniform-booking-codes.md), so matching text would
-  // silently count nothing.
+  // Counted by the reconciliation_id FK: exact whatever other suites wrote, and the description is for people.
   const deductionInvoiceCount = async (reconciliationId: string): Promise<number> => {
     const rows = await withTenantTx(adminCtx, (tx) =>
       tx
@@ -284,13 +229,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     return (row!.adjustments as Record<string, unknown> | null) ?? {};
   };
 
-  // THE regression test. Both logs agree the unit ran 8 hours; they
-  // disagree completely about whether those hours were billable. The old
-  // summed-scalar comparison saw |8 - 8| = 0 and auto-accepted, then priced
-  // the approving side's active hours against the deposit. Two independent
-  // logs exist precisely to catch this, so it must not match.
-  // Same shape as the transcribed counterpart above, but carrying a real
-  // model_id -- i.e. output the QAD-T39 accuracy gate is actually about.
+  // Carries a real model_id: the output the QAD-T39 accuracy gate is about.
   async function insertModelExtractedPaperCounterpart(
     reportDate: string,
     hoursActive: number,
@@ -368,12 +307,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     // The assertion that matters: the gate refused AND nothing was written.
     expect(await deductionInvoiceCount(digitalReconId)).toBe(0);
 
-    // Neither side is approvable -- the block is a property of the pair,
-    // not of whichever row the admin happened to open. reconcileEdtr()
-    // writes one reconciliation row per EDTR id, and the row keyed on the
-    // paper side only exists once reconcile has run from that side too (in
-    // production, the OCR worker does this); without it get() returns a
-    // null reconciliation and there is nothing to attempt an approve with.
+    // The block is a property of the pair; reconcile from the paper side too (the OCR worker's job in production).
     await withTenantTx(adminCtx, (tx) => reconcileEdtr(tx, adminCtx.tenantId, paperId));
     const paperPolled = await edtr.get(adminCtx, paperId);
     expect(paperPolled.reconciliation?.status).toBe('discrepancy');
@@ -384,9 +318,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     expect(await deductionInvoiceCount(paperReconId)).toBe(0);
   });
 
-  // Pins delta_hours' meaning. Active diverges by 0.4 and idle by 0.3, so
-  // the summed total diverges by 0.7. The stored scalar must be the worst
-  // single dimension, never a figure that understates the disagreement.
+  // delta_hours must be the worst single dimension, never a figure that understates the disagreement.
   it('stores the worst dimension in delta_hours, with the breakdown alongside it', async () => {
     await insertTranscribedPaperCounterpart(DATES.asymmetric, 8, 2);
     const digital = await edtr.capture(adminCtx, {
@@ -408,9 +340,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     expect(deltas.total).toBeCloseTo(0.7, 5);
   });
 
-  // The positive control: the gate must still let a genuine match through,
-  // or "nothing is ever approvable" would satisfy every test above while
-  // making the product useless.
+  // Positive control: "nothing is ever approvable" would otherwise satisfy every test above.
   it('a genuinely matching pair still reconciles and deducts exactly once', async () => {
     await insertTranscribedPaperCounterpart(DATES.match, 6, 1);
     const digital = await edtr.capture(adminCtx, {
@@ -435,18 +365,13 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     expect(approved.reconciliation.status).toBe('approved');
     expect(await deductionInvoiceCount(reconId)).toBe(1);
 
-    // The human's adjustment must not erase the machine's own finding:
-    // reconstructing "what the gate concluded vs what the human approved"
-    // is the audit trail behind every deduction.
+    // The human's adjustment must not erase the gate's own finding.
     const stored = await storedAdjustments(polled.reconciliation!.id);
     expect(stored.reason).toBe('auto_accept');
     expect(stored.deltas).toBeDefined();
     expect(stored.hoursActive).toBe(6);
   });
 
-  // A pair where one side carries no line items at all summed to zero in
-  // every dimension, so it read as perfect agreement and auto-accepted on
-  // no evidence whatsoever.
   it('refuses to match a pair where one side has no line items', async () => {
     const emptyPaperId = await withTenantTx(adminCtx, async (tx) => {
       const [row] = await tx
@@ -477,24 +402,14 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     expect(polled.reconciliation?.counterpartEdtrId).toBe(emptyPaperId);
     expect(polled.reconciliation?.status).toBe('discrepancy');
     expect(polled.status).toBe('review');
-    // Pin the guard specifically. Without asserting the reason, this test
-    // would still pass if the guard were deleted and the empty side merely
-    // produced a tolerance_exceeded from its phantom all-zero sums -- the
-    // weaker of the two behaviours, and one that reports a hours
-    // disagreement where the truth is that a log has no hours at all.
+    // Pins the guard itself, not a phantom tolerance_exceeded from all-zero sums.
     expect(polled.reconciliation?.reason).toBe('unreadable');
     expect(polled.reconciliation?.deltaHours).toBeNull();
   });
 
-  // audit-ocr-money-path.md #8. The 90.06% gate, the corpus floor and
-  // assertAccuracyGate all existed, and nothing on the money path called
-  // them: ENABLE_OCR_PIPELINE alone was enough to turn model output into
-  // a deduction. Unset attestation must fail closed, which is also the
-  // real state of this deployment.
+  // Unset attestation must fail closed.
   it('refuses to deduct from model-extracted evidence with no attested accuracy', async () => {
-    // vi.stubEnv, not delete: vitest reuses a worker process across spec
-    // files, so an unrestored delete would leak into any later file that
-    // approves model evidence. unstubAllEnvs in afterEach puts it back.
+    // vi.stubEnv, not delete: workers are reused across spec files.
     vi.stubEnv('OCR_MEASURED_ACCURACY', '');
     vi.stubEnv('OCR_MEASURED_SAMPLES', '');
     await insertModelExtractedPaperCounterpart(DATES.modelSourced, 6, 1);
@@ -510,8 +425,6 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     expect(polled.reconciliation?.status).toBe('matched');
     const reconId = polled.reconciliation!.id;
 
-    // The pair matches cleanly -- it is the unmeasured model, not a
-    // disagreement, that blocks this.
     await expect(
       edtr.approve(adminCtx, digital.id, {
         reconciliationId: reconId,
@@ -521,11 +434,7 @@ describe('the money path: no deduction without a passing reconciliation', () => 
     expect(await deductionInvoiceCount(reconId)).toBe(0);
   });
 
-  // audit-ocr-money-path.md #5. A rental with no quotation/rental_contracts
-  // chain used to deduct with no ceiling at all. It is capped at the
-  // tenant's minimum deposit (what checkout collects for that case); since
-  // phase 7 the part past it becomes an unbilled accrual for the weekly
-  // invoice rather than a refusal, so the deposit itself never goes below 0.
+  // Past the tenant minimum deposit, the rest becomes an accrual; the deposit never goes below 0.
   it('refuses to deduct from a deposit that was never paid, and writes nothing', async () => {
     await insertTranscribedPaperCounterpart(DATES.unpaid, 6, 1, unpaidRentalId);
     const digital = await edtr.capture(adminCtx, {

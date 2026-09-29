@@ -4,10 +4,7 @@ import { eq } from 'drizzle-orm';
 import { notifications, rentals, withTenantTx } from '@arkilaunch/db';
 import { parseBookingCode, type RequestContext } from '@arkilaunch/shared';
 
-// cr-arkilaunch-uniform-booking-codes.md, migration 0058. The code is
-// assigned by a BEFORE INSERT trigger from a per-tenant, per-service,
-// Asia/Manila-year counter; these exercise the trigger through the app role
-// under RLS, exactly as the booking and truck services reach it.
+// Exercises the BEFORE INSERT trigger through the app role under RLS, as the services reach it.
 describe('booking codes (migration 0058)', () => {
   let ctxA: RequestContext;
   let ctxB: RequestContext;

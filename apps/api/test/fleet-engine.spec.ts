@@ -9,9 +9,6 @@ import { PermissionsGuard } from '../src/common/guards/permissions.guard.js';
 import { FleetController } from '../src/fleet/fleet.controller.js';
 import { PERMISSION_KEY } from '../src/common/decorators/require-permission.decorator.js';
 
-// PRD-F4 (Fleet Inventory, Maintenance & Reporting): QAD-T16 (deploy a
-// flagged/busy unit), QAD-T19 (owner denied a data-entry permission),
-// QAD-T30 (injection in free-text), plus the endpoints' happy paths.
 describe('FleetService (PRD-F4)', () => {
   const fleet = new FleetService(new EventsService());
   let adminCtx: RequestContext;
@@ -184,9 +181,6 @@ describe('FleetService (PRD-F4)', () => {
     expect(updated.availabilityStatus).toBe('deployed');
   });
 
-  // QAD-T30: SQL/XSS payload in a free-text field is stored and returned
-  // inert -- parameterized queries and Zod validation neutralize it,
-  // never string-built into SQL, never unescaped HTML.
   it('QAD-T30: an injection payload in maintenance-log notes is stored and returned verbatim, never executed', async () => {
     const created = await fleet.create(adminCtx, {
       equipmentTypeId,
@@ -260,10 +254,7 @@ describe('FleetService (PRD-F4)', () => {
     expect(await new PermissionsGuard(reflector).canActivate(context)).toBe(false);
   });
 
-  // QAD-T19: an owner (report:read only, no fleet:manage) is denied a
-  // data-entry permission -- the RBAC guard, not FleetService, is what
-  // enforces this at the controller boundary (same technique as
-  // role-escalation.spec.ts).
+  // The RBAC guard, not FleetService, enforces this at the controller boundary.
   it('QAD-T19: PermissionsGuard denies owner the fleet:manage permission but allows report:read', async () => {
     const reflector = new Reflector();
     const req = { ctx: { tenantId: adminCtx.tenantId, userId: adminCtx.userId, role: 'owner' } };
@@ -336,9 +327,7 @@ describe('FleetService (PRD-F4)', () => {
       });
       await fleet.retire(adminCtx, created.id);
 
-      // The (tenant_id, serial_no) unique index still covers retired rows, so
-      // the create-time check must keep counting them -- otherwise this is a
-      // raw constraint violation instead of a clean 409.
+      // The unique index still covers retired rows, so the create-time check must count them (clean 409).
       await expect(
         fleet.create(adminCtx, {
           equipmentTypeId,
@@ -350,9 +339,7 @@ describe('FleetService (PRD-F4)', () => {
     });
   });
 
-  // Migration 0026 REVOKEd table-wide UPDATE and granted it back per column.
-  // Miss a column there and the owning code path fails with a bare permission
-  // error far from its cause, so the writes are exercised here directly.
+  // 0026 grants UPDATE per column; a missed column fails far from its cause, so exercise the writes here.
   it('0026 grants: every request-path write to equipment still works', async () => {
     const created = await fleet.create(adminCtx, {
       equipmentTypeId,

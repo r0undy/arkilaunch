@@ -48,11 +48,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     equipmentTypeIdA = (rateCardA as { equipment_type_id: string }).equipment_type_id;
     customerIdA = (customerA as { id: string }).id;
 
-    // audit-api-surface.md #1: `customer` is an intra-tenant role, so RLS
-    // alone does not stop one customer reading another's quote. The
-    // fixture seeds exactly one customers row per tenant (linked to the
-    // customer user), so a SECOND, unowned customer is needed to prove the
-    // ownership predicate actually bites.
+    // RLS alone doesn't stop one customer reading another's quote, so a second, unowned customer is needed.
     const [customerUserA] = await sql`select id from users where tenant_id = ${(tenantA as { id: string }).id} and email = 'customer@test-tenant-a.test'`;
     customerCtxA = {
       tenantId: (tenantA as { id: string }).id,
@@ -74,9 +70,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
       `;
       otherCustomerIdA = (inserted as { id: string }).id;
     }
-    // Quotes now require a verified company (company_not_verified). And it
-    // must not belong to the seeded customer's login: on the shared database
-    // it got linked once, which made 'someone else's quote' the customer's own.
+    // Quotes need a verified company, and it must not be linked to the seeded customer's login.
     await sql`update customers set kyc_status = 'approved', user_id = null where id = ${otherCustomerIdA}`;
 
     const [siteA] = await sql`select id from project_sites where tenant_id = ${(tenantA as { id: string }).id} order by created_at limit 1`;
@@ -166,10 +160,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     expect(reFetched.lineItems[0]!.hourlyRate).toBe(created.lineItems[0]!.hourlyRate);
   });
 
-  // QAD-T44/T48: a superseded rate card must not affect an already-issued
-  // quote, and must not be usable to price a NEW quote (Phase 1A fix to
-  // PricingEngineService.priceItem). Uses its own dedicated rate card, not
-  // the shared rateCardIdA fixture other tests in this file depend on.
+  // Uses its own rate card, not the shared rateCardIdA fixture.
   it('QAD-T44/T48: superseding a rate card leaves the issued quote untouched and rejects a new quote citing it', async () => {
     const dedicatedCardId = await withTenantTx(ctxA, async (tx) => {
       const [inserted] = await tx
@@ -194,10 +185,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
       items: itemsFor(dedicatedCardId, equipmentTypeIdA),
     });
 
-    // Supersede: close the old row, insert a successor with a materially
-    // different value (append-only pattern; PATCH /rate-cards does this via
-    // a service in Phase 1C -- this test drives the same DB shape directly
-    // so it does not depend on that endpoint existing yet).
+    // Supersede directly: close the old row, insert a materially different successor.
     const now = new Date();
     await withTenantTx(ctxA, async (tx) => {
       await tx.update(rateCards).set({ effectiveTo: now }).where(eq(rateCards.id, dedicatedCardId));
@@ -246,10 +234,7 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     );
     const staleDate = new Date();
     staleDate.setDate(staleDate.getDate() - 30);
-    // Through the scrape function, not a direct INSERT: app_authenticated
-    // no longer holds INSERT on diesel_price_readings (migration 0020,
-    // audit-db-tenant-isolation.md #7), which is the same path the real
-    // cron takes.
+    // Through the scrape function: app_authenticated can't INSERT diesel_price_readings.
     const { recordScrapeDieselReading } = await import('@arkilaunch/db');
     await recordScrapeDieselReading({
       region: 'STALE_TEST',
@@ -377,9 +362,6 @@ describe('Quotation engine (RFC-3): QAD-T43..T48', () => {
     await expect(quotes.get(ctxB, created.id)).rejects.toThrow(NotFoundException);
   });
 
-  // audit-api-surface.md #1. `customer` holds quote:read, and GET /quotes/:id
-  // had no ownership predicate, so any customer JWT plus any quotation id
-  // returned another customer's rates, discounts and totals.
   it('a customer cannot read another customer’s quote in the same tenant', async () => {
     const theirs = await quotes.create(ctxA, {
       customerId: otherCustomerIdA,

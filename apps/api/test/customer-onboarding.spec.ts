@@ -27,9 +27,7 @@ import { EventsService } from '../src/events/events.service.js';
 const IDENTITY = { philsysVerified: true, selfieMatches: true, holderAuthorized: true } as const;
 import { JwtService } from '@nestjs/jwt';
 
-// Customer prerequisites CR: a stranger signs up, adds a company and a
-// site, books, and cannot pay until staff verify the company. One login
-// may own several companies; no one else can use them.
+// Sign up, add a company and site, book, and cannot pay until staff verify; nobody else can use the company.
 function jwtService(): JwtService {
   const publicKey = process.env.JWT_PUBLIC_KEY!.replace(/\\n/g, '\n');
   const privateKey = process.env.JWT_PRIVATE_KEY!.replace(/\\n/g, '\n');
@@ -292,10 +290,7 @@ describe('Customer onboarding', () => {
       mine.id,
     );
 
-    // The company card fetches its own registration certificate through
-    // ownDocumentKey(). RLS bounds the tenant and no further -- without the
-    // ownership predicate on top, this read is one customer of a tenant
-    // pulling another's KYC evidence by guessing a customer id.
+    // Without the ownership predicate on top of RLS, one customer could pull another's KYC evidence.
     const myDoc = await companies.addDocument(
       ctx,
       mine.id,
@@ -309,10 +304,7 @@ describe('Customer onboarding', () => {
     await expect(
       companies.ownDocumentKey(seededCustomerCtx, mine.id, myDoc.id),
     ).rejects.toBeInstanceOf(NotFoundException);
-    // A staff login -- of this tenant or another -- never reaches the
-    // ownership check at all: this route is the customer's own, and
-    // assertCustomer refuses the role first. Staff read the same document
-    // through the quote:approve route, which is audited.
+    // Staff never reach the ownership check: assertCustomer refuses the role first.
     await expect(
       companies.ownDocumentKey(adminCtx, mine.id, myDoc.id),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -333,9 +325,6 @@ describe('Customer onboarding', () => {
   });
 
 
-  // The browse page's weather rail reads this. It is the first weather route
-  // a customer can reach at all -- the two on sites.controller.ts are
-  // STAFF_READ -- so the isolation is new surface, not a variation on old.
   describe('site forecast', () => {
     const DAYS = Array.from({ length: 5 }, (_, i) => ({
       date: `2026-09-2${i}`,
@@ -408,9 +397,7 @@ describe('Customer onboarding', () => {
       expect(forecast.fetchedAt).toMatch(/^\d{4}-/);
     });
 
-    // RLS bounds the tenant and no further, and `customer` is an intra-tenant
-    // role: without ownCustomers() on top, this read tells one customer where
-    // another company is working.
+    // Without ownCustomers() on top of RLS, this would tell one customer where another is working.
     it('refuses another customer site in the same tenant', async () => {
       const { port } = counting();
       const service = serviceWith(port);
@@ -596,9 +583,7 @@ describe('Customer onboarding', () => {
       });
     });
 
-    // Page text shaped like prebuilt-layout's read of a real eSPARC
-    // certificate (identifiers synthetic): the label parser beats the
-    // query, which read the SEC letterhead and the RA 11232 date.
+    // Shaped like a real eSPARC read (identifiers synthetic): the label parser beats the query.
     const secText = [
       'REPUBLIC OF THE PHILIPPINES SECURITIES AND EXCHANGE COMMISSION 3/F Newtown Square, Navy Base Road, Baguio City',
       'COMPANY REG. NO .: 2022090000001-02',
@@ -658,17 +643,12 @@ describe('Customer onboarding', () => {
     });
   });
 
-  // Admin-side review: OCR fills the reviewer's form in, the reviewer
-  // corrects it, and approval writes what they confirmed. Nothing here
-  // decides anything on the extraction's own.
+  // Nothing here decides anything on the extraction's own.
   describe('staff document review', () => {
     const reviewer = (fields: Record<string, { value: string; confidence: number }>) =>
       new CustomersService(events, new FixtureDocumentIntelligenceAdapter({ fields }));
     const bytes = Buffer.from('not-really-an-image');
-    // Its own customer, never the module-wide seeded one: this block
-    // creates many companies per test run, and bookings.create()'s
-    // implicit-company selection elsewhere (payments-engine.spec.ts et al.)
-    // breaks the instant the shared seeded customer owns more than one.
+    // Its own customer: bookings.create()'s implicit-company selection breaks once the seeded one owns several.
     let reviewCtx: RequestContext;
 
     beforeAll(async () => {

@@ -11,10 +11,6 @@ import { BookingsService } from '../src/bookings/bookings.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { fixtureCompanyId } from './fixture-company.js';
 
-// PRD-F2 (PayMongo Payment Interface). QAD-T10 (deposit stores only
-// provider_ref + status), QAD-T20 (abandoned/failed checkout never flips
-// status except via the webhook), QAD-T28 (webhook forgery/replay), QAD-T31
-// (checkout burst throttled).
 describe('PaymentsService (PRD-F2)', () => {
   const events = new EventsService();
   const payments_ = new PaymentsService(new StubPaymentsAdapter(), events);

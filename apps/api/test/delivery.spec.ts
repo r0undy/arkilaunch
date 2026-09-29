@@ -18,16 +18,11 @@ import { EventsService } from '../src/events/events.service.js';
 import { checkoutPaidWebhook } from './paymongo-webhook.js';
 import { fixtureCompanyId } from './fixture-company.js';
 
-// A paid booking is delivered and returned by staff on its own
-// reservation, the customer hears about each step, and staff hear about
-// what customers do.
 describe('Delivery, return and staff alerts', () => {
   const events = new EventsService();
   const quotes = new QuotesService(new PricingEngineService(), events);
   const bookings = new BookingsService(events, quotes, new PaymentsService(new StubPaymentsAdapter(), new EventsService()));
-  // Real PayMongo issues a new session id per call; the shared stub's id
-  // is deterministic, which would make a checkout retry collide on the
-  // unique provider_ref.
+  // The stub's session id is deterministic, so a checkout retry would collide on the unique provider_ref.
   let sessions = 0;
   const adapter = new StubPaymentsAdapter();
   adapter.createCheckoutSession = async (amountPhp: number, invoiceId: string) => ({

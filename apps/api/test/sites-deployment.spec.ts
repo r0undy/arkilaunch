@@ -13,10 +13,7 @@ import type { RequestContext, SiteDeploymentFilter, SiteResponse } from '@arkila
 import { SitesService } from '../src/sites/sites.service.js';
 import { EventsService } from '../src/events/events.service.js';
 
-// QA item 23: GET /sites tells a site with machines on it from one with
-// machines arriving and one with nothing, and the ?deployment= filter's
-// total matches its rows. Dedicated sites/units, removed afterwards, so the
-// tenant-wide listing other specs read does not grow run over run.
+// Dedicated sites and units, removed afterwards, so the tenant-wide listing doesn't grow run over run.
 describe('GET /sites deployment state (QA-23)', () => {
   const sites = new SitesService(new EventsService());
   let ctxA: RequestContext;
@@ -110,9 +107,7 @@ describe('GET /sites deployment state (QA-23)', () => {
       await assign(tx, ctxA.tenantId, delivered, activeRental, inDays(-5), 'active');
       await assign(tx, ctxA.tenantId, legacy, activeRental, inDays(-1), 'scheduled');
 
-      // Upcoming site (company yard): a confirmed unit due in 3 days, plus
-      // a booking of the delivered unit above -- deployed elsewhere, so it
-      // is neither on site here nor counted as arriving.
+      // Plus a booking of the unit delivered above: deployed elsewhere, so neither on site here nor arriving.
       ids.upcoming = await make.site(tx, 'A', null);
       const yardUnit = await make.unit(tx, 'A', 'available');
       const upcomingRental = await make.rental(tx, 'A', customerIdA, ids.upcoming, 'confirmed');
@@ -136,9 +131,7 @@ describe('GET /sites deployment state (QA-23)', () => {
     });
   });
 
-  // By marker, not by the ids above, so a run that died before this still
-  // gets swept by the next. The app role cannot delete equipment, so this
-  // runs on the direct (owner) connection, bounded to QA23 rows.
+  // Swept by marker so a dead run is cleaned next time; the app role can't delete equipment, so the owner connection.
   afterAll(async () => {
     const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
     await sql.begin(async (tx) => {
