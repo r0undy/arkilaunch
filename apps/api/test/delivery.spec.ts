@@ -174,6 +174,7 @@ describe('Delivery, return and staff alerts', () => {
         response: { error: 'already_on_site' },
       });
       await expect(bookings.deliver(adminCtx, booking.id)).rejects.toBeInstanceOf(ConflictException);
+      await expect(bookings.cancel(adminCtx, booking.id)).rejects.toMatchObject({ response: { error: 'already_on_site' } });
 
       await bookings.markReturned(adminCtx, booking.id);
     } finally {
@@ -182,6 +183,7 @@ describe('Delivery, return and staff alerts', () => {
     }
     const [rental] = await withTenantTx(adminCtx, (tx) => tx.select().from(rentals).where(eq(rentals.id, booking.id)));
     expect(rental?.status).toBe('completed');
+    await expect(bookings.cancel(adminCtx, booking.id)).rejects.toMatchObject({ response: { error: 'booking_closed' } });
     expect(await notificationTypes(booking.id)).toContain('equipment_returned');
     await expect(bookings.requestChange(customerCtx, booking.id, { kind: 'extend', requestedEnd: day(9, 17) })).rejects.toMatchObject({
       response: { error: 'booking_closed' },
