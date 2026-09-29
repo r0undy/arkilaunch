@@ -272,23 +272,23 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
       const value = extractValue(field);
       if (value === null) continue;
 
-      // A missing/null confidence must floor to 0 (routes to human review),
-      // never default to 1 (would sail through the 0.90 auto-accept gate).
-      // It is not established that queryFields returns a per-field
-      // confidence for PH corporate documents at all -- this is the safe
-      // assumption until that is confirmed against a real response. An
-      // out-of-range value (e.g. a malformed 1.5) also floors to 0, never
-      // clamps up to 1.
-      const confidence =
-        typeof field.confidence === 'number' && Number.isFinite(field.confidence) && field.confidence >= 0 && field.confidence <= 1
-          ? field.confidence
-          : 0;
-
-      fields[key] = { value, confidence };
+      fields[key] = { value, confidence: unitConfidence(field.confidence) };
     }
 
     return fields;
   }
+}
+
+// A missing or out-of-range confidence floors to 0 (human review), never 1 (would pass the auto-accept gate).
+function unitConfidence(c: number | undefined): number {
+  return typeof c === 'number' && Number.isFinite(c) && c >= 0 && c <= 1 ? c : 0;
+}
+
+// Scaled into 0..1 of the page; undefined when malformed, since a box in the wrong place is worse than none.
+function scalePolygon(polygon: number[] | undefined, width: number, height: number): number[] | undefined {
+  if (!polygon || polygon.length < 8 || polygon.length % 2 !== 0) return undefined;
+  const scaled = polygon.map((v, i) => (i % 2 === 0 ? v / width : v / height));
+  return scaled.some((n) => !Number.isFinite(n)) ? undefined : scaled;
 }
 
 // The lowest word confidence overlapping a cell's spans. Words carry
@@ -306,37 +306,22 @@ function cellConfidence(spans: AzureSpan[] | undefined, words: AzureWord[]): num
     const length = word.span?.length;
     if (typeof offset !== 'number' || typeof length !== 'number') continue;
     if (!ranges.some(([start, end]) => offset < end && offset + length > start)) continue;
-    const c = word.confidence;
-    // Same flooring rule the field mapper uses: an absent or out-of-range
-    // confidence becomes 0, never 1.
-    min = Math.min(min, typeof c === 'number' && Number.isFinite(c) && c >= 0 && c <= 1 ? c : 0);
+    min = Math.min(min, unitConfidence(word.confidence));
   }
   return Number.isFinite(min) ? min : 0;
 }
 
-// A cell's polygon, scaled into 0..1 of its own page. Returns undefined
-// rather than a guess when the polygon is malformed or the page reported no
-// usable dimensions -- a box drawn in the wrong place over a timesheet is
-// worse than no box, because it tells a reviewer the model read a cell it
-// did not.
 function normaliseRegion(
   regions: AzureBoundingRegion[] | undefined,
   pagesByNumber: Map<number, AzurePage>,
 ): BoundingRegion | undefined {
   const region = regions?.[0];
-  const polygon = region?.polygon;
-  if (!polygon || polygon.length < 8 || polygon.length % 2 !== 0) return undefined;
+  if (!region) return undefined;
   const pageNumber = region.pageNumber ?? 1;
   const page = pagesByNumber.get(pageNumber);
-  const width = page?.width;
-  const height = page?.height;
-  if (!width || !height) return undefined;
-
-  const scaled = polygon.map((coordinate, index) =>
-    index % 2 === 0 ? coordinate / width : coordinate / height,
-  );
-  if (scaled.some((n) => !Number.isFinite(n))) return undefined;
-  return { page: pageNumber, polygon: scaled };
+  if (!page?.width || !page.height) return undefined;
+  const scaled = scalePolygon(region.polygon, page.width, page.height);
+  return scaled ? { page: pageNumber, polygon: scaled } : undefined;
 }
 
 function mapTables(
@@ -378,10 +363,7 @@ function mapTables(
     }));
 }
 
-// The page text with every word and line as a span of it. Line polygons are
-// scaled into 0..1 of their page; a line without a usable polygon, span or
-// page size is left out rather than placed somewhere it is not. Word
-// confidence floors to 0 by the same rule as cellConfidence.
+// The page text with every word and line as a span of it; a line without a usable polygon, span or page size is left out.
 function mapText(content: string | undefined, pages: AzurePage[] | undefined): DocumentText | undefined {
   if (!content) return undefined;
   const words: DocumentText['words'] = [];
@@ -390,18 +372,15 @@ function mapText(content: string | undefined, pages: AzurePage[] | undefined): D
     for (const w of page.words ?? []) {
       const { offset, length } = w.span ?? {};
       if (typeof offset !== 'number' || typeof length !== 'number') continue;
-      const c = w.confidence;
-      words.push({ offset, length, confidence: typeof c === 'number' && Number.isFinite(c) && c >= 0 && c <= 1 ? c : 0 });
+      words.push({ offset, length, confidence: unitConfidence(w.confidence) });
     }
     const { width, height } = page;
     if (!width || !height) return;
     for (const line of page.lines ?? []) {
       const { offset, length } = line.spans?.[0] ?? {};
-      const polygon = line.polygon;
       if (typeof offset !== 'number' || typeof length !== 'number') continue;
-      if (!polygon || polygon.length < 8 || polygon.length % 2 !== 0) continue;
-      const scaled = polygon.map((v, i) => (i % 2 === 0 ? v / width : v / height));
-      if (scaled.some((n) => !Number.isFinite(n))) continue;
+      const scaled = scalePolygon(line.polygon, width, height);
+      if (!scaled) continue;
       lines.push({ offset, length, page: page.pageNumber ?? index + 1, polygon: scaled });
     }
   });
