@@ -1,13 +1,8 @@
 import { useState } from 'react';
+import { sitesQueries } from '../lib/queries.js';
 import { Camera, CircleCheck, Upload, type LucideIcon } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  SITE_DOCUMENT_LABELS,
-  SITE_PROOF_TYPES,
-  type CustomerSiteResponse,
-  type SiteDocument,
-  type SiteDocumentType,
-} from '@arkilaunch/shared';
+import { SITE_DOCUMENT_LABELS, SITE_PROOF_TYPES, type CustomerSiteResponse, type SiteDocumentType } from '@arkilaunch/shared';
 import { apiErrorText, apiGet, apiPostForm } from '../lib/api-client.js';
 import { formatDate, formatStatus } from '../lib/format.js';
 import { useToast } from './toast.js';
@@ -179,10 +174,7 @@ export function SiteProofStatus({ site }: { site: CustomerSiteResponse }) {
 // signed URL. Missing proof is said plainly.
 export function SiteProofAdmin({ siteId }: { siteId: string }) {
   const toast = useToast();
-  const docs = useQuery({
-    queryKey: ['sites', siteId, 'documents'],
-    queryFn: () => apiGet<{ documents: SiteDocument[]; proofComplete: boolean }>(`/sites/${siteId}/documents`),
-  });
+  const docs = useQuery(sitesQueries.documents(siteId));
   async function open(documentId: string) {
     try {
       const { url } = await apiGet<{ url: string }>(`/sites/${siteId}/documents/${documentId}/url`);

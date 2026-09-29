@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { describeNotification, feedAreaOf, NotificationIcon, notificationQueries } from './notification-feed.js';
+import { describeNotification, feedAreaOf, NotificationIcon } from './notification-feed.js';
 import { apiPatch } from '../lib/api-client.js';
 import { formatStatus } from '../lib/format.js';
 import { Bell, LogOut, Menu, ShoppingCart, TriangleAlert } from 'lucide-react';
 import { clearTokens } from '../lib/auth-client.js';
 import { useCart } from '../lib/cart-client.js';
 import { getCurrentRole, homeHref } from '../lib/guards.js';
-import { edtrQueries, notificationsQueries } from '../lib/queries.js';
+import { edtrQueries, notificationsQueries, tenantsQueries } from '../lib/queries.js';
 import { StatusPill } from './status-pill.js';
-import { applicationsListQuery } from './application-actions.js';
 import { useHeaderColor, useTenant } from '../lib/tenant.js';
 
 // Controls inherit the bar's text (steel bar: paper; a tenant color: its black
@@ -50,7 +49,7 @@ function NotificationBell({
   const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
-  const latest = useQuery({ ...notificationQueries.list(5, 0), enabled: open, retry: false });
+  const latest = useQuery({ ...notificationsQueries.list(5, 0), enabled: open, retry: false });
 
   useEffect(() => {
     if (!open) return;
@@ -189,7 +188,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
     enabled: !isCustomer && !isPlatformAdmin && role !== 'timekeeper',
   });
   const applications = useQuery({
-    ...applicationsListQuery(1, 0),
+    ...tenantsQueries.applications(1, 0),
     retry: false,
     enabled: isPlatformAdmin,
   });

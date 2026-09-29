@@ -1,4 +1,5 @@
 import { createRoute, Link } from '@tanstack/react-router';
+import { tenantsQueries } from '../lib/queries.js';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { TenantApplication } from '@arkilaunch/shared';
@@ -10,10 +11,7 @@ import { Surface } from '../components/surface.js';
 import { buttonClass } from '../components/button.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
-import {
-  ApplicationActions,
-  applicationsListQuery,
-} from '../components/application-actions.js';
+import { ApplicationActions } from '../components/application-actions.js';
 import { formatDate, shortCode } from '../lib/format.js';
 
 // Figma splits company approval across four frames: Pending Company Approval
@@ -64,7 +62,7 @@ function CompaniesPendingPage() {
       />
       <DataPanel
         title="Pending applications"
-        options={applicationsListQuery(PAGE_SIZE, offset)}
+        options={tenantsQueries.applications(PAGE_SIZE, offset)}
         emptyTitle="No companies waiting"
         emptyDescription="New company registrations appear here for review."
         isEmpty={(data) => data.total === 0}
@@ -98,7 +96,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 function CompanyApplicationPage() {
   const { applicationId } = appCompanyApplicationRoute.useParams();
-  const applications = useQuery(applicationsListQuery(PAGE_SIZE, 0));
+  const applications = useQuery(tenantsQueries.applications(PAGE_SIZE, 0));
   const application = applications.data?.items.find((row) => row.applicationId === applicationId);
 
   return (

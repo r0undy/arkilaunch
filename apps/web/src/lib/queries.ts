@@ -29,6 +29,15 @@ import type {
   UtilizationReportResponse,
   WeatherAdvisoryListResponse,
   PricingParametersInput,
+  AvailabilityResponse,
+  EdtrSheetContext,
+  EquipmentReportResponse,
+  MaintenanceDetailResponse,
+  NotificationListResponse,
+  SiteDocument,
+  SiteEquipmentWeatherResponse,
+  TenantApplicationListResponse,
+  TenantBranding,
 } from '@arkilaunch/shared';
 import { apiGet, apiPost } from './api-client.js';
 import {
@@ -64,6 +73,21 @@ export interface EquipmentListFilters {
 }
 
 export const equipmentQueries = {
+  report: (equipmentId: string) =>
+    queryOptions({
+      queryKey: ['equipment', equipmentId, 'report'] as const,
+      queryFn: () => apiGet<EquipmentReportResponse>(`/equipment/${equipmentId}/report`),
+    }),
+  maintenance: (equipmentId: string) =>
+    queryOptions({
+      queryKey: ['equipment', equipmentId, 'maintenance'] as const,
+      queryFn: () => apiGet<MaintenanceDetailResponse>(`/equipment/${equipmentId}/maintenance`),
+    }),
+  availability: (equipmentId: string, from: string, to: string) =>
+    queryOptions({
+      queryKey: ['equipment', equipmentId, 'availability', from, to] as const,
+      queryFn: () => apiGet<AvailabilityResponse>(`/equipment/${equipmentId}/availability?from=${from}&to=${to}`),
+    }),
   list: (limit = PAGE_SIZE, offset = 0, filters: EquipmentListFilters = {}) =>
     queryOptions({
       queryKey: ['equipment', limit, offset, filters] as const,
@@ -110,6 +134,31 @@ export const sitesQueries = {
     queryOptions({
       queryKey: ['sites', siteId, 'hub'] as const,
       queryFn: () => apiGet<SiteHubResponse>(`/sites/${siteId}/hub`),
+    }),
+  documents: (siteId: string) =>
+    queryOptions({
+      queryKey: ['sites', siteId, 'documents'] as const,
+      queryFn: () => apiGet<{ documents: SiteDocument[]; proofComplete: boolean }>(`/sites/${siteId}/documents`),
+    }),
+  equipmentWeather: (siteId: string) =>
+    queryOptions({
+      queryKey: ['sites', siteId, 'equipment-weather'] as const,
+      queryFn: () => apiGet<SiteEquipmentWeatherResponse>(`/sites/${siteId}/equipment-weather`),
+    }),
+};
+
+// Both application lists sit under ['tenants', 'applications'], so one
+// invalidation after a decision refreshes them together.
+export const tenantsQueries = {
+  applications: (limit: number, offset: number) =>
+    queryOptions({
+      queryKey: ['tenants', 'applications', limit, offset] as const,
+      queryFn: () => apiGet<TenantApplicationListResponse>(`/tenants/applications?limit=${limit}&offset=${offset}`),
+    }),
+  branding: (basePath: string) =>
+    queryOptions({
+      queryKey: ['branding', basePath] as const,
+      queryFn: () => apiGet<TenantBranding>(`${basePath}/branding`),
     }),
 };
 
@@ -198,6 +247,11 @@ export interface BookingListFilters {
 }
 
 export const bookingsQueries = {
+  edtrSheet: (bookingId: string) =>
+    queryOptions({
+      queryKey: ['booking', bookingId, 'edtr-sheet'] as const,
+      queryFn: () => apiGet<EdtrSheetContext>(`/bookings/${bookingId}/edtr-sheet`),
+    }),
   // `q` narrows to booking codes starting with it (EQR-2026-00…) or a
   // customer company name; `filters` are the staff list's chips (QA 27).
   list: (limit = PAGE_SIZE, offset = 0, q = '', filters: BookingListFilters = {}) =>
@@ -365,6 +419,11 @@ export const usersQueries = {
 // Badge counts read `total`, not a page's length: a page tops out at the
 // API's limit, so counting its rows capped every badge at 50.
 export const notificationsQueries = {
+  list: (limit = 20, offset = 0) =>
+    queryOptions({
+      queryKey: ['notifications', limit, offset] as const,
+      queryFn: () => apiGet<NotificationListResponse>(`/notifications?limit=${limit}&offset=${offset}`),
+    }),
   unreadCount: () =>
     queryOptions({
       queryKey: ['notifications', 'unread-count'] as const,
@@ -463,5 +522,10 @@ export const customerSitesQueries = {
     queryOptions({
       queryKey: ['me', 'sites'] as const,
       queryFn: () => apiGet<CustomerSiteResponse[]>('/me/sites'),
+    }),
+  equipmentWeather: (siteId: string) =>
+    queryOptions({
+      queryKey: ['me', 'sites', siteId, 'equipment-weather'] as const,
+      queryFn: () => apiGet<SiteEquipmentWeatherResponse>(`/me/sites/${siteId}/equipment-weather`),
     }),
 };

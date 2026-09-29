@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { customerSitesQueries, sitesQueries } from '../lib/queries.js';
 import { Link } from '@tanstack/react-router';
 import {
   EQUIPMENT_WEATHER_CLASS_INFO,
@@ -8,7 +9,7 @@ import {
   type SiteEquipmentWeatherResponse,
   type WeatherLevel,
 } from '@arkilaunch/shared';
-import { ApiError, apiErrorText, apiGet } from '../lib/api-client.js';
+import { ApiError, apiErrorText } from '../lib/api-client.js';
 import { formatDateTime } from '../lib/format.js';
 import { Surface } from './surface.js';
 import { OPEN_METEO_URL } from './weather-banner.js';
@@ -125,8 +126,7 @@ export function EquipmentWeatherList({ data }: { data: SiteEquipmentWeatherRespo
 // (the yard's own) answers 404, which simply shows nothing.
 export function MyEquipmentWeather({ siteId }: { siteId: string }) {
   const query = useQuery({
-    queryKey: ['me', 'sites', siteId, 'equipment-weather'],
-    queryFn: () => apiGet<SiteEquipmentWeatherResponse>(`/me/sites/${siteId}/equipment-weather`),
+    ...customerSitesQueries.equipmentWeather(siteId),
     refetchInterval: 5 * 60_000,
     retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 2,
   });
@@ -149,8 +149,7 @@ export function MyEquipmentWeather({ siteId }: { siteId: string }) {
 // Staff: every machine on a site.
 export function SiteEquipmentWeather({ siteId }: { siteId: string }) {
   const query = useQuery({
-    queryKey: ['sites', siteId, 'equipment-weather'],
-    queryFn: () => apiGet<SiteEquipmentWeatherResponse>(`/sites/${siteId}/equipment-weather`),
+    ...sitesQueries.equipmentWeather(siteId),
     refetchInterval: 5 * 60_000,
   });
   if (query.isPending) return <p className="text-sm text-text-muted">Loading equipment weather...</p>;

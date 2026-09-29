@@ -1,10 +1,7 @@
 import { useState } from 'react';
+import { equipmentQueries } from '../lib/queries.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  MAINTENANCE_PRESETS,
-  type EquipmentResponse,
-  type MaintenanceDetailResponse,
-} from '@arkilaunch/shared';
+import { MAINTENANCE_PRESETS, type EquipmentResponse } from '@arkilaunch/shared';
 import { Modal } from './modal.js';
 import { Input } from './input.js';
 import { Select } from './select.js';
@@ -13,7 +10,7 @@ import { useToast } from './toast.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { Tabs } from './tabs.js';
 import { EquipmentReport } from './equipment-report.js';
-import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
+import { apiDelete, apiErrorText, apiPatch, apiPost } from '../lib/api-client.js';
 import { formatDateTime } from '../lib/format.js';
 
 // One machine's report and maintenance: the report (hours, fuel, rentals,
@@ -36,11 +33,7 @@ export function MaintenanceModal({
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const key = ['equipment', equipment.id, 'maintenance'] as const;
-  const detail = useQuery({
-    queryKey: key,
-    queryFn: () => apiGet<MaintenanceDetailResponse>(`/equipment/${equipment.id}/maintenance`),
-  });
+  const detail = useQuery(equipmentQueries.maintenance(equipment.id));
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['equipment'] });
     void queryClient.invalidateQueries({ queryKey: ['maintenance-windows', 'ending-soon'] });

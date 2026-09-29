@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
+import { tenantsQueries } from '../lib/queries.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MAX_UPLOAD_BYTES, type TenantBranding, type TenantBrandingUpdateRequest } from '@arkilaunch/shared';
-import { apiDelete, apiErrorText, apiGet, apiPatch, apiPostForm } from '../lib/api-client.js';
+import { apiDelete, apiErrorText, apiPatch, apiPostForm } from '../lib/api-client.js';
 import { prepareUpload } from '../lib/image-compression.js';
 import { onPrimaryFor } from '../lib/brand.js';
 import { Button } from './button.js';
@@ -200,13 +201,13 @@ function ColorField({
 export function BrandingForm({ basePath }: { basePath: string }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const queryKey = ['branding', basePath] as const;
-  const saved = useQuery({ queryKey, queryFn: () => apiGet<TenantBranding>(`${basePath}/branding`) });
+  const brandingQuery = tenantsQueries.branding(basePath);
+  const saved = useQuery(brandingQuery);
   const [draft, setDraft] = useState<Draft | null>(null);
   const current = draft ?? (saved.data ? toDraft(saved.data) : null);
 
   const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey });
+    void queryClient.invalidateQueries({ queryKey: brandingQuery.queryKey });
     // The storefront on this host re-reads its branding too.
     void queryClient.invalidateQueries({ queryKey: ['catalog', 'tenant'] });
   };

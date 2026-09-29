@@ -1,9 +1,8 @@
 import { useTenant } from '../lib/tenant.js';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { EdtrSheetContext } from '@arkilaunch/shared';
-import { apiErrorText, apiGet } from '../lib/api-client.js';
-import { usersQueries } from '../lib/queries.js';
+import { apiErrorText } from '../lib/api-client.js';
+import { bookingsQueries, usersQueries } from '../lib/queries.js';
 import { localDate } from './availability-days.js';
 import { weekStart } from '../lib/format.js';
 import { Surface } from './surface.js';
@@ -19,11 +18,7 @@ const thisMonday = () => weekStart(localDate(new Date()));
 // pdf-lib) load only on click.
 export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; printable: boolean }) {
   const toast = useToast();
-  const context = useQuery({
-    queryKey: ['booking', bookingId, 'edtr-sheet'],
-    queryFn: () => apiGet<EdtrSheetContext>(`/bookings/${bookingId}/edtr-sheet`),
-    enabled: printable,
-  });
+  const context = useQuery({ ...bookingsQueries.edtrSheet(bookingId), enabled: printable });
   const me = useQuery(usersQueries.me());
   const [equipmentId, setEquipmentId] = useState('');
   const [week, setWeek] = useState(thisMonday);

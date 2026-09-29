@@ -1,8 +1,8 @@
 import { useState } from 'react';
+import { equipmentQueries } from '../lib/queries.js';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { bookingDays, minRentalDays, type AvailabilityResponse } from '@arkilaunch/shared';
-import { apiGet } from '../lib/api-client.js';
 import { getAccessToken } from '../lib/auth-client.js';
 import { WEEKDAYS } from '../lib/format.js';
 
@@ -30,13 +30,6 @@ export function localDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function availabilityQuery(equipmentId: string, from: string, to: string) {
-  return {
-    queryKey: ['equipment', equipmentId, 'availability', from, to] as const,
-    queryFn: () => apiGet<AvailabilityResponse>(`/equipment/${equipmentId}/availability?from=${from}&to=${to}`),
-  };
-}
-
 // Free/taken days from today through the chosen return (at least
 // DAYS_AHEAD days), so a booking of any length is checked end to end.
 // Signed-out visitors get nothing (the endpoint is authenticated); the
@@ -46,7 +39,7 @@ export function useAvailability(equipmentId: string, end?: string) {
   const minTo = localDate(new Date(Date.now() + (DAYS_AHEAD - 1) * 86_400_000));
   const endDate = end ? localDate(new Date(end)) : '';
   return useQuery({
-    ...availabilityQuery(equipmentId, from, endDate > minTo ? endDate : minTo),
+    ...equipmentQueries.availability(equipmentId, from, endDate > minTo ? endDate : minTo),
     enabled: Boolean(getAccessToken()),
   });
 }
@@ -126,7 +119,7 @@ export function RangeCalendar({
   const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
   const gridEnd = cells[41]!;
   const visible = useQuery({
-    ...availabilityQuery(equipmentId, gridStart < today ? today : gridStart, gridEnd),
+    ...equipmentQueries.availability(equipmentId, gridStart < today ? today : gridStart, gridEnd),
     enabled: Boolean(getAccessToken()),
   });
   const byDate = new Map((visible.data?.days ?? []).map((d) => [d.date, d]));

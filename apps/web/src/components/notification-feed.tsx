@@ -1,16 +1,9 @@
 import { useState } from 'react';
+import { notificationsQueries } from '../lib/queries.js';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { queryOptions } from '@tanstack/react-query';
-import {
-  isWeatherNotice,
-  weatherNoticeText,
-  type NotificationListResponse,
-  type NotificationResponse,
-  type WeatherAudience,
-  type WeatherNoticeType,
-} from '@arkilaunch/shared';
-import { apiGet, apiPatch } from '../lib/api-client.js';
+import { isWeatherNotice, weatherNoticeText, type NotificationResponse, type WeatherAudience, type WeatherNoticeType } from '@arkilaunch/shared';
+import { apiPatch } from '../lib/api-client.js';
 import { getCurrentRole } from '../lib/guards.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
@@ -32,15 +25,6 @@ import { Pagination, PAGE_SIZE } from './pagination.js';
 import { formatRelativeTime } from '../lib/format-time.js';
 import { formatDateTime, formatPeso, formatStatus, shortCode } from '../lib/format.js';
 import { Skeleton } from './skeleton.js';
-
-export const notificationQueries = {
-  list: (limit = 20, offset = 0) =>
-    queryOptions({
-      queryKey: ['notifications', limit, offset] as const,
-      queryFn: () =>
-        apiGet<NotificationListResponse>(`/notifications?limit=${limit}&offset=${offset}`),
-    }),
-};
 
 // The payload column is typed `unknown` in the shared schema on purpose --
 // each notification type writes its own shape, and the only current writer
@@ -642,7 +626,7 @@ export function NotificationFeed() {
   // the same server limit/offset; this one now does too.
   const [offset, setOffset] = useState(0);
   const area = feedAreaOf(useRouterState({ select: (s) => s.location.pathname }));
-  const query = useQuery(notificationQueries.list(PAGE_SIZE, offset));
+  const query = useQuery(notificationsQueries.list(PAGE_SIZE, offset));
   const queryClient = useQueryClient();
   const markAll = useMutation({
     mutationFn: () => apiPatch('/notifications/read-all', {}),

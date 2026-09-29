@@ -1,24 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type {
-  TenantApplication,
-  TenantApplicationListResponse,
-} from '@arkilaunch/shared';
-import { apiGet, apiPost } from '../lib/api-client.js';
+import type { TenantApplication } from '@arkilaunch/shared';
+import { apiPost } from '../lib/api-client.js';
 import { tenantOrigin } from '../lib/host.js';
 import { Button } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { useToast } from './toast.js';
 
-// The applications lists and the approve/reject pair are shared by the
-// Applications queue, a single application's page and the app bar's count, so they live here instead of being copied.
-// Both lists sit under ['tenants', 'applications'], so the one invalidation
-// after a decision refreshes the pending and the approved list together.
-export const applicationsListQuery = (limit: number, offset: number) => ({
-  queryKey: ['tenants', 'applications', limit, offset] as const,
-  queryFn: () =>
-    apiGet<TenantApplicationListResponse>(`/tenants/applications?limit=${limit}&offset=${offset}`),
-});
+// The approve/reject pair, shared by the Applications queue and a single application's page.
 
 export function ApplicationActions({ application }: { application: TenantApplication }) {
   const queryClient = useQueryClient();
