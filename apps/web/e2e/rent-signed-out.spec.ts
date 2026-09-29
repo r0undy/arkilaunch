@@ -32,6 +32,11 @@ test.describe('renting while signed out', () => {
     // Signed in, on the cart, with the machine still in it: the cart lives in
     // sessionStorage and survives the redirect within the same tab.
     await expect(page).toHaveURL(/\/account\/cart$/, { timeout: 15_000 });
-    await expect(page.getByRole('group').first()).toBeVisible();
+    // A new account may still need a verified company, in which case the
+    // cart shows that gate instead of the rental form. The saved machine is
+    // the invariant this redirect test owns.
+    const saved = await page.evaluate(() => JSON.parse(sessionStorage.getItem('arkilaunch.cart') ?? '[]') as unknown[]);
+    expect(saved).toHaveLength(1);
+    await expect(page.getByRole('heading', { name: 'Shopping cart' })).toBeVisible();
   });
 });

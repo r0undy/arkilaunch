@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { Pagination, PAGE_SIZE } from './pagination.js';
 import { formatRelativeTime } from '../lib/format-time.js';
-import { formatPeso, formatStatus, shortCode } from '../lib/format.js';
+import { formatDateTime, formatPeso, formatStatus, shortCode } from '../lib/format.js';
 import { Skeleton } from './skeleton.js';
 
 export const notificationQueries = {
@@ -375,6 +375,7 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
       call_confirmed: `${code} is confirmed by phone.`,
       truck_price_updated: `The rental team set the price of ${code} at ${typeof p.price_php === 'number' ? formatPeso(p.price_php) : 'a new figure'}${typeof p.previous_php === 'number' ? ` (was ${formatPeso(p.previous_php)})` : ''}. Accept it to pay.`,
       payment_received: `${code} is paid.`,
+      truck_dispatched: `${code} is on its way${typeof p.eta_at === 'string' ? `; estimated arrival ${formatDateTime(p.eta_at)}` : ''}.`,
       payment_failed: `The payment for ${code} did not go through. Nothing was charged.`,
       payment_refunded: `A refund was issued on ${code}.`,
     };

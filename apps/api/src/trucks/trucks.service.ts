@@ -1,12 +1,15 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNotNull, like, notInArray } from 'drizzle-orm';
-import { auditLogs, customers, negotiationMessages, notifications, projectSites, tollRates, truckRequests, truckSettings, users, withTenantTx } from '@arkilaunch/db';
+import { auditLogs, customers, negotiationMessages, notifications, projectSites, tollRates, truckBanRules, truckRequests, truckSettings, users, withTenantTx } from '@arkilaunch/db';
 import {
   bookingCodeSearchPrefix,
   CLOSED_TRUCK_STATUSES,
   PH_CLASS3_TOLLS,
   PH_TOLLS_AS_OF,
   priceTruckTrip,
+  truckEta,
+  type TruckBanRuleInput,
+  type TruckBanRule,
   type TollRateCreate,
   type TollRateUpdate,
   type TollRateResponse,
@@ -32,6 +35,7 @@ import { notifyStaff, notifyUser } from '../common/notify-customer.js';
 import { ownCustomers } from '../common/customer-scope.js';
 import { PaymentsService } from '../payments/payments.service.js';
 import { roadRoute } from './route-distance.js';
+import { routeCities } from './route-cities.js';
 import { countRows } from '../common/count-rows.js';
 
 type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
@@ -60,6 +64,10 @@ function toResponse(row: typeof truckRequests.$inferSelect, contact: Contact = N
     scheduledFor: row.scheduledFor.toISOString(),
     notes: row.notes,
     estimatedKm: Number(row.estimatedKm),
+    routeCities: row.routeCities,
+    routeMinutes: row.routeMinutes,
+    dispatchedAt: row.dispatchedAt?.toISOString() ?? null,
+    etaAt: row.etaAt?.toISOString() ?? null,
     confirmedKm: row.confirmedKm === null ? null : Number(row.confirmedKm),
     status: row.status as TruckRequestStatus,
     price: row.price,
@@ -181,6 +189,37 @@ export class TrucksService {
     });
   }
 
+  listBanRules(ctx: RequestContext): Promise<TruckBanRule[]> {
+    return withTenantTx(ctx, async (tx) => (await tx.select().from(truckBanRules)
+      .where(eq(truckBanRules.tenantId, ctx.tenantId)).orderBy(asc(truckBanRules.city)))
+      .map(toBanRule));
+  }
+
+  addBanRule(ctx: RequestContext, body: TruckBanRuleInput): Promise<TruckBanRule> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.insert(truckBanRules).values({ tenantId: ctx.tenantId, ...body }).returning();
+      return toBanRule(row!);
+    });
+  }
+
+  updateBanRule(ctx: RequestContext, id: string, body: TruckBanRuleInput): Promise<TruckBanRule> {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.update(truckBanRules).set(body)
+        .where(and(eq(truckBanRules.id, id), eq(truckBanRules.tenantId, ctx.tenantId))).returning();
+      if (!row) throw new NotFoundException({ error: 'truck_ban_rule_not_found' });
+      return toBanRule(row);
+    });
+  }
+
+  removeBanRule(ctx: RequestContext, id: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const [row] = await tx.delete(truckBanRules)
+        .where(and(eq(truckBanRules.id, id), eq(truckBanRules.tenantId, ctx.tenantId))).returning({ id: truckBanRules.id });
+      if (!row) throw new NotFoundException({ error: 'truck_ban_rule_not_found' });
+      return row;
+    });
+  }
+
   getSettings(ctx: RequestContext) {
     return withTenantTx(ctx, (tx) => this.readSettings(tx, ctx.tenantId));
   }
@@ -213,8 +252,9 @@ export class TrucksService {
   }
 
   async create(ctx: RequestContext, body: TruckRequestCreate): Promise<TruckRequestResponse> {
-    const { km } = await roadRoute(body.pickup, body.dropoff, pins(body));
-    return withTenantTx(ctx, async (tx) => {
+    const route = await roadRoute(body.pickup, body.dropoff, pins(body));
+    const { km } = route;
+    const created = await withTenantTx(ctx, async (tx) => {
       // Booked for one of the caller's own companies (never a client-trusted
       // id); a site, when named, must be that company's. A truck trip serves
       // the company, so the site needs no proof.
@@ -241,6 +281,7 @@ export class TrucksService {
           customerId: company.id,
           loadDescription: body.loadDescription,
           estimatedKm: String(km),
+          routeMinutes: route.minutes,
           price,
           // The high end of the estimate: staff are warned before agreeing
           // above it (a typo guard; the customer accepts every price anyway).
@@ -255,6 +296,12 @@ export class TrucksService {
       await notifyStaff(tx, ctx.tenantId, 'truck_requested', { truck_request_id: row!.id });
       return toResponse(row!, { companyName: company.companyName, requesterName: null, requesterPhone: null });
     });
+    if (route.line.length > 1) {
+      void routeCities(route.line).then((cities) => withTenantTx(ctx, (tx) => tx.update(truckRequests)
+        .set({ routeCities: cities }).where(and(eq(truckRequests.id, created.id), eq(truckRequests.tenantId, ctx.tenantId)))))
+        .catch((error: unknown) => console.error('Truck route city lookup failed', created.id, error));
+    }
+    return created;
   }
 
   // A customer sees only their own requests; staff see the tenant's queue.
@@ -301,13 +348,56 @@ export class TrucksService {
     if (row.pickupLat === null || row.pickupLng === null || row.dropoffLat === null || row.dropoffLng === null) {
       throw new NotFoundException({ error: 'truck_pins_missing' });
     }
-    return roadRoute(
+    const route = await roadRoute(
       row.pickup,
       row.dropoff,
       { a: { lat: Number(row.pickupLat), lon: Number(row.pickupLng) }, b: { lat: Number(row.dropoffLat), lon: Number(row.dropoffLng) } },
       // Staff get the turn list's toll hints for the toll picker.
       ctx.role !== 'customer',
     );
+    if (ctx.role !== 'customer' && row.routeCities === null && route.line.length > 1) {
+      try {
+        const cities = await routeCities(route.line);
+        await withTenantTx(ctx, (tx) => tx.update(truckRequests).set({ routeCities: cities })
+          .where(and(eq(truckRequests.id, id), eq(truckRequests.tenantId, ctx.tenantId))));
+        route.cities = cities;
+      } catch (error) {
+        console.error('Truck route city backfill failed', id, error);
+      }
+    } else {
+      if (row.routeCities) route.cities = row.routeCities;
+    }
+    return route;
+  }
+
+  async dispatch(ctx: RequestContext, id: string): Promise<TruckRequestResponse> {
+    const current = await withTenantTx(ctx, (tx) => this.visibleRequest(tx, ctx, id));
+    if (current.status !== 'paid') throw new ConflictException({ error: 'truck_not_paid', status: current.status });
+    let minutes = current.routeMinutes;
+    let cities = current.routeCities;
+    if (minutes === null || cities === null) {
+      const route = await roadRoute(current.pickup, current.dropoff, {
+        ...(current.pickupLat !== null && current.pickupLng !== null ? { a: { lat: Number(current.pickupLat), lon: Number(current.pickupLng) } } : {}),
+        ...(current.dropoffLat !== null && current.dropoffLng !== null ? { b: { lat: Number(current.dropoffLat), lon: Number(current.dropoffLng) } } : {}),
+      });
+      minutes ??= route.minutes;
+      if (cities === null) cities = await routeCities(route.line);
+    }
+    return withTenantTx(ctx, async (tx) => {
+      const row = await this.visibleRequest(tx, ctx, id, true);
+      if (row.status !== 'paid') throw new ConflictException({ error: 'truck_not_paid', status: row.status });
+      const rules = await tx.select().from(truckBanRules).where(eq(truckBanRules.tenantId, ctx.tenantId));
+      const now = new Date();
+      const eta = truckEta(now, minutes!, cities ?? [], rules.map(toBanRule));
+      const [updated] = await tx.update(truckRequests).set({ status: 'dispatched', dispatchedAt: now,
+        etaAt: eta, routeMinutes: minutes, routeCities: cities })
+        .where(and(eq(truckRequests.id, id), eq(truckRequests.tenantId, ctx.tenantId))).returning();
+      await notifyUser(tx, ctx.tenantId, row.requestedBy, 'truck_dispatched',
+        { truck_request_id: id, booking_code: row.code, eta_at: eta.toISOString() });
+      await tx.insert(auditLogs).values({ tenantId: ctx.tenantId, actorId: ctx.userId,
+        action: 'UPDATE', entity: 'truck_requests', entityId: id, reason: `dispatched; ETA ${eta.toISOString()}` });
+      return toResponse(updated!);
+    });
   }
 
   // The admin's km is final: the price is recomputed on it, with today's
@@ -390,7 +480,7 @@ export class TrucksService {
   postMessage(ctx: RequestContext, id: string, body: NegotiationMessageCreate) {
     return withTenantTx(ctx, async (tx) => {
       const request = await this.visibleRequest(tx, ctx, id);
-      if (request.status === 'cancelled' || request.status === 'paid') {
+      if (request.status === 'cancelled' || request.status === 'paid' || request.status === 'dispatched') {
         throw new ConflictException({ error: 'truck_request_closed', status: request.status });
       }
       const [row] = await tx
@@ -440,7 +530,7 @@ export class TrucksService {
   async agree(ctx: RequestContext, id: string, pricePhp: number): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
       const request = await this.visibleRequest(tx, ctx, id, true);
-      if (request.status === 'cancelled' || request.status === 'paid') {
+      if (request.status === 'cancelled' || request.status === 'paid' || request.status === 'dispatched') {
         throw new ConflictException({ error: 'truck_request_closed', status: request.status });
       }
       const was = num(request.agreedPricePhp);
@@ -547,7 +637,7 @@ export class TrucksService {
     return withTenantTx(ctx, async (tx) => {
       const row = await this.visibleRequest(tx, ctx, id, true);
       if (row.status === 'cancelled') throw new ConflictException({ error: 'already_cancelled' });
-      if (row.status === 'paid') throw new ConflictException({ error: 'cancel_after_payment' });
+      if (row.status === 'paid' || row.status === 'dispatched') throw new ConflictException({ error: 'cancel_after_payment' });
       await this.payments.voidUnpaid(tx, { truckRequestId: id });
       const [updated] = await tx
         .update(truckRequests)
@@ -579,4 +669,9 @@ function toToll(t: typeof tollRates.$inferSelect): TollRateResponse {
     vehicleClass: t.vehicleClass,
     asOf: t.asOf,
   };
+}
+
+function toBanRule(row: typeof truckBanRules.$inferSelect): TruckBanRule {
+  return { id: row.id, city: row.city, province: row.province, days: row.days,
+    windows: row.windows, minGvwKg: row.minGvwKg, permitNote: row.permitNote, verified: row.verified };
 }

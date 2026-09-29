@@ -6,6 +6,7 @@ import {
   NegotiationMessageCreateSchema,
   TollRateCreateSchema,
   TollRateUpdateSchema,
+  TruckBanRuleSchema,
   TruckAcceptPriceSchema,
   TruckAgreeSchema,
   TruckCrewSchema,
@@ -33,6 +34,7 @@ class TruckMessageDto extends createZodDto(NegotiationMessageCreateSchema) {}
 class TruckSettingsDto extends createZodDto(TruckSettingsSchema) {}
 class TollRateDto extends createZodDto(TollRateCreateSchema) {}
 class TollRateUpdateDto extends createZodDto(TollRateUpdateSchema) {}
+class TruckBanRuleDto extends createZodDto(TruckBanRuleSchema) {}
 
 // /me/truck-requests is the customer's own; /truck-requests and
 // /truck-settings are the tenant admin's. Tenant comes from the JWT (RLS);
@@ -159,6 +161,30 @@ export class TrucksController {
   tolls(@Req() req: CtxRequest) {
     return this.trucks.listTolls(req.ctx);
   }
+
+  @Post('truck-requests/:id/dispatch')
+  @RequirePermission('pricing:manage')
+  dispatch(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+    return this.trucks.dispatch(req.ctx, id);
+  }
+
+  @Get('truck-ban-rules')
+  @RequirePermission('pricing:manage', 'report:read')
+  banRules(@Req() req: CtxRequest) { return this.trucks.listBanRules(req.ctx); }
+
+  @Post('truck-ban-rules')
+  @RequirePermission('pricing:manage')
+  addBanRule(@Body() body: TruckBanRuleDto, @Req() req: CtxRequest) { return this.trucks.addBanRule(req.ctx, body); }
+
+  @Put('truck-ban-rules/:id')
+  @RequirePermission('pricing:manage')
+  updateBanRule(@Param('id', UuidParamPipe) id: string, @Body() body: TruckBanRuleDto, @Req() req: CtxRequest) {
+    return this.trucks.updateBanRule(req.ctx, id, body);
+  }
+
+  @Delete('truck-ban-rules/:id')
+  @RequirePermission('pricing:manage')
+  removeBanRule(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) { return this.trucks.removeBanRule(req.ctx, id); }
 
   @Post('toll-rates')
   @RequirePermission('pricing:manage')

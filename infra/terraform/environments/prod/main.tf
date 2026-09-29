@@ -61,6 +61,7 @@ locals {
     AZURE_DI_KEY                          = "azure-di-key"
     PAYMONGO_SECRET_KEY                   = "paymongo-secret-key"
     PAYMONGO_WEBHOOK_SECRET               = "paymongo-webhook-secret"
+    ORS_API_KEY                           = "ors-api-key"
     TURNSTILE_SECRET_KEY                  = "turnstile-secret-key"
     VAPID_PRIVATE_KEY                     = "vapid-private-key"
     APPLICATIONINSIGHTS_CONNECTION_STRING = "appinsights-connection-string"

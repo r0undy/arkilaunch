@@ -546,7 +546,7 @@ export class PaymentsService {
         .where(and(eq(truckRequests.id, truckRequestId), eq(truckRequests.requestedBy, ctx.userId)))
         .limit(1);
       if (!request) throw new NotFoundException({ error: 'truck_request_not_found' });
-      if (request.status === 'paid') throw new ConflictException({ error: 'already_paid' });
+      if (request.status === 'paid' || request.status === 'dispatched') throw new ConflictException({ error: 'already_paid' });
       if (request.status !== 'agreed' || request.agreedPricePhp === null) {
         throw new ConflictException({ error: 'price_not_agreed', status: request.status });
       }

@@ -6,6 +6,7 @@ import type {
   CouponListResponse,
   CompanyReviewListResponse,
   TruckRequestListResponse,
+  TruckBanRule,
   TruckRoute,
   SiteForecastResponse,
   AreaForecastResponse,
@@ -119,6 +120,11 @@ export const couponsQueries = {
 };
 
 export const MY_TRUCK_REQUESTS = ['me', 'truck-requests'] as const;
+
+export const truckBanRulesQuery = {
+  queryKey: ['truck-ban-rules'] as const,
+  queryFn: () => apiGet<TruckBanRule[]>('/truck-ban-rules'),
+};
 
 // Staff truck queue (cr-arkilaunch-console-polish.md). Every key starts
 // with 'truck-requests', so invalidating that prefix refreshes them all.

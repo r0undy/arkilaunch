@@ -2,8 +2,8 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BookingDetailResponse, BookingService, TruckRequestResponse } from '@arkilaunch/shared';
-import { localPhMobile } from '@arkilaunch/shared';
-import { bookingsQueries, trucksQueries } from '../lib/queries.js';
+import { banHits, localPhMobile } from '@arkilaunch/shared';
+import { bookingsQueries, truckBanRulesQuery, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
 import { formatDate, formatDateTime, formatInvoiceType, formatPeso, formatStatus } from '../lib/format.js';
 import { Alert } from './alert.js';
@@ -44,9 +44,9 @@ export function rentalSteps(b: Pick<BookingDetailResponse, 'status' | 'callConfi
 
 // estimated → km confirmed → agreed → paid.
 export function truckSteps(t: Pick<TruckRequestResponse, 'status'>): Step[] {
-  const order = ['estimated', 'km_confirmed', 'agreed', 'paid'];
+  const order = ['estimated', 'km_confirmed', 'agreed', 'paid', 'dispatched'];
   const at = order.indexOf(t.status);
-  return ['Estimated', 'Km confirmed', 'Agreed', 'Paid'].map((label, i) => ({ label, done: at >= i }));
+  return ['Estimated', 'Km confirmed', 'Agreed', 'Paid', 'Dispatched'].map((label, i) => ({ label, done: at >= i }));
 }
 
 function Stepper({ steps, cancelled }: { steps: Step[]; cancelled: boolean }) {
@@ -209,6 +209,8 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
     [truck.dropoffLat, truck.dropoffLng],
   );
   const route = useQuery({ ...trucksQueries.route(truck.id), enabled: !!pickup && !!dropoff });
+  const rules = useQuery(truckBanRulesQuery);
+  const cities = route.data?.cities ?? truck.routeCities ?? [];
   return (
     <div className="flex flex-col gap-4">
       <Stepper steps={truckSteps(truck)} cancelled={truck.status === 'cancelled'} />
@@ -222,6 +224,32 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
             {route.isError && (
               <p className="text-xs text-text-muted">The road route is unavailable; the pins are joined in a straight line.</p>
             )}
+            {(route.data?.cities ?? truck.routeCities)?.length ? (
+              <div className="text-xs text-text-muted">
+                <p>Route passes through:</p>
+                <ol className="mt-1 flex flex-wrap items-center gap-1">
+                  {(route.data?.cities ?? truck.routeCities ?? []).map((place, index) => (
+                    <li key={`${place.city}-${place.province}-${index}`} className="rounded border border-border px-2 py-1">
+                      {place.city}{place.province ? `, ${place.province}` : ''}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
+            {cities.map((place, index) => {
+              const match = rules.data?.filter((rule) => rule.city.toLowerCase().replace(/ city$/, '') === place.city.toLowerCase().replace(/ city$/, '')) ?? [];
+              return match.map((rule) => {
+                const hit = banHits([place], [rule], new Date(truck.scheduledFor)).length > 0;
+                return <p key={`${rule.id}-${index}`} className="text-xs text-text-muted">
+                  <strong>{place.city}</strong> - trucks banned {rule.windows.map((w) => `${w.from}-${w.to}`).join(' & ')},
+                  {' '}{rule.days.map((day) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][day]).join(', ')}
+                  {hit ? ' | pickup falls inside: permit or reschedule' : ' | pickup outside listed hours'}
+                  {rule.minGvwKg !== null && ` | applies from ${rule.minGvwKg} kg GVW (vehicle weight not recorded)`}
+                  {!rule.verified && ' | rule not verified'}
+                  {rule.permitNote && ` | ${rule.permitNote}`}
+                </p>;
+              });
+            })}
           </>
         ) : (
           <p className="text-sm text-text-muted">
@@ -247,6 +275,8 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
             )}
           </Row>
           <Row label="Pickup">{formatDateTime(truck.scheduledFor)}</Row>
+          <Row label="Est. arrival">{truck.etaAt ? formatDateTime(truck.etaAt)
+            : truck.routeMinutes !== null ? `~ pickup + ${truck.routeMinutes} min drive` : '--'}</Row>
           <Row label="Distance">
             <span className="font-mono tabular-nums">
               {truck.confirmedKm !== null ? `${truck.confirmedKm} km confirmed` : `~${truck.estimatedKm} km estimated`}
@@ -336,7 +366,7 @@ export function BookingDrawer({
               {tab === 'negotiation' && (
                 <NegotiationThread
                   base={`/truck-requests/${shownTruck.id}`}
-                  disabled={shownTruck.status === 'cancelled' || shownTruck.status === 'paid'}
+                  disabled={shownTruck.status === 'cancelled' || shownTruck.status === 'paid' || shownTruck.status === 'dispatched'}
                 />
               )}
               {tab === 'actions' && <RequestRow r={shownTruck} />}

@@ -175,6 +175,13 @@ Each runbook is the human half of a fallback the system already implements. Symp
 - **Link a company:** PayMongo dashboard → Settings → Invitations → invite the company; once it finishes PayMongo onboarding, copy its `org_…` from Linked accounts into `/admin/companies` → Payments. Until linked (or after unlinking), its online payments are collected on ArkiLaunch's parent account (interim, `TODO(paymongo-child-accounts)` in `payments.service.ts`).
 - **Rotate keys:** new key in the PayMongo dashboard → update the secret store (GitHub `PAYMONGO_SECRET_KEY`) → redeploy. A rotated webhook secret needs a new webhook registration.
 
+#### 4.2a Truck routing and ban-rule verification (CR: qa-truck-routing)
+
+- Provision an OpenRouteService key for each environment and save it as the GitHub environment secret `ORS_API_KEY`. The Terraform API app maps it to the Container App secret `ors-api-key`. Without it, routing uses OSRM's car profile and both maps display "Car route - verify truck access".
+- Check the route provider and warning during smoke tests. ORS `driving-hgv` does not replace a vehicle-specific road and permit review. Monitor fallback warnings in API logs.
+- Keep the pilot API at one replica while public Nominatim provides route-city lookups: its 1 request/second cap is application-wide, while the in-process limiter cannot coordinate multiple replicas. Before scaling, move route-city geocoding to a contracted or self-hosted provider with shared caching; see the [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/).
+- Migration 0070 seeds Metro Manila ban rules with `verified=false` for every tenant. Staff must check current MMDA and relevant LGU road notices, hours, vehicle weight and permit requirements in the Truck pricing editor before marking each rule verified. Review again when a rule changes. A city-wide time rule cannot capture road-level exceptions.
+
 #### 4.3 Open-Meteo outage (PRD-F5)
 
 - **Symptom / alert:** A1/A8; `external_dependency_degraded{dependency=open_meteo, mode=down}` per failing site, poll cycle continuing for the rest. **Addendum (2026-08-20, `cr-arkilaunch-open-meteo-free-tier.md`): a separate `mode=quota_ceiling` event (one per affected tenant, whole cycle skipped) means the free tier's 10,000/day cap was hit, not an outage** -- see A7.

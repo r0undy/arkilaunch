@@ -32,6 +32,7 @@ const STATUS_TONE: Record<string, Tone> = {
   // moving
   confirmed: 'progress',
   deployed: 'progress',
+  dispatched: 'progress',
   km_confirmed: 'progress',
   issued: 'progress',
   invited: 'progress',

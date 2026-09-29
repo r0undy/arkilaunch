@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
-import { setAccessToken, getAccessToken } from '../lib/auth-client.js';
+import { setAccessToken, getAccessToken, login } from '../lib/auth-client.js';
 
 // The route-level pattern to copy for future screens: drive the real route
 // tree through createMemoryHistory and mock only the network boundary
@@ -50,6 +50,20 @@ describe('LoginPage: redirect preservation', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('keeps a visitor cart on first sign-in but clears it when switching accounts', async () => {
+    const first = makeToken(makeValidClaims({ sub: 'customer-1' }));
+    sessionStorage.setItem('arkilaunch.cart', '[{"equipmentId":"machine-1"}]');
+    stubFetch({ accessToken: first, refreshToken: 'refresh-1', expiresIn: 600 });
+
+    await login({ email: 'first@example.com', password: 'password123' });
+    expect(sessionStorage.getItem('arkilaunch.cart')).toContain('machine-1');
+
+    const second = makeToken(makeValidClaims({ sub: 'customer-2' }));
+    stubFetch({ accessToken: second, refreshToken: 'refresh-2', expiresIn: 600 });
+    await login({ email: 'second@example.com', password: 'password123' });
+    expect(sessionStorage.getItem('arkilaunch.cart')).toBeNull();
   });
 
   it('after a successful login, navigates back to the ?redirect= destination rather than the role home', async () => {

@@ -6,7 +6,7 @@
 **Version:** 0.1
 **Owner:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** Locked
-**Last reconciled:** 2026-09-28 (CR: aws-design-language, one tier, AWS shape/type/elevation); earlier 2026-08-02; marketing-tier amendment recorded via Change Record `docs/cr-arkilaunch-dsd-marketing-tier.md`, reconciled against the new `apps/web/src/index.css` token layer and console primitives
+**Last reconciled:** 2026-09-29 (CR: qa-truck-routing, Route Map and Trip Card); earlier 2026-09-28 (CR: aws-design-language); marketing-tier amendment recorded via Change Record `docs/cr-arkilaunch-dsd-marketing-tier.md`
 **PRD:** [prd-arkilaunch.md](prd-arkilaunch.md)
 **IDEA:** [idea-arkilaunch.md](idea-arkilaunch.md)
 **Mode:** Product Mode (task-first); the public catalog and landing borrow a thin Brand-Mode layer, noted where it applies.
@@ -186,6 +186,8 @@ Palette is high-contrast by construction, verified for WCAG 2.2 AA at the pairin
 Signal hues (success/warning/error/weather/recon) hold their hue in dark theme; borders and text lift to keep AA. Theme is toggled by `data-theme` on the root; default is light.
 
 **Public landing motion (CR: platform-landing-motion, 2026-09-28):** the platform landing only. A 400ms feature reveal (80ms stagger, once, IntersectionObserver) and a scroll-snap step carousel (native smooth scroll, no autoplay). Both collapse to instant under `prefers-reduced-motion`.
+
+
 
 > **Retired (CR: aws-design-language, 2026-09-28).** The Marketing tier is gone: every screen now uses one token system, the AWS reference's shape, type and elevation on Yardboard's colors. The block below is kept as history; nothing in code reads it.
 
@@ -414,6 +416,8 @@ No `backdrop-filter: blur()` on content surfaces (perf on cheap Android); the mo
 **Route Map** (CR: console-polish, truck-map-booking); a truck trip on one map. Teardrop pins A (pickup, `--color-primary`) and B (drop-off, `--color-accent`) with the letter in the head, a ground shadow and an address bubble above; they drop in (not under reduced motion) and drag in edit mode. The road route is a navigation-style line: an accent core on a darker accent casing, wider as the map zooms in; a dashed straight line stands in until the road route returns. Distance and drive time in mono, labelled "(estimate)". Tilted 3D by default with a "3D" toggle, framed at the current tilt; two-finger pan on touch so the page still scrolls. Vector tiles are OpenFreeMap (keyless); MapLibre loads lazily. Under `prefers-reduced-motion` the camera jumps rather than flies. Edit mode belongs to the customer booking page, where the map is the screen: tap sets the selected pin (pickup, then drop-off), the route and price load on their own, a floating panel (left on desktop, a sheet under the map on a phone) holds the trip rows, price, time, site and Request, and the typed address pickers wait under "Advanced search". Without WebGL the page falls back to the flat Leaflet pin map. The read-only `RouteMap` in the drawers always prints the coordinates below the map, so the map is never the only record of a pin. **Built:** `apps/web/src/components/route-map.tsx` (+ `route-map-gl.tsx`), `apps/web/src/routes/account.trucks.tsx`.
 
 **Trip Card** (CR: truck-map-booking); a customer's truck request in a list: code, pickup time, A and B addresses beside their lettered dots, the price (agreed or estimated) and a Status Badge, with a five-dot stepper (Requested, Distance confirmed, Price agreed, Confirmed by call, Paid) and a "Next:" line. Each step is done on its own evidence, so a call confirmed before the price shows as done. A cancelled trip shows the badge, no stepper. The whole card is one button that opens the trip drawer: map, stepper, price and the call/approve/pay actions, notes, and the negotiation thread. **Built:** `apps/web/src/components/truck-trip.tsx`.
+
+**Truck routing update (CR: qa-truck-routing).** The Route Map shows "Car route - verify truck access" whenever ORS HGV routing falls back to OSRM. The staff trip overview lists route cities in travel order and gives each matching city rule a readable hours/day badge, pickup-window verdict, permit note and "rule not verified" marker. The Trip Card and both trip drawers gain Dispatched after Paid; before dispatch, the drawer says "Est. arrival ~ pickup + drive time", and afterward it shows the saved arrival timestamp. Staff can dispatch a paid truck from Actions.
 
 > **Retired (CR: aws-design-language, 2026-09-28).** The Marketing tier is gone: every screen now uses one token system, the AWS reference's shape, type and elevation on Yardboard's colors. The block below is kept as history; nothing in code reads it.
 

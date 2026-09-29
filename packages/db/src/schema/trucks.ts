@@ -1,6 +1,6 @@
-import { date, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uuid, check } from 'drizzle-orm/pg-core';
+import { boolean, date, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uuid, check, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { TruckExtra, TruckPrice } from '@arkilaunch/shared';
+import type { RouteCity, TruckBanRuleInput, TruckExtra, TruckPrice } from '@arkilaunch/shared';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 
@@ -44,6 +44,10 @@ export const truckRequests = pgTable(
     // Road distance from the routing estimate; confirmed_km is the admin's
     // figure and is the only one a price is ever charged on.
     estimatedKm: numeric('estimated_km', { precision: 8, scale: 1 }).notNull(),
+    routeCities: jsonb('route_cities').$type<RouteCity[]>(),
+    routeMinutes: integer('route_minutes'),
+    dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
+    etaAt: timestamp('eta_at', { withTimezone: true }),
     confirmedKm: numeric('confirmed_km', { precision: 8, scale: 1 }),
     status: text('status').notNull().default('estimated'),
     agreedPricePhp: numeric('agreed_price_php', { precision: 14, scale: 2 }),
@@ -75,7 +79,7 @@ export const truckRequests = pgTable(
   },
   (t) => [
     tenantIsolationPolicy(),
-    check('truck_requests_status_valid', sql`${t.status} IN ('estimated','km_confirmed','agreed','paid','cancelled')`),
+    check('truck_requests_status_valid', sql`${t.status} IN ('estimated','km_confirmed','agreed','paid','dispatched','cancelled')`),
     index('truck_requests_tenant_id_idx').on(t.tenantId),
     index('truck_requests_requested_by_idx').on(t.requestedBy),
     index('truck_requests_customer_id_idx').on(t.customerId),
@@ -125,4 +129,23 @@ export const tollRates = pgTable(
     check('toll_rates_fee_nonnegative', sql`${t.feePhp} >= 0`),
     index('toll_rates_tenant_id_idx').on(t.tenantId),
   ],
+);
+
+export const truckBanRules = pgTable(
+  'truck_ban_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+    city: text('city').notNull(),
+    province: text('province').notNull(),
+    days: integer('days').array().notNull(),
+    windows: jsonb('windows').$type<TruckBanRuleInput['windows']>().notNull(),
+    minGvwKg: integer('min_gvw_kg'),
+    permitNote: text('permit_note').notNull().default(''),
+    verified: boolean('verified').notNull().default(false),
+  },
+  (t) => [tenantIsolationPolicy(), index('truck_ban_rules_tenant_id_idx').on(t.tenantId),
+    uniqueIndex('truck_ban_rules_tenant_city_province_key').on(t.tenantId, t.city, t.province),
+    check('truck_ban_rules_days_valid', sql`cardinality(${t.days}) > 0 AND ${t.days} <@ ARRAY[0,1,2,3,4,5,6]`),
+    check('truck_ban_rules_min_gvw_valid', sql`${t.minGvwKg} IS NULL OR ${t.minGvwKg} > 0`)],
 );

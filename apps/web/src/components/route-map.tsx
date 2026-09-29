@@ -87,6 +87,7 @@ export function RouteMap({ pickup, dropoff, route, className = 'h-80' }: RouteMa
           </div>
         )}
       </dl>
+      {route?.truckSafe === false && <p className="text-xs font-semibold text-warning">Car route - verify truck access</p>}
     </div>
   );
 }

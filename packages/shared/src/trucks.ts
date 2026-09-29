@@ -120,9 +120,71 @@ export interface TruckRoute {
   km: number;
   minutes: number;
   line: [number, number][];
+  truckSafe?: boolean;
+  cities?: RouteCity[];
   // Staff route only: the expressways the road route runs on, for the toll
   // picker's suggestion (ph-tolls.ts suggestTolls).
   tollHints?: TollHint[];
+}
+
+export interface RouteCity { city: string; province: string }
+
+const ClockTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+export const TruckBanRuleSchema = z.object({
+  city: z.string().trim().min(1).max(100),
+  province: z.string().trim().min(1).max(100),
+  days: z.array(z.number().int().min(0).max(6)).min(1).max(7),
+  windows: z.array(z.object({ from: ClockTime, to: ClockTime }).refine((w) => w.from !== w.to)).min(1).max(8),
+  minGvwKg: z.number().int().positive().max(100_000).nullable(),
+  permitNote: z.string().trim().max(500),
+  verified: z.boolean(),
+}).strict();
+export type TruckBanRuleInput = z.infer<typeof TruckBanRuleSchema>;
+export interface TruckBanRule extends TruckBanRuleInput { id: string }
+export interface TruckBanHit { city: string; window: string; permitNote: string; verified: boolean; endAt: Date }
+
+const PH_OFFSET_MS = 8 * 60 * 60 * 1000;
+const minutesOf = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
+
+// Evaluate the rule in Philippine civil time. Overnight windows inherit the
+// previous day's start day. Return the end instant so dispatch can wait.
+export function banHits(cities: RouteCity[], rules: TruckBanRuleInput[], at: Date): TruckBanHit[] {
+  const local = new Date(at.getTime() + PH_OFFSET_MS);
+  const minute = local.getUTCHours() * 60 + local.getUTCMinutes();
+  const day = local.getUTCDay();
+  return rules.flatMap((rule) => {
+    const cityName = (name: string) => name.toLowerCase().replace(/^city of\s+/, '').replace(/\s+city$/, '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (!cities.some((place) => cityName(place.city) === cityName(rule.city) &&
+      (!rule.province || place.province.toLowerCase() === rule.province.toLowerCase() ||
+        ['metro manila', 'national capital region'].includes(place.province.toLowerCase()) &&
+        ['metro manila', 'national capital region'].includes(rule.province.toLowerCase())))) return [];
+    return rule.windows.flatMap(({ from, to }) => {
+      const start = minutesOf(from);
+      const end = minutesOf(to);
+      const overnight = end < start;
+      const inside = overnight
+        ? (minute >= start && rule.days.includes(day)) || (minute < end && rule.days.includes((day + 6) % 7))
+        : rule.days.includes(day) && minute >= start && minute < end;
+      if (!inside) return [];
+      const endDay = overnight && minute >= start ? 1 : 0;
+      const midnightUtc = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
+      return [{ city: rule.city, window: `${from}-${to}`, permitNote: rule.permitNote,
+        verified: rule.verified, endAt: new Date(midnightUtc + (endDay * 1440 + end) * 60_000 - PH_OFFSET_MS) }];
+    });
+  });
+}
+
+export function truckEta(dispatchedAt: Date, routeMinutes: number, cities: RouteCity[], rules: TruckBanRuleInput[]): Date {
+  let eta = new Date(dispatchedAt.getTime() + Math.max(0, routeMinutes) * 60_000);
+  for (let i = 0; i < 16; i++) {
+    const hits = banHits(cities, rules, eta);
+    if (!hits.length) break;
+    const end = Math.max(...hits.map((hit) => hit.endAt.getTime()));
+    if (end <= eta.getTime()) break;
+    eta = new Date(end);
+  }
+  return eta;
 }
 
 export interface TollHint {
@@ -220,10 +282,10 @@ export function priceTruckTrip({ km, settings, perKmPhp, fuelLPerKm, dieselPhp, 
   return { km, lines, totalPhp };
 }
 
-export const TRUCK_REQUEST_STATUSES = ['estimated', 'km_confirmed', 'agreed', 'paid', 'cancelled'] as const;
+export const TRUCK_REQUEST_STATUSES = ['estimated', 'km_confirmed', 'agreed', 'paid', 'dispatched', 'cancelled'] as const;
 export type TruckRequestStatus = (typeof TRUCK_REQUEST_STATUSES)[number];
 // Nothing left to do on these: the rest are "open".
-export const CLOSED_TRUCK_STATUSES: readonly TruckRequestStatus[] = ['paid', 'cancelled'];
+export const CLOSED_TRUCK_STATUSES: readonly TruckRequestStatus[] = ['paid', 'dispatched', 'cancelled'];
 
 // GET /truck-requests and /me/truck-requests. `q` finds a TRK- code by
 // prefix, as GET /bookings does; `status` splits open from closed.
@@ -247,6 +309,10 @@ export interface TruckRequestResponse {
   scheduledFor: string;
   notes: string | null;
   estimatedKm: number;
+  routeCities: RouteCity[] | null;
+  routeMinutes: number | null;
+  dispatchedAt: string | null;
+  etaAt: string | null;
   confirmedKm: number | null;
   status: TruckRequestStatus;
   price: TruckPrice;

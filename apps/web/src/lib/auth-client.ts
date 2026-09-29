@@ -61,7 +61,14 @@ function storeTokens(tokens: AuthTokens): void {
   sessionStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
   const userId = decodeAccessToken(tokens.accessToken)?.sub ?? null;
   if (!userId) return;
-  if (tabUser() !== userId) for (const key of USER_TAB_KEYS) sessionStorage.removeItem(key);
+  const previousUser = tabUser();
+  if (previousUser && previousUser !== userId) {
+    for (const key of USER_TAB_KEYS) sessionStorage.removeItem(key);
+  } else if (!previousUser) {
+    // A visitor's cart belongs to this login flow. Keep it across the
+    // redirect, while resetting signed-in-only welcome state.
+    sessionStorage.removeItem('setup-modal-seen');
+  }
   sessionStorage.setItem(TAB_USER_KEY, userId);
   markOwner(userId);
 }
