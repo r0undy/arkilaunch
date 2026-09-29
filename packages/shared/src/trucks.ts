@@ -18,28 +18,6 @@ export type TruckExtra = z.infer<typeof TruckExtraSchema>;
 // summed (per-km ones times km), each extra is also its own variable.
 export const DEFAULT_TRUCK_FORMULA = 'base + km * per_km + km * fuel_l_per_km * diesel + driver_fee + extras + tolls';
 
-// The tenant's internal trip cost policy (0071): staff-only, never on a
-// customer response. Every part is optional; 'none' leaves it out.
-const Php = z.number().nonnegative().max(1_000_000);
-export const TruckCostPolicySchema = z
-  .object({
-    // Fuel cost = km × fuelFactor × diesel × round trip. Null = the
-    // tenant's pricing-parameter fuel L/km. The unit is the tenant's own.
-    fuelFactor: z.number().positive().max(100).nullable().default(null),
-    miscAllowancePhp: Php.default(0),
-    helper: z
-      .object({ kind: z.enum(['none', 'fixed', 'per_km', 'pct_driver']), value: Php })
-      .strict()
-      .default({ kind: 'none', value: 0 }),
-    maintenance: z
-      .object({ kind: z.enum(['none', 'fixed', 'per_km', 'pct_fuel']), value: Php })
-      .strict()
-      .default({ kind: 'none', value: 0 }),
-  })
-  .strict();
-export type TruckCostPolicy = z.infer<typeof TruckCostPolicySchema>;
-export const DEFAULT_TRUCK_COST_POLICY: TruckCostPolicy = TruckCostPolicySchema.parse({});
-
 export const TruckSettingsSchema = z
   .object({
     baseFeePhp: z.number().nonnegative().max(1_000_000),
@@ -51,16 +29,6 @@ export const TruckSettingsSchema = z
     rangePct: z.number().min(0).max(100).default(10),
     // Legacy: trucks now price on the national diesel average; not read.
     region: z.string().trim().min(1).max(40).default('NCR'),
-    // 0071: formula variables round_trip and quote_multiplier (e.g. a
-    // tenant's `km * round_trip * diesel * quote_multiplier`). Round trip
-    // also scales the internal fuel cost.
-    roundTripMultiplier: z.number().positive().max(10).default(1),
-    quoteMultiplier: z.number().positive().max(100).default(1),
-    // Negotiation floor = the route price × (1 - maxDiscountPct/100). The
-    // admin is warned below it, never blocked. Null = no floor. Separate
-    // from rangePct, which is only the estimate band.
-    maxDiscountPct: z.number().min(0).max(100).nullable().default(null),
-    costPolicy: TruckCostPolicySchema.default(DEFAULT_TRUCK_COST_POLICY),
   })
   .strict()
   .superRefine((s, ctx) => {
@@ -249,7 +217,7 @@ export interface TollRateResponse {
 
 export interface TruckPriceInput {
   km: number;
-  settings: FormulaSettings & Pick<TruckSettings, 'formula'>;
+  settings: Pick<TruckSettings, 'baseFeePhp' | 'driverFeePhp' | 'extras' | 'formula'>;
   // From pricing_parameters and the resolved diesel price.
   perKmPhp: number;
   fuelLPerKm: number;
@@ -257,12 +225,8 @@ export interface TruckPriceInput {
   tolls?: TruckPriceLine[];
 }
 
-// The multipliers default to 1, so settings saved before 0071 price as before.
-type FormulaSettings = Pick<TruckSettings, 'baseFeePhp' | 'driverFeePhp' | 'extras'> &
-  Partial<Pick<TruckSettings, 'roundTripMultiplier' | 'quoteMultiplier'>>;
-
 function formulaVars(
-  settings: FormulaSettings,
+  settings: Pick<TruckSettings, 'baseFeePhp' | 'driverFeePhp' | 'extras'>,
   km: number,
   perKmPhp: number,
   fuelLPerKm: number,
@@ -284,8 +248,6 @@ function formulaVars(
     per_km: perKmPhp,
     diesel: dieselPhp,
     fuel_l_per_km: fuelLPerKm,
-    round_trip: settings.roundTripMultiplier ?? 1,
-    quote_multiplier: settings.quoteMultiplier ?? 1,
     driver_fee: settings.driverFeePhp,
     tolls: tollsPhp,
     // ponytail: requests carry no load weight yet, so weight_t is 0.
@@ -320,57 +282,7 @@ export function priceTruckTrip({ km, settings, perKmPhp, fuelLPerKm, dieselPhp, 
   return { km, lines, totalPhp };
 }
 
-export interface TruckCostInput {
-  km: number;
-  settings: Pick<TruckSettings, 'driverFeePhp' | 'extras'> & Partial<Pick<TruckSettings, 'roundTripMultiplier' | 'costPolicy'>>;
-  fuelLPerKm: number;
-  dieselPhp: number;
-  tolls?: TruckPriceLine[];
-}
-
-// Pure: the tenant's estimated operating cost of one trip, from its own
-// policy. Only configured parts appear; nothing is added to reach a target.
-// Driver is the existing per-trip fee (a per-km driver rule is future work).
-// Tolls and extra charges are passed through as cost.
-export function estimateTruckCost({ km, settings, fuelLPerKm, dieselPhp, tolls = [] }: TruckCostInput): { lines: TruckPriceLine[]; totalPhp: number } {
-  const policy = settings.costPolicy ?? DEFAULT_TRUCK_COST_POLICY;
-  const roundTrip = settings.roundTripMultiplier ?? 1;
-  const factor = policy.fuelFactor ?? fuelLPerKm;
-  const fuel = peso(km * factor * dieselPhp * roundTrip);
-  const driver = peso(settings.driverFeePhp);
-  const lines: TruckPriceLine[] = [{ label: `Fuel (${km} km × ${factor} × ₱${dieselPhp} × ${roundTrip})`, amountPhp: fuel }];
-  if (driver > 0) lines.push({ label: 'Driver', amountPhp: driver });
-  const { helper, maintenance } = policy;
-  const helperPhp = { none: 0, fixed: helper.value, per_km: km * helper.value, pct_driver: (driver * helper.value) / 100 }[helper.kind];
-  if (helper.kind !== 'none') lines.push({ label: 'Helper', amountPhp: peso(helperPhp) });
-  const maintPhp = { none: 0, fixed: maintenance.value, per_km: km * maintenance.value, pct_fuel: (fuel * maintenance.value) / 100 }[maintenance.kind];
-  if (maintenance.kind !== 'none') lines.push({ label: 'Maintenance', amountPhp: peso(maintPhp) });
-  if (policy.miscAllowancePhp > 0) lines.push({ label: 'Miscellaneous allowance', amountPhp: peso(policy.miscAllowancePhp) });
-  for (const x of settings.extras) lines.push({ label: x.label, amountPhp: peso(x.per === 'km' ? km * x.amountPhp : x.amountPhp) });
-  for (const t of tolls) lines.push({ label: `Toll: ${t.label}`, amountPhp: peso(t.amountPhp) });
-  return { lines, totalPhp: peso(lines.reduce((acc, l) => acc + l.amountPhp, 0)) };
-}
-
-// Saved on the request when it is priced (0071), so a later policy change
-// never alters a quoted trip. Staff-only.
-export interface TruckInternal {
-  cost: { lines: TruckPriceLine[]; totalPhp: number };
-  // Null when the tenant sets no max discount.
-  floorPhp: number | null;
-  maxDiscountPct: number | null;
-}
-
-export function negotiationFloor(recommendedPhp: number, maxDiscountPct: number | null): number | null {
-  return maxDiscountPct === null ? null : peso(recommendedPhp * (1 - maxDiscountPct / 100));
-}
-
-// Profit on the agreed price, else on the route price.
-export function truckProfit(pricePhp: number, costPhp: number): { profitPhp: number; marginPct: number | null } {
-  const profitPhp = peso(pricePhp - costPhp);
-  return { profitPhp, marginPct: pricePhp > 0 ? Math.round((profitPhp / pricePhp) * 10_000) / 100 : null };
-}
-
-export const TRUCK_REQUEST_STATUSES =['estimated', 'km_confirmed', 'agreed', 'paid', 'dispatched', 'cancelled'] as const;
+export const TRUCK_REQUEST_STATUSES = ['estimated', 'km_confirmed', 'agreed', 'paid', 'dispatched', 'cancelled'] as const;
 export type TruckRequestStatus = (typeof TRUCK_REQUEST_STATUSES)[number];
 // Nothing left to do on these: the rest are "open".
 export const CLOSED_TRUCK_STATUSES: readonly TruckRequestStatus[] = ['paid', 'dispatched', 'cancelled'];
@@ -433,8 +345,4 @@ export interface TruckRequestResponse {
   dropoffLat: number | null;
   dropoffLng: number | null;
   createdAt: string;
-  // Staff responses only (never a customer's): the saved cost and floor,
-  // and profit on the agreed (else route) price. Absent on requests priced
-  // before 0071.
-  internal?: TruckInternal & { profitPhp: number; marginPct: number | null };
 }

@@ -9,8 +9,6 @@ export const FORMULA_BASE_VARS = [
   'per_km',
   'diesel',
   'fuel_l_per_km',
-  'round_trip',
-  'quote_multiplier',
   'driver_fee',
   'tolls',
   'weight_t',

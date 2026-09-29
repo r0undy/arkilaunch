@@ -1,7 +1,7 @@
 import { createRoute, redirect } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { DEFAULT_TRUCK_COST_POLICY, DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, type TruckCostPolicy, suggestTolls, TruckBanRuleSchema, type TruckBanRule, type TruckBanRuleInput, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
+import { DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, suggestTolls, TruckBanRuleSchema, type TruckBanRule, type TruckBanRuleInput, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
 import { formatDate, formatDateTime, formatPeso } from '../lib/format.js';
@@ -38,20 +38,6 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
   const [extras, setExtras] = useState<TruckExtra[]>(initial.extras);
   const [formula, setFormula] = useState(initial.formula || DEFAULT_TRUCK_FORMULA);
   const [rangePct, setRangePct] = useState(String(initial.rangePct));
-  // 0071 fields; a settings row saved before them reads as the defaults.
-  const saved = {
-    roundTrip: String(initial.roundTripMultiplier ?? 1),
-    quoteMultiplier: String(initial.quoteMultiplier ?? 1),
-    maxDiscount: initial.maxDiscountPct == null ? '' : String(initial.maxDiscountPct),
-    cost: initial.costPolicy ?? DEFAULT_TRUCK_COST_POLICY,
-  };
-  const [roundTrip, setRoundTrip] = useState(saved.roundTrip);
-  const [quoteMultiplier, setQuoteMultiplier] = useState(saved.quoteMultiplier);
-  const [maxDiscount, setMaxDiscount] = useState(saved.maxDiscount);
-  const [fuelFactor, setFuelFactor] = useState(saved.cost.fuelFactor == null ? '' : String(saved.cost.fuelFactor));
-  const [misc, setMisc] = useState(String(saved.cost.miscAllowancePhp));
-  const [helper, setHelper] = useState(saved.cost.helper);
-  const [maintenance, setMaintenance] = useState(saved.cost.maintenance);
   const [editing, setEditing] = useState(false);
   // Every open starts from what is saved, so a cancelled edit leaves nothing behind.
   const open = () => {
@@ -60,13 +46,6 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
     setExtras(initial.extras);
     setFormula(initial.formula || DEFAULT_TRUCK_FORMULA);
     setRangePct(String(initial.rangePct));
-    setRoundTrip(saved.roundTrip);
-    setQuoteMultiplier(saved.quoteMultiplier);
-    setMaxDiscount(saved.maxDiscount);
-    setFuelFactor(saved.cost.fuelFactor == null ? '' : String(saved.cost.fuelFactor));
-    setMisc(String(saved.cost.miscAllowancePhp));
-    setHelper(saved.cost.helper);
-    setMaintenance(saved.cost.maintenance);
     setEditing(true);
   };
   // The builder's sample trip is priced with the same per-km, fuel and
@@ -87,15 +66,6 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
         extras,
         formula: formula.trim() === '' || formula.trim() === DEFAULT_TRUCK_FORMULA ? null : formula.trim(),
         rangePct: Number(rangePct),
-        roundTripMultiplier: Number(roundTrip),
-        quoteMultiplier: Number(quoteMultiplier),
-        maxDiscountPct: maxDiscount.trim() === '' ? null : Number(maxDiscount),
-        costPolicy: {
-          fuelFactor: fuelFactor.trim() === '' ? null : Number(fuelFactor),
-          miscAllowancePhp: Number(misc),
-          helper,
-          maintenance,
-        },
       }),
     onSuccess: () => {
       setEditing(false);
@@ -117,7 +87,6 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
           { label: 'Base fee (per trip)', value: formatPeso(initial.baseFeePhp) },
           { label: "Driver's fee (per trip)", value: formatPeso(initial.driverFeePhp) },
           { label: 'Estimate range', value: `± ${initial.rangePct}%` },
-          { label: 'Max negotiation discount', value: initial.maxDiscountPct == null ? 'No floor' : `${initial.maxDiscountPct}%` },
           { label: 'Formula', value: initial.formula ? 'Custom' : 'Standard' },
           {
             label: 'Extra charges',
@@ -151,41 +120,12 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
             <Input label="Driver's fee (₱ per trip)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
             <Input label="Estimate range (± %)" type="number" min={0} max={100} numeric value={rangePct} onChange={(e) => setRangePct(e.target.value)} />
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Input label="Round-trip multiplier" type="number" min={0} step="any" numeric value={roundTrip} onChange={(e) => setRoundTrip(e.target.value)} />
-            <Input label="Quotation multiplier" type="number" min={0} step="any" numeric value={quoteMultiplier} onChange={(e) => setQuoteMultiplier(e.target.value)} />
-            <Input label="Max negotiation discount (%)" type="number" min={0} max={100} numeric value={maxDiscount} placeholder="No floor" onChange={(e) => setMaxDiscount(e.target.value)} />
-          </div>
           <FormulaBuilder
             value={formula}
             onChange={setFormula}
-            settings={{ baseFeePhp: Number(base), driverFeePhp: Number(driver), extras, roundTripMultiplier: Number(roundTrip) || 1, quoteMultiplier: Number(quoteMultiplier) || 1 }}
+            settings={{ baseFeePhp: Number(base), driverFeePhp: Number(driver), extras }}
             sample={sample}
           />
-          <fieldset className="flex flex-col gap-3">
-            <legend className="mb-2 text-sm font-medium text-text">Internal trip cost (staff only)</legend>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input label="Fuel factor" type="number" min={0} step="any" numeric value={fuelFactor} placeholder={`Fuel L/km (${sample.fuelLPerKm})`} onChange={(e) => setFuelFactor(e.target.value)} />
-              <Input label="Miscellaneous allowance (₱ per trip)" type="number" min={0} numeric value={misc} onChange={(e) => setMisc(e.target.value)} />
-            </div>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Select label="Helper" value={helper.kind} onChange={(e) => setHelper({ ...helper, kind: e.target.value as TruckCostPolicy['helper']['kind'] })}>
-                <option value="none">None</option>
-                <option value="fixed">₱ per trip</option>
-                <option value="per_km">₱ per km</option>
-                <option value="pct_driver">% of driver</option>
-              </Select>
-              <Input label="Helper value" type="number" min={0} numeric disabled={helper.kind === 'none'} value={String(helper.value)} onChange={(e) => setHelper({ ...helper, value: Number(e.target.value) })} />
-              <Select label="Maintenance" value={maintenance.kind} onChange={(e) => setMaintenance({ ...maintenance, kind: e.target.value as TruckCostPolicy['maintenance']['kind'] })}>
-                <option value="none">None</option>
-                <option value="fixed">₱ per trip</option>
-                <option value="per_km">₱ per km</option>
-                <option value="pct_fuel">% of fuel</option>
-              </Select>
-              <Input label="Maintenance value" type="number" min={0} numeric disabled={maintenance.kind === 'none'} value={String(maintenance.value)} onChange={(e) => setMaintenance({ ...maintenance, value: Number(e.target.value) })} />
-            </div>
-            <p className="text-xs text-text-muted">Fuel = km × fuel factor × diesel × round trip. Driver is the driver's fee; tolls and extra charges count as cost.</p>
-          </fieldset>
           <fieldset className="flex flex-col gap-3">
             <legend className="mb-2 text-sm font-medium text-text">Extra charges</legend>
             {extras.length === 0 && <p className="text-sm text-text-muted">None.</p>}
@@ -625,9 +565,6 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   });
   const open = r.status !== 'cancelled' && r.status !== 'paid' && r.status !== 'dispatched';
   const overCap = r.capPhp !== null && Number(price) > r.capPhp;
-  // The tenant's max discount warns, never blocks: going lower is the admin's call.
-  const floor = r.internal?.floorPhp ?? null;
-  const belowFloor = floor !== null && Number(price) < floor;
   // Typo guard: a price far from the route's own figure is called out.
   const offBy = r.price.totalPhp > 0 ? Math.abs(Number(price) - r.price.totalPhp) / r.price.totalPhp : 0;
   const section = 'flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0';
@@ -737,25 +674,7 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
         </h3>
         <PriceBreakdown price={r.price} />
         {r.capPhp !== null && <p className="text-xs text-text-muted">Top of the customer's estimate {formatPeso(r.capPhp)}</p>}
-        {floor !== null && (
-          <p className="text-xs text-text-muted">
-            Negotiation floor {formatPeso(floor)} ({r.internal!.maxDiscountPct}% max discount)
-          </p>
-        )}
       </section>
-      {r.internal && (
-        <section className={section}>
-          <h3 className={heading}>
-            Internal cost · <span className="font-mono">{formatPeso(r.internal.cost.totalPhp)}</span>
-          </h3>
-          <PriceBreakdown price={{ km: r.price.km, ...r.internal.cost }} />
-          <p className="text-sm text-text">
-            Expected profit <span className="font-mono tabular-nums">{formatPeso(r.internal.profitPhp)}</span>
-            {r.internal.marginPct !== null && <span className="text-text-muted"> · {r.internal.marginPct}% margin</span>}
-            <span className="text-text-muted"> on the {r.agreedPricePhp !== null ? 'agreed' : 'route'} price</span>
-          </p>
-        </section>
-      )}
       {open && (
         <section className={section}>
           <h3 className={heading}>Agreed price</h3>
@@ -808,11 +727,6 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
               <Alert type="warning" header="Double-check the figure">
                 That is {Math.round(offBy * 100)}% away from the route price of {formatPeso(r.price.totalPhp)}
                 {overCap ? `, and above the ${formatPeso(r.capPhp!)} top of the customer's estimate` : ''}.
-              </Alert>
-            )}
-            {belowFloor && (
-              <Alert type="warning" header="Below the negotiation floor">
-                That is under your {formatPeso(floor!)} floor ({r.internal!.maxDiscountPct}% max discount). You can still set it; the audit log will note it.
               </Alert>
             )}
           </div>
