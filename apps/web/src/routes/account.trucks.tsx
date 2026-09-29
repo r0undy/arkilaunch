@@ -6,7 +6,7 @@ import type { CustomerSiteResponse, TruckEstimateResponse, TruckRequestResponse 
 import { PinMap, type LatLng } from '../components/pin-map.js';
 import { PageHeader } from '../components/page-header.js';
 import { formatDrive, hasWebGL, pinned, TripCanvas, type Which } from '../components/route-map.js';
-import { cancelReverseGeocode, matchPhLocation, reverseGeocode } from '../lib/reverse-geocode.js';
+import { cancelReverseGeocode, matchPhLocation, reverseGeocode, type PhLocation } from '../lib/reverse-geocode.js';
 import { accountLayoutRoute } from './_account.js';
 import { apiErrorText, apiPost } from '../lib/api-client.js';
 import { toLocalInput } from './equipment.js';
@@ -19,7 +19,7 @@ import { Tabs } from '../components/tabs.js';
 import { companiesQueries, customerSitesQueries, MY_TRUCK_REQUESTS, trucksQueries } from '../lib/queries.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { EstimateRange, PriceBreakdown, TruckRequestCard } from '../components/truck-trip.js';
-import { EMPTY_LOCATION, LocationPicker, locationLabel, type PhLocation } from '../components/location-picker.js';
+import { EMPTY_LOCATION, LocationPicker, locationLabel } from '../components/location-picker.js';
 
 // Map-first truck booking (cr-arkilaunch-truck-map-booking.md): tap the
 // pickup, tap the drop-off, and the road route and price load on their own.

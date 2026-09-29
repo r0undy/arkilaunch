@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 // page at 100 rows, so a long list was not just unreadable -- it was silently
 // truncated with nothing on screen to say so.
 
-export const PAGE_SIZE = 20;
+export { PAGE_SIZE } from '../lib/queries.js';
 
 export interface PaginationProps {
   /** Zero-based index of the first row on this page. */

@@ -1,4 +1,4 @@
-import type { WeatherTone } from '../components/weather-banner.js';
+export type WeatherTone = 'clear' | 'yellow' | 'orange' | 'red' | 'stale';
 
 // Open-Meteo reports conditions as WMO codes. Nothing in the app translated
 // one before: the advisory path works off measured wind/rain thresholds

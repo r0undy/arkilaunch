@@ -18,7 +18,8 @@ import {
 } from '../lib/queries.js';
 import { StatTile } from '../components/stat-tile.js';
 import { PageHeader } from '../components/page-header.js';
-import { WeatherBanner, type WeatherTone } from '../components/weather-banner.js';
+import { WeatherBanner } from '../components/weather-banner.js';
+import type { WeatherTone } from '../lib/weather-code.js';
 import { Surface } from '../components/surface.js';
 import { Modal } from '../components/modal.js';
 import { Container } from '../components/container.js';

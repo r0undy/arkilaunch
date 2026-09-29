@@ -55,7 +55,7 @@ import {
   type CapabilitiesRef,
   type RentalRef,
 } from './reference-client.js';
-import { PAGE_SIZE } from '../components/pagination.js';
+export const PAGE_SIZE = 20;
 
 // Query-key convention: [resourceSegment, ...identifiers, filters?],
 // lowercase, mirroring the API path -- ['equipment'], ['equipment', id],

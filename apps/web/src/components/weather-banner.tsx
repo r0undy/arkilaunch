@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Clock, CloudRain, ExternalLink, Info, XCircle } from 'lucide-react';
 import { Tooltip } from './tooltip.js';
 
-export type WeatherTone = 'clear' | 'yellow' | 'orange' | 'red' | 'stale';
+import type { WeatherTone } from '../lib/weather-code.js';
 
 export interface WeatherBannerProps {
   tone: WeatherTone;

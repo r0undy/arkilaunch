@@ -1,5 +1,10 @@
 import PH_LOCATIONS from '../data/ph-locations.json';
-import type { PhLocation } from '../components/location-picker.js';
+
+export interface PhLocation {
+  region: string;
+  province: string;
+  city: string;
+}
 
 // What a dropped pin fills in. Every field stays editable: OSM's
 // barangay coverage in the Philippines is patchy.
