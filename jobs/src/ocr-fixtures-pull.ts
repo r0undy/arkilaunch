@@ -35,12 +35,8 @@ const MIN_KYC_SAMPLES = OCR_CORPUS_FLOOR.kyc;
 
 const DOC_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.pdf', '.tif', '.tiff'];
 
-// Field types whose values are personal information under RA 10173 and must
-// never land in a committed fixture. Both sides of the comparison are
-// replaced by a surrogate derived from the NORMALIZED value, so exact-match
-// equality -- the only thing computeAccuracy() asks of these -- is preserved
-// bit for bit while the real number never leaves the operator's machine.
-// EDTR hour readings carry no PII and stay verbatim.
+// RA 10173: every KYC field, plus these EDTR fields, is PII and must never land in a committed
+// fixture. Both sides hash the normalized value, so exact-match accuracy is preserved.
 const PII_FIELD_TYPES = new Set(['sec_number', 'tin', 'company_name', 'address', 'operator_name']);
 
 export type Kind = 'edtr' | 'kyc';
@@ -85,8 +81,8 @@ export function parseArgs(argv: string[]): Options {
   };
 }
 
-export function redactValue(fieldType: string, value: string | number): string | number {
-  if (!PII_FIELD_TYPES.has(fieldType)) return value;
+export function redactValue(kind: Kind, fieldType: string, value: string | number): string | number {
+  if (kind !== 'kyc' && !PII_FIELD_TYPES.has(fieldType)) return value;
   const digest = createHash('sha256').update(normalize(value)).digest('hex').slice(0, 12);
   return `redacted:${digest}`;
 }
@@ -260,8 +256,8 @@ async function runGolden(opts: Options) {
           // to answer.
           built[kind].push({
             fieldType,
-            extractedValue: redactValue(fieldType, ''),
-            groundTruth: redactValue(fieldType, groundTruth),
+            extractedValue: redactValue(kind, fieldType, ''),
+            groundTruth: redactValue(kind, fieldType, groundTruth),
             confidence: 0,
           });
           continue;
@@ -271,8 +267,8 @@ async function runGolden(opts: Options) {
           typeof groundTruth === 'number' && Number.isFinite(asNumber) && extracted.value.trim() !== '';
         built[kind].push({
           fieldType,
-          extractedValue: redactValue(fieldType, isNumeric ? asNumber : extracted.value),
-          groundTruth: redactValue(fieldType, groundTruth),
+          extractedValue: redactValue(kind, fieldType, isNumeric ? asNumber : extracted.value),
+          groundTruth: redactValue(kind, fieldType, groundTruth),
           confidence: extracted.confidence,
         });
       }
