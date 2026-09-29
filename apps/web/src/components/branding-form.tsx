@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { TenantBranding, TenantBrandingUpdateRequest } from '@arkilaunch/shared';
+import { MAX_UPLOAD_BYTES, type TenantBranding, type TenantBrandingUpdateRequest } from '@arkilaunch/shared';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPostForm } from '../lib/api-client.js';
-import { MAX_UPLOAD_BYTES, prepareUpload } from '../lib/image-compression.js';
+import { prepareUpload } from '../lib/image-compression.js';
 import { onPrimaryFor } from '../lib/brand.js';
 import { Button } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';

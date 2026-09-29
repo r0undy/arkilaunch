@@ -19,9 +19,8 @@ import type { Request } from 'express';
 import { Public } from '../common/decorators/public.decorator.js';
 import { TurnstileGuard } from '../common/turnstile.js';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
-import type { RequestContext } from '@arkilaunch/shared';
+import { MAX_UPLOAD_BYTES, type RequestContext } from '@arkilaunch/shared';
 import { UuidParamPipe } from '../common/uuid-param.pipe.js';
-import { MAX_UPLOAD_BYTES } from '../storage/upload-validation.js';
 import { TenantsService } from './tenants.service.js';
 import {
   CompanyStatusUpdateDto,

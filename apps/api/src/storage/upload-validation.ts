@@ -1,4 +1,5 @@
 import { PayloadTooLargeException, UnprocessableEntityException } from '@nestjs/common';
+import { EQUIPMENT_PHOTO_MAX_BYTES, MAX_UPLOAD_BYTES } from '@arkilaunch/shared';
 
 // RFC-2 §6 (Locked): "content-type allowlist (image/pdf), max size,
 // magic-byte sniff, and a decompression-bomb guard before the blob reaches
@@ -7,13 +8,6 @@ import { PayloadTooLargeException, UnprocessableEntityException } from '@nestjs/
 // REST API -- exactly where the RFC puts it, on the API container, not
 // after a direct-to-Storage signed upload.
 
-// MIRRORED PAIR: MAX_UPLOAD_BYTES is copied into
-// apps/web/src/lib/image-compression.ts so the client can refuse a doomed
-// upload before spending the bandwidth, and that module compresses every image
-// to a JPEG (or, for equipment photos, a WebP) the allowlist below accepts.
-// This file stays authoritative; the client copy is a courtesy, never a
-// substitute. Change both together.
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // ~10MB; SDD §2 assumes client-compressed 1-3MB phone photos
 const MAX_PDF_PAGES = 20;
 const MAX_PNG_PIXELS = 50_000_000; // crude decompression-bomb guard: a tiny file claiming huge dimensions
 
@@ -26,10 +20,6 @@ const DEFAULT_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'] as 
 // is really a document is refused, not stored.
 export const DISPLAY_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
-// QA item 28: equipment photos are public-read and shown in every fleet list,
-// so they are capped far below the evidence cap. MIRRORED PAIR with the
-// maxBytes equipment-form-modal.tsx hands prepareUpload.
-export const EQUIPMENT_PHOTO_MAX_BYTES = 1_000_000;
 export const EQUIPMENT_PHOTO_RULES = { allow: DISPLAY_IMAGE_TYPES, maxBytes: EQUIPMENT_PHOTO_MAX_BYTES };
 
 const MAGIC_SIGNATURES: Record<string, Buffer> = {

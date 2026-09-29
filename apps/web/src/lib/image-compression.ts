@@ -1,3 +1,5 @@
+import { MAX_UPLOAD_BYTES } from '@arkilaunch/shared';
+
 // RFC-002 §2 (Locked) specifies the capture step as "a `paper_ocr` image
 // (compressed client-side)", and PRD-NFR8 / SDD NFR-7 / DSD §6 all repeat it:
 // the client compresses before upload so a 12MP phone photo does not cross a
@@ -12,14 +14,6 @@
 // This is a convenience and a bandwidth guard, never a security control. The
 // server still sniffs magic bytes and enforces its own caps on every request;
 // nothing here is trusted by the API.
-
-// MIRRORED PAIR: this cap must stay in step with MAX_UPLOAD_BYTES in
-// apps/api/src/storage/upload-validation.ts. The server is authoritative; this
-// copy exists only so the client can refuse early instead of wasting the
-// upload. The type allowlist is not mirrored: everything this module emits is
-// a JPEG, a WebP (only when a caller asks, which today is equipment photos) or
-// an untouched PDF, so the server's list has nothing to duplicate.
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 // A long edge of 2200px keeps handwriting legible for Azure DI while cutting a
 // 12MP photo to roughly a tenth of its bytes. The retry rung is what a very

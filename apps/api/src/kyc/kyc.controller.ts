@@ -2,9 +2,9 @@ import { Body, Controller, Get, Param, Post, Req, UploadedFile, UseInterceptors 
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
-import type { KycExtractRequest, RequestContext } from '@arkilaunch/shared';
+import { MAX_UPLOAD_BYTES, type KycExtractRequest, type RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
-import { MAX_UPLOAD_BYTES, validateUpload } from '../storage/upload-validation.js';
+import { validateUpload } from '../storage/upload-validation.js';
 import { StorageService } from '../storage/storage.service.js';
 import { KycService } from './kyc.service.js';
 import { KycConfirmDto, KycExtractDto } from './dto.js';

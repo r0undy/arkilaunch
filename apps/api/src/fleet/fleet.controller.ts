@@ -15,9 +15,9 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
+import { EQUIPMENT_PHOTO_MAX_BYTES, type RequestContext } from '@arkilaunch/shared';
 import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
-import { EQUIPMENT_PHOTO_MAX_BYTES, EQUIPMENT_PHOTO_RULES, validateUpload } from '../storage/upload-validation.js';
+import { EQUIPMENT_PHOTO_RULES, validateUpload } from '../storage/upload-validation.js';
 import { StorageService } from '../storage/storage.service.js';
 import { FleetService } from './fleet.service.js';
 import {

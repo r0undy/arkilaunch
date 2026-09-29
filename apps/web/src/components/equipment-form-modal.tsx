@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import type { EquipmentResponse } from '@arkilaunch/shared';
+import { EQUIPMENT_PHOTO_MAX_BYTES, type EquipmentResponse } from '@arkilaunch/shared';
 import { Modal } from './modal.js';
 import { Input } from './input.js';
 import { Select } from './select.js';
@@ -38,9 +38,8 @@ const TEXTAREA_CLASSES =
   'focus-visible:outline-offset-2 focus-visible:outline-focus-ring';
 
 // QA item 28: fleet photos are shown in every inventory list and the public
-// catalog, so they go up as WebP under 1MB. MIRRORED PAIR: maxBytes matches
-// EQUIPMENT_PHOTO_MAX_BYTES in apps/api/src/storage/upload-validation.ts.
-const PHOTO_UPLOAD: PrepareUploadOptions = { maxEdge: 1920, quality: 0.8, type: 'image/webp', maxBytes: 1_000_000 };
+// catalog, so they go up as WebP under 1MB.
+const PHOTO_UPLOAD: PrepareUploadOptions = { maxEdge: 1920, quality: 0.8, type: 'image/webp', maxBytes: EQUIPMENT_PHOTO_MAX_BYTES };
 
 export interface EquipmentFormModalProps {
   /** Absent for create, present for edit. */
