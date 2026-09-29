@@ -6,21 +6,15 @@ import {
   type ExecutionContext,
 } from '@nestjs/common';
 
-// Cloudflare Turnstile (turnstile CR): a bot check on the public writes a
-// script can hammer -- signup, company registration, forgot-password, and
-// login after repeated failures. The widget runs in the browser and the
-// token rides in this header, so no request DTO changes.
 export const TURNSTILE_HEADER = 'x-turnstile-token';
 const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
-// TURNSTILE_ENABLED defaults off (local dev, tests). On, it refuses to boot
-// without the secret -- same posture as ENABLE_PAYMENTS.
+// On, it refuses to boot without the secret.
 if (process.env.TURNSTILE_ENABLED === 'true' && !process.env.TURNSTILE_SECRET_KEY) {
   throw new Error('TURNSTILE_ENABLED=true requires TURNSTILE_SECRET_KEY');
 }
 
-// Fails closed: if Cloudflare cannot be reached the request is refused, not
-// waved through, so a bot cannot get past by making siteverify time out.
+// Fails closed: a bot must not get past by making siteverify time out.
 export async function verifyTurnstile(token: string | undefined, ip: string | undefined): Promise<void> {
   if (process.env.TURNSTILE_ENABLED !== 'true') return;
   if (!token) throw new ForbiddenException({ error: 'captcha_required' });

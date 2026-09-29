@@ -2,10 +2,7 @@ import { UnprocessableEntityException, ServiceUnavailableException } from '@nest
 import { tollHintsFromSteps, type TruckRoute } from '@arkilaunch/shared';
 import { nominatimJson } from './nominatim.js';
 
-// Road distance between two free-text Philippine addresses: Nominatim to
-// geocode, ORS HGV to route (OSRM car route only as a flagged fallback). The result is only ever an
-// ESTIMATE -- the admin confirms the km a customer is charged on.
-//
+// Only ever an ESTIMATE: the admin confirms the km a customer is charged on.
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const OSRM = 'https://router.project-osrm.org/route/v1/driving';
 const ORS = 'https://api.heigit.org/openrouteservice/v2/directions/driving-hgv/geojson';
@@ -75,8 +72,7 @@ export function parseOrs(body: OrsBody): TruckRoute {
   };
 }
 
-// OSRM's answer as km, minutes and the simplified GeoJSON line. A route
-// with no usable geometry still prices: `line` comes back empty.
+// A route with no usable geometry still prices: `line` comes back empty.
 export function parseOsrm(body: OsrmBody): TruckRoute {
   const route = body.routes?.[0];
   const meters = route?.distance;
@@ -93,8 +89,6 @@ export function parseOsrm(body: OsrmBody): TruckRoute {
   };
 }
 
-// A map pin is routed as-is; only a missing pin falls back to geocoding
-// the typed place name. `steps` adds the turn list, read for toll hints.
 export async function roadRoute(
   pickup: string,
   dropoff: string,

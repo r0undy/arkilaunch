@@ -4,9 +4,6 @@ import { PricingService } from './pricing.service.js';
 import { RateCardCreateDto, RateCardListQueryDto, RateCardSupersedeDto } from './dto.js';
 import type { CtxRequest } from '../common/request.js';
 
-// S18 Rate Cards & Tenant Settings (PRD-F1/F7). pricing:manage-gated, same
-// permission code as the diesel/pricing-parameters writes in
-// PricingController -- rate cards feed the same quotation engine.
 @Controller('rate-cards')
 export class RateCardsController {
   constructor(private readonly pricing: PricingService) {}
@@ -23,8 +20,7 @@ export class RateCardsController {
     return this.pricing.createRateCard(req.ctx, body);
   }
 
-  // Append-only supersede (QAD-T44): never an in-place edit. See
-  // PricingService.supersedeRateCard.
+  // Append-only supersede: never an in-place edit.
   @Patch(':id')
   @RequirePermission('pricing:manage')
   supersede(@Param('id') id: string, @Body() body: RateCardSupersedeDto, @Req() req: CtxRequest) {

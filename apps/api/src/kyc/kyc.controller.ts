@@ -17,9 +17,7 @@ export class KycController {
     private readonly storage: StorageService,
   ) {}
 
-  // QAD-T31: each extract queues an async Azure DI page spend. Corporate
-  // documents arrive multipart with a `file` field (RFC-2 §6: validated +
-  // uploaded to Storage here, before the blob reaches Storage).
+  // Tight throttle: each extract is an Azure DI page spend.
   @Post('extract')
   @RequirePermission('kyc:extract')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -39,7 +37,7 @@ export class KycController {
     return this.kyc.get(req.ctx, id);
   }
 
-  // Platform-admin-only human portal confirmation (RFC-2 §2 step 6, PRD-F6 US-06).
+  // Platform-admin-only human portal confirmation.
   @Post(':id/confirm')
   @RequirePermission('kyc:verify')
   confirm(@Param('id') id: string, @Body() body: KycConfirmDto, @Req() req: CtxRequest) {

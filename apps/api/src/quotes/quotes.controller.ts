@@ -9,7 +9,7 @@ import type { CtxRequest } from '../common/request.js';
 export class QuotesController {
   constructor(private readonly quotes: QuotesService) {}
 
-  // QAD-T31 (resource abuse / cost bomb): rapid repeated quote generation.
+  // Throttled: rapid repeated quote generation is a cost bomb.
   @Post('preview')
   @RequirePermission('quote:create')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

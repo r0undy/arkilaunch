@@ -32,9 +32,7 @@ class TollRateDto extends createZodDto(TollRateCreateSchema) {}
 class TollRateUpdateDto extends createZodDto(TollRateUpdateSchema) {}
 class TruckBanRuleDto extends createZodDto(TruckBanRuleSchema) {}
 
-// /me/truck-requests is the customer's own; /truck-requests and
-// /truck-settings are the tenant admin's. Tenant comes from the JWT (RLS);
-// ownership on the customer side is requested_by = ctx.userId.
+// Tenant comes from the JWT (RLS); customer-side ownership is requested_by = ctx.userId.
 @Controller()
 export class TrucksController {
   constructor(private readonly trucks: TrucksService) {}
@@ -60,8 +58,7 @@ export class TrucksController {
     return this.trucks.list(req.ctx, 'mine', query);
   }
 
-  // The customer's own trip on the map; route() limits a customer to
-  // requests they made.
+  // route() limits a customer to requests they made.
   @Get('me/truck-requests/:id/route')
   @RequirePermission('booking:read')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
@@ -118,8 +115,7 @@ export class TrucksController {
     return this.trucks.list(req.ctx, 'all', query);
   }
 
-  // Routes against the public OSRM demo server, so it is throttled like
-  // the customer estimate.
+  // Routes against the public OSRM demo server, so throttled like the customer estimate.
   @Get('truck-requests/:id/route')
   @RequirePermission('pricing:manage')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })

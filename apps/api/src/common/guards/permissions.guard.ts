@@ -6,8 +6,7 @@ import { permissions, rolePermissions, roles, withTenantTx } from '@arkilaunch/d
 import type { RequestContext } from '@arkilaunch/shared';
 import { PERMISSION_KEY } from '../decorators/require-permission.decorator.js';
 
-// RBAC over the global Role/Permission/RolePermission catalog (RFC-1 §3,
-// RFC1-07). Runs after TenantContextGuard has populated request.ctx.
+// Runs after TenantContextGuard has populated request.ctx.
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}

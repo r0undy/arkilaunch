@@ -5,10 +5,7 @@ import { UsersService } from './users.service.js';
 import { SiteAssignmentSetDto, UserInviteDto, UserListQueryDto, UserRoleChangeDto } from './dto.js';
 import type { CtxRequest } from '../common/request.js';
 
-// S19 Users & Roles (PRD-F7). Every route is user:manage-gated -- owner and
-// timekeeper hold no such permission (packages/db/src/seed/permission-catalog.ts),
-// which is the QAD-T19 read-mostly-owner gate for free. Escalation defense
-// lives in UsersService (see evaluateUserAdminAction).
+// Escalation defense lives in UsersService (evaluateUserAdminAction).
 @Controller('users')
 @RequirePermission('user:manage')
 export class UsersController {

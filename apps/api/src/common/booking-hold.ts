@@ -4,17 +4,13 @@ import { type Tx, equipment, equipmentAssignments, getBillingSettings, rentals }
 import { availabilityBlockers } from './equipment-availability.js';
 
 
-// QA 25: an unpaid request holds its dates for billing_settings.hold_hours,
-// restarting when staff send the quote; payment is the hard lock.
+// Restarts when staff send the quote; payment is the hard lock.
 export async function holdDeadline(tx: Tx, tenantId: string, from = new Date()): Promise<Date> {
   const { holdHours } = await getBillingSettings(tx, tenantId);
   return new Date(from.getTime() + holdHours * 3_600_000);
 }
 
-// Before money moves on a request. A lapsed hold is no error while its
-// dates are still free: it re-holds and carries on, so a customer is not
-// punished when nobody else wanted the machine. Only a lapsed hold whose
-// dates another booking took refuses (409 hold_expired).
+// A lapsed hold re-holds while its dates are still free; only one whose dates another booking took refuses.
 export async function renewLapsedHold(tx: Tx, tenantId: string, rentalId: string): Promise<void> {
   const [rental] = await tx
     .select({ status: rentals.status, holdExpiresAt: rentals.holdExpiresAt })
@@ -27,8 +23,7 @@ export async function renewLapsedHold(tx: Tx, tenantId: string, rentalId: string
     .select()
     .from(equipmentAssignments)
     .where(and(eq(equipmentAssignments.rentalId, rentalId), eq(equipmentAssignments.status, 'scheduled')));
-  // Same lock order as BookingsService.create, so a booking racing for
-  // these dates serializes behind this check.
+  // Same lock order as BookingsService.create, so a racing booking serializes behind this check.
   if (units.length > 0) {
     await tx.select({ id: equipment.id }).from(equipment).where(inArray(equipment.id, units.map((u) => u.equipmentId))).for('update');
   }

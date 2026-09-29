@@ -4,8 +4,6 @@ import { CouponsService } from './coupons.service.js';
 import { CouponCreateDto, CouponListQueryDto, CouponUpdateDto } from './dto.js';
 import type { CtxRequest } from '../common/request.js';
 
-// A rental company's coupon codes (cr-arkilaunch-coupons.md). Same staff
-// as billing settings: the ones who set prices.
 @Controller('coupons')
 export class CouponsController {
   constructor(private readonly coupons: CouponsService) {}

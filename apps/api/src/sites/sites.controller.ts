@@ -16,11 +16,6 @@ import type { CtxRequest } from '../common/request.js';
 class TimekeeperAssignDto extends createZodDto(TimekeeperAssignRequestSchema) {}
 class DeploymentReturnDto extends createZodDto(DeploymentReturnSchema) {}
 
-// PRD-F4/F5 (Sites, Weather, Liability Incidents), backing S12/S13/S14
-// (cr-arkilaunch-f9-read-surface.md). Reads are open to any authenticated
-// tenant member (RLS is the isolation boundary, matching fleet/reference's
-// read posture); writes are site:manage-gated (QAD-T19 shape: an owner
-// with no data-entry permission is denied).
 @Controller()
 export class SitesController {
   constructor(
@@ -28,8 +23,7 @@ export class SitesController {
     private readonly hubs: SiteHubService,
   ) {}
 
-  // The site hub (cr-arkilaunch-edtr-site-hub-approval.md §7). Staff who
-  // manage sites or read reports; not the timekeeper, who submits only.
+  // Not the timekeeper, who submits only.
   @Get('sites/:id/hub')
   @RequirePermission('site:manage', 'report:read')
   hub(@Param('id') id: string, @Req() req: CtxRequest) {
@@ -99,7 +93,6 @@ export class SitesController {
     return this.sites.weather(req.ctx, id);
   }
 
-  // Each machine's PAGASA-style level on the site (latest poll).
   @Get('sites/:id/equipment-weather')
   @RequirePermission(...STAFF_READ)
   equipmentWeather(@Param('id') id: string, @Req() req: CtxRequest) {
