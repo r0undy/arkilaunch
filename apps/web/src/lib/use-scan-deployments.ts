@@ -1,57 +1,36 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  getCustomers,
-  getEquipment,
-  getProjectSites,
-  getRentals,
-  type CustomerRef,
-  type EquipmentRef,
-  type ProjectSiteRef,
-  type RentalRef,
-} from './reference-client.js';
+import { useQueries } from '@tanstack/react-query';
+import type { RentalRef } from './reference-client.js';
+import { referenceQueries } from './queries.js';
 import { siteName } from './format.js';
 
-// The four pick lists every capture screen needs, plus the one label rule
-// they all name a rental by. routes/edtr.tsx and routes/field.index.tsx had
-// each written this out, with the same Promise.all and the same
-// customer-plus-site label built two slightly different ways.
-export function useScanDeployments(enabled = true) {
-  const [equipmentList, setEquipmentList] = useState<EquipmentRef[]>([]);
-  const [rentals, setRentals] = useState<RentalRef[]>([]);
-  const [customers, setCustomers] = useState<CustomerRef[]>([]);
-  const [sites, setSites] = useState<ProjectSiteRef[]>([]);
-  const [error, setError] = useState<unknown>(null);
+const NONE: never[] = [];
 
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    Promise.all([getEquipment(), getRentals(), getCustomers(), getProjectSites()])
-      .then(([e, r, c, s]) => {
-        if (cancelled) return;
-        setEquipmentList(e);
-        setRentals(r);
-        setCustomers(c);
-        setSites(s);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled]);
+// The four pick lists every capture screen needs, cached across screens, plus
+// the one label rule they all name a rental by.
+export function useScanDeployments(enabled = true) {
+  const [equipment, rentals, customers, sites] = useQueries({
+    queries: [
+      { ...referenceQueries.equipment(), enabled },
+      { ...referenceQueries.rentals(), enabled },
+      { ...referenceQueries.customers(), enabled },
+      { ...referenceQueries.projectSites(), enabled },
+    ],
+  });
 
   /** A rental named by who it is for and where, not by its id. */
-  const rentalLabel = useMemo(
-    () =>
-      (rental: RentalRef): string => {
-        const customer = customers.find((c) => c.id === rental.customerId)?.companyName;
-        const site = sites.find((s) => s.id === rental.projectSiteId);
-        const where = site ? siteName(site) : null;
-        return [customer ?? 'Unnamed customer', where].filter(Boolean).join(' - ');
-      },
-    [customers, sites],
-  );
+  const rentalLabel = (rental: RentalRef): string => {
+    const customer = customers.data?.find((c) => c.id === rental.customerId)?.companyName;
+    const site = sites.data?.find((s) => s.id === rental.projectSiteId);
+    const where = site ? siteName(site) : null;
+    return [customer ?? 'Unnamed customer', where].filter(Boolean).join(' - ');
+  };
 
-  return { equipmentList, rentals, customers, sites, rentalLabel, error };
+  return {
+    equipmentList: equipment.data ?? NONE,
+    rentals: rentals.data ?? NONE,
+    customers: customers.data ?? NONE,
+    sites: sites.data ?? NONE,
+    rentalLabel,
+    error: equipment.error ?? rentals.error ?? customers.error ?? sites.error ?? null,
+  };
 }
