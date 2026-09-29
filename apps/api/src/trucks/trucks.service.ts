@@ -4,11 +4,6 @@ import { auditLogs, customers, negotiationMessages, notifications, projectSites,
 import {
   bookingCodeSearchPrefix,
   CLOSED_TRUCK_STATUSES,
-  DEFAULT_TRUCK_COST_POLICY,
-  estimateTruckCost,
-  negotiationFloor,
-  TruckCostPolicySchema,
-  truckProfit,
   PH_CLASS3_TOLLS,
   PH_TOLLS_AS_OF,
   priceTruckTrip,
@@ -27,7 +22,6 @@ import {
   type TruckRequestListQuery,
   type TruckRequestListResponse,
   type TruckRoute,
-  type TruckInternal,
   type TruckPrice,
   type TruckCrew,
   type TruckKmConfirm,
@@ -45,10 +39,7 @@ import { routeCities } from './route-cities.js';
 import { countRows } from '../common/count-rows.js';
 
 type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
-const DEFAULT_SETTINGS: TruckSettings = {
-  baseFeePhp: 0, driverFeePhp: 0, extras: [], formula: null, rangePct: 10, region: 'NCR',
-  roundTripMultiplier: 1, quoteMultiplier: 1, maxDiscountPct: null, costPolicy: DEFAULT_TRUCK_COST_POLICY,
-};
+const DEFAULT_SETTINGS: TruckSettings = { baseFeePhp: 0, driverFeePhp: 0, extras: [], formula: null, rangePct: 10, region: 'NCR' };
 
 const peso = (n: number) => Math.round(n * 100) / 100;
 const php = (n: number) => `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -64,17 +55,8 @@ function pins(body: TruckEstimateRequest) {
 type Contact = { companyName: string | null; requesterName: string | null; requesterPhone: string | null };
 const NO_CONTACT: Contact = { companyName: null, requesterName: null, requesterPhone: null };
 
-// Cost, floor and profit are internal: only a staff caller gets them.
-function internalView(row: typeof truckRequests.$inferSelect, ctx: RequestContext): TruckRequestResponse['internal'] {
-  if (ctx.role === 'customer' || !row.internal) return undefined;
-  const price = row.agreedPricePhp !== null ? Number(row.agreedPricePhp) : row.price.totalPhp;
-  return { ...row.internal, ...truckProfit(price, row.internal.cost.totalPhp) };
-}
-
-function toResponse(row: typeof truckRequests.$inferSelect, contact: Contact, ctx: RequestContext): TruckRequestResponse {
-  const internal = internalView(row, ctx);
+function toResponse(row: typeof truckRequests.$inferSelect, contact: Contact = NO_CONTACT): TruckRequestResponse {
   return {
-    ...(internal ? { internal } : {}),
     id: row.id,
     code: row.code,
     pickup: row.pickup,
@@ -125,10 +107,6 @@ export class TrucksService {
           formula: row.formula,
           rangePct: Number(row.rangePct),
           region: row.region,
-          roundTripMultiplier: Number(row.roundTripMultiplier),
-          quoteMultiplier: Number(row.quoteMultiplier),
-          maxDiscountPct: num(row.maxDiscountPct),
-          costPolicy: TruckCostPolicySchema.parse(row.costPolicy),
         }
       : DEFAULT_SETTINGS;
   }
@@ -136,10 +114,8 @@ export class TrucksService {
   // Per-km and fuel are the tenant's pricing parameters and today's resolved
   // diesel price (tenant override, else the national GasWatch average) --
   // the same inputs as every equipment quote. truck_settings.region is no
-  // longer read. low/high are the total +/- the tenant's band. `internal`
-  // (cost and floor, from the same inputs) is saved on the request and
-  // never returned to a customer.
-  private async price(tx: Tx, tenantId: string, km: number, tolls: TruckPriceLine[] = []): Promise<{ price: TruckPrice; internal: TruckInternal }> {
+  // longer read. low/high are the total +/- the tenant's band.
+  private async price(tx: Tx, tenantId: string, km: number, tolls: TruckPriceLine[] = []): Promise<TruckPrice> {
     const settings = await this.readSettings(tx, tenantId);
     const diesel = await this.engine.resolveDieselAndParams(tx, tenantId);
     const price = priceTruckTrip({
@@ -151,11 +127,7 @@ export class TrucksService {
       tolls,
     });
     const band = settings.rangePct / 100;
-    const cost = estimateTruckCost({ km, settings, fuelLPerKm: diesel.fuelLPerKm, dieselPhp: diesel.pricePhp, tolls });
-    return {
-      price: { ...price, lowPhp: peso(price.totalPhp * (1 - band)), highPhp: peso(price.totalPhp * (1 + band)) },
-      internal: { cost, floorPhp: negotiationFloor(price.totalPhp, settings.maxDiscountPct), maxDiscountPct: settings.maxDiscountPct },
-    };
+    return { ...price, lowPhp: peso(price.totalPhp * (1 - band)), highPhp: peso(price.totalPhp * (1 + band)) };
   }
 
   listTolls(ctx: RequestContext): Promise<TollRateResponse[]> {
@@ -260,10 +232,6 @@ export class TrucksService {
       formula: body.formula || null,
       rangePct: String(body.rangePct),
       region: body.region,
-      roundTripMultiplier: String(body.roundTripMultiplier),
-      quoteMultiplier: String(body.quoteMultiplier),
-      maxDiscountPct: body.maxDiscountPct === null ? null : String(body.maxDiscountPct),
-      costPolicy: body.costPolicy,
       updatedAt: new Date(),
     };
     await withTenantTx(ctx, (tx) =>
@@ -279,7 +247,7 @@ export class TrucksService {
   // hold a DB connection.
   async estimate(ctx: RequestContext, body: TruckEstimateRequest): Promise<TruckEstimateResponse> {
     const route = await roadRoute(body.pickup, body.dropoff, pins(body));
-    const { price } = await withTenantTx(ctx, (tx) => this.price(tx, ctx.tenantId, route.km));
+    const price = await withTenantTx(ctx, (tx) => this.price(tx, ctx.tenantId, route.km));
     return { ...price, route: route.line.length > 1 ? route : null };
   }
 
@@ -300,7 +268,7 @@ export class TrucksService {
           .limit(1);
         if (!site) throw new NotFoundException({ error: 'project_site_not_found' });
       }
-      const { price, internal } = await this.price(tx, ctx.tenantId, km);
+      const price = await this.price(tx, ctx.tenantId, km);
       const [row] = await tx
         .insert(truckRequests)
         .values({
@@ -315,7 +283,6 @@ export class TrucksService {
           estimatedKm: String(km),
           routeMinutes: route.minutes,
           price,
-          internal,
           // The high end of the estimate: staff are warned before agreeing
           // above it (a typo guard; the customer accepts every price anyway).
           capPhp: String(price.highPhp ?? price.totalPhp),
@@ -327,7 +294,7 @@ export class TrucksService {
         })
         .returning();
       await notifyStaff(tx, ctx.tenantId, 'truck_requested', { truck_request_id: row!.id });
-      return toResponse(row!, { companyName: company.companyName, requesterName: null, requesterPhone: null }, ctx);
+      return toResponse(row!, { companyName: company.companyName, requesterName: null, requesterPhone: null });
     });
     if (route.line.length > 1) {
       void routeCities(route.line).then((cities) => withTenantTx(ctx, (tx) => tx.update(truckRequests)
@@ -366,7 +333,7 @@ export class TrucksService {
             companyName: r.companyName,
             requesterName: [r.first, r.last].filter(Boolean).join(' ') || null,
             requesterPhone: r.phone,
-          }, ctx),
+          }),
         ),
         total: await countRows(tx, truckRequests, where),
       };
@@ -429,7 +396,7 @@ export class TrucksService {
         { truck_request_id: id, booking_code: row.code, eta_at: eta.toISOString() });
       await tx.insert(auditLogs).values({ tenantId: ctx.tenantId, actorId: ctx.userId,
         action: 'UPDATE', entity: 'truck_requests', entityId: id, reason: `dispatched; ETA ${eta.toISOString()}` });
-      return toResponse(updated!, NO_CONTACT, ctx);
+      return toResponse(updated!);
     });
   }
 
@@ -453,7 +420,6 @@ export class TrucksService {
       const [row] = await tx.select().from(truckRequests).where(eq(truckRequests.id, id)).limit(1);
       if (!row) throw new NotFoundException({ error: 'truck_request_not_found' });
       if (row.status === 'cancelled') throw new ConflictException({ error: 'truck_request_cancelled' });
-      const { price, internal } = await this.price(tx, ctx.tenantId, km, tolls);
       const [updated] = await tx
         .update(truckRequests)
         // An agreed or paid request keeps its status: the km refines the
@@ -461,12 +427,11 @@ export class TrucksService {
         .set({
           confirmedKm: String(km),
           status: row.status === 'estimated' ? 'km_confirmed' : row.status,
-          price,
-          internal,
+          price: await this.price(tx, ctx.tenantId, km, tolls),
         })
         .where(eq(truckRequests.id, id))
         .returning();
-      return toResponse(updated!, NO_CONTACT, ctx);
+      return toResponse(updated!);
     });
   }
 
@@ -554,7 +519,7 @@ export class TrucksService {
         .where(eq(truckRequests.id, id))
         .returning();
       if (!row) throw new NotFoundException({ error: 'truck_request_not_found' });
-      return toResponse(row, NO_CONTACT, ctx);
+      return toResponse(row);
     });
   }
 
@@ -569,7 +534,7 @@ export class TrucksService {
         throw new ConflictException({ error: 'truck_request_closed', status: request.status });
       }
       const was = num(request.agreedPricePhp);
-      if (request.status === 'agreed' && was === pricePhp) return toResponse(request, NO_CONTACT, ctx);
+      if (request.status === 'agreed' && was === pricePhp) return toResponse(request);
       await this.payments.voidUnpaid(tx, { truckRequestId: id });
       const [updated] = await tx
         .update(truckRequests)
@@ -594,18 +559,14 @@ export class TrucksService {
         action: 'UPDATE',
         entity: 'truck_requests',
         entityId: id,
-        // The floor warns, never blocks: going below it is the admin's call,
-        // and the audit trail says so.
-        reason: `agreed price ${was === null ? 'none' : php(was)} -> ${php(pricePhp)}${
-          request.internal?.floorPhp != null && pricePhp < request.internal.floorPhp ? `; below the negotiation floor of ${php(request.internal.floorPhp)}` : ''
-        }`,
+        reason: `agreed price ${was === null ? 'none' : php(was)} -> ${php(pricePhp)}`,
       });
       await notifyUser(tx, ctx.tenantId, request.requestedBy, 'truck_price_updated', {
         truck_request_id: id,
         price_php: pricePhp,
         previous_php: was,
       });
-      return toResponse(updated!, NO_CONTACT, ctx);
+      return toResponse(updated!);
     });
   }
 
@@ -620,7 +581,7 @@ export class TrucksService {
         .returning();
       if (!updated) throw new NotFoundException({ error: 'truck_request_not_found' });
       await notifyStaff(tx, ctx.tenantId, 'call_requested', { truck_request_id: id });
-      return toResponse(updated, NO_CONTACT, ctx);
+      return toResponse(updated);
     });
   }
 
@@ -633,7 +594,7 @@ export class TrucksService {
         .returning();
       if (!updated) throw new NotFoundException({ error: 'truck_request_not_found' });
       await notifyUser(tx, ctx.tenantId, updated.requestedBy, 'call_confirmed', { truck_request_id: id });
-      return toResponse(updated, NO_CONTACT, ctx);
+      return toResponse(updated);
     });
   }
 
@@ -649,7 +610,7 @@ export class TrucksService {
       if (Number(row.agreedPricePhp) !== pricePhp) {
         throw new ConflictException({ error: 'price_changed', agreedPricePhp: Number(row.agreedPricePhp) });
       }
-      if (num(row.acceptedPricePhp) === pricePhp) return toResponse(row, NO_CONTACT, ctx);
+      if (num(row.acceptedPricePhp) === pricePhp) return toResponse(row);
       const [updated] = await tx
         .update(truckRequests)
         .set({ acceptedPricePhp: row.agreedPricePhp })
@@ -664,7 +625,7 @@ export class TrucksService {
         offerPhp: row.agreedPricePhp,
       });
       await notifyStaff(tx, ctx.tenantId, 'truck_price_accepted', { truck_request_id: id, price_php: pricePhp });
-      return toResponse(updated!, NO_CONTACT, ctx);
+      return toResponse(updated!);
     });
   }
 
@@ -692,7 +653,7 @@ export class TrucksService {
         reason: 'cancelled by the customer',
       });
       await notifyStaff(tx, ctx.tenantId, 'truck_cancelled', { truck_request_id: id });
-      return toResponse(updated!, NO_CONTACT, ctx);
+      return toResponse(updated!);
     });
   }
 }
