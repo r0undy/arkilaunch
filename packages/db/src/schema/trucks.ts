@@ -1,6 +1,6 @@
 import { date, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uuid, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { TruckExtra, TruckPrice } from '@arkilaunch/shared';
+import type { RouteCity, TruckExtra, TruckPrice } from '@arkilaunch/shared';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 
@@ -44,6 +44,7 @@ export const truckRequests = pgTable(
     // Road distance from the routing estimate; confirmed_km is the admin's
     // figure and is the only one a price is ever charged on.
     estimatedKm: numeric('estimated_km', { precision: 8, scale: 1 }).notNull(),
+    routeCities: jsonb('route_cities').$type<RouteCity[]>(),
     confirmedKm: numeric('confirmed_km', { precision: 8, scale: 1 }),
     status: text('status').notNull().default('estimated'),
     agreedPricePhp: numeric('agreed_price_php', { precision: 14, scale: 2 }),

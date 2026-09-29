@@ -222,6 +222,18 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
             {route.isError && (
               <p className="text-xs text-text-muted">The road route is unavailable; the pins are joined in a straight line.</p>
             )}
+            {(route.data?.cities ?? truck.routeCities)?.length ? (
+              <div className="text-xs text-text-muted">
+                <p>Route passes through:</p>
+                <ol className="mt-1 flex flex-wrap items-center gap-1">
+                  {(route.data?.cities ?? truck.routeCities ?? []).map((place, index) => (
+                    <li key={`${place.city}-${place.province}-${index}`} className="rounded border border-border px-2 py-1">
+                      {place.city}{place.province ? `, ${place.province}` : ''}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
           </>
         ) : (
           <p className="text-sm text-text-muted">

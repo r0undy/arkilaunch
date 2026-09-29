@@ -121,10 +121,13 @@ export interface TruckRoute {
   minutes: number;
   line: [number, number][];
   truckSafe?: boolean;
+  cities?: RouteCity[];
   // Staff route only: the expressways the road route runs on, for the toll
   // picker's suggestion (ph-tolls.ts suggestTolls).
   tollHints?: TollHint[];
 }
+
+export interface RouteCity { city: string; province: string }
 
 export interface TollHint {
   expressway: string;
@@ -248,6 +251,7 @@ export interface TruckRequestResponse {
   scheduledFor: string;
   notes: string | null;
   estimatedKm: number;
+  routeCities: RouteCity[] | null;
   confirmedKm: number | null;
   status: TruckRequestStatus;
   price: TruckPrice;

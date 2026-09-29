@@ -32,6 +32,7 @@ import { notifyStaff, notifyUser } from '../common/notify-customer.js';
 import { ownCustomers } from '../common/customer-scope.js';
 import { PaymentsService } from '../payments/payments.service.js';
 import { roadRoute } from './route-distance.js';
+import { routeCities } from './route-cities.js';
 import { countRows } from '../common/count-rows.js';
 
 type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
@@ -60,6 +61,7 @@ function toResponse(row: typeof truckRequests.$inferSelect, contact: Contact = N
     scheduledFor: row.scheduledFor.toISOString(),
     notes: row.notes,
     estimatedKm: Number(row.estimatedKm),
+    routeCities: row.routeCities,
     confirmedKm: row.confirmedKm === null ? null : Number(row.confirmedKm),
     status: row.status as TruckRequestStatus,
     price: row.price,
@@ -213,8 +215,9 @@ export class TrucksService {
   }
 
   async create(ctx: RequestContext, body: TruckRequestCreate): Promise<TruckRequestResponse> {
-    const { km } = await roadRoute(body.pickup, body.dropoff, pins(body));
-    return withTenantTx(ctx, async (tx) => {
+    const route = await roadRoute(body.pickup, body.dropoff, pins(body));
+    const { km } = route;
+    const created = await withTenantTx(ctx, async (tx) => {
       // Booked for one of the caller's own companies (never a client-trusted
       // id); a site, when named, must be that company's. A truck trip serves
       // the company, so the site needs no proof.
@@ -255,6 +258,12 @@ export class TrucksService {
       await notifyStaff(tx, ctx.tenantId, 'truck_requested', { truck_request_id: row!.id });
       return toResponse(row!, { companyName: company.companyName, requesterName: null, requesterPhone: null });
     });
+    if (route.line.length > 1) {
+      void routeCities(route.line).then((cities) => withTenantTx(ctx, (tx) => tx.update(truckRequests)
+        .set({ routeCities: cities }).where(and(eq(truckRequests.id, created.id), eq(truckRequests.tenantId, ctx.tenantId)))))
+        .catch((error: unknown) => console.error('Truck route city lookup failed', created.id, error));
+    }
+    return created;
   }
 
   // A customer sees only their own requests; staff see the tenant's queue.
@@ -301,13 +310,26 @@ export class TrucksService {
     if (row.pickupLat === null || row.pickupLng === null || row.dropoffLat === null || row.dropoffLng === null) {
       throw new NotFoundException({ error: 'truck_pins_missing' });
     }
-    return roadRoute(
+    const route = await roadRoute(
       row.pickup,
       row.dropoff,
       { a: { lat: Number(row.pickupLat), lon: Number(row.pickupLng) }, b: { lat: Number(row.dropoffLat), lon: Number(row.dropoffLng) } },
       // Staff get the turn list's toll hints for the toll picker.
       ctx.role !== 'customer',
     );
+    if (ctx.role !== 'customer' && row.routeCities === null && route.line.length > 1) {
+      try {
+        const cities = await routeCities(route.line);
+        await withTenantTx(ctx, (tx) => tx.update(truckRequests).set({ routeCities: cities })
+          .where(and(eq(truckRequests.id, id), eq(truckRequests.tenantId, ctx.tenantId))));
+        route.cities = cities;
+      } catch (error) {
+        console.error('Truck route city backfill failed', id, error);
+      }
+    } else {
+      route.cities = row.routeCities ?? undefined;
+    }
+    return route;
   }
 
   // The admin's km is final: the price is recomputed on it, with today's
