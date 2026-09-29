@@ -32,9 +32,6 @@ import { Skeleton } from '../components/skeleton.js';
 import { useToast } from '../components/toast.js';
 import { Select } from '../components/select.js';
 
-// What the customer confirmed off their ID. Sent with the ID upload so the
-// reviewer sees it beside what the OCR read. `idType` is which Philippine
-// primary ID it is (QA 15); its number is checked in that card's format.
 export interface IdDetails {
   idType: PhIdTypeCode;
   firstName: string;
@@ -57,7 +54,7 @@ const EMPTY_ID: IdDetails = {
   address: '',
 };
 
-// Only non-empty values: the API validates each field it is sent.
+// Only non-empty values: the API validates every field it is sent.
 function filled(fields: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(fields)
@@ -66,8 +63,6 @@ function filled(fields: Record<string, string>): Record<string, string> {
   );
 }
 
-// Upload each document, one request each, all at once. Shared by the new-company form
-// and the "upload what is still missing" screen.
 async function uploadDocuments(
   companyId: string,
   files: {
@@ -86,7 +81,6 @@ async function uploadDocuments(
     [files.registrationType, files.registration, {}],
     ['dti_certificate', files.dti, filled({ dtiNumber: files.dtiNumber ?? '' })],
   ];
-  // Side by side: each is its own request and its own row.
   await Promise.all(
     uploads
       .filter(([, file]) => file)
@@ -96,9 +90,6 @@ async function uploadDocuments(
   );
 }
 
-// One document at a time, in order. Both used to sit on the same screen,
-// which asked a customer to frame two different papers at once; the ID is
-// the gate, and the customer checks what it says before moving on.
 export type DocStep = 'government_id' | 'company_registration';
 type WizardStep = DocStep | 'id_details' | 'details';
 const WIZARD_STEPS: readonly WizardStep[] = ['government_id', 'id_details', 'company_registration', 'details'];
@@ -121,9 +112,6 @@ const REGISTRATION_OPTIONS: { value: PrimaryRegistrationType; label: string }[] 
   { value: 'sec_certificate', label: 'SEC Certificate of Incorporation' },
 ];
 
-// A capture that opens the cropper for every photo. The photo as taken is
-// kept so "Crop again" starts from the full frame rather than re-cropping a
-// crop. PDFs are never cropped.
 function CroppableCapture({
   id,
   label,
@@ -191,12 +179,10 @@ function DocumentStep({
   onRegistrationTypeChange: (type: PrimaryRegistrationType) => void;
   dti: File | null;
   onDtiChange: (file: File | null) => void;
-  // A rejected company re-uploads what cures it; a submitted one nothing.
   showPrimary?: boolean;
   showDti?: boolean;
   selfie?: File | null;
   onSelfieChange?: (file: File | null) => void;
-  // Which primary ID is being captured, on the ID step.
   idType?: PhIdTypeCode;
   onIdTypeChange?: (type: PhIdTypeCode) => void;
 }) {
@@ -251,8 +237,7 @@ function DocumentStep({
             capture="user"
             onChange={(e) => {
               const file = e.target.files?.[0] ?? null;
-              // Shrunk like every other capture: a raw 12 MP selfie was the
-              // slowest upload on submit.
+              // Shrink it: a raw 12 MP selfie was the slowest upload on submit.
               if (!file) return onSelfieChange(null);
               prepareUpload(file).then(onSelfieChange, () => onSelfieChange(file));
             }}
@@ -273,9 +258,7 @@ function DocumentStep({
   );
 }
 
-// Reads a document the customer just captured and hands back what it saw,
-// for them to correct. A failed or unavailable scan is not an error the
-// customer has to act on -- the form simply opens empty.
+// A failed or unavailable scan is not an error: the form just opens empty.
 async function scanForSuggestions(
   file: File,
   documentType: string,
@@ -289,9 +272,7 @@ async function scanForSuggestions(
   }
 }
 
-// Below this some filled-in detail may be misread, so the customer is asked
-// to check it against the card. A typing hint only: every ID still goes to
-// staff review whatever it scored (the 0.90 RFC-2 gate is separate).
+// Typing hint only: every ID still gets staff review; the RFC-2 0.90 gate is separate.
 const LEGIBLE_CONFIDENCE = 0.85;
 
 interface IdScan {
@@ -309,8 +290,6 @@ async function scanId(file: File, idType: PhIdTypeCode): Promise<IdScan> {
     middleName: s?.middleName ?? '',
     lastName: s?.lastName ?? '',
     idNumber: s?.idNumber ?? '',
-    // The date input only takes YYYY-MM-DD; anything else is left for the
-    // customer to pick.
     birthDate: s?.birthDate && /^\d{4}-\d{2}-\d{2}$/.test(s.birthDate) ? s.birthDate : '',
     sex: s?.sex === 'M' || s?.sex === 'F' ? s.sex : '',
     address: s?.address ?? '',
@@ -322,8 +301,6 @@ async function scanId(file: File, idType: PhIdTypeCode): Promise<IdScan> {
   };
 }
 
-// The customer checks every detail the scan read off their ID -- or types
-// it, when the scan could not -- before a reviewer ever sees it.
 function IdReviewStep({
   scan,
   value,
@@ -434,8 +411,6 @@ function IdReviewStep({
   );
 }
 
-// Figma 582:3946 / 168:2442 "Add New Company".
-// The document picks both company pages capture, and the ID check on them.
 function useDocumentCapture() {
   const [governmentId, setGovernmentId] = useState<File | null>(null);
   const [idDetails, setIdDetails] = useState<IdDetails>(EMPTY_ID);
@@ -445,7 +420,6 @@ function useDocumentCapture() {
   const [dti, setDti] = useState<File | null>(null);
   const [selfie, setSelfie] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
-  // Resolves true once the ID is read, so the caller moves on to its review step.
   async function scanGovernmentId(): Promise<boolean> {
     if (!governmentId) return false;
     setScanning(true);
@@ -478,17 +452,11 @@ function NewCompanyPage() {
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Scan first, type last: the documents are captured in order, the ID is
-  // checked on its own step, and the form opens on what the registration
-  // scans read, for final edits. The step lives in the URL (?step=) so the
-  // browser's Back and Forward move between steps; the page stays mounted,
-  // so what was captured survives the move (QA 17).
+  // Step lives in the URL so Back/Forward move between steps; the page stays mounted so captures survive.
   const { step: urlStep } = accountCompanyNewRoute.useSearch();
   const setStage = (step: WizardStep) => void navigate({ to: '/account/companies/new', search: { step } });
-  // A reload loses the ID photo and its scan: the ID check step then starts over.
+  // A reload loses the ID photo and its scan, so the ID step starts over.
   const chosenStage: WizardStep = urlStep === 'id_details' && !idScan ? 'government_id' : (urlStep ?? 'government_id');
-  // Leaving the wizard (not moving between its steps) with anything captured
-  // asks first; the photos cannot be put back. A finished submit is free to go.
   const submitted = useRef(false);
   const dirty = Boolean(governmentId || registration || dti || selfie || companyName || billingAddress);
   useBlocker({
@@ -499,21 +467,16 @@ function NewCompanyPage() {
       !window.confirm('Leave this application? The documents you captured will be lost.'),
     enableBeforeUnload: () => dirty && !submitted.current,
   });
-  // The ID is captured once per login: with one on file (any of this
-  // account's companies) the ID steps are skipped and the server reuses it.
+  // The ID is captured once per login: with one on file the ID steps are skipped and the server reuses it.
   const mine = useQuery(companiesQueries.mine()).data ?? [];
   const idOnFile = mine.some((c) => c.documents.some((d) => d.documentType === 'government_id'));
   const stage = idOnFile && (chosenStage === 'government_id' || chosenStage === 'id_details') ? 'company_registration' : chosenStage;
   const [scanned, setScanned] = useState<boolean | null>(null);
-  // The registration scan did not read as the paper picked (layoutRecognized).
   const [wrongPaper, setWrongPaper] = useState(false);
 
-  // Each number comes only from the paper that prints it.
   const showTin = registrationType === 'bir_cor';
   const showSec = registrationType === 'sec_certificate';
   const showDti = Boolean(dti);
-  // Already applied for? Checked as the details fill in, against the list
-  // this page already has; the server refuses it too.
   const existing = findSameCompany(
     { companyName, tin: showTin ? tin : null, secNumber: showSec ? secNumber : null },
     mine,
@@ -565,16 +528,13 @@ function NewCompanyPage() {
         dti,
         dtiNumber: showDti ? dtiNumber : '',
       });
-      // Not awaited: the list page refetches on its own; waiting here only
-      // held the spinner for one more round trip.
       void queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
       toast.success('Company added', 'The rental team will verify it. You can request quotes now.');
       submitted.current = true;
       // replace: Back from the list must not reopen a finished application.
       await navigate({ to: '/account/applications', replace: true });
     } catch (err) {
-      // The company exists even if an upload failed; say so, and send the
-      // customer to finish the upload rather than create a duplicate.
+      // The company exists even if an upload failed: send them to finish it, not create a duplicate.
       if (created) {
         await queryClient.invalidateQueries({ queryKey: ['me', 'companies'] });
         toast.error('Company saved, but a document did not upload', apiErrorText(err));
@@ -796,8 +756,7 @@ function NewCompanyPage() {
 function CompanyDocumentsPage() {
   const { companyId } = accountCompanyDocumentsRoute.useParams();
   const company = useQuery(companiesQueries.mine()).data?.find((row) => row.id === companyId);
-  // A document already on file is replaced only after a rejection, as its
-  // cure; one never uploaded can always be added.
+  // A document on file is replaced only after a rejection; a missing one can always be added.
   const mayUpload = (test: (type: string) => boolean) => {
     const onFile = company?.documents.filter((d) => test(d.documentType)) ?? [];
     return onFile.length === 0 || (company!.kycStatus === 'rejected' && !company!.rejection?.final);
@@ -813,18 +772,9 @@ function CompanyDocumentsPage() {
     registrationType, setRegistrationType, dti, setDti, selfie, setSelfie, scanning, scanGovernmentId,
   } = useDocumentCapture();
   const [busy, setBusy] = useState(false);
-  // Same one-at-a-time order as adding a company, ID check included. The
-  // registration is not scanned here: the company already exists, so there
-  // is no company form left to prefill.
   const [chosenStage, setStage] = useState<DocStep | 'id_details'>('government_id');
-  // With the ID locked there is no ID step: straight to the registration.
   const stage = !idOpen && chosenStage !== 'company_registration' ? 'company_registration' : chosenStage;
-  // "Next: company registration" (the ID check) and "Upload" sit in the
-  // same spot. A fast double-tap -- or any input lag between the two taps
-  // registering -- lands the second tap on "Upload" the instant it replaces
-  // "Next", submitting before the customer ever sees the registration step.
-  // Guard submit() against firing within advanceGraceMs of the stage flip
-  // that put "Upload" under the customer's finger.
+  // A double-tap on "Next" would land on "Upload" in the same spot; ignore submits within advanceGraceMs of the flip.
   const stageChangedAt = useRef(0);
   const advanceGraceMs = 400;
 
@@ -843,11 +793,7 @@ function CompanyDocumentsPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    // Both document steps share this <form> (step 1's "Next" is
-    // type="button"). A stray submit event firing before the registration
-    // step must never upload a partial set and navigate away -- that reads
-    // as the flow being "stuck" and leaves an orphaned government_id
-    // document behind.
+    // Both steps share this form: a stray submit before the registration step must not upload a partial set.
     if (stage !== 'company_registration') return;
     if (Date.now() - stageChangedAt.current < advanceGraceMs) return;
     setBusy(true);
@@ -945,9 +891,6 @@ function CompanyDocumentsPage() {
   );
 }
 
-// What "Manage" on a company card opens (Figma 251:1945). /account/companies
-// itself is gone -- the Figma list lives at /account/applications and
-// router.tsx redirects the old path there.
 function CompanyDetailPage() {
   const { companyId } = accountCompanyDetailRoute.useParams();
   const companies = useQuery(companiesQueries.mine());
