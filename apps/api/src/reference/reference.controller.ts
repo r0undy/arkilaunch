@@ -1,12 +1,9 @@
 import { Controller, Get, Query, Req } from '@nestjs/common';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
 import { isOcrKycEnabled, isOcrPipelineEnabled } from '../ports/document-intelligence.port.js';
 import { ReferenceService } from './reference.service.js';
 import { ReferenceRateCardQueryDto } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
+import type { CtxRequest } from '../common/request.js';
 
 // Read-only pick-list endpoints for the staff forms. Every route below is
 // staff-only: `customer` is an intra-tenant role, so it clears the JWT and

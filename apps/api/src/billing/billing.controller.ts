@@ -1,12 +1,9 @@
 import { Controller, Get, Param, Query, Req } from '@nestjs/common';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { UuidParamPipe } from '../common/uuid-param.pipe.js';
 import { BillingService } from './billing.service.js';
 import { InvoiceListQueryDto } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
+import type { CtxRequest } from '../common/request.js';
 
 // PRD-F2/F3 read surface backing S9 Billing & Deposit Ledger
 // (cr-arkilaunch-f9-read-surface.md). billing:read-gated; owner holds it

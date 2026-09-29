@@ -1,12 +1,9 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { NotificationsService } from './notifications.service.js';
 import { NotificationListQueryDto, PushSubscriptionCreateDto, PushSubscriptionDeleteDto, TestEmailRequestDto } from './dto.js';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
+import type { CtxRequest } from '../common/request.js';
 
 // PRD §5.2 global nav notifications feed (cr-arkilaunch-f9-read-surface.md).
 // No @RequirePermission: a user reading/acking their own notifications is

@@ -1,7 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { createZodDto } from 'nestjs-zod';
-import type { Request } from 'express';
-import { DeploymentReturnSchema, TimekeeperAssignRequestSchema, type RequestContext } from '@arkilaunch/shared';
+import { DeploymentReturnSchema, TimekeeperAssignRequestSchema } from '@arkilaunch/shared';
 import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
 import { SitesService } from './sites.service.js';
 import { SiteHubService } from './site-hub.service.js';
@@ -12,11 +11,10 @@ import {
   SiteListQueryDto,
   SiteUpdateDto,
 } from './dto.js';
+import type { CtxRequest } from '../common/request.js';
 
 class TimekeeperAssignDto extends createZodDto(TimekeeperAssignRequestSchema) {}
 class DeploymentReturnDto extends createZodDto(DeploymentReturnSchema) {}
-
-type CtxRequest = Request & { ctx: RequestContext };
 
 // PRD-F4/F5 (Sites, Weather, Liability Incidents), backing S12/S13/S14
 // (cr-arkilaunch-f9-read-surface.md). Reads are open to any authenticated

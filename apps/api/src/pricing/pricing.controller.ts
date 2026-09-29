@@ -1,11 +1,8 @@
 import { Body, Controller, Get, Post, Put, Query, Req } from '@nestjs/common';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { PricingService } from './pricing.service.js';
 import { BillingSettingsDto, DieselPriceEntryDto, PricingParametersInputDto, PricingParametersQueryDto } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
+import type { CtxRequest } from '../common/request.js';
 
 @Controller('pricing')
 export class PricingController {

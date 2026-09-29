@@ -1,10 +1,7 @@
 import { Body, Controller, Post, Req } from '@nestjs/common';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { AuthService } from './auth.service.js';
 import { Enroll2faConfirmDto } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
+import type { CtxRequest } from '../common/request.js';
 
 // Unlike AuthController, this one is NOT @Public(): enrolling 2FA requires
 // an authenticated, tenant-scoped caller (an unenrolled timekeeper still

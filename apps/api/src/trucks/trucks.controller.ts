@@ -1,7 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { createZodDto } from 'nestjs-zod';
-import type { Request } from 'express';
 import {
   NegotiationMessageCreateSchema,
   TollRateCreateSchema,
@@ -15,13 +14,11 @@ import {
   TruckRequestCreateSchema,
   TruckRequestListQuerySchema,
   TruckSettingsSchema,
-  type RequestContext,
 } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { UuidParamPipe } from '../common/uuid-param.pipe.js';
 import { TrucksService } from './trucks.service.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
+import type { CtxRequest } from '../common/request.js';
 
 class TruckEstimateDto extends createZodDto(TruckEstimateRequestSchema) {}
 class TruckRequestCreateDto extends createZodDto(TruckRequestCreateSchema) {}

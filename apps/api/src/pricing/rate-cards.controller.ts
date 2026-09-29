@@ -1,11 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { PricingService } from './pricing.service.js';
 import { RateCardCreateDto, RateCardListQueryDto, RateCardSupersedeDto } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
+import type { CtxRequest } from '../common/request.js';
 
 // S18 Rate Cards & Tenant Settings (PRD-F1/F7). pricing:manage-gated, same
 // permission code as the diesel/pricing-parameters writes in

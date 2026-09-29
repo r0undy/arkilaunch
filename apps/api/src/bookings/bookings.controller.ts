@@ -1,7 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { BookingsService } from './bookings.service.js';
 import {
@@ -11,8 +9,7 @@ import {
   ChangeRequestResolveDto,
   NegotiationMessageCreateDto,
 } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
+import type { CtxRequest } from '../common/request.js';
 
 // PRD-F8 (Client Booking Portal). Authenticated `customer`-role surface
 // (cr-arkilaunch-f2-f8-bookings-payments.md); staff (admin/owner/

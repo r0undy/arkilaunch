@@ -1,12 +1,9 @@
 import { Body, Controller, Param, Post, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { PaymentsService } from './payments.service.js';
 import { CheckoutRequestDto, CouponPreviewRequestDto, InvoiceAmountUpdateDto, RefundRequestDto } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
+import type { CtxRequest } from '../common/request.js';
 
 // PRD-F2 (PayMongo Payment Interface), SDD §4
 // `POST /api/v1/bookings/:id/checkout`.

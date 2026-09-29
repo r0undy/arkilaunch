@@ -1,12 +1,9 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { UuidParamPipe } from '../common/uuid-param.pipe.js';
 import { CouponsService } from './coupons.service.js';
 import { CouponCreateDto, CouponListQueryDto, CouponUpdateDto } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
+import type { CtxRequest } from '../common/request.js';
 
 // A rental company's coupon codes (cr-arkilaunch-coupons.md). Same staff
 // as billing settings: the ones who set prices.

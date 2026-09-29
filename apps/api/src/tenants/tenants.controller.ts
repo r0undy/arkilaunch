@@ -15,11 +15,10 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
 import { Public } from '../common/decorators/public.decorator.js';
 import { TurnstileGuard } from '../common/turnstile.js';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
-import { MAX_UPLOAD_BYTES, type RequestContext } from '@arkilaunch/shared';
+import { MAX_UPLOAD_BYTES } from '@arkilaunch/shared';
 import { UuidParamPipe } from '../common/uuid-param.pipe.js';
 import { TenantsService } from './tenants.service.js';
 import {
@@ -29,9 +28,7 @@ import {
   TenantBrandingUpdateDto,
   PaymongoAccountUpdateDto,
 } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
-type MulterFile = { buffer: Buffer; size: number; mimetype: string };
+import type { CtxRequest, MulterFile } from '../common/request.js';
 
 function imageKind(kind: string): 'logo' | 'hero' | 'icon' {
   if (kind !== 'logo' && kind !== 'hero' && kind !== 'icon') throw new BadRequestException({ error: 'invalid_kind' });

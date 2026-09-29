@@ -1,12 +1,9 @@
 import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { QuotesService } from './quotes.service.js';
 import { QuoteRequestDto } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
+import type { CtxRequest } from '../common/request.js';
 
 @Controller('quotes')
 export class QuotesController {

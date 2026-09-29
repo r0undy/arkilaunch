@@ -13,8 +13,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
-import { MAX_UPLOAD_BYTES, type RequestContext } from '@arkilaunch/shared';
+import { MAX_UPLOAD_BYTES } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { validateUpload } from '../storage/upload-validation.js';
 import { StorageService } from '../storage/storage.service.js';
@@ -29,9 +28,7 @@ import {
   KycScanRequestDto,
   SiteDocumentUploadDto,
 } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
-type MulterFile = { buffer: Buffer; size: number; mimetype: string };
+import type { CtxRequest, MulterFile } from '../common/request.js';
 
 // Same bucket as staff-side KYC: these are the same class of document.
 const kycBucket = () => process.env.SUPABASE_STORAGE_BUCKET_KYC ?? 'kyc-documents';

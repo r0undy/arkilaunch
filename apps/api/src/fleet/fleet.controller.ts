@@ -14,8 +14,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
-import { EQUIPMENT_PHOTO_MAX_BYTES, type RequestContext } from '@arkilaunch/shared';
+import { EQUIPMENT_PHOTO_MAX_BYTES } from '@arkilaunch/shared';
 import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
 import { EQUIPMENT_PHOTO_RULES, validateUpload } from '../storage/upload-validation.js';
 import { StorageService } from '../storage/storage.service.js';
@@ -33,9 +32,7 @@ import {
   AvailabilityQueryDto,
   TenantCalendarDto,
 } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
-type MulterFile = { buffer: Buffer; size: number; mimetype: string };
+import type { CtxRequest, MulterFile } from '../common/request.js';
 
 // Deliberately not the KYC bucket: that one holds RA 10173 personal data
 // under its own retention posture. See fleet.service.ts publicPhotoUrl.

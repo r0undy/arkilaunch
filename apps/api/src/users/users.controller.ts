@@ -1,12 +1,9 @@
 import { Body, Controller, Get, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { UsersService } from './users.service.js';
 import { SiteAssignmentSetDto, UserInviteDto, UserListQueryDto, UserRoleChangeDto } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
+import type { CtxRequest } from '../common/request.js';
 
 // S19 Users & Roles (PRD-F7). Every route is user:manage-gated -- owner and
 // timekeeper hold no such permission (packages/db/src/seed/permission-catalog.ts),

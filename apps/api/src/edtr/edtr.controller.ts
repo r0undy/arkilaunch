@@ -12,16 +12,13 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
-import { MAX_UPLOAD_BYTES, type EdtrCaptureRequest, type RequestContext } from '@arkilaunch/shared';
+import { MAX_UPLOAD_BYTES, type EdtrCaptureRequest } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { validateUpload } from '../storage/upload-validation.js';
 import { StorageService } from '../storage/storage.service.js';
 import { EdtrService } from './edtr.service.js';
 import { EdtrApproveDto, EdtrCaptureDto, EdtrListQueryDto, EdtrRejectDto, EdtrReviewDto } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
-type MulterFile = { buffer: Buffer; size: number; mimetype: string };
+import type { CtxRequest, MulterFile } from '../common/request.js';
 
 const EDTR_BUCKET = () => requireEnv('SUPABASE_STORAGE_BUCKET_EDTR');
 // A missing storage bucket is an operator misconfiguration, not a bad

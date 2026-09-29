@@ -1,16 +1,13 @@
 import { Body, Controller, Get, Param, Post, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
-import { MAX_UPLOAD_BYTES, type KycExtractRequest, type RequestContext } from '@arkilaunch/shared';
+import { MAX_UPLOAD_BYTES, type KycExtractRequest } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { validateUpload } from '../storage/upload-validation.js';
 import { StorageService } from '../storage/storage.service.js';
 import { KycService } from './kyc.service.js';
 import { KycConfirmDto, KycExtractDto } from './dto.js';
-
-type CtxRequest = Request & { ctx: RequestContext };
-type MulterFile = { buffer: Buffer; size: number; mimetype: string };
+import type { CtxRequest, MulterFile } from '../common/request.js';
 
 function requireEnv(name: string): string {
   const value = process.env[name];
