@@ -20,13 +20,12 @@ import { EditButton, SummaryCard } from '../components/summary-card.js';
 import { LoadError } from '../components/load-error.js';
 import { Skeleton } from '../components/skeleton.js';
 import { Mail, Plus, Receipt } from 'lucide-react';
-import { formatDate, formatPeso, formatRateType } from '../lib/format.js';
+import { formatDate, formatPeso } from '../lib/format.js';
 
 interface RateCardRow {
   id: string;
   equipmentTypeId: string;
   equipmentId: string | null;
-  rateType: 'hourly' | 'daily' | 'monthly';
   rateValue: string;
   currency: string;
   effectiveFrom: string;
@@ -55,7 +54,6 @@ function RateCardModal({ open, onClose }: { open: boolean; onClose: () => void }
   const [equipmentId, setEquipmentId] = useState('');
   const fleet = useQuery(equipmentQueries.list(100));
   const units = (fleet.data?.items ?? []).filter((unit) => unit.equipmentTypeId === equipmentTypeId);
-  const [rateType, setRateType] = useState<'hourly' | 'daily' | 'monthly'>('daily');
   const [rateValue, setRateValue] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +62,7 @@ function RateCardModal({ open, onClose }: { open: boolean; onClose: () => void }
       apiPost('/rate-cards', {
         equipmentTypeId,
         ...(equipmentId ? { equipmentId } : {}),
-        rateType,
+        rateType: 'hourly',
         rateValue: Number(rateValue),
       }),
     onSuccess: () => {
@@ -137,20 +135,8 @@ function RateCardModal({ open, onClose }: { open: boolean; onClose: () => void }
           </Select>
         </div>
         <div>
-          <Select
-            label="Rate type"
-            id="rate-type"
-            value={rateType}
-            onChange={(e) => setRateType(e.target.value as typeof rateType)}
-          >
-            <option value="hourly">Hourly</option>
-            <option value="daily">Daily</option>
-            <option value="monthly">Monthly</option>
-          </Select>
-        </div>
-        <div>
           <Input
-            label="Rate (PHP)"
+            label="Rate per hour (PHP)"
             id="rate-value"
             type="number"
             min="0.01"
@@ -387,7 +373,7 @@ function useBillingSettingsEditor(saved: { title: string; detail?: string }, fai
   return { query, current, draft, editing, open: () => setEditing(true), close, save, edit };
 }
 
-// Hours in a rental day (a daily card is divided by this), the minimum
+// Hours in a rental day (booked days become hours at this rate), the minimum
 // deposit a booking holds, and when to warn that a deposit is running low.
 function BillingSettingsForm() {
   const form = useBillingSettingsEditor({ title: 'Billing settings saved' }, 'Could not save billing settings');
@@ -664,15 +650,14 @@ export function RateCardsPanel() {
       header: 'Equipment type', kind: 'text',
       cell: (row) => (row.equipmentId ? `${typeName(row.equipmentTypeId)} (one unit)` : typeName(row.equipmentTypeId)),
     },
-    { header: 'Charged', kind: 'text', cell: (row) => formatRateType(row.rateType) },
-    { header: 'Rate', kind: 'money', cell: (row) => formatPeso(row.rateValue) },
+    { header: 'Rate per hour', kind: 'money', cell: (row) => formatPeso(row.rateValue) },
     { header: 'In use since', kind: 'date', cell: (row) => formatDate(row.effectiveFrom) },
     {
       header: 'Actions', kind: 'action',
       cell: (row) => (
         <RetireAction
           id={row.id}
-          label={`${typeName(row.equipmentTypeId)} (${formatRateType(row.rateType).toLowerCase()})`}
+          label={typeName(row.equipmentTypeId)}
         />
       ),
     },

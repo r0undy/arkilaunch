@@ -108,7 +108,7 @@ function EquipmentDetailPage() {
         {equipment.rateValue != null && (
           <p className="mt-2 text-heading-md text-text" data-testid="equipment-price">
             {formatPeso(equipment.rateValue)}
-            <span className="text-sm font-normal text-text-muted"> / {equipment.rateType === 'daily' ? 'day' : 'hour'}</span>
+            <span className="text-sm font-normal text-text-muted"> / hour</span>
           </p>
         )}
       </div>

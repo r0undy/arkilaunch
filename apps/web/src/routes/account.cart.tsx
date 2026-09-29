@@ -8,7 +8,6 @@ import {
   rentFor,
   type BookingCreateResponse,
   type EquipmentOptionGroup,
-  type RentUnit,
 } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { EmptyState } from '../components/empty-state.js';
@@ -92,7 +91,7 @@ function CartItemDates({
   onEstimate,
 }: {
   item: CartItem;
-  rate: { rateType: string | null; rateValue: number | null } | undefined;
+  rate: number | null | undefined;
   onDate: (field: 'start' | 'end', value: string, hour: number) => void;
   onHours: (hours: number | undefined) => void;
   onProblem: (problem: string | null) => void;
@@ -122,8 +121,8 @@ function CartItemDates({
   useEffect(() => onProblem(problem), [problem, onProblem]);
   // Rent only, from the published card; the quote adds diesel, operator and transport.
   const estimate =
-    rate?.rateValue != null && !problem
-      ? rentFor(rate.rateType as RentUnit, rate.rateValue, wanted, dailyHours).rentPhp
+    rate != null && !problem
+      ? rentFor(rate, wanted).rentPhp
       : null;
   useEffect(() => onEstimate(estimate), [estimate, onEstimate]);
   return (
@@ -265,7 +264,7 @@ function CartPage() {
     [],
   );
   const rates = useQuery(catalogQueries.equipment());
-  const rateById = new Map(rates.data?.items.map((eq) => [eq.id, { rateType: eq.rateType ?? null, rateValue: eq.rateValue ?? null }]));
+  const rateById = new Map(rates.data?.items.map((eq) => [eq.id, eq.rateValue ?? null]));
   const optionGroupsById = new Map(rates.data?.items.map((eq) => [eq.id, eq.optionGroups ?? []]));
   // Only a full total is shown: a sum missing an unpriced machine would mislead.
   const lineEstimates = items.map((_, index) => estimates[index] ?? null);

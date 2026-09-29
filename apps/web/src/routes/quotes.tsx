@@ -7,7 +7,7 @@ import { requireRole } from '../lib/guards.js';
 import { apiGet, apiPost, apiErrorText } from '../lib/api-client.js';
 import { getEquipmentTypes, getRateCards, type EquipmentTypeRef, type RateCardRef } from '../lib/reference-client.js';
 import type { QuoteDetail } from '../lib/queries.js';
-import { formatPeso, formatRateType, formatStatus, shortCode } from '../lib/format.js';
+import { formatPeso, formatStatus, shortCode } from '../lib/format.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
@@ -132,7 +132,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
     const card = cards.find((rc) => rc.equipmentTypeId === typeId);
     return {
       key: nextKey++, kind: 'equipment', equipmentTypeId: typeId, rateCardId: card?.id ?? '', quantity: '1',
-      duration: String(card?.rateType === 'hourly' ? days * 8 : days), agreed: '',
+      duration: String(days * 8), agreed: '',
     };
   }
 
@@ -158,11 +158,10 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
               return { key: nextKey++, kind: 'custom', description: line.description ?? '', quantity: String(line.quantity), unitPrice: String(line.subtotal / line.quantity) };
             }
             const card = rc.find((r) => r.id === line.rateCardId) ?? rc.find((r) => r.equipmentTypeId === line.equipmentTypeId);
-            const hourly = card?.rateType === 'hourly';
             // A retired card can't price a new revision; fall back to the type's live one.
             return {
               key: nextKey++, kind: 'equipment', equipmentTypeId: line.equipmentTypeId ?? '', rateCardId: card?.id ?? '',
-              quantity: String(line.quantity), duration: String(hourly ? line.estimatedHours : hireDays(booking)), agreed: '',
+              quantity: String(line.quantity), duration: String(line.estimatedHours), agreed: '',
             };
           }),
         );
@@ -192,14 +191,12 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
         if (line.kind === 'custom') {
           return { kind: 'custom', description: line.description, quantity: Number(line.quantity), unitPricePhp: Number(line.unitPrice) };
         }
-        const hourly = rateCards.find((rc) => rc.id === line.rateCardId)?.rateType === 'hourly';
         return {
           kind: 'equipment',
           equipmentTypeId: line.equipmentTypeId,
           rateCardId: line.rateCardId,
           quantity: Number(line.quantity),
-          estimatedHours: hourly ? Number(line.duration) : 0,
-          ...(hourly ? {} : { days: Number(line.duration) }),
+          estimatedHours: Number(line.duration),
           ...(line.agreed ? { agreedSubtotalPhp: Number(line.agreed) } : {}),
         };
       }),
@@ -339,7 +336,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
                     {cardsFor(line.equipmentTypeId).length === 0 && <option value="">No rate card for this type</option>}
                     {cardsFor(line.equipmentTypeId).map((rc) => (
                       <option key={rc.id} value={rc.id}>
-                        {formatRateType(rc.rateType)}: {formatPeso(rc.rateValue)}
+                        {formatPeso(rc.rateValue)} / hour
                         {rc.equipmentId ? ` (unit ${shortCode('equipment', rc.equipmentId)})` : ''}
                       </option>
                     ))}
@@ -348,8 +345,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
                   <Input
                     numeric
                     id={`duration-${line.key}`}
-                    label={rateCards.find((rc) => rc.id === line.rateCardId)?.rateType === 'hourly' ? 'Hours' : 'Days'}
-                    hint={rateCards.find((rc) => rc.id === line.rateCardId)?.rateType === 'monthly' ? 'Whole months at the monthly rate, leftover days at the daily rate.' : undefined}
+                    label="Hours"
                     type="number"
                     min="0"
                     step="0.5"

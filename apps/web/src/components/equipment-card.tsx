@@ -9,7 +9,6 @@ export interface EquipmentCardProps {
   make: string;
   // The catalog's upfront price; none reads "Price on request".
   rateValue?: number | null;
-  rateType?: string | null;
   // No status label on the customer side: a "Deployed" badge on a card you
   // cannot rent is click bait. An unrentable unit is greyed and inert.
   unavailable?: boolean;
@@ -29,7 +28,6 @@ export function EquipmentCard({
   model,
   make,
   rateValue = null,
-  rateType = null,
   unavailable = false,
   rentLabel = 'Rent',
   onRent,
@@ -74,7 +72,7 @@ export function EquipmentCard({
           <p className="text-sm text-text-muted">{make}</p>
           <p className="mt-1 font-mono text-sm tabular-nums text-text" data-testid="equipment-card-price">
             {rateValue != null
-              ? `${formatPeso(rateValue)} / ${rateType === 'daily' ? 'day' : 'hour'}`
+              ? `${formatPeso(rateValue)} / hour`
               : 'Price on request'}
           </p>
         </div>

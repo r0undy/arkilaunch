@@ -128,18 +128,6 @@ export function formatRole(value: string | null | undefined): string {
   return ROLE_LABELS[value] ?? titleCase(value);
 }
 
-const RATE_TYPE_LABELS: Record<string, string> = {
-  hourly: 'Per hour',
-  daily: 'Per day',
-  weekly: 'Per week',
-  monthly: 'Per month',
-};
-
-export function formatRateType(value: string | null | undefined): string {
-  if (!value) return '--';
-  return RATE_TYPE_LABELS[value] ?? titleCase(value);
-}
-
 const INVOICE_TYPE_LABELS: Record<string, string> = {
   deposit: 'Deposit',
   deposit_deduction: 'Deposit deduction',

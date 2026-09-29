@@ -10,7 +10,7 @@ import { setAccessToken } from '../lib/auth-client.js';
 // decision point, and it carries Create in its footer.
 
 const EQUIPMENT_TYPE = { id: 'et-1', name: 'Excavator 20T' };
-const RATE_CARD = { id: 'rc-1', equipmentTypeId: 'et-1', equipmentId: null, rateType: 'daily', currency: 'PHP', rateValue: '20000' };
+const RATE_CARD = { id: 'rc-1', equipmentTypeId: 'et-1', equipmentId: null, rateType: 'hourly', currency: 'PHP', rateValue: '2500' };
 const BOOKING_ID = '11111111-1111-4111-8111-111111111111';
 const BOOKING = {
   id: BOOKING_ID, status: 'pending', projectSiteId: 'site-1', customerId: 'cust-1',
@@ -26,7 +26,7 @@ const PREVIEW = {
   lineItems: [
     {
       kind: 'equipment', equipmentTypeId: 'et-1', rateCardId: 'rc-1', quantity: 1, estimatedHours: 8,
-      rentParts: [{ rateType: 'daily', ratePhp: 20000, count: 1 }], rent: 20000, hourlyRate: 2500,
+      rentParts: [{ rateType: 'hourly', ratePhp: 2500, count: 8 }], rent: 20000, hourlyRate: 2500,
       operatingCost: 20000, buffer: 0, subtotal: 20000,
     },
     { kind: 'custom', description: 'Operator overtime', equipmentTypeId: null, rateCardId: null, quantity: 2, estimatedHours: 0, rentParts: [], rent: 0, hourlyRate: 0, operatingCost: 0, buffer: 0, subtotal: 3000 },
@@ -111,7 +111,11 @@ describe('Quotes', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Excavator 20T');
-    expect(dialog).toHaveTextContent('/day × 1 day');
+    expect(dialog).toHaveTextContent('/hr × 8 hours');
+    const previewCall = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith('/quotes/preview'));
+    const sent = JSON.parse(String((previewCall![1] as RequestInit).body)) as { items: Record<string, unknown>[] };
+    expect(sent.items[0]).toMatchObject({ estimatedHours: 8 });
+    expect(sent.items[0]).not.toHaveProperty('days');
     expect(dialog).toHaveTextContent('Operator overtime');
     expect(dialog).toHaveTextContent('Mobilization');
     expect(dialog).toHaveTextContent('53000.00');
