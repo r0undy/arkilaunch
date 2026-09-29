@@ -1,4 +1,4 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import {
   evaluateGate,
   worstDelta,
@@ -107,8 +107,11 @@ export async function reconcileEdtr(
         ne(edtr.id, record.id),
         ne(edtr.source, record.source),
         opts.counterpartId ? eq(edtr.id, opts.counterpartId) : undefined,
+        // A decided pair's rows must never be re-paired (their status would be rewritten).
+        sql`not exists (select 1 from ${edtrReconciliations} r where (r.edtr_id = ${edtr.id} and r.status in ('approved', 'rejected')) or (r.counterpart_edtr_id = ${edtr.id} and r.status = 'approved'))`,
       ),
-    );
+    )
+    .orderBy(desc(edtr.createdAt));
   const pairablStatuses = new Set(['extracted', 'reconciled', 'review']);
   const counterpart = candidates.find((c) => pairablStatuses.has(c.status)) ?? null;
 

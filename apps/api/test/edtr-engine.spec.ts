@@ -465,4 +465,50 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     await edtr.reject(adminCtx, first.id, {});
     await expect(edtr.reject(adminCtx, first.id, {})).rejects.toThrow(ConflictException);
   });
+
+  it('a log captured after a pair is approved does not re-pair with the approved rows', async () => {
+    const reportDate = '2021-03-11';
+    const paperId = await insertExtractedPaperCounterpart(reportDate, 4, 0);
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 4, hoursIdle: 0 },
+    });
+    const polled = await edtr.get(adminCtx, digital.id);
+    await edtr.approve(adminCtx, digital.id, { reconciliationId: polled.reconciliation!.id });
+    const paperBefore = await edtr.get(adminCtx, paperId);
+
+    const late = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 4, hoursIdle: 0 },
+    });
+    const latePolled = await edtr.get(adminCtx, late.id);
+    expect(latePolled.reconciliation?.status).toBe('pending');
+    expect(latePolled.reconciliation?.counterpartEdtrId ?? null).toBeNull();
+    expect((await edtr.get(adminCtx, paperId)).status).toBe(paperBefore.status);
+  });
+
+  it('a log captured after its counterpart was rejected does not pair with the rejected row', async () => {
+    const reportDate = '2021-03-12';
+    const paperId = await insertExtractedPaperCounterpart(reportDate, 3, 0);
+    const { reconcileEdtr } = await import('@arkilaunch/db');
+    await withTenantTx(adminCtx, (tx) => reconcileEdtr(tx, adminCtx.tenantId, paperId));
+    await edtr.reject(adminCtx, paperId, { reason: 'illegible' });
+
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 3, hoursIdle: 0 },
+    });
+    const polled = await edtr.get(adminCtx, digital.id);
+    expect(polled.reconciliation?.status).toBe('pending');
+    expect(polled.reconciliation?.counterpartEdtrId ?? null).toBeNull();
+  });
 });
