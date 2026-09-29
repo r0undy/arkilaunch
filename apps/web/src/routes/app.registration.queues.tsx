@@ -633,7 +633,8 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   const setOpenId = (id: string | null) =>
     void navigateQueue({
       to: '.',
-      search: (prev: { open?: string }) => ({ ...prev, open: id ?? undefined }),
+      // The router drops an undefined key, which closes the drawer.
+      search: ((prev: { open?: string }) => ({ ...prev, open: id ?? undefined })) as never,
     });
   const [preview, setPreview] = useState<{ companyId: string; documentId: string } | null>(null);
   const [rejecting, setRejecting] = useState<CompanyReviewResponse | null>(null);
