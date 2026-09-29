@@ -100,7 +100,7 @@ test.describe('self-loading truck', () => {
     await booked.getByRole('button', { name: 'Accept ₱4,321.00' }).click();
     await booked.getByRole('button', { name: 'Pay cash at the office' }).click();
     await expect(customer).toHaveURL(/\/account\/invoices\//, { timeout: 30_000 });
-    await expect(customer.getByText('₱4,321.00').first()).toBeVisible();
+    await expect(customer.getByText('₱4,321.00').filter({ visible: true }).first()).toBeVisible();
 
     // Cash is settled only by staff, on the invoice.
     await admin.goto('/app/payments');
