@@ -57,6 +57,13 @@ import {
 } from './reference-client.js';
 export const PAGE_SIZE = 20;
 
+// `path?a=1&b=2`, skipping empty values.
+function withParams(path: string, params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== '') search.set(key, String(value));
+  return `${path}?${search}`;
+}
+
 // Query-key convention: [resourceSegment, ...identifiers, filters?],
 // lowercase, mirroring the API path -- ['equipment'], ['equipment', id],
 // ['reports', 'utilization']. Prefix-first so
@@ -127,7 +134,7 @@ export const sitesQueries = {
     queryOptions({
       queryKey: ['sites', limit, offset, deployment ?? 'all'] as const,
       queryFn: () =>
-        apiGet<SiteListResponse>(`/sites?limit=${limit}&offset=${offset}${deployment ? `&deployment=${deployment}` : ''}`),
+        apiGet<SiteListResponse>(withParams('/sites', { limit, offset, deployment })),
     }),
   // The site hub (cr-arkilaunch-edtr-site-hub-approval.md).
   hub: (siteId: string) =>
@@ -184,9 +191,7 @@ export const trucksQueries = {
     queryOptions({
       queryKey: ['truck-requests', limit, offset, q, status ?? 'all'] as const,
       queryFn: () =>
-        apiGet<TruckRequestListResponse>(
-          `/truck-requests?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}${status ? `&status=${status}` : ''}`,
-        ),
+        apiGet<TruckRequestListResponse>(withParams('/truck-requests', { limit, offset, q, status })),
     }),
   // The road line between a request's saved pins, for the drawer map.
   route: (id: string) =>
@@ -202,9 +207,7 @@ export const trucksQueries = {
     queryOptions({
       queryKey: [...MY_TRUCK_REQUESTS, limit, offset, q, status ?? 'all'] as const,
       queryFn: () =>
-        apiGet<TruckRequestListResponse>(
-          `/me/truck-requests?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}${status ? `&status=${status}` : ''}`,
-        ),
+        apiGet<TruckRequestListResponse>(withParams('/me/truck-requests', { limit, offset, q, status })),
     }),
   // The same line for the customer's own request.
   myRoute: (id: string) =>
@@ -221,7 +224,7 @@ export const invoicesQueries = {
     queryOptions({
       queryKey: ['invoices', limit, offset, status ?? 'all'] as const,
       queryFn: () =>
-        apiGet<InvoiceListResponse>(`/invoices?limit=${limit}&offset=${offset}${status ? `&status=${status}` : ''}`),
+        apiGet<InvoiceListResponse>(withParams('/invoices', { limit, offset, status })),
     }),
   detail: (invoiceId: string) =>
     queryOptions({
@@ -235,7 +238,7 @@ export const incidentsQueries = {
     queryOptions({
       queryKey: ['incidents', limit, offset, kind ?? 'all'] as const,
       queryFn: () =>
-        apiGet<IncidentListResponse>(`/incidents?limit=${limit}&offset=${offset}${kind ? `&kind=${kind}` : ''}`),
+        apiGet<IncidentListResponse>(withParams('/incidents', { limit, offset, kind })),
     }),
 };
 
