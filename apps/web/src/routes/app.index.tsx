@@ -102,7 +102,7 @@ function AdminDashboardPage() {
   const { data: snapshot } = useQuery(reportQueries.snapshot());
   const utilizationPct = fleetUtilizationPct(snapshot?.utilization);
   const { data: sites } = useQuery(sitesQueries.list());
-  const { data: edtrList } = useQuery(edtrQueries.list());
+  const { data: edtrList } = useQuery(edtrQueries.review());
   const { data: advisories } = useQuery(weatherQueries.advisories());
   // Unpaid only, asked of the server: filtering the first page of every
   // invoice missed unpaid ones once paid ones filled that page.
@@ -132,14 +132,7 @@ function AdminDashboardPage() {
   const alerts = (sites?.items ?? []).filter(
     (s) => s.latestSeverity && s.latestSeverity !== 'none',
   );
-  const reviewItems = (
-    (edtrList?.items ?? []) as {
-      id: string;
-      status?: string;
-      equipmentId?: string;
-      reportDate?: string;
-    }[]
-  ).filter((e) => e.status === 'review');
+  const reviewItems = edtrList?.items ?? [];
 
   // One row per machine-week, not per daily log: a week of one excavator
   // is one decision, not seven (weekly EDTR sheet, proposal §2.2).

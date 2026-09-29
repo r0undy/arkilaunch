@@ -381,10 +381,11 @@ export const weatherQueries = {
 };
 
 export const edtrQueries = {
-  list: () =>
+  review: () =>
     queryOptions({
-      queryKey: ['edtr'] as const,
-      queryFn: () => apiGet<{ items: unknown[] }>('/edtr'),
+      queryKey: ['edtr', 'review'] as const,
+      queryFn: () =>
+        apiGet<{ items: { id: string; equipmentId: string; reportDate: string }[] }>('/edtr?status=review'),
     }),
   reviewCount: () =>
     queryOptions({
