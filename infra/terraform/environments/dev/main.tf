@@ -11,9 +11,7 @@ terraform {
     }
   }
 
-  # storage_account_name comes from infra/terraform/bootstrap's output --
-  # passed via `terraform init -backend-config="storage_account_name=..."`
-  # rather than hardcoded here, so this file has no subscription-specific value.
+  # storage_account_name comes from bootstrap via `terraform init -backend-config`.
   backend "azurerm" {
     resource_group_name = "rg-arkilaunch-tfstate"
     container_name      = "tfstate"
@@ -31,15 +29,7 @@ locals {
   name = "arkilaunch-${local.env}"
   tags = { environment = local.env, project = "arkilaunch" }
 
-  # Secrets shared by the API app and every cron job -- see the Dockerfile's
-  # "one image, five workloads" design; jobs run in the same trust boundary
-  # as the API, so no per-job secret narrowing today.
-  #
-  # Azure rejects a Container App secret with an empty string value ("value
-  # or keyVaultUrl and identity should be provided") -- so unset vendor keys
-  # (Azure DI/PayMongo, blank until those integrations go live) are filtered
-  # out of both maps entirely, not wired in as blank. Open-Meteo needs no
-  # key at all (free tier, cr-arkilaunch-open-meteo-free-tier.md).
+  # Azure rejects empty secret values, so unset vendor keys are filtered out, not wired blank.
   all_secrets = {
     database-url-direct           = var.database_url_direct
     database-url-pooled           = var.database_url_pooled
@@ -94,8 +84,7 @@ locals {
     ENABLE_DIESEL_SCRAPE         = tostring(var.enable_diesel_scrape)
     ENABLE_PAYMENTS              = tostring(var.enable_payments)
     TURNSTILE_ENABLED            = tostring(var.enable_turnstile)
-    # F0 (this env's DI sku) analyzes only the first 2 pages of any
-    # document; the adapter hard-fails rather than silently truncate one.
+    # F0 analyzes only 2 pages; the adapter hard-fails rather than truncate.
     AZURE_DI_MAX_PAGES = "2"
   }
 }
@@ -141,10 +130,7 @@ module "container_apps_environment" {
   tags                       = local.tags
 }
 
-# Shared ACR-pull identity for the API app + all 4 jobs -- see
-# modules/managed_identity for why this exists (a real, observed failure
-# mode with SystemAssigned identities: Azure's own revision-provisioning
-# timeout can expire while waiting for a just-granted role to propagate).
+# Shared ACR-pull identity for the API app and all jobs.
 module "acr_identity" {
   source              = "../../modules/managed_identity"
   name                = "id-${local.name}-acrpull"
@@ -191,7 +177,6 @@ module "weather_poll_job" {
   depends_on                   = [module.acr_identity]
 }
 
-# Pre-workday weather briefing (docs/cr-arkilaunch-weather-monitoring.md).
 module "weather_briefing_job" {
   source                       = "../../modules/cron_job"
   name                         = "${local.name}-weather-briefing"
@@ -248,10 +233,7 @@ module "diesel_job" {
 
 module "maintenance_notify_job" {
   source = "../../modules/cron_job"
-  # Azure Container App Job names cap at 32 chars; "arkilaunch-<env>-maintenance-notify"
-  # exceeds it, so this uses the shorter "pm-notify" (matches ops-arkilaunch.md's
-  # own "PM-threshold notify" naming) -- the entrypoint below still points at
-  # the real jobs/src/maintenance-notify.ts file, unrenamed.
+  # ACA job names cap at 32 chars, hence "pm-notify".
   name                         = "${local.name}-pm-notify"
   entrypoint                   = "maintenance-notify"
   cron_expression              = var.maintenance_notify_cron
@@ -269,9 +251,7 @@ module "maintenance_notify_job" {
 }
 
 module "hold_expiry_job" {
-  source = "../../modules/cron_job"
-  # QA 25: cancels unpaid requests whose date hold lapsed and tells both
-  # sides (jobs/src/hold-expiry.ts).
+  source                       = "../../modules/cron_job"
   name                         = "${local.name}-hold-expiry"
   entrypoint                   = "hold-expiry"
   cron_expression              = var.hold_expiry_cron
@@ -300,9 +280,6 @@ output "registry_login_server" {
   value = module.container_registry.login_server
 }
 
-# QA 19: rolls each rental's reconciled hours past the deposit into one
-# weekly invoice (jobs/src/weekly-billing.ts), so a rental's bills stack
-# week by week and the Statement of Account reads them.
 module "weekly_billing_job" {
   source                       = "../../modules/cron_job"
   name                         = "${local.name}-weekly-billing"

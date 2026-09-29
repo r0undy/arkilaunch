@@ -12,17 +12,17 @@ variable "location" {
 
 variable "retention_in_days" {
   type    = number
-  default = 90 # ops-arkilaunch.md: metrics retained 90 days
+  default = 90
 }
 
 variable "app_insights_retention_in_days" {
   type    = number
-  default = 30 # ops-arkilaunch.md: traces 14-30 days, 100% sampled on error
+  default = 30
 }
 
 variable "app_insights_daily_cap_gb" {
   type    = number
-  default = 1 # cost backstop, not a steady-state control -- expected steady state is well under this
+  default = 1 # cost backstop
 }
 
 variable "tags" {
