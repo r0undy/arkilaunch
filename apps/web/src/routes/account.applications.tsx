@@ -1,5 +1,5 @@
 import { createRoute, Link } from '@tanstack/react-router';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { CompanyResponse } from '@arkilaunch/shared';
 import { isPrimaryRegistration } from '@arkilaunch/shared';
@@ -131,30 +131,25 @@ function ApplicationsPage() {
   const [status, setStatus] = useState<StatusFilter>('all');
 
   const rows = companies.data ?? [];
-  const counts = useMemo(
-    () => ({
-      total: rows.length,
-      approved: rows.filter((c) => c.kycStatus === 'approved').length,
-      pending: rows.filter((c) => c.kycStatus === 'pending').length,
-    }),
-    [rows],
-  );
+  const counts = {
+    total: rows.length,
+    approved: rows.filter((c) => c.kycStatus === 'approved').length,
+    pending: rows.filter((c) => c.kycStatus === 'pending').length,
+  };
 
   // ponytail: client-side filter over an unpaginated GET /me/companies --
   // one login holds a handful of companies. Push status + q into SQL if that
   // ever grows past a page.
-  const shown = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return rows.filter((c) => {
-      if (status !== 'all' && c.kycStatus !== status) return false;
-      if (!q) return true;
-      return (
-        c.companyName.toLowerCase().includes(q) ||
-        (c.secNumber ?? '').toLowerCase().includes(q) ||
-        (c.tin ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [rows, search, status]);
+  const q = search.trim().toLowerCase();
+  const shown = rows.filter((c) => {
+    if (status !== 'all' && c.kycStatus !== status) return false;
+    if (!q) return true;
+    return (
+      c.companyName.toLowerCase().includes(q) ||
+      (c.secNumber ?? '').toLowerCase().includes(q) ||
+      (c.tin ?? '').toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="flex flex-col gap-5">
