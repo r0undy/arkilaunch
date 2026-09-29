@@ -32,9 +32,6 @@ interface ToastContextValue {
   show: (toast: Omit<Toast, 'id'>) => void;
   success: (title: string, detail?: string) => void;
   error: (title: string, detail?: string) => void;
-  info: (title: string, detail?: string) => void;
-  warning: (title: string, detail?: string) => void;
-  dismiss: (id: number) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -84,13 +81,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ToastContextValue>(
     () => ({
       show,
-      dismiss,
       success: (title, detail) => show({ tone: 'success', title, ...(detail ? { detail } : {}) }),
       error: (title, detail) => show({ tone: 'error', title, ...(detail ? { detail } : {}) }),
-      info: (title, detail) => show({ tone: 'info', title, ...(detail ? { detail } : {}) }),
-      warning: (title, detail) => show({ tone: 'warning', title, ...(detail ? { detail } : {}) }),
     }),
-    [show, dismiss],
+    [show],
   );
 
   const region = (

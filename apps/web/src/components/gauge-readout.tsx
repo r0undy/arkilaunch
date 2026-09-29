@@ -1,22 +1,13 @@
 import { Clock } from 'lucide-react';
 
-export type GaugeTrend = 'up' | 'down' | 'flat';
-
 export interface GaugeReadoutProps {
   label: string;
   value: string;
   unit?: string;
-  trend?: GaugeTrend;
   stale?: boolean;
   staleLabel?: string;
   className?: string;
 }
-
-const TREND_GLYPH: Record<GaugeTrend, string> = {
-  up: '↑',
-  down: '↓',
-  flat: '→',
-};
 
 // DESIGN.md §4 domain components: "the interface's signature moment" -- a bezelled
 // mono numeric tile for one key figure (diesel price, deposit balance, utilization %).
@@ -24,7 +15,6 @@ export function GaugeReadout({
   label,
   value,
   unit,
-  trend,
   stale = false,
   staleLabel = 'stale',
   className = '',
@@ -39,11 +29,6 @@ export function GaugeReadout({
       <div className="flex items-baseline gap-1.5">
         <span className="font-mono text-3xl font-medium tabular-nums text-text">{value}</span>
         {unit && <span className="font-mono text-base tabular-nums text-text-muted">{unit}</span>}
-        {trend && (
-          <span aria-hidden="true" className="font-mono text-lg text-text-muted">
-            {TREND_GLYPH[trend]}
-          </span>
-        )}
       </div>
       {stale && (
         <span className="inline-flex w-fit items-center gap-1 rounded-xs bg-weather-stale px-2 py-0.5 text-xs font-medium text-white">

@@ -22,9 +22,4 @@ describe('GaugeReadout', () => {
     expect(stale).toContain('last known');
     expect(stale).toContain('bg-weather-stale');
   });
-
-  it('renders a trend glyph when trend is provided', () => {
-    const html = renderToStaticMarkup(<GaugeReadout label="Utilization" value="82" unit="%" trend="up" />);
-    expect(html).toContain('↑');
-  });
 });
