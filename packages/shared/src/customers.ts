@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { PaginationQuerySchema } from './pagination.js';
 import { DTI_REGEX, idTypeOf, normalizeSecNumber, PH_ID_TYPE_CODES, PH_ID_TYPES, SEC_REGEX, sameTin, validIdNumber } from './kyc.js';
 import { PhMobileSchema } from './phone.js';
+import { UserPasswordSchema } from './users.js';
 
 // Customer prerequisites CR: self-signup, companies (Figma 582:3946 "Add
 // New Company") and customer-owned project sites.
@@ -10,7 +11,7 @@ import { PhMobileSchema } from './phone.js';
 // (X-Tenant-Slug); nothing here names a tenant.
 export const CustomerSignupSchema = z.object({
   email: z.string().trim().email().max(254),
-  password: z.string().min(10).max(200),
+  password: UserPasswordSchema,
   acceptedTerms: z.literal(true),
 });
 export type CustomerSignup = z.infer<typeof CustomerSignupSchema>;

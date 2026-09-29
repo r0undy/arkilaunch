@@ -9,7 +9,7 @@ import { captchaError, Turnstile, TURNSTILE_SITE_KEY } from '../components/turns
 import { onlyOn, redirectIfSignedIn } from '../lib/guards.js';
 import { platformOrigin } from '../lib/host.js';
 
-export const MIN_PASSWORD = 10;
+export const MIN_PASSWORD = 12;
 
 export function signupError(code: string): string {
   const captcha = captchaError(code);

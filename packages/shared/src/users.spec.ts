@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ROLE_CODES, type RoleCode } from './permissions.js';
-import { AssignableRoleSchema, evaluateUserAdminAction, type AssignableRole } from './users.js';
+import { AssignableRoleSchema, evaluateUserAdminAction, UserPasswordChangeSchema, type AssignableRole } from './users.js';
 
 const ASSIGNABLE_ROLES = AssignableRoleSchema.options;
 const ACTOR_ID = 'actor';
@@ -150,5 +150,12 @@ describe('evaluateUserAdminAction (S19 privilege-escalation policy, pure)', () =
       wouldLeaveZeroUserManagers: false,
     });
     expect(allowed).toEqual({ allowed: true });
+  });
+});
+
+describe('UserPasswordChangeSchema', () => {
+  it('requires a 12-character new password', () => {
+    expect(UserPasswordChangeSchema.safeParse({ currentPassword: 'x', newPassword: 'a'.repeat(11) }).success).toBe(false);
+    expect(UserPasswordChangeSchema.safeParse({ currentPassword: 'x', newPassword: 'a'.repeat(12) }).success).toBe(true);
   });
 });

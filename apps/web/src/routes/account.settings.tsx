@@ -234,7 +234,7 @@ function SecurityTab() {
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
   const mismatch = confirm !== '' && confirm !== next;
-  const tooShort = next !== '' && next.length < 10;
+  const tooShort = next !== '' && next.length < 12;
 
   const change = useMutation({
     mutationFn: () => apiPost('/users/me/password', { currentPassword: current, newPassword: next }),
@@ -273,7 +273,7 @@ function SecurityTab() {
             value={next}
             onChange={(e) => setNext(e.target.value)}
             required
-            {...(tooShort ? { error: 'Use at least 10 characters.' } : {})}
+            {...(tooShort ? { error: 'Use at least 12 characters.' } : {})}
           />
           <Input
             label="Confirm new password"

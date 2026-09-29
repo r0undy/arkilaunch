@@ -13,8 +13,7 @@ export type AssignableRole = z.infer<typeof AssignableRoleSchema>;
 export const UserStatusSchema = z.enum(['active', 'invited', 'disabled', 'locked']);
 export type UserStatus = z.infer<typeof UserStatusSchema>;
 
-// min 12: this is the only place a password is CHOSEN. LoginRequestSchema's
-// min(1) validates a submitted credential, not a chosen one.
+// Every chosen password (invite, activation, self-service change, signup) uses this.
 export const UserPasswordSchema = z.string().min(12).max(128);
 
 export const UserListQuerySchema = PaginationQuerySchema.extend({
@@ -94,11 +93,11 @@ export const UserSelfUpdateSchema = z
   .strict();
 export type UserSelfUpdate = z.infer<typeof UserSelfUpdateSchema>;
 
-// POST /users/me/password. Same length rule as customer registration.
+// POST /users/me/password.
 export const UserPasswordChangeSchema = z
   .object({
     currentPassword: z.string().min(1),
-    newPassword: z.string().min(10).max(200),
+    newPassword: UserPasswordSchema,
   })
   .strict();
 export type UserPasswordChange = z.infer<typeof UserPasswordChangeSchema>;
