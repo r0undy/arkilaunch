@@ -31,8 +31,12 @@ describe('cross-tenant isolation (two-tenant fixture)', () => {
   });
 
   it('tenant A context: reads only tenant A equipment, never tenant B rows', async () => {
-    await setTenantGuc(pooled, tenantAId);
-    const rows = await pooled<{ tenant_id: string }[]>`select tenant_id from equipment`;
+    // One transaction, as withTenantTx does: the transaction-mode pooler may run the next statement on
+    // another backend, so a GUC set in its own statement can be gone and the read comes back empty.
+    const rows = await pooled.begin(async (t) => {
+      await t`select set_config('app.current_tenant_id', ${tenantAId}, true)`;
+      return t<{ tenant_id: string }[]>`select tenant_id from equipment`;
+    });
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
       expect(row.tenant_id).toBe(tenantAId);
