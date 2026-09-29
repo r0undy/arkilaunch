@@ -24,14 +24,7 @@ export const MAX_SITE_CONTACT = 200;
 export const MAX_SITE_NOTES = 1000;
 
 export function hasErrors(errors: CartFieldErrors): boolean {
-  return Boolean(
-    errors.companyId ||
-      errors.projectSiteId ||
-      errors.siteContact ||
-      errors.siteContactMobile ||
-      errors.siteNotes ||
-      Object.keys(errors.items).length > 0,
-  );
+  return Object.entries(errors).some(([key, value]) => (key === 'items' ? Object.keys(value).length > 0 : Boolean(value)));
 }
 
 function startOfToday(): number {
