@@ -12,6 +12,12 @@ export class ApiError extends Error {
   }
 }
 
+// One field of an error's JSON payload, or undefined; callers check its type.
+export function payloadField(error: unknown, key: string): unknown {
+  const payload = typeof error === 'object' && error !== null ? (error as { payload?: unknown }).payload : undefined;
+  return typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>)[key] : undefined;
+}
+
 async function send<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await authorizedFetch(path, init);
   // A 204 (or any empty body) reads as {}.

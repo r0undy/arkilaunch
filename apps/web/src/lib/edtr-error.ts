@@ -1,4 +1,4 @@
-import { ApiError, apiErrorText } from './api-client.js';
+import { ApiError, apiErrorText, payloadField } from './api-client.js';
 
 // The EDTR screen used to render the raw ApiError as JSON. Every gate on the
 // money path answers with a machine code, and several of them are refusals by
@@ -10,23 +10,8 @@ export interface EdtrErrorExplanation {
   readonly detail: string;
 }
 
-function codeOf(error: unknown): string | null {
-  if (typeof error !== 'object' || error === null) return null;
-  const payload = (error as { payload?: unknown }).payload;
-  if (typeof payload !== 'object' || payload === null) return null;
-  const code = (payload as { error?: unknown }).error;
-  return typeof code === 'string' ? code : null;
-}
-
-function fieldOf(error: unknown, key: string): string | null {
-  if (typeof error !== 'object' || error === null) return null;
-  const payload = (error as { payload?: Record<string, unknown> }).payload;
-  const value = payload?.[key];
-  return typeof value === 'string' ? value : null;
-}
-
 export function explainEdtrError(error: unknown): EdtrErrorExplanation {
-  switch (codeOf(error)) {
+  switch (payloadField(error, 'error')) {
     case 'reconciliation_not_found':
       return {
         title: 'No such reconciliation',
@@ -36,7 +21,7 @@ export function explainEdtrError(error: unknown): EdtrErrorExplanation {
     case 'reconciliation_belongs_to_other_edtr':
       return {
         title: 'That reconciliation belongs to a different field log',
-        detail: `It is attached to log ${(fieldOf(error, 'edtrId') ?? '').slice(0, 8)}. Approve it from that log.`,
+        detail: `It is attached to log ${String(payloadField(error, 'edtrId') ?? '').slice(0, 8)}. Approve it from that log.`,
       };
     case 'reconciliation_discrepancy':
       return {

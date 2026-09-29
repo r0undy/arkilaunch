@@ -4,7 +4,7 @@ import { Surface } from './surface.js';
 import { Skeleton } from './skeleton.js';
 import { LoadError } from './load-error.js';
 import { getAccessToken } from '../lib/auth-client.js';
-import { ApiError } from '../lib/api-client.js';
+import { ApiError, payloadField } from '../lib/api-client.js';
 import { customerSitesQueries, forecastQueries } from '../lib/queries.js';
 import { describeWeatherCode, weekdayLabel } from '../lib/weather-code.js';
 
@@ -20,10 +20,8 @@ const heading = 'text-heading-md text-text';
 // by configuration will never succeed, so offering "Retry" there is a button
 // that cannot work.
 function unavailableReason(error: unknown): string | null {
-  if (!(error instanceof ApiError)) return null;
-  const payload = error.payload;
-  if (typeof payload !== 'object' || payload === null || !('reason' in payload)) return null;
-  return String((payload as { reason: unknown }).reason);
+  const reason = payloadField(error, 'reason');
+  return error instanceof ApiError && reason !== undefined ? String(reason) : null;
 }
 
 function ForecastRows({ siteId }: { siteId?: string }) {
