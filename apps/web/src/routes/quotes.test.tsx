@@ -5,10 +5,6 @@ import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken } from '../lib/auth-client.js';
 
-// Quotes is the standard price book for every client; a booking's quote is
-// only rebuilt here while the customer negotiates. The preview is the
-// decision point, and it carries Create in its footer.
-
 const EQUIPMENT_TYPE = { id: 'et-1', name: 'Excavator 20T' };
 const RATE_CARD = { id: 'rc-1', equipmentTypeId: 'et-1', equipmentId: null, rateType: 'hourly', currency: 'PHP', rateValue: '2500' };
 const BOOKING_ID = '11111111-1111-4111-8111-111111111111';
@@ -83,9 +79,7 @@ describe('Quotes', () => {
     await renderRoute('/app/quotes');
 
     expect(await screen.findByRole('tab', { name: 'Equipment rental' })).toHaveAttribute('aria-selected', 'true');
-    // No quote is drawn up per company any more.
     expect(screen.queryByLabelText('Customer')).not.toBeInTheDocument();
-    // Read at a glance on the card; the inputs are one Edit away, in a modal.
     const fees = await screen.findByRole('group', { name: 'Mobilization and demobilization' });
     expect(fees).toHaveTextContent(/15,000/);
     await userEvent.click(screen.getByRole('button', { name: 'Edit mobilization fees' }));

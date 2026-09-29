@@ -5,10 +5,7 @@ import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken } from '../lib/auth-client.js';
 
-// The counters and the three status tabs are computed in the browser over an
-// unpaginated GET /me/companies. A miscount here is a customer being told a
-// company is approved when it is not, so the arithmetic and the filter get a
-// test even though the page itself is a list.
+// A miscount here tells a customer a company is approved when it is not.
 
 const COMPANIES = [
   { id: 'c1', companyName: '123 Company', tin: null, secNumber: 'PH62780901', billingAddress: null, kycStatus: 'pending', firstName: null, middleName: null, lastName: null, documents: [], createdAt: '2026-09-01T00:00:00.000Z' },
@@ -86,8 +83,6 @@ describe('Company Applications', () => {
     unmount();
   });
 
-  // A company registered off its BIR Form 2303 has a TIN and no SEC number;
-  // the card said "Registration number Not provided" for it.
   it('shows the number and documents actually submitted, and where it stands', async () => {
     const { unmount } = await renderApplications();
     const card = screen.getByRole('group', { name: 'Response Basics Incorporated' });
@@ -100,8 +95,6 @@ describe('Company Applications', () => {
     unmount();
   });
 
-  // A filter that hides everything must say so rather than leaving a blank
-  // page that reads as "you have no companies".
   it('distinguishes "nothing matches" from "nothing registered"', async () => {
     const { unmount } = await renderApplications();
     await userEvent.type(screen.getByRole('searchbox', { name: /search companies/i }), 'zzz');

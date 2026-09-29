@@ -8,10 +8,7 @@ import { bookingStage, bookingTimeline, leaseProgress } from './account.booking.
 import { amountDue } from './account.checkout.js';
 import { describeNotification } from '../components/notification-feed.js';
 
-// The progress bar is the one piece of arithmetic on the booking screen, and
-// the failure that matters is not an off-by-one percentage -- it is showing
-// a confident "0% complete, 0 days remaining" on a hire whose dates are not
-// actually known, which reads as "your rental is over".
+// The failure that matters: a confident "0% complete" on a hire whose dates are unknown.
 describe('leaseProgress', () => {
   const start = '2026-10-01T00:00:00.000Z';
   const end = '2026-10-11T00:00:00.000Z';
@@ -77,8 +74,7 @@ const accepted = {
   createdAt: new Date('2026-09-02T00:00:00Z'),
 };
 
-// What the checkout screen tells the customer they will pay. It must match
-// the server's rule, above all never showing the deposit twice.
+// Must match the server's rule, above all never showing the deposit twice.
 describe('amountDue', () => {
   it('is the accepted quote plus the contract deposit', () => {
     const due = amountDue(

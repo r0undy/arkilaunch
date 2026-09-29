@@ -2,10 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { toLocalInput } from './equipment.js';
 import { defaultRentalWindow } from '../lib/cart-client.js';
 
-// The configure-rental dialog reads ISO out of the cart into a
-// datetime-local field and writes it straight back with new Date(value).
-// If that round trip shifts by the UTC offset, every rental booked from the
-// catalog lands 8 hours out in Manila and nothing else in the app notices.
+// A UTC-offset shift here would land every catalog rental 8 hours out in Manila.
 describe('toLocalInput', () => {
   it('round-trips back to the same instant', () => {
     const iso = new Date(2026, 8, 23, 14, 30).toISOString();

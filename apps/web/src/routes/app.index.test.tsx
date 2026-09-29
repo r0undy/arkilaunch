@@ -5,12 +5,6 @@ import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken } from '../lib/auth-client.js';
 
-// The dashboard used to print every number the API had, stacked: a seven-row
-// summary rail, a card listing every site, and three queues down the page.
-// What it lost was hierarchy -- the one queue with a human decision attached
-// was the third thing read. These cover the three pieces that replaced it:
-// the KPI strip, the advisory modal, and the tabbed secondary panel.
-
 const SITE_CLEAR = {
   id: 'site-1',
   city: 'Taguig',
@@ -77,8 +71,6 @@ describe('Admin dashboard', () => {
   it('leads with the four headline figures rather than a rail of every number', async () => {
     await renderRoute('/app');
 
-    // Deposit deducted is the money-path figure and the one that used to sit
-    // seventh in a list of counts.
     expect(await screen.findByText('Deposit deducted')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('412.5 h')).toBeInTheDocument());
     expect(screen.getByText('Invoiced')).toBeInTheDocument();
