@@ -45,7 +45,6 @@ export class UsersService {
     private readonly storage: StorageService,
   ) {}
 
-  // GET /users (S19).
   async list(ctx: Ctx, query: UserListQuery) {
     return withTenantTx(ctx, async (tx) => {
       const conditions = [];
@@ -70,17 +69,12 @@ export class UsersService {
         .limit(query.limit)
         .offset(query.offset);
 
-      // rows.length is the page, not the total: this list reported "3 of 3"
-      // on page 1 of 120 users (audit-api-surface.md #9).
       const total = await countRows(tx, users, conditions.length > 0 ? and(...conditions) : undefined);
       return { items: rows, total };
     });
   }
 
-  // GET /users/me. Self-scoped by ctx.userId (from the verified JWT, never
-  // a param) -- reading your own record is not a privileged action, so this
-  // is exposed through UserProfileController, not the user:manage-gated
-  // UsersController above.
+  // Self-scoped by ctx.userId from the verified JWT, never a param.
   async me(ctx: Ctx): Promise<UserSelfResponse> {
     const row = await withTenantTx(ctx, async (tx) => {
       const [found] = await tx
@@ -108,8 +102,7 @@ export class UsersService {
       if (!found) throw new NotFoundException({ error: 'user_not_found' });
       return found;
     });
-    // Signed outside the transaction: it is a network call to Storage. A
-    // Storage outage costs the picture, never the whole profile.
+    // Signed outside the transaction (a Storage network call); an outage costs the picture, not the profile.
     const tenantTin = await getTenantTin(ctx.tenantId).catch(() => null);
     const avatarUrl = row.avatarKey
       ? await this.storage.createSignedDownloadUrl(kycBucket(), row.avatarKey).catch(() => null)
@@ -133,8 +126,7 @@ export class UsersService {
     };
   }
 
-  // PATCH /users/me. Own row only (ctx.userId, never a param); the schema
-  // is strict, so email, role and the KYC-owned names cannot ride along.
+  // Own row only; the strict schema keeps email, role and the KYC-owned names out.
   async updateSelf(ctx: Ctx, body: UserSelfUpdate): Promise<UserSelfResponse> {
     if (Object.keys(body).length > 0) {
       await withTenantTx(ctx, (tx) => tx.update(users).set(body).where(eq(users.id, ctx.userId)));
@@ -149,8 +141,7 @@ export class UsersService {
     return this.me(ctx);
   }
 
-  // POST /users/me/password. Proves the current password first, then revokes
-  // every refresh-token family so any other signed-in device is logged out.
+  // Revokes every refresh-token family so other signed-in devices are logged out.
   async changePassword(ctx: Ctx, body: UserPasswordChange): Promise<void> {
     await withTenantTx(ctx, async (tx) => {
       const [row] = await tx
@@ -168,12 +159,10 @@ export class UsersService {
     await this.refreshTokens.revokeAllForUser(ctx, ctx.userId);
   }
 
-  // POST /users/me/sign-out-everywhere.
   async signOutEverywhere(ctx: Ctx): Promise<void> {
     await this.refreshTokens.revokeAllForUser(ctx, ctx.userId);
   }
 
-  // GET /users/:id.
   async get(ctx: Ctx, id: string) {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await this.selectUserWithRole(tx, id);
@@ -182,10 +171,7 @@ export class UsersService {
     });
   }
 
-  // POST /users (S19 invite). No email provider anywhere in the pinned
-  // stack (BUILD §3): the response carries a one-time activation token for
-  // the admin to relay out-of-band, rather than persisting an invitation
-  // row (see AuthService.activate for the security tradeoff).
+  // Returns a one-time activation token for the admin to relay, rather than persisting an invitation row.
   async invite(ctx: Ctx, input: UserInviteRequest) {
     this.assertGrantAllowed(ctx.role as RoleCode, input.role);
 
@@ -197,8 +183,7 @@ export class UsersService {
         throw new UnprocessableEntityException({ error: 'role_has_no_site_assignments' });
       }
 
-      // Nobody -- including the inviting admin -- ever knows a working
-      // password for this row; only activate() can ever set one.
+      // Nobody, including the inviting admin, knows a working password; only activate() sets one.
       const placeholderHash = await hash(randomBytes(32).toString('hex'));
 
       const [user] = await tx
@@ -206,12 +191,7 @@ export class UsersService {
         .values({
           tenantId: ctx.tenantId,
           roleId: roleRow.id,
-          // Defensive re-lowercase, not just a reliance on the Zod boundary's
-          // .toLowerCase() transform: AuthService.login also lowercases
-          // before its lookup, so any caller that reaches this service
-          // without going through the DTO (as a direct unit test does, or
-          // any future internal caller) must not be able to create a user
-          // who can never log in.
+          // Re-lowercased here too: login lowercases, so a caller bypassing the DTO must not create an unloggable user.
           email: input.email.toLowerCase(),
           passwordHash: placeholderHash,
           status: 'invited',
@@ -241,10 +221,7 @@ export class UsersService {
     });
   }
 
-  // POST /users/:id/invite (re-invite): rerolls the placeholder hash,
-  // which invalidates every outstanding activation token for this user
-  // (bound to the OLD hash) and issues a fresh one -- re-invite is also
-  // revoke-previous-invite, with no extra state to track.
+  // Rerolling the hash invalidates every outstanding activation token for this user.
   async reinvite(ctx: Ctx, id: string) {
     return withTenantTx(ctx, async (tx) => {
       const [user] = await tx.select().from(users).where(eq(users.id, id)).limit(1);
@@ -260,16 +237,8 @@ export class UsersService {
     });
   }
 
-  // POST /users/:id/reset-password (admin-initiated; no email provider in
-  // the pinned stack, BUILD §3). Deliberately reuses the invite/activate
-  // machinery rather than inventing a parallel "reset token" concept: reroll
-  // the password hash to a fresh unusable value, flip status back to
-  // 'invited', and hand the admin a token bound to that new hash via
-  // AuthService.signActivationToken. The target completes the reset through
-  // the exact same POST /auth/activate path an invite uses, so it is
-  // single-use and self-invalidating with no new state to track. Also
-  // revokes every outstanding refresh-token family so a session hijacked
-  // before the reset does not survive it.
+  // Reuses invite/activate: reroll the hash, flip to 'invited', hand back a token bound to the new hash.
+  // Also revokes every refresh-token family so a session hijacked before the reset doesn't survive it.
   async resetPassword(ctx: Ctx, id: string) {
     return withTenantTx(ctx, async (tx) => {
       const [user] = await tx.select().from(users).where(eq(users.id, id)).limit(1);
@@ -288,8 +257,7 @@ export class UsersService {
     });
   }
 
-  // PATCH /users/:id/role (S19). See evaluateUserAdminAction for the
-  // privilege-escalation policy this enforces.
+  // Privilege-escalation policy lives in evaluateUserAdminAction.
   async changeRole(ctx: Ctx, id: string, input: UserRoleChangeRequest) {
     return withTenantTx(ctx, async (tx) => {
       const target = await this.loadTargetForMutation(tx, ctx, id);
@@ -310,25 +278,21 @@ export class UsersService {
       await this.audit(tx, ctx, 'UPDATE', id);
       await this.events.emit(ctx, 'user_role_changed', { user_id: id, role: input.role });
 
-      // A role change must take effect immediately, not after the access
-      // token's own TTL expires (Phase 1A #2's rotate() fix makes this bite).
+      // A role change takes effect now, not when the access token's TTL expires.
       await this.refreshTokens.revokeAllForUser(ctx, id);
 
       return { id, role: input.role };
     });
   }
 
-  // POST /users/:id/deactivate.
   async deactivate(ctx: Ctx, id: string) {
     return this.setStatus(ctx, id, 'disabled', 'user_deactivated', /* checkLastManager */ true);
   }
 
-  // POST /users/:id/reactivate.
   async reactivate(ctx: Ctx, id: string) {
     return this.setStatus(ctx, id, 'active', 'user_reactivated', /* checkLastManager */ false);
   }
 
-  // GET /users/:id/site-assignments.
   async getSiteAssignments(ctx: Ctx, id: string) {
     return withTenantTx(ctx, async (tx) => {
       const target = await this.loadTargetForMutation(tx, ctx, id, /* protect */ false);
@@ -342,8 +306,7 @@ export class UsersService {
     });
   }
 
-  // PUT /users/:id/site-assignments (S19). Declarative: replaces the whole
-  // set inside one transaction, rather than separate add/remove routes.
+  // Declarative: replaces the whole set in one transaction.
   async setSiteAssignments(ctx: Ctx, id: string, input: SiteAssignmentSetRequest) {
     return withTenantTx(ctx, async (tx) => {
       const target = await this.loadTargetForMutation(tx, ctx, id, /* protect */ false);
@@ -399,9 +362,7 @@ export class UsersService {
     });
   }
 
-  // An invite has no target user yet, so the self-mutation/target-role-
-  // protection half of evaluateUserAdminAction does not apply here -- just
-  // the grant allowlist.
+  // An invite has no target user yet, so only the grant allowlist applies.
   private assertGrantAllowed(actorRole: RoleCode, requestedRole: UserInviteRequest['role']): void {
     if (!ROLE_ASSIGNABLE_BY[actorRole].includes(requestedRole)) {
       throw new ForbiddenException({ error: 'role_not_assignable' });
@@ -416,8 +377,7 @@ export class UsersService {
   ) {
     const rows = await this.selectUserWithRole(tx, id);
     const target = rows[0];
-    // 404, never 403: a 403 would confirm the id exists in some other
-    // tenant (RLS already scopes the select to ctx.tenantId).
+    // 404, never 403: a 403 would confirm the id exists in another tenant.
     if (!target) throw new NotFoundException({ error: 'user_not_found' });
     if (protect) {
       const verdict = evaluateUserAdminAction({
@@ -449,9 +409,7 @@ export class UsersService {
       .limit(1);
   }
 
-  // Counts active users (excluding `excludeUserId`) whose role holds
-  // user:manage -- the same role_permissions join PermissionsGuard itself
-  // uses, so this can never disagree with what the guard would allow.
+  // Same role_permissions join as PermissionsGuard, so this can never disagree with the guard.
   private async countOtherActiveUserManagers(
     tx: Tx,
     tenantId: string,
@@ -490,7 +448,5 @@ export class UsersService {
   }
 }
 
-// Postgres unique_violation / foreign_key_violation error codes -- maps a
-// constraint violation to a clean 4xx instead of an uncaught 500.
 const isUniqueViolation = (err: unknown) => pgError(err).code === '23505';
 const isForeignKeyViolation = (err: unknown) => pgError(err).code === '23503';

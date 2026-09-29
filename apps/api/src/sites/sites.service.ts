@@ -43,24 +43,17 @@ import { countRows } from '../common/count-rows.js';
 import { loadFieldLogs } from '../common/field-logs.js';
 import { latestEquipmentWeather } from '../common/equipment-weather.js';
 
-// Upper bound on the active-alert scan behind GET /weather/advisories.
-// One row per site is returned after the JS dedupe; this caps the rows
-// read to get there.
+// Caps the active-alert rows scanned before the per-site dedupe.
 const ACTIVE_ADVISORY_SCAN_LIMIT = 1000;
 
 const EMPTY_OBSERVATION: WeatherObservation = { tempC: 0, windKph: 0, precipMm: 0, code: 0 };
 
-// Pure row-to-response mapping shared by weather() and advisories() (PRD-F5)
-// so a single-site read and the tenant-wide list can never disagree about
-// what a reading means -- the same shared-pure-function shape as
-// evaluateSeverity() in packages/shared/src/weather.ts.
 function toWeatherAdvisoryResponse(
   siteId: string,
   latest: typeof weatherAlerts.$inferSelect | undefined,
 ): WeatherAdvisoryResponse {
   if (!latest) {
-    // No poll has ever run for this site (ENABLE_WEATHER_POLL default off,
-    // or the site was just created) -- nothing to serve yet.
+    // No poll has run for this site yet: nothing to serve.
     return {
       siteId,
       observed: EMPTY_OBSERVATION,
@@ -83,7 +76,6 @@ function toWeatherAdvisoryResponse(
   };
 }
 
-// EDTR v2 discrepancy rules (packages/shared/src/weather-attestation.ts).
 function discrepancyDetail(
   rule?: string,
   date?: string,
@@ -98,8 +90,6 @@ function discrepancyDetail(
       : rule === 'D2'
         ? `Worked through a weather warning the timekeeper marked clear or cloudy (${when}).`
         : `Weather report discrepancy (${when}).`;
-  // The recorded evidence next to the claim: how much rain, how windy, and
-  // for how long it kept raining (readings are every 30 minutes).
   const evidence: string[] = [];
   if (typeof system?.totalPrecipMm === 'number') evidence.push(`${system.totalPrecipMm} mm rain recorded`);
   if (typeof system?.maxWindKph === 'number') evidence.push(`wind up to ${Math.round(system.maxWindKph)} km/h`);
@@ -114,18 +104,10 @@ function discrepancyDetail(
 export class SitesService {
   constructor(private readonly events: EventsService) {}
 
-  // GET /api/v1/sites (S12). Readable by any authenticated tenant member --
-  // site-safety information, same posture as fleet/reference reads; RLS is
-  // the isolation boundary.
   async list(ctx: RequestContext, query: SiteListQuery): Promise<SiteListResponse> {
     return withTenantTx(ctx, async (tx) => {
-      // What is working at each site, in one grouped read (not a query per
-      // site). equipment_assignments has no site of its own; it comes from
-      // the rental. On site = delivered (active), or a legacy
-      // POST /sites/:id/deployments unit (left 'scheduled' but flipped to
-      // deployed) that is not active on some other rental. Upcoming = a
-      // confirmed booking's unit still in the yard, due within 14 days; a
-      // delivery due earlier today still reads as arriving, not idle.
+      // On site = delivered (active), or a legacy deployment unit left 'scheduled' but deployed and active nowhere else.
+      // Upcoming = a confirmed booking's unit still in the yard, due within 14 days.
       const onSite = sql`(${equipmentAssignments.status} = 'active' or (${equipmentAssignments.status} = 'scheduled' and ${equipment.availabilityStatus} = 'deployed' and not exists (select 1 from equipment_assignments other where other.equipment_id = ${equipmentAssignments.equipmentId} and other.status = 'active')))`;
       const arriving = sql`(${equipmentAssignments.status} = 'scheduled' and ${rentals.status} = 'confirmed' and ${equipment.availabilityStatus} <> 'deployed' and ${equipmentAssignments.start} >= now() - interval '1 day' and ${equipmentAssignments.start} < now() + interval '14 days')`;
       const units = tx
@@ -151,8 +133,7 @@ export class SitesService {
               ? sql`${activeUnits} = 0 and ${upcomingUnits} = 0`
               : undefined;
 
-      // Count first: an empty page past the end still has to report the real
-      // total, or the pager cannot offer a way back. Same filter as the page.
+      // Count first: an empty page past the end still has to report the real total.
       const [counted] = await tx
         .select({ value: count() })
         .from(projectSites)
@@ -171,7 +152,6 @@ export class SitesService {
         .leftJoin(units, eq(units.siteId, projectSites.id))
         .leftJoin(customers, eq(customers.id, projectSites.customerId))
         .where(where)
-        // Working sites first, then those about to be, then newest.
         .orderBy(sql`(${activeUnits} > 0) desc`, sql`(${upcomingUnits} > 0) desc`, desc(projectSites.createdAt))
         .limit(query.limit)
         .offset(query.offset);
@@ -193,8 +173,6 @@ export class SitesService {
         if (!latestBySite.has(alert.projectSiteId)) latestBySite.set(alert.projectSiteId, alert);
       }
 
-      // Human-readable location (BRAND.md: a site is never shown as a bare
-      // UUID) -- same address join get() already does, applied here too.
       const addressRows = await tx
         .select()
         .from(addresses)
@@ -227,7 +205,6 @@ export class SitesService {
     });
   }
 
-  // GET /api/v1/sites/:id (S12).
   async get(ctx: RequestContext, id: string): Promise<SiteDetailResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [site] = await tx.select().from(projectSites).where(eq(projectSites.id, id)).limit(1);
@@ -267,9 +244,7 @@ export class SitesService {
     });
   }
 
-  // POST /api/v1/sites (addition beyond SDD §4; see AGENTS.md §5.1 Change
-  // Record). site:manage-gated. project_sites.address_id is NOT NULL, so
-  // this inserts the address row in the same transaction.
+  // project_sites.address_id is NOT NULL, so the address row goes in the same transaction.
   async create(ctx: RequestContext, body: SiteCreateRequest) {
     return withTenantTx(ctx, async (tx) => {
       const [address] = await tx
@@ -310,7 +285,6 @@ export class SitesService {
     });
   }
 
-  // PATCH /api/v1/sites/:id. site:manage-gated.
   async update(ctx: RequestContext, id: string, body: SiteUpdateRequest) {
     return withTenantTx(ctx, async (tx) => {
       const [existing] = await tx
@@ -346,13 +320,7 @@ export class SitesService {
     });
   }
 
-  // POST /api/v1/sites/:id/deployments (PRD-F4 "deploy equipment"). Reuses
-  // the exact overlap-check + FOR UPDATE lock + alternatives logic
-  // bookings.service.ts uses, so QAD-T16/QAD-T21 (never deploy a
-  // maintenance-flagged/already-deployed unit, never double-book) hold on
-  // this path too, not only the booking path. Unlike a booking (which only
-  // schedules a future window), a deployment happens now: the equipment's
-  // own availabilityStatus flips to 'deployed' immediately.
+  // Same overlap check + FOR UPDATE lock as bookings, so never-double-book holds here too; the unit flips to deployed now.
   async createDeployment(ctx: RequestContext, siteId: string, body: DeploymentCreateRequest) {
     return withTenantTx(ctx, async (tx) => {
       const [site] = await tx
@@ -367,11 +335,7 @@ export class SitesService {
         .from(rentals)
         .where(eq(rentals.id, body.rentalId))
         .limit(1);
-      // A rental for a different site can never deploy "to" this one --
-      // equipment_assignments has no project_site_id of its own (it is
-      // derived from the rental), so this is also what keeps
-      // returnDeployment's own rental.projectSiteId === siteId check
-      // (below) from ever finding a deployment it cannot return.
+      // equipment_assignments has no site of its own, so the rental's site is the only boundary.
       if (!rental || rental.projectSiteId !== siteId) {
         throw new NotFoundException({ error: 'rental_not_found' });
       }
@@ -396,8 +360,7 @@ export class SitesService {
           alternatives,
         });
       }
-      // The FK alone would accept another tenant's user id; the operator
-      // must be a member of this tenant (explicit, not just RLS).
+      // The FK alone would accept another tenant's user id; the operator must be a member of this tenant.
       if (body.operatorUserId) {
         const [operator] = await tx
           .select({ id: users.id })
@@ -469,8 +432,6 @@ export class SitesService {
     });
   }
 
-  // PATCH /api/v1/sites/:id/deployments/:assignmentId/return (PRD-F4
-  // "return equipment"). Frees the unit for its next deployment/booking.
   async returnDeployment(
     ctx: RequestContext,
     siteId: string,
@@ -497,9 +458,7 @@ export class SitesService {
         throw new ConflictException({ error: 'already_returned' });
       }
 
-      // Days before today in this unit's span that were never approved:
-      // billing would close on an incomplete record. Today's sheet may not
-      // be in yet, so it does not count.
+      // Unapproved days before today would close billing on an incomplete record; today's sheet may not be in yet.
       const today = manilaDate(new Date());
       const logs = await loadFieldLogs(tx, [rental.id], today);
       const open = logs.days.filter(
@@ -552,14 +511,7 @@ export class SitesService {
     });
   }
 
-  // GET /api/v1/sites/:id/weather (SDD §4, PRD-F5). Serves the latest
-  // weather_alerts row for the site -- jobs/src/weather-poll.ts writes one
-  // every cycle, calm or not (T2: the alerts table doubles as the reading
-  // cache), so `is_stale` can be computed even for a site that has never
-  // crossed a threshold. Readable by any authenticated tenant member (T4):
-  // this is site-safety information, and timekeepers are the ones
-  // physically on site; RLS is the isolation boundary, same posture as
-  // reference/*.
+  // The poller writes a row every cycle, calm or not, so `is_stale` works for a site that never crossed a threshold.
   async weather(ctx: RequestContext, siteId: string): Promise<WeatherAdvisoryResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [site] = await tx
@@ -580,17 +532,9 @@ export class SitesService {
     });
   }
 
-  // GET /api/v1/weather/advisories (S13). Active advisories (status !=
-  // 'cleared') across every site in the tenant, one row per site (its
-  // latest active reading).
   async advisories(ctx: RequestContext): Promise<WeatherAdvisoryListResponse> {
     return withTenantTx(ctx, async (tx) => {
-      // The response is bounded by site count, but the query was not: it
-      // selected every active alert in the tenant and collapsed it in a JS
-      // Map afterwards (audit-api-surface.md #10). Bound it the way the
-      // sibling incidents() in this file already does. The cap is on
-      // alerts, not sites, so it is set well above the per-site fan-out a
-      // tenant's sites can produce.
+      // Bounded like incidents(); the cap is on alerts, not sites.
       const rows = await tx
         .select()
         .from(weatherAlerts)
@@ -610,9 +554,7 @@ export class SitesService {
     });
   }
 
-  // GET /sites/:id/equipment-weather (staff): each machine's PAGASA-style
-  // level from the latest poll. No reading yet reads as no data -- stale,
-  // no machines -- never as an all-clear.
+  // No reading yet reads as no data, never as an all-clear.
   async equipmentWeather(ctx: RequestContext, siteId: string): Promise<SiteEquipmentWeatherResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [site] = await tx.select({ id: projectSites.id }).from(projectSites).where(eq(projectSites.id, siteId)).limit(1);
@@ -621,11 +563,7 @@ export class SitesService {
     });
   }
 
-  // GET /api/v1/incidents?projectSiteId=... (S14 Liability Incident Log).
-  // No new table: reads the `events` rows jobs/src/weather-poll.ts already
-  // writes on a new-or-worsening severity crossing (SDD §4 "auto-logs a
-  // liability incident") -- a dedicated incidents table would duplicate
-  // data the first-party analytics sink already holds (restraint ladder).
+  // No incidents table: reads the `events` rows the weather poller writes on a severity crossing.
   async incidents(ctx: RequestContext, query: IncidentListQuery): Promise<IncidentListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const names =
@@ -657,8 +595,6 @@ export class SitesService {
             .filter((id): id is string => Boolean(id)),
         ),
       ];
-      // Human-readable location (an incident is never shown as a bare
-      // project_site_id UUID) -- same address-via-site join as GET /sites.
       const siteRows =
         siteIds.length === 0
           ? []

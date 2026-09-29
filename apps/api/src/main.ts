@@ -1,18 +1,11 @@
 import path from 'node:path';
 import { config } from 'dotenv';
 
-// Load the repo-root .env before anything else touches process.env. SWC's
-// CJS output hoists `import` statements (converted to `require`) to the
-// top of the file regardless of source order -- so NestFactory/AppModule
-// (and transitively @arkilaunch/db, which reads env vars at module load)
-// cannot be plain top-level imports here, or this config() call would run
-// too late. require() them explicitly, after config(), instead.
+// SWC hoists imports above this line, so anything reading env at load (NestFactory, AppModule, @arkilaunch/db)
+// is require()d after config() below instead.
 config({ path: path.resolve(__dirname, '../../../.env') });
 
-// Azure Monitor must be initialized before any instrumented module loads
-// (http, express, @nestjs/*) -- the same hazard the dotenv call above
-// solves. It needs APPLICATIONINSIGHTS_CONNECTION_STRING from env, so it
-// comes right after config() and before every other require() below.
+// Telemetry must init before any instrumented module (http, express, @nestjs/*) loads.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { initTelemetry, shutdownTelemetry } = require('./telemetry/instrumentation.js');
 initTelemetry();
@@ -30,39 +23,19 @@ const { DbErrorFilter } = require('./common/db-error.filter.js');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { AppModule } = require('./app.module.js');
 
-// A transient pooler-side hiccup on one request's DB connection must not
-// take the whole process down for every other in-flight request. NestJS's
-// exception filter already turns a thrown query error into a 500; this
-// only guards against it also escaping as an unhandled rejection.
+// One request's DB hiccup must not crash the process for every other request.
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled rejection (request-level DB error did not crash the process):', reason);
 });
 
 async function bootstrap() {
-  // rawBody: true exposes req.rawBody (a Buffer) alongside the normally
-  // parsed req.body -- needed so the PayMongo webhook can verify the
-  // Paymongo-Signature HMAC against the exact bytes PayMongo signed,
-  // before any JSON parsing (QAD-T28). Every other route's Zod DTOs still
-  // read the normally parsed req.body; only the webhook handler reads
-  // req.rawBody.
+  // rawBody lets the PayMongo webhook verify its HMAC against the exact signed bytes.
   const app = await NestFactory.create(AppModule, { rawBody: true });
-  // The API is reached straight on its ACA ingress (not through Cloudflare),
-  // so req.socket.remoteAddress is ACA's envoy, not the client -- without
-  // this every request shares one throttle bucket (QAD-T22/T31 controls
-  // become fiction). Trusting exactly one hop makes req.ip the rightmost
-  // X-Forwarded-For entry, the one envoy appends from the real socket; a
-  // client can prepend entries but not replace that one. Never trust a
-  // client-settable header like CF-Connecting-IP here (turnstile CR): the
-  // old guard did, and any caller could mint a fresh bucket per request.
+  // ACA's envoy is the socket peer: trust exactly one hop so req.ip is the real client and throttles work.
+  // Never trust a client-settable header like CF-Connecting-IP here.
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
   app.setGlobalPrefix('api/v1', { exclude: ['health'] });
-  // apps/web (Vite dev server, a different origin) calls this API directly;
-  // without this the browser blocks every request with a CORS error before
-  // it even reaches a controller, which looks exactly like "auth doesn't
-  // work" from the login form.
-  // Tenant storefronts live on `{slug}.<PLATFORM_DOMAIN>`, so besides the
-  // platform origin any one-label subdomain of it is allowed. In dev the
-  // Vite proxy makes every call same-origin and this never comes into play.
+  // Tenant storefronts live on `{slug}.<PLATFORM_DOMAIN>`, so any one-label subdomain is allowed too.
   const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
   const platformDomain = process.env.PLATFORM_DOMAIN?.replace(/\./g, '\\.');
   const tenantOrigin = platformDomain ? new RegExp(`^https://[a-z0-9-]+\\.${platformDomain}$`) : null;
@@ -70,28 +43,14 @@ async function bootstrap() {
     origin: tenantOrigin ? [webOrigin, tenantOrigin] : webOrigin,
     credentials: true,
   });
-  // File uploads (EDTR/KYC) now go through multipart FileInterceptor
-  // (apps/api/src/storage/), not a base64 data: URL in the JSON body, so
-  // the JSON limit only needs to be large enough for normal request
-  // payloads again -- not a scanned photo's base64 encoding.
   app.useBodyParser('json', { limit: '1mb' });
-  // Every controller uses createZodDto (AGENTS.md "Always: validate
-  // external input at the boundary with Zod"), but that annotation does
-  // nothing on its own -- without this global pipe, invalid/malformed
-  // request bodies were never actually rejected at the boundary and could
-  // reach a raw DB query instead, surfacing as an uncaught 500 rather than
-  // a clean 400.
-  // Route params are ids and were never validated; see UuidParamPipe.
   app.useGlobalPipes(new ZodValidationPipe(), new UuidParamPipe());
-  // Nothing mapped a non-HttpException to a response, so a malformed id
-  // surfaced as a raw 500 carrying the Postgres message.
   app.useGlobalFilters(new DbErrorFilter());
   const port = process.env.API_PORT ?? 3000;
   await app.listen(port);
   console.log(`ArkiLaunch API listening on :${port}`);
 
-  // ACA sends SIGTERM on revision replacement; without flushing here the
-  // exporter's last batch is dropped on every deploy.
+  // Flush telemetry on SIGTERM, or the last batch is dropped on every deploy.
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.once(signal, async () => {
       await app.close().catch(() => {});
