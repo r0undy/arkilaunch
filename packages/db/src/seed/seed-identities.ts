@@ -102,7 +102,7 @@ export function isLocalDatabaseUrl(url: string | undefined): boolean {
  * Set `ALLOW_WEAK_SEED_CREDENTIALS=true` to override, or `SEED_PASSWORD` to
  * a real password to seed a remote environment safely.
  */
-export function assertSeedTargetIsLocal(databaseUrl: string | undefined): void {
+export function assertSeedTargetIsLocal(databaseUrl: string | undefined, opts: { fixedPassword?: boolean } = {}): void {
   if (isLocalDatabaseUrl(databaseUrl)) return;
   if (process.env.ALLOW_WEAK_SEED_CREDENTIALS === 'true') {
     console.warn(
@@ -115,7 +115,8 @@ export function assertSeedTargetIsLocal(databaseUrl: string | undefined): void {
   }
   // A caller-supplied password that satisfies the app's own policy is not a
   // weak credential, so it does not need the local-host guard.
-  if (process.env.SEED_PASSWORD && process.env.SEED_PASSWORD.length >= 12) return;
+  // fixedPassword: the seed ignores SEED_PASSWORD, so it cannot vouch for the target.
+  if (!opts.fixedPassword && process.env.SEED_PASSWORD && process.env.SEED_PASSWORD.length >= 12) return;
 
   throw new Error(
     [
@@ -130,7 +131,7 @@ export function assertSeedTargetIsLocal(databaseUrl: string | undefined): void {
       '',
       'Pick one:',
       '  - point DATABASE_URL_DIRECT at a local Postgres, or',
-      '  - set SEED_PASSWORD to a real password (>= 12 chars), or',
+      ...(opts.fixedPassword ? [] : ['  - set SEED_PASSWORD to a real password (>= 12 chars), or']),
       '  - set ALLOW_WEAK_SEED_CREDENTIALS=true if you genuinely mean to do this.',
     ].join('\n'),
   );

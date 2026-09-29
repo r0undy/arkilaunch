@@ -99,6 +99,15 @@ describe('assertSeedTargetIsLocal', () => {
     expect(() => assertSeedTargetIsLocal(REMOTE)).not.toThrow();
   });
 
+  it('ignores SEED_PASSWORD for a fixed-password seed', () => {
+    process.env.SEED_PASSWORD = 'a'.repeat(20);
+    expect(() => assertSeedTargetIsLocal(REMOTE)).not.toThrow();
+    expect(() => assertSeedTargetIsLocal(REMOTE, { fixedPassword: true })).toThrow(/Refusing to seed development credentials/);
+    expect(() => assertSeedTargetIsLocal(LOCAL, { fixedPassword: true })).not.toThrow();
+    process.env.ALLOW_WEAK_SEED_CREDENTIALS = 'true';
+    expect(() => assertSeedTargetIsLocal(REMOTE, { fixedPassword: true })).not.toThrow();
+  });
+
   it('only honours the override when it is exactly "true"', () => {
     process.env.ALLOW_WEAK_SEED_CREDENTIALS = '1';
     expect(() => assertSeedTargetIsLocal(REMOTE)).toThrow(/Refusing to seed development credentials/);

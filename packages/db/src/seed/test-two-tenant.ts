@@ -2,6 +2,7 @@ import { hash } from '@node-rs/argon2';
 import { and, eq, isNull } from 'drizzle-orm';
 import * as schema from '../schema/index.js';
 import { makeServiceDb, seedPermissionCatalog } from './permission-catalog.js';
+import { assertSeedTargetIsLocal } from './seed-identities.js';
 
 // QAD §3: "A test that 'confirms isolation' against a single-tenant
 // database proves nothing." Seeds two tenants, each with an admin user,
@@ -9,6 +10,7 @@ import { makeServiceDb, seedPermissionCatalog } from './permission-catalog.js';
 // so cross-tenant isolation tests (including the RFC-3 quotation engine's
 // QAD-T48) have real rows on both sides of the boundary to probe.
 async function main() {
+  assertSeedTargetIsLocal(process.env.DATABASE_URL_DIRECT, { fixedPassword: true });
   const { db, client } = makeServiceDb();
   const { roleIds } = await seedPermissionCatalog(db);
   const adminRoleId = roleIds.get('admin');
