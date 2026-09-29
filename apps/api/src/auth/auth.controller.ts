@@ -55,6 +55,7 @@ export class AuthController {
   }
 
   @Post('2fa/verify')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   verifyTwoFa(@Body() body: Verify2faDto) {
     return this.auth.verifyTwoFa(body);
   }

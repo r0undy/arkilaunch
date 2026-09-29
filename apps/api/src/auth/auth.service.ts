@@ -82,6 +82,7 @@ interface TwoFaChallengePayload {
 export class AuthService {
   private readonly loginAttempts = new Map<string, LoginAttemptState>();
   private readonly ipLoginAttempts = new Map<string, LoginAttemptState>();
+  private readonly twoFaAttempts = new Map<string, LoginAttemptState>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -100,7 +101,7 @@ export class AuthService {
     turnstileToken?: string,
   ): Promise<AuthTokens | TwoFaChallenge> {
     const normalizedEmail = email.toLowerCase();
-    this.assertNotLockedOut(normalizedEmail);
+    this.assertNotLockedOut(this.loginAttempts, normalizedEmail);
     if (
       this.failCount(this.loginAttempts, normalizedEmail) >= LOGIN_CAPTCHA_THRESHOLD ||
       (ip && this.failCount(this.ipLoginAttempts, ip) >= LOGIN_CAPTCHA_THRESHOLD)
@@ -178,10 +179,14 @@ export class AuthService {
   // the real access/refresh tokens, exactly like a normal login would.
   async verifyTwoFa({ twoFaToken, code }: Verify2faRequest): Promise<AuthTokens> {
     const payload = this.verifyTwoFaChallenge(twoFaToken);
+    // Keyed by user, not IP: a fresh login mints a fresh challenge, so only a per-account count bounds guessing.
+    this.assertNotLockedOut(this.twoFaAttempts, payload.sub);
     const secret = await this.getTotpSecret(payload.tenantId, payload.sub, payload.r);
     if (!secret || !(await this.totp.verify(code, secret))) {
+      this.bump(this.twoFaAttempts, payload.sub);
       throw new UnauthorizedException('invalid_totp_code');
     }
+    this.twoFaAttempts.delete(payload.sub);
     return this.issueTokens(payload.tenantId, payload.sub, payload.r);
   }
 
@@ -292,12 +297,12 @@ export class AuthService {
   // window, before password verification even runs (QAD-T22: "attempts
   // logged" -- rejecting pre-verify avoids spending an argon2 hash on an
   // attempt already known to be locked out).
-  private assertNotLockedOut(email: string): void {
-    const state = this.loginAttempts.get(email);
+  private assertNotLockedOut(attempts: Map<string, LoginAttemptState>, key: string): void {
+    const state = attempts.get(key);
     if (!state) return;
     const elapsedMs = Date.now() - state.windowStart;
     if (elapsedMs > LOGIN_LOCKOUT_WINDOW_MS) {
-      this.loginAttempts.delete(email);
+      attempts.delete(key);
       return;
     }
     if (state.failCount >= LOGIN_LOCKOUT_THRESHOLD) {
