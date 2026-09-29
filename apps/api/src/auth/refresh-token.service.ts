@@ -7,6 +7,7 @@ import {
   roles,
   withTenantTx,
   findRefreshTokenByHashForAuth,
+  type Tx,
 } from '@arkilaunch/db';
 import { and, eq } from 'drizzle-orm';
 
@@ -40,20 +41,7 @@ export class RefreshTokenService {
     familyId?: string,
     parentId?: string,
   ): Promise<IssuedRefreshToken> {
-    const raw = randomBytes(32).toString('hex');
-    const resolvedFamilyId = familyId ?? randomUUID();
-    await withTenantTx({ tenantId, userId, role }, (tx) =>
-      tx.insert(refreshTokens).values({
-        tenantId,
-        userId,
-        familyId: resolvedFamilyId,
-        parentId,
-        tokenHash: hashToken(raw),
-        status: 'active',
-        expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
-      }),
-    );
-    return { token: raw, familyId: resolvedFamilyId };
+    return withTenantTx({ tenantId, userId, role }, (tx) => insertToken(tx, tenantId, userId, familyId, parentId));
   }
 
   async rotate(rawToken: string): Promise<RotateResult> {
@@ -81,16 +69,17 @@ export class RefreshTokenService {
     }
 
     // Claimed atomically: of two concurrent rotations only one sees status 'active'; the other is a replay.
-    const claimed = await withTenantTx(ctx, (tx) =>
-      tx
+    // The child is inserted in the same tx, so the loser's family revoke waits for it and revokes it too.
+    const issued = await withTenantTx(ctx, async (tx) => {
+      const claimed = await tx
         .update(refreshTokens)
         .set({ status: 'rotated', rotatedAt: new Date() })
         .where(and(eq(refreshTokens.id, existing.id), eq(refreshTokens.status, 'active')))
-        .returning({ id: refreshTokens.id }),
-    );
-    if (claimed.length === 0) return this.reuseDetected(ctx, existing);
-
-    const issued = await this.issue(ctx.tenantId, ctx.userId, ctx.role, existing.familyId, existing.id);
+        .returning({ id: refreshTokens.id });
+      if (claimed.length === 0) return null;
+      return insertToken(tx, ctx.tenantId, ctx.userId, existing.familyId, existing.id);
+    });
+    if (!issued) return this.reuseDetected(ctx, existing);
     return { tenantId: ctx.tenantId, userId: ctx.userId, role: ctx.role, issued };
   }
 
@@ -153,4 +142,25 @@ export class RefreshTokenService {
         .where(eq(refreshTokens.userId, targetUserId)),
     );
   }
+}
+
+async function insertToken(
+  tx: Tx,
+  tenantId: string,
+  userId: string,
+  familyId?: string,
+  parentId?: string,
+): Promise<IssuedRefreshToken> {
+  const raw = randomBytes(32).toString('hex');
+  const resolvedFamilyId = familyId ?? randomUUID();
+  await tx.insert(refreshTokens).values({
+    tenantId,
+    userId,
+    familyId: resolvedFamilyId,
+    parentId,
+    tokenHash: hashToken(raw),
+    status: 'active',
+    expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+  });
+  return { token: raw, familyId: resolvedFamilyId };
 }

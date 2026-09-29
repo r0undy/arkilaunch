@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
 import postgres from 'postgres';
-import { auditLogs, users, withTenantTx } from '@arkilaunch/db';
-import { eq } from 'drizzle-orm';
+import { auditLogs, refreshTokens, users, withTenantTx } from '@arkilaunch/db';
+import { and, eq } from 'drizzle-orm';
 import { RefreshTokenService } from '../src/auth/refresh-token.service.js';
 
 // RFC1-06 / QAD abuse gate: a refresh token replayed after rotation must
@@ -57,6 +57,15 @@ describe('RefreshTokenService: rotation and reuse detection', () => {
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     const rejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
     expect((rejected?.reason as Error).message).toBe('refresh_reuse_detected');
+
+    // The winner's child was inserted with its claim, so the reuse revoke caught it too.
+    const live = await withTenantTx({ tenantId, userId, role: 'admin' }, (tx) =>
+      tx
+        .select({ id: refreshTokens.id })
+        .from(refreshTokens)
+        .where(and(eq(refreshTokens.familyId, issued.familyId), eq(refreshTokens.status, 'active'))),
+    );
+    expect(live).toHaveLength(0);
   });
 
   it('an unknown token is rejected without leaking which part was wrong', async () => {
