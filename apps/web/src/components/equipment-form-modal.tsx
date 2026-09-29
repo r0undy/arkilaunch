@@ -8,7 +8,7 @@ import { Select } from './select.js';
 import { Button } from './button.js';
 import { CaptureField } from './capture-field.js';
 import { useToast } from './toast.js';
-import { apiErrorText, apiPatch, apiPost, apiPostForm } from '../lib/api-client.js';
+import { ApiError, apiErrorText, apiPatch, apiPost, apiPostForm } from '../lib/api-client.js';
 import type { PrepareUploadOptions } from '../lib/image-compression.js';
 import { referenceQueries } from '../lib/queries.js';
 
@@ -155,14 +155,12 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
       onClose();
     },
     onError: (error) => {
-      const text = apiErrorText(error);
-      // A taken serial belongs beside the field that caused it, not in a
-      // toast the reader has to map back to an input.
-      if (text.toLowerCase().includes('serial')) {
+      // A taken serial belongs beside the field that caused it.
+      if (error instanceof ApiError && error.message === 'serial_no_taken') {
         setSerialError('Another machine in the fleet already uses this serial number.');
         return;
       }
-      toast.error(isEdit ? 'Could not save those changes' : 'Could not add that machine', text);
+      toast.error(isEdit ? 'Could not save those changes' : 'Could not add that machine', apiErrorText(error));
     },
   });
 
