@@ -17,7 +17,7 @@ export interface AccuracyReport {
   sampleCount: number;
 }
 
-function normalize(value: string | number): string {
+export function normalize(value: string | number): string {
   if (typeof value === 'number') return value.toFixed(2);
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }

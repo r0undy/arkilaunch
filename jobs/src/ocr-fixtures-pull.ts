@@ -24,7 +24,7 @@ import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { AzureDocumentIntelligenceAdapter } from '@arkilaunch/document-intelligence';
-import { OCR_CORPUS_FLOOR } from '@arkilaunch/shared';
+import { OCR_CORPUS_FLOOR, normalize } from '@arkilaunch/shared';
 import type { DocumentExtractionResult, GoldSample } from '@arkilaunch/shared';
 
 // QAD §2's corpus floor is defined once in @arkilaunch/shared, alongside the
@@ -85,17 +85,9 @@ export function parseArgs(argv: string[]): Options {
   };
 }
 
-// Mirrors normalize() in packages/shared/src/ocr-accuracy.ts exactly. If that
-// ever changes, this must change with it or redacted samples stop comparing
-// the way their unredacted originals would.
-function normalizeForCompare(value: string | number): string {
-  if (typeof value === 'number') return value.toFixed(2);
-  return value.trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
 export function redactValue(fieldType: string, value: string | number): string | number {
   if (!PII_FIELD_TYPES.has(fieldType)) return value;
-  const digest = createHash('sha256').update(normalizeForCompare(value)).digest('hex').slice(0, 12);
+  const digest = createHash('sha256').update(normalize(value)).digest('hex').slice(0, 12);
   return `redacted:${digest}`;
 }
 

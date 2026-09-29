@@ -3,10 +3,12 @@ import { evaluateSiteEquipment, events, warnOnEquipmentEscalation, weatherAlerts
 import {
   evaluateSeverity,
   MAX_POLLED_SITES_PER_CYCLE,
+  SEVERITY_RANK,
   type EquipmentWeather,
   type HourlyForecastPort,
   type WeatherLevel,
   type WeatherPort,
+  type WeatherSeverity,
 } from '@arkilaunch/shared';
 import { createWeatherAdapter } from '@arkilaunch/weather';
 import { makeJobDb } from './db-client.js';
@@ -24,9 +26,8 @@ import { runInstrumentedJob } from './telemetry.js';
 // unavailable adapter, the per-site catch below fires instead and no
 // weather_alerts row is written at all, which sites.service.ts already
 // reports honestly as isStale: true / polledAt: null.
-const SEVERITY_RANK: Record<string, number> = { none: 0, watch: 1, warning: 2 };
 // The site-wide severity never reads calmer than its worst machine.
-const LEVEL_SEVERITY: Record<WeatherLevel, string> = { normal: 'none', advisory: 'watch', caution: 'warning', stop_work: 'warning' };
+const LEVEL_SEVERITY: Record<WeatherLevel, WeatherSeverity> = { normal: 'none', advisory: 'watch', caution: 'warning', stop_work: 'warning' };
 
 export async function runWeatherPoll(
   port: WeatherPort & Partial<HourlyForecastPort> = createWeatherAdapter(),
@@ -82,7 +83,7 @@ export async function runWeatherPoll(
         const machines = await evaluateSiteEquipment(db, site.tenantId, site.id, conditions);
         const legacy = evaluateSeverity(conditions);
         const fromMachines = LEVEL_SEVERITY[machines.level];
-        const severity = (SEVERITY_RANK[fromMachines] ?? 0) > (SEVERITY_RANK[legacy] ?? 0) ? (fromMachines as typeof legacy) : legacy;
+        const severity = SEVERITY_RANK[fromMachines] > SEVERITY_RANK[legacy] ? fromMachines : legacy;
 
         const [previous] = await db
           .select({ severity: weatherAlerts.severity, observed: weatherAlerts.observed })
@@ -90,8 +91,8 @@ export async function runWeatherPoll(
           .where(eq(weatherAlerts.projectSiteId, site.id))
           .orderBy(desc(weatherAlerts.effectiveAt))
           .limit(1);
-        const previousRank = previous ? (SEVERITY_RANK[previous.severity] ?? 0) : 0;
-        const isEscalation = (SEVERITY_RANK[severity] ?? 0) > previousRank;
+        const previousRank = previous ? (SEVERITY_RANK[previous.severity as WeatherSeverity] ?? 0) : 0;
+        const isEscalation = SEVERITY_RANK[severity] > previousRank;
 
         // Every cycle writes a row -- calm or not -- so GET
         // /sites/:id/weather always has a "latest reading" to serve,

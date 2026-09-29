@@ -35,7 +35,7 @@ export interface HalfDaySystemView {
   worstSeverity: WeatherSeverity;
 }
 
-const SEVERITY_RANK: Record<WeatherSeverity, number> = { none: 0, watch: 1, warning: 2 };
+export const SEVERITY_RANK: Record<WeatherSeverity, number> = { none: 0, watch: 1, warning: 2 };
 
 export function summarizeReadings(
   readings: TimedReading[],
