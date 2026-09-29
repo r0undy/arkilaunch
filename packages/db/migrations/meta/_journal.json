@@ -491,6 +491,13 @@
       "when": 1790400031000,
       "tag": "0070_truck_routing_eta",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1790400032000,
+      "tag": "0071_hourly_rate_cards",
+      "breakpoints": true
     }
   ]
 }
