@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from './client.js';
-import { round2HalfUp } from '@arkilaunch/shared';
+import { manilaDate, round2HalfUp } from '@arkilaunch/shared';
 
 export interface DieselManualReadingInput {
   region: string;
@@ -101,7 +101,7 @@ export async function recordGasWatchDieselReading(region = 'NCR'): Promise<Diese
     select * from diesel_record_gaswatch_reading(
       ${region},
       ${String(price)}::numeric,
-      ${new Date().toISOString().slice(0, 10)}::date,
+      ${manilaDate(new Date())}::date,
       ${GASWATCH_URL}
     )
   `);
