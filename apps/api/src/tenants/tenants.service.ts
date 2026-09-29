@@ -22,6 +22,8 @@ import {
   tenantApplications,
   tenants,
   withTenantTx,
+  publicPhotoUrl,
+  sendEmail,
 } from '@arkilaunch/db';
 import type {
   CompanyStatus,
@@ -38,8 +40,6 @@ import type {
 } from '@arkilaunch/shared';
 import { isTenantSlug, PlatformCompanyListResponseSchema } from '@arkilaunch/shared';
 import { AuthService } from '../auth/auth.service.js';
-import { sendEmail } from '../email/send-email.js';
-import { publicPhotoUrl } from '../fleet/fleet.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { DISPLAY_IMAGE_TYPES, validateUpload } from '../storage/upload-validation.js';
 

@@ -7,6 +7,7 @@ import {
   listCatalogTenants,
   listEquipmentTypeNames,
   listCatalogTestimonialsForSlug,
+  publicPhotoUrl,
 } from '@arkilaunch/db';
 import {
   CatalogEquipmentListResponseSchema,
@@ -20,7 +21,6 @@ import {
   type CatalogEquipmentListResponse,
   type CatalogTestimonialListResponse,
 } from '@arkilaunch/shared';
-import { publicPhotoUrl } from '../fleet/fleet.service.js';
 
 // photo_uri is a storage key, not something an <img> can load; every
 // storefront screen (list, detail, cart) reads the photo from here.

@@ -23,6 +23,7 @@ import {
   tenants,
   users,
   withTenantTx,
+  publicPhotoUrl,
 } from '@arkilaunch/db';
 import type {
   ChangeRequestCreate,
@@ -60,7 +61,6 @@ import {
 } from '../common/equipment-availability.js';
 import { ownCustomers, ownsCustomer, requireVerifiedCompany } from '../common/customer-scope.js';
 import { loadFieldLogs, personName } from '../common/field-logs.js';
-import { publicPhotoUrl } from '../fleet/fleet.service.js';
 import { countRows } from '../common/count-rows.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 

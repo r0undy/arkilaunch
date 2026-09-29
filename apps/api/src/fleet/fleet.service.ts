@@ -22,6 +22,7 @@ import {
   rentals,
   tenantCalendar,
   withTenantTx,
+  publicPhotoUrl,
 } from '@arkilaunch/db';
 import type {
   EquipmentCreateRequest,
@@ -59,20 +60,6 @@ import { dayAvailability, readCalendar } from '../common/equipment-availability.
 // scheduling is PRD-F8, not built yet.
 const BUSINESS_HOURS_PER_DAY = 8;
 const DEFAULT_REPORT_WINDOW_DAYS = 30;
-
-
-// Equipment photos live in their own bucket, deliberately not the KYC one:
-// that holds RA 10173 personal data under its own retention posture, and a
-// machine photo has no business sharing it.
-//
-// This bucket is public-read, which is a narrower exception than it looks.
-// RFC-2 §6 / SDD §7's "never a public URL" is scoped to EDTR and KYC image
-// blobs -- evidence and personal data. A photo of a backhoe is neither, and
-// the same fleet is already served anonymously by GET /catalog/equipment.
-// Keys stay tenant-prefixed and UUID-suffixed so they are not enumerable.
-// Recorded in docs/cr-arkilaunch-equipment-crud.md.
-import { publicPhotoUrl } from '@arkilaunch/db';
-export { publicPhotoUrl };
 
 function toEquipmentResponse(row: typeof equipment.$inferSelect): EquipmentResponse {
   return {
