@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { directSql, pooledSql, getTenantId, setTenantGuc } from './helpers.js';
 
-// QAD Â§3: isolation needs two tenants. Requires `pnpm db:seed:test` first.
+// QAD §3: isolation needs two tenants. Requires `pnpm db:seed:test` first.
 describe('cross-tenant isolation (two-tenant fixture)', () => {
   const direct = directSql();
   const pooled = pooledSql();

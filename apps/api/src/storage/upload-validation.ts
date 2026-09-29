@@ -1,7 +1,7 @@
 import { PayloadTooLargeException, UnprocessableEntityException } from '@nestjs/common';
 import { EQUIPMENT_PHOTO_MAX_BYTES, MAX_UPLOAD_BYTES } from '@arkilaunch/shared';
 
-// RFC-2 Â§6: allowlist, size cap, magic-byte sniff and bomb guard run here, before any bytes reach Storage.
+// RFC-2 §6: allowlist, size cap, magic-byte sniff and bomb guard run here, before any bytes reach Storage.
 const MAX_PDF_PAGES = 20;
 const MAX_PNG_PIXELS = 50_000_000; // crude decompression-bomb guard: a tiny file claiming huge dimensions
 

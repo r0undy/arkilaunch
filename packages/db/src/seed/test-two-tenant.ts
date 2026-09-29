@@ -4,7 +4,7 @@ import * as schema from '../schema/index.js';
 import { makeServiceDb, seedPermissionCatalog } from './permission-catalog.js';
 import { assertSeedTargetIsLocal } from './seed-identities.js';
 
-// QAD Â§3: isolation needs two tenants with real rows on both sides of the boundary.
+// QAD §3: isolation needs two tenants with real rows on both sides of the boundary.
 async function main() {
   assertSeedTargetIsLocal(process.env.DATABASE_URL_DIRECT, { fixedPassword: true });
   const { db, client } = makeServiceDb();
