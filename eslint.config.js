@@ -7,7 +7,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   prettier,
   {
-    ignores: ['**/dist/**', '**/build/**', '**/node_modules/**', '**/.turbo/**'],
+    ignores: ['**/dist/**', '**/build/**', '**/node_modules/**', '**/.wrangler/**', '**/worker-configuration.d.ts'],
   },
   {
     rules: {
