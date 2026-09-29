@@ -12,8 +12,6 @@ import { edtrQueries, notificationsQueries, tenantsQueries } from '../lib/querie
 import { StatusPill } from './status-pill.js';
 import { useHeaderColor, useTenant } from '../lib/tenant.js';
 
-// Controls inherit the bar's text (steel bar: paper; a tenant color: its black
-// or white) and hover as a tile of that same color (DSD §4.1 Nav shell).
 const TILE = 'hover:bg-current/10';
 
 export interface AppBarProps {
@@ -21,24 +19,7 @@ export interface AppBarProps {
   onMenuClick?: () => void;
 }
 
-// DESIGN.md §4.1 Nav shell (role-aware): tenant mark leads, review-queue
-// count and unread notifications surface here, account menu stays in the same
-// app-bar position on every authed screen (SC 3.2.6). A failed badge fetch
-// renders no badge rather than a stale or wrong number.
-//
-// The bar stays ONE row at every width. It used to wrap instead: that was
-// the cheapest way to stop a 360px overflow, but live QA showed what it
-// actually produced on a phone -- "Review queue" broken across two lines
-// inside its own pill, "Sign out" split in half, and the whole header
-// eating ~100px of an 800px screen before any content. Below `sm` the
-// counts render as icon + number and only the label is dropped, so the
-// tenant name (which truncates) absorbs the squeeze instead of the
-// controls. DESIGN.md §6: 44x44px touch targets, never color-only -- every
-// icon-only control keeps a real accessible name.
-// Always present, right of the cart. A disclosure button, not <details>:
-// <details> carries an implicit `group` role, and the card lists (and their
-// specs) find cards by that role. Closes on an outside click or Escape. The
-// panel is the feed's own first page of five, fetched on open.
+// A disclosure button, not <details>: <details> has an implicit `group` role, which card lists find cards by.
 function NotificationBell({
   unreadCount,
   seeMorePath,
@@ -69,7 +50,6 @@ function NotificationBell({
 
   const closePanel = () => setOpen(false);
   const area = feedAreaOf(useRouterState({ select: (s) => s.location.pathname }));
-  // Opening a notification from the bell marks it read, like the feed does.
   const markRead = (id: string) => {
     void apiPatch(`/notifications/${id}/read`, {}).then(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }));
   };
@@ -162,10 +142,7 @@ function NotificationBell({
 
 export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   const role = getCurrentRole();
-  // The same bar renders inside the account shell, where /app/* is a role
-  // bounce rather than a destination.
   const isCustomer = role === 'customer';
-  // Each console has its own feed; the platform host serves no /app route.
   const notificationsPath = isCustomer
     ? '/account/notifications'
     : role === 'platform_admin'
@@ -173,18 +150,11 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
       : '/app/notifications';
 
   const notifications = useQuery({ ...notificationsQueries.unreadCount(), retry: false });
-  // GET /edtr is staff-only, so this fired a guaranteed 403 on every page a
-  // customer loaded -- a console error and a wasted round trip each time,
-  // for a badge they can never see. The bar has rendered in the account
-  // shell since it was written; moving the catalog into that shell just made
-  // it happen on more pages.
-  // The platform admin runs no tenant's field logs; its queue is the company
-  // applications waiting on a decision, so the pill counts those instead.
   const isPlatformAdmin = role === 'platform_admin';
   const edtrList = useQuery({
     ...edtrQueries.reviewCount(),
     retry: false,
-    // The queue is staff-only (edtr:read); a timekeeper submits and does not read it.
+    // Staff-only endpoint (edtr:read): anyone else gets a guaranteed 403.
     enabled: !isCustomer && !isPlatformAdmin && role !== 'timekeeper',
   });
   const applications = useQuery({
@@ -192,9 +162,6 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
     retry: false,
     enabled: isPlatformAdmin,
   });
-  // The cart sits in the bar beside Sign out (Figma 185:1599 puts it in the
-  // top bar, not the sidebar). Customer-only: staff have no cart, and the bar
-  // is shared with the admin shell.
   const cartCount = useCart().length;
 
   const unreadCount = notifications.data?.total ?? null;
@@ -229,8 +196,6 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
           className="flex min-w-0 items-center gap-2 text-base font-medium"
           aria-label={`${tenantLabel} home`}
         >
-          {/* The mark leads the bar (BRAND.md): the tenant's icon, else its
-              logo, else its initial on its own primary. */}
           {mark ? (
             <img src={mark} alt="" className="h-8 w-auto max-w-[120px] shrink-0 object-contain" />
           ) : (
@@ -248,17 +213,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
       <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
         {reviewQueueCount !== null && reviewQueueCount > 0 && (
           <>
-            {/* Same fact, two densities: the full pill once there is room
-                for its label, and an icon + count that still reads as a
-                warning below it. */}
-            {/* Amber as a FILL with dark text, not amber text on white.
-                --recon-review is PAGASA yellow (#c9a100), which measures
-                2.45:1 against the white bar -- under both the 4.5:1 DESIGN.md
-                §6 demands of text and the 3:1 a non-text indicator needs. The
-                pill's own tone pairing already solves this, so the compact
-                form borrows it and keeps icon + number + name so it is never
-                colour-only. */}
-            {/* QA 27: the pill opens the queue it counts. */}
+            {/* Amber as a fill with dark text: amber text on the white bar is 2.45:1. */}
             <Link
               {...reviewQueueLink}
               aria-label={`${reviewQueueLabel}: ${reviewQueueCount}. Open it`}
@@ -271,13 +226,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
                 </span>
               </span>
             </Link>
-            {/* Hidden via a WRAPPER, not a `hidden` class on the pill
-                itself. StatusPill sets `inline-flex` in its own base
-                classes, and between two single-class display utilities the
-                winner is CSS source order, not the order they appear in the
-                class attribute -- so `hidden` lost and the phone rendered
-                the icon AND the 153px pill side by side, which is what put
-                this group over the viewport in the first place. */}
+            {/* Hide via the wrapper: `hidden` on StatusPill loses to its own `inline-flex` by CSS source order. */}
             <Link {...reviewQueueLink} className="hidden rounded-full hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring sm:block">
               <StatusPill
                 tone="recon-review"
@@ -293,9 +242,6 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
         {isCustomer && (
           <Link
             to="/account/cart"
-            // The count belongs in the accessible name, not only the pill:
-            // "Cart, 3 items" read aloud beats a bare "3", and the empty cart
-            // still needs a name to be reachable at all.
             aria-label={cartCount > 0 ? `Cart, ${cartCount} items` : 'Cart, empty'}
             className={`flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm px-2 text-sm font-medium sm:gap-2 sm:px-3 ${TILE}`}
           >
@@ -311,10 +257,6 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
 
         <NotificationBell unreadCount={unreadCount} seeMorePath={notificationsPath} />
 
-        {/* Icon-only on a phone. Under real mobile emulation the layout
-            viewport is 320px, not the 360px a desktop-sized window reports,
-            and the word "Sign out" was the single widest thing keeping this
-            group at 361px -- over the viewport, on every authed screen. */}
         <button
           type="button"
           onClick={() => {

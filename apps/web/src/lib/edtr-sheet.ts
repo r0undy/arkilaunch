@@ -3,28 +3,12 @@ import { PDFDocument } from 'pdf-lib';
 import { WEATHER_CODES, manilaDate, type EdtrSheetContext } from '@arkilaunch/shared';
 import { weekStart as mondayOf } from './format.js';
 
-// EDTR v3 printable sheet (docs/cr-arkilaunch-edtr-v3-sheet.md). One SVG
-// template in millimetres on Letter or Legal landscape, rendered to a 300
-// dpi PNG and a PDF wrapping that PNG, so both files are the same pixels.
-// ONE page constant drives the SVG size, the PNG pixels and the PDF points:
-// v2 hard-coded A4 twice, and changing one alone stretched the scan.
-//
-// The layout is the OCR contract: parseEdtrSheet (packages/shared/src/
-// edtr-sheet.ts) finds the timesheet by these header labels. Keep, when
-// editing:
-// - row 0 labels DATE / DAY / AM / PM / OVERTIME / TOTAL HOURS / RUNNING
-//   HRS / IDLE HRS / BREAKDOWN HRS / WEATHER HRS / OTHER HRS / METER START /
-//   METER END / WEATHER AM / WEATHER PM / INITIAL, row 1 IN / OUT;
-// - nothing but the date in a DATE cell; "OUTSIDE RENTAL" goes in DAY;
-// - no totals row inside the table (a non-date DATE cell fails the sheet);
-// - digit fields as open comb underlines, never closed boxes, which DI
-//   could read as tick boxes; weather tick boxes exactly WEATHER_CODES long;
-// - the grid in black ink only. Colour lives in the header band.
+// The layout is the OCR contract (parseEdtrSheet in packages/shared): keep the header labels, only a date in DATE
+// cells, no totals row in the table, open comb underlines (DI reads closed boxes as ticks), black-ink grid.
 
 export type PageSize = 'letter' | 'legal';
 
-// Landscape, millimetres. Legal is the default: it fits the extra v3
-// columns without shrinking the type.
+// One constant drives SVG, PNG and PDF sizes; changing one alone stretches the scan.
 export const PAGE: Record<PageSize, { w: number; h: number; label: string }> = {
   letter: { w: 279.4, h: 215.9, label: 'Letter 11 x 8.5 in' },
   legal: { w: 355.6, h: 215.9, label: 'Legal 14 x 8.5 in' },
@@ -33,17 +17,12 @@ export const PAGE: Record<PageSize, { w: number; h: number; label: string }> = {
 const MM_TO_PT = 72 / 25.4;
 
 export interface EdtrSheetInput {
-  // Omitted = the blank fallback sheet (manual transcription path).
   context?: EdtrSheetContext;
   equipmentId?: string;
-  // Monday of the covered week, YYYY-MM-DD.
   weekStart?: string;
-  // The rental company printing it, when the context carries no tenant.
   companyName?: string;
   page?: PageSize;
-  // The tenant logo as a data: URI, so the PNG/PDF are self-contained.
   logoDataUri?: string | null;
-  // The tenant's brand colour (the rule under the header) and TIN (QA 20).
   accent?: string | null;
   tin?: string | null;
 }
@@ -54,7 +33,6 @@ const MUTED = '#555555';
 const AMBER = '#d97706';
 const FONT = 'Arial, Helvetica, sans-serif';
 
-// Relative widths; scaled to fill the page's printable width.
 const COLUMNS: { key: string; w: number; label?: string }[] = [
   { key: 'date', w: 14, label: 'DATE' },
   { key: 'day', w: 11, label: 'DAY' },
@@ -78,8 +56,7 @@ const COLUMNS: { key: string; w: number; label?: string }[] = [
 ];
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-// ponytail: truncates by character count, not measured width; fine for
-// the Arial sizes used here, measure text if names start clipping.
+// ponytail: truncates by character count, not measured width; measure text if names start clipping.
 const fit = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 
 function text(
@@ -97,7 +74,6 @@ const line = (x1: number, y1: number, x2: number, y2: number, w = 0.25, color = 
 const rect = (x: number, y: number, w: number, h: number, sw = 0.25, color = INK) =>
   `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${color}" stroke-width="${sw}"/>`;
 
-// Open comb: a baseline with short ticks between digit slots.
 function comb(cx: number, baseline: number, slots: number, slotW: number, colonAfter?: number, dotAfter?: number) {
   const gap = colonAfter !== undefined || dotAfter !== undefined ? 1.6 : 0;
   const width = slots * slotW + gap;
@@ -115,8 +91,7 @@ function comb(cx: number, baseline: number, slots: number, slotW: number, colonA
   return out;
 }
 
-// Boxes centred under the option codes printed in header row 1, so a cell
-// holds only its tick boxes (content = exactly N selection marks).
+// A cell must hold only its tick boxes: DI expects exactly N selection marks.
 function tickGroup(x: number, y: number, width: number, count: number) {
   const slot = width / count;
   return Array.from({ length: count }, (_, i) => rect(x + i * slot + slot / 2 - 1.6, y - 3.2, 3.2, 3.2, 0.35)).join('');
@@ -148,15 +123,11 @@ const shortDate = (iso: string) => {
   return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 };
 
-// The QR carries the rental, unit and week only, never a tenant: the worker
-// takes tenant_id from the capture's own row (RFC-1). The prefix names the
-// form version.
+// Never put a tenant in the QR: the worker takes tenant_id from the capture's own row.
 export function edtrSheetQrPayload(rentalId: string, equipmentId: string, weekStart: string): string {
   return `ARKI-EDTR3:${rentalId}:${equipmentId}:${weekStart}`;
 }
 
-// Which sheet of the unit's rental this week is: "Sheet 3 of 5". Count is
-// null when the rental is open-ended.
 export function sheetIndex(spanStart: string, spanEnd: string | null, weekStart: string): { index: number; count: number | null } {
   const monday = (iso: string) => new Date(mondayOf(iso)).getTime();
   const WEEK = 7 * 86_400_000;
@@ -185,8 +156,6 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   const outside = (iso: string) => !!spanFrom && (iso < spanFrom || (spanTo !== null && iso > spanTo));
   const out: string[] = [];
 
-  // A. Branded header band. The tenant's own lockup leads (BRAND.md);
-  // colour only here, as a rule under the band.
   let lx = M;
   if (input.logoDataUri) {
     out.push(`<image x="${M}" y="6" width="24" height="24" preserveAspectRatio="xMidYMid meet" href="${esc(input.logoDataUri)}"/>`);
@@ -217,13 +186,11 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
     out.push(`<rect x="${qx}" y="5" width="24" height="24" fill="none" stroke="${MUTED}" stroke-width="0.3" stroke-dasharray="1 1"/>`);
     out.push(text(qx + 12, 16, 'BLANK SHEET', 2.2, { anchor: 'middle', bold: true, fill: MUTED }));
     out.push(text(qx + 12, 19.5, 'fill header by hand', 1.9, { anchor: 'middle', fill: MUTED }));
-    // A hand-fill box for the booking code.
     out.push(rect(qx - 44, 8, 40, 10, 0.3));
     out.push(text(qx - 43, 11, 'BOOKING CODE', 2, { bold: true, fill: MUTED }));
   }
   out.push(line(M, 32, W - M, 32, 0.9, input.accent && /^#[0-9a-f]{6}$/i.test(input.accent) ? input.accent : AMBER));
 
-  // B. Job details: the Almara 2 x 2 kept as the first row, then v3's.
   const fw = (W - 2 * M) / 4;
   const field = (i: number, y: number, label: string, value: string) =>
     rect(M + i * fw, y, fw, 10) +
@@ -242,7 +209,6 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   out.push(field(2, 44, 'RENTAL PERIOD', period));
   out.push(field(3, 44, 'HOUR METER AT START OF WEEK', meter));
 
-  // C. How to fill this sheet.
   out.push(
     text(
       M,
@@ -252,7 +218,6 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
     ),
   );
 
-  // D. Timesheet grid.
   const tx = M;
   const ty = 61;
   const r0 = 8;
@@ -270,8 +235,6 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   const tableW = W - 2 * M;
   const tableH = r0 + r1 + rowH * 7;
 
-  // Header words shrink to their column (Arial bold caps run ~0.72 em per
-  // letter), so a narrow Letter column never spills into its neighbour.
   const fitSize = (word: string, width: number, max: number) => Math.min(max, (width - 1) / (word.length * 0.72));
   for (const c of cols) {
     if (!c.label) continue;
@@ -313,8 +276,7 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
     if (iso) {
       out.push(text(center('date'), base - 0.6, fmt(iso), 3.3, { anchor: 'middle', bold: true }));
       if (outside(iso)) {
-        // The date stays (the parser needs one); the row says why it is
-        // not to be filled, in DAY, and is hatched in light grey.
+        // The date stays: the parser needs one in every DATE cell.
         out.push(text(center('day'), y + 4.6, 'OUTSIDE', 1.9, { anchor: 'middle', bold: true, fill: MUTED }));
         out.push(text(center('day'), y + 7.4, 'RENTAL', 1.9, { anchor: 'middle', bold: true, fill: MUTED }));
         const hx = colX('amIn');
@@ -332,7 +294,6 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
       }
       out.push(text(center('day'), base - 0.6, dayName(iso), 2.4, { anchor: 'middle', fill: MUTED }));
     }
-    // Comb slots sized to fit inside their cell with a margin either side.
     const slotFor = (key: string, slots: number, max: number) => Math.min(max, (colW(key) - 3.2) / slots);
     for (const key of ['amIn', 'amOut', 'pmIn', 'pmOut', 'otIn', 'otOut']) out.push(comb(center(key), base, 4, slotFor(key, 4, 3), 1));
     for (const key of ['total', 'running', 'idle', 'breakdown', 'weatherHrs', 'other']) {
@@ -360,8 +321,7 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
     ),
   );
 
-  // E + F. Week summary (outside the table: the parser's "no totals row"
-  // rule) and what the customer is billed for.
+  // Summary stays outside the table: the parser fails on a totals row.
   const by = ty + tableH + 7;
   const bw = (W - 2 * M - 4) / 2;
   out.push(rect(M, by, bw, 19, 0.3));
@@ -379,7 +339,6 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   out.push(text(fx + 1.5, by + 15.5, 'Downtime days may extend your rental period on request.', 2.3));
   out.push(text(fx + 1.5, by + 18.2, 'Hour meter readings are used for maintenance.', 2.3, { fill: MUTED }));
 
-  // G. Four signature blocks.
   const sy = by + 21;
   const sw = (W - 2 * M - 9) / 4;
   const blocks = [
@@ -396,7 +355,6 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
     out.push(text(x + 1.5, H - 11, hint!, 1.9, { fill: MUTED }));
   });
 
-  // H. Footer.
   const footer = [
     context?.bookingCode ?? 'Booking ______________',
     machine ? `Unit SN ${machine.serialNo}` : 'Unit SN ________',
@@ -445,9 +403,6 @@ export async function pngToPdf(png: Blob, pageSize: PageSize = 'legal'): Promise
   return new Blob([bytes.slice().buffer], { type: 'application/pdf' });
 }
 
-// Fetches the tenant logo into a data: URI so the exported file carries
-// it. A logo that cannot be fetched (CORS, offline) is left off rather than
-// failing the sheet.
 export async function logoDataUri(url: string | null | undefined): Promise<string | null> {
   if (!url) return null;
   try {
