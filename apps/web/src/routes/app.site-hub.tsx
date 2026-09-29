@@ -438,7 +438,6 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
         equipmentList={equipmentList.filter((e) => hub.units.some((u) => u.equipmentId === e.id))}
         rentalLabel={rentalLabel}
         onCaptured={() => void queryClient.invalidateQueries({ queryKey: sitesQueries.hub(siteId).queryKey })}
-        toast={toast}
         initialSource="paper_ocr"
         {...(recordRental ? { initialRentalId: recordRental } : {})}
       />

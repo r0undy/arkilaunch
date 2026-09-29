@@ -7,7 +7,6 @@ import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { CaptureModal } from '../components/capture-modal.js';
 import { DeploymentScanList } from '../components/deployment-scan-list.js';
 import { PageHeader } from '../components/page-header.js';
-import { useToast } from '../components/toast.js';
 import { Alert } from '../components/alert.js';
 
 // The screen a scan starts from: pick the deployment, then the camera opens
@@ -16,7 +15,6 @@ import { Alert } from '../components/alert.js';
 // two decisions, but in the order that makes a mis-picked rental easy.
 
 function DeploymentScanPage({ billingTo }: { billingTo?: string }) {
-  const toast = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { rentals, equipmentList, rentalLabel, error } = useScanDeployments();
@@ -51,7 +49,6 @@ function DeploymentScanPage({ billingTo }: { billingTo?: string }) {
         onCaptured={() => {
           void queryClient.invalidateQueries({ queryKey: ['edtr'] });
         }}
-        toast={toast}
       />
     </div>
   );

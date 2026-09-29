@@ -48,7 +48,6 @@ export interface CaptureModalProps {
   equipmentList: EquipmentRef[];
   rentalLabel: (rental: RentalRef) => string;
   onCaptured: () => void;
-  toast: ReturnType<typeof useToast>;
   /** Pre-scope the log to one rental, as "Scan DTR" on a deployment does. */
   initialRentalId?: string;
   /** Open straight on the scanner rather than the typed-entry form. */
@@ -68,11 +67,11 @@ export function CaptureModal({
   equipmentList,
   rentalLabel,
   onCaptured,
-  toast,
   initialRentalId,
   initialSource = 'digital_entry',
   submitOnly = false,
 }: CaptureModalProps) {
+  const toast = useToast();
   const [source, setSource] = useState<'digital_entry' | 'paper_ocr'>(initialSource);
   const [rentalId, setRentalId] = useState(initialRentalId ?? '');
   const [equipmentId, setEquipmentId] = useState('');
@@ -104,8 +103,10 @@ export function CaptureModal({
 
   useEffect(() => {
     if (rentals[0] && !rentalId) setRentalId(rentals[0].id);
-    if (equipmentList[0] && !equipmentId) setEquipmentId(equipmentList[0].id);
-  }, [rentals, equipmentList, rentalId, equipmentId]);
+  }, [rentals, rentalId]);
+
+  const capturedRef = useRef(onCaptured);
+  capturedRef.current = onCaptured;
 
   function stopPolling() {
     if (pollTimer.current) {
@@ -122,7 +123,7 @@ export function CaptureModal({
         setDetail(res);
         if (TERMINAL_STATUSES.has(res.status)) {
           stopPolling();
-          onCaptured();
+          capturedRef.current();
         }
       } catch (err) {
         setError(err);
@@ -132,7 +133,7 @@ export function CaptureModal({
     void tick();
     pollTimer.current = setInterval(tick, 3000);
     return stopPolling;
-  }, [pollUrl, onCaptured]);
+  }, [pollUrl]);
 
   function reset() {
     stopPolling();
@@ -183,7 +184,8 @@ export function CaptureModal({
         handleClose();
         return;
       }
-      setPollUrl(res.pollUrl);
+      // res.pollUrl carries the /api/v1 prefix apiGet adds itself.
+      setPollUrl(`/edtr/${res.id}`);
       toast.success(
         'Field log recorded',
         `${formatDate(reportDate)} - waiting for its matching log.`,
@@ -217,9 +219,14 @@ export function CaptureModal({
       footer={
         <>
           <Button variant="ghost" onClick={handleClose}>
-            {detail ? 'Done' : 'Cancel'}
+            {pollUrl ? 'Done' : 'Cancel'}
           </Button>
-          <Button variant="primary" onClick={capture} loading={submitting} disabled={!reportDate}>
+          <Button
+            variant="primary"
+            onClick={capture}
+            loading={submitting}
+            disabled={!reportDate || !equipmentId || pollUrl !== null}
+          >
             Record log
           </Button>
         </>
@@ -276,7 +283,9 @@ export function CaptureModal({
           onChange={(e) => setEquipmentId(e.target.value)}
           required
         >
-          {equipmentList.length === 0 && <option value="">No machines available</option>}
+          <option value="">
+            {equipmentList.length === 0 ? 'No machines available' : 'Choose the machine'}
+          </option>
           {equipmentList.map((eq) => (
             <option key={eq.id} value={eq.id}>
               {eq.model} ({eq.serialNo})

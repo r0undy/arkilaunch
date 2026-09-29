@@ -372,7 +372,6 @@ function EdtrPage() {
         equipmentList={equipmentList}
         rentalLabel={rentalLabel}
         onCaptured={onCaptured}
-        toast={toast}
       />
 
       {viewing && (
