@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BookingDetailResponse } from '@arkilaunch/shared';
 import { WeeklyBillingCard } from './statement.js';
 import { accountLayoutRoute } from './_account.js';
-import { bookingsQueries, equipmentQueries } from '../lib/queries.js';
+import { bookingsQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
@@ -58,8 +58,6 @@ type BookingItem = BookingDetailResponse['items'][number];
 // under another's dates.
 function MachineCard({ item, onSite }: { item: BookingItem; onSite: boolean }) {
   const { equipmentId } = item;
-  const fleet = useQuery(equipmentQueries.list());
-  const match = fleet.data?.items.find((unit) => unit.id === equipmentId);
   const progress = onSite && item.status === 'active' ? leaseProgress(item.start, item.end) : null;
 
   return (
@@ -95,34 +93,7 @@ function MachineCard({ item, onSite }: { item: BookingItem; onSite: boolean }) {
           </p>
         </div>
       )}
-      {match ? (
-        <>
-          <p className="text-heading-lg text-text">{match.model}</p>
-          <p className="font-mono text-sm text-text-muted">
-            Serial {match.serialNo} &middot; {shortCode('equipment', equipmentId)}
-          </p>
-          {/* The frame prints horsepower, operating weight and fuel system
-              beside the machine. EquipmentSummaryResponse carries model,
-              serial, status and runtime hours -- no spec sheet -- so the
-              strip shows what the fleet record actually knows. */}
-          <dl className="grid grid-cols-2 gap-3 border-t border-border pt-3 text-sm">
-            <div>
-              <dt className="text-sm font-medium text-text-muted">
-                Status
-              </dt>
-              <dd className="text-text">{formatStatus(match.availabilityStatus)}</dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-text-muted">
-                Runtime hours
-              </dt>
-              <dd className="font-mono text-text">{match.runtimeHours}</dd>
-            </div>
-          </dl>
-        </>
-      ) : (
-        <p className="text-sm text-text-muted">{item.equipmentName ?? shortCode('equipment', equipmentId)}</p>
-      )}
+      <p className="text-sm text-text-muted">{item.equipmentName ?? shortCode('equipment', equipmentId)}</p>
     </Surface>
   );
 }

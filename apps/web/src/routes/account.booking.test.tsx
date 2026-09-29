@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { screen } from '@testing-library/react';
+import { renderRoute } from '../test/render-route.js';
+import { makeToken, makeValidClaims } from '../test/make-token.js';
+import { setAccessToken } from '../lib/auth-client.js';
 import type { BookingDetailResponse } from '@arkilaunch/shared';
 import { bookingStage, bookingTimeline, leaseProgress } from './account.booking.js';
 import { amountDue } from './account.checkout.js';
@@ -185,5 +189,30 @@ describe('bookingStage', () => {
     expect(bookingStage(booking())).toEqual({ paid: false, onSite: false, cancelled: false });
     expect(bookingStage(booking({ status: 'confirmed' }))).toEqual({ paid: true, onSite: false, cancelled: false });
     expect(bookingStage(booking({ status: 'active' }))).toEqual({ paid: true, onSite: true, cancelled: false });
+  });
+});
+
+describe('customer booking page', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setAccessToken(null);
+  });
+
+  it('names the machine without asking for the staff-only fleet list', async () => {
+    setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
+    const b = booking();
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(String(url).includes(`/bookings/${b.id}`) ? { ...b, items: [{ ...b.items[0], equipmentName: 'CAT 320D' }] } : []),
+          { status: 200 },
+        ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await renderRoute(`/account/bookings/${b.id}`);
+
+    expect(await screen.findByText('CAT 320D')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/equipment?'))).toBe(false);
   });
 });
