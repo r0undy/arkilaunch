@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { apiDelete, apiErrorText, apiGet, apiPost, apiPut } from '../lib/api-client.js';
-import { TEST_EMAIL_TYPES, minRentalDays, type TenantCalendar } from '@arkilaunch/shared';
-import { equipmentQueries, referenceQueries } from '../lib/queries.js';
+import { TEST_EMAIL_TYPES, manilaDate, minRentalDays, type TenantCalendar } from '@arkilaunch/shared';
+import { equipmentQueries, pricingQueries, referenceQueries, saveParams, type DieselReading, type PricingParametersRow } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { Button } from '../components/button.js';
@@ -548,7 +548,7 @@ const PRICING_FIELDS = [
 export function PricingParametersForm() {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<PricingParametersRow | null>('/pricing/parameters') });
+  const params = useQuery(pricingQueries.parameters());
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, string> | null>(null);
   const fromSaved = (p: PricingParametersRow | null | undefined): Record<string, string> =>
@@ -567,18 +567,13 @@ export function PricingParametersForm() {
   };
   const save = useMutation({
     mutationFn: () =>
-      apiPost('/pricing/parameters', {
-        region: params.data?.region ?? 'NCR',
+      saveParams(params.data, {
         operatorHourlyPhp: Number(current.operatorHourlyPhp),
         maintenanceHourlyPhp: Number(current.maintenanceHourlyPhp),
         fuelLPerHour: Number(current.fuelLPerHour),
         fuelLPerKm: Number(current.fuelLPerKm),
         transportPhpPerKm: Number(current.transportPhpPerKm),
         bufferPct: Number(current.bufferPct) / 100,
-        // Keep the company's own diesel price, if one is set.
-        ...(params.data?.dieselOverridePhp
-          ? { dieselOverridePhp: Number(params.data.dieselOverridePhp), dieselOverrideDate: new Date().toISOString().slice(0, 10) }
-          : {}),
       }),
     onSuccess: () => {
       close();
@@ -694,24 +689,6 @@ export function RateCardsPanel() {
   );
 }
 
-interface DieselReading {
-  pricePhp: number;
-  observedDate: string;
-  source: string;
-}
-
-// Pricing parameters as the API returns them (numeric columns are strings).
-interface PricingParametersRow {
-  region: string;
-  operatorHourlyPhp: string;
-  maintenanceHourlyPhp: string;
-  bufferPct: string;
-  fuelLPerHour: string;
-  fuelLPerKm: string;
-  transportPhpPerKm: string;
-  dieselOverridePhp: string | null;
-}
-
 const DIESEL_SOURCE: Record<string, string> = {
   gaswatch: 'GasWatch PH national average',
   doe_scrape: 'DOE',
@@ -725,8 +702,8 @@ const DIESEL_SOURCE: Record<string, string> = {
 export function DieselPriceForm() {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const latest = useQuery({ queryKey: ['diesel-price'], queryFn: () => apiGet<DieselReading | null>('/pricing/diesel-price') });
-  const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<PricingParametersRow | null>('/pricing/parameters') });
+  const latest = useQuery(pricingQueries.diesel());
+  const params = useQuery(pricingQueries.parameters());
   const [editing, setEditing] = useState(false);
   const [override, setOverride] = useState<string | null>(null);
   const close = () => {
@@ -747,19 +724,11 @@ export function DieselPriceForm() {
     onError: (e) => toast.error('Could not reach GasWatch', apiErrorText(e)),
   });
   const saveOverride = useMutation({
-    mutationFn: (price: number | undefined) => {
-      const p = params.data!;
-      return apiPost('/pricing/parameters', {
-        region: p.region,
-        operatorHourlyPhp: Number(p.operatorHourlyPhp),
-        maintenanceHourlyPhp: Number(p.maintenanceHourlyPhp),
-        bufferPct: Number(p.bufferPct),
-        fuelLPerHour: Number(p.fuelLPerHour),
-        fuelLPerKm: Number(p.fuelLPerKm),
-        transportPhpPerKm: Number(p.transportPhpPerKm),
-        ...(price !== undefined ? { dieselOverridePhp: price, dieselOverrideDate: new Date().toISOString().slice(0, 10) } : {}),
-      });
-    },
+    mutationFn: (price: number | undefined) =>
+      saveParams(params.data, {
+        dieselOverridePhp: price,
+        dieselOverrideDate: price === undefined ? undefined : manilaDate(new Date()),
+      }),
     onSuccess: () => {
       close();
       void queryClient.invalidateQueries({ queryKey: ['pricing-parameters'] });

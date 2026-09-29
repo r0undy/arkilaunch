@@ -28,8 +28,9 @@ import type {
   UserSelfResponse,
   UtilizationReportResponse,
   WeatherAdvisoryListResponse,
+  PricingParametersInput,
 } from '@arkilaunch/shared';
-import { apiGet } from './api-client.js';
+import { apiGet, apiPost } from './api-client.js';
 import {
   getCustomers,
   getEquipmentTypes,
@@ -300,6 +301,56 @@ export const referenceQueries = {
   projectSites: () =>
     queryOptions({ queryKey: ['reference', 'project-sites'] as const, queryFn: getProjectSites }),
 };
+
+// Pricing parameters as the API returns them (numeric columns are strings).
+export interface PricingParametersRow {
+  region: string;
+  operatorHourlyPhp: string;
+  maintenanceHourlyPhp: string;
+  bufferPct: string;
+  fuelLPerHour: string;
+  fuelLPerKm: string;
+  transportPhpPerKm: string;
+  dieselOverridePhp: string | null;
+  dieselOverrideDate: string | null;
+}
+
+export interface DieselReading {
+  pricePhp: number;
+  observedDate: string;
+  source: string;
+}
+
+export const pricingQueries = {
+  parameters: () =>
+    queryOptions({
+      queryKey: ['pricing-parameters'] as const,
+      queryFn: () => apiGet<PricingParametersRow | null>('/pricing/parameters'),
+    }),
+  diesel: () =>
+    queryOptions({
+      queryKey: ['diesel-price'] as const,
+      queryFn: () => apiGet<DieselReading | null>('/pricing/diesel-price'),
+    }),
+};
+
+// Resends the saved row, diesel override and its date included, with only
+// `patch` changed; a re-stamped date would make a stale override fresh again.
+export function saveParams(row: PricingParametersRow | null | undefined, patch: Partial<PricingParametersInput>) {
+  return apiPost('/pricing/parameters', {
+    region: row?.region ?? 'NCR',
+    operatorHourlyPhp: Number(row?.operatorHourlyPhp),
+    maintenanceHourlyPhp: Number(row?.maintenanceHourlyPhp),
+    bufferPct: Number(row?.bufferPct),
+    fuelLPerHour: Number(row?.fuelLPerHour),
+    fuelLPerKm: Number(row?.fuelLPerKm),
+    transportPhpPerKm: Number(row?.transportPhpPerKm),
+    ...(row?.dieselOverridePhp
+      ? { dieselOverridePhp: Number(row.dieselOverridePhp), dieselOverrideDate: row.dieselOverrideDate ?? undefined }
+      : {}),
+    ...patch,
+  });
+}
 
 export const usersQueries = {
   me: () =>

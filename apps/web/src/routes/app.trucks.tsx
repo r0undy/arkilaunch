@@ -13,7 +13,7 @@ import { Modal } from '../components/modal.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
-import { truckBanRulesQuery, trucksQueries } from '../lib/queries.js';
+import { pricingQueries, truckBanRulesQuery, trucksQueries } from '../lib/queries.js';
 import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
 import { EditButton, SummaryCard } from '../components/summary-card.js';
 import { Select } from '../components/select.js';
@@ -50,8 +50,8 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
   };
   // The builder's sample trip is priced with the same per-km, fuel and
   // national diesel figures a real request uses.
-  const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<{ transportPhpPerKm: string; fuelLPerKm: string } | null>('/pricing/parameters') });
-  const diesel = useQuery({ queryKey: ['diesel-price'], queryFn: () => apiGet<{ pricePhp: number } | null>('/pricing/diesel-price') });
+  const params = useQuery(pricingQueries.parameters());
+  const diesel = useQuery(pricingQueries.diesel());
   const sample: SampleInputs = {
     perKmPhp: Number(params.data?.transportPhpPerKm ?? 0),
     fuelLPerKm: Number(params.data?.fuelLPerKm ?? 0),

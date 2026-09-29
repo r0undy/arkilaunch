@@ -38,6 +38,8 @@ const PREVIEW = {
   total: 53000,
 };
 
+let paramsRow: unknown = null;
+
 function stubFetch(onQuotes?: (url: string) => Response) {
   vi.stubGlobal(
     'fetch',
@@ -48,7 +50,7 @@ function stubFetch(onQuotes?: (url: string) => Response) {
       if (u.includes('/reference/equipment-types')) return json([EQUIPMENT_TYPE]);
       if (u.includes('/reference/rate-cards')) return json([RATE_CARD]);
       if (u.includes('/pricing/billing-settings')) return json({ dailyHours: 8, minDepositPhp: 0, lowBalancePct: 20, depositPct: 0, mobilizationPhp: 15000, demobilizationPhp: 12000, minHours: 0 });
-      if (u.includes('/pricing/parameters')) return json(null);
+      if (u.includes('/pricing/parameters')) return json(paramsRow);
       if (u.includes('/pricing/diesel-price')) return json(null);
       if (u.includes('/rate-cards')) return json({ items: [], total: 0 });
       if (u.includes('/truck-settings')) return json({ baseFeePhp: 2500, driverFeePhp: 1500, extras: [], formula: null, rangePct: 10, region: 'NCR' });
@@ -65,6 +67,7 @@ function stubFetch(onQuotes?: (url: string) => Response) {
 }
 
 beforeEach(() => {
+  paramsRow = null;
   sessionStorage.clear();
   setAccessToken(makeToken(makeValidClaims({ role: 'admin' })));
 });
@@ -95,6 +98,29 @@ describe('Quotes', () => {
     expect(await screen.findByRole('heading', { name: 'Truck pricing' })).toBeInTheDocument();
     // Mob/demob is rental only.
     expect(screen.queryByLabelText('Mobilization (PHP)')).not.toBeInTheDocument();
+  });
+
+  it('keeps the saved diesel override date when operating costs are saved', async () => {
+    paramsRow = {
+      region: 'NCR', operatorHourlyPhp: '500', maintenanceHourlyPhp: '100', bufferPct: '0.1', fuelLPerHour: '12',
+      fuelLPerKm: '0.3', transportPhpPerKm: '80', dieselOverridePhp: '55', dieselOverrideDate: '2026-03-01',
+    };
+    stubFetch();
+    await renderRoute('/app/quotes');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit operating costs' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Operating costs' });
+    const operator = within(dialog).getByLabelText('Operator (PHP per hour)');
+    await userEvent.clear(operator);
+    await userEvent.type(operator, '600');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save operating costs' }));
+
+    const fetchMock = vi.mocked(fetch);
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u, init]) => String(u).endsWith('/pricing/parameters') && init?.method === 'POST')).toBe(true),
+    );
+    const [, init] = fetchMock.mock.calls.find(([u, i]) => String(u).endsWith('/pricing/parameters') && i?.method === 'POST')!;
+    expect(JSON.parse(String(init!.body))).toMatchObject({ operatorHourlyPhp: 600, dieselOverridePhp: 55, dieselOverrideDate: '2026-03-01' });
   });
 
   it('revises a booking in negotiation: preview over the form, draft from its footer', async () => {
