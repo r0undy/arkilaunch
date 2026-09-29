@@ -129,7 +129,7 @@ export async function resolveDepositLedger(tx: Tx, rentalId: string, tenantId: s
     amount: Number(row.amount),
     createdAt: row.createdAt,
   }));
-  const totalDeducted = deductions.reduce((sum, deduction) => sum + deduction.amount, 0);
+  const totalDeducted = round2HalfUp(deductions.reduce((sum, deduction) => sum + deduction.amount, 0));
 
   const deductionHours = deductionRows.length
     ? await tx
