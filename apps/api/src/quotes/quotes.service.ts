@@ -19,6 +19,7 @@ import {
 import { DAYS_PER_MONTH, quoteExpiresAt, type QuoteRequest, type RentPart, type RequestContext } from '@arkilaunch/shared';
 import { ownsCustomer, requireVerifiedCompany } from '../common/customer-scope.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
+import { holdDeadline } from '../common/booking-hold.js';
 import { EventsService } from '../events/events.service.js';
 import { PricingEngineService, type PricedQuote } from './pricing-engine.service.js';
 
@@ -394,6 +395,11 @@ export class QuotesService {
         entityId: quotationId,
       });
       if (quotation.rentalId) {
+        // The customer's turn: a request's hold restarts with the quote (QA 25).
+        await tx
+          .update(rentals)
+          .set({ holdExpiresAt: await holdDeadline(tx, ctx.tenantId) })
+          .where(and(eq(rentals.id, quotation.rentalId), eq(rentals.status, 'pending')));
         await notifyBookingCustomer(tx, ctx.tenantId, quotation.rentalId, 'quote_ready', {
           quotation_id: quotationId,
           revision: quotation.revision,

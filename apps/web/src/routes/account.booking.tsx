@@ -17,7 +17,7 @@ import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { useToast } from '../components/toast.js';
 import { MyEquipmentWeather } from '../components/equipment-weather.js';
 import { apiErrorText, apiPatch, apiPost } from '../lib/api-client.js';
-import { formatDate, formatPeso, formatStatus, shortCode } from '../lib/format.js';
+import { formatDate, formatDateTime, formatPeso, formatStatus, shortCode } from '../lib/format.js';
 
 const STATUS_TONES: Record<string, StatusTone> = {
   confirmed: 'recon-approved',
@@ -358,6 +358,14 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
             </div>
           ) : (
             <p className="text-sm text-text-muted">The rental team is preparing your quote. Invoices and your deposit show here once you pay.</p>
+          )}
+          {/* QA 25: an unpaid request holds its dates for a limited time. */}
+          {booking.status === 'pending' && booking.holdExpiresAt && (
+            <p className="rounded-md border border-border bg-surface-sunk px-3 py-2 text-sm text-text">
+              {new Date(booking.holdExpiresAt) > new Date()
+                ? `Your dates are held until ${formatDateTime(booking.holdExpiresAt)}. Accept the quote and pay before then to lock them; after that they may go to another customer.`
+                : 'The hold on your dates lapsed. You can still pay while they are free; contact the rental team if you need more time.'}
+            </p>
           )}
         </Surface>
       ) : (

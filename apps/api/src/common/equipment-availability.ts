@@ -1,5 +1,5 @@
 import { and, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
-import { db, equipment, equipmentAssignments, maintenanceWindows, tenantCalendar } from '@arkilaunch/db';
+import { db, equipment, equipmentAssignments, maintenanceWindows, rentals, tenantCalendar } from '@arkilaunch/db';
 import type { AvailabilityBlocker, AvailabilityResponse, TenantCalendar } from '@arkilaunch/shared';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -18,18 +18,40 @@ const MAX_ALTERNATIVES = 5;
 // deploy/book on the same unit/window is serialized rather than racing
 // past the check.
 export async function overlappingAssignments(tx: Tx, equipmentId: string, window: AvailabilityWindow) {
-  return tx
-    .select()
+  const rows = await tx
+    .select({ assignment: equipmentAssignments, rentalStatus: rentals.status, holdExpiresAt: rentals.holdExpiresAt })
     .from(equipmentAssignments)
+    .leftJoin(rentals, eq(rentals.id, equipmentAssignments.rentalId))
     .where(
       and(
         eq(equipmentAssignments.equipmentId, equipmentId),
         inArray(equipmentAssignments.status, ['scheduled', 'active']),
         lt(equipmentAssignments.start, new Date(window.end)),
         or(isNull(equipmentAssignments.end), gt(equipmentAssignments.end, new Date(window.start))),
+        liveHold,
       ),
     );
+  // heldUntil: set only on an unpaid request, which the calendar shows as
+  // "on hold" rather than booked.
+  return rows.map((row) => ({
+    ...row.assignment,
+    heldUntil: row.rentalStatus === 'pending' ? row.holdExpiresAt : null,
+  }));
 }
+
+// QA 25: an unpaid 'pending' request holds its dates until
+// rentals.hold_expires_at, then stops blocking anyone at once (the hourly
+// jobs/src/hold-expiry.ts sweep cancels it and tells both sides). An online
+// payment already under way keeps it live, so a customer mid-checkout is
+// never undercut. Paid, on-site and site-deployed holds never lapse.
+const liveHold = or(
+  isNull(rentals.id),
+  ne(rentals.status, 'pending'),
+  isNull(rentals.holdExpiresAt),
+  gt(rentals.holdExpiresAt, sql`now()`),
+  sql`EXISTS (SELECT 1 FROM payments p JOIN invoices i ON i.id = p.invoice_id
+    WHERE i.rental_id = ${rentals.id} AND p.status = 'pending' AND p.method <> 'cash')`,
+);
 
 // Business hours and blackout dates are Asia/Manila wall clock. The
 // Philippines has no DST, so a fixed +08:00 is exact.
@@ -98,7 +120,9 @@ export async function availabilityBlockers(
   const holds = (await overlappingAssignments(tx, equipmentId, window)).filter(
     (a) => a.rentalId !== opts.excludeRentalId,
   );
-  if (holds.length > 0) blockers.push('assignment');
+  // A paid booking outranks a hold: its dates will not free up.
+  if (holds.some((a) => !a.heldUntil)) blockers.push('assignment');
+  else if (holds.length > 0) blockers.push('hold');
   if ((await overlappingMaintenance(tx, equipmentId, window)).length > 0) blockers.push('maintenance');
   const calendar = calendarBlocker(opts.calendar !== undefined ? opts.calendar : await readCalendar(tx), window);
   if (calendar) blockers.push(calendar);
@@ -149,14 +173,19 @@ export async function dayAvailability(
     const local = manila(new Date(dayStart));
     const date = local.toISOString().slice(0, 10);
     let reason: AvailabilityBlocker | null = null;
+    let heldUntil: Date | null = null;
     // Taken outranks office-closed: a closed day only stops pickup and
     // return (calendarBlocker), while a booked or maintenance day stops a
     // rental running through it.
-    if (holds.some((h) => touches(h.start, h.end, dayStart))) reason = 'assignment';
-    else if (windows.some((w) => touches(w.startsAt, w.endsAt, dayStart))) reason = 'maintenance';
+    const dayHolds = holds.filter((h) => touches(h.start, h.end, dayStart));
+    if (dayHolds.some((h) => !h.heldUntil)) reason = 'assignment';
+    else if (dayHolds.length > 0) {
+      reason = 'hold';
+      heldUntil = new Date(Math.max(...dayHolds.map((h) => h.heldUntil!.getTime())));
+    } else if (windows.some((w) => touches(w.startsAt, w.endsAt, dayStart))) reason = 'maintenance';
     else if (cal?.blackouts.some((b) => b.date === date)) reason = 'holiday';
     else if (cal && !cal.openDays.includes(local.getUTCDay())) reason = 'closed';
-    out.push({ date, available: reason === null, reason });
+    out.push({ date, available: reason === null, reason, ...(heldUntil ? { heldUntil: heldUntil.toISOString() } : {}) });
   }
   return {
     hours: cal && { openTime: cal.openTime, closeTime: cal.closeTime, openDays: cal.openDays },

@@ -135,7 +135,15 @@ const SCHEMATICS: Record<string, () => ReactElement> = {
 
 export function EquipmentSchematic({ typeName, imageUrl, className = '' }: EquipmentSchematicProps) {
   if (imageUrl) {
-    return <img src={imageUrl} alt={typeName} className={['h-full w-full object-cover', className].join(' ')} />;
+    return (
+      <img
+        src={imageUrl}
+        alt={typeName}
+        loading="lazy"
+        decoding="async"
+        className={['h-full w-full object-cover', className].join(' ')}
+      />
+    );
   }
   const Glyph = SCHEMATICS[typeName] ?? GenericUnit;
   return (

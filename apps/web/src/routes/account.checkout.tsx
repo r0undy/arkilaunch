@@ -112,6 +112,7 @@ function checkoutError(err: unknown): string {
     if (code === 'quote_not_accepted') return 'Accept the quote on the negotiation page before paying.';
     if (code === 'company_not_verified') return 'Your company is still being verified. Payment opens once it is.';
     if (code === 'already_paid') return 'This booking is already paid. The receipt is on the booking page.';
+    if (code === 'hold_expired') return 'The hold on these dates lapsed and another customer has since booked them. Pick new dates from the booking page, or contact the rental team.';
     if (code === 'call_not_confirmed') return 'The rental team confirms every booking by phone first. Request a call above.';
     if (code === 'rate_limited') return 'Too many payment attempts just now. Wait a minute and try again.';
     if (code === 'coupon_invalid') return 'That coupon code is not valid for this booking.';

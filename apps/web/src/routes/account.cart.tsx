@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   bookingDays,
+  maxBookingHours,
   minBookingHours,
   rentFor,
   type BookingCreateResponse,
@@ -35,7 +36,8 @@ import {
   MAX_SITE_NOTES,
   type CartFieldErrors,
 } from '../lib/cart-validation.js';
-import { RangeCalendar, availabilityProblem, useAvailability } from '../components/availability-days.js';
+import { RangeCalendar, availabilityProblem, rentalLengthProblem, useAvailability } from '../components/availability-days.js';
+import { SiteProofStatus } from '../components/site-proof.js';
 import {
   getCart,
   removeFromCart,
@@ -101,17 +103,27 @@ function CartItemDates({
   const openHour = hours ? Number(hours.openTime.slice(0, 2)) + (hours.openTime.slice(3) === '00' ? 0 : 1) : 8;
   const closeHour = hours ? Number(hours.closeTime.slice(0, 2)) : 17;
   const dailyHours = availability.data?.dailyHours ?? 8;
-  const minHours = minBookingHours(rentalDays(item), dailyHours, availability.data?.minHours ?? 0);
-  const hoursProblem =
-    item.hours === undefined || item.hours < minHours
-      ? `Enter at least ${minHours} hours: the admin minimum, or ${dailyHours} hours for each day you picked.`
-      : null;
-  const problem = availabilityProblem(availability.data, item.start, item.end) ?? hoursProblem;
+  const days = rentalDays(item);
+  const minHours = minBookingHours(days, dailyHours);
+  const maxHours = maxBookingHours(days);
+  // Left blank, the booking takes the minimum (the API does the same).
+  const wanted = item.hours ?? minHours;
+  const dateProblem =
+    availabilityProblem(availability.data, item.start, item.end) ??
+    rentalLengthProblem(availability.data, item.start, item.end);
+  const hoursProblem = dateProblem
+    ? null
+    : wanted < minHours
+      ? `Enter at least ${minHours} hours: ${dailyHours} hours for each of the ${days} days you picked.`
+      : wanted > maxHours
+        ? `At most ${maxHours} hours fit in ${days} ${days === 1 ? 'day' : 'days'}. Enter fewer hours or pick a later return date.`
+        : null;
+  const problem = dateProblem ?? hoursProblem;
   useEffect(() => onProblem(problem), [problem, onProblem]);
   // Rent only, from the published card; the quote adds diesel, operator and transport.
   const estimate =
-    rate?.rateValue != null && item.hours !== undefined && !hoursProblem
-      ? rentFor(rate.rateType as RentUnit, rate.rateValue, item.hours, dailyHours).rentPhp
+    rate?.rateValue != null && !problem
+      ? rentFor(rate.rateType as RentUnit, rate.rateValue, wanted, dailyHours).rentPhp
       : null;
   useEffect(() => onEstimate(estimate), [estimate, onEstimate]);
   return (
@@ -130,20 +142,21 @@ function CartItemDates({
           value={toDateInput(item.end)}
           min={toDateInput(item.start)}
           onChange={(e) => onDate('end', e.target.value, closeHour)}
-          {...(problem && !hoursProblem ? { error: problem } : {})}
+          {...(dateProblem ? { error: dateProblem } : {})}
         />
       </div>
       <Input
         label="Rental hours"
         type="number"
         min={minHours}
+        max={maxHours}
         step="1"
         numeric
-        required
+        placeholder={String(minHours)}
         value={item.hours === undefined ? '' : String(item.hours)}
         onChange={(e) => onHours(e.target.value === '' ? undefined : Number(e.target.value))}
-        hint={`At least ${minHours} hours for these dates.${estimate !== null ? ` Estimated rent ${formatPeso(estimate)}.` : ''}`}
-        {...(hoursProblem && item.hours !== undefined ? { error: hoursProblem } : {})}
+        hint={`${minHours} to ${maxHours} hours for these dates; left blank, ${minHours}.${estimate !== null ? ` Estimated rent ${formatPeso(estimate)}.` : ''}`}
+        {...(hoursProblem ? { error: hoursProblem } : {})}
       />
       <RangeCalendar
         equipmentId={item.equipmentId}
@@ -188,11 +201,13 @@ function CartPage() {
   const companyId = chosenCompanyId || (selectable.length === 1 ? selectable[0]!.id : '');
   const company = allCompanies.find((c) => c.id === companyId);
   const companySites = (sites.data ?? []).filter((site) => site.customerId === companyId);
+  const selectedSite = companySites.find((site) => site.id === projectSiteId);
   const errors: CartFieldErrors = validateCart({
     items,
     companies: allCompanies,
     companyId,
     projectSiteId,
+    siteNeedsProof: selectedSite ? !selectedSite.proofComplete : false,
     siteContact,
     siteContactMobile,
     siteNotes,
@@ -578,6 +593,7 @@ function CartPage() {
                     </option>
                   ))}
                 </Select>
+                {selectedSite && !selectedSite.proofComplete && <SiteProofStatus site={selectedSite} />}
                 {companyId && (
                   <button
                     type="button"
@@ -620,8 +636,8 @@ function CartPage() {
           <h2 className="text-heading-md text-text">Cost summary</h2>
           {company && company.kycStatus !== 'approved' && (
             <p className="rounded-md border border-border bg-surface-sunk px-3 py-2 text-sm text-text">
-              {company.companyName} is not verified yet. You can request a quote now; payment
-              unlocks once the rental team verifies the company.
+              {company.companyName} is not verified yet. You can request a quote once the rental
+              team verifies the company.
             </p>
           )}
           <div className="flex flex-col gap-2 text-sm">

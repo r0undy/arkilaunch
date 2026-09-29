@@ -63,14 +63,20 @@ export const IncidentListQuerySchema = PaginationQuerySchema.extend({
   kind: z.enum(['weather', 'discrepancy', 'used_despite_warning']).optional(),
 });
 
-export const SiteListQuerySchema = PaginationQuerySchema;
+// deployment: active = a machine on site now; upcoming = one arriving in
+// the next 14 days; idle = neither. Omitted = every site.
+export const SiteDeploymentFilterSchema = z.enum(['active', 'upcoming', 'idle']);
+export type SiteDeploymentFilter = z.infer<typeof SiteDeploymentFilterSchema>;
+export const SiteListQuerySchema = PaginationQuerySchema.extend({
+  deployment: SiteDeploymentFilterSchema.optional(),
+});
 export type SiteListQuery = z.infer<typeof SiteListQuerySchema>;
 export type IncidentListQuery = z.infer<typeof IncidentListQuerySchema>;
 
 // --- Response schemas (egress allowlists -- expose only what the frontend
 // renders, mirroring the discipline set by catalog_list_equipment). ---
 
-export const SiteResponseSchema = z.object({
+const SiteBaseResponseSchema = z.object({
   id: z.string().uuid(),
   latitude: z.number(),
   longitude: z.number(),
@@ -78,6 +84,16 @@ export const SiteResponseSchema = z.object({
   city: z.string().nullable(),
   province: z.string().nullable(),
   observedAt: z.string().datetime().nullable(),
+});
+
+// GET /sites row: the base plus what is working there. activeUnits = units
+// on site now; upcomingUnits/nextArrival = confirmed units arriving within
+// 14 days. customerName is null for the company's own yard sites.
+export const SiteResponseSchema = SiteBaseResponseSchema.extend({
+  activeUnits: z.number().int(),
+  upcomingUnits: z.number().int(),
+  nextArrival: z.string().datetime().nullable(),
+  customerName: z.string().nullable(),
 });
 export type SiteResponse = z.infer<typeof SiteResponseSchema>;
 
@@ -99,7 +115,7 @@ export const SiteAddressResponseSchema = z.object({
 });
 export type SiteAddressResponse = z.infer<typeof SiteAddressResponseSchema>;
 
-export const SiteDetailResponseSchema = SiteResponseSchema.extend({
+export const SiteDetailResponseSchema = SiteBaseResponseSchema.extend({
   address: SiteAddressResponseSchema.nullable(),
 });
 export type SiteDetailResponse = z.infer<typeof SiteDetailResponseSchema>;

@@ -63,6 +63,9 @@ export interface ValidateCartInput {
   companies: CompanyResponse[];
   companyId: string;
   projectSiteId: string;
+  // The chosen site is the customer's own and has no proof on file yet; the
+  // API refuses it (409 site_proof_required). Optional: false when omitted.
+  siteNeedsProof?: boolean;
   siteContact: string;
   /** +639XXXXXXXXX, or '' when not given. */
   siteContactMobile: string;
@@ -86,6 +89,8 @@ export function validateCart(input: ValidateCartInput): CartFieldErrors {
 
   if (!input.projectSiteId) {
     errors.projectSiteId = 'Choose where the machines are going.';
+  } else if (input.siteNeedsProof) {
+    errors.projectSiteId = 'This site needs its proof before it can take a booking. Upload it below, or pick another site.';
   }
 
   if (input.siteContact.trim() && input.siteContact.trim().length < 2) {

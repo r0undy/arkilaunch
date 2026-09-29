@@ -29,6 +29,7 @@ import {
 import { EventsService } from '../events/events.service.js';
 import { notifyBookingCustomer, notifyStaff, notifyUser } from '../common/notify-customer.js';
 import { customerOwnsInvoice, ownsCustomer } from '../common/customer-scope.js';
+import { renewLapsedHold } from '../common/booking-hold.js';
 import { resolveBookingRef } from '../common/booking-ref.js';
 import { checkoutReturnOrigin } from './return-origin.js';
 import { claimCoupon, previewCoupon } from './coupons.js';
@@ -105,6 +106,8 @@ export class PaymentsService {
       }
       // Callback before payment: staff confirm the booking by phone first.
       if (!rental.callConfirmedAt) throw new ConflictException({ error: 'call_not_confirmed' });
+      // QA 25: a request past its hold pays only if its dates are still free.
+      await renewLapsedHold(tx, ctx.tenantId, bookingId);
 
       // QAD-T31 (resource abuse / cost bomb): a rapid repeated burst of
       // checkout-session creation is throttled per tenant. Postgres-backed
@@ -631,6 +634,9 @@ export class PaymentsService {
       const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
       if (!invoice) throw new NotFoundException({ error: 'invoice_not_found' });
       if (invoice.status !== 'issued') throw new ConflictException({ error: 'invoice_not_payable', status: invoice.status });
+      // Cash in hand for a lapsed request whose dates went to someone else
+      // would double-book the unit; refuse before recording it (QA 25).
+      if (invoice.rentalId) await renewLapsedHold(tx, ctx.tenantId, invoice.rentalId);
       const [pendingCash] = await tx
         .select()
         .from(payments)

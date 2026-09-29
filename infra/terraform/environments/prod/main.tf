@@ -253,6 +253,26 @@ module "maintenance_notify_job" {
   depends_on                   = [module.acr_identity]
 }
 
+module "hold_expiry_job" {
+  source = "../../modules/cron_job"
+  # QA 25: cancels unpaid requests whose date hold lapsed and tells both
+  # sides (jobs/src/hold-expiry.ts).
+  name                         = "${local.name}-hold-expiry"
+  entrypoint                   = "hold-expiry"
+  cron_expression              = var.hold_expiry_cron
+  resource_group_name          = module.resource_group.name
+  location                     = var.location
+  container_app_environment_id = module.container_apps_environment.id
+  registry_login_server        = module.container_registry.login_server
+  identity_id                  = module.acr_identity.id
+  image_tag                    = var.image_tag
+  env_vars                     = local.common_env_vars
+  secrets                      = local.secrets
+  secret_env_vars              = local.secret_env_vars
+  tags                         = local.tags
+  depends_on                   = [module.acr_identity]
+}
+
 output "api_fqdn" {
   value = module.api_app.fqdn
 }

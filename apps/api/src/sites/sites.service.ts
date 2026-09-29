@@ -1,8 +1,9 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import {
   addresses,
   auditLogs,
+  customers,
   equipment,
   equipmentAssignments,
   events,
@@ -118,15 +119,63 @@ export class SitesService {
   // the isolation boundary.
   async list(ctx: RequestContext, query: SiteListQuery): Promise<SiteListResponse> {
     return withTenantTx(ctx, async (tx) => {
+      // What is working at each site, in one grouped read (not a query per
+      // site). equipment_assignments has no site of its own; it comes from
+      // the rental. On site = delivered (active), or a legacy
+      // POST /sites/:id/deployments unit (left 'scheduled' but flipped to
+      // deployed) that is not active on some other rental. Upcoming = a
+      // confirmed booking's unit still in the yard, due within 14 days; a
+      // delivery due earlier today still reads as arriving, not idle.
+      const onSite = sql`(${equipmentAssignments.status} = 'active' or (${equipmentAssignments.status} = 'scheduled' and ${equipment.availabilityStatus} = 'deployed' and not exists (select 1 from equipment_assignments other where other.equipment_id = ${equipmentAssignments.equipmentId} and other.status = 'active')))`;
+      const arriving = sql`(${equipmentAssignments.status} = 'scheduled' and ${rentals.status} = 'confirmed' and ${equipment.availabilityStatus} <> 'deployed' and ${equipmentAssignments.start} >= now() - interval '1 day' and ${equipmentAssignments.start} < now() + interval '14 days')`;
+      const units = tx
+        .select({
+          siteId: sql<string>`${rentals.projectSiteId}`.as('site_id'),
+          active: sql<number>`(count(distinct ${equipmentAssignments.equipmentId}) filter (where ${onSite}))::int`.as('active_units'),
+          upcoming: sql<number>`(count(distinct ${equipmentAssignments.equipmentId}) filter (where ${arriving}))::int`.as('upcoming_units'),
+          nextArrival: sql<string | null>`min(${equipmentAssignments.start}) filter (where ${arriving})`.as('next_arrival'),
+        })
+        .from(equipmentAssignments)
+        .innerJoin(rentals, eq(rentals.id, equipmentAssignments.rentalId))
+        .innerJoin(equipment, eq(equipment.id, equipmentAssignments.equipmentId))
+        .groupBy(rentals.projectSiteId)
+        .as('site_units');
+      const activeUnits = sql<number>`coalesce(${units.active}, 0)`;
+      const upcomingUnits = sql<number>`coalesce(${units.upcoming}, 0)`;
+      const where =
+        query.deployment === 'active'
+          ? sql`${activeUnits} > 0`
+          : query.deployment === 'upcoming'
+            ? sql`${upcomingUnits} > 0`
+            : query.deployment === 'idle'
+              ? sql`${activeUnits} = 0 and ${upcomingUnits} = 0`
+              : undefined;
+
       // Count first: an empty page past the end still has to report the real
-      // total, or the pager cannot offer a way back.
-      const total = await countRows(tx, projectSites);
-      const rows = await tx
-        .select()
+      // total, or the pager cannot offer a way back. Same filter as the page.
+      const [counted] = await tx
+        .select({ value: count() })
         .from(projectSites)
-        .orderBy(desc(projectSites.createdAt))
+        .leftJoin(units, eq(units.siteId, projectSites.id))
+        .where(where);
+      const total = counted?.value ?? 0;
+      const found = await tx
+        .select({
+          site: projectSites,
+          activeUnits,
+          upcomingUnits,
+          nextArrival: units.nextArrival,
+          customerName: customers.companyName,
+        })
+        .from(projectSites)
+        .leftJoin(units, eq(units.siteId, projectSites.id))
+        .leftJoin(customers, eq(customers.id, projectSites.customerId))
+        .where(where)
+        // Working sites first, then those about to be, then newest.
+        .orderBy(sql`(${activeUnits} > 0) desc`, sql`(${upcomingUnits} > 0) desc`, desc(projectSites.createdAt))
         .limit(query.limit)
         .offset(query.offset);
+      const rows = found.map((row) => row.site);
       if (rows.length === 0) return { items: [], total };
 
       const alertRows = await tx
@@ -157,7 +206,7 @@ export class SitesService {
         );
       const addressById = new Map(addressRows.map((address) => [address.id, address]));
 
-      const items: SiteResponse[] = rows.map((row) => {
+      const items: SiteResponse[] = found.map(({ site: row, ...deployment }) => {
         const latest = latestBySite.get(row.id);
         const address = addressById.get(row.addressId);
         return {
@@ -168,6 +217,10 @@ export class SitesService {
           city: address?.city ?? null,
           province: address?.province ?? null,
           observedAt: latest?.effectiveAt.toISOString() ?? null,
+          activeUnits: deployment.activeUnits,
+          upcomingUnits: deployment.upcomingUnits,
+          nextArrival: deployment.nextArrival ? new Date(deployment.nextArrival).toISOString() : null,
+          customerName: deployment.customerName,
         };
       });
       return { items, total };

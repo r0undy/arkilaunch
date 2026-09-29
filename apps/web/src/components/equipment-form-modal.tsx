@@ -9,6 +9,7 @@ import { Button } from './button.js';
 import { CaptureField } from './capture-field.js';
 import { useToast } from './toast.js';
 import { apiErrorText, apiPatch, apiPost, apiPostForm } from '../lib/api-client.js';
+import type { PrepareUploadOptions } from '../lib/image-compression.js';
 import { referenceQueries } from '../lib/queries.js';
 
 // Figma 292:1344 (Add Equipment) and 293:2668 (Edit Details). One component:
@@ -35,6 +36,11 @@ const TEXTAREA_CLASSES =
   'block w-full rounded-sm border border-border bg-surface px-3.5 py-3 text-base text-text ' +
   'hover:border-border-strong focus-visible:outline focus-visible:outline-2 ' +
   'focus-visible:outline-offset-2 focus-visible:outline-focus-ring';
+
+// QA item 28: fleet photos are shown in every inventory list and the public
+// catalog, so they go up as WebP under 1MB. MIRRORED PAIR: maxBytes matches
+// EQUIPMENT_PHOTO_MAX_BYTES in apps/api/src/storage/upload-validation.ts.
+const PHOTO_UPLOAD: PrepareUploadOptions = { maxEdge: 1920, quality: 0.8, type: 'image/webp', maxBytes: 1_000_000 };
 
 export interface EquipmentFormModalProps {
   /** Absent for create, present for edit. */
@@ -415,6 +421,7 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
             value={photo}
             onChange={setPhoto}
             accept="image/*"
+            uploadOptions={PHOTO_UPLOAD}
           />
           <div className="grid gap-4 sm:grid-cols-2">
             <Input

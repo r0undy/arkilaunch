@@ -11,6 +11,7 @@ import {
   type WeatherNoticeType,
 } from '@arkilaunch/shared';
 import { apiGet, apiPatch } from '../lib/api-client.js';
+import { getCurrentRole } from '../lib/guards.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
 import { EmptyState } from './empty-state.js';
@@ -75,7 +76,15 @@ interface Described {
 // the admin's screen or the customer's.
 export type FeedArea = 'app' | 'account' | 'field' | 'admin';
 
-export function feedAreaOf(pathname: string): FeedArea {
+// The reader's role decides, not the URL: a customer's bell renders on
+// storefront pages too (/equipment), which read as 'app' and sent them to
+// staff screens that bounce (QA 26). The URL is the fallback when no role
+// is known.
+export function feedAreaOf(pathname: string, role: string | null = getCurrentRole()): FeedArea {
+  if (role === 'customer') return 'account';
+  if (role === 'timekeeper') return 'field';
+  if (role === 'platform_admin') return 'admin';
+  if (role) return 'app';
   const first = pathname.split('/')[1];
   return first === 'account' || first === 'field' || first === 'admin' ? first : 'app';
 }
@@ -94,6 +103,28 @@ function staffBooking(
   return rentalId
     ? { label, to: '/app/bookings/$bookingId', params: { bookingId: rentalId } }
     : { label, to: '/app/bookings', params: {} };
+}
+
+// A payment event opens its booking (the email links there too); one with
+// no booking behind it falls back to the payments list.
+function staffPayment(p: Record<string, unknown>): NonNullable<Described['action']> {
+  return typeof p.booking_code === 'string' || typeof p.rental_id === 'string'
+    ? staffBooking(p, 'Open booking', 'actions')
+    : { label: 'Open payments', to: '/app/payments', params: {} };
+}
+
+// The platform admin's feed: rental companies signing up (migration 0069).
+function describeForPlatform(type: string, p: Record<string, unknown>): Described | null {
+  if (type !== 'tenant_registered') return null;
+  const name = typeof p.company_name === 'string' ? p.company_name : 'A rental company';
+  return {
+    title: 'New rental company',
+    body: `${name} registered on the platform.`,
+    action:
+      typeof p.application_id === 'string'
+        ? { label: 'Open application', to: '/admin/applications/$applicationId', params: { applicationId: p.application_id } }
+        : { label: 'Open applications', to: '/admin/applications', params: {} },
+  };
 }
 
 // Staff-side types (written by notifyStaff). Every one has a destination
@@ -126,14 +157,14 @@ function describeForStaff(type: string, p: Record<string, unknown>): Described |
       return {
         title: 'Refund needed',
         body: `A payment came in on ${ref} after its invoice was voided (price changed or cancelled). Refund it in PayMongo.`,
-        action: { label: 'Open payments', to: '/app/payments', params: {} },
+        action: staffPayment(p),
       };
     case 'customer_message': {
       const offer = typeof p.offer_php === 'number' ? ` with an offer of ${formatPeso(p.offer_php)}` : '';
       return {
         title: 'Customer message',
         body: `The customer replied on ${ref}${offer}.`,
-        action: staffBooking(p, 'Open conversation', trip ? 'negotiation' : undefined),
+        action: staffBooking(p, 'Open conversation', 'negotiation'),
       };
     }
     case 'quote_accepted':
@@ -147,7 +178,7 @@ function describeForStaff(type: string, p: Record<string, unknown>): Described |
       return {
         title: 'Change request',
         body: `The customer asked to ${p.kind === 'cancel' ? 'cancel' : 'extend'} ${ref}.`,
-        action: staffBooking(p, 'Review request'),
+        action: staffBooking(p, 'Review request', 'actions'),
       };
     case 'deposit_low':
       return {
@@ -172,7 +203,7 @@ function describeForStaff(type: string, p: Record<string, unknown>): Described |
       return {
         title: type === 'payment_amount_mismatch' ? 'Payment amount mismatch' : `Payment ${type.slice('payment_'.length)}`,
         body: `An online payment on ${ref} ${what[type]}.`,
-        action: { label: 'Open payments', to: '/app/payments', params: {} },
+        action: staffPayment(p),
       };
     }
     case 'edtr_submitted':
@@ -189,8 +220,36 @@ function describeForStaff(type: string, p: Record<string, unknown>): Described |
       return {
         title: type === 'maintenance_due' ? 'Maintenance due' : 'Maintenance coming up',
         body: `A machine${typeof p.runtime_hours === 'number' ? ` at ${p.runtime_hours} running hours` : ''} is ${type === 'maintenance_due' ? 'due' : 'close to'} its service.`,
-        action: { label: 'Open inventory', to: '/app/inventory', params: {} },
+        action: {
+          label: 'Open machine',
+          to: '/app/inventory',
+          params: {},
+          ...(typeof p.serial_no === 'string' ? { search: { q: p.serial_no } } : {}),
+        },
       };
+    case 'hold_expired':
+      return {
+        title: 'Hold lapsed',
+        body: `${ref} was not paid in time, so it was cancelled and its dates freed.`,
+        action: staffBooking(p),
+      };
+    case 'company_submitted':
+    case 'company_reapplied': {
+      const name = typeof p.company_name === 'string' ? p.company_name : 'A company';
+      return {
+        title: type === 'company_submitted' ? 'New company registration' : 'Registration resubmitted',
+        body:
+          type === 'company_submitted'
+            ? `${name} needs approval.`
+            : `${name} uploaded new documents after a rejection and needs a fresh decision.`,
+        action: {
+          label: 'Review',
+          to: '/app/registration/pending',
+          params: {},
+          ...(typeof p.customer_id === 'string' ? { search: { open: p.customer_id } } : {}),
+        },
+      };
+    }
     case 'weather_advisory':
       return { title: 'Weather advisory', body: 'A site is under a weather advisory.', action: { label: 'Open incidents', to: '/app/incidents', params: {} } };
     default:
@@ -210,7 +269,7 @@ function describeForField(type: string, p: Record<string, unknown>): Described |
       return {
         title: 'Correction needed',
         body: `The office asked you to correct ${day}${ref}${typeof p.reason === 'string' ? `: ${p.reason}` : ''}. Submit it again.`,
-        action: { ...toDashboard, label: 'Resubmit' },
+        action: { label: 'Resubmit', to: '/field/scan', params: {} },
       };
     case 'edtr_rejected':
       return {
@@ -252,24 +311,18 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
   // (weatherNoticeText); the link follows the console reading it.
   if (isWeatherNotice(type)) return describeWeather(type, p, area);
   if (area === 'field') return describeForField(type, p);
-  if (area === 'app' || area === 'admin') {
+  // The platform host serves none of the /app screens a staff link opens.
+  if (area === 'admin') return describeForPlatform(type, p);
+  if (area === 'app') {
     const staff = describeForStaff(type, p);
     if (staff) return staff;
   }
-  if (type === 'password_reset_requested') {
+  if (type === 'password_reset_requested' && area === 'app') {
     const email = typeof p.email === 'string' ? p.email : 'A user';
     return {
       title: 'Password reset requested',
       body: `${email} asked to reset their password. Reset it from People and send them the link.`,
       action: { label: 'Open People', to: '/app/users', params: {} },
-    };
-  }
-  if (type === 'company_submitted') {
-    const name = typeof p.company_name === 'string' ? p.company_name : 'A company';
-    return {
-      title: 'New company registration',
-      body: `${name} needs approval.`,
-      action: { label: 'Review', to: '/app/registration/pending', params: {} },
     };
   }
   // document_resubmit_required is no longer written; old rows read as the
@@ -294,8 +347,11 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
     return type === 'company_verified'
       ? {
           title: 'Company verified',
-          body: `${name} is verified. You can now pay for its bookings.`,
-          action: { label: 'My bookings', to: '/account/bookings', params: {} },
+          body: `${name} is verified. You can now book and pay for its rentals.`,
+          action:
+            typeof p.customer_id === 'string'
+              ? { label: 'View company', to: '/account/companies/$companyId', params: { companyId: p.customer_id } }
+              : { label: 'My applications', to: '/account/applications', params: {} },
         }
       : {
           title: 'Company not verified',
@@ -309,14 +365,6 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
             params: { companyId: String(p.customer_id ?? '') },
           },
         };
-  }
-  if (type === 'company_reapplied') {
-    const name = typeof p.company_name === 'string' ? p.company_name : 'A company';
-    return {
-      title: 'Registration resubmitted',
-      body: `${name} uploaded new documents after a rejection and needs a fresh decision.`,
-      action: { label: 'Review', to: '/app/registration/pending', params: {} },
-    };
   }
   // A customer's truck trip: every update opens their truck requests.
   if (typeof p.truck_request_id === 'string') {
@@ -408,12 +456,6 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
         body: `The equipment for booking ${ref} is back with the rental team. Your hire is complete.`,
         action: { label: 'View booking', ...toBooking },
       };
-    case 'call_requested':
-      return {
-        title: 'Call requested',
-        body: `The customer on booking ${ref} asked for a call before paying.`,
-        action: { label: 'Open booking', to: '/app/bookings/$bookingId', params: { bookingId: rentalId } },
-      };
     case 'call_confirmed':
       return {
         title: 'Booking confirmed by phone',
@@ -424,6 +466,12 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
       return {
         title: 'Booking cancelled',
         body: `The rental team cancelled booking ${ref}. Any refund due is handled by the billing team.`,
+        action: { label: 'View booking', ...toBooking },
+      };
+    case 'hold_expired':
+      return {
+        title: 'Booking request lapsed',
+        body: `Booking ${ref} was not paid in time, so its dates were released and the request was cancelled. Nothing was charged; book again to pick new dates.`,
         action: { label: 'View booking', ...toBooking },
       };
     case 'deposit_low':

@@ -1,7 +1,7 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { BookingService as Service, BookingSummaryResponse, TruckRequestResponse } from '@arkilaunch/shared';
+import type { BookingService as Service, BookingStatus, BookingSummaryResponse, TruckRequestResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { bookingsQueries, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
@@ -17,8 +17,10 @@ import { BookingSide } from '../components/booking-actions.js';
 import { StatusBadge } from '../components/status-badge.js';
 import { Tabs } from '../components/tabs.js';
 import { Alert } from '../components/alert.js';
-import { bookingCodeSearchPrefix, parseBookingCode } from '@arkilaunch/shared';
-import { formatDate, formatPeso, formatStatus, siteName } from '../lib/format.js';
+import { BOOKING_STATUSES, bookingCodeSearchPrefix, parseBookingCode } from '@arkilaunch/shared';
+import { formatDate, formatDateTime, formatPeso, formatStatus, siteName } from '../lib/format.js';
+import { Input } from '../components/input.js';
+import { Select } from '../components/select.js';
 
 // The staff side of the customer journey: every rental and truck trip, one
 // tab per service, each paged on the server. A row opens the booking
@@ -26,9 +28,44 @@ import { formatDate, formatPeso, formatStatus, siteName } from '../lib/format.js
 
 const RENTAL_COLUMNS: TableColumn<BookingSummaryResponse>[] = [
   { header: 'Booking', kind: 'text', cell: (b) => <BookingCode code={b.code} /> },
+  { header: 'Customer', kind: 'text', cell: (b) => b.customerName ?? '--' },
+  {
+    header: 'Dates', kind: 'text',
+    cell: (b) => (b.startDate ? `${formatDate(b.startDate)} – ${b.endDate ? formatDate(b.endDate) : 'open'}` : '--'),
+  },
   { header: 'Site', kind: 'text', cell: (b) => b.siteCity ?? b.siteProvince ?? siteName({ id: b.projectSiteId }) },
-  { header: 'Status', kind: 'status', cell: (b) => <StatusBadge status={b.status} /> },
+  {
+    header: 'Status', kind: 'status',
+    cell: (b) => (
+      <div className="flex flex-col">
+        <StatusBadge status={b.status} />
+        {b.holdExpiresAt && (
+          <span className="text-xs text-text-muted">
+            {new Date(b.holdExpiresAt) > new Date() ? `Held until ${formatDateTime(b.holdExpiresAt)}` : 'Hold lapsed'}
+          </span>
+        )}
+      </div>
+    ),
+  },
 ];
+
+// QA 27: the rental list's status chips. "New requests" are unpaid
+// ('pending'); the rest follow the booking through payment and delivery.
+const STATUS_CHIPS: { id: BookingStatus | undefined; label: string }[] = [
+  { id: undefined, label: 'All' },
+  { id: 'pending', label: 'New requests' },
+  { id: 'confirmed', label: 'Paid' },
+  { id: 'active', label: 'On site' },
+  { id: 'completed', label: 'Completed' },
+  { id: 'cancelled', label: 'Cancelled' },
+];
+
+const chip = (active: boolean) =>
+  [
+    'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
+    active ? 'border-accent bg-accent text-white' : 'border-border bg-surface text-text hover:bg-surface-sunk',
+  ].join(' ');
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const TRUCK_COLUMNS: TableColumn<TruckRequestResponse>[] = [
   {
@@ -54,21 +91,33 @@ const TRUCK_COLUMNS: TableColumn<TruckRequestResponse>[] = [
 ];
 
 // ?open=EQR-2026-0001 deep-links the drawer (notifications, the site hub,
-// the app bar's code box); ?service=truck opens on the Trucks tab.
-function validateBookingsSearch(search: Record<string, unknown>): {
+// the app bar's code box); ?service=truck opens on the Trucks tab. The
+// rental filters live here too, so Back and a shared link keep them.
+export interface BookingsSearch {
   service?: Service;
   open?: string;
   tab?: 'actions' | 'negotiation';
-} {
-  const out: { service?: Service; open?: string; tab?: 'actions' | 'negotiation' } = {};
+  status?: BookingStatus;
+  from?: string;
+  to?: string;
+  sort?: 'start';
+}
+function validateBookingsSearch(search: Record<string, unknown>): BookingsSearch {
+  const out: BookingsSearch = {};
   if (search.tab === 'actions' || search.tab === 'negotiation') out.tab = search.tab;
   if (search.service === 'truck' || search.service === 'rental') out.service = search.service;
   if (typeof search.open === 'string' && parseBookingCode(search.open)) out.open = search.open.trim().toUpperCase();
+  if (typeof search.status === 'string' && (BOOKING_STATUSES as readonly string[]).includes(search.status)) {
+    out.status = search.status as BookingStatus;
+  }
+  if (typeof search.from === 'string' && ISO_DAY.test(search.from)) out.from = search.from;
+  if (typeof search.to === 'string' && ISO_DAY.test(search.to)) out.to = search.to;
+  if (search.sort === 'start') out.sort = 'start';
   return out;
 }
 
 function BookingsPage() {
-  const { service: fromUrl, open, tab } = appBookingsRoute.useSearch();
+  const { service: fromUrl, open, tab, status, from, to, sort } = appBookingsRoute.useSearch();
   const navigate = appBookingsRoute.useNavigate();
   const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState('');
@@ -81,7 +130,21 @@ function BookingsPage() {
     void navigate({ search: (prev) => ({ ...prev, service: next }), replace: true });
   };
 
-  const rentals = useQuery({ ...bookingsQueries.list(PAGE_SIZE, offset, codePrefix), enabled: service === 'rental' });
+  // Rentals search codes or a company name; trucks search codes only.
+  const rentalQuery = codePrefix || search.trim();
+  const filters = { ...(status ? { status: [status] } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(sort ? { sort } : {}) };
+  const setFilters = (patch: { [K in 'status' | 'from' | 'to' | 'sort']?: BookingsSearch[K] | undefined }) => {
+    setOffset(0);
+    void navigate({
+      search: (prev) => {
+        const next = { ...prev, ...patch };
+        for (const key of ['status', 'from', 'to', 'sort'] as const) if (!next[key]) delete next[key];
+        return next as BookingsSearch;
+      },
+      replace: true,
+    });
+  };
+  const rentals = useQuery({ ...bookingsQueries.list(PAGE_SIZE, offset, rentalQuery, filters), enabled: service === 'rental' });
   const trucks = useQuery({ ...trucksQueries.list(PAGE_SIZE, offset, codePrefix), enabled: service === 'truck' });
   const openTrucks = useQuery(trucksQueries.list(1, 0, '', 'open'));
 
@@ -117,12 +180,41 @@ function BookingsPage() {
               setSearch(e.target.value);
               setOffset(0);
             }}
-            placeholder={service === 'truck' ? 'Find a truck code (TRK-2026-0001)' : 'Find a booking code (EQR-2026-0001)'}
-            aria-label="Find a booking by code"
+            placeholder={service === 'truck' ? 'Find a truck code (TRK-2026-0001)' : 'Find a booking code or company'}
+            aria-label={service === 'truck' ? 'Find a truck request by code' : 'Find a booking by code or company'}
             className="min-h-11 w-full max-w-md rounded-input border border-border bg-surface px-4 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
           />
-          {search.trim() !== '' && !codePrefix && (
-            <p className="text-xs text-text-muted">Booking codes start with EQR- (equipment) or TRK- (truck).</p>
+          {service === 'truck' && search.trim() !== '' && !codePrefix && (
+            <p className="text-xs text-text-muted">Truck codes start with TRK-.</p>
+          )}
+          {service === 'rental' && (
+            <div className="flex flex-col gap-3 pt-2">
+              <div role="group" aria-label="Show bookings" className="flex flex-wrap gap-2">
+                {STATUS_CHIPS.map((c) => {
+                  const counts = rentals.data?.statusCounts;
+                  const n = counts ? (c.id ? (counts[c.id] ?? 0) : Object.values(counts).reduce((a, b) => a + b, 0)) : null;
+                  return (
+                    <button key={c.label} type="button" aria-pressed={status === c.id} className={chip(status === c.id)} onClick={() => setFilters({ status: c.id })}>
+                      {c.label}
+                      {n !== null && <span className="ml-1.5 tabular-nums opacity-80">{n}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <Input label="Rental dates from" type="date" value={from ?? ''} onChange={(e) => setFilters({ from: e.target.value || undefined })} />
+                <Input label="to" type="date" value={to ?? ''} min={from} onChange={(e) => setFilters({ to: e.target.value || undefined })} />
+                <Select label="Sort" value={sort ?? 'newest'} onChange={(e) => setFilters({ sort: e.target.value === 'start' ? 'start' : undefined })}>
+                  <option value="newest">Newest request first</option>
+                  <option value="start">Soonest start first</option>
+                </Select>
+                {(status || from || to || sort) && (
+                  <Button variant="ghost" onClick={() => setFilters({ status: undefined, from: undefined, to: undefined, sort: undefined })}>
+                    Clear filters
+                  </Button>
+                )}
+              </div>
+            </div>
           )}
           {notFound && (
             <p role="alert" className="text-sm text-error">
@@ -161,7 +253,7 @@ function BookingsPage() {
             rowKey={(b) => b.id}
             onRowClick={(b) => openDrawer(b.code)}
             rowLabel={(b) => `Open booking ${b.code}`}
-            empty={rentals.isPending ? 'Loading bookings...' : codePrefix ? `No rental matches ${codePrefix}.` : 'Bookings customers request from the storefront appear here.'}
+            empty={rentals.isPending ? 'Loading bookings...' : rentalQuery ? `No rental matches ${rentalQuery}.` : status || from || to ? 'No bookings match these filters.' : 'Bookings customers request from the storefront appear here.'}
             header={{ title: 'Bookings', filter: finder, count: rentals.data?.total ?? 0, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={rentals.data?.total ?? 0} onOffsetChange={setOffset} noun="bookings" busy={rentals.isFetching} /> }}
           />
         ) : (

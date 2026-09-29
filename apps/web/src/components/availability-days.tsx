@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { AvailabilityResponse } from '@arkilaunch/shared';
+import { bookingDays, minRentalDays, type AvailabilityResponse } from '@arkilaunch/shared';
 import { apiGet } from '../lib/api-client.js';
 import { getAccessToken } from '../lib/auth-client.js';
 
 const DAYS_AHEAD = 60;
 const REASON: Record<string, string> = {
   assignment: 'Booked',
+  hold: 'On hold',
   maintenance: 'Maintenance',
   closed: 'Office closed',
   holiday: 'Office closed (holiday)',
@@ -73,6 +74,18 @@ export function availabilityProblem(data: AvailabilityResponse | undefined, star
   }
   return null;
 }
+
+// The window is shorter than the tenant rents for, or null. Its minimum is
+// hours, but a crew runs only so many a day, so it is really a length.
+export function rentalLengthProblem(data: AvailabilityResponse | undefined, startIso: string, endIso: string): string | null {
+  if (!data || !startIso || !endIso) return null;
+  const minDays = minRentalDays(data.dailyHours, data.minHours);
+  if (bookingDays(startIso, endIso) >= minDays) return null;
+  return `This company rents for at least ${minDays} days (its ${data.minHours}-hour minimum at ${data.dailyHours} hours a day). Pick a later return date.`;
+}
+
+const heldLabel = (iso: string) =>
+  new Date(iso).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const addDays = (date: string, n: number) => {
@@ -184,7 +197,12 @@ export function RangeCalendar({
           const disabled = date < today || unavailable;
           const inSpan = Boolean(spanStart) && date >= spanStart && date <= spanEnd;
           const edge = date === spanStart || date === spanEnd;
-          const reason = unavailable ? (REASON[info?.reason ?? ''] ?? 'Taken') : '';
+          const held = info?.reason === 'hold';
+          const reason = unavailable
+            ? held && info?.heldUntil
+              ? `On hold for another customer until ${heldLabel(info.heldUntil)}; frees up if unpaid`
+              : (REASON[info?.reason ?? ''] ?? 'Taken')
+            : '';
           return (
             <button
               key={date}
@@ -202,7 +220,9 @@ export function RangeCalendar({
                 disabled
                   ? [
                       'cursor-not-allowed',
-                      taken
+                      held
+                        ? 'rounded-sm border border-dashed border-text-muted/50 bg-surface-sunk text-text-muted'
+                        : taken
                         ? `rounded-sm text-text-muted line-through ${info?.reason === 'maintenance' ? 'bg-warning/15' : 'bg-error/10'}`
                         : closed
                           ? inSpan
@@ -236,6 +256,10 @@ export function RangeCalendar({
         <li className="flex items-center gap-1.5">
           <span aria-hidden className="h-3 w-3 rounded-sm bg-error/10" />
           <span className="line-through">Booked</span>
+        </li>
+        <li className="flex items-center gap-1.5">
+          <span aria-hidden className="h-3 w-3 rounded-sm border border-dashed border-text-muted/50 bg-surface-sunk" />
+          On hold (unpaid request; frees up if not paid in time)
         </li>
         <li className="flex items-center gap-1.5">
           <span aria-hidden className="h-3 w-3 rounded-sm bg-warning/15" />

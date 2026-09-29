@@ -11,6 +11,7 @@ import type {
   AreaForecastResponse,
   CustomerSiteResponse,
   BookingListResponse,
+  BookingStatus,
   CatalogEquipment,
   CatalogEquipmentListResponse,
   CatalogTestimonialListResponse,
@@ -21,6 +22,7 @@ import type {
   InvoiceListResponse,
   EdtrDetailResponse,
   SiteHubResponse,
+  SiteDeploymentFilter,
   SiteListResponse,
   UserSelfResponse,
   UtilizationReportResponse,
@@ -94,10 +96,11 @@ export const catalogQueries = {
 };
 
 export const sitesQueries = {
-  list: (limit = PAGE_SIZE, offset = 0) =>
+  list: (limit = PAGE_SIZE, offset = 0, deployment?: SiteDeploymentFilter) =>
     queryOptions({
-      queryKey: ['sites', limit, offset] as const,
-      queryFn: () => apiGet<SiteListResponse>(`/sites?limit=${limit}&offset=${offset}`),
+      queryKey: ['sites', limit, offset, deployment ?? 'all'] as const,
+      queryFn: () =>
+        apiGet<SiteListResponse>(`/sites?limit=${limit}&offset=${offset}${deployment ? `&deployment=${deployment}` : ''}`),
     }),
   // The site hub (cr-arkilaunch-edtr-site-hub-approval.md).
   hub: (siteId: string) =>
@@ -179,15 +182,28 @@ export const incidentsQueries = {
     }),
 };
 
+export interface BookingListFilters {
+  status?: BookingStatus[];
+  from?: string;
+  to?: string;
+  sort?: 'newest' | 'start';
+}
+
 export const bookingsQueries = {
-  // `q` narrows to booking codes starting with it (EQR-2026-00…).
-  list: (limit = PAGE_SIZE, offset = 0, q = '') =>
+  // `q` narrows to booking codes starting with it (EQR-2026-00…) or a
+  // customer company name; `filters` are the staff list's chips (QA 27).
+  list: (limit = PAGE_SIZE, offset = 0, q = '', filters: BookingListFilters = {}) =>
     queryOptions({
-      queryKey: ['bookings', limit, offset, q] as const,
-      queryFn: () =>
-        apiGet<BookingListResponse>(
-          `/bookings?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}`,
-        ),
+      queryKey: ['bookings', limit, offset, q, filters] as const,
+      queryFn: () => {
+        const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+        if (q) params.set('q', q);
+        if (filters.status?.length) params.set('status', filters.status.join(','));
+        if (filters.from) params.set('from', filters.from);
+        if (filters.to) params.set('to', filters.to);
+        if (filters.sort) params.set('sort', filters.sort);
+        return apiGet<BookingListResponse>(`/bookings?${params.toString()}`);
+      },
     }),
   detail: (bookingId: string) =>
     queryOptions({

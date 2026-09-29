@@ -219,8 +219,11 @@ function FleetFilters({
 }
 
 function InventoryPage() {
+  // ?q= opens the list already searched: a maintenance notification names
+  // its unit by serial (QA 26).
+  const { q } = appInventoryRoute.useSearch();
   const [offset, setOffset] = useState(0);
-  const [filters, setFilters] = useState<EquipmentListFilters>({});
+  const [filters, setFilters] = useState<EquipmentListFilters>(() => (q ? { q } : {}));
   // Typing in search refetches once the input settles, not per keystroke.
   const deferredFilters = useDeferredValue(filters);
   const listOptions = equipmentQueries.list(PAGE_SIZE, offset, deferredFilters);
@@ -292,6 +295,8 @@ function InventoryPage() {
                         <img
                           src={photo}
                           alt={`${eq.model}, ${eq.serialNo}`}
+                          loading="lazy"
+                          decoding="async"
                           className="h-full w-full object-cover"
                         />
                       ) : (
@@ -350,5 +355,7 @@ function InventoryPage() {
 export const appInventoryRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/inventory',
+  validateSearch: (search: Record<string, unknown>): { q?: string } =>
+    typeof search.q === 'string' && search.q.trim() ? { q: search.q.trim().slice(0, 100) } : {},
   component: InventoryPage,
 });

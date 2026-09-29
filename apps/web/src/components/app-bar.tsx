@@ -169,7 +169,12 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   // The same bar renders inside the account shell, where /app/* is a role
   // bounce rather than a destination.
   const isCustomer = role === 'customer';
-  const notificationsPath = isCustomer ? '/account/notifications' : '/app/notifications';
+  // Each console has its own feed; the platform host serves no /app route.
+  const notificationsPath = isCustomer
+    ? '/account/notifications'
+    : role === 'platform_admin'
+      ? '/admin/notifications'
+      : '/app/notifications';
 
   const notifications = useQuery({ ...notificationsQueries.unreadCount(), retry: false });
   // GET /edtr is staff-only, so this fired a guaranteed 403 on every page a
@@ -199,6 +204,9 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   const unreadCount = notifications.data?.total ?? null;
   const reviewQueueCount = isPlatformAdmin ? (applications.data?.total ?? null) : (edtrList.data?.total ?? null);
   const reviewQueueLabel = isPlatformAdmin ? 'Applications' : 'Review queue';
+  const reviewQueueLink = isPlatformAdmin
+    ? ({ to: '/admin/applications' } as const)
+    : ({ to: '/app/ocr', search: { status: 'review' } } as const);
 
   const bar = useHeaderColor();
   const tenant = useTenant();
@@ -263,8 +271,10 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
                 pill's own tone pairing already solves this, so the compact
                 form borrows it and keeps icon + number + name so it is never
                 colour-only. */}
-            <span
-              aria-label={`${reviewQueueLabel}: ${reviewQueueCount}`}
+            {/* QA 27: the pill opens the queue it counts. */}
+            <Link
+              {...reviewQueueLink}
+              aria-label={`${reviewQueueLabel}: ${reviewQueueCount}. Open it`}
               className="flex min-h-11 items-center sm:hidden"
             >
               <span className="flex items-center gap-1 rounded-sm bg-recon-review px-1.5 py-1 text-text">
@@ -273,7 +283,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
                   {reviewQueueCount}
                 </span>
               </span>
-            </span>
+            </Link>
             {/* Hidden via a WRAPPER, not a `hidden` class on the pill
                 itself. StatusPill sets `inline-flex` in its own base
                 classes, and between two single-class display utilities the
@@ -281,7 +291,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
                 class attribute -- so `hidden` lost and the phone rendered
                 the icon AND the 153px pill side by side, which is what put
                 this group over the viewport in the first place. */}
-            <span className="hidden sm:block">
+            <Link {...reviewQueueLink} className="hidden rounded-full hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring sm:block">
               <StatusPill
                 tone="recon-review"
                 label={reviewQueueLabel}
@@ -289,7 +299,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
                 value={String(reviewQueueCount)}
                 className="whitespace-nowrap"
               />
-            </span>
+            </Link>
           </>
         )}
 

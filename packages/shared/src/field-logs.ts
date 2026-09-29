@@ -69,6 +69,11 @@ export interface FieldLogUnit {
   operatorName: string | null;
   runtimeHours: number;
   lastMeterReading: number | null;
+  // The unit's assignment says it is out there now (delivered), not just
+  // that its dates have started. Optional: older responses lack it.
+  onSite?: boolean;
+  // Every assignment of the unit on this booking is returned.
+  returned?: boolean;
 }
 
 export interface SiteHubResponse {

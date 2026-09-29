@@ -129,6 +129,11 @@ variable "maintenance_notify_cron" {
   default = "0 7 * * *"
 }
 
+variable "hold_expiry_cron" {
+  type    = string
+  default = "5 * * * *"
+}
+
 # --- Secrets: sourced from GitHub encrypted secrets via TF_VAR_* in CI,
 # never committed to terraform.tfvars. ---
 

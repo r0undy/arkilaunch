@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import postgres from 'postgres';
 import { NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { registerTenant } from '@arkilaunch/db';
@@ -55,6 +56,17 @@ describe('self-serve rental company', () => {
       contactMobile: '09170000000',
       contactJobTitle: 'Owner',
     });
+
+    // QA 26 (migration 0069): every active platform admin hears of it.
+    const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    const [admins] = await sql`
+      select count(*)::int as n from users u join roles r on r.id = u.role_id
+      where r.name = 'platform_admin' and u.status = 'active'`;
+    const [told] = await sql`
+      select count(*)::int as n from notifications
+      where notification_type = 'tenant_registered' and payload->>'application_id' = ${reg.applicationId}`;
+    await sql.end();
+    expect((told as { n: number }).n).toBe((admins as { n: number }).n);
 
     // Auto-approved, but not live until the owner proves the email.
     await expect(catalog.getTenant(slug)).rejects.toThrow(NotFoundException);
