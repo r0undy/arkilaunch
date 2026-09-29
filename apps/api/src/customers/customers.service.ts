@@ -73,7 +73,7 @@ import type {
   CustomerSiteResponse,
   RequestContext,
 } from '@arkilaunch/shared';
-import { ownCustomers, ownsCustomer } from '../common/customer-scope.js';
+import { ownCustomers, ownsCustomer, ownSite } from '../common/customer-scope.js';
 import { EventsService } from '../events/events.service.js';
 import { notifyStaff } from '../common/notify-customer.js';
 import { siteDocumentsFor, siteProofComplete } from '../common/site-proof.js';
@@ -676,11 +676,7 @@ export class CustomersService {
   async addSiteDocument(ctx: RequestContext, siteId: string, documentType: string, fileUri: string) {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
-      const ids = (await ownCustomers(tx, ctx)).map((row) => row.id);
-      const [site] = ids.length
-        ? await tx.select().from(projectSites).where(and(eq(projectSites.id, siteId), inArray(projectSites.customerId, ids))).limit(1)
-        : [];
-      if (!site) throw new NotFoundException({ error: 'site_not_found' });
+      await ownSite(tx, ctx, siteId);
       const [row] = await tx
         .insert(siteDocuments)
         .values({ tenantId: ctx.tenantId, projectSiteId: siteId, documentType, fileUri, uploadedBy: ctx.userId })
@@ -725,18 +721,7 @@ export class CustomersService {
    */
   async siteForecast(ctx: RequestContext, siteId: string): Promise<SiteForecastResponse> {
     assertCustomer(ctx);
-    const site = await withTenantTx(ctx, async (tx) => {
-      const ids = (await ownCustomers(tx, ctx)).map((row) => row.id);
-      if (ids.length === 0) throw new NotFoundException({ error: 'site_not_found' });
-      const [row] = await tx
-        .select()
-        .from(projectSites)
-        .where(and(eq(projectSites.id, siteId), inArray(projectSites.customerId, ids)))
-        .limit(1);
-      // Not-found rather than forbidden, so the check confirms no ids.
-      if (!row) throw new NotFoundException({ error: 'site_not_found' });
-      return row;
-    });
+    const { site } = await withTenantTx(ctx, (tx) => ownSite(tx, ctx, siteId));
 
     return { siteId, ...(await this.forecastAt(Number(site.latitude), Number(site.longitude))) };
   }
@@ -777,14 +762,7 @@ export class CustomersService {
   async siteEquipmentWeather(ctx: RequestContext, siteId: string): Promise<SiteEquipmentWeatherResponse> {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
-      const ids = (await ownCustomers(tx, ctx)).map((row) => row.id);
-      if (ids.length === 0) throw new NotFoundException({ error: 'site_not_found' });
-      const [site] = await tx
-        .select({ id: projectSites.id })
-        .from(projectSites)
-        .where(and(eq(projectSites.id, siteId), inArray(projectSites.customerId, ids)))
-        .limit(1);
-      if (!site) throw new NotFoundException({ error: 'site_not_found' });
+      const { customerIds: ids } = await ownSite(tx, ctx, siteId);
       const mine = await tx.select({ id: rentals.id }).from(rentals).where(and(eq(rentals.projectSiteId, siteId), inArray(rentals.customerId, ids)));
       return latestEquipmentWeather(tx, siteId, mine.map((row) => row.id));
     });

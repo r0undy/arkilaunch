@@ -1,6 +1,6 @@
-import { ConflictException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
-import { type Tx, customers, invoices, rentals, truckRequests } from '@arkilaunch/db';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { and, eq, inArray } from 'drizzle-orm';
+import { type Tx, customers, invoices, projectSites, rentals, truckRequests } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
 
 
@@ -20,6 +20,20 @@ export async function ownCustomers(tx: Tx, ctx: RequestContext) {
 export async function ownsCustomer(tx: Tx, ctx: RequestContext, customerId: string | null): Promise<boolean> {
   if (!customerId) return false;
   return (await ownCustomers(tx, ctx)).some((row) => row.id === customerId);
+}
+
+// A site of one of the caller's own companies; anything else is 404, so no id is confirmed.
+export async function ownSite(tx: Tx, ctx: RequestContext, siteId: string) {
+  const customerIds = (await ownCustomers(tx, ctx)).map((row) => row.id);
+  const [site] = customerIds.length
+    ? await tx
+        .select()
+        .from(projectSites)
+        .where(and(eq(projectSites.id, siteId), inArray(projectSites.customerId, customerIds)))
+        .limit(1)
+    : [];
+  if (!site) throw new NotFoundException({ error: 'site_not_found' });
+  return { site, customerIds };
 }
 
 // A customer's own invoice: one on their booking (via ownsCustomer) or on
