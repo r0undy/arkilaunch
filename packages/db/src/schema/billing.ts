@@ -21,10 +21,7 @@ import { equipment } from './fleet.js';
 import { truckRequests } from './trucks.js';
 import { customers } from './customers.js';
 
-// One of two independent logs per equipment-day (RFC-2). attempts/lockedAt/
-// lastError back the edtr-ocr-worker claim/lock/retry loop (RFC2-01);
-// edtr_status_chk pins the 6-state lifecycle so a typo can't introduce an
-// unreachable/undefined status.
+// One of two independent logs per equipment-day (RFC-2).
 export const edtr = pgTable(
   'edtr',
   {
@@ -43,11 +40,9 @@ export const edtr = pgTable(
     rawFileUri: text('raw_file_uri'), // null for direct digital entry
     ocrPayload: jsonb('ocr_payload'),
     status: text('status').notNull().default('queued'),
-    // queued, extracting, extracted, review, reconciled, hard_failed
     attempts: integer('attempts').notNull().default(0),
     lockedAt: timestamp('locked_at', { withTimezone: true }),
     lastError: text('last_error'),
-    // 0059: who recorded it (timekeeper, or the admin's office log).
     submittedBy: uuid('submitted_by').references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -59,14 +54,8 @@ export const edtr = pgTable(
     ),
     index('edtr_tenant_equipment_date_idx').on(t.tenantId, t.equipmentId, t.reportDate),
     index('edtr_status_locked_at_idx').on(t.status, t.lockedAt),
-    // audit-db-tenant-isolation.md #4 (the UNIQUE on
-    // (tenant_id, equipment_id, report_date, source)) is deliberately NOT
-    // declared yet: the dev database holds 389 duplicate rows in the
-    // test-tenant-a fixture, and removing them cascades into 343 line
-    // items, 396 reconciliation references (11 of them approved) and 10
-    // deduction line items. That cleanup is a decision, not a migration
-    // side effect. Until it lands, reconcileEdtr still pairs on the first
-    // arbitrary row of an unordered scan.
+    // No UNIQUE (tenant_id, equipment_id, report_date, source) yet: dev data holds duplicates,
+    // so reconcileEdtr still pairs on an arbitrary row.
   ],
 );
 
@@ -81,17 +70,10 @@ export const edtrLineItems = pgTable(
       .notNull()
       .references(() => edtr.id),
     hoursActive: numeric('hours_active', { precision: 6, scale: 2 }).notNull(), // >= 0
-    // NULL means the source never recorded idle time -- the real Almara
-    // paper form has no idle column at all. It is NOT zero: writing 0 would
-    // hand the deduction gate a fabricated reading it cannot distinguish
-    // from a genuinely idle machine (migration 0017).
+    // NULL = not recorded, never 0: a 0 would hand the deduction gate a fabricated reading.
     hoursIdle: numeric('hours_idle', { precision: 6, scale: 2 }), // >= 0 when present
     notes: text('notes'),
-    // 0059 (EDTR v3): one column per downtime cause plus the hour meter.
-    // hours_active = RUNNING, hours_idle = IDLE by the customer's choice.
-    // Same NULL-vs-0 rule as hours_idle: NULL = not recorded (pre-v3).
-    // classifyHours() in packages/shared is the only reader that turns
-    // these into billable / running figures.
+    // Same NULL-vs-0 rule as hours_idle; classifyHours() is the only reader.
     hoursTotal: numeric('hours_total', { precision: 6, scale: 2 }),
     hoursBreakdown: numeric('hours_breakdown', { precision: 6, scale: 2 }),
     hoursWeather: numeric('hours_weather', { precision: 6, scale: 2 }),
@@ -99,7 +81,6 @@ export const edtrLineItems = pgTable(
     downtimeNote: text('downtime_note'),
     hourMeterStart: numeric('hour_meter_start', { precision: 10, scale: 1 }),
     hourMeterEnd: numeric('hour_meter_end', { precision: 10, scale: 1 }),
-    // validateDayEntry() codes raised at capture; routes the day to a human.
     reviewFlags: jsonb('review_flags').$type<string[]>().notNull().default([]),
   },
   (t) => [
@@ -110,19 +91,12 @@ export const edtrLineItems = pgTable(
       sql`${t.hoursTotal} >= 0 AND ${t.hoursBreakdown} >= 0 AND ${t.hoursWeather} >= 0 AND ${t.hoursOtherDowntime} >= 0 AND ${t.hourMeterStart} >= 0 AND ${t.hourMeterEnd} >= 0 AND ${t.hoursTotal} <= 24 AND ${t.hoursBreakdown} <= 24 AND ${t.hoursWeather} <= 24 AND ${t.hoursOtherDowntime} <= 24`,
     ),
     index('edtr_line_items_tenant_id_idx').on(t.tenantId),
-    // Unique, not just indexed: approve() sums ALL line items for an EDTR
-    // (edtr.service.ts), so requeueing an already-extracted row inserted a
-    // second line item and doubled the billable hours. Requeue both sides
-    // and the pair still reconciles cleanly, at 2x
-    // (audit-ocr-money-path.md #7). Verified zero existing duplicates.
+    // Unique: approve() sums every line item of an EDTR, so a second row doubles billable hours.
     unique('edtr_line_items_edtr_id_uq').on(t.edtrId),
   ],
 );
 
-// The deposit-deduction gate (RFC-2). There is no code path from this table
-// to a deduction other than the approve endpoint asserting status IN
-// ('matched') OR human-resolved (AGENTS.md "Never": deduct without a
-// passing reconciliation or explicit human approval).
+// RFC-2 deduction gate: only approve() on a matched or human-resolved row may deduct.
 export const edtrReconciliations = pgTable(
   'edtr_reconciliations',
   {
@@ -140,7 +114,6 @@ export const edtrReconciliations = pgTable(
     verifiedBy: uuid('verified_by').references(() => users.id),
     adjustments: jsonb('adjustments'),
     status: text('status').notNull().default('pending'),
-    // pending, matched, discrepancy, approved, rejected
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -149,14 +122,7 @@ export const edtrReconciliations = pgTable(
       'edtr_recon_status_chk',
       sql`${t.status} IN ('pending','matched','discrepancy','approved','rejected')`,
     ),
-    // RFC-2's "two independent logs" was enforced only by the value of a
-    // text column: approve() checks the status, and its counterpart lock
-    // is `if (reconciliation.counterpartEdtrId)`, i.e. optional. A row at
-    // status='matched' with counterpart_edtr_id=NULL -- seeded, demo,
-    // backfilled or hand-written -- therefore passed the gate and inserted
-    // a deposit_deduction with no second log behind it
-    // (audit-ocr-money-path.md #1, already written down in
-    // cr-arkilaunch-m4-money-path-gates.md:99 and still unfixed until now).
+    // RFC-2 "two independent logs": a matched/approved row must name its counterpart.
     check(
       'edtr_recon_matched_needs_counterpart_chk',
       sql`${t.status} NOT IN ('matched','approved') OR ${t.counterpartEdtrId} IS NOT NULL`,
@@ -172,7 +138,7 @@ export const invoices = pgTable(
     tenantId: uuid('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
-    // Exactly one of rental_id / truck_request_id (migration 0032 CHECK).
+    // Exactly one of rental_id / truck_request_id (CHECK in SQL).
     rentalId: uuid('rental_id').references(() => rentals.id),
     truckRequestId: uuid('truck_request_id').references(() => truckRequests.id),
     invoiceType: text('invoice_type').notNull(), // deposit_deduction, weekly, final, booking, truck
@@ -199,13 +165,6 @@ export const invoiceLineItems = pgTable(
     invoiceId: uuid('invoice_id')
       .notNull()
       .references(() => invoices.id),
-    // The deduction's tie to the reconciliation that justifies it. Until
-    // now the only link was the sentence "EDTR reconciliation <uuid>
-    // (sources: <uuid>, <uuid>)" in `description`, a plain text column
-    // parsed back out with a regex: no referential integrity, a trail a
-    // text edit could break or forge, and findEdtrEvidence returning null
-    // on any format change (audit-db-tenant-isolation.md #3). Nullable
-    // because most line items are not deductions.
     reconciliationId: uuid('reconciliation_id').references(() => edtrReconciliations.id),
     description: text('description').notNull(),
     quantity: numeric('quantity', { precision: 10, scale: 2 }).notNull().default('1'),
@@ -216,12 +175,6 @@ export const invoiceLineItems = pgTable(
     tenantIsolationPolicy(),
     index('invoice_line_items_tenant_id_idx').on(table.tenantId),
     index('invoice_line_items_reconciliation_id_idx').on(table.reconciliationId),
-    // audit-db-tenant-isolation.md #5: the money columns carried NOT NULL
-    // and nothing else, so the database accepted a negative amount. The
-    // non-money tables already had checks (edtr_hours_nonneg_chk,
-    // buffer_range, price_sane); the money path was the one without. A
-    // negative deposit_deduction also *increases* the remaining balance in
-    // resolveDepositLedger.
     check(
       'invoice_line_items_nonneg_chk',
       sql`${table.quantity} >= 0 AND ${table.unitPrice} >= 0 AND ${table.amount} >= 0`,
@@ -229,9 +182,8 @@ export const invoiceLineItems = pgTable(
   ],
 );
 
-// No card/account data stored (PRD-F2). provider_ref stays globally unique
-// (not composite with tenant_id) for PayMongo webhook idempotency — the one
-// documented exception to the composite-unique convention (RFC-1 §3).
+// No card/account data stored. provider_ref is globally unique (not per tenant) for
+// PayMongo webhook idempotency.
 export const payments = pgTable(
   'payments',
   {
@@ -243,11 +195,9 @@ export const payments = pgTable(
       .notNull()
       .references(() => invoices.id),
     method: text('method').notNull(), // card, gcash, maya, bank (channel only), cash
-    // Set only on a cash payment: the staff member who received it.
     recordedByUserId: uuid('recorded_by_user_id').references(() => users.id),
     amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
     providerRef: text('provider_ref').unique(),
-    // PayMongo's pay_... id, stamped at settlement (0053); refunds use it.
     providerPaymentId: text('provider_payment_id'),
     status: text('status').notNull().default('pending'), // pending, paid, failed, refunded
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -260,8 +210,6 @@ export const payments = pgTable(
   ],
 );
 
-// 0038: per-tenant billing knobs. No row = the column defaults
-// (getBillingSettings in deposit-ledger.ts).
 export const billingSettings = pgTable(
   'billing_settings',
   {
@@ -271,21 +219,16 @@ export const billingSettings = pgTable(
     dailyHours: numeric('daily_hours', { precision: 4, scale: 2 }).notNull().default('8'),
     minDepositPhp: numeric('min_deposit_php', { precision: 12, scale: 2 }).notNull().default('5000'),
     lowBalancePct: numeric('low_balance_pct', { precision: 5, scale: 2 }).notNull().default('20'),
-    depositPct: numeric('deposit_pct', { precision: 5, scale: 2 }).notNull().default('0'), // 0041
-    // 0044: the mobilization/demobilization every new quote starts with.
+    depositPct: numeric('deposit_pct', { precision: 5, scale: 2 }).notNull().default('0'),
     mobilizationPhp: numeric('mobilization_php', { precision: 12, scale: 2 }).notNull().default('0'),
     demobilizationPhp: numeric('demobilization_php', { precision: 12, scale: 2 }).notNull().default('0'),
-    // 0047: the fewest hours a customer may book, whatever the dates.
     minHours: numeric('min_hours', { precision: 8, scale: 2 }).notNull().default('0'),
-    // 0068: how long an unpaid request holds its dates.
     holdHours: integer('hold_hours').notNull().default(48),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   () => [tenantIsolationPolicy()],
 );
 
-// 0039: reconciled hours billed past the deposit balance. Unbilled until
-// jobs/src/weekly-billing.ts rolls them into a 'weekly' invoice.
 export const depositAccruals = pgTable(
   'deposit_accruals',
   {
@@ -313,9 +256,7 @@ export const depositAccruals = pgTable(
   ],
 );
 
-// 0057: a rental company's coupon codes (cr-arkilaunch-coupons.md). Code is
-// stored upper-case; redeemed_count is bumped by one guarded UPDATE at
-// checkout (payments/coupons.ts), never read-then-written.
+// redeemed_count is bumped by one guarded UPDATE at checkout, never read-then-written.
 export const coupons = pgTable(
   'coupons',
   {
@@ -348,8 +289,6 @@ export const coupons = pgTable(
   ],
 );
 
-// One coupon per invoice; customer_id is the company, which is what
-// once_per_customer counts against.
 export const couponRedemptions = pgTable(
   'coupon_redemptions',
   {

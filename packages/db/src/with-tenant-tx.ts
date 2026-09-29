@@ -13,17 +13,13 @@ const pending = new WeakMap<object, (() => Promise<void>)[]>();
 
 export function afterCommit(tx: Tx, fn: () => Promise<void>): void {
   const queue = pending.get(tx);
-  // Every notify path runs inside withTenantTx; anything else is a bug,
-  // and dropping the email silently would hide it.
+  // Every notify path runs inside withTenantTx; silently dropping the email would hide a bug.
   if (!queue) throw new Error('afterCommit called outside withTenantTx');
   queue.push(fn);
 }
 
-// Every request runs inside a transaction that sets the tenant/user/role
-// GUCs BEFORE any query, so Postgres RLS filters rows. local=true binds the
-// GUC to the transaction, so a pooled (Supavisor) connection cannot leak
-// tenant context across requests. RLS is the backstop; never rely on an
-// app-level `where tenant_id = ?` alone (AGENTS.md §4 golden path).
+// Sets the tenant/user/role GUCs BEFORE any query so RLS filters rows. local=true binds them
+// to the transaction, so a pooled connection cannot leak tenant context. RLS is the backstop.
 export async function withTenantTx<T>(
   ctx: RequestContext,
   fn: (tx: Tx) => Promise<T>,
@@ -36,8 +32,7 @@ export async function withTenantTx<T>(
     await tx.execute(sql`select set_config('app.current_role',     ${ctx.role},     true)`);
     return fn(tx);
   });
-  // Committed. A failed email must not fail the request (or a webhook's
-  // 2xx, which would make PayMongo redeliver an already-settled event).
+  // Committed. A failed email must not fail the request, or PayMongo redelivers the webhook.
   for (const run of queue) {
     await run().catch((err) => console.error('[afterCommit]', err));
   }

@@ -2,11 +2,7 @@ import { sql } from 'drizzle-orm';
 import { db } from './client.js';
 import { pgError } from './pg-error.js';
 
-// Pre-tenant-context write for POST /tenants/register only (see
-// migrations/0009_tenant_registration.sql). Calls a narrow SECURITY DEFINER
-// function, not an RLS-protected table directly -- there is no tenant
-// context yet for an unauthenticated caller creating a tenant for the
-// first time, same rationale as auth-lookup.ts.
+// No tenant context yet for an unauthenticated registrant: goes through a narrow SECURITY DEFINER function.
 
 export interface TenantRegisterInput {
   legalName: string;
@@ -57,11 +53,7 @@ export interface TenantApplicationDecisionResult {
   tenantSlug: string;
 }
 
-// Cross-tenant administrative write for POST /tenants/:id/approve|/reject
-// (tenant:approve, platform_admin only). See migrations/0009_tenant_registration.sql
-// tenants_decide_application() for why this bypasses withTenantTx's normal
-// RLS scoping -- the caller is authenticated and permission-checked, but is
-// deciding on a DIFFERENT tenant's application than their own.
+// Cross-tenant (platform_admin only): SECURITY DEFINER because the caller decides another tenant's application.
 export class ApplicationNotPendingError extends Error {}
 
 export async function decideTenantApplication(
@@ -103,16 +95,7 @@ export interface PendingTenantApplication {
   createdAt: Date;
 }
 
-// Cross-tenant administrative read for GET /tenants/applications
-// (tenant:approve, platform_admin only) -- same rationale as
-// decideTenantApplication, but for the list a platform console needs before
-// it can call approve/reject at all.
-// Paged at the database rather than in Node. The SECURITY DEFINER
-// function itself is unchanged -- LIMIT/OFFSET wrap its result set, so
-// Postgres stops shipping rows past the page, and the platform queue no
-// longer returns every pending application in one response
-// (audit-api-surface.md #4). `total` is a separate count over the same
-// function so a caller can page.
+// Cross-tenant read (platform_admin only), paged at the database around the SECURITY DEFINER function.
 export async function countPendingTenantApplications(): Promise<number> {
   const [row] = await db.execute<{ total: string }>(
     sql`select count(*)::text as total from tenants_list_pending_applications()`,
@@ -157,17 +140,14 @@ function isDuplicatePendingApplication(err: unknown): boolean {
 
 export class EmailTakenError extends Error {}
 
-// The functions' own 'email_taken', or the one-login-per-email index
-// (0063) when a concurrent registration slipped past that check.
+// The functions' own 'email_taken', or the one-login-per-email index on a concurrent race.
 function isEmailTaken(err: unknown): boolean {
   const e = pgError(err);
   return /email_taken/.test(String(e.message)) || e.constraint === 'users_email_key_uq';
 }
 export class StorefrontNotFoundError extends Error {}
 
-// Pre-tenant-context write for POST /auth/register-customer (migration
-// 0023, active-tenant check added in 0048). The slug is the request host's
-// tenant label; customer_register only accepts an active tenant.
+// Pre-tenant-context write; customer_register only accepts an active tenant.
 export async function registerCustomerUser(
   tenantSlug: string,
   email: string,
@@ -187,8 +167,7 @@ export async function registerCustomerUser(
   }
 }
 
-// Cross-tenant administrative read/write for the /admin Companies page
-// (migration 0049). Aggregate counts only; see tenants_list_companies().
+// Cross-tenant (platform admin); aggregate counts only.
 export interface PlatformCompanyRow {
   tenantId: string;
   legalName: string;
@@ -243,16 +222,13 @@ export async function setPlatformCompanyStatus(
   }
 }
 
-// POST /auth/activate: an auto-approved tenant goes live when its invited
-// owner sets a password (migration 0051). A no-op for any other tenant.
+// An auto-approved tenant goes live when its invited owner sets a password; else a no-op.
 export async function activateOnboardingTenant(tenantId: string): Promise<void> {
   await db.execute(sql`select tenants_activate_onboarding(${tenantId})`);
 }
 
-// Tenant branding writes (migrations 0051, 0060). The caller decides the
-// tenant: the verified JWT's tenant for owner/admin, or a platform admin's
-// chosen company. The functions never touch legal_name, slug or status and
-// refuse the platform tenant.
+// The caller decides the tenant: the JWT's tenant for owner/admin, or a platform admin's pick.
+// The functions never touch legal_name, slug or status and refuse the platform tenant.
 export interface TenantBrandingInput {
   primaryColor: string | null;
   headerColor: string | null;
@@ -303,7 +279,6 @@ export async function setTenantBrandingImage(
   }
 }
 
-// Platform admin links a company to its PayMongo child account (0053).
 // NULL unlinks it; that company is cash-only again.
 export async function setTenantPaymongoAccount(
   tenantId: string,
@@ -317,8 +292,7 @@ export async function setTenantPaymongoAccount(
   }
 }
 
-// The tenant's TIN for printed documents (0067); the caller passes the
-// verified JWT's tenant.
+// The caller passes the verified JWT's tenant.
 export async function getTenantTin(tenantId: string): Promise<string | null> {
   const rows = await db.execute<{ tin: string | null }>(sql`select tenants_get_tin(${tenantId}) as tin`);
   return rows[0]?.tin ?? null;
@@ -329,8 +303,6 @@ export async function getTenantPaymongoAccount(tenantId: string): Promise<string
   return rows[0]?.id ?? null;
 }
 
-// The branding form's current values for any tenant (owner/admin reads its
-// own; platform admin reads the company it is editing).
 export async function getTenantBranding(
   tenantId: string,
 ): Promise<

@@ -1,11 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from './client.js';
 
-// Pre-tenant-context lookup for the @Public catalog endpoint only (see
-// migrations/0008_public_catalog.sql). Calls a narrow SECURITY DEFINER
-// function, not an RLS-protected table directly -- there is no tenant
-// context yet for an unauthenticated caller, same rationale as
-// auth-lookup.ts / payments-lookup.ts.
+// @Public, pre-tenant-context: calls narrow SECURITY DEFINER functions, not RLS tables.
 
 export interface CatalogEquipmentRow {
   id: string;
@@ -13,10 +9,8 @@ export interface CatalogEquipmentRow {
   model: string;
   availabilityStatus: string;
   photoUri: string | null;
-  // The upfront public price (0038 detail, 0042 list): unit card, else type card.
   rateType: string | null;
   rateValue: number | null;
-  // Migration 0065: the unit's choices and its photo credit.
   optionGroups: { name: string; values: string[] }[];
   photoCredit: string | null;
   photoSourceUrl: string | null;
@@ -70,9 +64,7 @@ export async function getCatalogEquipmentForSlug(slug: string, id: string): Prom
   return rows[0] ? toCatalogEquipment(rows[0]) : null;
 }
 
-// GET /catalog/testimonials (@Public, anchor-tenant only). Same
-// pre-tenant-context, SECURITY DEFINER rationale as
-// listCatalogEquipmentForSlug (migration 0015).
+// Anchor-tenant only; same SECURITY DEFINER rationale.
 export interface CatalogTestimonialRow {
   id: string;
   quote: string;
@@ -95,9 +87,7 @@ export async function listCatalogTestimonialsForSlug(slug: string): Promise<Cata
   }));
 }
 
-// GET /catalog/tenant (@Public). The host tenant's public branding; null
-// for an unknown or not-yet-active slug (migrations 0048, 0051, 0060).
-// Image fields are storage keys; the API turns them into URLs.
+// null for an unknown or not-yet-active slug. Image fields are storage keys, not URLs.
 export interface CatalogTenantRow {
   name: string;
   logoKey: string | null;
@@ -158,8 +148,7 @@ export async function getCatalogTenantForSlug(slug: string): Promise<CatalogTena
   };
 }
 
-// GET /catalog/tenants (@Public). The platform directory (migrations 0051,
-// 0062): active rental companies only, public columns only. NULL filter = none.
+// Active companies and public columns only. NULL filter = none.
 export interface CatalogTenantListRow {
   slug: string;
   name: string;
@@ -189,8 +178,7 @@ export async function listCatalogTenants(
   }>(
     sql`select * from catalog_list_tenants(${filters.q}, ${filters.category}, ${filters.location}) limit ${limit} offset ${offset}`,
   );
-  // total_count rides on every row; a page past the end has no rows, so it
-  // reads 0 there -- the client only ever asks for pages inside the total.
+  // total_count rides on every row, so a page past the end reads 0.
   return {
     total: rows.length ? Number(rows[0]!.total_count) : 0,
     rows: rows.map((r) => ({
@@ -206,14 +194,11 @@ export async function listCatalogTenants(
   };
 }
 
-// The directory's City dropdown (migration 0062): cities listed companies are in.
 export async function listCatalogLocations(): Promise<string[]> {
   const rows = await db.execute<{ city: string }>(sql`select city from catalog_list_locations()`);
   return rows.map((r) => r.city);
 }
 
-// The directory's category filter options: equipment types some listed
-// company actually rents out (migration 0052; type names only).
 export async function listEquipmentTypeNames(): Promise<string[]> {
   const rows = await db.execute<{ name: string }>(sql`select name from catalog_list_categories()`);
   return rows.map((r) => r.name);

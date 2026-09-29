@@ -1,11 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from './client.js';
 
-// Pre-tenant-context lookup for the PayMongo webhook only (see
-// migrations/0006_paymongo_webhook_lookup.sql). Calls a narrow SECURITY
-// DEFINER function, not an RLS-protected table directly -- there is no
-// tenant context yet when a webhook arrives, same rationale as
-// auth-lookup.ts's login/refresh functions.
+// No tenant context when a webhook arrives: narrow SECURITY DEFINER functions, not RLS tables.
 
 export interface PaymentInvoiceLookupRow {
   tenantId: string;
@@ -31,8 +27,7 @@ export async function findTenantByInvoiceIdForWebhook(invoiceId: string): Promis
   return toLookupRow(rows[0]);
 }
 
-// The refund webhook's pre-tenant lookup (migration 0053): a refund event
-// carries PayMongo's pay_... id, not our invoice metadata.
+// A refund event carries PayMongo's pay_... id, not our invoice metadata.
 export async function findTenantByProviderPaymentIdForWebhook(
   providerPaymentId: string,
 ): Promise<PaymentInvoiceLookupRow | undefined> {

@@ -21,14 +21,8 @@ export interface DieselManualReadingRow extends Record<string, unknown> {
   captured_by: string | null;
 }
 
-// Platform-admin manual diesel entry (RFC-3 §2/§3 QUOTE-05).
-//
-// Goes through the SECURITY DEFINER function rather than a direct INSERT:
-// app_authenticated no longer holds INSERT on diesel_price_readings, a
-// global un-RLS'd table whose value every tenant's quote formula freezes
-// (audit-db-tenant-isolation.md #7, migration 0020). Authorization is
-// still the app-layer diesel:manage check on the route -- this only moves
-// the standing table privilege into one auditable function.
+// Via the SECURITY DEFINER function: app_authenticated holds no INSERT on this global table
+// every quote freezes. Authorization is still the route's diesel:manage check.
 export async function recordManualDieselReading(
   input: DieselManualReadingInput,
 ): Promise<DieselManualReadingRow> {
@@ -46,11 +40,7 @@ export async function recordManualDieselReading(
   return row;
 }
 
-// The retired DOE scrape path (the cron now reads GasWatch, below). Kept
-// because the stale-reading test (QAD-T45, quotes-engine.spec.ts) needs a
-// per-region write: app_authenticated lost its direct INSERT with
-// migration 0020, and this SECURITY DEFINER function hard-codes
-// source='doe_scrape'.
+// Retired DOE path, kept: the stale-reading test (QAD-T45) needs a per-region write.
 export async function recordScrapeDieselReading(input: {
   region: string;
   pricePhp: string;
@@ -70,11 +60,7 @@ export async function recordScrapeDieselReading(input: {
   return row;
 }
 
-// GasWatch PH (customer feedback 3). Its public JSON is one entry per
-// station: { overrides: { [stationId]: { diesel: { p: 104.78 }, ... } } }.
-// The reading is the national average of every station's diesel price that
-// sits inside the price_sane band, so one mistyped station cannot skew it.
-// The payload is untrusted: numbers are read out, nothing else is used.
+// Average of every station inside the price_sane band. The payload is untrusted: only numbers are read.
 export const GASWATCH_URL = 'https://gaswatchph.com/api/prices';
 const PRICE_SANE_MIN = 20;
 const PRICE_SANE_MAX = 150;
@@ -89,9 +75,7 @@ export function averageGasWatchDiesel(payload: unknown): number | null {
   return round2HalfUp(prices.reduce((sum, p) => sum + p, 0) / prices.length);
 }
 
-// Fetches GasWatch and records the average as today's reading for the
-// region. Throws when the fetch fails or nothing parses, so the caller
-// keeps the last-known reading and reports the degradation.
+// Throws when the fetch fails or nothing parses, so the caller keeps the last-known reading.
 export async function recordGasWatchDieselReading(region = 'NCR'): Promise<DieselManualReadingRow> {
   const response = await fetch(GASWATCH_URL, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) throw new Error(`GasWatch returned ${response.status}`);

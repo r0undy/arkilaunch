@@ -7,11 +7,7 @@ import {
   isLocalDatabaseUrl,
 } from '../src/seed/seed-identities.js';
 
-// These are the guardrails around the weak development credentials the
-// anchor seed writes. The seed bypasses UserPasswordSchema by hashing
-// directly, so the only thing standing between "admin"/"admin" and a live
-// multi-tenant database holding RA 10173 personal data is the host check
-// below. It gets a test.
+// The host check is the only thing between the weak seed credentials and a live database.
 describe('seed identities', () => {
   it('covers every role in ROLE_CODES exactly once', () => {
     const seeded = SEED_IDENTITIES.map((i) => i.role).sort();

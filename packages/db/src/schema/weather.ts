@@ -44,10 +44,7 @@ export const notifications = pgTable(
   ],
 );
 
-// 0056: PAGASA warnings in force for a province, recorded by staff as PAGASA
-// issues them (TCWS bulletin, rainfall and thunderstorm advisories) --
-// PAGASA publishes no machine-readable feed. The weather poll reads the one
-// for a site's province into every machine's level until valid_until.
+// PAGASA warnings for a province, keyed in by staff: PAGASA publishes no machine-readable feed.
 export const pagasaAdvisories = pgTable(
   'pagasa_advisories',
   {
@@ -69,9 +66,7 @@ export const pagasaAdvisories = pgTable(
   ],
 );
 
-// 0066: Web Push subscriptions (W3C Push API with our own VAPID keys, no
-// third-party SDK or account): one per browser a user turned weather
-// alerts on in. A 404/410 from the push endpoint deletes the row.
+// One per browser a user enabled weather alerts in; a 404/410 from the endpoint deletes the row.
 export const pushSubscriptions = pgTable(
   'push_subscriptions',
   {

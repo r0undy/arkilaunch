@@ -4,11 +4,7 @@ import * as schema from '../schema/index.js';
 import { makeServiceDb, seedPermissionCatalog } from './permission-catalog.js';
 import { assertSeedTargetIsLocal } from './seed-identities.js';
 
-// QAD §3: "A test that 'confirms isolation' against a single-tenant
-// database proves nothing." Seeds two tenants, each with an admin user,
-// one piece of equipment, a rate card, pricing parameters, and a customer,
-// so cross-tenant isolation tests (including the RFC-3 quotation engine's
-// QAD-T48) have real rows on both sides of the boundary to probe.
+// QAD Â§3: isolation needs two tenants with real rows on both sides of the boundary.
 async function main() {
   assertSeedTargetIsLocal(process.env.DATABASE_URL_DIRECT, { fixedPassword: true });
   const { db, client } = makeServiceDb();
@@ -30,8 +26,6 @@ async function main() {
     (await db.select().from(schema.equipmentTypes).where(eq(schema.equipmentTypes.name, 'Backhoe Loader')))[0];
   if (!resolvedEquipmentType) throw new Error('failed to seed equipment_types');
 
-  // Global diesel reading (RFC-3): one row is enough for both tenants'
-  // pricing engine calls to resolve a fresh price.
   await db
     .insert(schema.dieselPriceReadings)
     .values({
@@ -46,8 +40,7 @@ async function main() {
     const paymongoAccountId = `org_test${slug.slice(-1).toUpperCase()}`;
     const [tenant] = await db
       .insert(schema.tenants)
-      // Linked to a (fake) PayMongo child so online checkout is offered;
-      // an unlinked tenant is cash-only (migration 0053).
+      // Linked to a fake PayMongo child so online checkout is offered.
       .values({ legalName: `Test Tenant ${slug.slice(-1).toUpperCase()}`, slug, status: 'active', paymongoAccountId })
       .onConflictDoUpdate({ target: schema.tenants.slug, set: { status: 'active', paymongoAccountId } })
       .returning();
@@ -79,7 +72,6 @@ async function main() {
       .from(schema.equipment)
       .where(and(eq(schema.equipment.tenantId, tenant.id), eq(schema.equipment.serialNo, `${slug}-serial-001`)));
 
-    // PRD-F4: one seeded schedule per unit, same rationale as anchor.ts.
     if (equipmentRow) {
       const existingSchedule = await db
         .select()
@@ -95,8 +87,7 @@ async function main() {
       }
     }
 
-    // A live type-wide hourly card: the specs price against it, and a run
-    // that retires or supersedes one must not leave the next run without.
+    // A live type-wide hourly card must survive a run that retires or supersedes one.
     const existingRateCard = await db
       .select()
       .from(schema.rateCards)
@@ -149,10 +140,7 @@ async function main() {
       });
     }
 
-    // PRD-F8: an authenticated `customer`-role user, linked to the
-    // tenant's customers row via customers.user_id (bookings.service.ts
-    // derives the caller's own customer from this link, never from a
-    // client-supplied customerId).
+    // Customer-role user linked via customers.user_id: the caller's customer is derived from it, never client-supplied.
     await db
       .insert(schema.users)
       .values({
@@ -168,8 +156,7 @@ async function main() {
       .from(schema.users)
       .where(and(eq(schema.users.tenantId, tenant.id), eq(schema.users.roleId, customerRoleId)));
     const [customerRowForLink] = await db.select().from(schema.customers).where(eq(schema.customers.tenantId, tenant.id));
-    // The fixture customer is a verified company, so checkout (which now
-    // waits for company verification) stays testable.
+    // Verified company, so checkout stays testable.
     if (customerUser && customerRowForLink) {
       await db
         .update(schema.customers)
@@ -177,9 +164,7 @@ async function main() {
         .where(eq(schema.customers.id, customerRowForLink.id));
     }
 
-    // PRD-F8: a dedicated bookable unit, kept separate from the
-    // reconciliation/fleet fixture unit above so booking tests never race
-    // another spec file's availabilityStatus/runtime_hours mutations.
+    // A dedicated bookable unit so booking tests never race another spec's fleet mutations.
     await db
       .insert(schema.equipment)
       .values({
@@ -190,8 +175,6 @@ async function main() {
       })
       .onConflictDoNothing();
 
-    // Timekeeper user + an assigned site (RFC-2 §8 US-02 AC2: a timekeeper
-    // may only submit/view an EDTR for a site they are assigned to).
     await db
       .insert(schema.users)
       .values({
@@ -248,8 +231,6 @@ async function main() {
         .onConflictDoNothing();
     }
 
-    // PRD-F4/F5 fixtures for the cross-tenant isolation checks in
-    // packages/db/test/tenant-isolation.spec.ts (maintenance_logs, weather_alerts).
     if (equipmentRow) {
       const existingLog = await db
         .select()
@@ -280,8 +261,6 @@ async function main() {
       });
     }
 
-    // A rental (RFC-2 §3: edtr.rental_id FK) so EDTR fixtures have somewhere
-    // to attach.
     const [customerRow] = await db.select().from(schema.customers).where(eq(schema.customers.tenantId, tenant.id));
     const existingRental = await db.select().from(schema.rentals).where(eq(schema.rentals.tenantId, tenant.id));
     if (existingRental.length === 0 && customerRow) {

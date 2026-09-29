@@ -1,25 +1,13 @@
 import type { RoleCode } from '@arkilaunch/shared';
 
-// Development seed identities. One shared, trivially memorable password
-// across all five roles, so exercising RBAC is a matter of switching
-// accounts rather than juggling credentials.
-//
-// These are DEVELOPMENT credentials and nothing else. `admin` is five
-// characters and would be rejected by `UserPasswordSchema` (min 12), which
-// governs every path where a password is actually *chosen* -- invite
-// activation and password reset. The seed writes an Argon2id hash straight
-// into the row, so it bypasses that schema; `LoginRequestSchema` only
-// requires min(1), so the login itself succeeds. That asymmetry is
-// deliberate and is why `assertSeedTargetIsLocal()` below exists: the
-// password policy is not weakened for real accounts, and these accounts are
-// not allowed to reach a real database.
+// DEVELOPMENT credentials only: the seed hash bypasses UserPasswordSchema (min 12),
+// which is why assertSeedTargetIsLocal() exists.
 export const SEED_PASSWORD = process.env.SEED_PASSWORD ?? 'admin';
 
 export type SeedIdentity = {
   readonly email: string;
   readonly role: RoleCode;
-  // 'platform' is the reserved cross-tenant tenant row (RFC-1 §3); every
-  // other identity belongs to the anchor tenant.
+  // 'platform' is the reserved cross-tenant tenant row (RFC-1).
   readonly tenant: 'anchor' | 'platform';
   readonly note: string;
 };
@@ -57,13 +45,7 @@ export const SEED_IDENTITIES: readonly SeedIdentity[] = [
   },
 ];
 
-// Emails this seed used before 2026-09-13. An already-seeded database is
-// migrated by UPDATEing these rows in place rather than deleting them:
-// `users.id` is referenced by rentals, edtr reports, weather incidents,
-// deposit ledger entries, timekeeper site assignments and more, most
-// without ON DELETE CASCADE, so a delete-and-recreate would either fail on
-// a foreign key or force deleting the operational data that gives the POC
-// screens something to show.
+// Legacy seed emails, renamed in place: users.id is referenced mostly without ON DELETE CASCADE.
 export const LEGACY_EMAIL_MIGRATIONS: ReadonlyMap<string, string> = new Map([
   ['platform-admin@arkilaunch.test', 'platform@admin.com'],
   ['admin@almara.test', 'admin@admin.com'],
@@ -89,18 +71,8 @@ export function isLocalDatabaseUrl(url: string | undefined): boolean {
 }
 
 /**
- * Refuses to write the weak development credentials above into anything that
- * is not a local or throwaway database.
- *
- * This exists because `pnpm db:seed` runs against whatever `.env` happens to
- * name, and in this repo `.env` has pointed at the live Supabase project
- * holding the Almara pilot's real data -- including KYC documents carrying
- * SEC and TIN numbers, which are personal information under RA 10173.
- * Seeding `admin@admin.com` / `admin` there would put a guessable
- * administrator on a live multi-tenant system.
- *
- * Set `ALLOW_WEAK_SEED_CREDENTIALS=true` to override, or `SEED_PASSWORD` to
- * a real password to seed a remote environment safely.
+ * Refuses to seed weak credentials into a non-local database (`.env` has pointed at live
+ * pilot data). Override with ALLOW_WEAK_SEED_CREDENTIALS=true or a real SEED_PASSWORD.
  */
 export function assertSeedTargetIsLocal(databaseUrl: string | undefined, opts: { fixedPassword?: boolean } = {}): void {
   if (isLocalDatabaseUrl(databaseUrl)) return;
@@ -113,8 +85,7 @@ export function assertSeedTargetIsLocal(databaseUrl: string | undefined, opts: {
     );
     return;
   }
-  // A caller-supplied password that satisfies the app's own policy is not a
-  // weak credential, so it does not need the local-host guard.
+  // A password that satisfies the app's own policy needs no local-host guard.
   // fixedPassword: the seed ignores SEED_PASSWORD, so it cannot vouch for the target.
   if (!opts.fixedPassword && process.env.SEED_PASSWORD && process.env.SEED_PASSWORD.length >= 12) return;
 

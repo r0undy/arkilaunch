@@ -7,7 +7,6 @@ import postgres from 'postgres';
 
 config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../.env') });
 
-// Direct connection (not pooled) for DDL, per BUILD §3.
 const connectionString = process.env.DATABASE_URL_DIRECT;
 if (!connectionString) {
   throw new Error('DATABASE_URL_DIRECT is required');
@@ -18,13 +17,8 @@ const db = drizzle(migrationClient);
 
 await migrate(db, { migrationsFolder: './migrations' });
 
-// CREATE ROLE app_authenticated in 0000_create_app_role.sql sets no
-// password (a committed SQL file is not where a secret belongs). Set/rotate
-// it here from APP_AUTHENTICATED_PASSWORD so DATABASE_URL_POOLED can
-// authenticate as the actual non-BYPASSRLS role -- the `postgres` role is a
-// superuser and superusers bypass RLS regardless of FORCE (AGENTS.md
-// "Never": service_role, and by the same logic any superuser, on a
-// request path).
+// The committed SQL creates app_authenticated with no password; set it here so the pooled URL
+// authenticates as the non-BYPASSRLS role (postgres is a superuser and bypasses RLS).
 const appAuthenticatedPassword = process.env.APP_AUTHENTICATED_PASSWORD;
 if (appAuthenticatedPassword) {
   await migrationClient.unsafe(

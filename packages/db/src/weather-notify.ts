@@ -18,24 +18,17 @@ import { notifications, pushSubscriptions } from './schema/weather.js';
 import { sendEmail } from './send-email.js';
 import { publicPhotoUrl } from './public-url.js';
 
-// Weather notices for a site (docs/cr-arkilaunch-weather-monitoring.md).
-// Called by the weather jobs (service_role, so every query names the
-// tenant explicitly -- RFC-2 §8). Free channels only: the in-app feed,
-// email (Resend) and standard Web Push signed with our own VAPID keys --
-// no Firebase/GCP SDK or account, and no SMS.
+// Called by the weather jobs as service_role, so every query names the tenant explicitly.
 
 interface Recipient {
   userId: string;
   email: string;
   prefs: { email: boolean; inApp: boolean };
   audience: WeatherAudience;
-  // For a customer: the rentals (bookings) of theirs on this site.
   rentalIds: Set<string>;
 }
 
-// Everyone told about a site's weather: its timekeepers, the customers who
-// rent machines on it, and the tenant's active admins and owners. A user who is more
-// than one of these is told once, as the most specific: timekeeper first.
+// A user in more than one audience is told once, as the most specific: timekeeper first.
 async function siteRecipients(ex: Executor, tenantId: string, siteId: string, rentalIds: string[]): Promise<Recipient[]> {
   const byUser = new Map<string, Recipient>();
   const add = (row: { id: string; email: string; prefs: Recipient['prefs'] }, audience: WeatherAudience, rentalId?: string) => {
@@ -90,9 +83,7 @@ function vapidConfigured(): boolean {
   return vapidReady;
 }
 
-// One push to every browser the user subscribed. A gone subscription
-// (404/410) is deleted; any other failure is logged, never thrown -- a push
-// is a courtesy on top of the in-app row, which is the record.
+// A gone subscription (404/410) is deleted; other failures are logged, never thrown.
 async function pushTo(ex: Executor, tenantId: string, userId: string, message: { title: string; body: string; url: string }) {
   if (!vapidConfigured()) {
     console.warn(`[Push] VAPID keys not set; push to user ${userId} not sent.`);
@@ -120,10 +111,7 @@ async function pushTo(ex: Executor, tenantId: string, userId: string, message: {
   }
 }
 
-// The same notice to every recipient of the site: an in-app row (always --
-// it is the proof the warning went out), plus email and push. A customer
-// sees only their own machines; timekeepers and admins see all of them.
-// Returns the user ids notified.
+// The in-app row is always written: it is the proof the warning went out.
 export async function notifySiteWeather(
   ex: Executor,
   tenantId: string,

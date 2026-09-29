@@ -1,9 +1,6 @@
 import postgres from 'postgres';
 
-// Test-only helpers. Tests run against the real Supabase project named in
-// DATABASE_URL_DIRECT / DATABASE_URL_POOLED -- the two-tenant fixture from
-// `pnpm db:seed:test` must already be applied (QAD §3: "a test that
-// 'confirms isolation' against a single-tenant database proves nothing").
+// Runs against the real database in DATABASE_URL_*; `pnpm db:seed:test` must be applied first.
 
 export function directSql() {
   const url = process.env.DATABASE_URL_DIRECT;

@@ -1,9 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from './client.js';
 
-// Pre-auth lookups only (see migrations/0001_force_rls_and_roles.sql). These
-// call narrow SECURITY DEFINER functions, not the RLS-protected tables
-// directly -- there is no tenant context yet at login/refresh time.
+// No tenant context at login/refresh: narrow SECURITY DEFINER functions, not RLS tables.
 
 export interface AuthUserRow {
   id: string;
@@ -14,9 +12,7 @@ export interface AuthUserRow {
   status: string;
 }
 
-// Login is scoped to the request host's tenant (migration 0048): the slug
-// keeps a login on its own host (an email is now one account platform-wide,
-// migration 0063, but a customer of tenant A still cannot sign in on B).
+// Scoped to the request host's tenant: a customer of tenant A cannot sign in on B.
 export async function findUserByEmailForAuth(email: string, tenantSlug: string): Promise<AuthUserRow | undefined> {
   const rows = await db.execute<{
     id: string;
