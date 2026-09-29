@@ -5,6 +5,7 @@ import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, quotesQueries } from '../lib/queries.js';
 import { ApiError, apiErrorText, apiPost } from '../lib/api-client.js';
 import { formatDate, formatPeso, shortCode } from '../lib/format.js';
+import { amountDue } from './account.checkout.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { Button } from '../components/button.js';
@@ -239,7 +240,8 @@ function NegotiationFinalRoute() {
   const quoteId = booking.data?.quotation?.id ?? '';
   const quote = useQuery({ ...quotesQueries.detail(quoteId), enabled: Boolean(quoteId) });
   const accepted = booking.data?.quotation?.status === 'accepted';
-  const deposit = booking.data?.deposit.required ?? 0;
+  const due = booking.data ? amountDue(booking.data) : null;
+  const totalDue = due?.total != null ? formatPeso(due.total) : '--';
 
   if (booking.isError)
     return <LoadFailed error={booking.error} onRetry={() => booking.refetch()} />;
@@ -268,7 +270,7 @@ function NegotiationFinalRoute() {
             ['Booking', booking.data?.code ?? '--'],
             ['Status', 'Accepted by the customer'],
             ['Valid until', quote.data?.createdAt ? formatDate(quoteExpiresAt(quote.data.createdAt)) : '--'],
-            ['Total due', quote.data ? formatPeso(quote.data.total + deposit) : '--'],
+            ['Total due', totalDue],
           ]}
         />
       </div>
@@ -282,13 +284,13 @@ function NegotiationFinalRoute() {
       <Surface radius="md" elevation="sm" className="flex w-full flex-col gap-3 p-5">
         <h2 className={heading}>Summary &middot; revision {quote.data?.revision ?? '--'}</h2>
         <LineItems quoteId={quoteId} />
-        <Row label="Consumable deposit" value={formatPeso(deposit)} />
+        <Row label="Consumable deposit" value={formatPeso(due?.deposit ?? 0)} />
         <div className="flex items-end justify-between gap-3 border-t border-border pt-3">
           <span className="text-sm font-medium text-text">
             Total due
           </span>
           <span className="font-mono text-display-md text-text">
-            {quote.data ? formatPeso(quote.data.total + deposit) : '--'}
+            {totalDue}
           </span>
         </div>
       </Surface>
