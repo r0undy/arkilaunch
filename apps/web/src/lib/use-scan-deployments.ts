@@ -5,8 +5,6 @@ import { siteName } from './format.js';
 
 const NONE: never[] = [];
 
-// The four pick lists every capture screen needs, cached across screens, plus
-// the one label rule they all name a rental by.
 export function useScanDeployments(enabled = true) {
   const [equipment, rentals, customers, sites] = useQueries({
     queries: [
@@ -17,7 +15,6 @@ export function useScanDeployments(enabled = true) {
     ],
   });
 
-  /** A rental named by who it is for and where, not by its id. */
   const rentalLabel = (rental: RentalRef): string => {
     const customer = customers.data?.find((c) => c.id === rental.customerId)?.companyName;
     const site = sites.data?.find((s) => s.id === rental.projectSiteId);

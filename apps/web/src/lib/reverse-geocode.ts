@@ -6,24 +6,17 @@ export interface PhLocation {
   city: string;
 }
 
-// What a dropped pin fills in. Every field stays editable: OSM's
-// barangay coverage in the Philippines is patchy.
 export interface PinAddress {
   street: string;
   barangay: string;
   city: string;
   province: string;
-  // The region, only used to tell same-named cities apart (8 San Juans).
   region: string;
   postalCode: string;
 }
 
 type NominatimAddress = Partial<Record<string, string>>;
 
-// Nominatim's addressdetails, mapped to Philippine address parts. A
-// barangay shows up as quarter, suburb, village or neighbourhood depending
-// on how it was mapped. Metro Manila has no province: Nominatim puts it
-// under `region` (sometimes `state`), and it is the NCR's one "province".
 const METRO_MANILA = /metro manila|national capital/i;
 export function toPinAddress(address: NominatimAddress): PinAddress {
   const region = address.region || address.state || '';
@@ -38,10 +31,7 @@ export function toPinAddress(address: NominatimAddress): PinAddress {
   };
 }
 
-// ponytail: OSM's public Nominatim (keyless, 1 request/second policy). A
-// pin drop or drag is one call and the previous one for the same `key` (the
-// pickup or the drop-off) is aborted; move to a hosted geocoder if traffic
-// grows.
+// ponytail: public Nominatim (keyless, 1 req/s); a newer pin aborts the pending call. Move to a hosted geocoder if traffic grows.
 const inflight = new Map<string, AbortController>();
 export async function reverseGeocode(lat: number, lng: number, key = 'pin'): Promise<PinAddress | null> {
   inflight.get(key)?.abort();
@@ -54,14 +44,12 @@ export async function reverseGeocode(lat: number, lng: number, key = 'pin'): Pro
     const body = (await res.json()) as { address?: NominatimAddress };
     return body.address ? toPinAddress(body.address) : null;
   } catch {
-    // Offline, aborted by a newer pin, or rate-limited: the fields stay as typed.
     return null;
   } finally {
     if (inflight.get(key) === controller) inflight.delete(key);
   }
 }
 
-// Drops the pending lookup for `key`, so it cannot overwrite what replaced the pin.
 export function cancelReverseGeocode(key: string): void {
   inflight.get(key)?.abort();
 }
@@ -69,18 +57,12 @@ export function cancelReverseGeocode(key: string): void {
 const letters = (name: string) => name.toLowerCase().replace(/[^a-z]/g, '');
 const short = (name: string) => letters(name.toLowerCase().replace(/^city of /, '').replace(/ city$/, ''));
 
-// Is the PSGC region the one Nominatim named ("Metro Manila" is the NCR,
-// "Calabarzon" is "CALABARZON (Region IV-A)")?
 function sameRegion(psgc: string, hint: string): boolean {
   if (!hint) return false;
   if (METRO_MANILA.test(hint)) return psgc.startsWith('NCR');
   return letters(psgc).includes(letters(hint));
 }
 
-// The PSGC region/province/city the truck form's pickers use, found from a
-// geocoded city, province and region. A name shared by several places
-// ("San Juan", "Quezon" vs "Quezon City") resolves by province, then by
-// region; still ambiguous, it is null rather than a guess.
 export function matchPhLocation(address: PinAddress): PhLocation | null {
   if (!short(address.city)) return null;
   const hits: PhLocation[] = [];
@@ -88,8 +70,6 @@ export function matchPhLocation(address: PinAddress): PhLocation | null {
     for (const p of region.provinces)
       for (const c of p.cities)
         if (short(c) === short(address.city)) hits.push({ region: region.region, province: p.name, city: c });
-  // With no province or region to go on, "Quezon City" still means the
-  // one place of that full name, not the town of Quezon, Isabela.
   const exact = hits.filter((h) => letters(h.city) === letters(address.city));
   const province = letters(address.province);
   return (

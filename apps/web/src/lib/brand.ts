@@ -1,11 +1,7 @@
 import type { CatalogTenant } from '@arkilaunch/shared';
 
-// A tenant's brand, as pure functions of its catalog row. No DOM and no
-// Vite here: the SPA (lib/tenant.ts) and the edge Worker (worker/index.ts)
-// both import this, so a page is painted the same way before and after
-// hydration (CR: tenant-brand-kit).
+// Pure (no DOM, no Vite): the edge Worker imports this too, so pages paint the same before and after hydration.
 
-// WCAG relative luminance of a #rrggbb color.
 function luminance(hex: string): number {
   const channel = (i: number) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255;
@@ -14,21 +10,16 @@ function luminance(hex: string): number {
   return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
 }
 
-// Text color on a tenant color: black or white, whichever contrasts more
-// (DSD §2.1 tenant override). Black is --steel-900's family.
 export function onPrimaryFor(hex: string): '#000000' | '#ffffff' {
   const l = luminance(hex);
   return (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? '#000000' : '#ffffff';
 }
 
-// DSD §2.3 tenant font. Prose and display only: mono keeps every number
-// (Rule 2), so --font-mono is never swapped.
+// --font-mono is never swapped: numbers stay mono.
 const PLEX_STACK = "'IBM Plex Sans', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif";
 
 export type TenantBrand = Pick<CatalogTenant, 'primaryColor' | 'font'>;
 
-// Every custom property brandVars() can set, so a changed brand can clear
-// the ones it no longer uses.
 export const BRAND_VARS = [
   '--yb-color-primary',
   '--yb-color-primary-hover',
@@ -36,8 +27,6 @@ export const BRAND_VARS = [
   '--font-sans',
 ] as const;
 
-// The properties a tenant's brand sets on <html>, over index.css's --yb-*
-// theme tokens and the @theme fonts. Empty for the ArkiLaunch defaults.
 export function brandVars(t: TenantBrand | null | undefined): Partial<Record<(typeof BRAND_VARS)[number], string>> {
   const vars: Partial<Record<(typeof BRAND_VARS)[number], string>> = {};
   if (t?.primaryColor) {
@@ -49,7 +38,6 @@ export function brandVars(t: TenantBrand | null | undefined): Partial<Record<(ty
   return vars;
 }
 
-// Titles follow each page's own heading.
 const PAGE_TITLES: Record<string, string> = {
   '/equipment': 'Equipment for hire',
   '/contact': 'Contact',
@@ -60,9 +48,6 @@ const PAGE_TITLES: Record<string, string> = {
 
 const trimSlash = (path: string) => (path.length > 1 ? path.replace(/\/$/, '') : path);
 
-// Document title for a path on a tenant's host. An equipment page is titled
-// with its model (`detail`); without one this returns null, so the caller
-// leaves the title to that page rather than overwriting it.
 export function pageTitle(pathname: string, name: string, detail?: string): string | null {
   const path = trimSlash(pathname);
   if (/^\/equipment\/[^/]+$/.test(path)) return detail ? `${detail} | ${name}` : null;
@@ -70,8 +55,6 @@ export function pageTitle(pathname: string, name: string, detail?: string): stri
   return page ? `${page} | ${name}` : name;
 }
 
-// Public storefront pages: the only paths a crawler is asked to index. The
-// account, staff and sign-in routes keep the shell's noindex.
 const INDEXABLE = ['/', '/equipment', '/contact', '/help', '/terms', '/privacy'];
 
 export function isIndexable(pathname: string): boolean {
@@ -84,16 +67,13 @@ function attr(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// A detail page's own facts, when the edge could fetch them.
 export interface PageDetail {
   title: string;
   description: string;
   imageUrl: string | null;
 }
 
-// The <head> tags a tenant's page gets at the edge (CR: tenant-brand-kit):
-// description, canonical, Open Graph/Twitter, favicon, theme color, and the
-// Organization JSON-LD on the home page. Only the tenant's own row feeds it.
+// Only the tenant's own row feeds these tags.
 export function headTags(t: CatalogTenant, url: URL, detail?: PageDetail | null): string {
   const path = trimSlash(url.pathname);
   const canonical = `${url.origin}${path === '/' ? '/' : path}`;
@@ -140,12 +120,10 @@ export function headTags(t: CatalogTenant, url: URL, detail?: PageDetail | null)
   return tags.join('\n    ');
 }
 
-// The shared robots.txt, with its Sitemap line pointed at this host.
 export function robotsFor(robots: string, origin: string): string {
   return robots.replace(/^Sitemap:.*$/m, `Sitemap: ${origin}/sitemap.xml`);
 }
 
-// Public pages plus each listed equipment page.
 export function sitemapXml(origin: string, equipmentIds: string[]): string {
   const paths = [...INDEXABLE, ...equipmentIds.map((id) => `/equipment/${encodeURIComponent(id)}`)];
   const urls = paths.map((p) => `  <url><loc>${attr(`${origin}${p}`)}</loc></url>`).join('\n');

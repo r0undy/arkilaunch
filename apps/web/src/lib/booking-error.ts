@@ -1,9 +1,5 @@
 import { payloadField } from './api-client.js';
 
-// The cart reported every failure as "check the equipment is still
-// available", which was wrong for most of them and unactionable for the rest:
-// a date clash is fixed by moving the dates, a machine in maintenance is not,
-// and a validation fault is neither.
 
 function str(error: unknown, key: string): string | null {
   const value = payloadField(error, key);
@@ -20,9 +16,6 @@ function alternativesOf(error: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-// Every refusal POST /bookings can answer (bookings.service.ts create, and
-// the guards in front of it) has its own sentence here; the generic line is
-// left for a real server fault only (QA 24).
 export function explainBookingError(error: unknown): string {
   // fetch throws a TypeError when the request never reached the server.
   if (error instanceof TypeError) {
@@ -90,8 +83,6 @@ export function explainBookingError(error: unknown): string {
   }
 }
 
-// The unit that clashed and the free units of the same type the API found
-// for the same dates, so the cart can offer a one-click swap (US-09).
 export function bookingAlternatives(
   error: unknown,
 ): { equipmentId: string; alternatives: string[] } | null {

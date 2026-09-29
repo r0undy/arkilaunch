@@ -12,7 +12,6 @@ export class ApiError extends Error {
   }
 }
 
-// One field of an error's JSON payload, or undefined; callers check its type.
 export function payloadField(error: unknown, key: string): unknown {
   const payload = typeof error === 'object' && error !== null ? (error as { payload?: unknown }).payload : undefined;
   return typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>)[key] : undefined;
@@ -20,7 +19,6 @@ export function payloadField(error: unknown, key: string): unknown {
 
 async function send<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await authorizedFetch(path, init);
-  // A 204 (or any empty body) reads as {}.
   const payload = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, payload);
   return payload as T;
@@ -57,8 +55,6 @@ export function followCheckout(url: string | null): boolean {
 export function apiErrorText(error: unknown): string {
   if (error instanceof ApiError) {
     const code = error.message;
-    // A rental company not yet linked to PayMongo takes cash only
-    // (booking, truck and weekly-invoice checkouts all answer this).
     if (code === 'online_payment_unavailable') {
       return 'This rental company does not take online payment yet. Choose cash at the office instead.';
     }

@@ -1,9 +1,5 @@
 import { ApiError, apiErrorText, payloadField } from './api-client.js';
 
-// The EDTR screen used to render the raw ApiError as JSON. Every gate on the
-// money path answers with a machine code, and several of them are refusals by
-// design rather than faults -- a reviewer needs to know which is which, and
-// what to do next, without reading a payload.
 
 export interface EdtrErrorExplanation {
   readonly title: string;

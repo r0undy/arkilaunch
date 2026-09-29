@@ -7,11 +7,6 @@ const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
-// Relative time ("3 hours ago"), with the
-// exact date/time kept alongside for a hover title -- never fabricates
-// "today" the way a hardcoded new Date() would (DESIGN.md §4.1 weather
-// advisory pattern: mark cached/unknown readings honestly, don't imply a
-// live one).
 export function formatRelativeTime(iso: string | null, now: Date = new Date()): FormattedTimestamp | null {
   if (!iso) return null;
   const then = new Date(iso);

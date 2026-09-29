@@ -1,7 +1,3 @@
-// Builds an unsigned (test-only) JWT-shaped string so client-side decode
-// tests (jwt.ts, guards.ts) can exercise real payloads without a live API.
-// Never validated against a signature here -- the client never verifies
-// one either (AGENTS.md "Never" list: the server does that).
 export function makeToken(claims: Record<string, unknown>): string {
   const header = { alg: 'none', typ: 'JWT' };
   const base64url = (obj: unknown) =>

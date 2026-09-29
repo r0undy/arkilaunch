@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-// True while the media query matches. Without matchMedia (jsdom) it is false,
-// so tests see the desktop layout.
+// False without matchMedia (jsdom), so tests see the desktop layout.
 export function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(
     (onChange) => {
