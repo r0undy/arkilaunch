@@ -9,27 +9,12 @@ import {
 } from '@arkilaunch/shared';
 import { QUERY_FIELD_TO_PORT_KEY, resolveModelRequest, type ModelRequest } from './model-registry.js';
 
-// Native fetch, not an Azure SDK -- same "native fetch over a client SDK"
-// precedent as apps/api/src/storage/storage.service.ts and
-// apps/api/src/ports/payments.port.ts (AGENTS.md §5 restraint ladder). The
-// wire contract is small (one POST, one poll loop) and owning it directly
-// avoids a second copy of @opentelemetry/instrumentation-class dependencies
-// and a node10-vs-exports-map resolution fight in apps/api's tsconfig.
 const API_VERSION = '2024-11-30';
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 60_000;
-// Per-request socket timeout. POLL_TIMEOUT_MS is a poll-LOOP budget,
-// checked only after a response comes back, so it could never fire on a
-// connection that hangs with no response and no RST: `await fetch` simply
-// never settled, the EDTR row stayed 'extracting' and locked, and the
-// worker process was held past its cron interval
-// (audit-ocr-money-path.md #4).
+// Per-request socket timeout: POLL_TIMEOUT_MS is only checked after a response, so a hung socket never fails.
 const REQUEST_TIMEOUT_MS = 30_000;
 
-// A hung socket must fail the request, not the process. AbortSignal
-// rejects with an AbortError, which the caller already treats as an
-// analysis failure, so the row goes to its retry/hard_fail path instead
-// of sitting locked forever.
 async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
   try {
     return await fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
@@ -43,11 +28,7 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Re
   }
 }
 
-// The F0 tier throttles hard: six concurrent analyses drew 429 on three of
-// their polls (measured 2026-09-24), and a throttled call used to fail the
-// whole analysis -- losing a customer's upload over a busy second. A 429 is
-// a "try again shortly", so wait what Azure asks (Retry-After, default 2s)
-// and retry, within the caller's deadline.
+// F0 throttles hard; a 429 means retry after Retry-After (default 2s), within the deadline.
 async function fetchThrottled(url: string, init: RequestInit, deadline: number): Promise<Response> {
   for (;;) {
     const res = await fetchWithTimeout(url, init);
@@ -57,10 +38,7 @@ async function fetchThrottled(url: string, init: RequestInit, deadline: number):
   }
 }
 
-// Thrown instead of ExtractionUnavailableError: this is not "the service is
-// unreachable", it is "the service answered but the answer cannot be
-// trusted" -- a distinct failure the caller must not treat the same way
-// (RFC-2 §2, AGENTS.md "never fabricate a value").
+// "Answered but untrustworthy", distinct from ExtractionUnavailableError; never fabricate a value.
 export class DocumentAnalysisError extends Error {}
 
 interface AzureAnalyzeField {
@@ -99,9 +77,7 @@ interface AzureBoundingRegion {
   polygon?: number[];
 }
 
-// Azure reports polygons in the page's own `unit` -- inches for a PDF,
-// pixels for an image -- so a page's width and height are what make them
-// comparable. Without both, there is nothing to normalise against.
+// Polygons are in the page's own unit, so width and height are needed to normalise them.
 interface AzurePage {
   pageNumber?: number;
   width?: number;
@@ -134,10 +110,7 @@ interface AzureAnalyzeOperation {
 export interface AzureDocumentIntelligenceAdapterOptions {
   endpoint: string;
   apiKey: string;
-  // F0 analyzes only the first 2 pages per document and silently returns a
-  // complete-looking result computed from the truncated remainder -- the
-  // exact class of silent lie cr-arkilaunch-pilot-honesty.md removed
-  // elsewhere. Set this to 2 for an F0 resource (dev); leave unset for S0.
+  // F0 reads only the first 2 pages and silently returns a truncated result: set 2 for F0, unset for S0.
   maxPagesPerDocument?: number;
 }
 
@@ -154,11 +127,7 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
 
   async analyze(modelId: string, imageStream: Buffer): Promise<DocumentExtractionResult> {
     if (imageStream.length === 0) {
-      // Both current callers (jobs/src/edtr-ocr-worker.ts,
-      // apps/api/src/kyc/kyc.service.ts) pass Buffer.alloc(0) until their
-      // storage-read wiring lands. Failing loudly here beats sending an
-      // empty base64Source and getting back a result that reads as "the
-      // sheet really was blank".
+      // Fail loudly: an empty base64Source comes back reading as a genuinely blank sheet.
       throw new DocumentAnalysisError('empty input buffer');
     }
 
@@ -178,9 +147,7 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
       this.maxPagesPerDocument !== undefined &&
       (analyzeResult.pages?.length ?? 0) >= this.maxPagesPerDocument
     ) {
-      // The document may have more pages than this tier reads. Hard-fail
-      // rather than hand back a result computed from a truncated document --
-      // it would look identical to a genuine short-document extraction.
+      // Hard-fail: a truncated extraction looks identical to a genuine short document.
       throw new DocumentAnalysisError(
         `document has >= ${this.maxPagesPerDocument} pages; this Document Intelligence tier only reads the first ${this.maxPagesPerDocument}`,
       );
@@ -219,9 +186,7 @@ export class AzureDocumentIntelligenceAdapter implements DocumentIntelligencePor
       throw new ExtractionUnavailableError('no_credentials');
     }
     if (res.status === 404) {
-      // The model does not exist yet (e.g. arkilaunch-edtr-neural-v1 before
-      // training) -- a hard failure the caller must surface, not a silent
-      // empty result.
+      // Model not trained/deployed yet: surface it, never a silent empty result.
       throw new DocumentAnalysisError(`model not found: ${request.modelId}`);
     }
     if (res.status !== 202) {
@@ -291,9 +256,7 @@ function scalePolygon(polygon: number[] | undefined, width: number, height: numb
   return scaled.some((n) => !Number.isFinite(n)) ? undefined : scaled;
 }
 
-// The lowest word confidence overlapping a cell's spans. Words carry
-// confidence and offsets into the same content string the cell's spans
-// index into, so this is a real measurement rather than a stand-in.
+// The lowest confidence of the words overlapping a cell's spans.
 function cellConfidence(spans: AzureSpan[] | undefined, words: AzureWord[]): number {
   const ranges = (spans ?? [])
     .filter((s) => typeof s.offset === 'number' && typeof s.length === 'number')
@@ -342,9 +305,6 @@ function mapTables(
         .flatMap((c) => {
           const content = (c.content ?? '').replace(/\s+/g, ' ').trim();
           const confidence = cellConfidence(c.spans, words);
-          // A merged cell's covered positions all carry the merged cell's
-          // own box, which is exactly the area a reviewer should see
-          // highlighted for any of them.
           const boundingRegion = normaliseRegion(c.boundingRegions, pagesByNumber);
           const out: ExtractedTable['cells'] = [];
           for (let dr = 0; dr < Math.max(1, c.rowSpan ?? 1); dr++) {

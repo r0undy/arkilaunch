@@ -130,12 +130,8 @@ describe('AzureDocumentIntelligenceAdapter', () => {
     expect(result.fields.tin).toEqual({ value: '123-456-789-000', confidence: 0.92 });
   });
 
-  // Pins the REQUEST, not just the response. The mapping above was written
-  // against a hand-made payload; this shape was verified on 2026-09-16
-  // against the live di-arkilaunch-dev resource, which accepted exactly this
-  // URL and body (202 -> succeeded, SecNumber at 0.995). Azure rejects
-  // queryFields unless `features=queryFields` accompanies it, and a custom
-  // model id must NOT carry either, so both halves are asserted here.
+  // Pins the REQUEST (verified against the live resource): queryFields needs
+  // `features=queryFields`, and a custom model id must carry neither.
   it('sends the queryFields request shape Azure actually accepts, and a bare model id without it', async () => {
     const fetchMock = fetch as ReturnType<typeof vi.fn>;
     const succeeded = () =>
@@ -189,9 +185,7 @@ describe('AzureDocumentIntelligenceAdapter', () => {
       DocumentAnalysisError,
     );
   });
-  // The EDTR path reads the timesheet GRID, not document-level fields. This
-  // is the shape the live di-arkilaunch-dev resource returned for a replica
-  // of the real Almara form (docs/cr-arkilaunch-edtr-real-form.md).
+  // The EDTR path reads the timesheet GRID, as the live resource returned it for the real form.
   it('maps the layout table through, with per-cell confidence from word spans', async () => {
     (fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(
@@ -234,8 +228,7 @@ describe('AzureDocumentIntelligenceAdapter', () => {
   });
 
   it('floors a cell to zero confidence when its words cannot be located', async () => {
-    // Below the 0.90 gate, so the day routes to a human. Defaulting to 1
-    // would sail a cell nobody measured straight through.
+    // Below the 0.90 gate, so the day routes to a human.
     (fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(
         new Response(null, { status: 202, headers: { 'Operation-Location': OPERATION_LOCATION } }),
@@ -262,11 +255,7 @@ describe('AzureDocumentIntelligenceAdapter', () => {
   });
 
   it('expands a merged header cell across every column it covers', async () => {
-    // The real Almara header merges "AM" across its IN/OUT pair. Dropping
-    // such a cell deleted the header outright and the whole sheet parsed as
-    // no timesheet at all -- which is how this was caught, against the live
-    // resource. Azure reports explicit indices, so expanding cannot shift a
-    // neighbouring column.
+    // The real header merges "AM" across IN/OUT; dropping merged cells lost the whole header.
     (fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(
         new Response(null, { status: 202, headers: { 'Operation-Location': OPERATION_LOCATION } }),
@@ -298,10 +287,7 @@ describe('AzureDocumentIntelligenceAdapter', () => {
   });
 
   it('normalises a cell polygon against its page, so inches and pixels draw alike', async () => {
-    // Azure reports polygons in the page's own unit -- inches for a PDF,
-    // pixels for an image. A review overlay drawing raw coordinates would
-    // be right for one and badly wrong for the other, and would point at a
-    // cell the model never read. Scaled to 0..1 here, once.
+    // Polygons come in the page's own unit (inches/pixels); scaled to 0..1 here, once.
     (fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(
         new Response(null, { status: 202, headers: { 'Operation-Location': OPERATION_LOCATION } }),
@@ -348,8 +334,7 @@ describe('AzureDocumentIntelligenceAdapter', () => {
   });
 
   it('omits the bounding region when the page reports no size to scale against', async () => {
-    // No box at all beats a box in the wrong place: a misplaced highlight
-    // tells a reviewer the model read a cell it did not.
+    // No box beats a box in the wrong place.
     (fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(
         new Response(null, { status: 202, headers: { 'Operation-Location': OPERATION_LOCATION } }),
@@ -384,9 +369,7 @@ describe('AzureDocumentIntelligenceAdapter', () => {
   });
 
   it('sends the EDTR model to prebuilt-layout without queryFields', async () => {
-    // queryFields answers per-document scalars; this sheet's payload is a
-    // table of dated rows. Asked for the same sheet's Operator against the
-    // live resource, queryFields returned the letterhead at 0.883.
+    // queryFields returned the letterhead as Operator at 0.883 against the live resource.
     expect(resolveModelRequest(EDTR_MODEL_ID)).toEqual({ kind: 'model', modelId: 'prebuilt-layout' });
   });
 });
