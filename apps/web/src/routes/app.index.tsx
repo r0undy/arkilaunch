@@ -395,7 +395,7 @@ function AdminDashboardPage() {
         title={invoiceOpen ? `Invoice ${shortCode('invoice', invoiceOpen.id)}` : 'Invoice'}
         size="sm"
       >
-        {invoiceOpen && <InvoiceDetail invoice={invoiceOpen} />}
+        {invoiceOpen && <InvoiceDetail invoice={invoiceOpen} onDone={() => setInvoiceOpen(null)} />}
         <Link to="/app/payments" className="mt-3 block text-sm font-medium text-accent hover:underline">
           Open invoices
         </Link>

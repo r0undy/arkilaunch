@@ -49,7 +49,7 @@ const COLUMNS: TableColumn<InvoiceSummaryResponse>[] = [
 // "which rental is this invoice against?" and "what is its full id?" were
 // unanswerable from this screen, which is awkward for the one table in the
 // console that stands for money already charged.
-export function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) {
+export function InvoiceDetail({ invoice, onDone }: { invoice: InvoiceSummaryResponse; onDone: () => void }) {
   const rows: [string, ReactNode][] = [
     [
       'Reference',
@@ -81,8 +81,8 @@ export function InvoiceDetail({ invoice }: { invoice: InvoiceSummaryResponse }) 
       {/* One row of actions; each opens its own dialog rather than stacking
           two money forms inside this one. */}
       <div className="flex flex-wrap gap-2 border-t border-border pt-3 empty:hidden">
-        {invoice.status === 'issued' && <RecordCash invoice={invoice} />}
-        {invoice.status === 'issued' && ADJUSTABLE.has(invoice.invoiceType) && <ChangeAmount invoice={invoice} />}
+        {invoice.status === 'issued' && <RecordCash invoice={invoice} onDone={onDone} />}
+        {invoice.status === 'issued' && ADJUSTABLE.has(invoice.invoiceType) && <ChangeAmount invoice={invoice} onDone={onDone} />}
         {invoice.status === 'paid' && invoice.invoiceType !== 'deposit_deduction' && <RefundPayment invoice={invoice} />}
       </div>
     </div>
@@ -95,7 +95,7 @@ const ADJUSTABLE = new Set(['booking', 'deposit', 'truck']);
 // Lower what an unpaid invoice charges (never raise it). The customer's next
 // checkout charges the new amount; any open PayMongo page at the old amount
 // is closed. PHP 1.00 is PayMongo's smallest charge. Audit-logged with the reason.
-function ChangeAmount({ invoice }: { invoice: InvoiceSummaryResponse }) {
+function ChangeAmount({ invoice, onDone }: { invoice: InvoiceSummaryResponse; onDone: () => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState(String(invoice.amount));
@@ -109,6 +109,7 @@ function ChangeAmount({ invoice }: { invoice: InvoiceSummaryResponse }) {
       toast.success('Amount changed', `The customer's next checkout charges ${formatPeso(value)}.`);
       setOpen(false);
       void queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      onDone();
     },
     onError: (e) =>
       toast.error(
@@ -175,7 +176,7 @@ function ChangeAmount({ invoice }: { invoice: InvoiceSummaryResponse }) {
 
 // Cash is only ever settled here, by a staff member with the money in hand
 // (CR truck-booking-and-kyc-docs). The API names them on the payment row.
-function RecordCash({ invoice }: { invoice: InvoiceSummaryResponse }) {
+function RecordCash({ invoice, onDone }: { invoice: InvoiceSummaryResponse; onDone: () => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
@@ -185,6 +186,7 @@ function RecordCash({ invoice }: { invoice: InvoiceSummaryResponse }) {
       toast.success('Cash payment recorded');
       setConfirming(false);
       void queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      onDone();
     },
     onError: (e) => toast.error('Not recorded', apiErrorText(e)),
   });
@@ -199,9 +201,7 @@ function RecordCash({ invoice }: { invoice: InvoiceSummaryResponse }) {
         body={`Confirm you received ${formatPeso(invoice.amount)} in cash for this invoice. It will be marked paid under your name.`}
         confirmLabel="Record payment"
         pending={record.isPending}
-        onConfirm={async () => {
-          await record.mutateAsync();
-        }}
+        onConfirm={() => record.mutate()}
         onCancel={() => setConfirming(false)}
       />
     </>
@@ -348,7 +348,7 @@ function PaymentsPage() {
         description="Raised by a reconciliation. Money moves only through the actions below."
         size="sm"
       >
-        {selected && <InvoiceDetail invoice={selected} />}
+        {selected && <InvoiceDetail invoice={selected} onDone={() => setSelected(null)} />}
       </Modal>
     </div>
   );
