@@ -35,7 +35,7 @@ import {
   MAX_SITE_NOTES,
   type CartFieldErrors,
 } from '../lib/cart-validation.js';
-import { RangeCalendar, availabilityProblem, rentalLengthProblem, useAvailability } from '../components/availability-days.js';
+import { RangeCalendar, availabilityProblem, localDate, rentalLengthProblem, useAvailability } from '../components/availability-days.js';
 import { SiteProofStatus } from '../components/site-proof.js';
 import {
   getCart,
@@ -48,11 +48,7 @@ import {
 const heading = 'text-heading-md text-text';
 
 // <input type="date"> speaks YYYY-MM-DD in local time; the cart stores ISO.
-function toDateInput(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+const toDateInput = (iso: string) => localDate(new Date(iso));
 
 function fromDateInput(value: string, hour: number): string {
   const [y, m, d] = value.split('-').map(Number);

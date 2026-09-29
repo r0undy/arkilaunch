@@ -1,6 +1,7 @@
 import QRCode from 'qrcode';
 import { PDFDocument } from 'pdf-lib';
 import { WEATHER_CODES, manilaDate, type EdtrSheetContext } from '@arkilaunch/shared';
+import { weekStart as mondayOf } from './format.js';
 
 // EDTR v3 printable sheet (docs/cr-arkilaunch-edtr-v3-sheet.md). One SVG
 // template in millimetres on Letter or Legal landscape, rendered to a 300
@@ -157,11 +158,7 @@ export function edtrSheetQrPayload(rentalId: string, equipmentId: string, weekSt
 // Which sheet of the unit's rental this week is: "Sheet 3 of 5". Count is
 // null when the rental is open-ended.
 export function sheetIndex(spanStart: string, spanEnd: string | null, weekStart: string): { index: number; count: number | null } {
-  const monday = (iso: string) => {
-    const d = new Date(`${iso}T00:00:00Z`);
-    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
-    return d.getTime();
-  };
+  const monday = (iso: string) => new Date(mondayOf(iso)).getTime();
   const WEEK = 7 * 86_400_000;
   const first = monday(spanStart);
   return {

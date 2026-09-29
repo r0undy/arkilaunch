@@ -14,7 +14,7 @@ import {
 import { appLayoutRoute } from './_app.js';
 import { edtrQueries, sitesQueries } from '../lib/queries.js';
 import { apiDelete, apiErrorText, apiGet, apiPost } from '../lib/api-client.js';
-import { formatDate, formatPeso, formatStatus } from '../lib/format.js';
+import { addDaysIso, formatDate, formatPeso, formatStatus, weekStart } from '../lib/format.js';
 import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { BookingCode } from '../components/booking-code.js';
 import { Button, buttonClass } from '../components/button.js';
@@ -58,18 +58,6 @@ const STATUS_META: Record<FieldLogDayStatus, { label: string; icon: LucideIcon; 
   approved: { label: 'Approved', icon: CircleCheck, className: 'text-success' },
   rejected: { label: 'Rejected', icon: CircleX, className: 'text-error' },
 };
-
-function addDays(iso: string, n: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
-// Monday of the week holding `iso`.
-export function weekStartOf(iso: string): string {
-  const day = new Date(`${iso}T00:00:00Z`).getUTCDay(); // 0 = Sunday
-  return addDays(iso, -((day + 6) % 7));
-}
 
 function inSpan(unit: FieldLogUnit, date: string): boolean {
   return date >= unit.span.from && (unit.span.to === null || date <= unit.span.to);
@@ -322,11 +310,11 @@ function ReviewPanel({
 function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string; siteId: string }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [week, setWeek] = useState(() => weekStartOf(today));
+  const [week, setWeek] = useState(() => weekStart(today));
   const [open, setOpen] = useState<FieldLogDay | null>(null);
   const [recordRental, setRecordRental] = useState<string | null>(null);
   const { equipmentList, rentals, rentalLabel } = useScanDeployments(true);
-  const dates = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(week, i)), [week]);
+  const dates = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysIso(week, i)), [week]);
   const byKey = useMemo(() => new Map(hub.days.map((d) => [`${d.equipmentId}|${d.date}`, d])), [hub.days]);
 
   // A clean pending day: the timekeeper's figures with nothing flagged.
@@ -377,13 +365,13 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => setWeek(addDays(week, -7))} aria-label="Previous week">
+          <Button variant="ghost" onClick={() => setWeek(addDaysIso(week, -7))} aria-label="Previous week">
             ←
           </Button>
           <span className="text-sm font-semibold text-text">
-            {formatDate(week)} – {formatDate(addDays(week, 6))}
+            {formatDate(week)} – {formatDate(addDaysIso(week, 6))}
           </span>
-          <Button variant="ghost" onClick={() => setWeek(addDays(week, 7))} aria-label="Next week">
+          <Button variant="ghost" onClick={() => setWeek(addDaysIso(week, 7))} aria-label="Next week">
             →
           </Button>
         </div>

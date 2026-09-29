@@ -233,6 +233,12 @@ export function siteName(site: {
  * groups daily field logs by machine and week, matching the weekly EDTR
  * sheet (docs/proposal-edtr-weather-attestation.md §2.2).
  */
+export function addDaysIso(iso: string, days: number): string {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export function weekStart(value: string | Date): string {
   const date = new Date(value);
   date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));

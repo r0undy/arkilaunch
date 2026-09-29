@@ -6,6 +6,7 @@ import { apiGet, apiPost } from '../lib/api-client.js';
 import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { explainEdtrError } from '../lib/edtr-error.js';
 import {
+  addDaysIso,
   formatDate,
   formatHours,
   formatLogSource,
@@ -92,12 +93,6 @@ function MatchText({ row }: { row: EdtrListItem }) {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function addDaysIso(iso: string, days: number): string {
-  const date = new Date(`${iso}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
 
 function EdtrPage() {
   const toast = useToast();
@@ -614,10 +609,7 @@ function ApproveModal({ item, machine, onClose, onApproved, toast }: ApproveModa
       toast.success(
         'Hours billed to the deposit',
         deducted != null
-          ? `${machine}, ${formatDate(item.reportDate)} - ${new Intl.NumberFormat('en-PH', {
-              style: 'currency',
-              currency: 'PHP',
-            }).format(deducted)} deducted.${
+          ? `${machine}, ${formatDate(item.reportDate)} - ${formatPeso(deducted)} deducted.${
               res.deposit?.accrued ? ` ${formatPeso(res.deposit.accrued)} past the deposit goes on the weekly invoice.` : ''
             }`
           : undefined,

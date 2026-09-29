@@ -29,6 +29,7 @@ import { ExpandableSection } from '../components/expandable-section.js';
 import { formatRelativeTime } from '../lib/format-time.js';
 import { explainAdvisory } from '../lib/weather-explain.js';
 import {
+  addDaysIso,
   formatDate,
   formatDateTime,
   formatInvoiceType,
@@ -156,9 +157,7 @@ function AdminDashboardPage() {
 
   function weekLabel(week: string): string {
     if (!week) return 'Undated';
-    const end = new Date(week);
-    end.setUTCDate(end.getUTCDate() + 6);
-    return `Week of ${formatDate(week)} - ${formatDate(end)}`;
+    return `Week of ${formatDate(week)} - ${formatDate(addDaysIso(week, 6))}`;
   }
 
   // Name the machine rather than print a UUID stub: this is the first work
