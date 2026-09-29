@@ -10,6 +10,7 @@ import {
 import { companiesQueries, customerSitesQueries } from '../lib/queries.js';
 import { apiErrorText, apiPost, apiPostForm } from '../lib/api-client.js';
 import { useToast } from './toast.js';
+import { describeUploadProblem, prepareUpload, UploadPrepareError } from '../lib/image-compression.js';
 import { formatStatus } from '../lib/format.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
@@ -83,7 +84,9 @@ function DocumentUpload({ company, documentType, done }: { company: CompanyRespo
   const toast = useToast();
   const queryClient = useQueryClient();
   const upload = useMutation({
-    mutationFn: (file: File) => apiPostForm(`/me/companies/${company.id}/documents`, { documentType }, file),
+    // Default options: Azure DI reads these bytes for KYC.
+    mutationFn: async (file: File) =>
+      apiPostForm(`/me/companies/${company.id}/documents`, { documentType }, await prepareUpload(file)),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: companiesQueries.mine().queryKey });
       toast.success('Uploaded', DOC_LABELS[documentType]);

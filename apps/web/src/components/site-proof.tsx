@@ -11,6 +11,7 @@ import {
 import { apiErrorText, apiGet, apiPostForm } from '../lib/api-client.js';
 import { formatDate, formatStatus } from '../lib/format.js';
 import { useToast } from './toast.js';
+import { prepareUpload } from '../lib/image-compression.js';
 import { Button } from './button.js';
 import { Select } from './select.js';
 
