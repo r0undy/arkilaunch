@@ -91,6 +91,29 @@ describe('authorizedFetch: 401 handling', () => {
     expect(assignSpy.mock.calls[0]![0]).toContain('/login?redirect=');
   });
 
+  it.each([
+    ['a network drop', () => Promise.reject(new TypeError('Failed to fetch'))],
+    ['a 503', () => Promise.resolve(new Response('{}', { status: 503 }))],
+    ['a 429', () => Promise.resolve(new Response('{}', { status: 429 }))],
+  ])('%s on /auth/refresh keeps the session', async (_label, refreshReply) => {
+    sessionStorage.setItem('arkilaunch.refreshToken', 'live-refresh-token');
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      String(url).includes('/auth/refresh') ? refreshReply() : Promise.resolve(new Response('{}', { status: 401 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { authorizedFetch, bootstrapSession, setAccessToken } = await import('./auth-client.js');
+    setAccessToken('stale-token');
+
+    await expect(authorizedFetch('/a')).rejects.toBeDefined();
+    sessionStorage.setItem('arkilaunch.tabUser', 'u1');
+    const { markOwner } = await import('./session-owner.js');
+    markOwner('u1');
+    await bootstrapSession();
+
+    expect(sessionStorage.getItem('arkilaunch.refreshToken')).toBe('live-refresh-token');
+    expect(assignSpy).not.toHaveBeenCalled();
+  });
+
   it('a persistent 401 with no refresh token does not loop', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 401 }));
     vi.stubGlobal('fetch', fetchMock);

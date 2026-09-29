@@ -114,9 +114,15 @@ export async function bootstrapSession(): Promise<void> {
   }
   try {
     await ensureFreshToken();
-  } catch {
-    clearTokens();
+  } catch (err) {
+    if (isAuthFailure(err)) clearTokens();
   }
+}
+
+// Only a refused refresh ends the session; a network drop, 5xx or 429 keeps it.
+function isAuthFailure(err: unknown): boolean {
+  const status = (err as { status?: number } | null)?.status;
+  return status === 400 || status === 401 || (err instanceof Error && err.message === 'no_refresh_token');
 }
 
 function isAuthTokens(response: AuthTokens | TwoFaChallenge): response is AuthTokens {
@@ -136,7 +142,7 @@ async function postJson<T>(path: string, body: unknown, turnstileToken?: string 
   });
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
-    throw new Error(payload.error ?? 'request_failed');
+    throw Object.assign(new Error(payload.error ?? 'request_failed'), { status: res.status });
   }
   return res.json() as Promise<T>;
 }
@@ -257,7 +263,8 @@ export async function authorizedFetch(path: string, init: RequestInit = {}): Pro
       ...init,
       headers: { ...headers, Authorization: `Bearer ${refreshed.accessToken}` },
     });
-  } catch {
+  } catch (err) {
+    if (!isAuthFailure(err)) throw err;
     redirectToLogin();
     return res;
   }
