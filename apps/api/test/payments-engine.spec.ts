@@ -24,12 +24,14 @@ describe('PaymentsService (PRD-F2)', () => {
 
   let fixtureCustomerId: string;
 
-  // The checkout throttle is tenant-wide: age this spec's checkouts out of the window so the next spec starts clean.
-  afterAll(async () => {
+  // The checkout throttle is tenant-wide: age recent checkouts out of the window, before (earlier specs in a
+  // full run check out on tenant A too) and after, so neither this spec nor the next hits rate_limited.
+  async function ageRecentCheckouts() {
     const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
     await sql`update payments set created_at = created_at - interval '10 minutes' where tenant_id = ${customerCtxA.tenantId} and created_at > now() - interval '5 minutes'`;
     await sql.end();
-  });
+  }
+  afterAll(ageRecentCheckouts);
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL_DIRECT;
@@ -67,6 +69,7 @@ describe('PaymentsService (PRD-F2)', () => {
     }
 
     await sql.end();
+    await ageRecentCheckouts();
   });
 
   function window(dayOffset: number) {
