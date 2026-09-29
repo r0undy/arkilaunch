@@ -1,4 +1,4 @@
-import { createRoute, Link, useNavigate } from '@tanstack/react-router';
+import { createRoute, Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { quoteExpiresAt, type BookingDetailResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
@@ -131,10 +131,6 @@ function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-function useBooking(bookingId: string) {
-  return useQuery(bookingsQueries.detail(bookingId));
-}
-
 // Only a 404/403 means the booking is not this customer's; anything else is
 // a failed load they can retry, not "booking not found".
 function LoadFailed({ error, onRetry }: { error: unknown; onRetry: () => void }) {
@@ -161,7 +157,7 @@ function NotFound() {
 }
 
 function NegotiationPage({ bookingId }: { bookingId: string }) {
-  const booking = useBooking(bookingId);
+  const booking = useQuery(bookingsQueries.detail(bookingId));
 
   return (
     <div className="flex flex-col gap-5">
@@ -184,14 +180,9 @@ function NegotiationPage({ bookingId }: { bookingId: string }) {
   );
 }
 
+// Serves /chat too, the Figma frame's own URL for the same screen.
 function NegotiationRoute() {
-  const { bookingId } = accountNegotiationRoute.useParams();
-  return <NegotiationPage bookingId={bookingId} />;
-}
-
-// /chat is the Figma frame's own URL; it is the same screen.
-function NegotiationChatRoute() {
-  const { bookingId } = accountNegotiationChatRoute.useParams();
+  const { bookingId } = useParams({ strict: false }) as { bookingId: string };
   return <NegotiationPage bookingId={bookingId} />;
 }
 
@@ -200,7 +191,7 @@ function NegotiationChatRoute() {
 // the revised quote the team sends after it.
 function NegotiationCallRoute() {
   const { bookingId } = accountNegotiationCallRoute.useParams();
-  const booking = useBooking(bookingId);
+  const booking = useQuery(bookingsQueries.detail(bookingId));
   const code = booking.data?.code;
   return (
     <div className="flex flex-col gap-5">
@@ -226,7 +217,7 @@ function NegotiationCallRoute() {
 // Figma 225:3087 "Negotiation Finalized": the agreed numbers, then pay.
 function NegotiationFinalRoute() {
   const { bookingId } = accountNegotiationFinalRoute.useParams();
-  const booking = useBooking(bookingId);
+  const booking = useQuery(bookingsQueries.detail(bookingId));
   const quoteId = booking.data?.quotation?.id ?? '';
   const quote = useQuery({ ...quotesQueries.detail(quoteId), enabled: Boolean(quoteId) });
   const accepted = booking.data?.quotation?.status === 'accepted';
@@ -326,7 +317,7 @@ export const accountNegotiationRoute = createRoute({
 export const accountNegotiationChatRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/negotiation/$bookingId/chat',
-  component: NegotiationChatRoute,
+  component: NegotiationRoute,
 });
 
 export const accountNegotiationCallRoute = createRoute({
