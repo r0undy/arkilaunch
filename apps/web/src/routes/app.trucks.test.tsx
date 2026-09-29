@@ -9,7 +9,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('BanRulesEditor', () => {
   it('names the field a rule fails on instead of a generic error, and sends nothing', async () => {
-    const fetchMock = vi.fn(() => Promise.resolve(new Response('[]', { status: 200 })));
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => Promise.resolve(new Response('[]', { status: 200 })));
     vi.stubGlobal('fetch', fetchMock);
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
