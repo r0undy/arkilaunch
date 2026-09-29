@@ -8,7 +8,7 @@ import {
   type GoldSample,
   type OcrCorpusKind,
 } from '@arkilaunch/shared';
-import { EDTR_GOLDEN_SET, KYC_GOLDEN_SET } from '@arkilaunch/db';
+import { EDTR_GOLDEN_SET, KYC_GOLDEN_SET } from '@arkilaunch/db/dist/seed/ocr-fixtures/golden-set.js';
 
 // RFC-2 §5 / QAD-T39. This harness is deliberately corpus-INDEPENDENT: it
 // asserts nothing about how many samples exist or which of them are correct,
