@@ -120,10 +120,8 @@ export function bookingTimeline(booking: BookingDetailResponse): TimelineStep[] 
   // machine's own dates are on its card.
   const firstIn = earliestStart(booking.items);
   const lastOut = latestEnd(booking.items);
-  const onSite = booking.status === 'active' || booking.status === 'completed';
+  const { onSite, paid } = bookingStage(booking);
   const returned = booking.status === 'completed';
-  const paid =
-    onSite || booking.status === 'confirmed' || booking.payments.some((payment) => payment.status === 'paid');
   const quoted = booking.quotation?.status === 'accepted';
   return [
     { label: 'Requested', done: true, detail: formatDate(booking.createdAt) },
@@ -170,8 +168,8 @@ function Timeline({ booking }: { booking: BookingDetailResponse }) {
 
 function NextStep({ booking }: { booking: BookingDetailResponse }) {
   const quote = booking.quotation;
-  const paid = booking.status === 'confirmed' || booking.payments.some((payment) => payment.status === 'paid');
-  if (booking.status === 'cancelled' || paid) return null;
+  const { paid, cancelled } = bookingStage(booking);
+  if (cancelled || paid) return null;
   const toNegotiation = (label: string) => (
     <Link to="/account/negotiation/$bookingId" params={{ bookingId: booking.id }} className={buttonClass('primary')}>{label}</Link>
   );
