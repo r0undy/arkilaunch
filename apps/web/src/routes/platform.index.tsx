@@ -111,15 +111,6 @@ function readSearch(raw: Record<string, unknown>): DirectorySearch {
   return out;
 }
 
-// The web app and the API deploy separately, so for a while the page can
-// talk to an API from before migration 0062: items without primaryColor or
-// categories, and no total or city list. Fill the gaps rather than crash.
-// ponytail: drop once every API revision in rotation serves 0062.
-function withDirectoryDefaults(r: Partial<CatalogTenantListResponse>): CatalogTenantListResponse {
-  const items = (r.items ?? []).map((t) => ({ ...t, primaryColor: t.primaryColor ?? null, categories: t.categories ?? [] }));
-  return { items, total: r.total ?? items.length, categories: r.categories ?? [], locations: r.locations ?? [] };
-}
-
 // One company in the directory, in its own brand color: a strip across the
 // top and, without a logo, the initial tile.
 function CompanyCard({ t }: { t: CatalogTenantListItem }) {
@@ -195,7 +186,7 @@ function Directory() {
   const params = query.toString();
   const { data, isPending, isError, isPlaceholderData, refetch } = useQuery({
     queryKey: ['catalog', 'tenants', params] as const,
-    queryFn: async () => withDirectoryDefaults(await apiGet<Partial<CatalogTenantListResponse>>(`/catalog/tenants?${params}`)),
+    queryFn: () => apiGet<CatalogTenantListResponse>(`/catalog/tenants?${params}`),
     placeholderData: keepPreviousData,
   });
 
