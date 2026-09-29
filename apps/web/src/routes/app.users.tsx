@@ -118,9 +118,11 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
             {...(error ? { error } : {})}
           />
           <Select label="Role" id="invite-role" value={role} onChange={(e) => setRole(e.target.value as AssignableRole)}>
-            <option value="customer">Customer</option>
-            <option value="timekeeper">Timekeeper</option>
-            <option value="admin">Admin</option>
+            {ASSIGNABLE_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {formatRole(r)}
+              </option>
+            ))}
           </Select>
         </form>
       )}
