@@ -28,8 +28,6 @@ import { apiGet } from '../lib/api-client.js';
 import { onPrimaryFor } from '../lib/brand.js';
 import { tenantOrigin } from '../lib/host.js';
 
-// ArkiLaunch's own landing page (platform host only; see routes/index.tsx).
-
 const PLATFORM_DOMAIN = import.meta.env.VITE_PLATFORM_DOMAIN ?? 'arkilaunch.app';
 // ponytail: placeholder contact until the real inbox and line exist; set them per env.
 const CONTACT_EMAIL = import.meta.env.VITE_PLATFORM_CONTACT_EMAIL || `hello@${PLATFORM_DOMAIN}`;
@@ -37,8 +35,7 @@ const CONTACT_PHONE = import.meta.env.VITE_PLATFORM_CONTACT_PHONE;
 
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
-// True once the element has scrolled into view (and stays true). Without
-// IntersectionObserver it starts true, so content is never stuck hidden.
+// Without IntersectionObserver it starts true, so content is never stuck hidden.
 function useInView(ref: RefObject<Element | null>): boolean {
   const [shown, setShown] = useState(() => typeof IntersectionObserver === 'undefined');
   useEffect(() => {
@@ -93,9 +90,7 @@ const STEPS = [
   { title: 'Go live', body: 'Your storefront and back office open at your own address, in your colors.' },
 ];
 
-// The directory filters live in the URL (?q=&category=&location=&page=) so
-// a filtered list can be shared. `/` is also the tenant home, so the search
-// is read loosely rather than through a route-level validateSearch.
+// `/` is also the tenant home, so the search is read loosely, not via validateSearch.
 type DirectorySearch = { q?: string | undefined; category?: string | undefined; location?: string | undefined; page?: number | undefined };
 const DIRECTORY_PAGE = 9;
 
@@ -111,8 +106,6 @@ function readSearch(raw: Record<string, unknown>): DirectorySearch {
   return out;
 }
 
-// One company in the directory, in its own brand color: a strip across the
-// top and, without a logo, the initial tile.
 function CompanyCard({ t }: { t: CatalogTenantListItem }) {
   const place = [t.city, t.province].filter(Boolean).join(', ');
   const href = tenantOrigin(t.slug);
@@ -162,7 +155,6 @@ function CompanyCard({ t }: { t: CatalogTenantListItem }) {
           </span>
         )}
       </span>
-      {/* Always there on touch; with a mouse it slides in on hover. */}
       <span className="flex items-center justify-between gap-3 border-t border-border px-5 py-3 text-sm transition group-hover:bg-surface-sunk">
         <span className="min-w-0 truncate font-mono text-xs text-text-muted">{new URL(href).host}</span>
         <span className="flex shrink-0 items-center gap-1 font-medium text-accent transition duration-200 pointer-fine:translate-y-1 pointer-fine:opacity-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
@@ -190,7 +182,6 @@ function Directory() {
     placeholderData: keepPreviousData,
   });
 
-  // Any filter change goes back to page 1; only the pager sets a page.
   // resetScroll: false, or every keystroke would jump to the top.
   function apply(next: DirectorySearch) {
     void navigate({
@@ -202,8 +193,6 @@ function Directory() {
     });
   }
 
-  // Live search: the typed name reaches the URL (and the query) 300ms after
-  // the last keystroke.
   useEffect(() => {
     const next = q.trim();
     if (next === (search.q ?? '')) return;
@@ -341,7 +330,6 @@ function Directory() {
         />
       ) : (
         <>
-          {/* Keyed by what is shown, so each new result set plays its rise-in once. */}
           <ul
             key={`${offset}:${data.items.map((t) => t.slug).join()}`}
             className={['grid gap-6 transition-opacity sm:grid-cols-2 lg:grid-cols-3', isPlaceholderData ? 'opacity-60' : ''].join(' ')}
@@ -370,8 +358,6 @@ function Directory() {
   );
 }
 
-// Type a company name, watch its address form; submitting carries the name
-// into registration.
 function AddressPreview() {
   const navigate = useNavigate();
   const [name, setName] = useState('');
@@ -443,7 +429,6 @@ function Features() {
   );
 }
 
-// A small picture of what each step looks like, so the card is not just text.
 function StepVisual({ step }: { step: number }) {
   const box = 'rounded-sm border border-border bg-bg p-4 text-sm';
   if (step === 0)
@@ -473,20 +458,14 @@ function StepVisual({ step }: { step: number }) {
   );
 }
 
-// "Open in three steps" as a horizontal scroll-snap track: swipe, scroll or
-// use the arrows/dots. The track itself is focusable, so arrow keys scroll
-// it natively; it stays an <ol> for screen readers.
+// The track is focusable so arrow keys scroll it natively; it stays an <ol> for screen readers.
 function StepCarousel() {
   const track = useRef<HTMLOListElement>(null);
   const slides = useRef<(HTMLLIElement | null)[]>([]);
   const [active, setActive] = useState(0);
 
-  // Slide i's scroll offset: its distance from the first slide.
   const offset = (i: number) => (slides.current[i]?.offsetLeft ?? 0) - (slides.current[0]?.offsetLeft ?? 0);
 
-  // The active step is whichever slide sits nearest the track's start; at the
-  // far end (a wide screen where the last slide cannot reach the start) it is
-  // the last one.
   function onScroll() {
     const t = track.current;
     if (!t) return;
@@ -571,7 +550,6 @@ function StepCarousel() {
   );
 }
 
-// The page's last word: register, or talk to a person.
 function ClosingCta() {
   const navigate = useNavigate();
   const link = 'inline-flex min-h-11 items-center gap-3 rounded-sm text-base hover:underline';
@@ -615,8 +593,7 @@ function ClosingCta() {
 
 function PlatformLanding() {
   const navigate = useNavigate();
-  // In-page jumps (the header's Contact link) glide rather than cut; the
-  // reduced-motion rule in index.css overrides this back to instant.
+  // The reduced-motion rule in index.css overrides this back to instant.
   useEffect(() => {
     const html = document.documentElement;
     html.style.scrollBehavior = 'smooth';
@@ -659,7 +636,6 @@ function PlatformLanding() {
             </Button>
           </div>
           </div>
-          {/* The hero's right half: the address a company gets, typed live. */}
           <AddressPreview />
         </section>
 

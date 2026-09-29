@@ -47,9 +47,6 @@ const ID_DETAILS: { key: string; label: string }[] = [
   { key: 'address', label: 'Address' },
 ];
 
-// One submitted value, read-only, shown once. When it differs from what
-// the upload-time scan read, a quiet "scan: …" hint says so; the score's
-// checklist carries the judgement (cr-arkilaunch-registration-scoring.md).
 function Submitted({ label, value, scanned }: { label: string; value: string | null | undefined; scanned?: string | undefined }) {
   const differs = Boolean(value && scanned && !sameValue(value, scanned));
   return (
@@ -75,7 +72,6 @@ const CHECK_META = {
   fail: { icon: CircleX, className: 'text-error' },
 } as const;
 
-// The advisory score as a status indicator; click for the per-check breakdown.
 function ScorePill({ score }: { score: NonNullable<CompanyReviewResponse['score']> }) {
   const [open, setOpen] = useState(false);
   const meta = BAND_META[score.band];
@@ -132,9 +128,6 @@ function Check({ checked, onChange, children }: { checked: boolean; onChange: (o
   );
 }
 
-// The public-registry check for one paper: the link copies whatever that
-// registry takes as a paste (REGISTRY_LINKS) and opens its search in a new
-// tab; the tick records that the reviewer actually looked.
 function RegistryCheck({
   document,
   number,
@@ -189,7 +182,6 @@ function RegistryCheck({
   );
 }
 
-// A document opens full size; its read confidence rides along, quietly.
 function DocButton({ doc, onOpen }: { doc: ReviewDocument; onOpen: () => void }) {
   return (
     <Button variant="secondary" onClick={onOpen}>
@@ -206,10 +198,7 @@ function DocButton({ doc, onOpen }: { doc: ReviewDocument; onOpen: () => void })
 type IdentityChecks = { philsysVerified: boolean; selfieMatches: boolean; holderAuthorized: boolean };
 const NO_CHECKS: IdentityChecks = { philsysVerified: false, selfieMatches: false, holderAuthorized: false };
 
-// The admin-side review. Everything the customer submitted is shown
-// read-only beside what the upload-time scan read; the reviewer checks it
-// against the registries and the ID, then approves or rejects with a
-// reason. The extraction decides nothing (RFC-2's human gate).
+// The extraction decides nothing: the reviewer approves (RFC-2 human gate).
 function CompanyReviewCard({
   company,
   decidable,
@@ -249,7 +238,6 @@ function CompanyReviewCard({
       else next.delete(id);
       return next;
     });
-
 
   const previous = company.rejection;
 
@@ -378,8 +366,7 @@ function CompanyReviewCard({
               </ExpandableSection>
             )}
             <div className="flex flex-col rounded-md border border-border px-3 py-2">
-              {/* philsysVerified is the stored key for "the ID checked out with
-                  its issuer" whatever the card (QA 15). */}
+              {/* philsysVerified stores "the ID checked out with its issuer", whatever the card. */}
               <Check checked={identity.philsysVerified} onChange={(on) => setIdentity({ ...identity, philsysVerified: on })}>
                 {idTypeOf(nationalId?.customer.id_type) === 'philsys' ? (
                   <>
@@ -439,9 +426,6 @@ function CompanyReviewCard({
   );
 }
 
-// A rejection is final for this submission, so it carries a reason: the
-// customer is told what went wrong and which papers cure it, and reapplies
-// with them. "Unreadable" asks the reviewer to name the documents.
 function RejectDialog({
   company,
   pending,
@@ -548,9 +532,6 @@ function RejectDialog({
   );
 }
 
-// Customer prerequisites CR: companies customers registered, with the ID
-// and registration they uploaded. Staff open each document (a 300s signed
-// URL) and decide; the customer is notified, and payment opens on approval.
 function DocumentPreviewModal({
   companyId,
   documentId,
@@ -619,15 +600,11 @@ const COLUMNS: TableColumn<CompanyReviewResponse>[] = [
   { header: 'Status', kind: 'status', cell: (c) => <StatusBadge status={c.kycStatus} /> },
 ];
 
-// The queue as a table; a row opens the full review in a drawer, where the
-// reviewer checks the registries and the ID and decides.
 function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [offset, setOffset] = useState(0);
   const query = useQuery(companiesQueries.review(kycStatus, PAGE_SIZE, offset));
-  // The open review is in the URL (?open=), so Back closes the drawer
-  // instead of leaving the queue (QA 17).
   const openId = useSearch({ strict: false }).open ?? null;
   const navigateQueue = useNavigate();
   const setOpenId = (id: string | null) =>
@@ -744,7 +721,6 @@ const QUEUE_PATH: Record<Queue, '/app/registration/pending' | '/app/registration
   approved: '/app/registration/verified',
 };
 
-// One page, two tabs: each keeps its own URL so a link to either still works.
 function RegistrationsPage({ kycStatus }: { kycStatus: Queue }) {
   const navigate = useNavigate();
   const waiting = useQuery(companiesQueries.review('pending', 1, 0));

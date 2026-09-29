@@ -22,12 +22,6 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { useToast } from '../components/toast.js';
 
-// The day's work, as the office sees it: a queue of field logs with the ones
-// needing a decision at the top. Recording a log and approving one are both
-// modals opened from here, so nobody has to copy an identifier between two
-// standing forms -- which is what the previous version of this screen asked
-// for, and why its Approve button only worked on a log captured seconds
-// earlier.
 const APPROVABLE = new Set(['matched', 'discrepancy']);
 
 interface EdtrListItem {
@@ -45,8 +39,7 @@ interface EdtrListItem {
   } | null;
 }
 
-// Reconciliation states read differently from record states: 'pending' here
-// means "the second log has not arrived", not "queued for processing".
+// 'pending' here means the second log has not arrived, not queued for processing.
 const MATCH_LABELS: Record<string, string> = {
   pending: 'Waiting for the second log',
   single_source: 'Waiting for the second log',
@@ -105,12 +98,9 @@ function EdtrPage() {
   const [paging, setPaging] = useState({ key: filterKey, offset: 0 });
   const offset = paging.key === filterKey ? paging.offset : 0;
   const setOffset = (next: number) => setPaging({ key: filterKey, offset: next });
-  // Deep links from the dashboard's "Needs you" rows: one machine-week. The
-  // filter goes to the API, so the pager counts the filtered rows rather than
-  // filtering whichever page happened to load.
+  // The filter goes to the API, so the pager counts the filtered rows.
   const filters = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
   if (search.equipment) filters.set('equipmentId', search.equipment);
-  // The app bar's review-queue pill opens ?status=review (QA 27).
   if (search.status) filters.set('status', search.status);
   if (search.week) {
     filters.set('from', search.week);
@@ -135,9 +125,7 @@ function EdtrPage() {
     void queryClient.invalidateQueries({ queryKey: ['edtr'] });
   }
 
-  // Equipment and week filter on the server; the site is not an API
-  // filter, so it narrows the loaded page. One site runs many machines:
-  // pick the site, then the machine list narrows to the ones logged there.
+  // The site is not an API filter: it narrows only the loaded page.
   // ponytail: move site to an API param if a site's queue spans pages.
   const rentalById = useMemo(() => new Map(rentals.map((r) => [r.id, r])), [rentals]);
   const siteOf = (rentalId: string) => rentalById.get(rentalId)?.projectSiteId;
@@ -171,8 +159,6 @@ function EdtrPage() {
     return site ? siteName(site) : 'Unknown site';
   }
 
-  // Every rental group renders its own table; fixed widths keep their
-  // columns on the same lines down the page.
   const columns: TableColumn<EdtrListItem>[] = [
     {
       header: 'Machine',
@@ -391,7 +377,6 @@ function EdtrPage() {
   );
 }
 
-// Logs grouped by the rental (order) they bill against, in first-seen order.
 function groupByRental(items: EdtrListItem[]): [string, EdtrListItem[]][] {
   const groups = new Map<string, EdtrListItem[]>();
   for (const item of items) groups.set(item.rentalId, [...(groups.get(item.rentalId) ?? []), item]);
@@ -406,8 +391,6 @@ interface DepositSummary {
   hoursOrdered: number | null;
 }
 
-// One rental: hours billed vs hours ordered and what is left on the
-// deposit, with its logs underneath. Native <details> is the collapse.
 function RentalGroup({
   rentalId,
   label,
@@ -475,9 +458,6 @@ function RentalGroup({
 
 const drawerHeading = 'text-xs font-semibold text-text-muted';
 
-// One field log, read without leaving the queue (DSD drawer rule): what was
-// recorded, how it matched, and where it belongs -- the booking and the site
-// are links, the bill action hands off to the approve modal.
 function FieldLogDrawer({
   item,
   machine,
@@ -559,8 +539,6 @@ function FieldLogDrawer({
     </Modal>
   );
 }
-
-// ------------------------------------------------------------------- approve
 
 interface ApproveModalProps {
   item: EdtrListItem;
@@ -728,8 +706,7 @@ function ApproveModal({ item, machine, onClose, onApproved, toast }: ApproveModa
 export const edtrRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/ocr',
-  // Shapes the API accepts (uuid, YYYY-MM-DD); anything else is dropped
-  // rather than turned into a 400.
+  // Anything that is not a uuid or YYYY-MM-DD is dropped rather than sent as a 400.
   validateSearch: (
     search: Record<string, unknown>,
   ): { site?: string; equipment?: string; week?: string; status?: 'review' } => ({

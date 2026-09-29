@@ -45,7 +45,6 @@ const rateCardsListQuery = (limit: number, offset: number) => ({
     ),
 });
 
-// Adding a rate card, in a dialog opened from the rate card list.
 function RateCardModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -199,8 +198,6 @@ function RetireAction({ id, label }: { id: string; label: string }) {
 
 const DEFAULT_CALENDAR: TenantCalendar = { openTime: '07:00', closeTime: '17:00', openDays: [1, 2, 3, 4, 5, 6], blackouts: [] };
 
-// Office hours + holidays/blackouts. Bookings must start and end inside
-// them; the customer's date pickers grey the closed days.
 function BusinessCalendarForm() {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -343,9 +340,6 @@ interface BillingSettings {
   holdHours: number;
 }
 
-// Draft/save/close for a form over the billing settings row. The deposit
-// block here and the mobilization fees in the price book save the same
-// row, so they share this rather than two copies of it.
 function useBillingSettingsEditor(saved: { title: string; detail?: string }, failed: string) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -372,8 +366,6 @@ function useBillingSettingsEditor(saved: { title: string; detail?: string }, fai
   return { query, current, draft, editing, open: () => setEditing(true), close, save, edit };
 }
 
-// Hours in a rental day (booked days become hours at this rate), the minimum
-// deposit a booking holds, and when to warn that a deposit is running low.
 function BillingSettingsForm() {
   const form = useBillingSettingsEditor({ title: 'Billing settings saved' }, 'Could not save billing settings');
   const { current, query } = form;
@@ -425,8 +417,6 @@ function BillingSettingsForm() {
   );
 }
 
-// Sends one sample payment/invoice email, with this tenant's logo and
-// brand color, to any address -- to check how customers and staff see it.
 const TEST_EMAIL_LABELS: Record<(typeof TEST_EMAIL_TYPES)[number], string> = {
   payment_received: 'Customer: payment receipt',
   payment_failed: 'Customer: payment failed',
@@ -484,9 +474,6 @@ function TestEmailModal({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
-// Equipment rental's fixed mobilization and demobilization: the same for
-// every client, on every booking's quote. Trucking has no mob/demob (it is
-// the trip). Saved with the rest of the billing settings.
 export function RentalFeesForm() {
   const form = useBillingSettingsEditor(
     { title: 'Mobilization fees saved', detail: 'New quotes use them from now on.' },
@@ -541,9 +528,6 @@ const PRICING_FIELDS = [
   ['bufferPct', 'Buffer (%)'],
 ] as const;
 
-// The operating inputs every equipment line is priced with: operator and
-// maintenance per hour, fuel burn, transport per km and the buffer. The
-// transport and fuel-per-km figures also price trucking trips.
 export function PricingParametersForm() {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -629,12 +613,9 @@ export function PricingParametersForm() {
   );
 }
 
-// Every live rate card, by equipment type, with its retire action.
 export function RateCardsPanel() {
   const [offset, setOffset] = useState(0);
   const [adding, setAdding] = useState(false);
-  // The table showed a UUID stub where the form's own dropdown already had
-  // the readable name; same source, now used in both places.
   const equipmentTypes = useQuery(referenceQueries.equipmentTypes());
   const typeName = (id: string): string =>
     (equipmentTypes.data ?? []).find((type) => type.id === id)?.name ?? 'Unknown type';
@@ -695,9 +676,7 @@ const DIESEL_SOURCE: Record<string, string> = {
   admin_override: 'Admin override',
 };
 
-// The national diesel price quotes charge fuel at (refreshed from GasWatch
-// PH every Monday, or now with the button), and this company's own price,
-// which wins while it is set and less than the staleness window old.
+// This company's own diesel price wins while it is set and newer than the staleness window.
 export function DieselPriceForm() {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -714,7 +693,6 @@ export function DieselPriceForm() {
     onSuccess: (reading) => {
       void queryClient.invalidateQueries({ queryKey: ['diesel-price'] });
       toast.success('Diesel price fetched', reading ? `${formatPeso(reading.pricePhp)} per litre. Save it to use it.` : undefined);
-      // Put the fetched average in the field; the admin still saves it.
       if (reading && params.data) {
         setOverride(String(Number(reading.pricePhp)));
         setEditing(true);

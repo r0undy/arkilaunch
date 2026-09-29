@@ -22,8 +22,6 @@ import { DieselPriceForm, PricingParametersForm, RateCardsPanel, RentalFeesForm 
 import { Tabs } from '../components/tabs.js';
 import { BanRulesEditor, SettingsEditor, TollsEditor, settingsQuery as truckSettingsQuery } from './app.trucks.js';
 
-// A quote line as the builder edits it: a catalog machine priced off its
-// type's rate card, or a free-text item the admin prices by hand.
 type EquipmentLine = {
   key: number;
   kind: 'equipment';
@@ -39,10 +37,6 @@ type Line = EquipmentLine | CustomLine;
 
 let nextKey = 1;
 
-
-// ?bookingId= arrives from a booking in negotiation ("Revise quote"). With
-// no booking the page is the standard price book: quotes are never drawn up
-// per company; every booking is priced from the book automatically.
 function validateQuoteSearch(search: Record<string, unknown>): { bookingId?: string } {
   const out: { bookingId?: string } = {};
   if (isUuid(search.bookingId)) out.bookingId = search.bookingId;
@@ -55,10 +49,6 @@ const PRICE_BOOK_TABS: Array<{ id: PriceBookTab; label: string }> = [
   { id: 'trucking', label: 'Trucking' },
 ];
 
-// The standard price book: one set of prices for every client and prospect.
-// Equipment rental is rate cards + operating costs + the fixed mobilization
-// and demobilization; trucking is its per-trip fees, extras and tolls. A
-// booking is quoted from here the moment it is made.
 function PriceBook() {
   const [tab, setTab] = useState<PriceBookTab>('rental');
   const truck = useQuery(truckSettingsQuery);
@@ -119,10 +109,6 @@ function QuoteFigures({ quote, typeName }: { quote: QuoteDetail; typeName: (id: 
   );
 }
 
-// DESIGN.md §4.1 Quotation builder, now only for a booking in negotiation:
-// it starts from the booking's current quote (priced from the price book),
-// and staff meet the customer's counter-offer with an agreed line price or
-// a discount. Mobilization/demobilization stay the price book's.
 function NegotiatedQuote({ bookingId }: { bookingId: string }) {
   const toast = useToast();
   const [equipmentTypes, setEquipmentTypes] = useState<EquipmentTypeRef[]>([]);
@@ -132,12 +118,9 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
   const [customerId, setCustomerId] = useState('');
   const [projectSiteId, setProjectSiteId] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
-  // A fixed peso discount is how staff meet a customer's counter-offer.
   const [discount, setDiscount] = useState('0');
 
   const [result, setResult] = useState<QuoteDetail | null>(null);
-  // A preview is a decision point, so it opens over the form and carries
-  // Create draft in its own footer.
   const [previewOpen, setPreviewOpen] = useState(false);
   const [busy, setBusy] = useState<'preview' | 'create' | 'approve' | null>(null);
   const [confirmingApprove, setConfirmingApprove] = useState(false);
@@ -159,8 +142,6 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
       .then(async ([et, rc]) => {
         setEquipmentTypes(et);
         setRateCards(rc);
-        // A revision is an edit of what the customer saw; with no quote yet
-        // (the price book could not price it), one line per booked span.
         const booking = await apiGet<BookingDetailResponse>(`/bookings/${bookingId}`);
         setCustomerId(booking.customerId);
         setProjectSiteId(booking.projectSiteId);
@@ -472,8 +453,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
 export const quotesRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/quotes',
-  // Every price-book endpoint needs pricing:manage, which owner lacks: an
-  // owner here got a page of forms that never loaded.
+  // Every price-book endpoint needs pricing:manage, which owner lacks.
   beforeLoad: requireRole('admin'),
   validateSearch: validateQuoteSearch,
   component: QuotesPage,
