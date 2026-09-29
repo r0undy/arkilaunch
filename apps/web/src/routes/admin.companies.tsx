@@ -22,7 +22,7 @@ import { tenantOrigin } from '../lib/host.js';
 // its own site and an active/inactive switch. The site link is built from
 // the current host, so it is `{slug}.localhost:5173` in dev and
 // `{slug}.arkilaunch.app` in production.
-export const companiesQuery = () => ({
+const companiesQuery = () => ({
   queryKey: ['tenants', 'companies'] as const,
   queryFn: () => apiGet<PlatformCompanyListResponse>('/tenants/companies'),
 });

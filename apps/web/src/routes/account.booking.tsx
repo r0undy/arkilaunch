@@ -99,7 +99,7 @@ function MachineCard({ item, onSite }: { item: BookingItem; onSite: boolean }) {
 }
 
 // The earliest start across the booking's machines.
-export function earliestStart(items: { start: Date | string }[]): string | null {
+function earliestStart(items: { start: Date | string }[]): string | null {
   if (items.length === 0) return null;
   return new Date(Math.min(...items.map((item) => new Date(item.start).getTime()))).toISOString();
 }
@@ -523,7 +523,7 @@ function BookingDetailPage() {
 
 // The latest return date across a booking's machines; null when any unit is
 // open-ended (no fixed date to extend from).
-export function latestEnd(items: { end: Date | string | null }[]): string | null {
+function latestEnd(items: { end: Date | string | null }[]): string | null {
   let latest: number | null = null;
   for (const item of items) {
     if (item.end === null) return null;

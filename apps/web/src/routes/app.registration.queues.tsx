@@ -76,7 +76,7 @@ const CHECK_META = {
 } as const;
 
 // The advisory score as a status indicator; click for the per-check breakdown.
-export function ScorePill({ score }: { score: NonNullable<CompanyReviewResponse['score']> }) {
+function ScorePill({ score }: { score: NonNullable<CompanyReviewResponse['score']> }) {
   const [open, setOpen] = useState(false);
   const meta = BAND_META[score.band];
   const Icon = meta.icon;

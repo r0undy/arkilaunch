@@ -64,7 +64,7 @@ function inSpan(unit: FieldLogUnit, date: string): boolean {
 }
 
 // Day X of Y through a rental, clamped to the span.
-export function spanProgress(start: string, end: string | null, today: string): { day: number; of: number | null } {
+function spanProgress(start: string, end: string | null, today: string): { day: number; of: number | null } {
   const from = manilaDate(start);
   const dayIndex = (a: string, b: string) =>
     Math.round((new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / 86_400_000) + 1;
