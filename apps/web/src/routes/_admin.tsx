@@ -9,7 +9,7 @@ import { PLATFORM_ADMIN_NAV } from '../lib/nav-config.js';
 // sidebar.
 function AdminLayout() {
   return (
-    <SidebarShell navGroups={PLATFORM_ADMIN_NAV} tenantLabel="ArkiLaunch">
+    <SidebarShell navGroups={PLATFORM_ADMIN_NAV} navTitle="Platform" tenantLabel="ArkiLaunch">
       <Outlet />
     </SidebarShell>
   );

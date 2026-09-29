@@ -9,7 +9,7 @@ import { usersQueries } from '../lib/queries.js';
 function AccountLayout() {
   const { data: me } = useQuery(usersQueries.me());
   return (
-    <SidebarShell navGroups={ACCOUNT_NAV} tenantLabel={me?.tenantName ?? 'Loading...'}>
+    <SidebarShell navGroups={ACCOUNT_NAV} navTitle="My account" tenantLabel={me?.tenantName ?? 'Loading...'}>
       <Outlet />
     </SidebarShell>
   );

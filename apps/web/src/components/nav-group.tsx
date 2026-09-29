@@ -5,6 +5,7 @@ export interface NavGroupListProps {
   groups: NavGroup[];
   pathname: string;
   onNavigate?: () => void;
+  collapsed?: boolean;
 }
 
 // AWS side nav: the active item reads in the link color on a quiet tile, so
@@ -56,7 +57,7 @@ export function activeNavTarget(targets: (string | NavTarget)[], pathname: strin
   return best;
 }
 
-export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps) {
+export function NavGroupList({ groups, pathname, onNavigate, collapsed = false }: NavGroupListProps) {
   const active = activeNavTarget(
     groups.flatMap((group) => group.items),
     pathname,
@@ -65,13 +66,13 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
   const pinned = groups.filter((group) => group.pinned);
 
   const renderGroup = (group: NavGroup, labelled: boolean) => (
-    <div key={group.title}>
-      {labelled && (
-        <p className="mb-1 px-3 text-sm font-medium text-text">
+    <div key={group.title} className={collapsed ? 'border-t border-border pt-2 first:border-0 first:pt-0' : ''}>
+      {labelled && !collapsed && !group.hideTitle && (
+        <p className="mb-1 px-3 text-xs font-semibold text-text-muted">
           {group.title}
         </p>
       )}
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-1">
         {group.items.map((item) => {
           const isActive = item.to === active;
           return (
@@ -79,6 +80,8 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
               key={item.to}
               to={item.to}
               onClick={onNavigate}
+              title={collapsed ? item.label : undefined}
+              aria-label={collapsed ? item.label : undefined}
               // Link marks itself active on a prefix match and sets
               // aria-current from that, which is the same ancestor
               // problem in a second place -- so its own matching is
@@ -87,14 +90,15 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
               activeOptions={{ exact: true }}
               aria-current={isActive ? 'page' : undefined}
               className={[
-'flex min-h-10 items-center gap-2.5 rounded-sm px-3 py-2 text-sm',
+                'flex min-h-11 items-center rounded-sm border-l-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+                collapsed ? 'justify-center px-0' : 'gap-3 px-3',
                 isActive
-                  ? 'bg-surface-sunk font-medium text-accent'
-                  : 'text-text-muted hover:bg-surface-sunk hover:text-text',
+                  ? 'border-accent bg-surface-sunk font-semibold text-accent'
+                  : 'border-transparent text-text-muted hover:bg-surface-sunk hover:text-text',
               ].join(' ')}
             >
-              {item.icon && <item.icon aria-hidden="true" className="h-4 w-4 shrink-0" />}
-              {item.label}
+              {item.icon && <item.icon aria-hidden="true" className="h-5 w-5 shrink-0" />}
+              {!collapsed && <span className="min-w-0">{item.label}</span>}
             </Link>
           );
         })}
@@ -105,10 +109,10 @@ export function NavGroupList({ groups, pathname, onNavigate }: NavGroupListProps
   // One nav, so the landmark count stays one; the pinned groups sit at its
   // foot (mt-auto) when the column has room to spare.
   return (
-    <nav className="flex flex-1 flex-col gap-4">
+    <nav aria-label="Primary navigation" className={`flex flex-1 flex-col ${collapsed ? 'gap-2' : 'gap-5'}`}>
       {listed.map((group) => renderGroup(group, true))}
       {pinned.length > 0 && (
-        <div className="mt-auto flex flex-col gap-4 border-t border-border pt-4">
+        <div className={`mt-auto flex flex-col border-t border-border ${collapsed ? 'gap-2 pt-2' : 'gap-5 pt-4'}`}>
           {pinned.map((group) => renderGroup(group, false))}
         </div>
       )}

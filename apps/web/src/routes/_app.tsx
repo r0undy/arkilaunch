@@ -9,7 +9,7 @@ import { usersQueries } from '../lib/queries.js';
 function AppLayout() {
   const { data: me } = useQuery(usersQueries.me());
   return (
-    <SidebarShell navGroups={navForRole(APP_NAV, getCurrentRole())} tenantLabel={me?.tenantName ?? 'Loading...'}>
+    <SidebarShell navGroups={navForRole(APP_NAV, getCurrentRole())} navTitle="Workspace" tenantLabel={me?.tenantName ?? 'Loading...'}>
       <Outlet />
     </SidebarShell>
   );
