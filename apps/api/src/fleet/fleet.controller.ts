@@ -150,7 +150,7 @@ export class FleetController {
   }
 
   @Get('equipment/:id/report')
-  @RequirePermission(...STAFF_READ)
+  @RequirePermission('report:read')
   report(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.fleet.report(req.ctx, id);
   }
