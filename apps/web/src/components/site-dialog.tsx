@@ -23,22 +23,24 @@ const pinIcon = L.divIcon({
   iconAnchor: [9, 9],
 });
 
-/**
- * Where to deliver: typed address plus a pin the weather and deployment
- * screens read coordinates from. Click the map (or use your location) to
- * drop the pin; drag it to adjust.
- */
-export function SiteDialog({
-  open,
-  onClose,
-  customerId,
-  onCreated,
-}: {
+interface SiteDialogProps {
   open: boolean;
   onClose: () => void;
   customerId: string;
   onCreated?: (site: CustomerSiteResponse) => void;
-}) {
+}
+
+/**
+ * Where to deliver: typed address plus a pin the weather and deployment
+ * screens read coordinates from. Click the map (or use your location) to
+ * drop the pin; drag it to adjust. Mounted only while open, so closing
+ * resets every field, file and the map.
+ */
+export function SiteDialog(props: SiteDialogProps) {
+  return props.open ? <SiteDialogBody {...props} /> : null;
+}
+
+function SiteDialogBody({ onClose, customerId, onCreated }: SiteDialogProps) {
   const queryClient = useQueryClient();
   const mapEl = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -54,6 +56,8 @@ export function SiteDialog({
   const [proofType, setProofType] = useState<SiteDocumentType>('building_permit');
   const [proof, setProof] = useState<File | null>(null);
   const [photo, setPhoto] = useState<File | null>(null);
+  // Kept across a retry after a failed upload, so the site is never POSTed twice.
+  const created = useRef<CustomerSiteResponse | null>(null);
 
   // A dropped or dragged pin fills the address from OpenStreetMap; the
   // fields stay editable and a part OSM does not know is left as typed.
@@ -89,10 +93,7 @@ export function SiteDialog({
     }
   }
 
-  // The modal mounts its body only while open, so the map is built on open
-  // and torn down on close.
   useEffect(() => {
-    if (!open) return;
     const frame = requestAnimationFrame(() => {
       if (!mapEl.current || mapRef.current) return;
       const map = L.map(mapEl.current).setView(DEFAULT_CENTER, 11);
@@ -111,7 +112,7 @@ export function SiteDialog({
       mapRef.current = null;
       markerRef.current = null;
     };
-  }, [open]);
+  }, []);
 
   function useMyLocation() {
     if (!navigator.geolocation) {
@@ -136,18 +137,19 @@ export function SiteDialog({
 
   const create = useMutation({
     mutationFn: async () => {
-      const site = await apiPost<CustomerSiteResponse>('/me/sites', {
-        customerId,
-        line1: line1.trim(),
-        ...(barangay.trim() ? { barangay: barangay.trim() } : {}),
-        city: city.trim(),
-        province: province.trim(),
-        ...(postalCode.trim() ? { postalCode: postalCode.trim() } : {}),
-        latitude: pin!.lat,
-        longitude: pin!.lng,
-      });
-      // If an upload fails the site is still saved; it shows as missing its
-      // proof, with an upload, until both are in.
+      const site =
+        created.current ??
+        (await apiPost<CustomerSiteResponse>('/me/sites', {
+          customerId,
+          line1: line1.trim(),
+          barangay: barangay.trim() || undefined,
+          city: city.trim(),
+          province: province.trim(),
+          postalCode: postalCode.trim() || undefined,
+          latitude: pin!.lat,
+          longitude: pin!.lng,
+        }));
+      created.current = site;
       await uploadSiteDocument(site.id, proofType, proof!);
       await uploadSiteDocument(site.id, 'site_photo', photo!);
       return site;
@@ -156,14 +158,6 @@ export function SiteDialog({
     onSuccess: async (site) => {
       await queryClient.invalidateQueries({ queryKey: ['me', 'sites'] });
       onCreated?.(site);
-      setLine1('');
-      setBarangay('');
-      setCity('');
-      setProvince('');
-      setPostalCode('');
-      setPin(null);
-      setProof(null);
-      setPhoto(null);
       onClose();
     },
   });
@@ -174,7 +168,7 @@ export function SiteDialog({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Add a project site" description="Where the machines are delivered." size="lg"
+    <Modal open onClose={onClose} title="Add a project site" description="Where the machines are delivered." size="lg"
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose}>
