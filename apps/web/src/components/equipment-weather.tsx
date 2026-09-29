@@ -11,6 +11,7 @@ import {
 import { ApiError, apiErrorText, apiGet } from '../lib/api-client.js';
 import { formatDateTime } from '../lib/format.js';
 import { Surface } from './surface.js';
+import { OPEN_METEO_URL } from './weather-banner.js';
 
 // PAGASA-style colours, text always beside them (never colour alone).
 const CHIP: Record<WeatherLevel, string> = {
