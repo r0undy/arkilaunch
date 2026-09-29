@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import { referenceQueries } from '../lib/queries.js';
 import { shortCode } from '../lib/format.js';
 
-// A report row names its unit by id; this looks it up in the whole fleet.
 export function MachineName({ equipmentId }: { equipmentId: string }) {
   const fleet = useQuery(referenceQueries.equipment());
   const match = fleet.data?.find((item) => item.id === equipmentId);

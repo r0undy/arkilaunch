@@ -1,15 +1,12 @@
 import type { ReactNode } from 'react';
 import { Surface } from './surface.js';
 
-// One KPI on the dashboard: overline label, the number in Plex Mono (the
-// gauge rule, DESIGN.md §2.3), and a line saying what it means or where to
-// act on it; the whole tile is the action's hit area. `value` null is loading -- a dash, never a fake zero.
+// `value` null is loading: a dash, never a fake zero.
 
 export interface StatTileProps {
   label: string;
   value: ReactNode | null;
   hint?: string;
-  // Where to act on it: a Link, usually.
   action?: ReactNode;
 }
 

@@ -4,9 +4,6 @@ import { apiGet, apiPost } from '../lib/api-client.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
 
-// "Weather alerts on this device" (docs/cr-arkilaunch-weather-monitoring.md):
-// standard Web Push -- the browser's own push service and our VAPID key,
-// no Firebase or other paid SDK. Hidden where the browser cannot do push.
 
 type State = 'loading' | 'unsupported' | 'unconfigured' | 'denied' | 'off' | 'on';
 

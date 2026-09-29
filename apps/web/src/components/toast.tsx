@@ -11,13 +11,6 @@ import {
 import { createPortal } from 'react-dom';
 import { Check, CircleX, Info, TriangleAlert, X } from 'lucide-react';
 
-// Until now a successful mutation produced no visible response at all -- a
-// deduction, a role change and a retired rate card all looked identical to
-// nothing happening. Toasts give every write an acknowledgement.
-//
-// Hand-rolled rather than pulled from a library: the app has no headless-UI
-// dependency and this needs ~80 lines. Announced through an aria-live region
-// so the acknowledgement is not sighted-only.
 
 export type ToastTone = 'success' | 'error' | 'info' | 'warning';
 
@@ -35,12 +28,8 @@ interface ToastContextValue {
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
-// The shell's Flashbar slot (AWS Console): toasts render there, at the top of
-// the content column, when a shell has mounted one.
 const SlotContext = createContext<(el: HTMLElement | null) => void>(() => {});
 
-// Errors stay put: a failure the reader misses is worse than one they
-// dismiss. Confirmations clear themselves.
 const DISMISS_AFTER_MS: Record<ToastTone, number | null> = {
   success: 5000,
   info: 5000,
@@ -48,8 +37,6 @@ const DISMISS_AFTER_MS: Record<ToastTone, number | null> = {
   error: null,
 };
 
-// Filled bars (Cloudscape Flashbar). White text: 5.4:1 on success, 5.6:1 on
-// error, 6.8:1 on accent. Warning yellow takes dark text.
 const TONE_CLASSES: Record<ToastTone, string> = {
   success: 'bg-success text-white',
   error: 'bg-error text-white',
@@ -89,8 +76,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const region = (
     <div
-      // polite, not assertive: a confirmation should not interrupt what a
-      // screen reader is already saying.
+      // polite: a confirmation should not interrupt the screen reader.
       aria-live="polite"
       aria-atomic="false"
       className="flex flex-col gap-2"
@@ -114,8 +100,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => void }) {
-  // The timer holds while the pointer or focus is on the bar, so a message
-  // being read (or its dismiss button reached by keyboard) does not vanish.
+  // Hold the timer while pointer or focus is on the bar, so a message being read never vanishes.
   const [held, setHeld] = useState(false);
   useEffect(() => {
     const after = DISMISS_AFTER_MS[toast.tone];
@@ -158,7 +143,6 @@ export function useToast(): ToastContextValue {
   return context;
 }
 
-// Sits at the top of a shell's content column; sticky flush under the 56px bar.
 export function FlashbarSlot() {
   const setSlot = useContext(SlotContext);
   return <div ref={setSlot} className="sticky top-14 z-50 [&_[aria-live]:not(:empty)]:mb-4" />;

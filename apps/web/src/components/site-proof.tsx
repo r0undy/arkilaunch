@@ -16,8 +16,6 @@ export function uploadSiteDocument(siteId: string, documentType: SiteDocumentTyp
   return apiPostForm(`/me/sites/${siteId}/documents`, { documentType }, file);
 }
 
-// A file input shown as a pill button, so the pick is hard to miss inside
-// the site dialog; once chosen, the file's name shows beside it.
 function FilePick({
   id,
   text,
@@ -67,8 +65,6 @@ function FilePick({
   );
 }
 
-// The two picks a site's proof needs: a photo taken there, and one paper
-// tying the company to it. Used when adding a site and to finish one.
 export function SiteProofFields({
   proofType,
   onProofTypeChange,
@@ -126,7 +122,6 @@ export function SiteProofFields({
   );
 }
 
-// A customer site still missing its proof: say what is missing and take it.
 export function SiteProofStatus({ site }: { site: CustomerSiteResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -170,8 +165,6 @@ export function SiteProofStatus({ site }: { site: CustomerSiteResponse }) {
   );
 }
 
-// Staff: a booking's or truck trip's site proof, each opened on a 300s
-// signed URL. Missing proof is said plainly.
 export function SiteProofAdmin({ siteId }: { siteId: string }) {
   const toast = useToast();
   const docs = useQuery(sitesQueries.documents(siteId));

@@ -1,11 +1,6 @@
 import { CircleCheck, CircleDashed, CircleDot, Clock, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { formatStatus } from '../lib/format.js';
 
-// Lifecycle status in a table cell, drawn as a Cloudscape status indicator:
-// a tone-colored icon + a plain label, no chip (DSD §4, CR:
-// console-components). Never colour alone (DESIGN.md §6). The weather and
-// reconciliation scales keep their own solid StatusPill; this is for
-// bookings, trucks, invoices, coupons, people and companies.
 
 type Tone = 'success' | 'progress' | 'waiting' | 'danger' | 'muted';
 
@@ -19,7 +14,6 @@ const TONE: Record<Tone, { icon: LucideIcon; className: string }> = {
 };
 
 const STATUS_TONE: Record<string, Tone> = {
-  // done
   paid: 'success',
   completed: 'success',
   approved: 'success',
@@ -29,14 +23,12 @@ const STATUS_TONE: Record<string, Tone> = {
   reconciled: 'success',
   matched: 'success',
   agreed: 'success',
-  // moving
   confirmed: 'progress',
   deployed: 'progress',
   dispatched: 'progress',
   km_confirmed: 'progress',
   issued: 'progress',
   invited: 'progress',
-  // someone has to act
   pending: 'waiting',
   estimated: 'waiting',
   review: 'waiting',
@@ -45,7 +37,6 @@ const STATUS_TONE: Record<string, Tone> = {
   unpaid: 'waiting',
   draft: 'waiting',
   maintenance: 'waiting',
-  // went wrong
   overdue: 'danger',
   failed: 'danger',
   hard_failed: 'danger',
@@ -53,7 +44,6 @@ const STATUS_TONE: Record<string, Tone> = {
   disputed: 'danger',
   discrepancy: 'danger',
   locked: 'danger',
-  // over
   cancelled: 'muted',
   expired: 'muted',
   inactive: 'muted',

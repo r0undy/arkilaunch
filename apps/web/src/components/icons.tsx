@@ -1,7 +1,6 @@
 import type { SVGProps } from 'react';
 
-// Facebook "f" in a rounded square, drawn like lucide's outline set (Figma
-// footer 168:1472); lucide-react dropped its brand icons.
+// lucide-react dropped its brand icons.
 export function FacebookIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

@@ -13,13 +13,9 @@ import { EquipmentReport } from './equipment-report.js';
 import { apiDelete, apiErrorText, apiPatch, apiPost } from '../lib/api-client.js';
 import { formatDateTime } from '../lib/format.js';
 
-// One machine's report and maintenance: the report (hours, fuel, rentals,
-// history) first, then per-task schedules, logging a service (which resets
-// that task's next_due), blocked dates, and a manual hour-meter correction.
 
 const DAY = 86_400_000;
 
-// How long until a block ends, for the "ends soon" cue (null = not soon).
 export function endsSoon(endsAt: string | Date, now = Date.now()): number | null {
   const left = new Date(endsAt).getTime() - now;
   return left > 0 && left <= 2 * DAY ? Math.ceil(left / DAY) : null;
@@ -53,7 +49,6 @@ export function MaintenanceModal({
   const [unblocking, setUnblocking] = useState<{ id: string; span: string } | null>(null);
   const [correcting, setCorrecting] = useState(false);
 
-  // A duplicate schedule, or a fresh plan: remove it. Past services stay.
   const removeSchedule = useMutation({
     mutationFn: (scheduleId: string) =>
       apiDelete(`/equipment/${equipment.id}/maintenance-schedules/${scheduleId}`),
@@ -65,7 +60,6 @@ export function MaintenanceModal({
     onError: (error) => toast.error('Could not remove that schedule', apiErrorText(error)),
   });
 
-  // Push a block's end out by a day; it frees on its own after the end.
   const extendWindow = useMutation({
     mutationFn: ({ id, endsAt }: { id: string; endsAt: Date }) =>
       apiPatch(`/equipment/${equipment.id}/maintenance-windows/${id}`, {
@@ -78,7 +72,6 @@ export function MaintenanceModal({
     onError: (error) => toast.error('Could not extend the block', apiErrorText(error)),
   });
 
-  // Maintenance date windows: bookings cannot land on them.
   const addWindow = useMutation({
     mutationFn: () =>
       apiPost(`/equipment/${equipment.id}/maintenance-windows`, {

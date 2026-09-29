@@ -3,22 +3,12 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Container, type ContainerHeaderProps } from './container.js';
 import { useMediaQuery } from '../lib/use-media-query.js';
 
-/**
- * What a column holds, which decides its alignment everywhere (DSD §8):
- * text and dates read left, numbers and money right in mono, status pills
- * and row actions centered. Header and cells always share the alignment,
- * so no table can drift from the rule.
- */
 export type ColumnKind = 'text' | 'date' | 'number' | 'money' | 'status' | 'action';
 
 export interface TableColumn<T> {
   header: string;
   cell: (row: T) => ReactNode;
   kind: ColumnKind;
-  /**
-   * A fixed width (any CSS length). Tables rendered as siblings (the field
-   * logs, one per rental) give every column a width so they line up.
-   */
   width?: string;
 }
 
@@ -26,22 +16,12 @@ export interface TableProps<T> {
   columns: TableColumn<T>[];
   rows: T[];
   rowKey: (row: T) => string;
-  /**
-   * Opt-in: makes each row activate, for lists whose rows have more behind
-   * them than the columns show. Rows stay plain `<tr>`s without it.
-   */
   onRowClick?: (row: T) => void;
-  /** Accessible name for an activated row, e.g. "Open invoice INV-8f2a". */
   rowLabel?: (row: T) => string;
-  /** Opt-in: a row can open in place to show what sits under it. */
   renderExpanded?: (row: T) => ReactNode;
-  /** Accessible name for the expand toggle, e.g. "Show equipment at Site A". */
   expandLabel?: (row: T) => string;
-  /** Above the rows, inside the same card: title, count, filter and paging. */
   header?: ContainerHeaderProps;
-  /** Under the rows, inside the same card. */
   footer?: ReactNode;
-  /** Shown in place of the rows when there are none. */
   empty?: ReactNode;
 }
 
@@ -63,10 +43,6 @@ function cellClass(kind: ColumnKind): string {
   ].join(' ');
 }
 
-// Below 768px a row is a card (DSD §4.1, CR: console-components): the first
-// text column is its title, the status sits top-right, the other columns are
-// label/value pairs and the actions wrap underneath. Same columns, same
-// cells, so no list needs a phone layout of its own.
 function RowCards<T>({
   columns,
   rows,
@@ -164,9 +140,6 @@ function RowCards<T>({
   );
 }
 
-// Console-tier list primitive (DSD §8: tight radii, no backdrop-filter).
-// Rows stay 44px+; a wide table scrolls sideways inside its own card, never
-// the page, and turns into cards on a phone.
 export function Table<T>(props: TableProps<T>) {
   const { columns, rows, rowKey, onRowClick, rowLabel, renderExpanded, expandLabel, header, footer, empty } = props;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -251,7 +224,6 @@ export function Table<T>(props: TableProps<T>) {
                     {...(onRowClick
                       ? {
                           onClick: (event: MouseEvent) => {
-                            // Links and buttons inside a cell keep their own job.
                             if ((event.target as HTMLElement).closest('a,button,input,select,label')) return;
                             onRowClick(row);
                           },
@@ -278,9 +250,7 @@ export function Table<T>(props: TableProps<T>) {
                     ))}
                     {onRowClick && (
                       <td className="px-2 text-center">
-                        {/* The row itself is not focusable -- a <tr> with a click
-                            handler is invisible to the keyboard, so the actual
-                            control lives here and the row click is the shortcut. */}
+                        {/* A <tr> click is invisible to the keyboard: the real control lives here. */}
                         <button
                           type="button"
                           onClick={() => onRowClick(row)}

@@ -53,7 +53,6 @@ export function hourValuesFrom(item: {
   };
 }
 
-// Null when a required figure is missing or not a number.
 export function toLineItems(v: HourFieldValues): EdtrLineItemsInput | null {
   const running = n(v.running);
   const idle = n(v.idle) ?? 0;

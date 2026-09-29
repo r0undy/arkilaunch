@@ -6,17 +6,12 @@ import type { WeatherTone } from '../lib/weather-code.js';
 
 export interface WeatherBannerProps {
   tone: WeatherTone;
-  /** Plain-English headline, e.g. "Weather watch" or "Severe weather warning". */
   severityLabel: string;
-  /** Small secondary tag alongside the headline, e.g. "PAGASA yellow". Omit for a tone with no PAGASA equivalent. */
   tagLabel?: string;
   siteName: string;
   condition: string;
-  /** Relative text ("3 hours ago"), shown after "Reported"; the exact date/time goes on the element's hover title. */
   timestamp: { relative: string; absolute: string } | null;
-  /** Plain-English lines explaining the actual observed readings behind this severity (see lib/weather-explain.ts). Omit if no reading is available yet. */
   breakdown?: string[];
-  /** Site coordinates, used to build the "View live map" link. Omit to hide the link. */
   coordinates?: { latitude: number; longitude: number };
   action?: ReactNode;
   className?: string;
@@ -39,22 +34,12 @@ const TONE_ICON: Record<WeatherTone, typeof CheckCircle2> = {
 };
 
 function windyUrl(latitude: number, longitude: number): string {
-  // windy.com's own URL scheme: /?lat,lon,zoom -- centers the live radar
-  // map on the exact site, not a generic landing page.
   return `https://www.windy.com/?${latitude},${longitude},11`;
 }
 
 // CC BY 4.0: credit Open-Meteo on every surface that shows its data.
 export const OPEN_METEO_URL = 'https://open-meteo.com/';
 
-// Full-width strip driven by the PAGASA weather scale (DESIGN.md §4/§4.1).
-// Leads with a plain-English headline so it's readable without knowing the
-// PAGASA scale, keeps the PAGASA tag as a secondary chip so it still carries
-// the locally-recognized signal (BRAND.md §0), and stacks site/condition/time
-// onto their own lines instead of one run-on row. Never color-only; never
-// fabricates a timestamp -- an unknown reading says so instead of "today".
-// The breakdown tooltip and map link make the conclusion checkable, not just
-// asserted (BRAND.md: protective of the user's trust, evidence-first).
 export function WeatherBanner({
   tone,
   severityLabel,

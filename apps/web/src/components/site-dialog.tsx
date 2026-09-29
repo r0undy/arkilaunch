@@ -11,11 +11,9 @@ import { Button } from './button.js';
 import { Input } from './input.js';
 import { SiteProofFields, uploadSiteDocument } from './site-proof.js';
 
-// Metro Manila: where most of the yard's work is.
 const DEFAULT_CENTER: L.LatLngTuple = [14.5995, 120.9842];
 
-// Leaflet's default marker points at image files the bundler does not
-// ship, so the pin is a plain CSS dot instead.
+// Leaflet's default marker images are not bundled, so the pin is a CSS dot.
 const pinIcon = L.divIcon({
   className: '',
   html: '<span style="display:block;width:18px;height:18px;border-radius:50%;background:#c2410c;border:3px solid #fff;box-shadow:0 0 0 1px #0006"></span>',
@@ -30,12 +28,7 @@ interface SiteDialogProps {
   onCreated?: (site: CustomerSiteResponse) => void;
 }
 
-/**
- * Where to deliver: typed address plus a pin the weather and deployment
- * screens read coordinates from. Click the map (or use your location) to
- * drop the pin; drag it to adjust. Mounted only while open, so closing
- * resets every field, file and the map.
- */
+// Mounted only while open, so closing resets every field.
 export function SiteDialog(props: SiteDialogProps) {
   return props.open ? <SiteDialogBody {...props} /> : null;
 }
@@ -52,15 +45,12 @@ function SiteDialogBody({ onClose, customerId, onCreated }: SiteDialogProps) {
   const [province, setProvince] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [looking, setLooking] = useState(false);
-  // Proof the site is real and theirs, uploaded right after it is saved.
   const [proofType, setProofType] = useState<SiteDocumentType>('building_permit');
   const [proof, setProof] = useState<File | null>(null);
   const [photo, setPhoto] = useState<File | null>(null);
   // Kept across a retry after a failed upload, so the site is never POSTed twice.
   const created = useRef<CustomerSiteResponse | null>(null);
 
-  // A dropped or dragged pin fills the address from OpenStreetMap; the
-  // fields stay editable and a part OSM does not know is left as typed.
   async function fillFromPin(lat: number, lng: number) {
     setLooking(true);
     const found = await reverseGeocode(lat, lng);
@@ -97,8 +87,7 @@ function SiteDialogBody({ onClose, customerId, onCreated }: SiteDialogProps) {
     const frame = requestAnimationFrame(() => {
       if (!mapEl.current || mapRef.current) return;
       const map = L.map(mapEl.current).setView(DEFAULT_CENTER, 11);
-      // ponytail: OSM's public tiles, fine at pilot volume under their usage
-      // policy; move to a paid tile source if traffic grows.
+      // ponytail: OSM's public tiles, fine at pilot volume; move to a paid tile source if traffic grows.
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '&copy; OpenStreetMap contributors',

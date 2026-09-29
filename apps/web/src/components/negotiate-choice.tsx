@@ -4,9 +4,6 @@ import { useTenant } from '../lib/tenant.js';
 import { Button, type ButtonVariant } from './button.js';
 import { Modal } from './modal.js';
 
-// "Negotiate via messenger", the same for a rental and a truck trip: the
-// rental company's Facebook Messenger (its branding link) or the in-app
-// chat on the booking. With no Messenger link set, straight to the chat.
 export function NegotiateChoice({
   onInApp,
   variant = 'primary',

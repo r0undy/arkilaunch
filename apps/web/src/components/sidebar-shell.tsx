@@ -15,8 +15,6 @@ export interface SidebarShellProps {
   children: ReactNode;
 }
 
-// What PageHeader needs to draw its breadcrumbs. Null outside a shell, where
-// there is no nav to derive a trail from.
 export const ShellNavContext = createContext<{ navGroups: NavGroup[]; tenantLabel: string } | null>(null);
 export const useShellNav = () => useContext(ShellNavContext);
 
@@ -30,9 +28,6 @@ function readCollapsed(): boolean {
   }
 }
 
-// DESIGN.md §4.1 Nav shell (role-aware): tenant mark leads in the app bar,
-// a side nav on desktop that collapses to a rail (AWS Console), an
-// off-canvas drawer at the 360px baseline.
 export function SidebarShell({ navGroups, navTitle, tenantLabel, children }: SidebarShellProps) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -58,9 +53,7 @@ export function SidebarShell({ navGroups, navTitle, tenantLabel, children }: Sid
         <SkipLink />
         <AppBar tenantLabel={tenantLabel} onMenuClick={() => setDrawerOpen((v) => !v)} />
         <div className="flex flex-1">
-          {/* Named, because the catalog page renders a second complementary
-              landmark (its right rail) and an unnamed pair is ambiguous to a
-              screen reader. */}
+          {/* Named: the catalog renders a second complementary landmark. */}
           {collapsed ? (
             <aside aria-label="Sidebar" className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-14 shrink-0 flex-col overflow-y-auto overflow-x-hidden border-r border-border bg-surface px-1.5 pb-4 pt-3 [scrollbar-width:thin] lg:flex">
               <button type="button" onClick={toggleCollapsed} aria-expanded={false} aria-label="Open navigation" title="Open navigation" className={`${railButton} mb-3`}>
@@ -73,7 +66,6 @@ export function SidebarShell({ navGroups, navTitle, tenantLabel, children }: Sid
               aria-label="Sidebar"
               className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-64 shrink-0 flex-col overflow-y-auto overflow-x-hidden [scrollbar-width:thin] [scrollbar-color:var(--color-border)_transparent] border-r border-border bg-surface px-3 pb-6 pt-3 lg:flex"
             >
-              {/* The tenant's name is already beside its logo in the top bar. */}
               <div className="mb-3 flex min-h-11 items-center justify-between gap-2 px-3">
                 <h2 className="min-w-0 truncate text-base font-semibold text-text">{navTitle}</h2>
                 <button type="button" onClick={toggleCollapsed} aria-expanded aria-label="Close navigation" className={railButton}>
@@ -84,14 +76,10 @@ export function SidebarShell({ navGroups, navTitle, tenantLabel, children }: Sid
             </aside>
           )}
 
-          {/* The shared dialog, so the phone drawer gets the focus trap,
-              Escape and focus return it was missing. */}
           <Modal open={drawerOpen} onClose={() => setDrawerOpen(false)} title={navTitle} placement="right" size="sm">
             <NavGroupList groups={navGroups} pathname={pathname} onNavigate={() => setDrawerOpen(false)} />
           </Modal>
 
-          {/* Capped at the wide breakpoint: past 1440px a table stretched to
-              the edges is harder to scan, not easier. */}
           <main id="main" className="min-w-0 flex-1 px-4 pb-10 pt-4 sm:px-8 sm:pt-6">
             <div className="mx-auto w-full max-w-[1440px]">
               <FlashbarSlot />

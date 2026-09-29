@@ -3,25 +3,19 @@ import { localPhMobile, normalizePhMobile, PH_MOBILE_REGEX } from '@arkilaunch/s
 
 export interface MobileInputProps {
   label: string;
-  /** The stored number, +639XXXXXXXXX, or '' when empty. */
   value: string;
-  /** Called with +639XXXXXXXXX (or +63 plus whatever digits were typed, which the schema refuses), '' when cleared. */
   onChange: (value: string) => void;
   required?: boolean;
   hint?: string;
   error?: string | undefined;
 }
 
-// Every contact-mobile field: a fixed +63 the customer cannot edit, then the
-// 10-digit number. A pasted 0917…, 63917… or +63 917… lands the same way.
-// The browser refuses to submit the form until it is a PH mobile.
 export function MobileInput({ label, value, onChange, required, hint = 'e.g. 917 123 4567', error }: MobileInputProps) {
   const id = useId();
   const ref = useRef<HTMLInputElement>(null);
   const [text, setText] = useState(() => localPhMobile(value));
   const valid = value === '' ? !required : PH_MOBILE_REGEX.test(value);
 
-  // A value set from outside (a loaded profile) replaces what is shown.
   useEffect(() => {
     if (value !== (text.replace(/\D/g, '') ? normalizePhMobile(text) : '')) setText(localPhMobile(value));
     // Only an outside change of value rewrites the text, so text is not a dependency.

@@ -16,7 +16,6 @@ import { Check, ChevronDown } from 'lucide-react';
 
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   label: string;
-  /** Keep the label for screen readers only (a compact row control). */
   labelHidden?: boolean;
   error?: string;
   hint?: ReactNode;
@@ -28,16 +27,8 @@ interface Opt {
   disabled: boolean;
 }
 
-// The AWS reference's dropdown (DSD §4 Inputs): a square trigger with a
-// caret, and a floating menu that lifts off the page, the highlighted row
-// tinted, the chosen one in accent with a check. A native <select> opens the
-// OS list, which cannot be styled, so this is a select-only combobox
-// (WAI-ARIA APG).
-//
-// A real <select> stays in the DOM, hidden, and is the source of truth: it
-// holds the <option> children, the forwarded ref, name, value, required and
-// onChange. Picking sets its value and fires a real change event, so every
-// caller (controlled, uncontrolled, FormData) works exactly as before.
+// The hidden native <select> stays the source of truth (options, ref, value, onChange);
+// picking fires a real change event on it.
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
   { label, labelHidden, error, hint, id, className = '', required, disabled, children, 'aria-label': ariaLabel, ...rest },
   ref,
@@ -60,8 +51,6 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
   const [pos, setPos] = useState<CSSProperties>({});
   const typed = useRef({ text: '', at: 0 });
 
-  // Mirror the native select after every render: its options and its
-  // selection, whether a parent controls the value or not.
   function sync() {
     const el = native.current;
     if (!el) return;
@@ -106,7 +95,6 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
     sync();
   }
 
-  // Type-ahead: letters typed within half a second build one search.
   function typeahead(key: string) {
     const now = Date.now();
     const t = typed.current;
@@ -162,8 +150,6 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
     }
   }
 
-  // Place the menu under the trigger (above it when the viewport runs out),
-  // follow scrolling and resizing, and close on a press anywhere else.
   useLayoutEffect(() => {
     if (!open) return;
     const place = () => {
@@ -200,7 +186,6 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
   }, [open, active]);
 
   const current = opts[selected];
-  // A value="" first option ("Any equipment", "Region") reads as a prompt.
   const isPrompt = !current || current.value === '';
 
   return (
@@ -248,13 +233,11 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
             role="listbox"
             aria-label={label}
             style={pos}
-            // Pressing inside the menu (an option, its scrollbar) must not
-            // take focus off the trigger, which owns the keyboard.
+            // Pressing inside the menu must not take focus off the trigger, which owns the keyboard.
             onMouseDown={(e) => e.preventDefault()}
             className="fixed z-[100] overflow-y-auto rounded-sm border border-border bg-surface py-1 shadow-lg"
           >
             {opts.map((o, i) => {
-              // A value="" prompt is never shown as a choice made.
               const chosen = i === selected && o.value !== '';
               return (
               <li

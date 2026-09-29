@@ -2,11 +2,7 @@ import PH_LOCATIONS from '../data/ph-locations.json';
 import { Select } from './select.js';
 import type { PhLocation } from '../lib/reverse-geocode.js';
 
-// Region -> province -> city/municipality, from the PSA PSGC list
-// (psgc.gitlab.io, 1,634 cities and municipalities). The value is
-// "City, Province": what the route estimate geocodes, so a customer never
-// types an address the geocoder cannot find. Street and landmark go in the
-// notes instead.
+// The value is "City, Province": what the route estimate can geocode.
 export const EMPTY_LOCATION: PhLocation = { region: '', province: '', city: '' };
 
 export function locationLabel(location: PhLocation): string {

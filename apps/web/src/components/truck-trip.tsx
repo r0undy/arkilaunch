@@ -16,9 +16,6 @@ import { NegotiateChoice } from './negotiate-choice.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { useTenant } from '../lib/tenant.js';
 
-// A customer's truck trip: a compact card with a progress stepper that
-// opens a drawer holding the map, the price, the actions and the
-// negotiation thread (cr-arkilaunch-truck-map-booking.md).
 
 // low-high band and the cap note shown with every estimate.
 export function EstimateRange({ price, capPhp }: { price: TruckPrice; capPhp?: number | null }) {
@@ -59,8 +56,6 @@ export interface TripStep {
   done: boolean;
 }
 
-// Where a request stands. Each step is done on its own evidence: the call
-// can be confirmed before or after the price is agreed.
 export function tripSteps(
   r: Pick<TruckRequestResponse, 'status' | 'confirmedKm' | 'callConfirmedAt'> & Partial<Pick<TruckRequestResponse, 'agreedPricePhp' | 'acceptedPricePhp'>>,
 ): TripStep[] {
@@ -138,7 +133,6 @@ function priceOf(r: TruckRequestResponse) {
     : { amount: r.price.totalPhp, note: r.confirmedKm === null ? 'estimated' : '' };
 }
 
-// The card in a list; the whole card opens the drawer.
 export function TruckRequestCard({ request: r, initiallyOpen = false }: { request: TruckRequestResponse; initiallyOpen?: boolean }) {
   const [open, setOpen] = useState(initiallyOpen);
   const price = priceOf(r);
@@ -195,9 +189,6 @@ export function TruckRequestCard({ request: r, initiallyOpen = false }: { reques
   );
 }
 
-// The drawer body: map, stepper, price, what the customer can do next, and
-// the negotiation thread (which is also the price history: every staff
-// price change and every accept is posted there).
 function TripDetail({ request: r }: { request: TruckRequestResponse }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -208,8 +199,7 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
     void queryClient.invalidateQueries({ queryKey: ['thread', `/me/truck-requests/${r.id}`] });
   };
   const call = useMutation({ mutationFn: () => apiPost(`/me/truck-requests/${r.id}/request-call`, {}), onSuccess: refresh });
-  // The price shown is the price accepted: a staff change in between is a
-  // 409 and the list refreshes to the new figure.
+  // The price shown is the price accepted: a staff change in between answers 409.
   const accept = useMutation({
     mutationFn: () => apiPost(`/me/truck-requests/${r.id}/approve-price`, { pricePhp: r.agreedPricePhp }),
     onSettled: refresh,

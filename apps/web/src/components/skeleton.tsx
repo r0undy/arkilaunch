@@ -1,5 +1,3 @@
-// Pulsing placeholder while a query is pending (DESIGN.md §4.1 loading
-// state). `label` is what a screen reader hears instead of the blocks.
 export function Skeleton({
   label,
   rows = 3,
