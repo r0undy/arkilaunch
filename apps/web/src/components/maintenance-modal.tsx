@@ -91,7 +91,7 @@ export function MaintenanceModal({
       apiPost(`/equipment/${equipment.id}/maintenance-windows`, {
         startsAt: new Date(winStart).toISOString(),
         endsAt: new Date(winEnd).toISOString(),
-        ...(winNotes.trim() ? { notes: winNotes.trim() } : {}),
+        notes: winNotes.trim() || undefined,
       }),
     onSuccess: () => {
       refresh();

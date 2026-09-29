@@ -94,19 +94,14 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
   const save = useMutation({
     mutationFn: async () => {
       const spec = {
-        ...(textOrUndefined(modelNumber) ? { modelNumber: textOrUndefined(modelNumber) } : {}),
-        ...(numberOrUndefined(year) !== undefined
-          ? { yearOfManufacture: numberOrUndefined(year) }
-          : {}),
-        ...(numberOrUndefined(tons) !== undefined
-          ? { weightCapacityTons: numberOrUndefined(tons) }
-          : {}),
-        ...(textOrUndefined(engineType) ? { engineType: textOrUndefined(engineType) } : {}),
-        ...(textOrUndefined(fuelType) ? { fuelType: textOrUndefined(fuelType) } : {}),
-        ...(textOrUndefined(notes) ? { notes: textOrUndefined(notes) } : {}),
-        ...(isOthers && textOrUndefined(categoryNote)
-          ? { categoryNote: textOrUndefined(categoryNote) }
-          : {}),
+        // JSON.stringify drops the undefined keys.
+        modelNumber: textOrUndefined(modelNumber),
+        yearOfManufacture: numberOrUndefined(year),
+        weightCapacityTons: numberOrUndefined(tons),
+        engineType: textOrUndefined(engineType),
+        fuelType: textOrUndefined(fuelType),
+        notes: textOrUndefined(notes),
+        categoryNote: isOthers ? textOrUndefined(categoryNote) : undefined,
         // Always sent, so removing the last group clears them. A row with no
         // name or no choices is an unfinished row, not a group.
         optionGroups,

@@ -32,7 +32,7 @@ export function NegotiationThread({ base, disabled = false }: { base: string; di
     mutationFn: () =>
       apiPost(`${base}/messages`, {
         body: body.trim(),
-        ...(offer ? { offerPhp: Number(offer) } : {}),
+        offerPhp: offer ? Number(offer) : undefined,
       }),
     onSuccess: () => {
       setBody('');
