@@ -51,6 +51,7 @@ describe('/equipment chrome', () => {
     vi.restoreAllMocks();
     clearTokens();
     clearCart();
+    localStorage.removeItem('arkilaunch.sideNav');
   });
 
   it('keeps the customer shell when signed in', async () => {
@@ -72,6 +73,24 @@ describe('/equipment chrome', () => {
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^cart,/i })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Primary' })).not.toBeInTheDocument();
+    unmount();
+  });
+
+  it('keeps every customer destination reachable in the collapsed rail', async () => {
+    setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
+    stubFetch();
+    const { unmount } = await renderRoute('/equipment');
+
+    const sidebar = within(await screen.findByRole('complementary', { name: 'Sidebar' }));
+    await userEvent.click(sidebar.getByRole('button', { name: 'Close navigation' }));
+
+    const rail = within(screen.getByRole('complementary', { name: 'Sidebar' }));
+    expect(rail.getByRole('button', { name: 'Open navigation' })).toBeInTheDocument();
+    for (const name of ['Home', 'Browse equipment', 'Self-loading truck', 'My bookings', 'Applications', 'Notifications', 'Settings']) {
+      expect(rail.getByRole('link', { name })).toHaveAttribute('title', name);
+    }
+    expect(rail.getByRole('link', { name: 'Browse equipment' })).toHaveAttribute('aria-current', 'page');
+    expect(localStorage.getItem('arkilaunch.sideNav')).toBe('collapsed');
     unmount();
   });
 

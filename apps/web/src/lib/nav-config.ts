@@ -47,6 +47,8 @@ export interface NavItem {
 export interface NavGroup {
   title: string;
   items: NavItem[];
+  // The shell heading already names this group in the customer menu.
+  hideTitle?: boolean;
   // Rendered at the foot of the sidebar instead of in the list: the
   // destinations a user reaches for from anywhere (inbox, profile).
   pinned?: boolean;
@@ -65,11 +67,16 @@ export function navForRole(groups: NavGroup[], role: RoleCode | null): NavGroup[
 export const ACCOUNT_NAV: NavGroup[] = [
   {
     title: 'My account',
+    hideTitle: true,
     items: [
       { label: 'Home', to: '/account', icon: LayoutDashboard, exact: true },
-      // The two services, side by side.
       { label: 'Browse equipment', to: '/equipment', icon: Boxes },
       { label: 'Self-loading truck', to: '/account/trucks', icon: Truck },
+    ],
+  },
+  {
+    title: 'Your activity',
+    items: [
       {
         label: 'My bookings',
         to: '/account/bookings',
@@ -91,6 +98,12 @@ export const ACCOUNT_NAV: NavGroup[] = [
         // entry of their own, so without this they would light nothing.
         owns: ['/account/companies'],
       },
+    ],
+  },
+  {
+    title: 'Account tools',
+    pinned: true,
+    items: [
       { label: 'Notifications', to: '/account/notifications', icon: Bell },
       { label: 'Settings', to: '/account/settings', icon: Settings },
     ],
