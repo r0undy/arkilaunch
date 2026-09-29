@@ -33,7 +33,7 @@ test.describe('customer settings', () => {
 
     await page.getByRole('tab', { name: 'Security' }).click();
     await page.getByLabel(/^New password/).fill('short');
-    await expect(page.getByText('Use at least 10 characters.')).toBeVisible();
+    await expect(page.getByText('Use at least 12 characters.')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Sign out everywhere' })).toBeVisible();
 
     await page.getByRole('tab', { name: 'Notifications' }).click();

@@ -21,17 +21,12 @@ import { EventsService } from '../src/events/events.service.js';
 import { checkoutPaidWebhook } from './paymongo-webhook.js';
 import { fixtureCompanyId } from './fixture-company.js';
 
-// Customer journey CR: cart -> booking -> quote -> counter-offer ->
-// revised quote -> accept -> rent + deposit checkout -> webhook, and the
-// change requests after it. The money assertions are the point: what is
-// charged is the accepted quote plus the contract deposit, once.
+// What is charged is the accepted quote plus the contract deposit, once.
 describe('Customer journey', () => {
   const events = new EventsService();
   const quotes = new QuotesService(new PricingEngineService(), events);
   const bookings = new BookingsService(events, quotes, new PaymentsService(new StubPaymentsAdapter(), new EventsService()));
-  // Real PayMongo issues a new session id per call; the shared stub's id
-  // is deterministic, which would make a checkout retry collide on the
-  // unique provider_ref.
+  // The stub's session id is deterministic, so a checkout retry would collide on the unique provider_ref.
   let sessions = 0;
   const adapter = new StubPaymentsAdapter();
   adapter.createCheckoutSession = async (amountPhp: number, invoiceId: string) => ({
@@ -140,6 +135,10 @@ describe('Customer journey', () => {
     expect(detail.quotation?.status).toBe('approved');
     expect(detail.quotation?.totalPhp).toBeGreaterThan(0);
     expect(await notificationTypes(booking.id)).toContain('quote_ready');
+    const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    const audit = await sql`select reason from audit_logs where entity = 'quotations' and action = 'APPROVE' and entity_id = ${detail.quotation!.id}`;
+    await sql.end();
+    expect(audit.map((row) => (row as { reason: string | null }).reason)).toEqual(['auto-quoted from rate cards']);
   });
 
 

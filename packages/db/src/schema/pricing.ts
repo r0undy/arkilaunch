@@ -3,10 +3,7 @@ import { sql } from 'drizzle-orm';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 
-// Global, public, non-PII fuel-price cache (RFC-3). The persisted
-// "last-known diesel price" so a cold worker restart still has a fallback.
-// App role gets SELECT only; writes are service_role cron or a
-// platform-admin route (never the tenant request path).
+// Global, non-PII last-known diesel price. App role gets SELECT only; never written on the tenant request path.
 export const dieselPriceReadings = pgTable(
   'diesel_price_readings',
   {
@@ -14,7 +11,7 @@ export const dieselPriceReadings = pgTable(
     region: text('region').notNull().default('NCR'),
     pricePhp: numeric('price_php', { precision: 8, scale: 4 }).notNull(),
     observedDate: date('observed_date').notNull(),
-    source: text('source').notNull(), // doe_scrape | platform_manual | admin_override | gaswatch (0043)
+    source: text('source').notNull(), // doe_scrape | platform_manual | admin_override | gaswatch
     sourceUrl: text('source_url'),
     capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
     capturedBy: uuid('captured_by').references(() => users.id),
@@ -25,8 +22,6 @@ export const dieselPriceReadings = pgTable(
   ],
 );
 
-// Time-variant per-tenant pricing inputs (RFC-3). Tenant-owned; table 35 of
-// 35 in the SDD §3 master catalog.
 export const pricingParameters = pgTable(
   'pricing_parameters',
   {

@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import {
+  type Tx,
   auditLogs,
   customers,
   depositForQuote,
@@ -16,17 +17,13 @@ import {
   rentals,
   withTenantTx,
 } from '@arkilaunch/db';
-import { DAYS_PER_MONTH, quoteExpiresAt, type QuoteRequest, type RentPart, type RequestContext } from '@arkilaunch/shared';
+import { bookingDays, quoteExpiresAt, type QuoteRequest, type RentPart, type RequestContext } from '@arkilaunch/shared';
 import { ownsCustomer, requireVerifiedCompany } from '../common/customer-scope.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { holdDeadline } from '../common/booking-hold.js';
 import { EventsService } from '../events/events.service.js';
 import { PricingEngineService, type PricedQuote } from './pricing-engine.service.js';
 
-// RFC-3 §3: the API returns camelCase (matching this codebase's existing
-// AuthTokens/JwtClaims convention in packages/shared), not the RFC's
-// illustrative snake_case JSON -- the wire shape below is a deliberate
-// naming-convention choice, not a divergence from the RFC's math or fields.
 export interface QuoteResponse {
   id: string;
   revision: number;
@@ -38,14 +35,13 @@ export interface QuoteResponse {
   currency: 'PHP';
   lineItems: Array<{
     kind: 'equipment' | 'custom';
-    // A custom line's own text; unset on equipment lines.
     description?: string;
     equipmentTypeId: string | null;
     equipmentTypeName?: string;
     rateCardId: string | null;
     quantity: number;
     estimatedHours: number;
-    // The rent as charged, e.g. [{ daily, 8000, 12 }] = 8,000/day x 12 days.
+    // e.g. [{ daily, 8000, 12 }] = 8,000/day x 12 days.
     rentParts: RentPart[];
     rent: number;
     hourlyRate: number;
@@ -61,20 +57,14 @@ export interface QuoteResponse {
   discount: number;
   total: number;
   printableUrl: string | null;
-  // Filled by GET /quotes/:id for the printable quote.
   createdAt?: string;
   customerName?: string;
-  // The booking this quote prices (EQR-…), printed on the quote.
   bookingCode?: string;
 }
 
-type Tx = Parameters<Parameters<typeof withTenantTx>[1]>[0];
 type QuoteState = { rentalId: string | null; status: string; createdAt: Date };
 
-// Whether staff may re-quote a booking's latest quote. A draft is still
-// staff's own; a declined quote, or one the customer answered in the
-// booking's thread after it was issued, is in negotiation. Otherwise the
-// price book's quote stands.
+// A draft is staff's own; a declined quote, or one the customer answered in the thread since, is in negotiation.
 export async function inNegotiation(tx: Tx, quote: QuoteState): Promise<boolean> {
   if (quote.status === 'rejected' || quote.status === 'draft') return true;
   if (quote.status !== 'approved' || !quote.rentalId) return false;
@@ -118,37 +108,15 @@ export class QuotesService {
     private readonly events: EventsService,
   ) {}
 
-  // POST /quotes/preview: compute only, nothing persisted (RFC-3 §3).
   async preview(ctx: RequestContext, body: QuoteRequest): Promise<QuoteResponse> {
-    const priced = await withTenantTx(ctx, (tx) =>
-      this.pricingEngine.priceQuote(tx, ctx.tenantId, body),
-    );
-    return {
-      id: '',
-      revision: 0,
-      status: 'preview',
-      dieselPrice: priced.diesel.pricePhp,
-      dieselPriceDate: priced.diesel.observedDate,
-      dieselPriceSource: priced.diesel.source,
-      priceStale: priced.diesel.stale,
-      currency: 'PHP',
-      lineItems: toLineItems(priced),
-      mobilization: priced.mobilizationPhp,
-      demobilization: priced.demobilizationPhp,
-      subtotal: priced.subtotalPhp,
-      discount: priced.discountPhp,
-      total: priced.totalPhp,
-      printableUrl: null,
-    };
+    const priced = await withTenantTx(ctx, (tx) => this.pricingEngine.priceQuote(tx, ctx.tenantId, body));
+    return this.toResponse('', 0, 'preview', priced, null);
   }
 
-  // POST /quotes: persist a draft, freeze the snapshot (RFC-3 §3).
   async create(ctx: RequestContext, body: QuoteRequest): Promise<QuoteResponse> {
     const startedAt = Date.now();
     const result = await withTenantTx(ctx, async (tx) => {
-      // A booking has one live quote. Quoting it again is a new revision
-      // that supersedes every open one, so an older, cheaper approved quote
-      // can never still be accepted after the price moved.
+      // Re-quoting supersedes every open revision, so an older, cheaper approved quote can never still be accepted.
       await requireVerifiedCompany(tx, body.customerId);
       let revision = 1;
       let parentQuotationId: string | null = null;
@@ -176,58 +144,8 @@ export class QuotesService {
 
       const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body);
 
-      const [quotation] = await tx
-        .insert(quotations)
-        .values({
-          tenantId: ctx.tenantId,
-          customerId: body.customerId,
-          rentalId: body.rentalId,
-          revision,
-          parentQuotationId,
-          status: 'draft',
-          dieselPriceSnapshot: String(priced.diesel.pricePhp),
-          priceStale: String(priced.diesel.stale),
-          dieselPriceReadingId: priced.diesel.readingId,
-          dieselPriceDate: priced.diesel.observedDate,
-          dieselPriceSource: priced.diesel.source,
-          pricingParamsId: priced.diesel.pricingParamsId,
-          discountType: body.discount.type,
-          discountValue: String(body.discount.value),
-          mobilizationPhp: String(priced.mobilizationPhp),
-          demobilizationPhp: String(priced.demobilizationPhp),
-          subtotalPhp: String(priced.subtotalPhp),
-          totalPhp: String(priced.totalPhp),
-        })
-        .returning();
-      if (!quotation) throw new Error('quotation insert returned no row');
-
-      await tx.insert(quotationItems).values(
-        priced.items.map((item) => ({
-          tenantId: ctx.tenantId,
-          quotationId: quotation.id,
-          kind: item.kind,
-          description: item.description,
-          equipmentTypeId: item.equipmentTypeId,
-          rateCardId: item.rateCardId,
-          quantity: item.quantity,
-          mobilizationKm: String(item.mobilizationKm),
-          demobilizationKm: String(item.demobilizationKm),
-          estimatedHours: String(item.estimatedHours),
-          pricingInputs: item.pricingInputs,
-          hourlyRatePhp: String(item.hourlyRatePhp),
-          operatingCostPhp: String(item.operatingCostPhp),
-          mobilizationCostPhp: String(item.mobilizationCostPhp),
-          demobilizationCostPhp: String(item.demobilizationCostPhp),
-          bufferPhp: String(item.bufferPhp),
-          subtotalPhp: String(item.subtotalPhp),
-        })),
-      );
-
-      await this.auditAgreedPrices(tx, ctx, quotation.id, body);
-      const printableUrl = `/app/quotes/${quotation.id}/print`;
-      await tx.update(quotations).set({ printableUrl }).where(eq(quotations.id, quotation.id));
-
-      return { quotation: { ...quotation, printableUrl }, priced };
+      const quotation = await this.insertRevision(tx, ctx, body, priced, { rentalId: body.rentalId, revision, parentQuotationId });
+      return { quotation, priced };
     });
 
     await this.events.emit(ctx, 'quote_generated', {
@@ -240,14 +158,6 @@ export class QuotesService {
     return this.toResponse(result.quotation.id, result.quotation.revision, result.quotation.status, result.priced, result.quotation.printableUrl);
   }
 
-  // Automatic quote on a new booking: every machine priced off its own rate
-  // card (the unit's, else its type's), picked by hire length: 30+ days
-  // monthly, else daily, else hourly, falling back to whatever card exists.
-  // Hours = booked days x the tenant's hours per day; mobilization and
-  // demobilization are the company defaults. Sent to the customer at once;
-  // staff can still revise it before it is accepted. Returns null, leaving
-  // the booking for a manual quote, when a machine has no rate card or
-  // pricing is not set up.
   async autoQuoteBooking(ctx: RequestContext, rentalId: string): Promise<QuoteResponse | null> {
     const body = await withTenantTx(ctx, async (tx): Promise<QuoteRequest | null> => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, rentalId)).limit(1);
@@ -262,16 +172,15 @@ export class QuotesService {
       const now = new Date();
       const items: QuoteRequest['items'] = [];
       for (const line of lines) {
-        // No end date: an open-ended hire has no days to price; manual quote.
         if (!line.end) return null;
-        const days = Math.max(1, Math.ceil((line.end.getTime() - line.start.getTime()) / 86_400_000));
-        const preferred = days >= DAYS_PER_MONTH ? ['monthly', 'daily', 'hourly'] : ['daily', 'hourly', 'monthly'];
+        const days = bookingDays(line.start, line.end);
         const [card] = await tx
           .select({ id: rateCards.id })
           .from(rateCards)
           .where(
             and(
               eq(rateCards.tenantId, ctx.tenantId),
+              eq(rateCards.rateType, 'hourly'),
               or(eq(rateCards.equipmentId, line.equipmentId), and(eq(rateCards.equipmentTypeId, line.equipmentTypeId), isNull(rateCards.equipmentId))),
               lte(rateCards.effectiveFrom, now),
               or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, now)),
@@ -279,7 +188,6 @@ export class QuotesService {
           )
           .orderBy(
             sql`${rateCards.equipmentId} is null`,
-            sql`array_position(${sql.raw(`array['${preferred.join("','")}']`)}::text[], ${rateCards.rateType})`,
             desc(rateCards.effectiveFrom),
           )
           .limit(1);
@@ -299,86 +207,39 @@ export class QuotesService {
     if (!body) return null;
     try {
       const quote = await this.create(ctx, body);
-      await this.approve(ctx, quote.id);
+      await this.approve(ctx, quote.id, 'auto-quoted from rate cards');
       return { ...quote, status: 'approved' };
     } catch (err) {
-      // No pricing parameters or diesel price yet (422): staff quote by hand.
       if (err instanceof UnprocessableEntityException) return null;
       throw err;
     }
   }
 
-  // POST /quotes/:id/revise: fresh snapshot, supersede the parent (RFC-3 §3).
   async revise(ctx: RequestContext, quotationId: string, body: QuoteRequest): Promise<QuoteResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [parent] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
       if (!parent) throw new NotFoundException({ error: 'quote_not_found' });
       if (parent.status === 'accepted') throw new ConflictException({ error: 'quote_already_accepted' });
+      if (body.customerId !== parent.customerId) throw new ConflictException({ error: 'quote_customer_mismatch' });
       await this.requireNegotiation(tx, parent);
       await requireVerifiedCompany(tx, body.customerId);
 
       const priced = await this.pricingEngine.priceQuote(tx, ctx.tenantId, body);
 
-      const [revised] = await tx
-        .insert(quotations)
-        .values({
-          tenantId: ctx.tenantId,
-          customerId: body.customerId,
-          rentalId: parent.rentalId,
-          revision: parent.revision + 1,
-          status: 'draft',
-          dieselPriceSnapshot: String(priced.diesel.pricePhp),
-          priceStale: String(priced.diesel.stale),
-          dieselPriceReadingId: priced.diesel.readingId,
-          dieselPriceDate: priced.diesel.observedDate,
-          dieselPriceSource: priced.diesel.source,
-          pricingParamsId: priced.diesel.pricingParamsId,
-          parentQuotationId: parent.id,
-          discountType: body.discount.type,
-          discountValue: String(body.discount.value),
-          mobilizationPhp: String(priced.mobilizationPhp),
-          demobilizationPhp: String(priced.demobilizationPhp),
-          subtotalPhp: String(priced.subtotalPhp),
-          totalPhp: String(priced.totalPhp),
-        })
-        .returning();
-      if (!revised) throw new Error('revised quotation insert returned no row');
+      const revised = await this.insertRevision(tx, ctx, body, priced, {
+        rentalId: parent.rentalId,
+        revision: parent.revision + 1,
+        parentQuotationId: parent.id,
+      });
 
-      await tx.insert(quotationItems).values(
-        priced.items.map((item) => ({
-          tenantId: ctx.tenantId,
-          quotationId: revised.id,
-          kind: item.kind,
-          description: item.description,
-          equipmentTypeId: item.equipmentTypeId,
-          rateCardId: item.rateCardId,
-          quantity: item.quantity,
-          mobilizationKm: String(item.mobilizationKm),
-          demobilizationKm: String(item.demobilizationKm),
-          estimatedHours: String(item.estimatedHours),
-          pricingInputs: item.pricingInputs,
-          hourlyRatePhp: String(item.hourlyRatePhp),
-          operatingCostPhp: String(item.operatingCostPhp),
-          mobilizationCostPhp: String(item.mobilizationCostPhp),
-          demobilizationCostPhp: String(item.demobilizationCostPhp),
-          bufferPhp: String(item.bufferPhp),
-          subtotalPhp: String(item.subtotalPhp),
-        })),
-      );
-
-      await this.auditAgreedPrices(tx, ctx, revised.id, body);
-      const printableUrl = `/app/quotes/${revised.id}/print`;
-      await tx.update(quotations).set({ printableUrl }).where(eq(quotations.id, revised.id));
-
-      // The parent's numbers are unchanged (QAD-T47); only its status flips.
+      // The parent's numbers are never changed; only its status flips.
       await tx.update(quotations).set({ status: 'superseded' }).where(eq(quotations.id, parent.id));
 
-      return this.toResponse(revised.id, revised.revision, 'draft', priced, printableUrl);
+      return this.toResponse(revised.id, revised.revision, 'draft', priced, revised.printableUrl);
     });
   }
 
-  // POST /quotes/:id/approve: draft -> approved, locks the snapshot (RFC-3 §3).
-  async approve(ctx: RequestContext, quotationId: string): Promise<{ id: string; status: string }> {
+  async approve(ctx: RequestContext, quotationId: string, reason?: string): Promise<{ id: string; status: string }> {
     return withTenantTx(ctx, async (tx) => {
       const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
       if (!quotation) throw new NotFoundException({ error: 'quote_not_found' });
@@ -393,9 +254,10 @@ export class QuotesService {
         action: 'APPROVE',
         entity: 'quotations',
         entityId: quotationId,
+        reason: reason ?? null,
       });
       if (quotation.rentalId) {
-        // The customer's turn: a request's hold restarts with the quote (QA 25).
+        // A request's hold restarts with the quote.
         await tx
           .update(rentals)
           .set({ holdExpiresAt: await holdDeadline(tx, ctx.tenantId) })
@@ -411,9 +273,7 @@ export class QuotesService {
     });
   }
 
-  // POST /quotes/:id/accept: the customer takes an approved quote. This is
-  // the only thing that makes rent chargeable at checkout, and it opens the
-  // rental contract whose deposit_required caps every later deduction.
+  // The only thing that makes rent chargeable at checkout; opens the contract whose deposit_required caps deductions.
   async accept(ctx: RequestContext, quotationId: string): Promise<{ id: string; status: string }> {
     return withTenantTx(ctx, async (tx) => {
       const quotation = await this.customerQuote(tx, ctx, quotationId);
@@ -449,8 +309,6 @@ export class QuotesService {
     });
   }
 
-  // POST /quotes/:id/decline: the customer walks away from this revision.
-  // The booking stays open so staff can revise, or the customer can cancel.
   async decline(ctx: RequestContext, quotationId: string): Promise<{ id: string; status: string }> {
     return withTenantTx(ctx, async (tx) => {
       const quotation = await this.customerQuote(tx, ctx, quotationId);
@@ -464,17 +322,14 @@ export class QuotesService {
     });
   }
 
-  // A booking's quote comes from the standard price book. Staff may only
-  // re-quote it in a negotiation: the customer declined it, or wrote in the
-  // booking's thread since it was issued. Otherwise the price book stands.
+  // Staff may re-quote only in a negotiation; otherwise the price book stands.
   private async requireNegotiation(tx: Tx, quote: QuoteState) {
     if (!(await inNegotiation(tx, quote))) throw new ConflictException({ error: 'quote_not_in_negotiation' });
   }
 
-  // A staff-agreed line price is a manual override of the engine, so it is
-  // audit-logged against the quote it lives on.
+  // A staff-agreed line price overrides the engine, so it is audit-logged.
   private async auditAgreedPrices(
-    tx: Parameters<Parameters<typeof withTenantTx>[1]>[0],
+    tx: Tx,
     ctx: RequestContext,
     quotationId: string,
     body: QuoteRequest,
@@ -491,10 +346,8 @@ export class QuotesService {
     });
   }
 
-  // Accept/decline are the customer's call on their own quote: 404 for
-  // anyone else's (never confirm the id exists) and for staff, who approve
-  // rather than accept.
-  private async customerQuote(tx: Parameters<Parameters<typeof withTenantTx>[1]>[0], ctx: RequestContext, quotationId: string) {
+  // 404 for anyone else's quote (never confirm the id exists) and for staff, who approve rather than accept.
+  private async customerQuote(tx: Tx, ctx: RequestContext, quotationId: string) {
     const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
     const mine = ctx.role === 'customer' && quotation ? await ownsCustomer(tx, ctx, quotation.customerId) : false;
     if (!quotation || !mine) {
@@ -503,18 +356,13 @@ export class QuotesService {
     return quotation;
   }
 
-  // GET /quotes/:id: renders entirely from stored columns (RFC-3 §3), so a
-  // print months later shows the exact quoted numbers.
+  // Renders entirely from stored columns, so a later print shows the exact quoted numbers.
   async get(ctx: RequestContext, quotationId: string): Promise<QuoteResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
       if (!quotation) throw new NotFoundException({ error: 'quote_not_found' });
 
-      // RLS scopes to the tenant, never to the customer, and `customer`
-      // holds quote:read -- so without this a customer JWT plus any
-      // quotation id returns another customer's rates, discounts and
-      // totals (audit-api-surface.md #1). 404 rather than 403: a 403 would
-      // confirm the id exists.
+      // RLS scopes to the tenant, not the customer, and customers hold quote:read; 404 so the id isn't confirmed.
       if (ctx.role === 'customer') {
         if (!(await ownsCustomer(tx, ctx, quotation.customerId))) throw new NotFoundException({ error: 'quote_not_found' });
       }
@@ -552,8 +400,7 @@ export class QuotesService {
             rateCardId: item.rateCardId,
             quantity: item.quantity,
             estimatedHours: Number(item.estimatedHours),
-            // Quotes from before 2.0 carry no rent breakdown: rent shows as
-            // the operating cost, priced per hour.
+            // Pre-2.0 quotes carry no rent breakdown.
             rentParts: inputs.rent_parts ?? [],
             rent: inputs.rent_php ?? Number(item.operatingCostPhp),
             hourlyRate: Number(item.hourlyRatePhp),
@@ -576,6 +423,64 @@ export class QuotesService {
         ...(booking ? { bookingCode: booking.code } : {}),
       };
     });
+  }
+
+  private async insertRevision(
+    tx: Tx,
+    ctx: RequestContext,
+    body: QuoteRequest,
+    priced: PricedQuote,
+    link: { rentalId: string | null; revision: number; parentQuotationId: string | null },
+  ) {
+    const [quotation] = await tx
+      .insert(quotations)
+      .values({
+        tenantId: ctx.tenantId,
+        customerId: body.customerId,
+        ...link,
+        status: 'draft',
+        dieselPriceSnapshot: String(priced.diesel.pricePhp),
+        priceStale: String(priced.diesel.stale),
+        dieselPriceReadingId: priced.diesel.readingId,
+        dieselPriceDate: priced.diesel.observedDate,
+        dieselPriceSource: priced.diesel.source,
+        pricingParamsId: priced.diesel.pricingParamsId,
+        discountType: body.discount.type,
+        discountValue: String(body.discount.value),
+        mobilizationPhp: String(priced.mobilizationPhp),
+        demobilizationPhp: String(priced.demobilizationPhp),
+        subtotalPhp: String(priced.subtotalPhp),
+        totalPhp: String(priced.totalPhp),
+      })
+      .returning();
+    if (!quotation) throw new Error('quotation insert returned no row');
+
+    await tx.insert(quotationItems).values(
+      priced.items.map((item) => ({
+        tenantId: ctx.tenantId,
+        quotationId: quotation.id,
+        kind: item.kind,
+        description: item.description,
+        equipmentTypeId: item.equipmentTypeId,
+        rateCardId: item.rateCardId,
+        quantity: item.quantity,
+        mobilizationKm: String(item.mobilizationKm),
+        demobilizationKm: String(item.demobilizationKm),
+        estimatedHours: String(item.estimatedHours),
+        pricingInputs: item.pricingInputs,
+        hourlyRatePhp: String(item.hourlyRatePhp),
+        operatingCostPhp: String(item.operatingCostPhp),
+        mobilizationCostPhp: String(item.mobilizationCostPhp),
+        demobilizationCostPhp: String(item.demobilizationCostPhp),
+        bufferPhp: String(item.bufferPhp),
+        subtotalPhp: String(item.subtotalPhp),
+      })),
+    );
+
+    await this.auditAgreedPrices(tx, ctx, quotation.id, body);
+    const printableUrl = `/app/quotes/${quotation.id}/print`;
+    await tx.update(quotations).set({ printableUrl }).where(eq(quotations.id, quotation.id));
+    return { ...quotation, printableUrl };
   }
 
   private toResponse(

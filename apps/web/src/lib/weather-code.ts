@@ -1,13 +1,5 @@
-import type { WeatherTone } from '../components/weather-banner.js';
+export type WeatherTone = 'clear' | 'yellow' | 'orange' | 'red' | 'stale';
 
-// Open-Meteo reports conditions as WMO codes. Nothing in the app translated
-// one before: the advisory path works off measured wind/rain thresholds
-// (weather-explain.ts) and never needed the code itself. The forecast rail
-// does -- a row reading "3" tells a customer nothing.
-//
-// Ranges, not an exhaustive table: WMO defines codes this adapter will never
-// see in Metro Manila (snow grains, ice pellets), and inventing a label for
-// an unknown code is worse than admitting it is unknown.
 export interface WeatherCodeDescription {
   label: string;
   tone: WeatherTone;
@@ -24,14 +16,10 @@ export function describeWeatherCode(code: number): WeatherCodeDescription {
   if (code >= 80 && code <= 82) return { label: 'Rain showers', tone: 'orange' };
   if (code === 85 || code === 86) return { label: 'Snow showers', tone: 'orange' };
   if (code >= 95) return { label: 'Thunderstorms', tone: 'red' };
-  // Not a guess and not a fabricated calm: an unrecognised code says so.
   return { label: 'Unknown', tone: 'stale' };
 }
 
-// "Mon", "Tue" -- the rail's column heading. Parsed as a local date rather
-// than through `new Date(iso)`, which would read a bare YYYY-MM-DD as UTC
-// midnight and show the previous day for anyone east of Greenwich. Manila is
-// UTC+8, so every day label would have been wrong.
+// Parsed as a local date: new Date('YYYY-MM-DD') is UTC midnight, the previous day in Manila.
 export function weekdayLabel(date: string, today = new Date()): string {
   const [y, m, d] = date.split('-').map(Number);
   if (!y || !m || !d) return date;

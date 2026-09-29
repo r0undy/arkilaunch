@@ -1,6 +1,5 @@
 import { apiGet } from './api-client.js';
 
-// Read-only pick-list data for the POC forms (GET /api/v1/reference/*).
 export interface EquipmentTypeRef {
   id: string;
   name: string;
@@ -15,7 +14,6 @@ export interface EquipmentRef {
 export interface RateCardRef {
   id: string;
   equipmentTypeId: string;
-  // Set when the card overrides one unit of the type.
   equipmentId: string | null;
   rateType: string;
   rateValue: string;
@@ -23,13 +21,10 @@ export interface RateCardRef {
 }
 export interface RentalRef {
   id: string;
-  // EQR-YYYY-NNNN, the booking code shown everywhere a rental is named.
   code: string;
   customerId: string;
   projectSiteId: string;
   status: string;
-  // The booking's own dates; the server's span check (a unit's assignment
-  // window, else these) is what actually decides.
   startDate?: string;
   endDate?: string | null;
 }
@@ -45,9 +40,7 @@ export interface ProjectSiteRef {
   province: string | null;
 }
 
-// Which capture paths the server will accept. With the OCR pipeline on, a
-// paper scan must NOT carry transcribed hours (the API answers 422
-// line_items_not_accepted), and the client had no way to know that.
+// With the OCR pipeline on, a paper scan must not carry transcribed hours (422 line_items_not_accepted).
 export interface CapabilitiesRef {
   ocrPipeline: boolean;
   ocrKyc: boolean;

@@ -2,10 +2,6 @@ import { index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants } from './tenancy.js';
 
-// One quote per tenant, surfaced on the public storefront (@Public
-// GET /catalog/testimonials) via the same anchor-tenant-slug, SECURITY
-// DEFINER pattern as catalog_list_equipment -- see migrations
-// 0013_testimonials_table.sql / 0014_public_catalog_testimonials.sql.
 export const testimonials = pgTable(
   'testimonials',
   {

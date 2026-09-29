@@ -1,10 +1,6 @@
 import type postgres from 'postgres';
 
-// The seeded test-tenant-a customer login owns more than one company once
-// other specs (and hand QA on the shared database) add theirs, and
-// bookings.create() then refuses an implicit pick with 409
-// company_required. Specs that book as that customer name the seeded
-// company explicitly instead of depending on it being the only one.
+// The seeded customer owns several companies on the shared DB, so bookings must name one explicitly.
 export async function fixtureCompanyId(sql: postgres.Sql, tenantId: string): Promise<string> {
   const [row] = await sql`
     select c.id from customers c

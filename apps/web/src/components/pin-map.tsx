@@ -6,8 +6,7 @@ export type LatLng = { lat: number; lng: number };
 
 const DEFAULT_CENTER: L.LatLngTuple = [14.5995, 120.9842];
 
-// Same CSS-dot pin as the site dialog (Leaflet's default marker images are
-// not bundled).
+// Leaflet's default marker images are not bundled, so the pin is a CSS dot.
 const pinIcon = L.divIcon({
   className: '',
   html: '<span style="display:block;width:18px;height:18px;border-radius:50%;background:#c2410c;border:3px solid #fff;box-shadow:0 0 0 1px #0006"></span>',
@@ -15,7 +14,6 @@ const pinIcon = L.divIcon({
   iconAnchor: [9, 9],
 });
 
-/** One exact point: click the map to drop the pin, drag it to adjust. */
 export function PinMap({ label, value, onChange }: { label: string; value: LatLng | null; onChange: (next: LatLng) => void }) {
   const el = useRef<HTMLDivElement | null>(null);
   const marker = useRef<L.Marker | null>(null);

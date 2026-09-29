@@ -2,7 +2,6 @@ import { index, integer, jsonb, numeric, pgTable, text, timestamp, unique, uuid 
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants } from './tenancy.js';
 
-// Global reference catalog (SDD §3), same category as diesel_price_readings.
 export const equipmentTypes = pgTable('equipment_types', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
@@ -22,40 +21,27 @@ export const equipment = pgTable(
     serialNo: text('serial_no').notNull(),
     availabilityStatus: text('availability_status').notNull().default('available'),
     runtimeHours: numeric('runtime_hours', { precision: 10, scale: 2 }).notNull().default('0'),
-    // The Figma add/edit spec sheet (292:1344 Basic Information + Technical
-    // Specifications). All nullable: every one of these arrived after the
-    // table had rows, and none of them is required to rent a machine out.
-    // `model` is the equipment's name ("Caterpillar Heavy-Duty Excavator
-    // 320"); modelNumber is the manufacturer's part code ("CAT-320-GH").
+    // All nullable: added after the table had rows. `model` is the name; modelNumber the part code.
     modelNumber: text('model_number'),
     yearOfManufacture: integer('year_of_manufacture'),
     weightCapacityTons: numeric('weight_capacity_tons', { precision: 8, scale: 2 }),
     engineType: text('engine_type'),
     fuelType: text('fuel_type'),
     notes: text('notes'),
-    // The Supabase Storage object key, never a URL -- the public URL is
-    // derived at the egress boundary so the bucket can move without a
-    // backfill. Nothing else in the app stores a rendered URL either.
+    // Storage object key, never a URL: the public URL is derived at egress.
     photoUri: text('photo_uri'),
-    // Free-text category when the type is "Others" (migration 0035).
     categoryNote: text('category_note'),
-    // The choices a unit is rented with, e.g. "Bucket size": Standard, 3/4,
-    // 1/2 (migration 0065). Labels only; never priced.
+    // Labels only; never priced.
     optionGroups: jsonb('option_groups').$type<{ name: string; values: string[] }[]>().notNull().default([]),
-    // Credit and source page for a photo that is not the tenant's own.
     photoCredit: text('photo_credit'),
     photoSourceUrl: text('photo_source_url'),
-    // Soft retire. A machine is never deleted: edtr rows cite equipment_id as
-    // the evidence an invoice was computed from (billing.ts), and
-    // equipment_assignments carries its rental history. Migration 0026
-    // REVOKEs DELETE so this is the only way a unit can leave the fleet.
+    // Soft retire only: edtr rows cite equipment_id as invoice evidence, and DELETE is REVOKEd.
     retiredAt: timestamp('retired_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     tenantIsolationPolicy(),
-    // Live since migration 0002; declared here so `generate` stops
-    // proposing to drop it (audit-db-tenant-isolation.md #1).
+    // Declared so drizzle-kit generate stops proposing to drop it.
     unique('equipment_tenant_serial_uq').on(table.tenantId, table.serialNo),
   ],
 );
@@ -70,9 +56,9 @@ export const rateCards = pgTable(
     equipmentTypeId: uuid('equipment_type_id')
       .notNull()
       .references(() => equipmentTypes.id),
-    // 0038: a unit card overrides its type's card; null = type-wide.
+    // A unit card overrides its type's card; null = type-wide.
     equipmentId: uuid('equipment_id').references(() => equipment.id),
-    rateType: text('rate_type').notNull(), // hourly, daily
+    rateType: text('rate_type').notNull(), // hourly only (0071); older non-hourly rows are retired
     rateValue: numeric('rate_value', { precision: 12, scale: 2 }).notNull(),
     currency: text('currency').notNull().default('PHP'),
     effectiveFrom: timestamp('effective_from', { withTimezone: true }).notNull(),
@@ -94,7 +80,6 @@ export const maintenanceSchedules = pgTable(
     equipmentId: uuid('equipment_id')
       .notNull()
       .references(() => equipment.id),
-    // "Engine oil", "Grease"... null on rows from before migration 0035.
     task: text('task'),
     hoursInterval: numeric('hours_interval', { precision: 10, scale: 2 }).notNull(),
     nextDue: numeric('next_due', { precision: 10, scale: 2 }),
@@ -115,7 +100,6 @@ export const maintenanceLogs = pgTable(
     equipmentId: uuid('equipment_id')
       .notNull()
       .references(() => equipment.id),
-    // The schedule this service reset; null for a general log.
     scheduleId: uuid('schedule_id').references(() => maintenanceSchedules.id),
     performedAt: timestamp('performed_at', { withTimezone: true }).notNull(),
     notes: text('notes'),
@@ -126,8 +110,6 @@ export const maintenanceLogs = pgTable(
   ],
 );
 
-// Date ranges a unit is out for maintenance (migration 0035). Read by
-// booking availability (phase 3).
 export const maintenanceWindows = pgTable(
   'maintenance_windows',
   {

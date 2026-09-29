@@ -7,15 +7,7 @@ import { Surface } from './surface.js';
 import { Button } from './button.js';
 import { Input } from './input.js';
 
-// The counter-offer thread behind Figma 225:3084 (Messenger Chat Nego).
-// The frame hands the customer off to Facebook Messenger; this keeps the
-// conversation on the booking instead, so an offer sits next to the quote
-// it is about. One component for both sides: the API derives who is
-// speaking from the JWT, so the customer account and the staff console
-// mount the same thread. Trucks and rentals share it too (the same
-// negotiation_messages rows): `base` is '/bookings/:id' for a rental,
-// '/me/truck-requests/:id' or '/truck-requests/:id' for a truck.
-// Polled, not pushed: a counter-offer landing ten seconds late costs nothing.
+// The API derives who is speaking from the JWT, so both sides mount the same thread.
 export function NegotiationThread({ base, disabled = false }: { base: string; disabled?: boolean }) {
   const queryClient = useQueryClient();
   const queryKey = ['thread', base] as const;
@@ -32,7 +24,7 @@ export function NegotiationThread({ base, disabled = false }: { base: string; di
     mutationFn: () =>
       apiPost(`${base}/messages`, {
         body: body.trim(),
-        ...(offer ? { offerPhp: Number(offer) } : {}),
+        offerPhp: offer ? Number(offer) : undefined,
       }),
     onSuccess: () => {
       setBody('');

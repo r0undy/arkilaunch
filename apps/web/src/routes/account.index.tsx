@@ -2,12 +2,12 @@ import { createRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { accountLayoutRoute } from './_account.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { PageHeader } from '../components/page-header.js';
 import { Modal } from '../components/modal.js';
 import { hasRequiredCompanyDocuments } from '@arkilaunch/shared';
 import { bookingsQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
-import { CheckIcon } from '../components/icons.js';
+import { Check } from 'lucide-react';
 
 export interface SetupStep {
   label: string;
@@ -15,8 +15,6 @@ export interface SetupStep {
   to: string;
 }
 
-// What a new customer still has to do before a booking can be paid. Each
-// step is derived from the records, not a stored flag.
 export function setupSteps(
   companies: { kycStatus: string; documents: { documentType: string }[] }[],
   siteCount: number,
@@ -24,20 +22,18 @@ export function setupSteps(
   const hasDocs = companies.some((c) => hasRequiredCompanyDocuments(c.documents));
   return [
     { label: 'Add your company', done: companies.length > 0, to: '/account/companies/new' },
-    { label: 'Upload its ID and registration', done: hasDocs, to: '/account/companies' },
-    { label: 'Add a project site', done: siteCount > 0, to: '/account/companies' },
+    { label: 'Upload its ID and registration', done: hasDocs, to: '/account/applications' },
+    { label: 'Add a project site', done: siteCount > 0, to: '/account/applications' },
     {
       label: 'Get verified by the rental team',
       done: companies.some((c) => c.kycStatus === 'approved'),
-      to: '/account/companies',
+      to: '/account/applications',
     },
   ];
 }
 
 const SEEN_KEY = 'setup-modal-seen';
 
-// Pops up on the first home visit of each session until setup is done;
-// after that the home page only carries a one-line reminder that reopens it.
 function SetupChecklist() {
   const companies = useQuery(companiesQueries.mine());
   const sites = useQuery(customerSitesQueries.mine());
@@ -96,9 +92,7 @@ function SetupChecklist() {
             <Button variant="ghost" onClick={close}>
               Later
             </Button>
-            <Link to={next.to} onClick={close}>
-              <Button variant="primary">{next.label}</Button>
-            </Link>
+            <Link to={next.to} onClick={close} className={buttonClass('primary')}>{next.label}</Link>
           </>
         }
       >
@@ -120,7 +114,7 @@ function StepList({ steps, onNavigate }: { steps: SetupStep[]; onNavigate: () =>
               step.done ? 'border-success bg-success text-white' : 'border-border text-text-muted',
             ].join(' ')}
           >
-            {step.done ? <CheckIcon /> : null}
+            {step.done ? <Check className="size-full" /> : null}
           </span>
           {step.done ? (
             <span className="text-text-muted line-through">{step.label}</span>
@@ -158,10 +152,8 @@ function AccountHomePage() {
           <p className="mt-1 text-sm text-text-muted">
             Browse the fleet and book equipment for your project.
           </p>
-          <Link to="/equipment">
-            <Button variant="primary" className="mt-4">
-              Browse equipments
-            </Button>
+          <Link to="/equipment" className={buttonClass('primary', 'default', 'mt-4')}>
+            Browse equipments
           </Link>
         </div>
         <div className="rounded-md border border-border bg-surface p-6">
@@ -169,10 +161,8 @@ function AccountHomePage() {
           <p className="mt-1 text-sm text-text-muted">
             View active rentals and their return dates.
           </p>
-          <Link to="/account/bookings">
-            <Button variant="secondary" className="mt-4">
-              View bookings
-            </Button>
+          <Link to="/account/bookings" className={buttonClass('secondary', 'default', 'mt-4')}>
+            View bookings
           </Link>
         </div>
       </div>

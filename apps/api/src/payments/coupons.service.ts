@@ -17,9 +17,7 @@ const toResponse = (row: typeof coupons.$inferSelect): CouponResponse => ({
   createdAt: row.createdAt.toISOString(),
 });
 
-// A rental company's coupon codes (cr-arkilaunch-coupons.md), managed by the
-// staff who set its prices (pricing:manage). Redemption lives in
-// payments.service.ts checkout; this is only the catalog.
+// Only the catalog; redemption lives in payments.service.ts checkout.
 @Injectable()
 export class CouponsService {
   async list(ctx: RequestContext, limit: number, offset: number): Promise<CouponListResponse> {

@@ -1,19 +1,5 @@
-# The persistent apps/api Container App. Secrets/env vars are passed as
-# generic maps (not one variable per .env.example key) so this module never
-# needs editing when the app's own env contract changes -- the caller
-# (environments/{dev,prod}/main.tf) is the single place that lists what's
-# actually wired in, sourced from docs/runbook-local-dev.md / .env.example.
-#
-# Pulls via a pre-created UserAssigned identity (modules/managed_identity),
-# not SystemAssigned -- a SystemAssigned identity only exists once this
-# resource is created, so its AcrPull role assignment can only be granted
-# afterward, and Azure's own revision-provisioning timeout can expire while
-# waiting for that just-granted role to propagate through AAD (observed in
-# practice: "Operation expired", provisioningState=Failed, zero revisions,
-# no automatic retry). The caller MUST set depends_on = [module.<identity
-# module>] on this module block so the identity's role assignment (and its
-# 60s propagation wait, modules/managed_identity's time_sleep) is fully
-# settled before this resource is created.
+# UserAssigned, not SystemAssigned: AcrPull must propagate before the app exists or ACA
+# provisioning times out with zero revisions. Callers must depends_on the identity module.
 resource "azurerm_container_app" "this" {
   name                         = var.name
   resource_group_name          = var.resource_group_name

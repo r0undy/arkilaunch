@@ -9,10 +9,7 @@ import {
   nearestFreeWindow,
 } from '../src/common/equipment-availability.js';
 
-// Feedback phase 3: the one availability check. Each blocker on its own.
-// Calendar blockers are pure (a real tenant_calendar row would change every
-// other booking spec running beside this one); the rest hit the DB on a
-// 2035 window nobody else uses.
+// Calendar blockers are pure (a real tenant_calendar row would affect other specs); the rest use a 2035 window.
 const CAL: TenantCalendar = {
   openTime: '07:00',
   closeTime: '17:00',

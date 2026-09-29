@@ -9,15 +9,10 @@ import { useToast } from '../components/toast.js';
 import { isTenantSlug } from '@arkilaunch/shared';
 import { currentHost, tenantOrigin } from '../lib/host.js';
 
-// Minimum enforced server-side by UserPasswordSchema (min 12). Mirrored
-// here as a courtesy so the user is not told to try again by a 400; the
-// server check is the authoritative one.
+// Courtesy mirror of UserPasswordSchema (min 12); the server check is authoritative.
 const MIN_PASSWORD_LENGTH = 12;
 
-// The token arrives in the link (?token=) or is pasted by hand (a staff
-// invite relayed by an admin). A new company's owner opens it on the
-// platform host (?slug= names the company, whose own subdomain is not
-// served until this activation takes it live), then signs in on its host.
+// A new company's owner activates on the platform host (?slug=): its subdomain is not live yet.
 function validateActivateSearch(search: Record<string, unknown>): { token?: string; slug?: string } {
   const out: { token?: string; slug?: string } = {};
   if (typeof search.token === 'string' && search.token.length > 0) out.token = search.token;
@@ -46,9 +41,6 @@ function ActivatePage() {
     setSubmitting(true);
     try {
       await activateAccount({ activationToken: activationToken.trim(), password });
-      // 204, no tokens issued: the user signs in normally from here. The
-      // login screen says nothing about where they came from, so the only
-      // acknowledgement that the password took is this toast.
       toast.success('Your account is active', 'Sign in with your new password.');
       if (currentHost.kind === 'platform' && slug) {
         window.location.assign(`${tenantOrigin(slug)}/login`);

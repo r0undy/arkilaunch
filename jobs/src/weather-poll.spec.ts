@@ -8,16 +8,8 @@ import type { WeatherPort } from '@arkilaunch/shared';
 import { runWeatherPoll } from './weather-poll.js';
 import { makeJobDb } from './db-client.js';
 
-// PRD-F5: QAD-T5 (advisory + liability incident on a threshold crossing),
-// QAD-T17 (Open-Meteo down: cached reading stays in place, alerts, never
-// drops the cycle silently). Uses a dedicated site + active rental (not
-// the shared seeded one) so assertions never race against another test
-// file's own poll of the same site. Every real invocation of
-// runWeatherPoll() polls EVERY active site across every tenant (this test
-// DB accumulates many from prior suite runs), so event lookups filter on
-// this site's id in the jsonb payload, not just "latest for the tenant" --
-// several other active sites under the same tenant can legitimately be
-// non-calm at the same time.
+// QAD-T5, QAD-T17. Each run polls every active site in the test DB, so event
+// lookups filter on this site's id, not "latest for the tenant".
 describe('weather-poll (PRD-F5)', { timeout: 180_000 }, () => {
   let tenantId: string;
   let siteId: string;
@@ -135,9 +127,7 @@ describe('weather-poll (PRD-F5)', { timeout: 180_000 }, () => {
     expect(await latestAlertFor(siteId)).toBeNull();
   });
 
-  // The default port is createWeatherAdapter(), which resolves the real
-  // OpenMeteoAdapter once the flag is on -- but with the flag off, this
-  // must stay a true no-op without ever constructing (or calling) it.
+  // Flag off must never construct or call the real adapter.
   it('is a no-op with the flag off even when no port is injected (real default resolution)', async () => {
     delete process.env.ENABLE_WEATHER_POLL;
     await runWeatherPoll();

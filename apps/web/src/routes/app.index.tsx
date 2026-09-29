@@ -7,7 +7,7 @@ import { getCurrentRole } from '../lib/guards.js';
 import {
   companiesQueries,
   edtrQueries,
-  equipmentQueries,
+  referenceQueries,
   fleetUtilizationPct,
   incidentsQueries,
   invoicesQueries,
@@ -18,7 +18,8 @@ import {
 } from '../lib/queries.js';
 import { StatTile } from '../components/stat-tile.js';
 import { PageHeader } from '../components/page-header.js';
-import { WeatherBanner, type WeatherTone } from '../components/weather-banner.js';
+import { WeatherBanner } from '../components/weather-banner.js';
+import type { WeatherTone } from '../lib/weather-code.js';
 import { Surface } from '../components/surface.js';
 import { Modal } from '../components/modal.js';
 import { Container } from '../components/container.js';
@@ -29,6 +30,7 @@ import { ExpandableSection } from '../components/expandable-section.js';
 import { formatRelativeTime } from '../lib/format-time.js';
 import { explainAdvisory } from '../lib/weather-explain.js';
 import {
+  addDaysIso,
   formatDate,
   formatDateTime,
   formatInvoiceType,
@@ -39,9 +41,6 @@ import {
 } from '../lib/format.js';
 import { InvoiceDetail } from './app.payments.js';
 
-// Plain-English headline first (readable without knowing the PAGASA scale),
-// PAGASA's own label kept as a secondary tag (BRAND.md §0: the scale is
-// deliberately the one Filipino users already recognize from the news).
 const SEVERITY_META: Record<
   WeatherSeverity,
   { tone: WeatherTone; headline: string; tag?: string; condition: string }
@@ -61,9 +60,6 @@ const SEVERITY_META: Record<
   },
 };
 
-// One headline figure. Four of these replaced a seven-row summary rail: the
-// rail printed every number the API had, which left nothing looking more
-// important than anything else.
 function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'success' }) {
   return (
     <div className="flex flex-col gap-0.5 border-r border-border px-4 py-3 even:border-r-0 sm:even:border-r sm:last:border-r-0">
@@ -82,7 +78,6 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'suc
   );
 }
 
-// A queue row: what it is on the left, the figure or next step on the right.
 const ROW =
   'flex w-full items-center justify-between gap-3 border-b border-border px-5 py-2.5 text-left text-sm last:border-0 hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring';
 const FOOT_LINK = 'block border-t border-border px-5 py-2.5 text-sm font-medium text-accent hover:underline';
@@ -96,19 +91,15 @@ const TABS: { id: QueueTab; label: string }[] = [
 ];
 
 function AdminDashboardPage() {
-  // Same query key as app.insights.tsx -- navigating between the two shares
-  // the cache instead of re-fetching.
   const { data: snapshot } = useQuery(reportQueries.snapshot());
   const utilizationPct = fleetUtilizationPct(snapshot?.utilization);
   const { data: sites } = useQuery(sitesQueries.list());
-  const { data: edtrList } = useQuery(edtrQueries.list());
+  const { data: edtrList } = useQuery(edtrQueries.review());
   const { data: advisories } = useQuery(weatherQueries.advisories());
-  // Unpaid only, asked of the server: filtering the first page of every
-  // invoice missed unpaid ones once paid ones filled that page.
+  // Unpaid filtered server-side: filtering page one client-side misses unpaid invoices.
   const { data: invoices } = useQuery(invoicesQueries.list(6, 0, 'issued'));
   const { data: incidents } = useQuery(incidentsQueries.list());
-  const { data: fleet } = useQuery(equipmentQueries.list());
-  // Work waiting on staff, as real totals (not a page's length).
+  const { data: fleet } = useQuery(referenceQueries.equipment());
   const reviewCount = useQuery(edtrQueries.reviewCount());
   const openTrucks = useQuery(trucksQueries.list(1, 0, '', 'open'));
   // Registrations are admin-only; the owner has no page to act on this.
@@ -116,14 +107,8 @@ function AdminDashboardPage() {
   const kycPending = useQuery({ ...companiesQueries.review('pending', 1, 0), retry: false, enabled: isAdmin });
   const advisoryBySite = new Map((advisories?.items ?? []).map((a) => [a.siteId, a]));
 
-  // Three secondary queues used to stack down the page, so the one queue
-  // with a human decision attached (the review queue) was the third thing
-  // read. They share one panel now, one visible at a time.
   const [tab, setTab] = useState<QueueTab>('payments');
-  // Advisories opened as a stack of full banners above everything else --
-  // on a bad weather day that pushed the entire dashboard below the fold.
   const [advisoriesOpen, setAdvisoriesOpen] = useState(false);
-  // Row clicks open the detail in place; the full pages stay one link away.
   const [invoiceOpen, setInvoiceOpen] = useState<InvoiceSummaryResponse | null>(null);
   const [incidentOpen, setIncidentOpen] = useState<IncidentResponse | null>(null);
   const [siteOpen, setSiteOpen] = useState<string | null>(null);
@@ -131,17 +116,8 @@ function AdminDashboardPage() {
   const alerts = (sites?.items ?? []).filter(
     (s) => s.latestSeverity && s.latestSeverity !== 'none',
   );
-  const reviewItems = (
-    (edtrList?.items ?? []) as {
-      id: string;
-      status?: string;
-      equipmentId?: string;
-      reportDate?: string;
-    }[]
-  ).filter((e) => e.status === 'review');
+  const reviewItems = edtrList?.items ?? [];
 
-  // One row per machine-week, not per daily log: a week of one excavator
-  // is one decision, not seven (weekly EDTR sheet, proposal §2.2).
   const reviewGroups = [
     ...reviewItems
       .reduce((groups, item) => {
@@ -156,19 +132,15 @@ function AdminDashboardPage() {
 
   function weekLabel(week: string): string {
     if (!week) return 'Undated';
-    const end = new Date(week);
-    end.setUTCDate(end.getUTCDate() + 6);
-    return `Week of ${formatDate(week)} - ${formatDate(end)}`;
+    return `Week of ${formatDate(week)} - ${formatDate(addDaysIso(week, 6))}`;
   }
 
-  // Name the machine rather than print a UUID stub: this is the first work
-  // list anyone sees after signing in.
   function machineName(equipmentId: string | undefined): string {
-    const match = (fleet?.items ?? []).find((item) => item.id === equipmentId);
+    const match = fleet?.find((item) => item.id === equipmentId);
     return match ? match.model : 'Unknown machine';
   }
 
-  const fleetItems = fleet?.items ?? [];
+  const fleetItems = fleet ?? [];
   const inMaintenance = fleetItems.filter((e) => e.availabilityStatus === 'maintenance').length;
   const recoveredHours =
     snapshot?.utilization.fleet.reduce((sum, u) => sum + u.runtimeHours, 0) ?? null;
@@ -178,7 +150,6 @@ function AdminDashboardPage() {
     <div className="flex flex-col gap-5">
       <PageHeader title="Dashboard" description="Fleet, weather, and work-queue overview." />
 
-      {/* ---- The four figures worth leading with ---- */}
       <Surface radius="md" elevation="sm" className="p-0">
         <div className="grid grid-cols-2 divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
           <Kpi
@@ -199,14 +170,13 @@ function AdminDashboardPage() {
             value={snapshot ? formatPeso(snapshot.financial.depositDeducted) : '--'}
           />
         </div>
-        {/* Counts that tell you where to navigate, not what to decide. */}
         <div className="border-t border-border px-4">
           <ExpandableSection header={<span className="text-sm font-medium">Fleet details</span>}>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 pb-3 text-sm sm:grid-cols-4">
               {(
                 [
                   ['Sites', sites?.total],
-                  ['Machines', fleet?.total],
+                  ['Machines', fleet?.length],
                   ['In maintenance', fleet ? inMaintenance : null],
                   ['Available', fleet ? fleetItems.filter((e) => e.availabilityStatus === 'available').length : null],
                 ] as const
@@ -233,7 +203,6 @@ function AdminDashboardPage() {
         />
       )}
 
-      {/* ---- The one queue with a human decision attached (RFC-2) ---- */}
       <Container
         flush
         header={{
@@ -274,7 +243,6 @@ function AdminDashboardPage() {
         )}
       </Container>
 
-      {/* ---- Other work waiting, each a click from its queue ---- */}
       <div className="grid gap-3 sm:grid-cols-2">
         <StatTile
           label="Open truck requests"
@@ -296,7 +264,6 @@ function AdminDashboardPage() {
         )}
       </div>
 
-      {/* ---- Everything else, one at a time ---- */}
       <Container flush>
         <Tabs label="Secondary queues" items={TABS} value={tab} onChange={setTab} />
 
@@ -356,8 +323,6 @@ function AdminDashboardPage() {
                 {sites ? 'No sites registered yet.' : 'Loading...'}
               </p>
             ) : (
-              // Sites under advisory first: a clear site is the row nobody
-              // needs to read.
               [...(sites?.items ?? [])]
                 .sort((a, b) => Number(!!b.latestSeverity && b.latestSeverity !== 'none') - Number(!!a.latestSeverity && a.latestSeverity !== 'none'))
                 .slice(0, 8)
@@ -395,7 +360,7 @@ function AdminDashboardPage() {
         title={invoiceOpen ? `Invoice ${shortCode('invoice', invoiceOpen.id)}` : 'Invoice'}
         size="sm"
       >
-        {invoiceOpen && <InvoiceDetail invoice={invoiceOpen} />}
+        {invoiceOpen && <InvoiceDetail invoice={invoiceOpen} onDone={() => setInvoiceOpen(null)} />}
         <Link to="/app/payments" className="mt-3 block text-sm font-medium text-accent hover:underline">
           Open invoices
         </Link>
@@ -443,7 +408,6 @@ function AdminDashboardPage() {
   }
 }
 
-// What the poller saw when it logged the incident (events.properties.observed).
 function IncidentDetail({ incident }: { incident: IncidentResponse }) {
   const observed = incident.observed as
     | { tempC: number; windKph: number; precipMm: number; code: number }

@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
 import postgres from 'postgres';
-import { auditLogs, users, withTenantTx } from '@arkilaunch/db';
-import { eq } from 'drizzle-orm';
+import { auditLogs, refreshTokens, users, withTenantTx } from '@arkilaunch/db';
+import { and, eq } from 'drizzle-orm';
 import { RefreshTokenService } from '../src/auth/refresh-token.service.js';
 
 // RFC1-06 / QAD abuse gate: a refresh token replayed after rotation must
@@ -17,12 +17,7 @@ describe('RefreshTokenService: rotation and reuse detection', () => {
     if (!url) throw new Error('DATABASE_URL_DIRECT is required');
     const sql = postgres(url, { max: 1 });
     const [tenant] = await sql`select id from tenants where slug = 'test-tenant-a'`;
-    // Filtered by the seed's own fixed email, not a bare unordered `limit
-    // 1` -- other spec files (e.g. users-admin.spec.ts) insert many more
-    // tenant-A user rows at runtime (mostly status='invited'), and an
-    // unordered query could nondeterministically pick one of those instead
-    // of the seed's active admin, which would then spuriously trip this
-    // file's own user_inactive check.
+    // By the seed's fixed email: other specs add many tenant-A users, so an unordered `limit 1` is unstable.
     const [user] = await sql`
       select id from users where tenant_id = ${(tenant as { id: string }).id} and email = 'admin@test-tenant-a.test'
     `;
@@ -56,14 +51,29 @@ describe('RefreshTokenService: rotation and reuse detection', () => {
     expect(rows.length).toBeGreaterThan(0);
   });
 
+  it('two concurrent rotations of one token: one succeeds, the other is treated as reuse', async () => {
+    const issued = await service.issue(tenantId, userId, 'admin');
+    const results = await Promise.allSettled([service.rotate(issued.token), service.rotate(issued.token)]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect((rejected?.reason as Error).message).toBe('refresh_reuse_detected');
+
+    // The winner's child was inserted with its claim, so the reuse revoke caught it too.
+    const live = await withTenantTx({ tenantId, userId, role: 'admin' }, (tx) =>
+      tx
+        .select({ id: refreshTokens.id })
+        .from(refreshTokens)
+        .where(and(eq(refreshTokens.familyId, issued.familyId), eq(refreshTokens.status, 'active'))),
+    );
+    expect(live).toHaveLength(0);
+  });
+
   it('an unknown token is rejected without leaking which part was wrong', async () => {
     await expect(service.rotate('not-a-real-token')).rejects.toThrow(UnauthorizedException);
   });
 
   describe('deactivation takes effect immediately, not after the token expires', () => {
-    // A DEDICATED user, never the shared seed admin: other spec files
-    // (e.g. auth-lockout.spec.ts) log in as admin@test-tenant-a.test
-    // concurrently, and flipping its status here would race them.
+    // A dedicated user: other specs log in as the seed admin concurrently.
     let dedicatedUserId: string;
 
     beforeAll(async () => {

@@ -1,23 +1,8 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { directSql, pooledSql, getTenantId, setTenantGuc } from './helpers.js';
 
-// The regression guard against RFC-1's most-named hazard: a future
-// migration adding a tenant table without the mandatory five-element RLS
-// form. Enumerates pg_class / pg_policies rather than trusting the schema
-// file, because what actually landed in Postgres is what matters.
-//
-// This spec used to hardcode a 28-name list and assert toHaveLength(28).
-// That is exactly the wrong shape for a drift guard: the schema had grown
-// to 32 tenant-owned tables (tenant_applications,
-// timekeeper_site_assignments, events, testimonials were all added later
-// and none were covered), and the length assertion failed closed on the
-// stale number rather than catching the drift it existed to catch. A new
-// table is now discovered from the catalog, so forgetting to add it here is
-// no longer possible.
-//
-// The tenant-owned set is derived from "has a tenant_id column". Everything
-// else must be named in EXPECTED_GLOBAL_TABLES below, so a table can be
-// neither silently forgotten nor silently reclassified as global.
+// RFC-1 drift guard: enumerates pg_class / pg_policies (what actually landed). A table with a
+// tenant_id is tenant-owned; everything else must be named in EXPECTED_GLOBAL_TABLES.
 const EXPECTED_GLOBAL_TABLES = [
   'tenants',
   'subscription_plans',
@@ -25,12 +10,9 @@ const EXPECTED_GLOBAL_TABLES = [
   'permissions',
   'role_permissions',
   'equipment_types',
-  // Global DOE price feed (RFC-3): one national series, written by the
-  // diesel cron and readable by every tenant. Deliberately not tenant
-  // -scoped; its tenant-specific sibling pricing_parameters is.
+  // Global DOE price feed (RFC-3): one national series, readable by every tenant.
   'diesel_price_readings',
-  // Drizzle's migration bookkeeping lives in its own schema, but guard the
-  // name here in case a future config moves it into public.
+  // Drizzle's bookkeeping, in case a future config moves it into public.
   '__drizzle_migrations',
 ];
 
@@ -114,9 +96,7 @@ describe('RLS is enabled, forced, and policy-covered on every tenant-owned table
     const notForced = tenantOwned.filter((t) => !t.relforcerowsecurity).map((t) => t.relname);
 
     expect(notEnabled, `RLS not enabled on: ${notEnabled.join(', ')}`).toEqual([]);
-    // FORCE is the half that is easy to omit: without it the table owner is
-    // exempt from its own policies, which is exactly the hole a
-    // migration-owned connection opens.
+    // FORCE: without it the table owner is exempt from its own policies.
     expect(
       notForced,
       `RLS not FORCEd (owner would bypass its own policy) on: ${notForced.join(', ')}`,
@@ -145,40 +125,18 @@ interface PrivilegeRow {
   privilege_type: string;
 }
 
-// The other half of RFC-1 §3, and the half the RLS sweep above cannot see.
-// RLS decides which ROWS a role may touch; grants decide whether it may
-// touch the table at all. A global reference table has no tenant_id, so it
-// gets no tenant_isolation policy and every assertion above skips it --
-// which is exactly how `tenants`, `equipment_types` and
-// `subscription_plans` sat with table-wide INSERT/UPDATE/DELETE granted to
-// the request-path role for months (0002 granted all four verbs; 0007
-// narrowed only UPDATE/DELETE, and only on `tenants`). Closed by
-// 0016_reference_table_grants.sql.
+// RLS decides which rows; grants decide whether a role may touch the table at all. A global
+// table has no policy, so its write grants are checked here.
 describe('global reference tables are not writable by the request-path role', () => {
   const sql = directSql();
   let privileges: PrivilegeRow[] = [];
 
-  // Column-level grants deliberately kept by 0007: a tenant may rename
-  // itself, and both pricing tables may be closed off by setting
-  // effective_to, but neither may be inserted, deleted, or otherwise
-  // rewritten. information_schema.table_privileges reports table-level
-  // grants only, so these do not appear there -- they are listed here so
-  // the exception is explicit rather than invisible.
+  // Column-level grants kept on purpose; information_schema.table_privileges does not show them.
   const ALLOWED_COLUMN_GRANTS = ['tenants.legal_name', 'rate_cards.effective_to', 'pricing_parameters.effective_to'];
 
-  // Justified table-wide write grants on global tables. Deliberately spelled
-  // `table:VERB` rather than by table name, so widening an existing
-  // exception still fails: adding UPDATE or DELETE on diesel_price_readings
-  // would not be covered by this entry.
-  //
-  // diesel_price_readings:INSERT is 0005_diesel_manual_entry_grant.sql. RFC-3
-  // §2/§3 puts writes on either the service_role scrape cron or a
-  // platform-admin manual-entry route, and that route runs on the normal
-  // request path as app_authenticated -- using service_role there is
-  // forbidden (AGENTS.md "Never"). The table is global, non-PII reference
-  // data with no RLS, so the write is gated at the app layer by the
-  // `diesel:manage` permission (platform_admin only) and audit-logged by the
-  // calling route. INSERT only: readings are append-only, never revised.
+  // Justified table-wide writes, spelled `table:VERB` so widening an exception still fails.
+  // diesel_price_readings:INSERT: platform-admin manual entry on the request path, gated by
+  // `diesel:manage`; append-only.
   const JUSTIFIED_WRITE_GRANTS = ['diesel_price_readings:INSERT'];
 
   beforeAll(async () => {
@@ -194,9 +152,7 @@ describe('global reference tables are not writable by the request-path role', ()
   afterAll(() => sql.end());
 
   it('holds no table-wide write grant on any expected global table', () => {
-    // audit_logs is intentionally INSERT-only (0002) and append-only by
-    // trigger, covered by audit-log-immutability.spec.ts; it is not in the
-    // global allowlist, so it is out of scope here either way.
+    // audit_logs is INSERT-only by trigger (audit-log-immutability.spec.ts).
     const writable = privileges
       .filter((p) => EXPECTED_GLOBAL_TABLES.includes(p.table_name))
       .map((p) => `${p.table_name}:${p.privilege_type}`)
@@ -217,9 +173,7 @@ describe('global reference tables are not writable by the request-path role', ()
   });
 
   it('cannot INSERT a tenant directly, bypassing the KYC gate in tenants_register()', async () => {
-    // Behavioural, not catalog-derived, and through the POOLED url because
-    // that connects as app_authenticated -- postgres is a superuser and
-    // would sail past both the grant and the policy.
+    // Through the POOLED url (app_authenticated): postgres is a superuser and bypasses both.
     const pooled = pooledSql();
     try {
       await expect(
@@ -237,9 +191,7 @@ describe('global reference tables are not writable by the request-path role', ()
       const a = await getTenantId(sql, 'test-tenant-a');
       await setTenantGuc(pooled, a);
       const rows = await pooled<Array<{ id: string }>>`select id from tenants`;
-      // Exactly one row, and it is the caller's own: `tenants` carries the
-      // registry of every customer on the platform, so a cross-tenant read
-      // here leaks the customer list itself.
+      // Exactly one row, the caller's own: a cross-tenant read here leaks the customer list.
       expect(rows.map((r) => r.id)).toEqual([a]);
     } finally {
       await pooled.end();

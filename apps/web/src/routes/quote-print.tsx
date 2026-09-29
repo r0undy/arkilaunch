@@ -5,13 +5,10 @@ import { quotesQueries, usersQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
 import { formatDate, shortCode } from '../lib/format.js';
 import { quoteExpiresAt } from '@arkilaunch/shared';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { QuoteLines } from '../components/quote-lines.js';
 import { PrintFrame } from '../components/print-frame.js';
 
-// The printable quote the API's printableUrl points at: letterhead, lines as
-// the customer sees them, validity. Browser print (or Save as PDF) keeps it
-// endpoint-free, like the invoice statement.
 function QuotePrintPage() {
   const { quoteId } = quotePrintRoute.useParams();
   const quote = useQuery(quotesQueries.detail(quoteId));
@@ -25,9 +22,7 @@ function QuotePrintPage() {
         <Button variant="primary" onClick={() => window.print()}>
           Print
         </Button>
-        <Link to="/app/quotes">
-          <Button variant="ghost">Back to quotes</Button>
-        </Link>
+        <Link to="/app/quotes" className={buttonClass('ghost')}>Back to quotes</Link>
       </div>
       <PrintFrame
         title="Quotation"
@@ -39,8 +34,7 @@ function QuotePrintPage() {
           ['Valid until', q.createdAt ? formatDate(quoteExpiresAt(q.createdAt)) : '--'],
         ]}
       />
-      {/* Screen letterhead; on paper the PrintFrame above replaces it (a
-          <header> is hidden by print CSS, which is why it vanished before). */}
+      {/* A div, not <header>: print CSS hides <header>; on paper PrintFrame replaces this. */}
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4 print:hidden">
         <div>
           <p className="text-display-md text-text">{me.data?.tenantName ?? ''}</p>

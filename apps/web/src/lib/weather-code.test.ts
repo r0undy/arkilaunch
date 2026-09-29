@@ -17,8 +17,7 @@ describe('describeWeatherCode', () => {
     expect(describeWeatherCode(99).tone).toBe('red');
   });
 
-  // An unrecognised code must not come out looking like a fine day -- the
-  // same reasoning as the all-zero observation the port spec pins.
+  // An unrecognised code must not come out looking like a fine day.
   it('admits an unknown code rather than guessing a calm one', () => {
     const unknown = describeWeatherCode(42);
     expect(unknown.label).toBe('Unknown');
@@ -27,9 +26,7 @@ describe('describeWeatherCode', () => {
 });
 
 describe('weekdayLabel', () => {
-  // The bug this guards: `new Date('2026-09-21')` is UTC midnight, which in
-  // Manila (UTC+8) is still the 21st -- but rendered through a UTC getter it
-  // reads as the 20th. Every day label in the rail would be one off.
+  // Guards the UTC-midnight off-by-one on a bare YYYY-MM-DD in Manila.
   it('reads the date in local time, not UTC', () => {
     const label = weekdayLabel('2026-09-21', new Date(2026, 8, 25));
     expect(label).toBe(new Date(2026, 8, 21).toLocaleDateString(undefined, { weekday: 'short' }));

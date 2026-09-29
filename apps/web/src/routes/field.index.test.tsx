@@ -5,10 +5,7 @@ import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken } from '../lib/auth-client.js';
 
-// The defect this covers: /app/ocr is guarded to admin/owner/platform_admin,
-// so a timekeeper was redirected to /field, which had no way to open the
-// capture modal at all. Recording a field log is that role's entire job
-// (PRD US-02, S21), and POST /edtr has always granted it `edtr:create`.
+// A timekeeper must be able to open capture from /field (/app/ocr is staff-only).
 
 const SITE = { id: 'site-1', name: 'Bonifacio Tower', code: 'BGC-1' };
 const RENTAL = { id: 'rental-1', customerId: 'cust-1', projectSiteId: 'site-1' };

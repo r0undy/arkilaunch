@@ -14,8 +14,7 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Surface } from '../components/surface.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { EquipmentSchematic } from '../components/equipment-schematic.js';
-import { CheckIcon, TruckIcon, WrenchIcon } from '../components/icons.js';
-import { Button } from '../components/button.js';
+import { Button, chipClass } from '../components/button.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { EquipmentFormModal } from '../components/equipment-form-modal.js';
 import { MaintenanceModal } from '../components/maintenance-modal.js';
@@ -23,19 +22,14 @@ import { useToast } from '../components/toast.js';
 import { Alert } from '../components/alert.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { getCurrentRole } from '../lib/guards.js';
-import { Boxes } from 'lucide-react';
+import { Boxes, Check, Truck, Wrench } from 'lucide-react';
 
 const STATUS_META: Record<string, { tone: StatusTone; label: string; icon: ReactElement }> = {
-  available: { tone: 'fleet-available', label: 'Available', icon: <CheckIcon /> },
-  deployed: { tone: 'fleet-deployed', label: 'Deployed', icon: <TruckIcon /> },
-  maintenance: { tone: 'fleet-maintenance', label: 'In maintenance', icon: <WrenchIcon /> },
+  available: { tone: 'fleet-available', label: 'Available', icon: <Check className="size-full" /> },
+  deployed: { tone: 'fleet-deployed', label: 'Deployed', icon: <Truck className="size-full" /> },
+  maintenance: { tone: 'fleet-maintenance', label: 'In maintenance', icon: <Wrench className="size-full" /> },
 };
 
-// fleet:manage is held by admin and platform_admin (seed/permission-catalog.ts;
-// owner is deliberately excluded per QAD-T19). The route itself stays open so
-// anyone who can read the fleet keeps the page they have today -- the API is
-// the real boundary, this only decides whether to draw a button that would
-// 403.
 // The API orders by category, so a page splits into runs of one category.
 function groupByCategory(items: EquipmentResponse[]): [string, EquipmentResponse[]][] {
   const groups = new Map<string, EquipmentResponse[]>();
@@ -51,11 +45,7 @@ function canManageFleet(): boolean {
   return role === 'admin' || role === 'platform_admin';
 }
 
-// Figma 293:3256 "Delete Asset?". The frame's body promises the action
-// "will remove all associated maintenance and deployment logs" -- it does
-// the opposite, and the copy here says so. Retiring is the only way a
-// machine leaves the fleet (migration 0026 REVOKEs DELETE) precisely so the
-// field logs an invoice was computed from survive.
+// Retiring is the only way out of the fleet (DELETE is revoked) so billed field logs survive.
 function RetireAction({ equipment }: { equipment: EquipmentResponse }) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -103,8 +93,6 @@ function RetireAction({ equipment }: { equipment: EquipmentResponse }) {
   );
 }
 
-// Blocked dates free the unit on their own once they end; this is the one
-// cue before that happens, so an admin who needs longer extends in time.
 function BlocksEndingSoon({ manageable }: { manageable: boolean }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -148,8 +136,6 @@ function BlocksEndingSoon({ manageable }: { manageable: boolean }) {
   );
 }
 
-// Category chips with counts, plus status, search and "still missing"
-// filters. Changing any filter goes back to page one.
 function FleetFilters({
   filters,
   categories,
@@ -160,11 +146,6 @@ function FleetFilters({
   onChange: (next: EquipmentListFilters) => void;
 }) {
   const all = categories.reduce((sum, c) => sum + c.count, 0);
-  const chip = (active: boolean) =>
-    [
-      'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
-      active ? 'border-accent bg-accent text-white' : 'border-border bg-surface text-text hover:bg-surface-sunk',
-    ].join(' ');
   return (
     <div className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -197,7 +178,7 @@ function FleetFilters({
         <button
           type="button"
           aria-pressed={!filters.typeId}
-          className={chip(!filters.typeId)}
+          className={chipClass(!filters.typeId)}
           onClick={() => onChange({ ...filters, typeId: '' })}
         >
           All ({all})
@@ -207,7 +188,7 @@ function FleetFilters({
             key={c.equipmentTypeId}
             type="button"
             aria-pressed={filters.typeId === c.equipmentTypeId}
-            className={chip(filters.typeId === c.equipmentTypeId)}
+            className={chipClass(filters.typeId === c.equipmentTypeId)}
             onClick={() => onChange({ ...filters, typeId: c.equipmentTypeId })}
           >
             {c.name} ({c.count})
@@ -219,18 +200,12 @@ function FleetFilters({
 }
 
 function InventoryPage() {
-  // ?q= opens the list already searched: a maintenance notification names
-  // its unit by serial (QA 26).
   const { q } = appInventoryRoute.useSearch();
   const [offset, setOffset] = useState(0);
   const [filters, setFilters] = useState<EquipmentListFilters>(() => (q ? { q } : {}));
-  // Typing in search refetches once the input settles, not per keystroke.
   const deferredFilters = useDeferredValue(filters);
   const listOptions = equipmentQueries.list(PAGE_SIZE, offset, deferredFilters);
-  // The chips come from the same response; kept from the last load so they
-  // do not flicker away while a new filter is fetching.
   const categories = useQuery({ ...listOptions, placeholderData: keepPreviousData }).data?.categories ?? [];
-  // null = closed. 'create' = the add modal. An object = editing that unit.
   const [editing, setEditing] = useState<'create' | EquipmentResponse | null>(null);
   const [servicing, setServicing] = useState<EquipmentResponse | null>(null);
   const manageable = canManageFleet();
@@ -285,8 +260,7 @@ function InventoryPage() {
                     radius="md"
                     elevation="sm"
                     className="flex flex-col overflow-hidden p-0 transition-shadow hover:shadow-md"
-                    // Names the card for assistive tech, and lets the e2e
-                    // spec scope actions to one machine by its serial.
+                    // Also lets the e2e spec scope actions to one machine by its serial.
                     role="group"
                     aria-label={eq.serialNo}
                   >

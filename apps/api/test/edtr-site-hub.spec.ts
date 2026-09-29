@@ -24,10 +24,7 @@ import { BookingsService } from '../src/bookings/bookings.service.js';
 import type { QuotesService } from '../src/quotes/quotes.service.js';
 import { ensurePaidDeposit } from './paid-deposit.js';
 
-// cr-arkilaunch-edtr-site-hub-approval.md: the rental-span rule, hour
-// categories, and approval from the site hub through the office log. The
-// site, rental, unit and assignment are dedicated to this file so the
-// shared fixtures other specs mutate cannot interfere.
+// Site, rental, unit and assignment are dedicated to this file, isolated from shared fixtures.
 describe('EDTR site hub approval', () => {
   const events = new EventsService();
   const edtr = new EdtrService(events);
@@ -77,9 +74,7 @@ describe('EDTR site hub approval', () => {
         })
         .returning();
       equipmentId = unit!.id;
-      // A unit-level card (it overrides the type's) in force for the whole
-      // test span, so the priced approval does not depend on the shared
-      // type cards other specs supersede.
+      // A unit-level card in force for the whole span, independent of the shared type cards other specs supersede.
       await tx.insert(rateCards).values({
         tenantId,
         equipmentTypeId: (card as { equipment_type_id: string }).equipment_type_id,

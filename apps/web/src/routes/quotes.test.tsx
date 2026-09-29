@@ -5,12 +5,8 @@ import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken } from '../lib/auth-client.js';
 
-// Quotes is the standard price book for every client; a booking's quote is
-// only rebuilt here while the customer negotiates. The preview is the
-// decision point, and it carries Create in its footer.
-
 const EQUIPMENT_TYPE = { id: 'et-1', name: 'Excavator 20T' };
-const RATE_CARD = { id: 'rc-1', equipmentTypeId: 'et-1', equipmentId: null, rateType: 'daily', currency: 'PHP', rateValue: '20000' };
+const RATE_CARD = { id: 'rc-1', equipmentTypeId: 'et-1', equipmentId: null, rateType: 'hourly', currency: 'PHP', rateValue: '2500' };
 const BOOKING_ID = '11111111-1111-4111-8111-111111111111';
 const BOOKING = {
   id: BOOKING_ID, status: 'pending', projectSiteId: 'site-1', customerId: 'cust-1',
@@ -26,7 +22,7 @@ const PREVIEW = {
   lineItems: [
     {
       kind: 'equipment', equipmentTypeId: 'et-1', rateCardId: 'rc-1', quantity: 1, estimatedHours: 8,
-      rentParts: [{ rateType: 'daily', ratePhp: 20000, count: 1 }], rent: 20000, hourlyRate: 2500,
+      rentParts: [{ rateType: 'hourly', ratePhp: 2500, count: 8 }], rent: 20000, hourlyRate: 2500,
       operatingCost: 20000, buffer: 0, subtotal: 20000,
     },
     { kind: 'custom', description: 'Operator overtime', equipmentTypeId: null, rateCardId: null, quantity: 2, estimatedHours: 0, rentParts: [], rent: 0, hourlyRate: 0, operatingCost: 0, buffer: 0, subtotal: 3000 },
@@ -38,6 +34,8 @@ const PREVIEW = {
   total: 53000,
 };
 
+let paramsRow: unknown = null;
+
 function stubFetch(onQuotes?: (url: string) => Response) {
   vi.stubGlobal(
     'fetch',
@@ -48,7 +46,7 @@ function stubFetch(onQuotes?: (url: string) => Response) {
       if (u.includes('/reference/equipment-types')) return json([EQUIPMENT_TYPE]);
       if (u.includes('/reference/rate-cards')) return json([RATE_CARD]);
       if (u.includes('/pricing/billing-settings')) return json({ dailyHours: 8, minDepositPhp: 0, lowBalancePct: 20, depositPct: 0, mobilizationPhp: 15000, demobilizationPhp: 12000, minHours: 0 });
-      if (u.includes('/pricing/parameters')) return json(null);
+      if (u.includes('/pricing/parameters')) return json(paramsRow);
       if (u.includes('/pricing/diesel-price')) return json(null);
       if (u.includes('/rate-cards')) return json({ items: [], total: 0 });
       if (u.includes('/truck-settings')) return json({ baseFeePhp: 2500, driverFeePhp: 1500, extras: [], formula: null, rangePct: 10, region: 'NCR' });
@@ -65,6 +63,7 @@ function stubFetch(onQuotes?: (url: string) => Response) {
 }
 
 beforeEach(() => {
+  paramsRow = null;
   sessionStorage.clear();
   setAccessToken(makeToken(makeValidClaims({ role: 'admin' })));
 });
@@ -80,9 +79,7 @@ describe('Quotes', () => {
     await renderRoute('/app/quotes');
 
     expect(await screen.findByRole('tab', { name: 'Equipment rental' })).toHaveAttribute('aria-selected', 'true');
-    // No quote is drawn up per company any more.
     expect(screen.queryByLabelText('Customer')).not.toBeInTheDocument();
-    // Read at a glance on the card; the inputs are one Edit away, in a modal.
     const fees = await screen.findByRole('group', { name: 'Mobilization and demobilization' });
     expect(fees).toHaveTextContent(/15,000/);
     await userEvent.click(screen.getByRole('button', { name: 'Edit mobilization fees' }));
@@ -95,6 +92,29 @@ describe('Quotes', () => {
     expect(await screen.findByRole('heading', { name: 'Truck pricing' })).toBeInTheDocument();
     // Mob/demob is rental only.
     expect(screen.queryByLabelText('Mobilization (PHP)')).not.toBeInTheDocument();
+  });
+
+  it('keeps the saved diesel override date when operating costs are saved', async () => {
+    paramsRow = {
+      region: 'NCR', operatorHourlyPhp: '500', maintenanceHourlyPhp: '100', bufferPct: '0.1', fuelLPerHour: '12',
+      fuelLPerKm: '0.3', transportPhpPerKm: '80', dieselOverridePhp: '55', dieselOverrideDate: '2026-03-01',
+    };
+    stubFetch();
+    await renderRoute('/app/quotes');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit operating costs' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Operating costs' });
+    const operator = within(dialog).getByLabelText('Operator (PHP per hour)');
+    await userEvent.clear(operator);
+    await userEvent.type(operator, '600');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save operating costs' }));
+
+    const fetchMock = vi.mocked(fetch);
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u, init]) => String(u).endsWith('/pricing/parameters') && init?.method === 'POST')).toBe(true),
+    );
+    const [, init] = fetchMock.mock.calls.find(([u, i]) => String(u).endsWith('/pricing/parameters') && i?.method === 'POST')!;
+    expect(JSON.parse(String(init!.body))).toMatchObject({ operatorHourlyPhp: 600, dieselOverridePhp: 55, dieselOverrideDate: '2026-03-01' });
   });
 
   it('revises a booking in negotiation: preview over the form, draft from its footer', async () => {
@@ -111,7 +131,11 @@ describe('Quotes', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Excavator 20T');
-    expect(dialog).toHaveTextContent('/day × 1 day');
+    expect(dialog).toHaveTextContent('/hr × 8 hours');
+    const previewCall = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith('/quotes/preview'));
+    const sent = JSON.parse(String((previewCall![1] as RequestInit).body)) as { items: Record<string, unknown>[] };
+    expect(sent.items[0]).toMatchObject({ estimatedHours: 8 });
+    expect(sent.items[0]).not.toHaveProperty('days');
     expect(dialog).toHaveTextContent('Operator overtime');
     expect(dialog).toHaveTextContent('Mobilization');
     expect(dialog).toHaveTextContent('53000.00');

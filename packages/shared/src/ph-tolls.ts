@@ -1,9 +1,4 @@
-// Class 3 (large trucks and trailers, 3+ axles: every self-loader) toll
-// fees on the Luzon expressways, entry to exit, VAT-inclusive. From the
-// TRB-approved matrices effective February 2026, as published on
-// expressway.ph and read 2026-09-25. A tenant loads them as editable toll
-// rates; the admin corrects any fee when the TRB changes it. A fee applies
-// in either direction between the two points.
+// Class 3 Luzon expressway toll fees, VAT-inclusive, from the TRB matrices effective Feb 2026 (expressway.ph).
 // ponytail: mostly from each expressway's Manila-side entry; add pairs as
 // the yard's routes need them (the admin can add any toll by hand).
 export const PH_TOLLS_AS_OF = '2026-02-01';
@@ -64,7 +59,6 @@ export const PH_CLASS3_TOLLS: PhToll[] = [
   ...from('NAIAX', 'NAIA Terminal 2', { 'Entertainment City': 104, 'Macapagal Blvd.': 104, CAVITEX: 104 }),
 ];
 
-// OSM road names (what the router reports) to the matrix's expressway names.
 const EXPRESSWAYS: [RegExp, string][] = [
   [/north luzon expressway|\bnlex\b/i, 'NLEX'],
   [/subic.{0,3}clark.{0,3}tarlac|\bsctex\b/i, 'SCTEX'],
@@ -85,7 +79,6 @@ interface RouteStep {
   exits?: string;
 }
 
-// A ramp's signed destinations minus bare route refs ("E1"), or null.
 function signed(step: RouteStep): string | null {
   const text = [step.destinations, step.exits]
     .filter(Boolean)
@@ -97,9 +90,7 @@ function signed(step: RouteStep): string | null {
   return text || null;
 }
 
-// Each expressway stretch of an OSRM route (steps=true), with the signs on
-// the ramps on and off it. A ramp signed only with the same route ref (an
-// interchange inside NLEX) does not end the stretch.
+// A ramp signed only with the same route ref (an NLEX interchange) does not end the stretch.
 export function tollHintsFromSteps(steps: RouteStep[]): { expressway: string; entry: string | null; exit: string | null }[] {
   type Stretch = { expressway: string; entry: string | null; exit: string | null; ref: string };
   const hints: Stretch[] = [];
@@ -125,7 +116,6 @@ export function tollHintsFromSteps(steps: RouteStep[]): { expressway: string; en
 }
 
 const letters = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-// "Sta. Rosa/Tagaytay" is on a sign reading "Santa Rosa; Tagaytay City".
 function signsAt(point: string, sign: string | null): boolean {
   if (!sign) return false;
   const on = letters(sign.replace(/\bsanta\b/gi, 'sta').replace(/\bsanto\b/gi, 'sto'));
@@ -142,9 +132,6 @@ interface TollRow {
   exitPoint: string | null;
 }
 
-// The loaded toll rows a route most likely pays: per expressway stretch,
-// the entry-exit pair its ramp signs name, or the matrix's Manila-side
-// entry to the signed exit. Only a suggestion the admin confirms.
 // ponytail: matches sign text to plaza names; add plaza coordinates if the
 // suggestions miss often.
 export function suggestTolls(hints: { expressway: string; entry: string | null; exit: string | null }[], tolls: TollRow[]): string[] {

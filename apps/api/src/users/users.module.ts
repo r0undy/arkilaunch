@@ -8,11 +8,7 @@ import { UsersService } from './users.service.js';
 
 @Module({
   imports: [AuthModule, StorageModule],
-  // UserProfileController MUST be registered before UsersController:
-  // UsersController has a class-level `@Get(':id')`, and Nest/Express
-  // resolve routes in registration order, so GET /users/me would otherwise
-  // be swallowed by that param route (id='me') before ever reaching this
-  // controller's literal `@Get('me')`.
+  // Order matters: UsersController's `@Get(':id')` would otherwise swallow GET /users/me.
   controllers: [UserProfileController, UsersController],
   providers: [UsersService, EventsService],
 })

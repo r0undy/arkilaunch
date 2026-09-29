@@ -1,31 +1,18 @@
 import { z } from 'zod';
 import { PaginationQuerySchema } from './pagination.js';
 
-// PRD-F4 (Fleet Inventory, Maintenance & Reporting), SDD §4 endpoint
-// contracts for /equipment, /equipment/:id/maintenance,
-// /equipment/:id/maintenance-logs, /reports/utilization.
-
 export const EquipmentStatusSchema = z.enum(['available', 'deployed', 'maintenance']);
 export type EquipmentStatus = z.infer<typeof EquipmentStatusSchema>;
 
-// GET /equipment?status=... query is validated the same as any other
-// external input (AGENTS.md "Always: validate external input at the
-// boundary with Zod"), not passed through as a raw string.
 export const EquipmentListQuerySchema = PaginationQuerySchema.extend({
   status: EquipmentStatusSchema.optional(),
-  // Admin classification (cr-arkilaunch-equipment-options.md §4).
   typeId: z.string().uuid().optional(),
-  // Name, model number or serial, case-insensitive substring.
   q: z.string().trim().max(100).optional(),
-  // Listings still missing something: no uploaded or credited photo, or no
-  // rate card in force for the unit or its category.
   missing: z.enum(['photo', 'price']).optional(),
 });
 export type EquipmentListQuery = z.infer<typeof EquipmentListQuerySchema>;
 
-// The choices a unit is rented with (migration 0065): "Bucket size" ->
-// Standard, 3/4, 1/2. Labels, not measurements, and never priced -- rate_cards
-// is the one price. Names and values are unique so a pick is unambiguous.
+// Labels, never priced: rate_cards is the one price.
 export const EquipmentOptionGroupSchema = z.object({
   name: z.string().trim().min(1).max(60),
   values: z
@@ -43,12 +30,9 @@ export const EquipmentOptionGroupsSchema = z
     message: 'option names must be unique',
   });
 
-// What the customer picked, group name -> choice.
 export const SelectedOptionsSchema = z.record(z.string().max(60), z.string().max(60));
 export type SelectedOptions = z.infer<typeof SelectedOptionsSchema>;
 
-// Why a pick does not fit the unit's groups, or null when it does: every
-// group answered with one of its own choices, and nothing else.
 export function selectedOptionsError(
   groups: readonly EquipmentOptionGroup[],
   selected: SelectedOptions,
@@ -63,14 +47,7 @@ export function selectedOptionsError(
   return extra ? `${extra} is not an option on this unit` : null;
 }
 
-// POST /equipment (addition beyond the SDD §4 endpoint list; see
-// AGENTS.md §5.1 Change Record). fleet:manage-gated at the controller.
-// The spec sheet from Figma 292:1344 (Add Equipment). Every one of these is
-// optional: they arrived after the table had rows, and none of them is needed
-// to rent a machine out. The frame's HOURLY RATE / DAILY RATE fields are
-// deliberately absent -- rate_cards owns pricing and quotes are computed from
-// it, so a second price on the equipment row would be a competing source of
-// truth on the money path.
+// No rate fields: rate_cards owns pricing; a second price here would compete on the money path.
 const EquipmentSpecFieldsSchema = z.object({
   modelNumber: z.string().max(100).optional(),
   yearOfManufacture: z.number().int().min(1900).max(2100).optional(),
@@ -78,11 +55,8 @@ const EquipmentSpecFieldsSchema = z.object({
   engineType: z.string().max(100).optional(),
   fuelType: z.string().max(100).optional(),
   notes: z.string().max(2000).optional(),
-  // Free-text category for a machine filed under "Others".
   categoryNote: z.string().max(200).optional(),
   optionGroups: EquipmentOptionGroupsSchema.optional(),
-  // Credit for a photo that is not the tenant's own (a manufacturer or
-  // dealer reference photo), and the page it came from. '' clears either.
   photoCredit: z.string().trim().max(200).optional(),
   photoSourceUrl: z.union([z.string().url().startsWith('https://').max(2000), z.literal('')]).optional(),
 });
@@ -95,14 +69,7 @@ export const EquipmentCreateRequestSchema = EquipmentSpecFieldsSchema.extend({
 });
 export type EquipmentCreateRequest = z.infer<typeof EquipmentCreateRequestSchema>;
 
-// PATCH /equipment/:id. At least one field required -- an empty patch is
-// not a meaningful request. Checked generically rather than by naming the
-// fields: the named form silently rejected a patch that changed only one of
-// the spec fields above.
-//
-// serialNo is absent on purpose. Migration 0026 REVOKEs UPDATE on that column,
-// so a machine's identity cannot be rewritten after a DTR has cited it -- the
-// edit form renders it disabled for the same reason.
+// No serialNo: migration 0026 REVOKEs UPDATE on it so a DTR-cited identity cannot be rewritten.
 export const EquipmentUpdateRequestSchema = EquipmentSpecFieldsSchema.extend({
   model: z.string().min(1).max(200).optional(),
   availabilityStatus: EquipmentStatusSchema.optional(),
@@ -111,18 +78,13 @@ export const EquipmentUpdateRequestSchema = EquipmentSpecFieldsSchema.extend({
 });
 export type EquipmentUpdateRequest = z.infer<typeof EquipmentUpdateRequestSchema>;
 
-// DELETE /equipment/:id is a retire, not a delete. See migration 0026.
+// A retire, not a delete (migration 0026).
 export const EquipmentRetireResponseSchema = z.object({
   id: z.string().uuid(),
   retired: z.literal(true),
 });
 export type EquipmentRetireResponse = z.infer<typeof EquipmentRetireResponseSchema>;
 
-// POST /equipment/:id/maintenance-logs (SDD §4). performedAt is a full
-// timestamptz (not a bare date, unlike edtr.reportDate) since a
-// maintenance action is logged at a point in time, not a calendar day.
-// scheduleId names the task this service resets; omitted = the unit's
-// latest schedule (the pre-0035 behavior).
 export const MaintenanceLogCreateRequestSchema = z.object({
   performedAt: z.string().datetime({ offset: true }),
   notes: z.string().max(2000).optional(),
@@ -130,15 +92,12 @@ export const MaintenanceLogCreateRequestSchema = z.object({
 });
 export type MaintenanceLogCreateRequest = z.infer<typeof MaintenanceLogCreateRequestSchema>;
 
-// POST /equipment/:id/maintenance-schedules. One schedule per task.
 export const MaintenanceScheduleCreateRequestSchema = z.object({
   task: z.string().min(1).max(100),
   hoursInterval: z.number().positive().max(100_000),
 });
 export type MaintenanceScheduleCreateRequest = z.infer<typeof MaintenanceScheduleCreateRequestSchema>;
 
-// POST /equipment/:id/maintenance-windows. Dates the unit is out for
-// maintenance; bookings cannot land on them.
 export const MaintenanceWindowCreateRequestSchema = z
   .object({
     startsAt: z.string().datetime({ offset: true }),
@@ -150,7 +109,6 @@ export const MaintenanceWindowCreateRequestSchema = z
   });
 export type MaintenanceWindowCreateRequest = z.infer<typeof MaintenanceWindowCreateRequestSchema>;
 
-// Common service intervals, offered as presets in the maintenance UI.
 export const MAINTENANCE_PRESETS: readonly { task: string; hoursInterval: number }[] = [
   { task: 'Engine oil', hoursInterval: 250 },
   { task: 'Hydraulic oil', hoursInterval: 1000 },
@@ -160,16 +118,12 @@ export const MAINTENANCE_PRESETS: readonly { task: string; hoursInterval: number
   { task: 'Undercarriage inspection', hoursInterval: 500 },
 ];
 
-// PATCH /equipment/:id/runtime. A manual hour-meter correction; the reason
-// is required and lands in audit_logs.reason.
 export const RuntimeCorrectionRequestSchema = z.object({
   runtimeHours: z.number().min(0).max(1_000_000),
   reason: z.string().trim().min(3).max(500),
 });
 export type RuntimeCorrectionRequest = z.infer<typeof RuntimeCorrectionRequestSchema>;
 
-// GET /reports/utilization?from=&to= (SDD §4). Both optional; the service
-// defaults to a trailing 30-day window when omitted.
 export const UtilizationQuerySchema = z.object({
   from: z
     .string()
@@ -182,32 +136,21 @@ export const UtilizationQuerySchema = z.object({
 });
 export type UtilizationQuery = z.infer<typeof UtilizationQuerySchema>;
 
-// GET /catalog/equipment (@Public, anchor-tenant only -- backend-unblock
-// plan workstream 2). Deliberately excludes serialNo/runtimeHours: those
-// are operational data with no reason to be visible to an anonymous caller.
+// Public: never expose serialNo/runtimeHours to an anonymous caller.
 export const CatalogEquipmentSchema = z.object({
   id: z.string().uuid(),
   equipmentTypeName: z.string(),
   model: z.string(),
   availabilityStatus: EquipmentStatusSchema,
-  // A pointer into the public-read equipment-photos bucket (migration 0028).
-  // Null for a machine nobody has photographed yet. The safe-column allowlist
-  // behind this endpoint is otherwise unchanged: no serial_no, no
-  // runtime_hours -- screens that want a per-unit label use shortCode(id).
   photoUri: z.string().nullable(),
-  // The public upfront price (same for every customer); null = on request.
   rateType: z.string().nullable().optional(),
   rateValue: z.number().nullable().optional(),
-  // Optional so a cached response from before migration 0065 still parses.
   optionGroups: z.array(EquipmentOptionGroupSchema).optional(),
   photoCredit: z.string().nullable().optional(),
   photoSourceUrl: z.string().nullable().optional(),
 });
 export type CatalogEquipment = z.infer<typeof CatalogEquipmentSchema>;
 
-// Unauthenticated and previously unbounded: every storefront page load
-// shipped the anchor tenant's whole equipment table, and the client had no
-// way to ask for less (audit-api-surface.md #8).
 export const CatalogEquipmentListQuerySchema = PaginationQuerySchema;
 export type CatalogEquipmentListQuery = z.infer<typeof CatalogEquipmentListQuerySchema>;
 
@@ -216,8 +159,6 @@ export const CatalogEquipmentListResponseSchema = z.object({
 });
 export type CatalogEquipmentListResponse = z.infer<typeof CatalogEquipmentListResponseSchema>;
 
-// GET /catalog/testimonials (@Public, anchor-tenant only). Same posture as
-// CatalogEquipmentSchema -- a per-tenant quote, nothing else.
 export const CatalogTestimonialSchema = z.object({
   id: z.string().uuid(),
   quote: z.string(),
@@ -230,8 +171,6 @@ export const CatalogTestimonialListResponseSchema = z.object({
   items: z.array(CatalogTestimonialSchema),
 });
 export type CatalogTestimonialListResponse = z.infer<typeof CatalogTestimonialListResponseSchema>;
-
-// --- Response schemas (egress allowlists). ---
 
 export const EquipmentResponseSchema = z.object({
   id: z.string().uuid(),
@@ -247,12 +186,8 @@ export const EquipmentResponseSchema = z.object({
   fuelType: z.string().nullable(),
   notes: z.string().nullable(),
   categoryNote: z.string().nullable(),
-  // The rendered public URL, derived at the egress boundary. The raw Storage
-  // object key (equipment.photo_uri) is never exposed: it encodes the tenant
-  // id and the bucket layout, and keeping it server-side means the bucket can
-  // move without a backfill.
+  // Never expose the raw Storage key: it encodes the tenant id and bucket layout.
   photoUrl: z.string().nullable(),
-  // The category's name, for grouping. Optional so old caches still parse.
   equipmentTypeName: z.string().optional(),
   optionGroups: z.array(EquipmentOptionGroupSchema),
   photoCredit: z.string().nullable(),
@@ -263,8 +198,6 @@ export type EquipmentResponse = z.infer<typeof EquipmentResponseSchema>;
 export const EquipmentListResponseSchema = z.object({
   items: z.array(EquipmentResponseSchema),
   total: z.number().int(),
-  // Units per category under every filter except the category itself, so
-  // each chip shows what picking it would list. Optional for old caches.
   categories: z
     .array(z.object({ equipmentTypeId: z.string().uuid(), name: z.string(), count: z.number().int() }))
     .optional(),
@@ -279,7 +212,6 @@ export const MaintenanceDetailResponseSchema = z.object({
     })
     .nullable(),
   runtimeHours: z.number(),
-  // Every task schedule. hoursSinceService = runtime - (nextDue - interval).
   schedules: z.array(
     z.object({
       id: z.string().uuid(),
@@ -329,15 +261,11 @@ export const FinancialReportResponseSchema = z.object({
 });
 export type FinancialReportResponse = z.infer<typeof FinancialReportResponseSchema>;
 
-// PATCH /equipment/:id/maintenance-windows/:windowId. Push a block's end
-// out (or pull it in); the unit frees on its own once the end passes.
 export const MaintenanceWindowExtendRequestSchema = z.object({
   endsAt: z.string().datetime({ offset: true }),
 });
 export type MaintenanceWindowExtendRequest = z.infer<typeof MaintenanceWindowExtendRequestSchema>;
 
-// GET /equipment/maintenance-windows/ending-soon: blocks that end within
-// two days, so the admin can extend one before the unit reopens to bookings.
 export interface MaintenanceWindowEndingSoon {
   windowId: string;
   equipmentId: string;
@@ -346,9 +274,6 @@ export interface MaintenanceWindowEndingSoon {
   endsAt: string;
 }
 
-// GET /equipment/:id/report. One unit's working life at a glance: hours
-// and fuel by month, rentals and what they were quoted, maintenance and
-// blocks, and weather warnings. Kept small on purpose.
 export interface EquipmentReportResponse {
   equipmentId: string;
   model: string;

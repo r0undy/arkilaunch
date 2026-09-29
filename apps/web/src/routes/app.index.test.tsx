@@ -5,12 +5,6 @@ import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken } from '../lib/auth-client.js';
 
-// The dashboard used to print every number the API had, stacked: a seven-row
-// summary rail, a card listing every site, and three queues down the page.
-// What it lost was hierarchy -- the one queue with a human decision attached
-// was the third thing read. These cover the three pieces that replaced it:
-// the KPI strip, the advisory modal, and the tabbed secondary panel.
-
 const SITE_CLEAR = {
   id: 'site-1',
   city: 'Taguig',
@@ -36,6 +30,9 @@ const UTILIZATION = {
 };
 const FINANCIAL = { invoiced: { total: 1250000 }, depositDeducted: 84000 };
 
+let fleet: unknown[] = [];
+let edtr: unknown[] = [];
+
 function stubFetch() {
   vi.stubGlobal(
     'fetch',
@@ -49,14 +46,17 @@ function stubFetch() {
       if (u.includes('/sites')) return json({ items: [SITE_CLEAR, SITE_ALERT], total: 2 });
       if (u.includes('/incidents')) return json({ items: [], total: 0 });
       if (u.includes('/invoices')) return json({ items: [], total: 0 });
+      if (u.includes('/reference/equipment')) return json(fleet);
       if (u.includes('/equipment')) return json({ items: [], total: 0 });
-      if (u.includes('/edtr')) return json({ items: [], total: 0 });
+      if (u.includes('/edtr')) return json({ items: edtr, total: edtr.length });
       return json({ items: [], total: 0 });
     }),
   );
 }
 
 beforeEach(() => {
+  fleet = [];
+  edtr = [];
   sessionStorage.clear();
   setAccessToken(makeToken(makeValidClaims({ role: 'admin' })));
   stubFetch();
@@ -71,8 +71,6 @@ describe('Admin dashboard', () => {
   it('leads with the four headline figures rather than a rail of every number', async () => {
     await renderRoute('/app');
 
-    // Deposit deducted is the money-path figure and the one that used to sit
-    // seventh in a list of counts.
     expect(await screen.findByText('Deposit deducted')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('412.5 h')).toBeInTheDocument());
     expect(screen.getByText('Invoiced')).toBeInTheDocument();
@@ -111,5 +109,14 @@ describe('Admin dashboard', () => {
     // Arrow keys wrap, so the tablist is usable without a mouse.
     await userEvent.keyboard('{ArrowRight}');
     expect(screen.getByRole('tab', { name: 'Payments' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('names a review machine from the whole fleet, not the first page of it', async () => {
+    fleet = [{ id: 'eq-30', model: 'Komatsu PC200', serialNo: 'SN-30', equipmentTypeId: 't', availabilityStatus: 'deployed' }];
+    edtr = [{ id: 'log-1', status: 'review', equipmentId: 'eq-30', reportDate: '2026-09-21' }];
+    await renderRoute('/app');
+
+    expect(await screen.findByText('Komatsu PC200')).toBeInTheDocument();
+    expect(screen.queryByText('Unknown machine')).not.toBeInTheDocument();
   });
 });

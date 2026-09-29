@@ -4,9 +4,6 @@ import { onlyOn, requireRole } from '../lib/guards.js';
 import { clearTokens } from '../lib/auth-client.js';
 import { FIELD_NAV } from '../lib/nav-config.js';
 
-// Stripped mobile-first console, short bottom nav, no sidebar (DESIGN.md §4.1
-// Nav shell; DSD §6 48px touch targets). "Operator" in the Figma maps to the
-// existing timekeeper role -- same shell, relabelled.
 function FieldLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 

@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, type SQL } from 'drizzle-orm';
 import {
+  type Tx,
   auditLogs,
   customers,
-  db,
   depositAccruals,
   edtr,
   edtrReconciliations,
@@ -29,10 +29,8 @@ import type {
 import { bookingCodes, invoiceBookingRef } from '../common/booking-ref.js';
 import { countRows } from '../common/count-rows.js';
 import { customerOwnsInvoice, ownsCustomer } from '../common/customer-scope.js';
+import { round2HalfUp } from '@arkilaunch/shared';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-const cents = (n: number) => Math.round(n * 100) / 100;
 
 // Monday and Sunday of a YYYY-MM-DD report date's ISO week.
 export function isoWeek(day: string): { weekStart: string; weekEnd: string } {
@@ -57,16 +55,11 @@ function toInvoiceSummary(row: typeof invoices.$inferSelect, codes: Map<string, 
   };
 }
 
-// Legacy fallback only. invoice_line_items.reconciliation_id is now a real
-// FK and is what approve() writes and what this reader prefers; the
-// pattern below is kept for rows written before that column existed and
-// which the backfill could not resolve (audit-db-tenant-isolation.md #3).
-// A text description can be edited or reformatted; a foreign key cannot.
+// Legacy fallback for rows predating invoice_line_items.reconciliation_id; the FK is preferred.
 const EDTR_EVIDENCE_PATTERN =
   /^EDTR reconciliation ([0-9a-fA-F-]{36}) \(sources: ([0-9a-fA-F-]{36}), ([0-9a-fA-F-]{36}|n\/a)\)$/;
 
 async function findEdtrEvidence(tx: Tx, lineItems: (typeof invoiceLineItems.$inferSelect)[]) {
-  // Structured link first.
   for (const item of lineItems) {
     if (!item.reconciliationId) continue;
     const [reconciliation] = await tx
@@ -127,21 +120,17 @@ async function billTo(tx: Tx, invoice: typeof invoices.$inferSelect) {
   return company ?? null;
 }
 
-// PRD-F2/F3 read surface backing S9 Billing & Deposit Ledger
-// (cr-arkilaunch-f9-read-surface.md). Read-only: writes to invoices/
-// payments/edtr_reconciliations happen exclusively in edtr.service.ts and
-// payments.service.ts. billing:read-gated (owner is read-mostly, QAD-T19).
 @Injectable()
 export class BillingService {
-  // GET /api/v1/invoices?rentalId=&invoiceType=&status=&from=&to=&limit=&offset=
   async listInvoices(ctx: RequestContext, query: InvoiceListQuery): Promise<InvoiceListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const conditions: SQL[] = [];
       if (query.rentalId) conditions.push(eq(invoices.rentalId, query.rentalId));
       if (query.invoiceType) conditions.push(eq(invoices.invoiceType, query.invoiceType));
       if (query.status) conditions.push(eq(invoices.status, query.status));
-      if (query.from) conditions.push(gte(invoices.createdAt, new Date(`${query.from}T00:00:00Z`)));
-      if (query.to) conditions.push(lte(invoices.createdAt, new Date(`${query.to}T23:59:59.999Z`)));
+      // Manila days: [from 00:00 +08:00, the day after `to`).
+      if (query.from) conditions.push(gte(invoices.createdAt, new Date(`${query.from}T00:00:00+08:00`)));
+      if (query.to) conditions.push(lt(invoices.createdAt, new Date(new Date(`${query.to}T00:00:00+08:00`).getTime() + 86_400_000)));
 
       const rows = await tx
         .select()
@@ -160,16 +149,11 @@ export class BillingService {
     });
   }
 
-  // GET /api/v1/invoices/:id (evidence trail: the edtr_reconciliations row,
-  // both source edtr ids, and the audit_logs DEDUCT row -- SDD §4 "invoice
-  // line cites both source logs", QAD-T1).
   async getInvoice(ctx: RequestContext, id: string): Promise<InvoiceDetailResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, id)).limit(1);
       if (!invoice) throw new NotFoundException({ error: 'invoice_not_found' });
-      // A customer (GET /me/invoices/:id) reads only an invoice on their own
-      // booking or truck request; anything else is a 404, not a 403, so ids
-      // cannot be probed.
+      // A customer reads only their own booking's or truck request's invoice; 404, not 403, so ids can't be probed.
       if (ctx.role === 'customer' && !(await customerOwnsInvoice(tx, ctx, invoice))) {
         throw new NotFoundException({ error: 'invoice_not_found' });
       }
@@ -205,9 +189,7 @@ export class BillingService {
     });
   }
 
-  // GET /api/v1/rentals/:id/deposit (S9 deposit ledger). Same resolution
-  // path as edtr.service.ts's approve gate (resolveDepositLedger) so the
-  // two can never disagree about a rental's remaining deposit.
+  // resolveDepositLedger, same as the approve gate, so the two never disagree.
   async depositLedger(ctx: RequestContext, rentalId: string): Promise<DepositLedgerResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, rentalId)).limit(1);
@@ -218,7 +200,7 @@ export class BillingService {
         rentalId,
         depositRequired: ledger.depositRequired,
         totalDeducted: ledger.totalDeducted,
-        balanceRemaining: Math.max(0, ledger.depositRequired - ledger.totalDeducted),
+        balanceRemaining: round2HalfUp(Math.max(0, ledger.depositRequired - ledger.totalDeducted)),
         unbilledAccrued: ledger.unbilledAccrued,
         hoursUsed: ledger.hoursUsed,
         hoursOrdered: ledger.hoursOrdered,
@@ -227,10 +209,6 @@ export class BillingService {
     });
   }
 
-  // GET /rentals/:id/statement (staff) and /me/rentals/:id/statement (the
-  // customer's own booking). Read-only, computed from the rows that already
-  // hold the money: deposit-deduction lines and accruals (each tied to one
-  // reconciled EDTR day), invoices and payments.
   async statement(ctx: RequestContext, rentalId: string): Promise<StatementOfAccount> {
     return withTenantTx(ctx, async (tx) => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, rentalId)).limit(1);
@@ -285,21 +263,21 @@ export class BillingService {
       };
       for (const d of deducted) {
         const row = week(d.day);
-        row.hours = cents(row.hours + Number(d.hours));
-        row.amount = cents(row.amount + Number(d.amount));
-        row.fromDeposit = cents(row.fromDeposit + Number(d.amount));
+        row.hours = round2HalfUp(row.hours + Number(d.hours));
+        row.amount = round2HalfUp(row.amount + Number(d.amount));
+        row.fromDeposit = round2HalfUp(row.fromDeposit + Number(d.amount));
       }
       for (const a of accrued) {
         const row = week(a.day);
-        row.hours = cents(row.hours + Number(a.hours));
-        row.amount = cents(row.amount + Number(a.amount));
-        if (a.invoiceId) row.invoiced = cents(row.invoiced + Number(a.amount));
-        else row.unbilled = cents(row.unbilled + Number(a.amount));
+        row.hours = round2HalfUp(row.hours + Number(a.hours));
+        row.amount = round2HalfUp(row.amount + Number(a.amount));
+        if (a.invoiceId) row.invoiced = round2HalfUp(row.invoiced + Number(a.amount));
+        else row.unbilled = round2HalfUp(row.unbilled + Number(a.amount));
       }
 
       const ledger = await resolveDepositLedger(tx, rentalId, ctx.tenantId);
-      const charged = cents(invoiceRows.filter((i) => i.invoiceType !== 'deposit_deduction').reduce((sum, i) => sum + Number(i.amount), 0));
-      const paid = cents(paymentRows.filter((p) => p.status === 'paid').reduce((sum, p) => sum + Number(p.amount), 0));
+      const charged = round2HalfUp(invoiceRows.filter((i) => i.invoiceType !== 'deposit_deduction').reduce((sum, i) => sum + Number(i.amount), 0));
+      const paid = round2HalfUp(paymentRows.filter((p) => p.status === 'paid').reduce((sum, p) => sum + Number(p.amount), 0));
       return {
         rentalId,
         bookingCode: rental.code,
@@ -327,13 +305,13 @@ export class BillingService {
         deposit: {
           required: ledger.depositRequired,
           deducted: ledger.totalDeducted,
-          remaining: cents(Math.max(0, ledger.depositRequired - ledger.totalDeducted)),
+          remaining: round2HalfUp(Math.max(0, ledger.depositRequired - ledger.totalDeducted)),
         },
         totals: {
           charged,
           paid,
           unbilled: ledger.unbilledAccrued,
-          balanceDue: cents(Math.max(0, charged - paid) + ledger.unbilledAccrued),
+          balanceDue: round2HalfUp(Math.max(0, charged - paid) + ledger.unbilledAccrued),
         },
         generatedAt: new Date().toISOString(),
       };

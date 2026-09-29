@@ -10,20 +10,13 @@ import { EventsService } from '../src/events/events.service.js';
 import type { StorageService } from '../src/storage/storage.service.js';
 import { ensurePaidDeposit } from './paid-deposit.js';
 
-// KycService now fetches the document via a signed download URL before
-// calling port.analyze(); a data: URL lets native fetch() resolve it without
-// a real Supabase Storage round trip or mocking global fetch.
+// A data: URL lets native fetch() resolve the signed download without Storage or a fetch mock.
 const stubStorage = {
   createSignedDownloadUrl: async () =>
     `data:application/octet-stream;base64,${Buffer.from('fixture-bytes').toString('base64')}`,
 } as unknown as StorageService;
 
-// SDD §8.1 / QAD §3.4 / RFC-2 §6: AI-01..AI-06, one row per SDD §8.1 risk.
-// These are pass/fail safety gates, not quality metrics; a single failure
-// blocks launch (QAD §6). AI-04/AI-05/AI-06 are also exercised end to end
-// in edtr-engine.spec.ts (QAD-T1/T11/T26) -- this file adds the adversarial
-// framing those happy/sad-path tests don't cover on their own, without
-// duplicating them.
+// AI-01..AI-06: pass/fail safety gates, not quality metrics; a single failure blocks launch.
 describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
   let ctx: RequestContext;
   let rentalId: string;
@@ -48,10 +41,7 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
     await ensurePaidDeposit(ctx, rentalId);
   });
 
-  // AI-01 (QAD-T33): instruction text embedded in an uploaded document is
-  // extracted DATA, never a command. Nothing in the pipeline parses field
-  // *values* as control flow -- the reconciliation gate only ever looks at
-  // numeric hours and confidence, never the text content of any field.
+  // AI-01: instruction text in a document is extracted DATA, never a command.
   it('AI-01: instruction-shaped text in a field value never fires a deduction or bypasses the gate', async () => {
     const edtrService = new EdtrService(new EventsService());
     const reportDate = '2021-04-01';
@@ -91,9 +81,7 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
       await tx.insert(edtrLineItems).values({ tenantId: ctx.tenantId, edtrId: row!.id, hoursActive: '8.0', hoursIdle: '1.0' });
     });
 
-    // Deliberately divergent digital counterpart: if the injected text were
-    // ever interpreted as a command, this would still auto-approve. It must
-    // not -- the gate only reads hours and confidence.
+    // Deliberately divergent: if the injected text acted as a command, this would auto-approve.
     const digital = await edtrService.capture(ctx, {
       source: 'digital_entry',
       rentalId,
@@ -108,11 +96,7 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
     ).rejects.toThrow(ConflictException);
   });
 
-  // AI-02 (QAD-T34): a field crafted with SQL/XSS/shell content is handled
-  // as inert data via Zod + Drizzle parameterized queries -- never
-  // string-built SQL, never eval'd, never rendered unescaped. Proven by a
-  // successful round-trip (insert, then read back byte-for-byte) rather
-  // than by a crash or a mutated schema.
+  // AI-02: SQL/XSS/shell content round-trips byte-for-byte as inert data.
   it('AI-02: a SQL/XSS-shaped field value round-trips as inert data, never executed', async () => {
     const maliciousValue = "8.0'; DROP TABLE edtr; --<script>alert(1)</script>";
     const kyc = new KycService(
@@ -129,16 +113,12 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
     const created = await kyc.extract(ctx, { customerId, documentType: 'sec_certificate', fileUri: 'storage://fixtures/inj.jpg' });
     const polled = await kyc.get(ctx, created.kycDocumentId);
 
-    // Stored and returned verbatim (parameterized, not concatenated) --
-    // and correctly flagged as NOT format-valid, since it is not a real SEC
-    // number; it never silently coerces or drops the payload.
+    // Stored verbatim, and flagged as not format-valid.
     expect(polled.extracted.secNumber).toBe(maliciousValue);
     expect(polled.formatValid.secNumber).toBe(false);
   });
 
-  // AI-03 (QAD-T35): no PII (raw SEC/TIN values, raw hours) ever appears in
-  // an emitted event's properties -- only identifiers, field names, and
-  // confidence scores (PRD §5.6 naming rule).
+  // AI-03: no PII in emitted event properties, only identifiers, field names and confidences.
   it('AI-03: emitted ocr_field_confidence events never carry the raw extracted value', async () => {
     const kyc = new KycService(
       new EventsService(),
@@ -170,10 +150,7 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
     }
   });
 
-  // AI-04 (QAD-T36, ties to QAD-T26): excessive agency / reconciliation
-  // bypass. Every non-matched, non-human-resolved status is structurally
-  // unapprovable -- there is no override edge, checked directly against
-  // every DB-valid status the CHECK constraint allows.
+  // AI-04: every non-matched, non-human-resolved status is unapprovable; there is no override edge.
   it('AI-04: every reconciliation status other than matched/human-resolved-discrepancy is unapprovable', async () => {
     const edtrService = new EdtrService(new EventsService());
     const reportDate = '2021-04-02';
@@ -197,22 +174,14 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
     expect(after.reconciliation?.status).toBe('pending');
   });
 
-  // AI-05 (QAD-T37): a forged or altered document. The adversarial framing
-  // the happy/sad-path tests don't cover: the forgery is CONFIDENT. A model
-  // reading a cleanly-faked SEC certificate has no signal that it is fake --
-  // it reports a well-formed SEC number at high confidence, which is exactly
-  // what a genuine one looks like. So the control cannot be confidence or
-  // format; it has to be that no extraction result, however clean, is
-  // capable of granting status on its own.
+  // AI-05: a forgery is CONFIDENT, so the control is that no extraction result can grant status on its own.
   it('AI-05: a well-formed, high-confidence forged KYC document still cannot self-verify', async () => {
     const kyc = new KycService(
       new EventsService(),
       stubStorage,
       new FixtureDocumentIntelligenceAdapter({
         fields: {
-          // Passes SEC_REGEX and TIN_REGEX, and sits far above the 0.90
-          // auto-accept gate. A forged document's whole point is to look
-          // like this.
+          // Passes the format checks, far above the auto-accept gate: what a forgery looks like.
           sec_number: { value: 'CS202412345', confidence: 0.99 },
           tin: { value: '111-222-333', confidence: 0.99 },
         },
@@ -244,13 +213,7 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
     expect((row as { status: string }).status).toBe('needs_review');
   });
 
-  // AI-06 (QAD-T38): an extraction error that would cause wrong billing.
-  // The adversarial shape is a plausible misread, not a garbage one: an
-  // 8.0-hour sheet read as 3.0 is still a number a machine could genuinely
-  // have logged, so nothing about the value itself is suspicious. The only
-  // thing that catches it is the second independent log disagreeing, and the
-  // control is that disagreement blocks the deduction rather than averaging,
-  // preferring the higher-confidence side, or picking either one.
+  // AI-06: a plausible misread is caught only by the counterpart log, which must block, not average.
   it('AI-06: a confident but wrong reading is blocked by the counterpart log, never reconciled away', async () => {
     const edtrService = new EdtrService(new EventsService());
     const reportDate = '2021-04-03';
@@ -293,9 +256,7 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
         hoursActive: '3.0',
         hoursIdle: '1.0',
       });
-      // The same call the OCR worker makes immediately after extraction
-      // (RFC-2 §2 step 5/6), so this exercises the real pairing path rather
-      // than a reconciliation shape hand-written by the test.
+      // The same call the OCR worker makes after extraction, so this is the real pairing path.
       await reconcileEdtr(tx, ctx.tenantId, row!.id);
       return row!;
     });
@@ -307,17 +268,12 @@ describe('AI / OCR adversarial evals (SDD §8.1 AI-01..AI-06)', () => {
     expect(detail.reconciliation?.status).not.toBe('matched');
     expect(Math.abs(Number(detail.reconciliation?.deltaHours))).toBeGreaterThan(0.25);
 
-    // A discrepancy refuses at approve() with a Conflict; a single-source
-    // pending refuses with Unprocessable (AI-04). Either way there is no
-    // edge that deducts -- this asserts the discrepancy one specifically, so
-    // a future change that downgraded it to a warning would fail here.
+    // Asserts the discrepancy refusal specifically, so a downgrade to a warning fails here.
     await expect(
       edtrService.approve(ctx, misread.id, { reconciliationId: detail.reconciliation!.id }),
     ).rejects.toThrow(ConflictException);
 
-    // And nothing silently reconciled it in the meantime: no averaging, no
-    // preferring the confident side. A wrong reading stays visibly wrong
-    // until a human resolves it.
+    // And nothing silently reconciled it meanwhile.
     const after = await edtrService.get(ctx, misread.id);
     expect(after.reconciliation?.status).not.toBe('matched');
   });

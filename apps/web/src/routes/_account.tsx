@@ -18,8 +18,7 @@ function AccountLayout() {
 export const accountLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'account-layout',
-  // Customer-only: a staff role following a "My account" link lands on its
-  // own home (requireRole redirects by role) instead of an empty customer UI.
+  // Customer-only: staff land on their own home instead of an empty customer UI.
   beforeLoad: onlyOn('tenant', requireRole('customer')),
   component: AccountLayout,
 });

@@ -1,30 +1,12 @@
-// The EDTR screen used to render the raw ApiError as JSON. Every gate on the
-// money path answers with a machine code, and several of them are refusals by
-// design rather than faults -- a reviewer needs to know which is which, and
-// what to do next, without reading a payload.
+import { ApiError, apiErrorText, payloadField } from './api-client.js';
 
 export interface EdtrErrorExplanation {
   readonly title: string;
   readonly detail: string;
 }
 
-function codeOf(error: unknown): string | null {
-  if (typeof error !== 'object' || error === null) return null;
-  const payload = (error as { payload?: unknown }).payload;
-  if (typeof payload !== 'object' || payload === null) return null;
-  const code = (payload as { error?: unknown }).error;
-  return typeof code === 'string' ? code : null;
-}
-
-function fieldOf(error: unknown, key: string): string | null {
-  if (typeof error !== 'object' || error === null) return null;
-  const payload = (error as { payload?: Record<string, unknown> }).payload;
-  const value = payload?.[key];
-  return typeof value === 'string' ? value : null;
-}
-
 export function explainEdtrError(error: unknown): EdtrErrorExplanation {
-  switch (codeOf(error)) {
+  switch (payloadField(error, 'error')) {
     case 'reconciliation_not_found':
       return {
         title: 'No such reconciliation',
@@ -34,7 +16,7 @@ export function explainEdtrError(error: unknown): EdtrErrorExplanation {
     case 'reconciliation_belongs_to_other_edtr':
       return {
         title: 'That reconciliation belongs to a different field log',
-        detail: `It is attached to log ${(fieldOf(error, 'edtrId') ?? '').slice(0, 8)}. Approve it from that log.`,
+        detail: `It is attached to log ${String(payloadField(error, 'edtrId') ?? '').slice(0, 8)}. Approve it from that log.`,
       };
     case 'reconciliation_discrepancy':
       return {
@@ -76,12 +58,28 @@ export function explainEdtrError(error: unknown): EdtrErrorExplanation {
         detail:
           'Automatic extraction is enabled here, so the scan alone is captured and the hours come from the extractor.',
       };
+    case 'report_date_outside_rental':
+      return {
+        title: 'That day is outside the rental',
+        detail: 'Pick a day between the rental start and its return, or check the machine was on this rental that day.',
+      };
+    case 'site_not_assigned':
+      return {
+        title: 'You are not assigned to this site',
+        detail: 'Ask the office to add you as a timekeeper for this site, then record the log again.',
+      };
     case 'file_required':
       return { title: 'The scan is missing', detail: 'A paper log needs the photographed or uploaded sheet attached.' };
     default:
       return {
         title: 'That did not go through',
-        detail: 'The request was refused and nothing was changed. The technical detail below says why.',
+        // A plain Error is our own validation message; a TypeError is a raw network failure.
+        detail:
+          error instanceof ApiError
+            ? apiErrorText(error)
+            : error instanceof Error && error.name === 'Error'
+              ? error.message
+              : 'Try again in a moment.',
       };
   }
 }

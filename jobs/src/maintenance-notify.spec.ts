@@ -105,12 +105,7 @@ describe('maintenance-notify (PRD-F4)', () => {
     await runMaintenanceNotify();
 
     const { db, client } = makeJobDb();
-    // Scoped to one recipient, the way the test above is. This job fans out
-    // to every active fleet:manage user, so counting the whole tenant
-    // measures how many recipients exist rather than whether the second
-    // cron run deduped -- and the seeded tenant accumulates activated
-    // admin-role users from users-admin.spec.ts's invite round trips, so
-    // that count is not 1 and does not stay still.
+    // Scoped to one recipient: the seeded tenant's fleet:manage user count drifts.
     const rows = await db
       .select()
       .from(notifications)

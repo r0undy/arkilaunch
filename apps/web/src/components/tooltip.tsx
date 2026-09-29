@@ -6,10 +6,7 @@ export interface TooltipProps {
   className?: string;
 }
 
-// DESIGN.md §6 bans hover-only affordances, so this opens on hover AND
-// keyboard focus (never just one), closes on Escape or blur, and is wired
-// with role="tooltip" + aria-describedby so a screen reader announces it.
-// Generic trigger/content split -- not weather-specific.
+// Opens on hover AND focus, never one alone.
 export function Tooltip({ content, children, className = '' }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const id = useId();

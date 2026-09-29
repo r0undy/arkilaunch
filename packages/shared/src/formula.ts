@@ -1,7 +1,4 @@
-// A tiny arithmetic evaluator for the admin's truck price formula: numbers,
-// + - * /, parentheses, unary minus, and whitelisted variable names. No
-// eval/Function, no property access, no calls -- anything else is a parse
-// error. Recursive descent over a token list.
+// No eval/Function, no property access, no calls: anything else is a parse error.
 
 export const FORMULA_BASE_VARS = [
   'km',
@@ -20,7 +17,6 @@ const TOKEN = /\s*(?:(\d+(?:\.\d+)?)|([a-z_][a-z0-9_]*)|([-+*/()]))/y;
 
 export class FormulaError extends Error {}
 
-// An extra's label as a formula variable: "Helper fee" -> helper_fee.
 export function formulaVarName(label: string): string {
   return label
     .toLowerCase()

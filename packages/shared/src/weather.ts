@@ -1,12 +1,7 @@
 import { z } from 'zod';
 import { FORECAST_DAYS, type WeatherObservation } from './weather-port.js';
 
-// PRD-F5 (Weather-Aware Module), SDD §4 `GET /api/v1/sites/:id/weather`.
-// No dedicated RFC exists for F5 (unlike F1/F3/F7); this file is the one
-// place severity is computed so the poller (jobs/src/weather-poll.ts) and
-// the read endpoint (apps/api/src/sites) can never disagree about what a
-// reading means -- the same shared-pure-function shape as evaluateGate()
-// in edtr.ts.
+// The one place severity is computed, so the poller and the read endpoint can never disagree.
 
 export const WeatherSeveritySchema = z.enum(['none', 'watch', 'warning']);
 export type WeatherSeverity = z.infer<typeof WeatherSeveritySchema>;
@@ -18,9 +13,6 @@ export interface WeatherThresholds {
   precipMmWarning: number;
 }
 
-// Conservative PH construction-site work-stoppage guidance. No tenant has
-// asked to vary these, so a shared constant is the restraint-ladder stop
-// (BUILD §5) rather than a new per-tenant config table.
 export const DEFAULT_WEATHER_THRESHOLDS: WeatherThresholds = {
   windKphWatch: 40,
   windKphWarning: 60,
@@ -28,26 +20,16 @@ export const DEFAULT_WEATHER_THRESHOLDS: WeatherThresholds = {
   precipMmWarning: 30,
 };
 
-// NFR-4: every active site is polled on this cadence. is_stale in the read
-// endpoint response is true once the newest reading is older than a
-// two-cycle grace window, so one missed poll does not falsely flag every
-// site as stale.
+// is_stale allows a two-cycle grace window so one missed poll does not flag every site stale.
 export const WEATHER_POLL_CADENCE_MINUTES = 30;
 export const WEATHER_STALE_AFTER_MINUTES = WEATHER_POLL_CADENCE_MINUTES * 2;
 
-// Open-Meteo's free tier (docs/cr-arkilaunch-open-meteo-free-tier.md) caps
-// at 10,000 calls/day. Derived, not a magic number, so a future cadence
-// change carries the ceiling with it: one site costs
-// (1440 / WEATHER_POLL_CADENCE_MINUTES) calls/day, so this is the largest
-// active-site count the poller can serve without exceeding the cap.
+// Derived from Open-Meteo's free-tier cap of 10,000 calls/day, so a cadence change carries the ceiling.
 export const OPEN_METEO_FREE_DAILY_CALL_CAP = 10_000;
 export const MAX_POLLED_SITES_PER_CYCLE = Math.floor(
   OPEN_METEO_FREE_DAILY_CALL_CAP / (24 * 60 / WEATHER_POLL_CADENCE_MINUTES),
 );
 
-// Pure severity evaluation, no DB/IO. Threshold-crossing is what the
-// poller uses to decide whether to also append the liability `events` row
-// (SDD §4 "auto-logs a liability incident").
 export function evaluateSeverity(
   observed: WeatherObservation,
   thresholds: WeatherThresholds = DEFAULT_WEATHER_THRESHOLDS,
@@ -72,10 +54,6 @@ export function severityMessage(severity: WeatherSeverity): string {
   }
 }
 
-// GET /api/v1/sites/:id/weather response (SDD §4; camelCase wire shape,
-// same naming-convention choice quotes.ts made vs the RFC's illustrative
-// snake_case JSON). Egress allowlist -- exposes exactly what the poller
-// computes, nothing from the underlying weather_alerts row beyond that.
 export const WeatherAdvisoryResponseSchema = z.object({
   siteId: z.string().uuid(),
   observed: z.object({
@@ -96,10 +74,6 @@ export const WeatherAdvisoryListResponseSchema = z.object({
 });
 export type WeatherAdvisoryListResponse = z.infer<typeof WeatherAdvisoryListResponseSchema>;
 
-
-// GET /me/sites/:id/forecast (customer's own site). Wire shape for the
-// browse-page rail; the DailyForecast interface itself lives in
-// weather-port.ts, which jobs shares and which stays zod-free.
 export const DailyForecastSchema = z.object({
   date: z.string(),
   tempMaxC: z.number(),
@@ -112,15 +86,11 @@ export const DailyForecastSchema = z.object({
 export const SiteForecastResponseSchema = z.object({
   siteId: z.string().uuid(),
   days: z.array(DailyForecastSchema).length(FORECAST_DAYS),
-  // So the rail can say "as of HH:MM" rather than implying a live reading.
-  // The response is served from a short-lived cache, and pretending
-  // otherwise is the same class of overclaim as a fabricated all-clear.
+  // Served from a short-lived cache; the rail must not imply a live reading.
   fetchedAt: z.string().datetime(),
 });
 export type SiteForecastResponse = z.infer<typeof SiteForecastResponseSchema>;
 
-// GET /me/forecast. A general area forecast for a customer with no site of
-// their own yet (no company, no order), so the rail is never empty.
 export interface AreaForecastResponse {
   area: string;
   days: z.infer<typeof DailyForecastSchema>[];

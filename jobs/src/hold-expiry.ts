@@ -11,26 +11,21 @@ import {
   users,
 } from '@arkilaunch/db';
 import { makeJobDb } from './db-client.js';
-import { runInstrumentedJob } from './telemetry.js';
+import { runJobIfMain } from './telemetry.js';
 
-// QA 25 (cr-arkilaunch-qa-batch-23-28.md): an unpaid request holds its
-// dates until rentals.hold_expires_at. The availability check already stops
-// a lapsed hold blocking anyone (apps/api/src/common/equipment-availability.ts
-// liveHold); this sweep closes it out -- cancelled, its unpaid invoices
-// voided -- and tells the customer and the rental team, hourly.
-//
-// Never touches money that may be moving: a request with an online payment
-// still pending is skipped (the availability check keeps it held too), so
-// a PayMongo session in flight can never land on a cancelled booking.
+// Skips any request with an online payment pending, so a PayMongo session in
+// flight never lands on a cancelled booking.
 const STAFF_ROLES = ['admin', 'owner'];
+const noPendingOnlinePayment = sql`NOT EXISTS (SELECT 1 FROM payments p JOIN invoices i ON i.id = p.invoice_id
+  WHERE i.tenant_id = ${rentals.tenantId} AND p.tenant_id = ${rentals.tenantId}
+    AND i.rental_id = ${rentals.id} AND p.status = 'pending' AND p.method <> 'cash')`;
 
 export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: string[] }> {
   const { db, client } = makeJobDb();
   const cancelled: string[] = [];
   try {
-    // The one cross-tenant read, as every sweep's is (maintenance-notify);
-    // each row carries its tenant, and every read and write after it names
-    // that tenant explicitly (RFC-2 §8: RLS is bypassed on this connection).
+    // RLS is bypassed on this connection: every read and write after this
+    // names the row's tenant explicitly.
     const lapsed = await db
       .select({ id: rentals.id, tenantId: rentals.tenantId, customerId: rentals.customerId })
       .from(rentals)
@@ -38,17 +33,14 @@ export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: stri
         and(
           eq(rentals.status, 'pending'),
           lt(rentals.holdExpiresAt, now),
-          sql`NOT EXISTS (SELECT 1 FROM payments p JOIN invoices i ON i.id = p.invoice_id
-            WHERE i.tenant_id = ${rentals.tenantId} AND p.tenant_id = ${rentals.tenantId}
-              AND i.rental_id = ${rentals.id} AND p.status = 'pending' AND p.method <> 'cash')`,
+          noPendingOnlinePayment,
         ),
       );
     console.log(`hold-expiry: ${lapsed.length} lapsed hold(s).`);
 
     for (const hold of lapsed) {
       await db.transaction(async (tx) => {
-        // Re-read under lock: staff may have extended it, or the customer
-        // paid, since the scan.
+        // Re-read under lock: staff may have extended it or the customer paid.
         const [still] = await tx
           .select({ id: rentals.id })
           .from(rentals)
@@ -62,6 +54,12 @@ export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: stri
           )
           .for('update');
         if (!still) return;
+        // A separate statement: only a fresh snapshot sees a checkout that committed while we waited on the lock.
+        const [unpaid] = await tx
+          .select({ id: rentals.id })
+          .from(rentals)
+          .where(and(eq(rentals.tenantId, hold.tenantId), eq(rentals.id, hold.id), noPendingOnlinePayment));
+        if (!unpaid) return;
 
         const open = await tx
           .select({ id: invoices.id })
@@ -94,7 +92,6 @@ export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: stri
           .update(equipmentAssignments)
           .set({ status: 'cancelled' })
           .where(and(eq(equipmentAssignments.tenantId, hold.tenantId), eq(equipmentAssignments.rentalId, hold.id)));
-        // audit_logs needs a human actor; the sweep's record is the event.
         await tx.insert(events).values({
           tenantId: hold.tenantId,
           name: 'booking_hold_expired',
@@ -134,13 +131,4 @@ export async function runHoldExpiry(now = new Date()): Promise<{ cancelled: stri
   }
 }
 
-const isMainModule =
-  process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
-if (isMainModule) {
-  runInstrumentedJob('hold-expiry', async () => {
-    await runHoldExpiry();
-  }).catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+runJobIfMain(import.meta.url, 'hold-expiry', runHoldExpiry);

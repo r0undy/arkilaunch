@@ -1,24 +1,12 @@
 import { z } from 'zod';
 
-// Per-equipment weather levels in PAGASA terms (CR pricebook-kyc-weather).
-//
-// One site-wide "watch/warning" says nothing useful to a crew running a
-// crane and a roller side by side: the crane must stop in gusts the roller
-// does not notice, and the roller is pointless in rain the crane can lift
-// through. So every machine on a site gets its own level from (a) its
-// weather class, (b) the PAGASA warnings in force for the site's province
-// (recorded by staff -- PAGASA publishes no machine-readable feed), and
-// (c) the live reading: wind, gusts, rain rate, thunderstorm and heat index.
-//
-// Pure functions, no IO: the poller, the API and the web read the same
-// answer, the same shape as evaluateSeverity() in weather.ts.
+// Pure: the poller, the API and the web must read the same per-machine level.
 
 export const WEATHER_LEVELS = ['normal', 'advisory', 'caution', 'stop_work'] as const;
 export const WeatherLevelSchema = z.enum(WEATHER_LEVELS);
 export type WeatherLevel = z.infer<typeof WeatherLevelSchema>;
 export const LEVEL_RANK: Record<WeatherLevel, number> = { normal: 0, advisory: 1, caution: 2, stop_work: 3 };
 
-// What each level asks of the crew, in plain words for both sides.
 export const WEATHER_LEVEL_INFO: Record<WeatherLevel, { label: string; color: 'green' | 'yellow' | 'orange' | 'red'; action: string; tagalog: string }> = {
   normal: { label: 'Normal', color: 'green', action: 'Work as usual.', tagalog: 'Normal na operasyon.' },
   advisory: {
@@ -41,9 +29,6 @@ export const WEATHER_LEVEL_INFO: Record<WeatherLevel, { label: string; color: 'g
   },
 };
 
-// How weather endangers a kind of machine. The catalog's equipment types
-// map onto these by name (EQUIPMENT_TYPE_CLASS), so no reference-table
-// change is needed and an unknown type falls back to 'general'.
 export const EQUIPMENT_WEATHER_CLASSES = [
   'lifting',
   'aerial_work',
@@ -78,16 +63,13 @@ export const EQUIPMENT_WEATHER_CLASS_INFO: Record<EquipmentWeatherClass, { label
 };
 
 export const EQUIPMENT_TYPE_CLASS: Record<string, EquipmentWeatherClass> = {
-  // Lifting: suspended loads on a boom.
   crane: 'lifting',
   'mobile crane': 'lifting',
   'crawler crane': 'lifting',
   'boom truck': 'lifting',
-  // People at height.
   'boom lift (manlift)': 'aerial_work',
   'concrete pump': 'concrete_pumping',
   forklift: 'material_handling',
-  // Earthmoving: ground conditions, trenches and slopes.
   excavator: 'earthmoving',
   'mini excavator': 'earthmoving',
   'backhoe loader': 'earthmoving',
@@ -97,19 +79,15 @@ export const EQUIPMENT_TYPE_CLASS: Record<string, EquipmentWeatherClass> = {
   'skid steer': 'earthmoving',
   'skid steer loader': 'earthmoving',
   'motor grader': 'earthmoving',
-  // Hauling: public roads, flooding, visibility.
   'dump truck': 'hauling',
   'concrete mixer': 'hauling',
   'transit mixer': 'hauling',
   'water truck': 'hauling',
-  // Moves heavy equipment between sites: the risk is the road trip.
   'self-loading truck': 'hauling',
-  // Compaction.
   'road roller': 'compaction',
   'pneumatic tire roller': 'compaction',
   'plate compactor': 'compaction',
   'asphalt paver': 'paving',
-  // Power: electrics in flood water and lightning.
   generator: 'power',
   'generator set': 'power',
   'air compressor': 'power',
@@ -119,8 +97,6 @@ export function weatherClassFor(typeName: string | null | undefined): EquipmentW
   return EQUIPMENT_TYPE_CLASS[(typeName ?? '').trim().toLowerCase()] ?? 'general';
 }
 
-// PAGASA Rainfall Warning System colours, by rain rate (mm in the past hour
-// and expected to continue): Yellow 7.5-15, Orange 15-30, Red above 30.
 export const RAINFALL_WARNINGS = ['none', 'yellow', 'orange', 'red'] as const;
 export type RainfallWarning = (typeof RAINFALL_WARNINGS)[number];
 const RAIN_RANK: Record<RainfallWarning, number> = { none: 0, yellow: 1, orange: 2, red: 3 };
@@ -131,8 +107,6 @@ export function rainfallWarningFor(rainMmPerHour: number): RainfallWarning {
   return 'none';
 }
 
-// PAGASA Tropical Cyclone Wind Signals (2022 scale), with the wind each
-// warns of, for the reasons shown to the crew.
 export const TCWS_WIND: Record<number, string> = {
   1: 'strong winds 39-61 km/h',
   2: 'gale-force winds 62-88 km/h',
@@ -141,9 +115,6 @@ export const TCWS_WIND: Record<number, string> = {
   5: 'typhoon-force winds 185 km/h or more',
 };
 
-// PAGASA heat index classes: Caution 27-32, Extreme Caution 33-41,
-// Danger 42-51, Extreme Danger 52 and above. Operators in closed cabs and
-// on exposed platforms are who it hurts.
 export function heatIndexC(tempC: number, relativeHumidity: number): number {
   // NWS Rothfusz regression in Fahrenheit, with the simple formula below 80F.
   const t = (tempC * 9) / 5 + 32;
@@ -159,30 +130,22 @@ export function heatIndexC(tempC: number, relativeHumidity: number): number {
   return Math.round((((hi - 32) * 5) / 9) * 10) / 10;
 }
 
-// What a machine's level is judged on. Live readings come from the weather
-// adapter; the PAGASA part from the staff-recorded advisory for the
-// site's province (both optional: a missing input never raises a level).
+// A missing input never raises a level.
 export interface EquipmentWeatherInputs {
   windKph: number;
   gustKph?: number | null;
   rainMmPerHour: number;
   heatIndexC?: number | null;
-  // Open-Meteo weather code 95/96/99, or PAGASA's thunderstorm advisory.
   thunderstorm: boolean;
   tcws: number; // 0 = no signal
   pagasaRainfall: RainfallWarning;
 }
 
-// Thunderstorm codes in the WMO table Open-Meteo returns.
 export function isThunderstormCode(code: number): boolean {
   return code === 95 || code === 96 || code === 99;
 }
 
-// The rules, per class. Each rule raises the level when its condition
-// holds; the machine's level is the worst one that fires. Gust limits for
-// lifting follow common crane-manufacturer limits (lifting stops at about
-// 50 km/h / 13.8 m/s, and PH DOLE OSH practice stops crane work under any
-// tropical cyclone signal and during lightning).
+// Crane gust limit ~50 km/h per manufacturer limits; PH DOLE OSH stops crane work under any TCWS or lightning.
 interface Rule {
   level: Exclude<WeatherLevel, 'normal'>;
   test: (w: Required<Pick<EquipmentWeatherInputs, 'windKph' | 'thunderstorm' | 'tcws'>> & { gust: number; rain: RainfallWarning; heat: number | null }) => string | null;
@@ -204,8 +167,7 @@ const RULES: Record<EquipmentWeatherClass, Rule[]> = {
     { level: 'advisory', test: gustOver(30) },
     { level: 'advisory', test: rainAt('yellow') },
   ],
-  // Manlift manufacturers rate platforms to 12.5 m/s (45 km/h); people
-  // are on it, so the thresholds sit below the crane's.
+  // Manlifts are rated to 12.5 m/s with people aboard, so thresholds sit below the crane's.
   aerial_work: [
     { level: 'stop_work', test: gustOver(45) },
     { level: 'stop_work', test: signalAt(1) },
@@ -215,8 +177,6 @@ const RULES: Record<EquipmentWeatherClass, Rule[]> = {
     { level: 'caution', test: rainAt('yellow') },
     { level: 'advisory', test: gustOver(20) },
   ],
-  // A crane can wait out heavy rain; a pour cannot -- Orange rain washes
-  // the cement out of fresh concrete, so the pump stops a level earlier.
   concrete_pumping: [
     { level: 'stop_work', test: gustOver(50) },
     { level: 'stop_work', test: signalAt(1) },
@@ -253,8 +213,6 @@ const RULES: Record<EquipmentWeatherClass, Rule[]> = {
     { level: 'advisory', test: rainAt('yellow') },
     { level: 'advisory', test: thunder },
   ],
-  // Rolling wet soil does not compact it and the drum slides: rain
-  // limits a roller well before it limits a truck.
   compaction: [
     { level: 'stop_work', test: rainAt('orange') },
     { level: 'stop_work', test: signalAt(2) },
@@ -262,7 +220,6 @@ const RULES: Record<EquipmentWeatherClass, Rule[]> = {
     { level: 'caution', test: signalAt(1) },
     { level: 'advisory', test: thunder },
   ],
-  // Asphalt is not laid on a wet base: steady rain of any colour stops it.
   paving: [
     { level: 'stop_work', test: rainAt('yellow') },
     { level: 'stop_work', test: signalAt(2) },
@@ -289,7 +246,6 @@ const RULES: Record<EquipmentWeatherClass, Rule[]> = {
   ],
 };
 
-// Heat index applies to every operator, whatever the machine.
 function heatRule(heat: number | null): { level: Exclude<WeatherLevel, 'normal'>; reason: string } | null {
   if (heat === null) return null;
   if (heat >= 52) return { level: 'stop_work', reason: `Heat index ${heat}°C (PAGASA Extreme Danger)` };
@@ -300,7 +256,6 @@ function heatRule(heat: number | null): { level: Exclude<WeatherLevel, 'normal'>
 
 export interface EquipmentWeatherResult {
   level: WeatherLevel;
-  // Every condition that raised the level, worst first, for the crew.
   reasons: string[];
 }
 
@@ -324,8 +279,6 @@ export function evaluateEquipmentWeather(weatherClass: EquipmentWeatherClass, in
   if (heat) fired.push(heat);
   if (fired.length === 0) return { level: 'normal', reasons: [] };
   fired.sort((a, b) => LEVEL_RANK[b.level] - LEVEL_RANK[a.level]);
-  // Only the reasons at the machine's own level: a "Yellow rainfall"
-  // advisory line under a Stop work level is noise.
   const level = fired[0]!.level;
   return { level, reasons: fired.filter((f) => f.level === level).map((f) => f.reason) };
 }
@@ -334,8 +287,6 @@ export function worstLevel(levels: WeatherLevel[]): WeatherLevel {
   return levels.reduce<WeatherLevel>((worst, level) => (LEVEL_RANK[level] > LEVEL_RANK[worst] ? level : worst), 'normal');
 }
 
-// One machine's level on a site, as stored on the poll's reading and
-// served to staff and to the customer who rents it.
 export const EquipmentWeatherSchema = z.object({
   equipmentId: z.string().uuid(),
   rentalId: z.string().uuid(),
@@ -347,8 +298,6 @@ export const EquipmentWeatherSchema = z.object({
 });
 export type EquipmentWeather = z.infer<typeof EquipmentWeatherSchema>;
 
-// GET /sites/:id/equipment-weather (staff) and
-// GET /me/sites/:id/equipment-weather (the customer's own machines only).
 export const SiteEquipmentWeatherResponseSchema = z.object({
   siteId: z.string().uuid(),
   level: WeatherLevelSchema,
@@ -361,8 +310,6 @@ export const SiteEquipmentWeatherResponseSchema = z.object({
 });
 export type SiteEquipmentWeatherResponse = z.infer<typeof SiteEquipmentWeatherResponseSchema>;
 
-// Staff record PAGASA's warnings for a province as PAGASA issues them
-// (TCWS bulletin, rainfall/thunderstorm advisory). They lapse at validUntil.
 export const PagasaAdvisoryCreateSchema = z.object({
   province: z.string().trim().min(2).max(120),
   tcws: z.number().int().min(0).max(5),
@@ -379,12 +326,7 @@ export const PagasaAdvisoryResponseSchema = PagasaAdvisoryCreateSchema.extend({
 });
 export type PagasaAdvisoryResponse = z.infer<typeof PagasaAdvisoryResponseSchema>;
 
-// PAGASA-equivalent conditions estimated from the live reading, so no one
-// has to key PAGASA bulletins in per province. The wind signal follows the
-// PAGASA 2022 TCWS wind bands (on the stronger of sustained wind and gust),
-// the rainfall colour the Rainfall Warning System rates, and thunderstorm
-// the WMO storm codes. An estimate, labelled as such: PAGASA's own signal
-// covers a forecast area and lead time a point reading cannot.
+// An estimate: PAGASA's own signal covers a forecast area and lead time a point reading cannot.
 export function estimatePagasa(observed: { windKph: number; gustKph?: number | null; precipMm: number; code: number }): {
   tcws: number;
   rainfall: RainfallWarning;

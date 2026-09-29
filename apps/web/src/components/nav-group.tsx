@@ -8,28 +8,6 @@ export interface NavGroupListProps {
   collapsed?: boolean;
 }
 
-// AWS side nav: the active item reads in the link color on a quiet tile, so
-// amber keeps its one meaning, "primary action" (DESIGN.md §2.1).
-/**
- * The one destination the current URL belongs to.
- *
- * A plain `startsWith` marked every ancestor active too: on `/app/ocr` the
- * section root `/app` matched as well, so Dashboard and Field logs both lit
- * up and the indicator stopped meaning "you are here". Taking the longest
- * match instead means the most specific destination wins, and exactly one
- * item is ever active.
- *
- * Two refinements on top of that, because the longest match is only the right
- * answer when some destination genuinely owns the URL:
- *
- * - `exact` is for a section root (`/account`, `/app`). It is a prefix of
- *   every page in its section, so it won every match that had no more
- *   specific entry -- the cart, the checkout, the invoice and the company
- *   form all showed "Home" as the active destination.
- * - `owns` lets a destination claim screens reached from it that have no
- *   sidebar entry of their own, so "My bookings" stays lit on a checkout
- *   rather than the blade vanishing.
- */
 export interface NavTarget {
   to: string;
   exact?: boolean;
@@ -47,8 +25,7 @@ export function activeNavTarget(targets: (string | NavTarget)[], pathname: strin
     const item: NavTarget = typeof target === 'string' ? { to: target } : target;
     const prefixes = item.exact ? [] : [item.to, ...(item.owns ?? [])];
     const matched = pathname === item.to ? item.to : prefixes.find((p) => ownsPath(p, pathname));
-    // Ranked by how much of the URL the matching prefix accounts for, so a
-    // longer `owns` entry still beats a shorter `to`.
+    // Longest match wins so exactly one item is active; a longer `owns` beats a shorter `to`.
     if (matched !== undefined && matched.length > bestLength) {
       best = item.to;
       bestLength = matched.length;
@@ -82,11 +59,7 @@ export function NavGroupList({ groups, pathname, onNavigate, collapsed = false }
               onClick={onNavigate}
               title={collapsed ? item.label : undefined}
               aria-label={collapsed ? item.label : undefined}
-              // Link marks itself active on a prefix match and sets
-              // aria-current from that, which is the same ancestor
-              // problem in a second place -- so its own matching is
-              // pinned to exact and the attribute comes from the
-              // longest-match above, which is the one source of truth.
+              // Link's own prefix match would set aria-current on ancestors too; activeNavTarget decides.
               activeOptions={{ exact: true }}
               aria-current={isActive ? 'page' : undefined}
               className={[
@@ -106,8 +79,7 @@ export function NavGroupList({ groups, pathname, onNavigate, collapsed = false }
     </div>
   );
 
-  // One nav, so the landmark count stays one; the pinned groups sit at its
-  // foot (mt-auto) when the column has room to spare.
+  // One nav landmark: pinned groups sit inside it.
   return (
     <nav aria-label="Primary navigation" className={`flex flex-1 flex-col ${collapsed ? 'gap-2' : 'gap-5'}`}>
       {listed.map((group) => renderGroup(group, true))}

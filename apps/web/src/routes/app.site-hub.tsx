@@ -14,10 +14,10 @@ import {
 import { appLayoutRoute } from './_app.js';
 import { edtrQueries, sitesQueries } from '../lib/queries.js';
 import { apiDelete, apiErrorText, apiGet, apiPost } from '../lib/api-client.js';
-import { formatDate, formatPeso, formatStatus } from '../lib/format.js';
+import { addDaysIso, formatDate, formatPeso, formatStatus, weekStart } from '../lib/format.js';
 import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { BookingCode } from '../components/booking-code.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { CaptureModal } from '../components/capture-modal.js';
 import { HourFields, hourValuesFrom, toLineItems, type HourFieldValues, EMPTY_HOURS } from '../components/hour-fields.js';
 import { Modal } from '../components/modal.js';
@@ -34,10 +34,6 @@ import { Table, type TableColumn } from '../components/table.js';
 import { SiteEquipmentWeather } from '../components/equipment-weather.js';
 import { useToast } from '../components/toast.js';
 
-// The per-site hub (cr-arkilaunch-edtr-site-hub-approval.md §7). Everything
-// about one project site in five tabs; the Daily logs tab is where the
-// office approves what timekeepers submit.
-
 const TABS = ['overview', 'logs', 'equipment', 'personnel', 'documents'] as const;
 type Tab = (typeof TABS)[number];
 const TAB_LABEL: Record<Tab, string> = {
@@ -48,9 +44,7 @@ const TAB_LABEL: Record<Tab, string> = {
   documents: 'Documents',
 };
 
-// Each day is a status indicator (Cloudscape): the icon carries the colour and
-// the label is spoken and shown on hover, so a week reads as a row of marks
-// rather than seven chips of text.
+// The icon carries the colour; the label is spoken and shown on hover.
 const STATUS_META: Record<FieldLogDayStatus, { label: string; icon: LucideIcon; className: string }> = {
   missing: { label: 'Missing', icon: CircleDashed, className: 'text-text-muted' },
   pending: { label: 'Pending', icon: Clock, className: 'text-accent' },
@@ -59,24 +53,11 @@ const STATUS_META: Record<FieldLogDayStatus, { label: string; icon: LucideIcon; 
   rejected: { label: 'Rejected', icon: CircleX, className: 'text-error' },
 };
 
-function addDays(iso: string, n: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
-// Monday of the week holding `iso`.
-export function weekStartOf(iso: string): string {
-  const day = new Date(`${iso}T00:00:00Z`).getUTCDay(); // 0 = Sunday
-  return addDays(iso, -((day + 6) % 7));
-}
-
 function inSpan(unit: FieldLogUnit, date: string): boolean {
   return date >= unit.span.from && (unit.span.to === null || date <= unit.span.to);
 }
 
-// Day X of Y through a rental, clamped to the span.
-export function spanProgress(start: string, end: string | null, today: string): { day: number; of: number | null } {
+function spanProgress(start: string, end: string | null, today: string): { day: number; of: number | null } {
   const from = manilaDate(start);
   const dayIndex = (a: string, b: string) =>
     Math.round((new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / 86_400_000) + 1;
@@ -322,14 +303,13 @@ function ReviewPanel({
 function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string; siteId: string }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [week, setWeek] = useState(() => weekStartOf(today));
+  const [week, setWeek] = useState(() => weekStart(today));
   const [open, setOpen] = useState<FieldLogDay | null>(null);
   const [recordRental, setRecordRental] = useState<string | null>(null);
   const { equipmentList, rentals, rentalLabel } = useScanDeployments(true);
-  const dates = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(week, i)), [week]);
+  const dates = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysIso(week, i)), [week]);
   const byKey = useMemo(() => new Map(hub.days.map((d) => [`${d.equipmentId}|${d.date}`, d])), [hub.days]);
 
-  // A clean pending day: the timekeeper's figures with nothing flagged.
   const clean = dates.flatMap((date) =>
     hub.units
       .map((u) => byKey.get(`${u.equipmentId}|${date}`))
@@ -370,22 +350,20 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
             {hub.rentals
               .filter((r) => r.status === 'active')
               .map((r) => (
-                <Link key={r.id} to="/app/bookings/$bookingId" params={{ bookingId: r.id }}>
-                  <Button variant="secondary">Extend {r.code}</Button>
-                </Link>
+                <Link key={r.id} to="/app/bookings/$bookingId" params={{ bookingId: r.id }} className={buttonClass('secondary')}>Extend {r.code}</Link>
               ))}
           </div>
         </Alert>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => setWeek(addDays(week, -7))} aria-label="Previous week">
+          <Button variant="ghost" onClick={() => setWeek(addDaysIso(week, -7))} aria-label="Previous week">
             ←
           </Button>
           <span className="text-sm font-semibold text-text">
-            {formatDate(week)} – {formatDate(addDays(week, 6))}
+            {formatDate(week)} – {formatDate(addDaysIso(week, 6))}
           </span>
-          <Button variant="ghost" onClick={() => setWeek(addDays(week, 7))} aria-label="Next week">
+          <Button variant="ghost" onClick={() => setWeek(addDaysIso(week, 7))} aria-label="Next week">
             →
           </Button>
         </div>
@@ -438,7 +416,6 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
         equipmentList={equipmentList.filter((e) => hub.units.some((u) => u.equipmentId === e.id))}
         rentalLabel={rentalLabel}
         onCaptured={() => void queryClient.invalidateQueries({ queryKey: sitesQueries.hub(siteId).queryKey })}
-        toast={toast}
         initialSource="paper_ocr"
         {...(recordRental ? { initialRentalId: recordRental } : {})}
       />
@@ -448,8 +425,6 @@ function DailyLogs({ hub, today, siteId }: { hub: SiteHubResponse; today: string
 
 const weekday = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-PH', { weekday: 'short', timeZone: 'UTC' });
 
-// One day of one machine: outside the rental, not yet due, or a status mark
-// that opens the day's log.
 function DayCell({ unit, date, day, onOpen }: { unit: FieldLogUnit; date: string; day: FieldLogDay | undefined; onOpen: (d: FieldLogDay) => void }) {
   if (!inSpan(unit, date)) {
     return (
@@ -484,8 +459,6 @@ function DayCell({ unit, date, day, onOpen }: { unit: FieldLogUnit; date: string
   );
 }
 
-// The week as machines x days. On a phone each machine is a card with its
-// seven days in one row, so nothing scrolls sideways.
 function WeekGrid({
   hub,
   dates,
@@ -817,9 +790,7 @@ function SiteHubPage() {
         title={hub.data ? hub.data.site.address || 'Project site' : 'Project site'}
         {...(hub.data?.site.customerName ? { description: hub.data.site.customerName } : {})}
         actions={
-          <Link to="/app/deployment">
-            <Button variant="ghost">All sites</Button>
-          </Link>
+          <Link to="/app/deployment" className={buttonClass('ghost')}>All sites</Link>
         }
       />
       <Tabs

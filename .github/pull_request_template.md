@@ -1,8 +1,3 @@
-<!-- Promised by docs/cr-arkilaunch-pilot-honesty.md §6 and added by
-     docs/cr-arkilaunch-m4-money-path-gates.md, which found it had never
-     actually landed. Its purpose: make an unrun pre-merge gate visible in
-     the PR body rather than discovered ten Change Records later. -->
-
 ## What this changes
 
 <!-- One paragraph. Name the PRD-F#, RFC §, or QAD-T# this serves. -->

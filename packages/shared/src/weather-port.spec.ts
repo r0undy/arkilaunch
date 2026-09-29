@@ -15,9 +15,7 @@ describe('UnavailableWeatherAdapter', () => {
     });
   });
 
-  // The free tier is keyless, so 'no_credentials' can never be the true
-  // story in production -- the default must not name a cause that cannot
-  // happen.
+  // The free tier is keyless, so the default must not name 'no_credentials'.
   it('defaults to no_adapter, not no_credentials', async () => {
     await expect(new UnavailableWeatherAdapter().getConditions(0, 0)).rejects.toMatchObject({
       reason: 'no_adapter',
@@ -25,15 +23,7 @@ describe('UnavailableWeatherAdapter', () => {
   });
 });
 
-// Regression rationale, pinned as an executable assertion so nobody
-// reintroduces a zero-returning stub "just for local dev".
-//
-// The removed StubWeatherAdapter returned { tempC: 0, windKph: 0,
-// precipMm: 0, code: 0 }. Those zeros are not "no data" -- they are a
-// perfectly calm day, which is why this is the one stub whose failure mode
-// is a safety issue rather than a correctness one: a construction site is
-// told there is no advisory in effect, on the strength of a reading that
-// was never taken.
+// Pinned so nobody reintroduces a zero-returning stub: zeros read as a calm day, a false all-clear for a site.
 describe('why an all-zero weather stub is unsafe (regression rationale)', () => {
   it('an all-zero observation evaluates to no advisory at all', () => {
     const severity = evaluateSeverity({ tempC: 0, windKph: 0, precipMm: 0, code: 0 });

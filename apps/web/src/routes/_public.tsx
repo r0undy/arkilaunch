@@ -35,10 +35,6 @@ const FOOTER_COLUMNS: { title: string; links: { label: string; to: FooterTo }[] 
   },
 ];
 
-// The public chrome (DSD §4, the AWS reference): steel top nav, the page on
-// the paper canvas, a steel footer with faded links. Exported so the
-// storefront layout reuses it for signed-out visitors -- /equipment renders
-// this chrome or the account shell depending on who is looking.
 export function MarketingChrome({ children }: { children: ReactNode }) {
   const tenant = useTenant();
   const tenantName = tenant?.name ?? '';
@@ -81,8 +77,6 @@ export function MarketingChrome({ children }: { children: ReactNode }) {
                 <ul className="mt-3 flex flex-col gap-2">
                   {col.links.map((link) => (
                     <li key={link.to}>
-                      {/* Router Link, not a bare anchor: every footer click
-                          used to be a full page reload. */}
                       <Link
                         to={link.to}
                         className="text-sm text-text-inverse/70 hover:text-text-inverse hover:underline"

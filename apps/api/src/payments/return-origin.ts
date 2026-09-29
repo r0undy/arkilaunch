@@ -1,9 +1,4 @@
-// Where PayMongo sends the customer back to. A customer checks out from
-// their rental company's storefront ({slug}.<platform domain>), and a
-// fixed success URL would land them on the platform host with no tenant
-// context. So the browser's Origin is used -- but only an origin this API
-// already serves (the same shape main.ts's CORS allows), never an
-// arbitrary one: PayMongo would otherwise redirect a paying customer
+// Only an origin this API already serves, never an arbitrary one: PayMongo would redirect a paying customer
 // anywhere a forged Origin header said.
 const ONE_LABEL = /^[a-z0-9-]+$/;
 

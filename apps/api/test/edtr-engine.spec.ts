@@ -1,9 +1,12 @@
 import { describe, expect, it, beforeAll } from 'vitest';
-import { ConflictException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import postgres from 'postgres';
 import {
   addresses,
   edtr as edtrTable,
+  edtrReconciliations,
+  equipmentAssignments,
+  invoices,
   edtrLineItems,
   projectSites,
   quotations,
@@ -12,13 +15,12 @@ import {
   withTenantTx,
 } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
+import { and, eq, inArray } from 'drizzle-orm';
 import { EdtrService } from '../src/edtr/edtr.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { ensurePaidDeposit } from './paid-deposit.js';
 
-// RFC-2 §3/§7: the reconciliation-gated deduction endpoint. QAD-T1 (happy),
-// QAD-T11/QAD-T26 (sad/abuse: no deduction without the gate), QAD-T29
-// (timekeeper site-scope abuse).
+// QAD-T1 (happy), QAD-T11/QAD-T26 (no deduction without the gate), QAD-T29 (timekeeper site scope).
 describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
   const edtr = new EdtrService(new EventsService());
   let adminCtx: RequestContext;
@@ -28,13 +30,7 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
   let unassignedRentalId: string;
 
   beforeAll(async () => {
-    // QAD-T39 runtime gate (audit-ocr-money-path.md #8): this spec's
-    // fixtures carry a real model_id, i.e. model-extracted evidence, and
-    // a deduction from model output is refused unless the golden-set
-    // accuracy has been measured and met. These tests are about the
-    // reconciliation/deduction behaviour, not the accuracy gate, so they
-    // attest a passing measurement. money-path.spec.ts covers the
-    // unattested case failing closed.
+    // Fixtures are model-extracted, so attest a passing accuracy; money-path covers the unattested case.
     process.env.OCR_MEASURED_ACCURACY = '0.95';
     process.env.OCR_MEASURED_SAMPLES = '250';
     const url = process.env.DATABASE_URL_DIRECT;
@@ -48,19 +44,9 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     const [rental] = await sql`select id from rentals where tenant_id = ${tenantId} limit 1`;
     const [customer] = await sql`select id from customers where tenant_id = ${tenantId} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
 
-    // A dedicated equipment unit, not `select ... from equipment limit 1`.
-    // This spec asserts on equipment.runtime_hours as a delta around its own
-    // approve(), and money-path.spec.ts resolves its equipment with the same
-    // unordered limit-1 and also approves. Against this shared, never-reset
-    // test project the two can land on the same row and accrue into each
-    // other's window, which reads as runtime_hours jumping by twice the
-    // hours logged. billing-engine.spec.ts already dedicates its equipment
-    // for the same reason. The rate card is keyed by tenant+equipment type,
-    // so the type is taken from an hourly card to keep the deduction priced.
+    // A dedicated unit: runtime_hours is asserted as a delta, and a shared row accrues other specs' approvals.
     const [rateCardRow] =
-      // A type-wide card in force across this spec's 2021-03 report dates: a
-      // unit's own card would not price the new unit below, and on the shared
-      // database 'any hourly card' was often one of those.
+      // A type-wide card in force across this spec's 2021-03 dates.
       await sql`select equipment_type_id from rate_cards where tenant_id = ${tenantId} and rate_type = 'hourly' and equipment_id is null and effective_from <= '2021-03-01' and (effective_to is null or effective_to > '2021-03-07') order by effective_from limit 1`;
     const equipmentTypeId = (rateCardRow as { equipment_type_id: string }).equipment_type_id;
     const [equipment] = await sql`
@@ -74,20 +60,14 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     rentalId = (rental as { id: string }).id;
     equipmentId = (equipment as { id: string }).id;
 
-    // Idempotency: this spec re-uses fixed report dates, so a prior run's
-    // leftover rows for the same equipment-day would otherwise make
-    // reconcileEdtr's counterpart lookup pick a stale, unconfigured row.
+    // Fixed dates, so a prior run's rows would pair as stale counterparts.
     const testDates = ['2021-03-01', '2021-03-02', '2021-03-03', '2021-03-04', '2021-03-05', '2021-03-06'];
     const staleIds = await sql`
       select id from edtr where equipment_id = ${equipmentId} and report_date = any(${testDates})
     `;
     const ids = staleIds.map((row) => (row as { id: string }).id);
     if (ids.length > 0) {
-      // invoice_line_items.reconciliation_id is a real FK now, and it is
-      // deliberately RESTRICT: a deduction's evidence must not be
-      // deletable out from under it (audit-db-tenant-isolation.md #3). A
-      // prior run's deduction lines therefore have to be cleared before
-      // the reconciliations they cite.
+      // The FK is RESTRICT, so deduction lines go before the reconciliations they cite.
       await sql`
         delete from invoice_line_items
         where reconciliation_id in (
@@ -104,19 +84,7 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
 
     await sql.end();
 
-    // A dedicated rental with its own quotation + rental_contracts chain,
-    // the same isolation billing-engine.spec.ts already uses and for the
-    // same reason: the shared fixture rental is mutated concurrently by
-    // other spec files.
-    //
-    // It needs a REAL configured deposit now. Before
-    // audit-ocr-money-path.md #5 was fixed, a rental with no
-    // rental_contracts chain had no cap at all and deductions here were
-    // unbounded; the fallback now caps at the deposit checkout actually
-    // collects, and eight hours of heavy equipment exceeds that placeholder
-    // many times over. A quote-originated rental -- which is what the pilot
-    // path produces -- carries a real deposit, so that is what this spec
-    // exercises.
+    // A dedicated rental with a real contract deposit: the shared fixture rental is mutated concurrently.
     await withTenantTx(adminCtx, async (tx) => {
       const [rentalRow] = await tx
         .insert(rentals)
@@ -168,11 +136,7 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     await ensurePaidDeposit(adminCtx, rentalId, unassignedRentalId);
   });
 
-  // "Two independent logs" (RFC-2 §2) means one paper_ocr + one
-  // digital_entry (the two source values the schema distinguishes); this
-  // helper simulates an already-extracted paper_ocr counterpart directly,
-  // since driving the real OCR worker is covered separately in
-  // jobs/src/edtr-ocr-worker.spec.ts.
+  // Simulates an already-extracted paper counterpart; the real worker is covered in the jobs package.
   async function insertExtractedPaperCounterpart(reportDate: string, hoursActive: number, hoursIdle: number) {
     return withTenantTx(adminCtx, async (tx) => {
       const [row] = await tx
@@ -232,16 +196,7 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     expect(approved.invoiceLine.sourceLogs).toContain(digital.id);
   });
 
-  // PRD-F4 / QAD-T26 (extended): reconcileEdtr() deliberately writes two
-  // reconciliation rows per matched pair, one keyed on each EDTR id
-  // (packages/db/src/reconciliation.ts). In production that second row
-  // comes from the edtr-ocr-worker calling reconcileEdtr on the paper side
-  // too (jobs/src/edtr-ocr-worker.ts); simulated here directly since
-  // driving the real worker is covered in jobs/src/edtr-ocr-worker.spec.ts.
-  // Approving the SECOND side of an already-approved pair must be REJECTED
-  // (409 already_approved) -- not silently accepted with a skipped accrual
-  // -- so exactly one deposit_deduction invoice and one runtime accrual
-  // ever result from one day's work (cr-arkilaunch-edtr-double-approve.md).
+  // The second side of an approved pair must 409, so one day's work yields one deduction and one accrual.
   it('PRD-F4 / QAD-T26: approving the second side of an already-approved pair is rejected', async () => {
     const { reconcileEdtr, equipment: equipmentTable, eq: eqFn } = await import('@arkilaunch/db').then(async (db) => ({
       ...db,
@@ -348,6 +303,13 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
   });
 
   it('QAD-T29: a timekeeper cannot submit an EDTR for a site they are not assigned to', async () => {
+    const denials = async () => {
+      const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+      const [row] = await sql`select count(*)::int as n from audit_logs where entity = 'edtr_site_scope_denied' and entity_id = ${unassignedRentalId}`;
+      await sql.end();
+      return (row as { n: number }).n;
+    };
+    const before = await denials();
     await expect(
       edtr.capture(timekeeperCtx, {
         source: 'digital_entry',
@@ -357,6 +319,97 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
         lineItems: { hoursActive: 8, hoursIdle: 0 },
       }),
     ).rejects.toThrow(ForbiddenException);
+    expect(await denials()).toBe(before + 1);
+  });
+
+  it('capture refuses a unit that is not on the rental, and a unit this tenant cannot see', async () => {
+    const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    const [other] = await sql`
+      insert into equipment (tenant_id, equipment_type_id, model, serial_no)
+      select tenant_id, equipment_type_id, 'EDTR Off-Rental Unit', ${`test-tenant-a-serial-edtr-off-${Date.now()}`}
+      from equipment where id = ${equipmentId}
+      returning id`;
+    const [foreign] = await sql`
+      select e.id from equipment e join tenants t on t.id = e.tenant_id where t.slug = 'test-tenant-b' limit 1`;
+    await sql.end();
+
+    const assignedRentalId = await withTenantTx(adminCtx, async (tx) => {
+      const [base] = await tx.select().from(rentals).where(eq(rentals.id, rentalId));
+      const [row] = await tx
+        .insert(rentals)
+        .values({ tenantId: adminCtx.tenantId, customerId: base!.customerId, projectSiteId: base!.projectSiteId, status: 'active', startDate: base!.startDate })
+        .returning();
+      await tx.insert(equipmentAssignments).values({
+        tenantId: adminCtx.tenantId,
+        equipmentId,
+        rentalId: row!.id,
+        start: new Date('2020-01-01T00:00:00Z'),
+        status: 'active',
+      });
+      return row!.id;
+    });
+    const entry = { source: 'digital_entry' as const, reportDate: '2021-03-13', lineItems: { hoursActive: 8, hoursIdle: 0 } };
+
+    await expect(
+      edtr.capture(adminCtx, { ...entry, rentalId: assignedRentalId, equipmentId: (other as { id: string }).id }),
+    ).rejects.toMatchObject({ response: { error: 'equipment_not_on_rental' } });
+    await expect(
+      edtr.capture(adminCtx, { ...entry, rentalId, equipmentId: (foreign as { id: string }).id }),
+    ).rejects.toThrow(NotFoundException);
+    const written = await withTenantTx(adminCtx, (tx) =>
+      tx.select().from(edtrTable).where(and(eq(edtrTable.reportDate, '2021-03-13'), inArray(edtrTable.rentalId, [rentalId, assignedRentalId]))),
+    );
+    expect(written).toHaveLength(0);
+  });
+
+  it('approve refuses a report date outside the rental, and bills nothing', async () => {
+    const reportDate = '2019-12-01';
+    const paperId = await insertExtractedPaperCounterpart(reportDate, 8, 0);
+    const { reconcileEdtr } = await import('@arkilaunch/db');
+    await withTenantTx(adminCtx, (tx) => reconcileEdtr(tx, adminCtx.tenantId, paperId));
+    const deductions = () =>
+      withTenantTx(adminCtx, (tx) =>
+        tx.select().from(invoices).where(and(eq(invoices.rentalId, rentalId), eq(invoices.invoiceType, 'deposit_deduction'))),
+      ).then((rows) => rows.length);
+    const before = await deductions();
+
+    await expect(
+      edtr.review(adminCtx, paperId, { decision: 'approve', hours: { hoursActive: 8, hoursIdle: 0 } }),
+    ).rejects.toMatchObject({ response: { error: 'report_date_outside_rental' } });
+    expect(await deductions()).toBe(before);
+  });
+
+  it('an approve that waits on a concurrent reject sees the rejection and deducts nothing', async () => {
+    const reportDate = '2021-03-14';
+    await insertExtractedPaperCounterpart(reportDate, 7, 0);
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 7, hoursIdle: 0 },
+    });
+    const reconId = (await edtr.get(adminCtx, digital.id)).reconciliation!.id;
+
+    const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    let outcome: unknown;
+    await sql.begin(async (t) => {
+      await t`select id from edtr_reconciliations where id = ${reconId} for update`;
+      const pending = edtr.approve(adminCtx, digital.id, { reconciliationId: reconId }).then(
+        () => 'approved',
+        (err: unknown) => err,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await t`update edtr_reconciliations set status = 'rejected' where id = ${reconId}`;
+      outcome = pending;
+    });
+    await sql.end();
+
+    expect(await outcome).toBeInstanceOf(UnprocessableEntityException);
+    const [recon] = await withTenantTx(adminCtx, (tx) =>
+      tx.select().from(edtrReconciliations).where(eq(edtrReconciliations.id, reconId)),
+    );
+    expect(recon?.status).toBe('rejected');
   });
 
   it('a timekeeper CAN submit an EDTR for their assigned site', async () => {
@@ -464,5 +517,76 @@ describe('EdtrService: capture, poll, and the approve/deduct gate', () => {
     });
     await edtr.reject(adminCtx, first.id, {});
     await expect(edtr.reject(adminCtx, first.id, {})).rejects.toThrow(ConflictException);
+  });
+
+  it('a log captured after a pair is approved does not re-pair with the approved rows', async () => {
+    const reportDate = '2021-03-11';
+    const paperId = await insertExtractedPaperCounterpart(reportDate, 4, 0);
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 4, hoursIdle: 0 },
+    });
+    const polled = await edtr.get(adminCtx, digital.id);
+    await edtr.approve(adminCtx, digital.id, { reconciliationId: polled.reconciliation!.id });
+    const paperBefore = await edtr.get(adminCtx, paperId);
+
+    const late = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 4, hoursIdle: 0 },
+    });
+    const latePolled = await edtr.get(adminCtx, late.id);
+    expect(latePolled.reconciliation?.status).toBe('pending');
+    expect(latePolled.reconciliation?.counterpartEdtrId ?? null).toBeNull();
+    expect((await edtr.get(adminCtx, paperId)).status).toBe(paperBefore.status);
+  });
+
+  it('approve refuses a pair whose other side was rejected, and leaves the rejection in place', async () => {
+    const reportDate = '2021-03-15';
+    const paperId = await insertExtractedPaperCounterpart(reportDate, 6, 0);
+    const { reconcileEdtr } = await import('@arkilaunch/db');
+    await withTenantTx(adminCtx, (tx) => reconcileEdtr(tx, adminCtx.tenantId, paperId));
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 6, hoursIdle: 0 },
+    });
+    const polled = await edtr.get(adminCtx, digital.id);
+    expect(polled.reconciliation?.counterpartEdtrId).toBe(paperId);
+    await edtr.reject(adminCtx, paperId, { reason: 'illegible' });
+
+    await expect(
+      edtr.approve(adminCtx, digital.id, { reconciliationId: polled.reconciliation!.id }),
+    ).rejects.toThrow(ConflictException);
+    const [paperRecon] = await withTenantTx(adminCtx, (tx) =>
+      tx.select().from(edtrReconciliations).where(eq(edtrReconciliations.edtrId, paperId)),
+    );
+    expect(paperRecon?.status).toBe('rejected');
+  });
+
+  it('a log captured after its counterpart was rejected does not pair with the rejected row', async () => {
+    const reportDate = '2021-03-12';
+    const paperId = await insertExtractedPaperCounterpart(reportDate, 3, 0);
+    const { reconcileEdtr } = await import('@arkilaunch/db');
+    await withTenantTx(adminCtx, (tx) => reconcileEdtr(tx, adminCtx.tenantId, paperId));
+    await edtr.reject(adminCtx, paperId, { reason: 'illegible' });
+
+    const digital = await edtr.capture(adminCtx, {
+      source: 'digital_entry',
+      rentalId,
+      equipmentId,
+      reportDate,
+      lineItems: { hoursActive: 3, hoursIdle: 0 },
+    });
+    const polled = await edtr.get(adminCtx, digital.id);
+    expect(polled.reconciliation?.status).toBe('pending');
+    expect(polled.reconciliation?.counterpartEdtrId ?? null).toBeNull();
   });
 });

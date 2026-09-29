@@ -1,9 +1,6 @@
 import { z } from 'zod';
 
-// One booking reference for both services (cr-arkilaunch-uniform-booking-codes.md):
-// EQR-2026-0001 for an equipment rental, TRK-2026-0001 for a truck service.
-// The database assigns it (migration 0058, booking_code_assign); this module
-// only names, formats and reads it, and must agree with that SQL exactly.
+// The database assigns codes (migration 0058); this module must agree with that SQL exactly.
 
 export const BOOKING_SERVICES = ['rental', 'truck'] as const;
 export type BookingService = (typeof BOOKING_SERVICES)[number];
@@ -19,8 +16,7 @@ const CODE_RE = /^(EQR|TRK)-(\d{4})-(\d{4,})$/;
 
 export const BookingCodeSchema = z.string().regex(CODE_RE, 'Not a booking code (EQR-YYYY-NNNN or TRK-YYYY-NNNN)');
 
-// Mirror of SQL booking_code_format: zero-padded to at least four digits,
-// never truncated.
+// Mirror of SQL booking_code_format: zero-padded to four digits, never truncated.
 export function formatBookingCode(service: BookingService, year: number, n: number): string {
   if (!Number.isInteger(year) || year < 1000 || year > 9999) throw new RangeError(`bad year ${year}`);
   if (!Number.isInteger(n) || n < 1) throw new RangeError(`bad sequence ${n}`);
@@ -43,10 +39,6 @@ export function isBookingCode(value: string): boolean {
   return parseBookingCode(value) !== null;
 }
 
-// A search box value normalised for the code filter: upper-cased and trimmed,
-// so "eqr-2026-12" finds EQR-2026-0012's prefix neighbours. Returns null when
-// the text cannot be the start of a code, so the list falls back to its other
-// filters instead of matching nothing.
 export function bookingCodeSearchPrefix(q: string): string | null {
   const v = q.trim().toUpperCase();
   if (!v) return null;

@@ -8,18 +8,12 @@ import { apiErrorText, apiGet, apiPatch, apiPost } from '../lib/api-client.js';
 import { formatDate, formatDateTime, formatPeso, formatStatus } from '../lib/format.js';
 import { Container } from './container.js';
 import { Alert } from './alert.js';
-import { Button } from './button.js';
+import { Button, buttonClass } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { SiteProofAdmin } from './site-proof.js';
 import { SiteEquipmentWeather } from './equipment-weather.js';
 import { EdtrSheetCard } from './edtr-sheet-card.js';
 import { useToast } from './toast.js';
-
-// The staff actions on one rental booking: phone confirmation, quote, site,
-// delivery, change requests and rescheduling. Shared by the booking
-// drawer's Actions tab and the full /app/bookings/$bookingId page. The API
-// guards every status; these cards only arrange it.
-
 
 function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();
@@ -37,8 +31,6 @@ function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
       toast.error('Could not resolve the request', apiErrorText(err));
     },
   });
-  // Approving an extension moves the booking's end date; approving a
-  // cancellation cancels it. Neither undoes, so each asks first.
   const [ask, setAsk] = useState<{ request: BookingDetailResponse['changeRequests'][number]; decision: 'approved' | 'rejected' } | null>(null);
 
   return (
@@ -98,9 +90,6 @@ function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-// When a confirmed booking must move: the nearest free same-length window on
-// each unit, then other free units of the same type. Advice only; staff
-// agree the move with the customer in the thread.
 function RescheduleCard({ booking }: { booking: BookingDetailResponse }) {
   const bookingId = booking.id;
   const nameOf = (id: string) => booking.items.find((i) => i.equipmentId === id)?.equipmentName ?? 'This machine';
@@ -136,7 +125,6 @@ function RescheduleCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-// Checkout stays closed until staff have phoned the customer.
 function CallCard({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -180,8 +168,6 @@ function CallCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-// QA 25: an unpaid request holds its dates until holdExpiresAt, then frees
-// them for other customers. Staff can give a customer more time to pay.
 function HoldCard({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -212,8 +198,6 @@ function HoldCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-// Staff mark a paid booking delivered (machines on site, field sheet
-// unlocked) and later returned. Both endpoints already guard the status.
 function DeliveryCard({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -260,6 +244,22 @@ function DeliveryCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
+export function SiteRepContact({ name, mobile }: { name: string | null; mobile?: string | null | undefined }) {
+  return (
+    <>
+      {name}
+      {mobile && (
+        <>
+          {name ? ' · ' : ''}
+          <a href={`tel:${mobile}`} className="underline">
+            +63 {localPhMobile(mobile)}
+          </a>
+        </>
+      )}
+    </>
+  );
+}
+
 export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
   const quote = booking.quotation;
   return (
@@ -279,16 +279,11 @@ export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
         {quote && quote.status === 'approved' && !quote.inNegotiation && (
           <p className="text-sm text-text-muted">Priced from the price book and sent. You can revise it once the customer negotiates.</p>
         )}
-        {/* No quote: the price book could not price it (no rate card), so staff quote it once. */}
         {booking.status !== 'cancelled' && (!quote || quote.inNegotiation) && (
-          <Link to="/app/quotes" search={{ bookingId: booking.id }}>
-            <Button variant="primary">{quote ? 'Revise quote' : 'Quote this booking'}</Button>
-          </Link>
+          <Link to="/app/quotes" search={{ bookingId: booking.id }} className={buttonClass('primary')}>{quote ? 'Revise quote' : 'Quote this booking'}</Link>
         )}
         {quote && (
-          <Link to="/app/quotes/$quoteId/print" params={{ quoteId: quote.id }}>
-            <Button variant="secondary">Print quote</Button>
-          </Link>
+          <Link to="/app/quotes/$quoteId/print" params={{ quoteId: quote.id }} className={buttonClass('secondary')}>Print quote</Link>
         )}
         </div>
       </Container>
@@ -297,15 +292,7 @@ export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
         <p className="text-text">{booking.siteCity ?? booking.siteProvince ?? '--'}</p>
         {(booking.siteContact || booking.siteContactMobile) && (
           <p className="text-text-muted">
-            Contact: {booking.siteContact}
-            {booking.siteContactMobile && (
-              <>
-                {booking.siteContact ? ' · ' : ''}
-                <a href={`tel:${booking.siteContactMobile}`} className="underline">
-                  +63 {localPhMobile(booking.siteContactMobile)}
-                </a>
-              </>
-            )}
+            Contact: <SiteRepContact name={booking.siteContact} mobile={booking.siteContactMobile} />
           </p>
         )}
         {booking.siteNotes && <p className="text-text-muted">Access: {booking.siteNotes}</p>}
@@ -319,7 +306,6 @@ export function BookingSide({ booking }: { booking: BookingDetailResponse }) {
         </div>
       </Container>
       <DeliveryCard booking={booking} />
-      {/* The field sheet is for machines on site: hidden until delivered. */}
       {['active', 'completed'].includes(booking.status) && <EdtrSheetCard bookingId={booking.id} printable />}
       <PendingRequests booking={booking} />
       {booking.status === 'confirmed' && <RescheduleCard booking={booking} />}

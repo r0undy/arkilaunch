@@ -2,14 +2,8 @@ import { test, expect, type Browser, type Page } from '@playwright/test';
 import { signIn, TENANT_HEADERS } from './sign-in.js';
 import { choose } from './select.js';
 
-// Customer feedback round: crop the National ID, check what it says before
-// upload, company fields that follow the uploaded papers, and an admin card
-// that opens already read, with SEC/BIR/DTI registry links gating Verify.
-//
-// The documents are rendered here as clearly marked SPECIMEN papers with
-// made-up numbers, so the spec runs against whatever OCR the API has: with
-// extraction on, the fields arrive filled; with it off, they are typed.
-// Needs the seeded anchor tenant and the API.
+// SPECIMEN papers with made-up numbers, so this runs with OCR on (fields arrive filled) or off (typed).
+// Needs the seeded anchor tenant (`pnpm db:seed`) and the API running.
 
 const PCN = '1234-5678-9012-3456';
 const SEC = 'CS201912345';

@@ -1,16 +1,12 @@
 import { useState } from 'react';
+import { sitesQueries } from '../lib/queries.js';
 import { Camera, CircleCheck, Upload, type LucideIcon } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  SITE_DOCUMENT_LABELS,
-  SITE_PROOF_TYPES,
-  type CustomerSiteResponse,
-  type SiteDocument,
-  type SiteDocumentType,
-} from '@arkilaunch/shared';
+import { SITE_DOCUMENT_LABELS, SITE_PROOF_TYPES, type CustomerSiteResponse, type SiteDocumentType } from '@arkilaunch/shared';
 import { apiErrorText, apiGet, apiPostForm } from '../lib/api-client.js';
 import { formatDate, formatStatus } from '../lib/format.js';
 import { useToast } from './toast.js';
+import { prepareUpload } from '../lib/image-compression.js';
 import { Button } from './button.js';
 import { Select } from './select.js';
 
@@ -20,8 +16,6 @@ export function uploadSiteDocument(siteId: string, documentType: SiteDocumentTyp
   return apiPostForm(`/me/sites/${siteId}/documents`, { documentType }, file);
 }
 
-// A file input shown as a pill button, so the pick is hard to miss inside
-// the site dialog; once chosen, the file's name shows beside it.
 function FilePick({
   id,
   text,
@@ -55,7 +49,9 @@ function FilePick({
           onChange={(e) => {
             const file = e.target.files?.[0] ?? null;
             setName(file?.name ?? null);
-            onFile(file);
+            if (!file) return onFile(null);
+            // Shrunk at pick time, so a local refusal never lands after the site is created.
+            prepareUpload(file).then(onFile, () => onFile(file));
           }}
         />
       </label>
@@ -69,8 +65,6 @@ function FilePick({
   );
 }
 
-// The two picks a site's proof needs: a photo taken there, and one paper
-// tying the company to it. Used when adding a site and to finish one.
 export function SiteProofFields({
   proofType,
   onProofTypeChange,
@@ -128,7 +122,6 @@ export function SiteProofFields({
   );
 }
 
-// A customer site still missing its proof: say what is missing and take it.
 export function SiteProofStatus({ site }: { site: CustomerSiteResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -172,14 +165,9 @@ export function SiteProofStatus({ site }: { site: CustomerSiteResponse }) {
   );
 }
 
-// Staff: a booking's or truck trip's site proof, each opened on a 300s
-// signed URL. Missing proof is said plainly.
 export function SiteProofAdmin({ siteId }: { siteId: string }) {
   const toast = useToast();
-  const docs = useQuery({
-    queryKey: ['sites', siteId, 'documents'],
-    queryFn: () => apiGet<{ documents: SiteDocument[]; proofComplete: boolean }>(`/sites/${siteId}/documents`),
-  });
+  const docs = useQuery(sitesQueries.documents(siteId));
   async function open(documentId: string) {
     try {
       const { url } = await apiGet<{ url: string }>(`/sites/${siteId}/documents/${documentId}/url`);

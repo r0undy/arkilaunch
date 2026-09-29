@@ -1,8 +1,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import {
+  type Tx,
   afterCommit,
   customers,
-  db,
   invoices,
   notifications,
   publicPhotoUrl,
@@ -15,10 +15,7 @@ import {
 } from '@arkilaunch/db';
 import { notificationEmail, renderEmailHtml, tenantWebOrigin, type EmailBrand, type InvoiceInfo } from '@arkilaunch/shared';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-// The invoice a money notification is about, read in the caller's tenant
-// transaction (RLS). Null for a notification without an invoice_id.
 async function invoiceInfo(tx: Tx, payload: Record<string, unknown>): Promise<InvoiceInfo | null> {
   if (typeof payload.invoice_id !== 'string') return null;
   const [row] = await tx
@@ -49,9 +46,7 @@ async function invoiceInfo(tx: Tx, payload: Record<string, unknown>): Promise<In
   };
 }
 
-// The current tenant's storefront branding (RLS tenant_self scopes the row
-// to the transaction's tenant) for the email header, and its own web
-// origin, which every link in the email must use.
+// Every link in the email must use the tenant's own origin.
 export async function tenantEmailContext(tx: Tx): Promise<{ brand: EmailBrand; origin: string }> {
   const [row] = await tx
     .select({ name: tenants.legalName, slug: tenants.slug, logoKey: tenants.logoKey, color: tenants.primaryColor })
@@ -64,8 +59,7 @@ export async function tenantEmailContext(tx: Tx): Promise<{ brand: EmailBrand; o
   };
 }
 
-// Queues the email for a money event, sent once the transaction commits.
-// Users who switched email off in settings (notification_prefs) get none.
+// Sent once the transaction commits; users who switched email off get none.
 async function queueEmails(
   tx: Tx,
   recipients: { email: string; prefs: { email: boolean } }[],
@@ -84,9 +78,7 @@ async function queueEmails(
   for (const address of to) afterCommit(tx, () => sendEmail(address, mail.subject, mail.text, html));
 }
 
-// Drops a row into one user's in-app feed (notifications.tsx), plus an
-// email for a money event. Runs inside the caller's tenant transaction so
-// RLS scopes it.
+// Runs inside the caller's tenant transaction so RLS scopes it.
 export async function notifyUser(
   tx: Tx,
   tenantId: string,
@@ -102,8 +94,6 @@ export async function notifyUser(
   await queueEmails(tx, recipients, notificationType, payload, 'customer');
 }
 
-// The booking customer's feed; a customer record with no login
-// (customers.user_id null) simply gets nothing.
 export async function notifyBookingCustomer(
   tx: Tx,
   tenantId: string,
@@ -121,16 +111,11 @@ export async function notifyBookingCustomer(
   await notifyUser(tx, tenantId, row.userId, notificationType, { rental_id: rentalId, ...payload });
 }
 
-// Staff told about customer requests: admins act on them, and owners see
-// their company's bookings and payments too (QA 26), even where only an
-// admin can approve.
+// Owners see their company's bookings and payments too, even where only an admin can approve.
 const STAFF_ALERT_ROLES = ['admin', 'owner'];
-// These open admin-only screens (the registration queues, People), which
-// an owner's link would bounce off.
+// These open admin-only screens, which an owner's link would bounce off.
 const ADMIN_ONLY_ALERTS = new Set(['company_submitted', 'company_reapplied', 'password_reset_requested']);
 
-// Drops a row into every active tenant admin's feed, so a customer's
-// booking, counter-offer or request is seen without watching a list.
 export async function notifyStaff(
   tx: Tx,
   tenantId: string,

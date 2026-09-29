@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  MAX_UPLOAD_BYTES,
   UploadPrepareError,
   describeUploadProblem,
   prepareUpload,
 } from './image-compression.js';
+import { MAX_UPLOAD_BYTES } from '@arkilaunch/shared';
 
 // jsdom has no image decoder and no canvas raster, so the two browser calls
 // that do the real work are stubbed. What is under test here is the decision

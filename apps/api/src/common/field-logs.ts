@@ -1,6 +1,6 @@
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import {
-  db,
+  type Tx,
   depositAccruals,
   edtr,
   edtrLineItems,
@@ -13,6 +13,7 @@ import {
   users,
 } from '@arkilaunch/db';
 import {
+  round2HalfUp,
   OFFICE_LOG_NOTE,
   classifyHours,
   downtimeDays,
@@ -28,14 +29,10 @@ import {
   type ReportSpan,
 } from '@arkilaunch/shared';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-// One read of every field log behind a set of rentals, turned into the
-// site hub's day x unit grid and the booking rollup
-// (cr-arkilaunch-edtr-site-hub-approval.md). Runs in the caller's tenant
-// transaction, so RLS scopes every query. Totals count APPROVED days only.
+// Runs in the caller's tenant transaction, so RLS scopes every query. Totals count APPROVED days only.
 
-const num = (v: string | null) => (v === null ? null : Number(v));
+export const num = (v: string | null) => (v === null ? null : Number(v));
 
 export function personName(u: { firstName: string | null; lastName: string | null; email: string } | undefined) {
   if (!u) return null;
@@ -43,9 +40,7 @@ export function personName(u: { firstName: string | null; lastName: string | nul
   return name || u.email;
 }
 
-// A unit's live span on one rental: its assignment window(s), else the
-// rental's own dates. Read at request time, so an approved extension (which
-// moves the end date) widens it with no stored copy.
+// Read at request time, so an approved extension widens it with no stored copy.
 export async function unitReportSpan(
   tx: Tx,
   rental: { id: string; startDate: Date; endDate: Date | null },
@@ -71,10 +66,8 @@ function mergeSpans(rows: { start: Date; end: Date | null }[]): ReportSpan {
   return reportSpan(start, end);
 }
 
-// The figures an approved day was billed on. approve() stores them on the
-// reconciliation it approves (adjustments.billed); a day approved before
-// that falls back to its line item through classifyHours, the same rule.
-function approvedHours(
+// Days approved before adjustments.billed existed fall back to classifyHours, the same rule.
+export function approvedHours(
   recon: { adjustments: unknown },
   item: typeof edtrLineItems.$inferSelect | undefined,
 ): ApprovedDayHours | null {
@@ -243,8 +236,7 @@ export async function loadFieldLogs(tx: Tx, rentalIds: string[], today = manilaD
       operatorName: personName(operator ? personById.get(operator) : undefined),
       runtimeHours: Number(first.runtimeHours),
       lastMeterReading: lastMeter,
-      // Delivered; the legacy site-deployment path leaves the assignment
-      // 'scheduled' but marks the unit deployed.
+      // The legacy site-deployment path leaves the assignment 'scheduled' but marks the unit deployed.
       onSite: rows.some((r) => r.status === 'active' || (r.status === 'scheduled' && r.availabilityStatus === 'deployed' && r.start <= new Date())),
       returned: rows.every((r) => r.status === 'completed'),
     });
@@ -258,7 +250,7 @@ export async function loadFieldLogs(tx: Tx, rentalIds: string[], today = manilaD
     tx.select({ amount: depositAccruals.amount }).from(depositAccruals).where(inArray(depositAccruals.rentalId, rentalIds)),
   ]);
   const billedPhp =
-    Math.round([...deducted, ...accrued].reduce((sum, row) => sum + Number(row.amount), 0) * 100) / 100;
+    round2HalfUp([...deducted, ...accrued].reduce((sum, row) => sum + Number(row.amount), 0));
 
   return {
     units,

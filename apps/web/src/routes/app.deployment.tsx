@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { manilaDate, type SiteDeploymentFilter, type SiteHubResponse, type SiteResponse } from '@arkilaunch/shared';
+import { chipClass } from '../components/button.js';
 import { appLayoutRoute } from './_app.js';
 import { sitesQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
@@ -11,22 +12,20 @@ import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { StatusBadge } from '../components/status-badge.js';
-import { CheckIcon, AlertIcon, XCircleIcon } from '../components/icons.js';
 import { formatDate, formatSeverity, siteName } from '../lib/format.js';
 import { BookingCode } from '../components/booking-code.js';
 import { Alert } from '../components/alert.js';
-import { MapPin } from 'lucide-react';
+import { Check, CircleX, MapPin, TriangleAlert } from 'lucide-react';
 
 const SEVERITY_META: Record<string, { tone: StatusTone; icon: ReactElement }> = {
-  none: { tone: 'weather-clear', icon: <CheckIcon /> },
-  watch: { tone: 'weather-yellow', icon: <AlertIcon /> },
-  warning: { tone: 'weather-red', icon: <XCircleIcon /> },
+  none: { tone: 'weather-clear', icon: <Check className="size-full" /> },
+  watch: { tone: 'weather-yellow', icon: <TriangleAlert className="size-full" /> },
+  warning: { tone: 'weather-red', icon: <CircleX className="size-full" /> },
 };
 
 const COLUMNS: TableColumn<SiteResponse>[] = [
   {
     header: 'Site', kind: 'text',
-    // Each site opens its hub: bookings, daily logs, machines, people.
     cell: (row) => (
       <Link to="/app/deployment/$siteId" params={{ siteId: row.id }} className="font-semibold text-accent underline">
         {siteName(row)}
@@ -35,7 +34,6 @@ const COLUMNS: TableColumn<SiteResponse>[] = [
   },
   { header: 'Customer', kind: 'text', cell: (row) => row.customerName ?? 'Company yard' },
   {
-    // First status column: the one a phone card shows top-right.
     header: 'Equipment', kind: 'status',
     cell: (row) => (
       <span className="inline-flex flex-col items-center gap-1">
@@ -61,9 +59,6 @@ const COLUMNS: TableColumn<SiteResponse>[] = [
 type Unit = SiteHubResponse['units'][number];
 type UnitGroup = 'now' | 'upcoming' | 'past';
 
-// Which part of the expanded row a unit belongs in, from its assignment:
-// delivered is on site, returned is past, the rest is upcoming (or past once
-// its dates are over without a delivery).
 function unitGroup(unit: Unit, today: string): UnitGroup {
   if (unit.onSite) return 'now';
   if (unit.returned || (unit.span.to !== null && unit.span.to < today)) return 'past';
@@ -76,8 +71,6 @@ const GROUPS: { id: UnitGroup; title: string }[] = [
   { id: 'past', title: 'Past' },
 ];
 
-// Under a site row: every machine booked there, split into on site now,
-// upcoming and past, each one a click from its booking or its field logs.
 function SiteEquipment({ site }: { site: SiteResponse }) {
   const hub = useQuery(sitesQueries.hub(site.id));
   if (hub.isPending) return <p className="text-sm text-text-muted">Loading equipment...</p>;
@@ -146,18 +139,11 @@ const FILTERS: { id: SiteDeploymentFilter | undefined; label: string }[] = [
   { id: 'idle', label: 'Idle' },
 ];
 
-// ?deployment=active|upcoming|idle keeps the chip across back and a shared link.
 function validateDeploymentSearch(search: Record<string, unknown>): { deployment?: SiteDeploymentFilter } {
   return search.deployment === 'active' || search.deployment === 'upcoming' || search.deployment === 'idle'
     ? { deployment: search.deployment }
     : {};
 }
-
-const chip = (active: boolean) =>
-  [
-    'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
-    active ? 'border-accent bg-accent text-white' : 'border-border bg-surface text-text hover:bg-surface-sunk',
-  ].join(' ');
 
 function DeploymentPage() {
   const { deployment } = appDeploymentRoute.useSearch();
@@ -170,7 +156,7 @@ function DeploymentPage() {
   const filters = (
     <div role="group" aria-label="Show sites" className="flex flex-wrap gap-2">
       {FILTERS.map((f) => (
-        <button key={f.label} type="button" aria-pressed={deployment === f.id} className={chip(deployment === f.id)} onClick={() => setFilter(f.id)}>
+        <button key={f.label} type="button" aria-pressed={deployment === f.id} className={chipClass(deployment === f.id)} onClick={() => setFilter(f.id)}>
           {f.label}
         </button>
       ))}
@@ -179,8 +165,6 @@ function DeploymentPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Outside DataPanel: the header belongs to the page, not to the
-          response, so it stays put while the table is loading or empty. */}
       <PageHeader
         title="Sites"
         description="Where your machines are working, and the weather over each site."

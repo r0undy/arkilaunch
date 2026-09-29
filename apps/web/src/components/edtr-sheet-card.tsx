@@ -1,32 +1,21 @@
 import { useTenant } from '../lib/tenant.js';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { EdtrSheetContext } from '@arkilaunch/shared';
-import { apiErrorText, apiGet } from '../lib/api-client.js';
-import { usersQueries } from '../lib/queries.js';
+import { apiErrorText } from '../lib/api-client.js';
+import { bookingsQueries, usersQueries } from '../lib/queries.js';
 import { localDate } from './availability-days.js';
+import { weekStart } from '../lib/format.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
 import { Input } from './input.js';
 import { Select } from './select.js';
 import { useToast } from './toast.js';
 
-function thisMonday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return localDate(d);
-}
+const thisMonday = () => weekStart(localDate(new Date()));
 
-// EDTR v3 sheet for one unit and week, pre-printed from the booking, or the
-// blank fallback (docs/cr-arkilaunch-edtr-v3-sheet.md). The renderer (and
-// pdf-lib) load only on click.
 export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; printable: boolean }) {
   const toast = useToast();
-  const context = useQuery({
-    queryKey: ['booking', bookingId, 'edtr-sheet'],
-    queryFn: () => apiGet<EdtrSheetContext>(`/bookings/${bookingId}/edtr-sheet`),
-    enabled: printable,
-  });
+  const context = useQuery({ ...bookingsQueries.edtrSheet(bookingId), enabled: printable });
   const me = useQuery(usersQueries.me());
   const [equipmentId, setEquipmentId] = useState('');
   const [week, setWeek] = useState(thisMonday);
@@ -40,16 +29,13 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
     setBusy(`${blank ? 'blank-' : ''}${kind}`);
     try {
       const sheet = await import('../lib/edtr-sheet.js');
-      // A picked date snaps to its week's Monday, so the sheet always covers Mon-Sun.
-      const d = new Date(`${week}T00:00:00`);
-      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
       const companyName = me.data?.tenantName ?? '';
       const logo = await sheet.logoDataUri(context.data?.tenant?.logoUrl);
       const brand = { logoDataUri: logo, accent: tenant?.primaryColor ?? null, tin: me.data?.tenantTin ?? null };
       const input =
         blank || !context.data
           ? { companyName, page, ...brand }
-          : { context: context.data, equipmentId: unit, weekStart: localDate(d), companyName, page, ...brand };
+          : { context: context.data, equipmentId: unit, weekStart: weekStart(week), companyName, page, ...brand };
       const png = await sheet.svgToPng(sheet.buildEdtrSheetSvg(input), page);
       sheet.downloadBlob(kind === 'png' ? png : await sheet.pngToPdf(png, page), sheet.edtrSheetFilename(input, kind));
     } catch (e) {

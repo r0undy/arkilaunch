@@ -1,7 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { createZodDto } from 'nestjs-zod';
-import type { Request } from 'express';
-import { DeploymentReturnSchema, TimekeeperAssignRequestSchema, type RequestContext } from '@arkilaunch/shared';
+import { DeploymentReturnSchema, TimekeeperAssignRequestSchema } from '@arkilaunch/shared';
 import { RequirePermission, STAFF_READ } from '../common/decorators/require-permission.decorator.js';
 import { SitesService } from './sites.service.js';
 import { SiteHubService } from './site-hub.service.js';
@@ -12,17 +11,11 @@ import {
   SiteListQueryDto,
   SiteUpdateDto,
 } from './dto.js';
+import type { CtxRequest } from '../common/request.js';
 
 class TimekeeperAssignDto extends createZodDto(TimekeeperAssignRequestSchema) {}
 class DeploymentReturnDto extends createZodDto(DeploymentReturnSchema) {}
 
-type CtxRequest = Request & { ctx: RequestContext };
-
-// PRD-F4/F5 (Sites, Weather, Liability Incidents), backing S12/S13/S14
-// (cr-arkilaunch-f9-read-surface.md). Reads are open to any authenticated
-// tenant member (RLS is the isolation boundary, matching fleet/reference's
-// read posture); writes are site:manage-gated (QAD-T19 shape: an owner
-// with no data-entry permission is denied).
 @Controller()
 export class SitesController {
   constructor(
@@ -30,8 +23,7 @@ export class SitesController {
     private readonly hubs: SiteHubService,
   ) {}
 
-  // The site hub (cr-arkilaunch-edtr-site-hub-approval.md §7). Staff who
-  // manage sites or read reports; not the timekeeper, who submits only.
+  // Not the timekeeper, who submits only.
   @Get('sites/:id/hub')
   @RequirePermission('site:manage', 'report:read')
   hub(@Param('id') id: string, @Req() req: CtxRequest) {
@@ -101,7 +93,6 @@ export class SitesController {
     return this.sites.weather(req.ctx, id);
   }
 
-  // Each machine's PAGASA-style level on the site (latest poll).
   @Get('sites/:id/equipment-weather')
   @RequirePermission(...STAFF_READ)
   equipmentWeather(@Param('id') id: string, @Req() req: CtxRequest) {

@@ -24,22 +24,28 @@ describe('PII redaction', () => {
   // computeAccuracy() measures. If it did, the committed corpus would report
   // a different number from the real one it was derived from.
   it('preserves exact-match equality for a correct sample', () => {
-    expect(redactValue('tin', '123-456-789')).toBe(redactValue('tin', '123-456-789'));
+    expect(redactValue('kyc', 'tin', '123-456-789')).toBe(redactValue('kyc', 'tin', '123-456-789'));
   });
 
   it('preserves inequality for a wrong sample', () => {
-    expect(redactValue('tin', '123-456-780')).not.toBe(redactValue('tin', '123-456-789'));
+    expect(redactValue('kyc', 'tin', '123-456-780')).not.toBe(redactValue('kyc', 'tin', '123-456-789'));
   });
 
   it('survives the normalization computeAccuracy applies', () => {
     // ocr-accuracy.ts normalizes case and whitespace before comparing, so a
     // value differing only that way must still redact to the same surrogate.
-    expect(redactValue('sec_number', '  CS202312345 ')).toBe(redactValue('sec_number', 'cs202312345'));
+    expect(redactValue('kyc', 'sec_number', '  CS202312345 ')).toBe(redactValue('kyc', 'sec_number', 'cs202312345'));
   });
 
   it('leaves non-PII hour readings verbatim', () => {
-    expect(redactValue('hours_active', 8)).toBe(8);
-    expect(redactValue('hours_idle', 0.5)).toBe(0.5);
+    expect(redactValue('edtr', 'hours_active', 8)).toBe(8);
+    expect(redactValue('edtr', 'hours_idle', 0.5)).toBe(0.5);
+  });
+
+  it('redacts every kyc field, whatever its name', () => {
+    expect(String(redactValue('kyc', 'first_name', 'Juan'))).toMatch(/^redacted:/);
+    expect(String(redactValue('kyc', 'birth_date', '1990-01-01'))).toMatch(/^redacted:/);
+    expect(redactValue('edtr', 'hours_active', 8)).toBe(8);
   });
 
   it('scores a redacted corpus identically to its unredacted original', () => {
@@ -50,15 +56,15 @@ describe('PII redaction', () => {
     ];
     const redacted = raw.map((s) => ({
       ...s,
-      extractedValue: redactValue(s.fieldType, s.extractedValue),
-      groundTruth: redactValue(s.fieldType, s.groundTruth),
+      extractedValue: redactValue('kyc', s.fieldType, s.extractedValue),
+      groundTruth: redactValue('kyc', s.fieldType, s.groundTruth),
     }));
     expect(computeAccuracy(redacted)).toEqual(computeAccuracy(raw));
   });
 
   it('emits no recognizable SEC or TIN shape', () => {
-    expect(String(redactValue('tin', '123-456-789'))).toMatch(/^redacted:[0-9a-f]{12}$/);
-    expect(String(redactValue('sec_number', 'CS202312345'))).not.toContain('CS202312345');
+    expect(String(redactValue('kyc', 'tin', '123-456-789'))).toMatch(/^redacted:[0-9a-f]{12}$/);
+    expect(String(redactValue('kyc', 'sec_number', 'CS202312345'))).not.toContain('CS202312345');
   });
 });
 

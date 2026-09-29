@@ -9,8 +9,7 @@
 # Plan files, may contain sensitive values in plaintext.
 *.tfplan
 
-# Real secret values for local runs -- auto-loaded by Terraform, never committed.
-# See secrets.auto.tfvars.example in each environments/<env>/ for the template.
+# Real secret values for local runs, never committed (template: secrets.auto.tfvars.example).
 secrets.auto.tfvars
 *.auto.tfvars
 !*.auto.tfvars.example

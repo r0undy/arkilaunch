@@ -1,16 +1,11 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { NotificationsService } from './notifications.service.js';
 import { NotificationListQueryDto, PushSubscriptionCreateDto, PushSubscriptionDeleteDto, TestEmailRequestDto } from './dto.js';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
+import type { CtxRequest } from '../common/request.js';
 
-type CtxRequest = Request & { ctx: RequestContext };
-
-// PRD §5.2 global nav notifications feed (cr-arkilaunch-f9-read-surface.md).
-// No @RequirePermission: a user reading/acking their own notifications is
-// not a privileged action (see notifications.service.ts).
+// No @RequirePermission: users read and ack only their own notifications.
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
@@ -31,8 +26,7 @@ export class NotificationsController {
     return this.notifications.markRead(req.ctx, id);
   }
 
-  // Admin-only and throttled: it mails an address the caller types, so it
-  // must not become an open relay.
+  // Admin-only and throttled: it mails an address the caller types, so it must not become an open relay.
   @Post('test-email')
   @RequirePermission('tenant:manage')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
@@ -40,15 +34,13 @@ export class NotificationsController {
     return this.notifications.sendTestEmail(req.ctx, body);
   }
 
-  // Web Push (weather alerts on this device). The public VAPID key the
-  // browser subscribes with; null when push is not configured.
+  // null when push is not configured.
   @Get('push/public-key')
   pushPublicKey() {
     return { publicKey: process.env.VAPID_PUBLIC_KEY || null };
   }
 
-  // The caller's own browser subscription: tenant and user come from the
-  // verified JWT (RFC-1), never the body.
+  // Tenant and user come from the verified JWT, never the body.
   @Post('push-subscriptions')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   subscribePush(@Body() body: PushSubscriptionCreateDto, @Req() req: CtxRequest) {

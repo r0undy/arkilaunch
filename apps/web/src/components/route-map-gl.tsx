@@ -1,35 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import { LngLatBounds, Map as MapLibre, Marker, NavigationControl, setWorkerUrl, type GeoJSONSource } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-// MapLibre finds its worker relative to its own module, which Vite's
-// pre-bundling (dev) and hashing (build) both break. Vite bundles the
-// worker and its shared chunk into one file and hands over the URL.
+// Vite's pre-bundling and hashing break MapLibre's relative worker lookup, so Vite bundles the worker and passes its URL.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
 setWorkerUrl(workerUrl);
 import type { RouteMapCanvasProps } from './route-map.js';
 
-// The WebGL half of the trip map, loaded on demand so MapLibre never reaches
-// the main bundle. Vector tiles from OpenFreeMap (keyless, OSM data): its
-// Liberty style ships the 3D building extrusions a tilted camera shows.
-//
-// ponytail: OpenFreeMap's public instance, like the OSM tiles before it.
-// Self-host the tiles or move to a paid provider at real volume.
+// Loaded on demand so MapLibre never reaches the main bundle.
+// ponytail: OpenFreeMap's public instance; self-host tiles or move to a paid provider at real volume.
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 const MANILA: [number, number] = [120.9842, 14.5995];
 const PITCH = 55;
 
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
-// MapLibre paints with literal colours, so the design tokens are read off
-// the root (the tenant's primary included) once the map mounts.
+// MapLibre paints literal colours, so the tokens are read off the root at mount.
 function token(name: string, fallback: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
-// A Grab-style teardrop pin in the token colours: the letter in its head, a
-// ground shadow at its tip and an address bubble above. MapLibre positions
-// the root through its own transform, so only the children are animated.
+// MapLibre owns the root's transform, so only the children animate.
 function pinElement(letter: 'A' | 'B', label: string) {
   const pickup = letter === 'A';
   const fill = pickup ? 'var(--yb-color-primary)' : 'var(--yb-color-accent)';
@@ -104,7 +95,6 @@ export default function RouteMapCanvas({
     m.on('load', () => {
       const accent = token('--yb-color-accent', '#1e5f8c');
       const accentDark = token('--yb-color-accent-hover', '#164a6e');
-      // Wider as the map zooms in, like a navigation app's route.
       const width = (base: number): ['interpolate', ['linear'], ['zoom'], ...number[]] => [
         'interpolate', ['linear'], ['zoom'], 8, base * 0.5, 12, base, 16, base * 2,
       ];
@@ -125,8 +115,6 @@ export default function RouteMapCanvas({
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': accent, 'line-width': width(5.5) },
       });
-      // Before the road route comes back the pins are joined as the crow
-      // flies: dashed, so it never reads as the real route.
       m.addLayer({
         id: 'route-straight',
         type: 'line',
@@ -147,7 +135,6 @@ export default function RouteMapCanvas({
     };
   }, [mode]);
 
-  // Pins: created once, then moved; draggable only in edit mode.
   useEffect(() => {
     const m = map.current;
     if (!m) return;
@@ -178,8 +165,6 @@ export default function RouteMapCanvas({
     setBubble(markers.current.B, labels?.dropoff);
   }, [pickup, dropoff, mode, labels?.pickup, labels?.dropoff]);
 
-  // The line and the camera: the road route when there is one, else a
-  // dashed straight line between the pins; fitted to whatever is shown.
   useEffect(() => {
     const m = map.current;
     if (!m || !ready) return;
@@ -200,9 +185,7 @@ export default function RouteMapCanvas({
       return;
     }
     const bounds = points.reduce((b, p) => b.extend(p), new LngLatBounds(points[0]!, points[0]!));
-    // Framed at the current tilt, so both pins stay in view once tilted.
-    // Read through a ref: only a new route or pin moves the camera, never
-    // the toggle itself.
+    // Read through a ref: only a new route or pin moves the camera, never the toggle.
     m.fitBounds(bounds, { padding: padding.current, maxZoom: 15, duration, pitch: tiltedRef.current ? PITCH : 0 });
   }, [ready, line, pickup, dropoff]);
 

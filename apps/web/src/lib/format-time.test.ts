@@ -14,22 +14,22 @@ describe('formatRelativeTime', () => {
 
   it('formats seconds-old readings as "moments ago"', () => {
     const result = formatRelativeTime('2026-08-07T11:59:50Z', NOW);
-    expect(result?.relative).toBe('Reported moments ago');
+    expect(result?.relative).toBe('moments ago');
   });
 
   it('formats minutes-old readings', () => {
     const result = formatRelativeTime('2026-08-07T11:20:00Z', NOW);
-    expect(result?.relative).toBe('Reported 40 minutes ago');
+    expect(result?.relative).toBe('40 minutes ago');
   });
 
   it('formats hours-old readings', () => {
     const result = formatRelativeTime('2026-08-07T09:00:00Z', NOW);
-    expect(result?.relative).toBe('Reported 3 hours ago');
+    expect(result?.relative).toBe('3 hours ago');
   });
 
   it('formats day-old readings', () => {
     const result = formatRelativeTime('2026-08-05T12:00:00Z', NOW);
-    expect(result?.relative).toBe('Reported 2 days ago');
+    expect(result?.relative).toBe('2 days ago');
   });
 
   it('always includes an absolute time alongside the relative one', () => {

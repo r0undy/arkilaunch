@@ -1,28 +1,14 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, ServiceUnavailableException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
-// Calls the Supabase Storage REST API directly with native fetch rather
-// than adding @supabase/supabase-js -- only upload/sign/download are
-// needed here (AGENTS.md §5 restraint ladder; same "native fetch over a
-// client SDK" precedent as apps/web's own transport layer).
-//
-// Server-side auth uses SUPABASE_SERVICE_ROLE_KEY. This is NOT the
-// service_role Postgres connection AGENTS.md bans on a request path --
-// that ban is specifically about a BYPASSRLS *database connection*
-// defeating RLS (build-arkilaunch.md §3, RFC-1). The Storage API key is a
-// credential on a different service entirely; tenant isolation here is
-// enforced by the object key (tenant-prefixed, derived from the verified
-// JWT, never from client input) plus the DB row that references it, not by
-// Postgres RLS. See the Change Record for this workstream.
+// SUPABASE_SERVICE_ROLE_KEY is a Storage credential, not the banned BYPASSRLS DB connection; isolation here is
+// the tenant-prefixed object key (from the verified JWT) plus the DB row that references it.
 @Injectable()
 export class StorageService {
   private readonly baseUrl = requireEnv('SUPABASE_URL').replace(/\/$/, '');
   private readonly serviceRoleKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
 
-  // {tenantId}/{yyyy}/{mm}/{uuid}.{ext}. tenantId MUST come from the
-  // caller's verified ctx.tenantId, never from request input -- every read
-  // path re-derives the same prefix from the owning row's own tenant_id, so
-  // a client-supplied key can never address another tenant's object.
+  // tenantId MUST be the verified ctx.tenantId, never request input; reads re-derive it from the owning row.
   buildObjectKey(tenantId: string, extension: string): string {
     const now = new Date();
     const yyyy = now.getUTCFullYear();
@@ -42,16 +28,13 @@ export class StorageService {
       body: buffer,
     });
     if (!res.ok) {
-      // Supabase's message ("Bucket not found", "invalid JWT") is the only
-      // clue to a misconfigured bucket or key, so it travels with the error.
+      // Supabase's message is the only clue to a misconfigured bucket or key.
       const detail = (await res.text().catch(() => '')).slice(0, 200);
       throw new InternalServerErrorException({ error: 'storage_upload_failed', status: res.status, detail });
     }
   }
 
-  // Short-TTL, single-purpose signed download URL (RFC-2 §6: "never a
-  // public URL"). Used by the Evidence Split View and, once the Azure DI
-  // adapter is wired to read real bytes, by jobs/src/edtr-ocr-worker.ts.
+  // Short-TTL signed URL: never a public URL.
   async createSignedDownloadUrl(bucket: string, key: string, expiresInSeconds = 300): Promise<string> {
     const res = await fetch(`${this.baseUrl}/storage/v1/object/sign/${bucket}/${key}`, {
       method: 'POST',
@@ -70,8 +53,26 @@ export class StorageService {
   }
 }
 
-function requireEnv(name: string): string {
+export function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+// KYC documents and avatars share the RA 10173 bucket; equipment and branding images are public.
+export const kycBucket = () => process.env.SUPABASE_STORAGE_BUCKET_KYC ?? 'kyc-documents';
+export const equipmentBucket = () => process.env.SUPABASE_STORAGE_BUCKET_EQUIPMENT ?? 'equipment-photos';
+
+// No default: a missing EDTR bucket is operator misconfiguration, answered as a 503 that names the setting.
+export function edtrBucket(): string {
+  const name = 'SUPABASE_STORAGE_BUCKET_EDTR';
+  const value = process.env[name];
+  if (!value) {
+    throw new ServiceUnavailableException({
+      error: 'storage_not_configured',
+      missing: name,
+      detail: 'Document storage is not configured in this environment, so the scan was not saved.',
+    });
+  }
   return value;
 }

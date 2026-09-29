@@ -8,61 +8,26 @@ import {
 } from './weather-attestation.js';
 import type { BoundingRegion, ExtractedTable } from './document-intelligence-port.js';
 
-// Parses the real Almara "EQUIPMENT DAILY TIME REPORT" sheet
-// (docs/cr-arkilaunch-edtr-real-form.md) out of the table prebuilt-layout
-// returns. Pure: no network, no DB, no Azure types beyond the port's own
-// ExtractedTable, so the whole thing is unit-testable offline.
-//
-// The sheet is NOT the one-equipment-day document the EDTR schema was
-// built for. One sheet carries up to ~22 dated rows over a DATE COVERED
-// range, and the columns are AM/PM/OVERTIME in-out pairs plus a written
-// TOTAL HOURS -- there is no hours-active field and no idle column at all.
-// This module turns one sheet into N day readings; the worker fans those
-// out into N edtr rows so reconciliation keeps pairing on
-// (equipment_id, report_date) exactly as before.
-
+// Parses the Almara EDTR sheet: one sheet carries many dated rows, fanned out into one reading per day.
 export interface EdtrSheetDay {
-  // ISO yyyy-mm-dd, year resolved against the capture date (see below).
   reportDate: string;
-  // What the operator wrote in TOTAL HOURS and signed for. This is the
-  // reading; it is never replaced by the computed figure below, because a
-  // derived number is not what anyone on site recorded.
+  // The signed written figure; never replaced by computedHours (not what anyone recorded).
   hoursActive: number;
-  // Re-derived from the AM/PM/OVERTIME in-out pairs on the same row, or
-  // null when the row carries no usable time pair at all.
   computedHours: number | null;
-  // computedHours disagrees with hoursActive beyond tolerance. The sheet
-  // contradicts itself, so this day must reach a human even if a digital
-  // counterpart happens to agree with the written total.
+  // The sheet contradicts itself, so the day must reach a human.
   totalMismatch: boolean;
-  // Lowest OCR confidence across the two cells whose values become the
-  // record: the date and the written total. The time cells are deliberately
-  // excluded -- they never become a stored reading, they only corroborate,
-  // and a smudged time that produces a wrong cross-check already routes the
-  // day to review via totalMismatch. Feeds min_field_confidence and so the
-  // 0.90 gate.
+  // Min confidence of the date and billed cell only (the values that become the record); feeds the 0.90 gate.
   confidence: number;
-  // Where the written TOTAL HOURS cell sits on the page, so the review
-  // screen can point at the figure that becomes the billed reading rather
-  // than at the sheet in general. Absent when the response carried no
-  // usable polygon for that cell.
   boundingRegion?: BoundingRegion;
-  // EDTR v2 columns (docs/cr-arkilaunch-edtr-v2-weather.md), present only
-  // when the sheet carries them. Unread or ambiguous ticks are null.
   v2?: {
     idleHours: number | null;
     idleReason: IdleReason | null;
     weatherAm: WeatherCode | null;
     weatherPm: WeatherCode | null;
-    // The row's own AM/PM in-out pairs, minutes since midnight.
     amWindow: [number, number] | null;
     pmWindow: [number, number] | null;
   };
-  // EDTR v3 (docs/cr-arkilaunch-edtr-v3-sheet.md): one hour column per
-  // cause plus the hour meter. Present only on a v3 sheet, where
-  // hoursActive is RUNNING HRS and the written TOTAL is a cross-check. A
-  // blank hour cell on a filled v3 row is 0 (the column was there to fill);
-  // an unreadable one is null.
+  // v3: blank hour cell on a filled row is 0; unreadable is null.
   v3?: {
     total: number | null;
     running: number;
@@ -79,10 +44,6 @@ export type EdtrSheetParse =
   | { ok: true; days: EdtrSheetDay[] }
   | { ok: false; reason: string };
 
-// Header labels, matched case-insensitively on normalised cell text. Kept
-// as substrings rather than exact equality because prebuilt-layout returns
-// the printed label verbatim, including the trailing colon and whatever
-// stray punctuation the scan picked up.
 const DATE_HEADER = 'DATE';
 const TOTAL_HEADER = 'TOTAL';
 const GROUPS = ['AM', 'PM', 'OVERTIME'] as const;
@@ -110,9 +71,7 @@ function toGrid(table: ExtractedTable): Grid | null {
     Array<BoundingRegion | undefined>(table.columnCount).fill(undefined),
   );
   for (const cell of table.cells) {
-    // A cell outside the declared bounds means the grid we were handed is
-    // not the grid Azure described. Refuse rather than read hours off a
-    // shape we do not understand.
+    // Out-of-bounds cell: not the grid Azure described, so refuse.
     if (cell.rowIndex >= table.rowCount || cell.columnIndex >= table.columnCount) return null;
     if (cell.rowIndex < 0 || cell.columnIndex < 0) return null;
     rows[cell.rowIndex]![cell.columnIndex] = cell.content;
@@ -125,17 +84,13 @@ function toGrid(table: ExtractedTable): Grid | null {
 interface Columns {
   date: number;
   total: number;
-  // [inCol, outCol] per AM/PM/OVERTIME group, for groups actually present.
   pairs: Array<[number, number]>;
-  // AM and PM pairs by name, for the v2 weather windows.
   am: [number, number] | null;
   pm: [number, number] | null;
-  // v2 columns, -1 when absent.
   idleHours: number;
   idleReason: number;
   weatherAm: number;
   weatherPm: number;
-  // v3 columns, -1 when absent. RUNNING HRS present = a v3 sheet.
   day: number;
   running: number;
   breakdown: number;
@@ -146,10 +101,7 @@ interface Columns {
   headerRows: number;
 }
 
-// The header occupies two rows: row 0 carries DATE / AM / PM / OVERTIME /
-// TOTAL HOURS / SIGNATURE, and row 1 carries the IN and OUT sub-labels
-// under each group. A group's IN/OUT columns are therefore found by
-// scanning row 1 to the right of the group's own label in row 0.
+// Two header rows: group labels in row 0, IN/OUT sub-labels in row 1.
 function findColumns(grid: Grid): Columns | null {
   const row0 = grid.rows[0];
   const row1 = grid.rows[1];
@@ -166,11 +118,7 @@ function findColumns(grid: Grid): Columns | null {
     if (at < 0) continue;
     const ins: number[] = [];
     const outs: number[] = [];
-    // Bounded by the next DIFFERENT row-0 label, so OVERTIME cannot reach
-    // across into the TOTAL HOURS column and read a total as a time. The
-    // label either repeats across the block (a merged header cell expanded
-    // by the adapter, which is what the real form produces) or is followed
-    // by blanks; both shapes are accepted.
+    // Bounded by the next different row-0 label so OVERTIME cannot read the TOTAL column as a time.
     for (let c = at; c < grid.columnCount; c++) {
       const label = norm(row0[c] ?? '');
       if (c > at && label !== '' && label !== group) break;
@@ -206,8 +154,6 @@ function findColumns(grid: Grid): Columns | null {
   };
 }
 
-// "07:00" / "7:00" / "07.00" -> minutes since midnight. Anything else is
-// absent, not zero.
 function parseTime(raw: string): number | null {
   const m = /^(\d{1,2})[:.](\d{2})$/.exec(norm(raw));
   if (!m) return null;
@@ -221,15 +167,10 @@ function parseHours(raw: string): number | null {
   const t = norm(raw).replace(/\s*(HRS?|HOURS?)$/, '');
   if (t === '') return null;
   const n = Number(t);
-  // Negative or absurd hour counts are a misread, not a reading. 24 is the
-  // ceiling for a single equipment-day.
   return Number.isFinite(n) && n >= 0 && n <= 24 ? n : null;
 }
 
-// Resolves "03/01" against the capture date by choosing the year that puts
-// the row nearest that date. Picking the capture's own year instead would
-// misfile every December sheet photographed in January by a full year.
-// A cell already carrying a full ISO date is taken as-is.
+// Pick the year nearest the capture date, or a December sheet shot in January misfiles by a year.
 export function resolveSheetDate(raw: string, captureDate: string): string | null {
   const text = norm(raw);
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
@@ -248,7 +189,6 @@ export function resolveSheetDate(raw: string, captureDate: string): string | nul
   let best: { date: string; distance: number } | null = null;
   for (const year of [captureYear - 1, captureYear, captureYear + 1]) {
     const candidate = new Date(Date.UTC(year, month - 1, day));
-    // Rejects 02/30 and friends: Date rolls them into the next month.
     if (candidate.getUTCMonth() !== month - 1 || candidate.getUTCDate() !== day) continue;
     const distance = Math.abs(candidate.getTime() - capture.getTime());
     if (!best || distance < best.distance) {
@@ -279,7 +219,6 @@ function readV2(row: string[], confidences: number[], columns: Columns): EdtrShe
   };
 }
 
-// A hour-meter reading: a plain non-negative number, no 24 h ceiling.
 function parseMeter(raw: string): number | null {
   const t = norm(raw);
   if (t === '') return null;
@@ -287,14 +226,10 @@ function parseMeter(raw: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-// On a v3 sheet a blank hour cell in a filled row is zero: the column was
-// there to write in. Unreadable text stays null.
 function v3Hours(raw: string): number | null {
   return norm(raw) === '' ? 0 : parseHours(raw);
 }
 
-// The v3 cells a timekeeper writes in (everything but DATE, DAY, the
-// weather ticks and the initial).
 function v3FillColumns(columns: Columns): number[] {
   return [
     ...columns.pairs.flat(),
@@ -315,9 +250,7 @@ function computeHours(row: string[], pairs: Array<[number, number]>): number | n
   for (const [inCol, outCol] of pairs) {
     const start = parseTime(row[inCol] ?? '');
     const end = parseTime(row[outCol] ?? '');
-    // A half-filled pair (in without out) is not zero worked time -- it is
-    // an unknown, so the whole computed figure becomes unavailable rather
-    // than quietly short.
+    // Half-filled pair is unknown, not zero: the computed figure becomes unavailable.
     if (start === null && end === null) continue;
     if (start === null || end === null) return null;
     if (end < start) return null;
@@ -327,10 +260,7 @@ function computeHours(row: string[], pairs: Array<[number, number]>): number | n
   return sawPair ? minutes / 60 : null;
 }
 
-// Picks the timesheet grid out of the tables on the page. The Almara sheet
-// also yields two small 2x2 header tables (CHARGE TO / EQPT. TYPE and
-// PROJECT LOCATION / DATE COVERED), so "the table with a DATE and a TOTAL
-// column" is the discriminator, with row count as the tie-break.
+// The sheet also yields small header tables; a DATE+TOTAL table wins, row count breaks ties.
 function findTimesheet(tables: ExtractedTable[]): { grid: Grid; columns: Columns } | null {
   let best: { grid: Grid; columns: Columns } | null = null;
   for (const table of tables) {
@@ -361,16 +291,10 @@ export function parseEdtrSheet(
   for (let r = columns.headerRows; r < grid.rowCount; r++) {
     const row = grid.rows[r]!;
     const rawDate = row[columns.date] ?? '';
-    // A blank line on a part-filled sheet, which is the normal case -- the
-    // form has ~22 rows and a week uses five.
     if (norm(rawDate) === '') continue;
 
     const isV3 = columns.running >= 0;
-    // v3 pre-prints every date of the week. A day outside the rental says
-    // so in its DAY cell, and a day nobody worked is left blank: neither is
-    // a reading, so both are skipped rather than failing the sheet. A day
-    // skipped this way that WAS worked shows as Missing in the site hub, so
-    // it cannot be lost silently.
+    // v3 pre-prints dates; OUTSIDE or unfilled days are skipped (they show as Missing in the site hub).
     if (isV3) {
       const dayCell = columns.day >= 0 ? norm(row[columns.day] ?? '') : '';
       if (dayCell.includes('OUTSIDE')) continue;
@@ -387,10 +311,7 @@ export function parseEdtrSheet(
     const billedColumn = isV3 ? columns.running : columns.total;
     const hoursActive = parseHours(row[billedColumn] ?? '');
     if (hoursActive === null) {
-      // A dated row whose total cannot be read is NOT skipped. Dropping it
-      // would lose a billable day silently, which is the failure this
-      // whole path exists to prevent; the capture fails so a human
-      // transcribes the sheet instead.
+      // Never skip a dated row with an unreadable total: fail so a human transcribes it.
       unreadableTotals.push(reportDate);
       continue;
     }
@@ -434,8 +355,6 @@ export function parseEdtrSheet(
   if (unreadableTotals.length > 0) {
     return { ok: false, reason: `unreadable_total_hours:${unreadableTotals.join(',')}` };
   }
-  // Two rows for one date on one sheet cannot both be the reading for that
-  // equipment-day, and picking either would be a guess.
   if (duplicates.length > 0) {
     return { ok: false, reason: `duplicate_date:${[...new Set(duplicates)].join(',')}` };
   }

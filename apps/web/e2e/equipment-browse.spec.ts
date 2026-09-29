@@ -2,13 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { signInAsCustomer } from './sign-in.js';
 import { openSidebar, sidebarLink } from './sidebar.js';
 
-// Browsing equipment, in a browser, at both viewports.
-//
-// THE BUG: /equipment sat under the marketing layout while the account
-// sidebar pointed at it, so one click cost a signed-in customer their
-// sidebar, app bar, notification bell and cart. Needs the seeded anchor
-// tenant (`pnpm db:seed`) and the API running; sign-in fails rather
-// than skips.
+// Needs the seeded anchor tenant (`pnpm db:seed`) and the API running.
 
 // The rail appears at xl (1280); the sidebar collapses into a drawer below lg
 // (1024). Two different thresholds, so the specs name them separately rather
@@ -38,7 +32,7 @@ test.describe('equipment browsing', () => {
     await openSidebar(page);
     await expect(sidebarLink(page, 'My bookings')).toBeVisible();
     // Not the marketing chrome.
-    await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Primary', exact: true })).toHaveCount(0);
   });
 
   test('a visitor gets the storefront, not a login wall', async ({ page }) => {
@@ -86,10 +80,7 @@ test.describe('equipment browsing', () => {
 
   test('the skip link is the first tab stop and becomes visible when focused', async ({ page }) => {
     await page.goto('/equipment');
-    // Wait for the catalog to finish loading BEFORE tabbing. The query
-    // resolving mid-test re-renders the tree and drops focus, so a Tab
-    // pressed while the skeleton is still up lands nowhere -- which is how
-    // this failed once the grid change made the first paint land sooner.
+    // Wait for the catalog BEFORE tabbing: a mid-test re-render drops focus.
     await expect(page.getByRole('button', { name: /^rent$/i }).first()).toBeVisible();
 
     await page.keyboard.press('Tab');
@@ -98,8 +89,6 @@ test.describe('equipment browsing', () => {
     await expect(skip).toBeFocused();
     await expect(skip).toBeVisible();
 
-    // And it actually goes somewhere: every shell puts id="main" on its own
-    // <main>, so the link has a target on this page.
     await expect(page.locator('main#main')).toHaveCount(1);
   });
 });

@@ -1,17 +1,11 @@
 import { Body, Controller, Get, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
 import { UsersService } from './users.service.js';
 import { SiteAssignmentSetDto, UserInviteDto, UserListQueryDto, UserRoleChangeDto } from './dto.js';
+import type { CtxRequest } from '../common/request.js';
 
-type CtxRequest = Request & { ctx: RequestContext };
-
-// S19 Users & Roles (PRD-F7). Every route is user:manage-gated -- owner and
-// timekeeper hold no such permission (packages/db/src/seed/permission-catalog.ts),
-// which is the QAD-T19 read-mostly-owner gate for free. Escalation defense
-// lives in UsersService (see evaluateUserAdminAction).
+// Escalation defense lives in UsersService (evaluateUserAdminAction).
 @Controller('users')
 @RequirePermission('user:manage')
 export class UsersController {

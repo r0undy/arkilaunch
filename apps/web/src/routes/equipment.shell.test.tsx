@@ -6,15 +6,7 @@ import { setAccessToken, clearTokens } from '../lib/auth-client.js';
 import { addToCart, clearCart, defaultRentalWindow, getCart } from '../lib/cart-client.js';
 import userEvent from '@testing-library/user-event';
 
-// THE BUG THIS PINS: /equipment lived under the marketing layout, but the
-// account sidebar's "Browse equipment" points straight at it. One click and a
-// signed-in customer lost their sidebar, app bar, notification bell and cart,
-// and the only way back was a full page reload. Figma 185:1599 draws this page
-// inside the customer shell.
-//
-// Same URL either way -- shared links and crawlers keep working; only the
-// chrome changes. These drive the real route tree, so a regression in
-// router.tsx or in _storefront.tsx fails here rather than in a browser.
+// Same URL signed in or out; only the chrome changes. Drives the real route tree.
 
 const UNIT_ID = '11111111-1111-1111-1111-111111111111';
 const UNIT = {
@@ -30,9 +22,7 @@ function stubFetch() {
     'fetch',
     vi.fn((url: string) => {
       const href = String(url);
-      // The detail endpoint answers with one unit, not a list -- returning
-      // the list shape here left the page on its loading branch with no
-      // action to click.
+      // The detail endpoint answers one unit, not a list.
       const body = href.includes('/users/me')
         ? { tenantName: 'Almara' }
         : href.includes('/me/companies')
@@ -59,17 +49,13 @@ describe('/equipment chrome', () => {
     stubFetch();
     const { unmount } = await renderRoute('/equipment');
 
-    // The sidebar landmark is the tell. Not the link labels: the marketing
-    // footer links "My bookings" too, so a name query cannot tell the shells
-    // apart -- which is exactly the trap this test exists to catch.
+    // The sidebar landmark is the tell: the marketing footer links "My bookings" too.
     await waitFor(() => expect(screen.getByRole('complementary', { name: 'Sidebar' })).toBeInTheDocument());
     expect(
       within(screen.getByRole('complementary', { name: 'Sidebar' })).getByRole('link', {
         name: 'My bookings',
       }),
     ).toBeInTheDocument();
-    // App bar, not the marketing nav -- and the cart lives there now, beside
-    // Sign out, rather than in the sidebar.
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^cart,/i })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Primary' })).not.toBeInTheDocument();
@@ -110,8 +96,6 @@ describe('/equipment chrome', () => {
     unmount();
   });
 
-  // One token system now (CR: aws-design-language): the catalog renders
-  // straight inside the signed-in shell's main landmark, no tier wrapper.
   it('renders the catalog inside the signed-in shell', async () => {
     setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
     stubFetch();
@@ -129,9 +113,6 @@ describe('/equipment chrome', () => {
     unmount();
   });
 
-  // The cart moved out of the sidebar and into the app bar beside Sign out
-  // (Figma 185:1599 draws it there). It is one affordance, not a panel
-  // repeated in the page body.
   describe('the cart in the app bar', () => {
     it('counts what is in it, in the accessible name', async () => {
       setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
@@ -161,9 +142,6 @@ describe('/equipment chrome', () => {
     });
   });
 
-  // /account/cart is behind requireAuth(). Before this, "Book now" as a
-  // visitor produced a silent guard bounce to /login with no redirect and no
-  // explanation -- indistinguishable from the button not working.
   it('sends a signed-out visitor to login with the cart as the destination', async () => {
     stubFetch();
     const { router, unmount } = await renderRoute(`/equipment/${UNIT_ID}`);
@@ -186,8 +164,6 @@ describe('/equipment chrome', () => {
     unmount();
   });
 
-  // The detail page shares the layout deliberately: leaving it marketing-only
-  // would drop the customer out of the shell one click into the page above.
   it('applies the same rule to the unit detail page', async () => {
     setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
     stubFetch();

@@ -1,27 +1,18 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import type { EquipmentResponse } from '@arkilaunch/shared';
+import { EQUIPMENT_PHOTO_MAX_BYTES, type EquipmentResponse } from '@arkilaunch/shared';
 import { Modal } from './modal.js';
 import { Input } from './input.js';
 import { Select } from './select.js';
 import { Button } from './button.js';
 import { CaptureField } from './capture-field.js';
 import { useToast } from './toast.js';
-import { apiErrorText, apiPatch, apiPost, apiPostForm } from '../lib/api-client.js';
+import { ApiError, apiErrorText, apiPatch, apiPost, apiPostForm } from '../lib/api-client.js';
 import type { PrepareUploadOptions } from '../lib/image-compression.js';
 import { referenceQueries } from '../lib/queries.js';
 
-// Figma 292:1344 (Add Equipment) and 293:2668 (Edit Details). One component:
-// the two frames are the same form, differing only in heading and submit
-// label.
-//
-// Two sections of the frame are deliberately absent. HOURLY RATE and DAILY
-// RATE would put a second price next to rate_cards, which is what quoting
-// actually reads -- a competing source of truth on the money path -- so the
-// form links to the rate cards screen instead. The frame's own section
-// numbering (1, 2, 3, 5) is a design slip, not a missing section.
-
+// No hourly/daily rate fields: rate_cards is the one price quoting reads.
 const FUEL_TYPES = ['Diesel', 'Gasoline', 'Electric', 'Hybrid', 'LPG'];
 
 const STATUSES = [
@@ -30,27 +21,19 @@ const STATUSES = [
   { value: 'maintenance', label: 'In maintenance' },
 ];
 
-// The frame draws a textarea; the app has no Textarea primitive and one
-// field does not earn a shared component. Mirrors Input's field styling.
 const TEXTAREA_CLASSES =
   'block w-full rounded-sm border border-border bg-surface px-3.5 py-3 text-base text-text ' +
   'hover:border-border-strong focus-visible:outline focus-visible:outline-2 ' +
   'focus-visible:outline-offset-2 focus-visible:outline-focus-ring';
 
-// QA item 28: fleet photos are shown in every inventory list and the public
-// catalog, so they go up as WebP under 1MB. MIRRORED PAIR: maxBytes matches
-// EQUIPMENT_PHOTO_MAX_BYTES in apps/api/src/storage/upload-validation.ts.
-const PHOTO_UPLOAD: PrepareUploadOptions = { maxEdge: 1920, quality: 0.8, type: 'image/webp', maxBytes: 1_000_000 };
+const PHOTO_UPLOAD: PrepareUploadOptions = { maxEdge: 1920, quality: 0.8, type: 'image/webp', maxBytes: EQUIPMENT_PHOTO_MAX_BYTES };
 
 export interface EquipmentFormModalProps {
-  /** Absent for create, present for edit. */
   equipment?: EquipmentResponse;
   onClose: () => void;
 }
 
-// An empty numeric field means "not specified", which must be omitted from
-// the request rather than sent as 0 -- a machine with no recorded weight is
-// not a machine that weighs nothing.
+// An empty numeric field is omitted, never sent as 0.
 function numberOrUndefined(value: string): number | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
@@ -83,41 +66,29 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoCredit, setPhotoCredit] = useState(equipment?.photoCredit ?? '');
   const [photoSourceUrl, setPhotoSourceUrl] = useState(equipment?.photoSourceUrl ?? '');
-  // Choices the customer picks in the cart. Edited as "name" + comma list.
   const [optionRows, setOptionRows] = useState<{ name: string; values: string }[]>(
     (equipment?.optionGroups ?? []).map((g) => ({ name: g.name, values: g.values.join(', ') })),
   );
   const [serialError, setSerialError] = useState<string | null>(null);
 
-  // "Others" carries a free-text category instead of a standard one.
   const isOthers = types.data?.find((type) => type.id === equipmentTypeId)?.name === 'Others';
 
   const save = useMutation({
     mutationFn: async () => {
       const spec = {
-        ...(textOrUndefined(modelNumber) ? { modelNumber: textOrUndefined(modelNumber) } : {}),
-        ...(numberOrUndefined(year) !== undefined
-          ? { yearOfManufacture: numberOrUndefined(year) }
-          : {}),
-        ...(numberOrUndefined(tons) !== undefined
-          ? { weightCapacityTons: numberOrUndefined(tons) }
-          : {}),
-        ...(textOrUndefined(engineType) ? { engineType: textOrUndefined(engineType) } : {}),
-        ...(textOrUndefined(fuelType) ? { fuelType: textOrUndefined(fuelType) } : {}),
-        ...(textOrUndefined(notes) ? { notes: textOrUndefined(notes) } : {}),
-        ...(isOthers && textOrUndefined(categoryNote)
-          ? { categoryNote: textOrUndefined(categoryNote) }
-          : {}),
-        // Always sent, so removing the last group clears them. A row with no
-        // name or no choices is an unfinished row, not a group.
+        modelNumber: textOrUndefined(modelNumber),
+        yearOfManufacture: numberOrUndefined(year),
+        weightCapacityTons: numberOrUndefined(tons),
+        engineType: textOrUndefined(engineType),
+        fuelType: textOrUndefined(fuelType),
+        notes: textOrUndefined(notes),
+        categoryNote: isOthers ? textOrUndefined(categoryNote) : undefined,
         optionGroups,
-        // '' clears on edit; on create an empty field is simply omitted.
         ...(isEdit || photoCredit.trim() ? { photoCredit: photoCredit.trim() } : {}),
         ...(isEdit || photoSourceUrl.trim() ? { photoSourceUrl: photoSourceUrl.trim() } : {}),
       };
 
-      // serialNo is absent from the edit request on purpose: migration 0026
-      // REVOKEs UPDATE on that column, which is why the field is disabled.
+      // serialNo is never sent on edit: UPDATE on that column is revoked.
       const saved = isEdit
         ? await apiPatch<EquipmentResponse>(`/equipment/${equipment.id}`, {
             model,
@@ -132,9 +103,7 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
             ...spec,
           });
 
-      // The photo is a second request: it is multipart, and a failed upload
-      // must not fail the save. Failing it left the modal open over a machine
-      // that was already inserted, so the retry POSTed a duplicate.
+      // A separate request so a failed upload never fails the save (a retry would duplicate the machine).
       let photoError: string | null = null;
       if (photo) {
         try {
@@ -161,14 +130,11 @@ export function EquipmentFormModal({ equipment, onClose }: EquipmentFormModalPro
       onClose();
     },
     onError: (error) => {
-      const text = apiErrorText(error);
-      // A taken serial belongs beside the field that caused it, not in a
-      // toast the reader has to map back to an input.
-      if (text.toLowerCase().includes('serial')) {
+      if (error instanceof ApiError && error.message === 'serial_no_taken') {
         setSerialError('Another machine in the fleet already uses this serial number.');
         return;
       }
-      toast.error(isEdit ? 'Could not save those changes' : 'Could not add that machine', text);
+      toast.error(isEdit ? 'Could not save those changes' : 'Could not add that machine', apiErrorText(error));
     },
   });
 

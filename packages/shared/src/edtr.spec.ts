@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EdtrApproveRequestSchema,
   evaluateGate,
   worstDelta,
   type HourDeltas,
@@ -17,8 +18,7 @@ function deltas(over: Partial<HourDeltas> = {}): HourDeltas {
 }
 
 describe('evaluateGate (RFC-2 §3 state machine, pure)', () => {
-  // The real Almara paper form has no idle column, so a paper/digital pair
-  // is the normal case here, not an edge case (migration 0017).
+  // The real paper form has no idle column, so this is the normal case.
   it('decides on active hours alone when neither log recorded idle time', () => {
     const result = evaluateGate(0.95, 0.95, { active: 0.1, idle: null, total: null }, DEFAULT_TOLERANCE_HOURS);
     expect(result).toEqual({ matched: true, reason: 'auto_accept' });
@@ -58,12 +58,8 @@ describe('evaluateGate (RFC-2 §3 state machine, pure)', () => {
     expect(result.reason).toBe('low_confidence');
   });
 
-  // THE regression test for the money-path false-accept this signature
-  // exists to close. One log reads 8h active / 0h idle, the counterpart
-  // reads 0h active / 8h idle. They agree on the TOTAL (8h either way), so
-  // the old summed-scalar gate saw delta 0 and auto-accepted -- while the
-  // deduction it then approved prices hours_active alone. Do not "simplify"
-  // this back into a single summed comparison.
+  // Money-path false-accept regression: 8h/0h vs 0h/8h agree on the TOTAL, yet the deduction prices
+  // hours_active alone. Do not simplify this back into a single summed comparison.
   it('rejects an equal-and-opposite active/idle swap that nets to a zero total', () => {
     const result = evaluateGate(1, 1, { active: 8, idle: 8, total: 0 }, DEFAULT_TOLERANCE_HOURS);
     expect(result).toEqual({ matched: false, reason: 'tolerance_exceeded' });
@@ -74,19 +70,13 @@ describe('evaluateGate (RFC-2 §3 state machine, pure)', () => {
     expect(result).toEqual({ matched: false, reason: 'tolerance_exceeded' });
   });
 
-  // Idle hours are not priced, but two logs disagreeing about how to
-  // classify an hour is still evidence the sheets disagree, which is what
-  // the double-entry check is for. Blocking here is deliberate, not an
-  // over-strict accident -- a review-queue backlog is not a reason to drop
-  // this case.
+  // Deliberate: an idle-classification disagreement still blocks (it is double-entry evidence).
   it('rejects divergence on idle hours alone, even though idle is never priced', () => {
     const result = evaluateGate(1, 1, deltas({ idle: 8, total: 8 }), DEFAULT_TOLERANCE_HOURS);
     expect(result).toEqual({ matched: false, reason: 'tolerance_exceeded' });
   });
 
-  // The summed total is still a checked dimension, so the new gate cannot
-  // be looser than the one it replaced: two same-signed errors that each
-  // clear the tolerance individually still accumulate past it.
+  // Same-signed errors that each clear the tolerance still accumulate past it.
   it('rejects two same-signed errors that individually clear tolerance but accumulate past it', () => {
     const result = evaluateGate(1, 1, { active: 0.2, idle: 0.2, total: 0.4 }, DEFAULT_TOLERANCE_HOURS);
     expect(result).toEqual({ matched: false, reason: 'tolerance_exceeded' });
@@ -111,10 +101,7 @@ describe('worstDelta (what edtr_reconciliations.delta_hours stores)', () => {
   });
 });
 
-// cr-arkilaunch-pilot-honesty.md §2.1. Without this path the pilot cannot
-// approve a single deposit deduction: reconciliation needs one paper_ocr
-// and one digital_entry row, and with no OCR adapter the paper side could
-// never carry line items.
+// Without this path no deposit deduction can be approved: the paper side needs line items and there is no OCR adapter.
 describe('buildManualTranscriptionPayload (human-read paper sheet)', () => {
   const payload = buildManualTranscriptionPayload({
     hoursActive: 8,
@@ -136,11 +123,7 @@ describe('buildManualTranscriptionPayload (human-read paper sheet)', () => {
     expect(isManualTranscription(null)).toBe(false);
   });
 
-  // A confidence of 1 here is correct rather than a fudge: reconciliation
-  // already returns 1 for digital_entry because it "has no OCR step", and a
-  // human transcription has no OCR step either. The gate exists to gate
-  // MODEL output; the real control on this row is the double-entry
-  // tolerance check against the counterpart log.
+  // Confidence 1 is correct: no model output to gate; the double-entry tolerance check is the control.
   it('passes the confidence gate, leaving the tolerance check as the real control', () => {
     expect(payload.min_field_confidence).toBe(1);
     expect(payload.min_field_confidence).toBeGreaterThanOrEqual(CONFIDENCE_GATE);
@@ -161,5 +144,14 @@ describe('buildManualTranscriptionPayload (human-read paper sheet)', () => {
       DEFAULT_TOLERANCE_HOURS,
     );
     expect(disagreeing).toEqual({ matched: false, reason: 'tolerance_exceeded' });
+  });
+});
+
+describe('EdtrApproveRequestSchema adjustments', () => {
+  const reconciliationId = '00000000-0000-4000-8000-000000000001';
+  it('caps adjusted hours at 24 per day', () => {
+    expect(EdtrApproveRequestSchema.safeParse({ reconciliationId, adjustments: { hoursActive: 80, hoursIdle: 0 } }).success).toBe(false);
+    expect(EdtrApproveRequestSchema.safeParse({ reconciliationId, adjustments: { hoursActive: 0, hoursIdle: 25 } }).success).toBe(false);
+    expect(EdtrApproveRequestSchema.safeParse({ reconciliationId, adjustments: { hoursActive: 24, hoursIdle: 0 } }).success).toBe(true);
   });
 });

@@ -15,12 +15,7 @@ function AppLayout() {
   );
 }
 
-// A rental company's back office, on its own host only. admin and owner
-// share this shell; owner is read-mostly and lands on /app/insights after
-// login (see guards.ts homeRouteForRole). admin-only children (users,
-// settings, registration) add their own stricter beforeLoad, matching the
-// server grant matrix. The platform admin's console is /admin on the
-// platform host (routes/_admin.tsx).
+// admin-only children add their own stricter beforeLoad, matching the server grant matrix.
 export const appLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'app-layout',

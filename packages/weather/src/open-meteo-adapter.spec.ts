@@ -53,11 +53,7 @@ describe('OpenMeteoAdapter', () => {
     expect(result).toEqual({ tempC: 30.1, windKph: 12.4, precipMm: 0.2, code: 3 });
   });
 
-  // The safety-critical case: a missing field must throw, never coerce to
-  // 0. An all-zero reading evaluates to severity 'none', which
-  // severityMessage() renders as "No weather advisory in effect" -- a
-  // fabricated all-clear for a construction site (see
-  // packages/shared/src/weather-port.spec.ts's regression rationale).
+  // Safety-critical: a missing field must throw, never coerce to 0 (a fabricated all-clear).
   it('throws rather than defaulting a missing field to 0', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       jsonResponse(200, {
@@ -84,10 +80,7 @@ describe('OpenMeteoAdapter', () => {
     await expect(adapter.getConditions(14.676, 121.0437)).rejects.toBeInstanceOf(WeatherObservationError);
   });
 
-  // If Open-Meteo ever stopped honouring wind_speed_unit=kmh, a real 60 kph
-  // gale reported as 16.7 (m/s) would compare false against every wind
-  // threshold and render "No weather advisory in effect" -- silently. The
-  // current_units literal check is the guard against exactly that.
+  // A 60 kph gale reported as 16.7 m/s would read as no advisory; the unit literal guards it.
   it('throws when current_units reports a unit other than what was requested', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       jsonResponse(200, {
@@ -150,9 +143,7 @@ describe('OpenMeteoAdapter', () => {
   });
 });
 
-// The forecast half. Same wire path, same refusal to coerce: a customer-facing
-// five-day rail must never be filled in from a block this adapter cannot
-// trust, so every partial shape throws rather than yielding a short week.
+// The forecast half: every partial shape throws rather than yielding a short week.
 const DAILY_UNITS = {
   temperature_2m_max: '°C',
   temperature_2m_min: '°C',
@@ -195,7 +186,6 @@ describe('OpenMeteoAdapter.getForecast', () => {
     );
     expect(url.searchParams.get('forecast_days')).toBe('5');
     expect(url.searchParams.get('timezone')).toBe('Asia/Manila');
-    // The units are pinned here for the same reason as the current block.
     expect(url.searchParams.get('wind_speed_unit')).toBe('kmh');
   });
 

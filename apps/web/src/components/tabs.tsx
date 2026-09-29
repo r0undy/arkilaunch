@@ -1,14 +1,8 @@
 import { useId, useRef, type KeyboardEvent } from 'react';
 
-// The one tablist (it was hand-built three times). Arrow keys, Home and End
-// move between tabs and select them; only the selected tab is in the Tab
-// order, per the ARIA tabs pattern. Callers render the panel themselves,
-// wrapped in role="tabpanel".
-
 export interface TabItem<T extends string> {
   id: T;
   label: string;
-  // A count beside the label (open requests, pending logs). 0/null hides it.
   badge?: number | null;
 }
 

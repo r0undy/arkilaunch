@@ -2,7 +2,6 @@ import { createRoute } from '@tanstack/react-router';
 import { publicLayoutRoute } from './_public.js';
 import { useTenant } from '../lib/tenant.js';
 
-// The tenant's own contact details and about text (branding, migration 0051).
 function ContactPage() {
   const tenant = useTenant();
   const place = [tenant?.address, tenant?.city, tenant?.province].filter(Boolean).join(', ');

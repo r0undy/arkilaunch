@@ -1,8 +1,7 @@
 import { and, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
-import { db, equipment, equipmentAssignments, maintenanceWindows, rentals, tenantCalendar } from '@arkilaunch/db';
+import { type Tx, equipment, equipmentAssignments, maintenanceWindows, rentals, tenantCalendar } from '@arkilaunch/db';
 import type { AvailabilityBlocker, AvailabilityResponse, TenantCalendar } from '@arkilaunch/shared';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export interface AvailabilityWindow {
   start: string;
@@ -11,12 +10,7 @@ export interface AvailabilityWindow {
 
 const MAX_ALTERNATIVES = 5;
 
-// Shared by bookings.service.ts (PRD-F8) and sites.service.ts's deployment
-// endpoint (PRD-F4): never overbooks a unit, whichever surface is
-// scheduling it (QAD-T16, QAD-T21). The caller must lock the candidate
-// equipment row with FOR UPDATE before calling this, so a concurrent
-// deploy/book on the same unit/window is serialized rather than racing
-// past the check.
+// The caller must lock the candidate equipment row FOR UPDATE first, or concurrent bookings race past this.
 export async function overlappingAssignments(tx: Tx, equipmentId: string, window: AvailabilityWindow) {
   const rows = await tx
     .select({ assignment: equipmentAssignments, rentalStatus: rentals.status, holdExpiresAt: rentals.holdExpiresAt })
@@ -31,19 +25,15 @@ export async function overlappingAssignments(tx: Tx, equipmentId: string, window
         liveHold,
       ),
     );
-  // heldUntil: set only on an unpaid request, which the calendar shows as
-  // "on hold" rather than booked.
+  // heldUntil is set only on an unpaid request (shown as "on hold", not booked).
   return rows.map((row) => ({
     ...row.assignment,
     heldUntil: row.rentalStatus === 'pending' ? row.holdExpiresAt : null,
   }));
 }
 
-// QA 25: an unpaid 'pending' request holds its dates until
-// rentals.hold_expires_at, then stops blocking anyone at once (the hourly
-// jobs/src/hold-expiry.ts sweep cancels it and tells both sides). An online
-// payment already under way keeps it live, so a customer mid-checkout is
-// never undercut. Paid, on-site and site-deployed holds never lapse.
+// An unpaid 'pending' request holds its dates until hold_expires_at; an online payment under way keeps it live.
+// Paid, on-site and site-deployed holds never lapse.
 const liveHold = or(
   isNull(rentals.id),
   ne(rentals.status, 'pending'),
@@ -53,19 +43,15 @@ const liveHold = or(
     WHERE i.rental_id = ${rentals.id} AND p.status = 'pending' AND p.method <> 'cash')`,
 );
 
-// Business hours and blackout dates are Asia/Manila wall clock. The
-// Philippines has no DST, so a fixed +08:00 is exact.
+// Asia/Manila wall clock; no DST, so a fixed +08:00 is exact.
 const MANILA_OFFSET_MS = 8 * 3_600_000;
 const DAY_MS = 86_400_000;
-// Bookings have no length cap; this only bounds one availability read
-// (the calendar asks per month, the conflict check for the whole booking).
+// Bounds one availability read only; bookings have no length cap.
 const MAX_DAYS = 3660;
 const manila = (d: Date) => new Date(d.getTime() + MANILA_OFFSET_MS);
 const manilaMidnight = (date: string) => new Date(`${date}T00:00:00+08:00`);
 
-// Pure: why the tenant calendar refuses this window, or null. Pickup (start)
-// and return (end) must each fall on an open, non-blackout day inside
-// business hours; the days in between are the customer's.
+// Pickup and return must each fall on an open, non-blackout day inside business hours.
 export function calendarBlocker(cal: TenantCalendar | null, window: AvailabilityWindow): AvailabilityBlocker | null {
   if (!cal) return null;
   for (const iso of [window.start, window.end]) {
@@ -103,9 +89,7 @@ function overlappingMaintenance(tx: Tx, equipmentId: string, window: Availabilit
     );
 }
 
-// THE availability check: every reason this unit (and operator, when one is
-// sent) cannot take this window. Empty = bookable. Same FOR UPDATE caveat as
-// overlappingAssignments(). excludeRentalId skips a booking's own holds.
+// Every reason this unit (and operator) can't take this window; empty = bookable. Same FOR UPDATE caveat.
 export async function availabilityBlockers(
   tx: Tx,
   equipmentId: string,
@@ -145,10 +129,8 @@ export async function availabilityBlockers(
   return blockers;
 }
 
-// Per-day view for the booking pickers, dates inclusive (Manila). A day is
-// taken if any hold or maintenance window touches it.
-// ponytail: whole-day granularity; a hold ending 10:00 greys the whole day.
-// The server check (availabilityBlockers) still allows the free hours.
+// A day is taken if any hold or maintenance window touches it.
+// ponytail: whole-day granularity; a hold ending 10:00 greys the whole day (availabilityBlockers still allows the free hours).
 export async function dayAvailability(
   tx: Tx,
   equipmentId: string,
@@ -174,9 +156,7 @@ export async function dayAvailability(
     const date = local.toISOString().slice(0, 10);
     let reason: AvailabilityBlocker | null = null;
     let heldUntil: Date | null = null;
-    // Taken outranks office-closed: a closed day only stops pickup and
-    // return (calendarBlocker), while a booked or maintenance day stops a
-    // rental running through it.
+    // Taken outranks office-closed: a closed day only stops pickup and return.
     const dayHolds = holds.filter((h) => touches(h.start, h.end, dayStart));
     if (dayHolds.some((h) => !h.heldUntil)) reason = 'assignment';
     else if (dayHolds.length > 0) {
@@ -193,10 +173,8 @@ export async function dayAvailability(
   };
 }
 
-// Nearest free window of the same length on the same unit, searching a day
-// at a time either side of the original start (never into the past).
-// ponytail: up to 2x60 sequential checks; fine for a staff click, add a
-// free-slot index if this ever runs per customer keystroke.
+// Searches a day at a time either side of the original start, never into the past.
+// ponytail: up to 2x60 sequential checks; add a free-slot index if this ever runs per customer keystroke.
 export async function nearestFreeWindow(
   tx: Tx,
   equipmentId: string,
@@ -219,9 +197,7 @@ export async function nearestFreeWindow(
   return null;
 }
 
-// Deployed units count: a unit out on a job today can still take a later,
-// non-overlapping window. Only 'maintenance' status (or retiring) takes it
-// off the road.
+// A deployed unit can still take a later non-overlapping window; only maintenance or retiring takes it off the road.
 export async function findAvailableAlternatives(
   tx: Tx,
   equipmentTypeId: string,

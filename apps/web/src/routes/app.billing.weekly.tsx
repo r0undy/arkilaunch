@@ -1,33 +1,17 @@
 import { createRoute, Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
-import { equipmentQueries, reportQueries, type ReportsSnapshot } from '../lib/queries.js';
+import { reportQueries, type ReportsSnapshot } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Container } from '../components/container.js';
 import { ExpandableSection } from '../components/expandable-section.js';
 import { StatTile } from '../components/stat-tile.js';
+import { MachineName } from '../components/machine-name.js';
 import { Table, type TableColumn } from '../components/table.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { PrintFrame } from '../components/print-frame.js';
-import { formatDate, formatHours, formatInvoiceType, formatPeso, shortCode } from '../lib/format.js';
+import { formatDate, formatHours, formatInvoiceType, formatPeso } from '../lib/format.js';
 import { CalendarRange } from 'lucide-react';
-
-// The utilization report identifies a unit only by id, same as the Insights
-// screen -- look the machine up in the fleet list that screen already caches
-// rather than printing a UUID stub in the column a yard manager reads first.
-function MachineName({ equipmentId }: { equipmentId: string }) {
-  const fleet = useQuery(equipmentQueries.list());
-  const match = fleet.data?.items.find((item) => item.id === equipmentId);
-  if (!match)
-    return <span className="font-mono text-xs text-text-muted">{shortCode('equipment', equipmentId)}</span>;
-  return (
-    <span className="flex flex-col">
-      <span className="font-semibold text-text">{match.model}</span>
-      <span className="font-mono text-xs text-text-muted">{match.serialNo}</span>
-    </span>
-  );
-}
 
 function Statement({ snapshot }: { snapshot: ReportsSnapshot }) {
   const { utilization, financial } = snapshot;
@@ -68,12 +52,7 @@ function Statement({ snapshot }: { snapshot: ReportsSnapshot }) {
         </ExpandableSection>
       </Container>
 
-      {/* The frame carries an hourly-rate and a line-total column per
-          machine. GET /reports/utilization returns hours only, and pricing a
-          line here from the rate cards would be this screen inventing a
-          billed amount beside the real one on the invoice. The money below is
-          the API's own total; per-line pricing stays on the invoice, which is
-          the object that actually charged it. */}
+      {/* No per-line pricing: it would invent a billed amount beside the invoice's real one. */}
       <Table
         header={{ title: 'Equipment usage', count: utilization.fleet.length }}
         columns={columns}
@@ -95,13 +74,7 @@ function Statement({ snapshot }: { snapshot: ReportsSnapshot }) {
               <dt className="text-text-muted">Paid</dt>
               <dd className="font-mono tabular-nums text-text">{formatPeso(financial.paid)}</dd>
             </div>
-            {/* `depositDeducted` is not a separate charge -- it is the same
-                money `invoiced.byType.deposit_deduction` already itemises
-                above. Live QA showed both lines rendering PHP 37,187.50 under
-                near-identical labels ("Deposit deduction" and "Deposit
-                deducted"), which reads as the customer being charged twice.
-                Show it only if the breakdown above did not already account
-                for it. */}
+            {/* depositDeducted is the same money as the deposit_deduction line; show it only if not itemised. */}
             {financial.depositDeducted > 0 && !('deposit_deduction' in financial.invoiced.byType) && (
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-text-muted">Deposit deducted</dt>
@@ -127,9 +100,7 @@ function WeeklyBillingPage() {
         description="Hours run against money invoiced, for the current reporting period."
         actions={
           <>
-            <Link to="/app/payments">
-              <Button variant="ghost">Back</Button>
-            </Link>
+            <Link to="/app/payments" className={buttonClass('ghost')}>Back</Link>
             <Button variant="secondary" onClick={() => window.print()}>
               Print statement
             </Button>

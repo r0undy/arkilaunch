@@ -2,12 +2,6 @@ import type { TenantRegisterRequest, TenantRegisterResponse } from '@arkilaunch/
 import { apiPost } from './api-client.js';
 import { turnstileHeaders } from './auth-client.js';
 
-// Two-step form state held in sessionStorage across /register ->
-// /register/company, mirroring the token-storage pattern in
-// auth-client.ts. No `password` field: the owner sets their own password
-// later through POST /auth/activate once an admin approves the
-// application (see the backend-unblock-frontend Change Record) -- there is
-// no platform-console approval UI yet, so approval is an admin/API step.
 export interface PersonalDetails {
   firstName: string;
   lastName: string;

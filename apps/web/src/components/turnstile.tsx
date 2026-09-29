@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-// Cloudflare Turnstile widget (turnstile CR). Managed mode: most visitors
-// get an automatic pass in about a second and never see a puzzle. Unset
-// site key (local dev, tests) renders nothing and callers skip the check.
+// Unset site key (dev, tests) renders nothing and callers skip the check.
 export const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
 interface TurnstileApi {
@@ -33,8 +31,7 @@ function loadScript(): Promise<void> {
   return scriptLoad;
 }
 
-// Tokens are single-use: remount with a new `key` to get a fresh one after
-// a failed submit. onToken(null) means expired or errored.
+// Tokens are single-use: remount with a new `key` after a failed submit.
 export function Turnstile({ onToken }: { onToken: (token: string | null) => void }) {
   const container = useRef<HTMLDivElement>(null);
   const callback = useRef(onToken);
@@ -79,8 +76,6 @@ export function Turnstile({ onToken }: { onToken: (token: string | null) => void
   );
 }
 
-// The API's Turnstile refusals (apps/api/src/common/turnstile.ts), in
-// words; null for any other error code.
 export function captchaError(code: string): string | null {
   if (code === 'captcha_required' || code === 'captcha_failed') return 'Please complete the security check and try again.';
   if (code === 'captcha_unavailable') return 'The security check is down right now. Try again in a minute.';

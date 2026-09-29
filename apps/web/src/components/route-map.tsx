@@ -3,14 +3,7 @@ import type { PaddingOptions } from 'maplibre-gl';
 import type { TruckRoute } from '@arkilaunch/shared';
 import type { LatLng } from './pin-map.js';
 
-// A truck trip on one map: pickup (A) and drop-off (B) pins, the road route
-// between them, and its distance and drive time. The customer booking page
-// drives the canvas in `edit` mode with its own panel; RouteMap is the
-// read-only view the booking drawers show.
-//
-// The 3D map needs WebGL. Without it the booking page falls back to the flat
-// Leaflet pin map, and RouteMap to the printed coordinates -- the pins still
-// work, only the picture is simpler.
+// Needs WebGL; without it RouteMap falls back to the printed coordinates.
 
 export type Which = 'pickup' | 'dropoff';
 
@@ -22,11 +15,8 @@ export interface RouteMapCanvasProps {
   onPlace?: (which: Which, at: LatLng) => void;
   line?: [number, number][] | null;
   label: string;
-  // Address bubbles over the pins.
   labels?: { pickup?: string | undefined; dropoff?: string | undefined };
-  // Keeps the fitted route clear of a panel floating over the map.
   fitPadding?: number | PaddingOptions;
-  // A one-line instruction chip over the map.
   hint?: string | null;
 }
 

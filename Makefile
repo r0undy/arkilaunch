@@ -32,19 +32,11 @@
 #   resolve @arkilaunch/shared through its built output.
 #
 # ---------------------------------------------------------------------------
-#
-# Every recipe forwards to the pnpm script of the same job in package.json,
-# so this file is a set of shorthands and never a second source of truth.
-#
-# Each recipe is deliberately ONE line. GNU make runs every line of a recipe,
-# but the `make` task runner many of us have on PATH here (the npm package,
-# not GNU make) runs only the first -- so a multi-line recipe would silently
-# do part of its job. Chain with && rather than adding a second line.
+# Recipes are ONE line: the npm `make` on PATH here (not GNU make) runs only the first line.
 
 .DEFAULT_GOAL := help
 .PHONY: help install web api dev start migrate seed seed-test fixtures check test test-web test-api e2e lint typecheck build build-web build-api clean
 
-# The usage block above is the help text, so the two can never drift apart.
 help:
 	@head -32 Makefile
 
@@ -81,8 +73,6 @@ fixtures:
 
 # --- check -------------------------------------------------------------
 
-# Cheapest first, so an obvious type error fails before the slow
-# database-backed suites run.
 check: typecheck lint test
 
 test:
@@ -114,8 +104,5 @@ build-web:
 build-api:
 	pnpm build:api
 
-# One command: see the note at the top about single-line recipes. Removes
-# packages/*/dist as well, which the other workspaces resolve
-# @arkilaunch/shared through.
 clean:
 	rm -rf apps/web/dist apps/api/dist packages/*/dist jobs/dist node_modules/.vite apps/web/node_modules/.vite

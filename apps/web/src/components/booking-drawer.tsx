@@ -2,35 +2,24 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BookingDetailResponse, BookingService, TruckRequestResponse } from '@arkilaunch/shared';
-import { banHits, localPhMobile } from '@arkilaunch/shared';
+import { tripSteps, type TripStep } from './truck-trip.js';
+import { banHits } from '@arkilaunch/shared';
 import { bookingsQueries, truckBanRulesQuery, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
-import { formatDate, formatDateTime, formatInvoiceType, formatPeso, formatStatus } from '../lib/format.js';
+import { formatDate, formatDateTime, formatInvoiceType, formatPeso, formatStatus, WEEKDAYS } from '../lib/format.js';
 import { Alert } from './alert.js';
 import { RequestRow } from '../routes/app.trucks.js';
-import { Button } from './button.js';
+import { buttonClass } from './button.js';
 import { Modal } from './modal.js';
 import { Tabs } from './tabs.js';
 import { StatusBadge } from './status-badge.js';
 import { RouteMap } from './route-map.js';
 import { NegotiationThread } from './negotiation-thread.js';
-import { BookingSide } from './booking-actions.js';
-
-// One drawer for both services (cr-arkilaunch-uniform-booking-codes.md):
-// the admin reads and works a booking start to end without leaving the
-// list -- overview, negotiation thread and every action, in tabs. The full
-// page (/app/bookings/$bookingId) shows the same pieces for a deep link.
+import { BookingSide, SiteRepContact } from './booking-actions.js';
 
 const heading = 'text-heading-md text-text';
 
-export interface Step {
-  label: string;
-  done: boolean;
-}
-
-// request → call → quote → paid → deployed → returned. Derived, not
-// stored: each step is a fact already on the booking.
-export function rentalSteps(b: Pick<BookingDetailResponse, 'status' | 'callConfirmedAt' | 'quotation'>): Step[] {
+export function rentalSteps(b: Pick<BookingDetailResponse, 'status' | 'callConfirmedAt' | 'quotation'>): TripStep[] {
   const paid = ['confirmed', 'active', 'completed'].includes(b.status);
   return [
     { label: 'Requested', done: true },
@@ -42,14 +31,7 @@ export function rentalSteps(b: Pick<BookingDetailResponse, 'status' | 'callConfi
   ];
 }
 
-// estimated → km confirmed → agreed → paid.
-export function truckSteps(t: Pick<TruckRequestResponse, 'status'>): Step[] {
-  const order = ['estimated', 'km_confirmed', 'agreed', 'paid', 'dispatched'];
-  const at = order.indexOf(t.status);
-  return ['Estimated', 'Km confirmed', 'Agreed', 'Paid', 'Dispatched'].map((label, i) => ({ label, done: at >= i }));
-}
-
-function Stepper({ steps, cancelled }: { steps: Step[]; cancelled: boolean }) {
+function Stepper({ steps, cancelled }: { steps: TripStep[]; cancelled: boolean }) {
   return (
     <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" aria-label="Progress">
       {steps.map((step, i) => (
@@ -94,15 +76,7 @@ function RentalBody({ booking }: { booking: BookingDetailResponse }) {
         <dl className="flex flex-col gap-1">
           <Row label="Company">{booking.customerName ?? '--'}</Row>
           <Row label="Site rep">
-            {booking.siteContact ?? '--'}
-            {booking.siteContactMobile && (
-              <>
-                {' · '}
-                <a href={`tel:${booking.siteContactMobile}`} className="underline">
-                  +63 {localPhMobile(booking.siteContactMobile)}
-                </a>
-              </>
-            )}
+            <SiteRepContact name={booking.siteContact ?? '--'} mobile={booking.siteContactMobile} />
           </Row>
         </dl>
       </Section>
@@ -197,8 +171,6 @@ const TABS: { id: DrawerTab; label: string }[] = [
   { id: 'actions', label: 'Actions' },
 ];
 
-// A truck trip at a glance: the route map (when the customer pinned both
-// ends), the schedule and the money.
 function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
   const pickup = useMemo(
     () => (truck.pickupLat !== null && truck.pickupLng !== null ? { lat: truck.pickupLat, lng: truck.pickupLng } : null),
@@ -213,7 +185,7 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
   const cities = route.data?.cities ?? truck.routeCities ?? [];
   return (
     <div className="flex flex-col gap-4">
-      <Stepper steps={truckSteps(truck)} cancelled={truck.status === 'cancelled'} />
+      <Stepper steps={tripSteps(truck)} cancelled={truck.status === 'cancelled'} />
       <Section title="Route">
         <p className="text-sm font-medium text-text">
           {truck.pickup} → {truck.dropoff}
@@ -224,11 +196,11 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
             {route.isError && (
               <p className="text-xs text-text-muted">The road route is unavailable; the pins are joined in a straight line.</p>
             )}
-            {(route.data?.cities ?? truck.routeCities)?.length ? (
+            {cities.length ? (
               <div className="text-xs text-text-muted">
                 <p>Route passes through:</p>
                 <ol className="mt-1 flex flex-wrap items-center gap-1">
-                  {(route.data?.cities ?? truck.routeCities ?? []).map((place, index) => (
+                  {cities.map((place, index) => (
                     <li key={`${place.city}-${place.province}-${index}`} className="rounded border border-border px-2 py-1">
                       {place.city}{place.province ? `, ${place.province}` : ''}
                     </li>
@@ -242,7 +214,7 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
                 const hit = banHits([place], [rule], new Date(truck.scheduledFor)).length > 0;
                 return <p key={`${rule.id}-${index}`} className="text-xs text-text-muted">
                   <strong>{place.city}</strong> - trucks banned {rule.windows.map((w) => `${w.from}-${w.to}`).join(' & ')},
-                  {' '}{rule.days.map((day) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][day]).join(', ')}
+                  {' '}{rule.days.map((day) => WEEKDAYS[day]).join(', ')}
                   {hit ? ' | pickup falls inside: permit or reschedule' : ' | pickup outside listed hours'}
                   {rule.minGvwKg !== null && ` | applies from ${rule.minGvwKg} kg GVW (vehicle weight not recorded)`}
                   {!rule.verified && ' | rule not verified'}
@@ -310,14 +282,11 @@ export function BookingDrawer({
   onClose,
 }: {
   target: BookingDrawerTarget | null;
-  // The staff page looks the truck request up by its code.
   truck: TruckRequestResponse | undefined;
-  // A notification can open straight on the tab it is about (?tab=).
   initialTab?: DrawerTab;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<DrawerTab>(initialTab);
-  // A different booking opens on its overview, or the tab it was sent to.
   useEffect(() => setTab(initialTab), [target?.id, initialTab]);
   const rentalId = target?.service === 'rental' ? target.id : null;
   const booking = useQuery({ ...bookingsQueries.detail(rentalId ?? ''), enabled: !!rentalId });
@@ -335,9 +304,7 @@ export function BookingDrawer({
       description={target?.service === 'truck' ? 'Truck service' : 'Equipment rental'}
       footer={
         rentalId ? (
-          <Link to="/app/bookings/$bookingId" params={{ bookingId: rentalId }}>
-            <Button variant="ghost">Open as a full page</Button>
-          </Link>
+          <Link to="/app/bookings/$bookingId" params={{ bookingId: rentalId }} className={buttonClass('ghost')}>Open as a full page</Link>
         ) : undefined
       }
     >

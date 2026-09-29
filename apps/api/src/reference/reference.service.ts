@@ -13,17 +13,10 @@ import {
 } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
 
-// Read-only reference lookups for the staff pick-list dropdowns (avoids
-// requiring a hand-typed UUID for every foreign key). RLS (via
-// withTenantTx) bounds these to the caller's tenant, but tenant scope is
-// NOT the whole boundary here: `customer` is an intra-tenant role, so
-// every tenant-scoped route below carries @RequirePermission on the
-// controller (audit-api-surface.md #2). `equipmentTypes` is global,
-// non-tenant data and is deliberately left open.
+// RLS is not the whole boundary: `customer` is intra-tenant, so every tenant-scoped route needs @RequirePermission.
 @Injectable()
 export class ReferenceService {
-  // Global reference catalog (no tenant_id, no RLS), same category as
-  // diesel_price_readings -- queried directly, no tenant context needed.
+  // Global catalog (no tenant_id, no RLS).
   async equipmentTypes() {
     return db.select({ id: equipmentTypes.id, name: equipmentTypes.name }).from(equipmentTypes);
   }
@@ -45,10 +38,7 @@ export class ReferenceService {
   async rateCards(ctx: RequestContext, equipmentTypeId?: string) {
     return withTenantTx(ctx, (tx) => {
       const now = new Date();
-      // Only currently-effective rows: a superseded or not-yet-effective
-      // rate card must never reach the quote-builder's pick-list (it would
-      // let a new quote be priced at a stale value -- QAD-T44/T48; see the
-      // matching guard in PricingEngineService.priceItem).
+      // Only currently-effective cards, or a new quote could be priced at a stale value.
       const effectivenessFilter = and(
         lte(rateCards.effectiveFrom, now),
         or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, now)),

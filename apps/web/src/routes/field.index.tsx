@@ -7,30 +7,18 @@ import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { Button } from '../components/button.js';
 import { CaptureModal } from '../components/capture-modal.js';
 import { EmptyState } from '../components/empty-state.js';
-import { useToast } from '../components/toast.js';
 import { pluralize } from '../lib/format.js';
 
 function OperatorDashboardPage() {
   const queryClient = useQueryClient();
-  const toast = useToast();
   const { data: sites, isPending: sitesPending } = useQuery(sitesQueries.list());
 
-  // Recording a field log is this role's whole job (PRD US-02), but until
-  // now the only screen that opened the capture modal was /app/ocr, which
-  // requireRole() closes to admin/owner/platform_admin. A timekeeper was
-  // redirected to this dashboard and had nowhere to go. The server always
-  // allowed it: POST /edtr asks for `edtr:create`, which this role holds.
   const [captureOpen, setCaptureOpen] = useState(false);
 
-  // The pick lists the modal needs. Fetched once the operator has sites,
-  // since with no assignment there is nothing to record against. A failure
-  // is non-fatal: the dashboard still reads, and the capture button is
-  // disabled below rather than opening a modal with empty pick lists.
   const hasSites = !!sites && sites.total > 0;
   const { equipmentList, rentals, rentalLabel } = useScanDeployments(hasSites);
 
-  // No pending count: the timekeeper submits and the office reviews; the
-  // field-log queue is staff-only (cr-arkilaunch-edtr-site-hub-approval.md).
+  // No pending count: the field-log queue is staff-only.
 
   return (
     <div className="flex flex-col gap-4">
@@ -85,7 +73,6 @@ function OperatorDashboardPage() {
         onCaptured={() => {
           void queryClient.invalidateQueries({ queryKey: ['edtr'] });
         }}
-        toast={toast}
         initialSource="paper_ocr"
         submitOnly
       />

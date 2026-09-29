@@ -5,10 +5,7 @@ import type { RequestContext } from '@arkilaunch/shared';
 import { availabilityBlockers, dayAvailability } from '../src/common/equipment-availability.js';
 import { renewLapsedHold } from '../src/common/booking-hold.js';
 
-// QA 25: an unpaid 'pending' request holds its dates only until
-// hold_expires_at; an online payment in flight keeps it held; a lapsed
-// hold renews at checkout only while its dates are still free. A 2036
-// window nobody else books.
+// A 2036 window nobody else books.
 describe('booking holds (QA 25)', () => {
   const sql = postgres(process.env.DATABASE_URL_DIRECT ?? '', { max: 1 });
   let ctx: RequestContext;
@@ -108,5 +105,24 @@ describe('booking holds (QA 25)', () => {
     await expect(withTenantTx(ctx, (tx) => renewLapsedHold(tx, tenantId, lapsed))).rejects.toMatchObject({
       response: { error: 'hold_expired' },
     });
+  });
+
+  // Checkout locks the rental, then the units; renewal must take them in that order too, or it deadlocks.
+  it('renewal locks the rental before the units', async () => {
+    const id = await hold(-1);
+    const outside = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    let unitLockable: unknown;
+    await outside.begin(async (t) => {
+      await t`select id from rentals where id = ${id} for update`;
+      const renewal = withTenantTx(ctx, (tx) => renewLapsedHold(tx, tenantId, id));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      unitLockable = await t`select id from equipment where id = ${equipmentId} for update nowait`.then(
+        () => true,
+        (err: { code?: string }) => err.code,
+      );
+      void renewal.catch(() => undefined);
+    });
+    await outside.end();
+    expect(unitLockable).toBe(true);
   });
 });

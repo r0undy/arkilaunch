@@ -17,7 +17,7 @@ import {
 } from '@arkilaunch/shared';
 import { KYC_MODEL_ID } from '@arkilaunch/document-intelligence';
 import { EventsService } from '../events/events.service.js';
-import { StorageService } from '../storage/storage.service.js';
+import { StorageService, kycBucket } from '../storage/storage.service.js';
 import { DOCUMENT_INTELLIGENCE_PORT } from './kyc.tokens.js';
 
 interface KycOcrPayload {
@@ -30,21 +30,13 @@ interface KycOcrPayload {
 
 @Injectable()
 export class KycService {
-  // Token-injected (interfaces have no runtime type for Nest's reflection
-  // to resolve): kyc.module.ts provides DOCUMENT_INTELLIGENCE_PORT as the
-  // stub adapter by default (no live Azure DI credentials/trained model in
-  // this pass, decided for F3 the same way edtr-ocr-worker was); a test can
-  // override the provider with a fixture adapter without touching the rest
-  // of the flow.
+  // Token-injected: an interface has no runtime type for Nest's reflection.
   constructor(
     private readonly events: EventsService,
     private readonly storage: StorageService,
     @Inject(DOCUMENT_INTELLIGENCE_PORT) private readonly port: DocumentIntelligencePort,
   ) {}
 
-  // POST /api/v1/kyc/extract (RFC-2 §2/§3). Azure DI layout+query fields,
-  // not the prebuilt idDocument model (scrutiny FC-5: that model covers
-  // only US licenses/passports, not PH corporate identifiers).
   async extract(ctx: RequestContext, body: KycExtractRequest): Promise<KycExtractResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [created] = await tx
@@ -59,26 +51,12 @@ export class KycService {
         .returning();
       if (!created) throw new Error('kyc_documents insert returned no row');
 
-      // Extraction runs synchronously against the injected port (a real
-      // adapter would move this to an async worker mirroring
-      // jobs/src/edtr-ocr-worker.ts). The state machine and format/human
-      // gates are unaffected by sync vs async execution.
-      //
-      // When no real adapter can serve the request, the port throws rather
-      // than returning an empty result -- an empty result is
-      // indistinguishable from "the document really was blank". The
-      // document is still stored and still queued for a human, who keys
-      // the identifiers in at confirm time; nothing is invented on the way
-      // through (cr-arkilaunch-pilot-honesty.md §2).
+      // The port throws rather than return an empty result, which would be indistinguishable from a blank document;
+      // the document still queues for a human, and nothing is invented.
       let result: DocumentExtractionResult | null = null;
       try {
-        // Default matches infra/terraform/environments/*/variables.tf's own
-        // default, so this stays inert in CI/local dev where the env var is
-        // unset (CI's api-integration-suite runs with no Supabase config at
-        // all -- StorageService itself is not exercised there since these
-        // tests inject a stub in place of it).
         const signedUrl = await this.storage.createSignedDownloadUrl(
-          process.env.SUPABASE_STORAGE_BUCKET_KYC ?? 'kyc-documents',
+          kycBucket(),
           body.fileUri,
         );
         const res = await fetch(signedUrl);
@@ -110,15 +88,11 @@ export class KycService {
       await tx
         .update(kycDocuments)
         .set({
-          // null, not {}, when no extraction ran: an empty payload would
-          // read as "the model found nothing", which is a different and
-          // untrue claim.
+          // null, not {}: an empty payload would falsely read as "the model found nothing".
           ocrPayload: result ? ocrPayload : null,
           formatValid,
           confidence: confidence !== null ? String(confidence) : null,
-          // Every extraction lands at needs_review -- there is no
-          // auto-verify edge; a human always confirms against SEC/BIR
-          // (RFC-2 §2, PRD-F6 US-06 AC3, requires_human_confirmation=true).
+          // RFC-2 gate: every extraction lands at needs_review; there is no auto-verify edge.
           status: 'needs_review',
         })
         .where(eq(kycDocuments.id, created.id));
@@ -137,9 +111,7 @@ export class KycService {
     });
   }
 
-  // GET /api/v1/kyc/:id (RFC-2 §3). requiresHumanConfirmation is always
-  // true -- there is no code path that flips a tenant to production from
-  // extraction confidence alone.
+  // requiresHumanConfirmation is always true: confidence alone never flips a tenant to production.
   async get(ctx: RequestContext, id: string): Promise<KycDetailResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [doc] = await tx.select().from(kycDocuments).where(eq(kycDocuments.id, id)).limit(1);
@@ -166,18 +138,13 @@ export class KycService {
     });
   }
 
-  // POST /api/v1/kyc/:id/confirm: the human portal-confirmation step
-  // (RFC-2 §2 step 6). ORUS presents a CAPTCHA by design (scrutiny FC-11);
-  // no code here scripts around it -- this endpoint only records what a
-  // human read off the SEC/BIR portals.
+  // Records only what a human read off the SEC/BIR portals; nothing scripts around the portal CAPTCHA.
   async confirm(ctx: RequestContext, id: string, body: KycConfirmRequest) {
     return withTenantTx(ctx, async (tx) => {
       const [doc] = await tx.select().from(kycDocuments).where(eq(kycDocuments.id, id)).limit(1);
       if (!doc) throw new NotFoundException({ error: 'kyc_document_not_found' });
 
-      // verified requires registry_status = active AND a confirmed portal
-      // match (RFC-2 §3 KYC state machine); anything else keeps the tenant
-      // unverified (US-06 AC2) or rejected.
+      // Verified only when the human reports registry_status = active; portalMatchScore is recorded, not gated on.
       const status = body.registryStatus === 'active' ? 'verified' : 'rejected';
 
       await tx

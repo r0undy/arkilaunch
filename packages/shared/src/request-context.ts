@@ -1,8 +1,6 @@
 import { z } from 'zod';
 
-// The per-request tenant/user/role triple that every DB access runs under
-// (packages/db withTenantTx sets these as Postgres GUCs). Derived from the
-// verified JWT server-side; never accepted from a client payload.
+// Derived from the verified JWT server-side; never accepted from a client payload (RFC-1).
 export const RequestContextSchema = z.object({
   tenantId: z.string().uuid(),
   userId: z.string().uuid(),

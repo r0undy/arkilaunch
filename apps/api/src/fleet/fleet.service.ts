@@ -1,11 +1,12 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, count, desc, eq, gt, gte, ilike, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, ilike, inArray, isNull, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import {
+  type Tx,
   auditLogs,
   customers,
-  db,
   edtr,
   edtrLineItems,
+  edtrReconciliations,
   equipment,
   equipmentAssignments,
   equipmentTypes,
@@ -22,6 +23,7 @@ import {
   rentals,
   tenantCalendar,
   withTenantTx,
+  publicPhotoUrl,
 } from '@arkilaunch/db';
 import type {
   EquipmentCreateRequest,
@@ -47,33 +49,15 @@ import type {
   UtilizationQuery,
   UtilizationReportResponse,
 } from '@arkilaunch/shared';
+import { manilaDate, round2HalfUp, type ApprovedDayHours } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
-import { round2HalfUp } from '../quotes/pricing-engine.service.js';
 import { countRows } from '../common/count-rows.js';
+import { approvedHours } from '../common/field-logs.js';
 import { dayAvailability, readCalendar } from '../common/equipment-availability.js';
 
-// Documented simplification (same category as the deposit-ledger balance
-// tracking in edtr.service.ts): the utilization denominator is a standard
-// 8-hour construction workday per calendar day in the report period, not
-// the unit's actual scheduled availability -- equipment_assignments-based
-// scheduling is PRD-F8, not built yet.
+// ponytail: utilization assumes an 8-hour workday per calendar day, not the unit's scheduled availability.
 const BUSINESS_HOURS_PER_DAY = 8;
 const DEFAULT_REPORT_WINDOW_DAYS = 30;
-
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-// Equipment photos live in their own bucket, deliberately not the KYC one:
-// that holds RA 10173 personal data under its own retention posture, and a
-// machine photo has no business sharing it.
-//
-// This bucket is public-read, which is a narrower exception than it looks.
-// RFC-2 §6 / SDD §7's "never a public URL" is scoped to EDTR and KYC image
-// blobs -- evidence and personal data. A photo of a backhoe is neither, and
-// the same fleet is already served anonymously by GET /catalog/equipment.
-// Keys stay tenant-prefixed and UUID-suffixed so they are not enumerable.
-// Recorded in docs/cr-arkilaunch-equipment-crud.md.
-import { publicPhotoUrl } from '@arkilaunch/db';
-export { publicPhotoUrl };
 
 function toEquipmentResponse(row: typeof equipment.$inferSelect): EquipmentResponse {
   return {
@@ -85,9 +69,7 @@ function toEquipmentResponse(row: typeof equipment.$inferSelect): EquipmentRespo
     runtimeHours: Number(row.runtimeHours),
     modelNumber: row.modelNumber,
     yearOfManufacture: row.yearOfManufacture,
-    // numeric comes back from postgres as a string; null must stay null
-    // rather than becoming Number(null) === 0, which would report an
-    // unspecified machine as weighing nothing.
+    // null stays null: Number(null) is 0, which would report an unspecified machine as weightless.
     weightCapacityTons: row.weightCapacityTons === null ? null : Number(row.weightCapacityTons),
     engineType: row.engineType,
     fuelType: row.fuelType,
@@ -100,8 +82,7 @@ function toEquipmentResponse(row: typeof equipment.$inferSelect): EquipmentRespo
   };
 }
 
-// The spec fields shared by create and update. Spread conditionally so a
-// PATCH that omits a field leaves it alone rather than nulling it.
+// Spread conditionally so a PATCH that omits a field leaves it alone.
 type EquipmentSpecFields = {
   modelNumber?: string | undefined;
   yearOfManufacture?: number | undefined;
@@ -147,20 +128,35 @@ function defaultFromDate(to: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+// One approved day per equipment-day: a matched pair approves two reconciliations, and only one carries the billed figures.
+async function approvedDays(tx: Tx, where: SQL | undefined) {
+  const rows = await tx
+    .select({ equipmentId: edtr.equipmentId, reportDate: edtr.reportDate, adjustments: edtrReconciliations.adjustments, item: edtrLineItems })
+    .from(edtr)
+    .innerJoin(edtrReconciliations, eq(edtrReconciliations.edtrId, edtr.id))
+    .leftJoin(edtrLineItems, eq(edtrLineItems.edtrId, edtr.id))
+    .where(and(eq(edtrReconciliations.status, 'approved'), where));
+  const billed = (row: (typeof rows)[number]) => !!(row.adjustments as { billed?: unknown } | null)?.billed;
+  const byDay = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    const key = `${row.equipmentId}|${row.reportDate}`;
+    const kept = byDay.get(key);
+    if (!kept || (!billed(kept) && billed(row))) byDay.set(key, row);
+  }
+  return [...byDay.values()].flatMap((row) => {
+    const hours: ApprovedDayHours | null = approvedHours(row, row.item ?? undefined);
+    return hours ? [{ equipmentId: row.equipmentId, reportDate: row.reportDate, hours }] : [];
+  });
+}
+
 @Injectable()
 export class FleetService {
   constructor(private readonly events: EventsService) {}
 
-  // GET /api/v1/equipment?status=... (PRD-F4). Any authenticated tenant
-  // member may read the fleet list; RLS is the isolation boundary, same
-  // posture as reference/* (no permission gate on a read).
   async list(ctx: RequestContext, query: EquipmentListQuery): Promise<EquipmentListResponse> {
     return withTenantTx(ctx, async (tx) => {
-      // Retired units leave the fleet list. They are never deleted (migration
-      // 0026), so history -- maintenanceDetail, the utilization and financial
-      // reports, every edtr row citing the machine -- stays readable by id.
-      // A rate card in force for the unit or, failing that, its category --
-      // the same rule the catalog's upfront price uses (migration 0042).
+      // Retired units leave the list but are never deleted, so history stays readable by id.
+      // Priced: a rate card in force for the unit or, failing that, its category.
       const priced = sql`exists (
         select 1 from rate_cards r
         where r.tenant_id = ${equipment.tenantId}
@@ -168,8 +164,7 @@ export class FleetService {
           and r.effective_from <= now() and (r.effective_to is null or r.effective_to > now())
       )`;
       const search = query.q ? `%${query.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
-      // Every filter but the category, so the category counts answer "how
-      // many would I see if I picked this one".
+      // Every filter but the category, so each category count answers "how many if I picked this".
       const base = and(
         isNull(equipment.retiredAt),
         query.status ? eq(equipment.availabilityStatus, query.status) : undefined,
@@ -180,7 +175,6 @@ export class FleetService {
         query.missing === 'price' ? sql`not ${priced}` : undefined,
       );
       const where = and(base, query.typeId ? eq(equipment.equipmentTypeId, query.typeId) : undefined);
-      // Ordered by category first, so a page reads as grouped headings.
       const rows = await tx
         .select({ unit: equipment, typeName: equipmentTypes.name })
         .from(equipment)
@@ -189,9 +183,6 @@ export class FleetService {
         .orderBy(asc(equipmentTypes.name), desc(equipment.createdAt))
         .limit(query.limit)
         .offset(query.offset);
-      // The unpaged count, so the caller can page: rows.length only ever
-      // described the page it was handed. Counted in Postgres rather than
-      // by pulling every matching row into Node (audit-api-surface.md #9).
       const total = await countRows(tx, equipment, where);
       const categories = await tx
         .select({ equipmentTypeId: equipmentTypes.id, name: equipmentTypes.name, count: count() })
@@ -208,8 +199,6 @@ export class FleetService {
     });
   }
 
-  // POST /api/v1/equipment (addition beyond SDD §4; see AGENTS.md §5.1
-  // Change Record). fleet:manage-gated at the controller.
   async create(ctx: RequestContext, body: EquipmentCreateRequest): Promise<EquipmentResponse> {
     return withTenantTx(ctx, async (tx) => {
       const existing = await tx
@@ -246,10 +235,7 @@ export class FleetService {
     });
   }
 
-  // PATCH /api/v1/equipment/:id (addition beyond SDD §4). Refuses a
-  // transition to `deployed` when the unit is already deployed or is
-  // maintenance-flagged -- the fleet half of QAD-T16. The double-book half
-  // (equipment_assignments overlap) belongs to F8 and is not covered here.
+  // Refuses `deployed` when the unit is already deployed or maintenance-flagged.
   async update(
     ctx: RequestContext,
     equipmentId: string,
@@ -262,8 +248,7 @@ export class FleetService {
         .where(eq(equipment.id, equipmentId))
         .limit(1);
       if (!existing) throw new NotFoundException({ error: 'equipment_not_found' });
-      // A retired unit is history. Editing one would let a machine that has
-      // left the fleet be silently changed under the DTRs that cite it.
+      // A retired unit is history: editing it would silently change the DTRs that cite it.
       if (existing.retiredAt) {
         throw new ConflictException({ error: 'equipment_retired', equipmentId });
       }
@@ -303,12 +288,7 @@ export class FleetService {
     });
   }
 
-  // DELETE /api/v1/equipment/:id -- a retire, not a delete.
-  //
-  // The Figma confirm (293:3256) promises to "remove all associated
-  // maintenance and deployment logs". That is exactly what must not happen:
-  // edtr rows cite equipment_id as the evidence an invoice was computed from.
-  // Migration 0026 REVOKEs DELETE on the table, so this is the only exit.
+  // A retire, not a delete: edtr rows cite equipment_id as invoice evidence, and 0026 REVOKEs DELETE.
   async retire(ctx: RequestContext, equipmentId: string): Promise<EquipmentRetireResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [existing] = await tx
@@ -320,9 +300,7 @@ export class FleetService {
       if (existing.retiredAt) {
         throw new ConflictException({ error: 'equipment_already_retired', equipmentId });
       }
-      // The refusal that matters. A machine on a site has a crew and a
-      // customer depending on it; retiring it would drop it out of the fleet
-      // list while it is still out there accruing hours.
+      // A deployed machine is still out there accruing hours; retiring it would drop it from the fleet list.
       if (existing.availabilityStatus === 'deployed') {
         throw new ConflictException({ error: 'equipment_deployed', equipmentId });
       }
@@ -335,8 +313,7 @@ export class FleetService {
       await tx.insert(auditLogs).values({
         tenantId: ctx.tenantId,
         actorId: ctx.userId,
-        // 'DELETE' rather than 'RETIRE' so the audit trail reads with every
-        // other row; the retire is the implementation of the delete verb.
+        // 'DELETE' so the audit trail reads with every other row; the retire implements the delete verb.
         action: 'DELETE',
         entity: 'equipment',
         entityId: equipmentId,
@@ -346,9 +323,6 @@ export class FleetService {
     });
   }
 
-  // Records the Storage object key for an equipment photo. The caller has
-  // already validated and uploaded the bytes; the key is built from the
-  // verified ctx.tenantId, never from request input.
   async setPhoto(ctx: RequestContext, equipmentId: string, key: string): Promise<EquipmentResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [updated] = await tx
@@ -361,7 +335,6 @@ export class FleetService {
     });
   }
 
-  // GET /api/v1/equipment/:id/maintenance (SDD §4).
   async maintenanceDetail(
     ctx: RequestContext,
     equipmentId: string,
@@ -417,13 +390,7 @@ export class FleetService {
     });
   }
 
-  // POST /api/v1/equipment/:id/maintenance-logs (SDD §4). Recording a log
-  // advances the threshold countdown so the PM cron stops re-firing for
-  // this unit until it accrues another full interval; this is the human
-  // action that closes the notification loop (SDD §4, jobs/src/maintenance-notify.ts
-  // never mutates state itself). Only advances an EXISTING schedule row --
-  // creating one is out of scope for this pass (a schedule is seeded per
-  // unit; see packages/db/src/seed/anchor.ts).
+  // Advances an EXISTING schedule's countdown so the PM cron stops re-firing; the cron never mutates state itself.
   async recordMaintenanceLog(
     ctx: RequestContext,
     equipmentId: string,
@@ -488,8 +455,6 @@ export class FleetService {
     });
   }
 
-  // POST /api/v1/equipment/:id/maintenance-schedules. The first due point is
-  // one interval from the unit's current meter reading.
   async createSchedule(
     ctx: RequestContext,
     equipmentId: string,
@@ -522,7 +487,6 @@ export class FleetService {
     });
   }
 
-  // POST /equipment/:id/maintenance-windows.
   async createMaintenanceWindow(ctx: RequestContext, equipmentId: string, body: MaintenanceWindowCreateRequest) {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select().from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
@@ -549,9 +513,7 @@ export class FleetService {
     });
   }
 
-  // DELETE /equipment/:id/maintenance-schedules/:scheduleId. An admin
-  // clears a duplicate or starts a fresh plan. Past service logs stay (they
-  // are history) and just lose their link to the removed schedule.
+  // Past service logs stay (history) and just lose their link to the schedule.
   async deleteSchedule(ctx: RequestContext, equipmentId: string, scheduleId: string) {
     return withTenantTx(ctx, async (tx) => {
       const [existing] = await tx
@@ -574,8 +536,6 @@ export class FleetService {
     });
   }
 
-  // PATCH /equipment/:id/maintenance-windows/:windowId. Extend (or shorten)
-  // a block; it still frees on its own once the new end passes.
   async extendMaintenanceWindow(ctx: RequestContext, equipmentId: string, windowId: string, body: MaintenanceWindowExtendRequest) {
     return withTenantTx(ctx, async (tx) => {
       const [existing] = await tx
@@ -599,8 +559,6 @@ export class FleetService {
     });
   }
 
-  // GET /equipment/maintenance-windows/ending-soon. Blocks in force or
-  // starting that end within two days: the admin's cue to extend.
   async windowsEndingSoon(ctx: RequestContext): Promise<MaintenanceWindowEndingSoon[]> {
     return withTenantTx(ctx, async (tx) => {
       const now = new Date();
@@ -615,39 +573,27 @@ export class FleetService {
     });
   }
 
-  // GET /equipment/:id/report. Built from what is already recorded: EDTR
-  // hours (not failed), the tenant's fuel burn per hour, the unit's
-  // assignments with their accepted quote line, maintenance logs and
-  // blocks, and the weather events that name it.
   async report(ctx: RequestContext, equipmentId: string): Promise<EquipmentReportResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [unit] = await tx.select().from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
       if (!unit) throw new NotFoundException({ error: 'equipment_not_found' });
 
-      const since = new Date();
-      since.setMonth(since.getMonth() - 5, 1);
-      const month = sql<string>`to_char(${edtr.reportDate}, 'YYYY-MM')`;
-      const hourRows = await tx
-        .select({ month, hours: sql<string>`coalesce(sum(${edtrLineItems.hoursActive}), 0)` })
-        .from(edtrLineItems)
-        .innerJoin(edtr, eq(edtr.id, edtrLineItems.edtrId))
-        .where(and(eq(edtr.equipmentId, equipmentId), ne(edtr.status, 'hard_failed'), gte(edtr.reportDate, since.toISOString().slice(0, 10))))
-        .groupBy(month);
-      const [allHours] = await tx
-        .select({ hours: sql<string>`coalesce(sum(${edtrLineItems.hoursActive}), 0)` })
-        .from(edtrLineItems)
-        .innerJoin(edtr, eq(edtr.id, edtrLineItems.edtrId))
-        .where(and(eq(edtr.equipmentId, equipmentId), ne(edtr.status, 'hard_failed')));
+      const days = await approvedDays(tx, eq(edtr.equipmentId, equipmentId));
       const [params] = await tx.select({ fuel: pricingParameters.fuelLPerHour }).from(pricingParameters).orderBy(desc(pricingParameters.effectiveFrom)).limit(1);
       const fuel = params ? Number(params.fuel) : null;
       const litres = (hours: number) => (fuel === null ? null : round2HalfUp(hours * fuel));
 
-      const byMonth = new Map(hourRows.map((row) => [row.month, Number(row.hours)]));
+      const byMonth = new Map<string, number>();
+      for (const day of days) {
+        const key = day.reportDate.slice(0, 7);
+        byMonth.set(key, (byMonth.get(key) ?? 0) + day.hours.running);
+      }
       const months: EquipmentReportResponse['months'] = [];
+      // Manila's current month, not the server's: report dates are Manila days.
+      const [year, month] = manilaDate(new Date()).split('-').map(Number) as [number, number];
       for (let i = 5; i >= 0; i--) {
-        const d = new Date();
-        d.setMonth(d.getMonth() - i, 1);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const d = new Date(Date.UTC(year, month - 1 - i, 1));
+        const key = d.toISOString().slice(0, 7);
         const hours = round2HalfUp(byMonth.get(key) ?? 0);
         months.push({ month: key, hours, fuelLitres: litres(hours) });
       }
@@ -659,8 +605,6 @@ export class FleetService {
         .leftJoin(customers, eq(customers.id, rentals.customerId))
         .where(and(eq(equipmentAssignments.equipmentId, equipmentId), ne(equipmentAssignments.status, 'cancelled')))
         .orderBy(desc(equipmentAssignments.start));
-      // What the unit was quoted on each rental: its type's line on the
-      // accepted quote, per unit.
       const rentalIds = assignments.map((a) => a.rentalId);
       const quoteLines = rentalIds.length
         ? await tx
@@ -699,7 +643,7 @@ export class FleetService {
         return row?.n ?? 0;
       };
 
-      const totalHours = round2HalfUp(Number(allHours?.hours ?? 0));
+      const totalHours = round2HalfUp(days.reduce((sum, day) => sum + day.hours.running, 0));
       return {
         equipmentId,
         model: unit.model,
@@ -725,7 +669,6 @@ export class FleetService {
     });
   }
 
-  // DELETE /equipment/:id/maintenance-windows/:windowId.
   async deleteMaintenanceWindow(ctx: RequestContext, equipmentId: string, windowId: string) {
     return withTenantTx(ctx, async (tx) => {
       const [deleted] = await tx
@@ -744,8 +687,7 @@ export class FleetService {
     });
   }
 
-  // GET /equipment/:id/availability?from&to. Per-day free/taken for the
-  // booking pickers; POST /bookings re-checks at write time.
+  // POST /bookings re-checks at write time.
   async availability(ctx: RequestContext, equipmentId: string, query: AvailabilityQuery): Promise<AvailabilityResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select({ id: equipment.id }).from(equipment).where(eq(equipment.id, equipmentId)).limit(1);
@@ -755,7 +697,6 @@ export class FleetService {
     });
   }
 
-  // GET/PUT /tenant-calendar: business hours + holidays/blackouts.
   getCalendar(ctx: RequestContext): Promise<TenantCalendar | null> {
     return withTenantTx(ctx, (tx) => readCalendar(tx));
   }
@@ -778,9 +719,6 @@ export class FleetService {
     return body;
   }
 
-  // PATCH /api/v1/equipment/:id/runtime. Manual hour-meter correction, the
-  // second hour source beside approved field logs. The reason is kept on the
-  // append-only audit row.
   async correctRuntime(ctx: RequestContext, equipmentId: string, body: RuntimeCorrectionRequest) {
     return withTenantTx(ctx, async (tx) => {
       const [existing] = await tx
@@ -812,30 +750,18 @@ export class FleetService {
     });
   }
 
-  // GET /api/v1/reports/utilization?from=&to= (SDD §4). `runtime_hours` per
-  // unit is the cumulative equipment.runtime_hours column (fed by the
-  // approved-EDTR accrual in edtr.service.ts); `utilization_pct` is scoped
-  // to the report period via edtr/edtr_line_items, matching the SDD's
-  // "aggregates equipment.runtime_hours AND edtr/edtr_line_items over the
-  // period" wording -- the two sources answer different questions
-  // (lifetime total vs period activity), not the same one twice.
+  // runtime_hours is the lifetime total; utilization_pct is scoped to the period via edtr line items.
   async utilizationReport(
     ctx: RequestContext,
     query: UtilizationQuery,
   ): Promise<UtilizationReportResponse> {
-    const to = query.to ?? new Date().toISOString().slice(0, 10);
+    const to = query.to ?? manilaDate(new Date());
     const from = query.from ?? defaultFromDate(to, DEFAULT_REPORT_WINDOW_DAYS);
 
     return withTenantTx(ctx, async (tx) => {
       const equipmentRows = await tx.select().from(equipment);
       const scheduleRows = await tx.select().from(maintenanceSchedules);
-      const hoursRows = await tx
-        .select({ equipmentId: edtr.equipmentId, hoursActive: edtrLineItems.hoursActive })
-        .from(edtr)
-        .innerJoin(edtrLineItems, eq(edtrLineItems.edtrId, edtr.id))
-        .where(
-          and(eq(edtr.status, 'reconciled'), gte(edtr.reportDate, from), lte(edtr.reportDate, to)),
-        );
+      const days = await approvedDays(tx, and(gte(edtr.reportDate, from), lte(edtr.reportDate, to)));
 
       const runtimeById = new Map(equipmentRows.map((row) => [row.id, Number(row.runtimeHours)]));
       // Due when ANY task schedule is crossed, not just the newest one.
@@ -848,11 +774,8 @@ export class FleetService {
       );
 
       const activeHoursByEquipment = new Map<string, number>();
-      for (const row of hoursRows) {
-        activeHoursByEquipment.set(
-          row.equipmentId,
-          (activeHoursByEquipment.get(row.equipmentId) ?? 0) + Number(row.hoursActive),
-        );
+      for (const day of days) {
+        activeHoursByEquipment.set(day.equipmentId, (activeHoursByEquipment.get(day.equipmentId) ?? 0) + day.hours.running);
       }
 
       const totalPossibleHours = daysBetweenInclusive(from, to) * BUSINESS_HOURS_PER_DAY;
@@ -875,15 +798,11 @@ export class FleetService {
     });
   }
 
-  // GET /api/v1/reports/financial?from=&to= (QAD-T8: "utilization AND
-  // financial summaries"; only the utilization half existed before this
-  // pass). Aggregates invoices/payments over the period -- read-only, same
-  // report:read gate and default 30-day window as utilizationReport.
   async financialReport(
     ctx: RequestContext,
     query: UtilizationQuery,
   ): Promise<FinancialReportResponse> {
-    const to = query.to ?? new Date().toISOString().slice(0, 10);
+    const to = query.to ?? manilaDate(new Date());
     const from = query.from ?? defaultFromDate(to, DEFAULT_REPORT_WINDOW_DAYS);
 
     return withTenantTx(ctx, async (tx) => {
@@ -892,8 +811,8 @@ export class FleetService {
         .from(invoices)
         .where(
           and(
-            gte(invoices.createdAt, new Date(`${from}T00:00:00Z`)),
-            lte(invoices.createdAt, new Date(`${to}T23:59:59.999Z`)),
+            gte(invoices.createdAt, new Date(`${from}T00:00:00+08:00`)),
+            lt(invoices.createdAt, new Date(new Date(`${to}T00:00:00+08:00`).getTime() + 86_400_000)),
           ),
         );
 

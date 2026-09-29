@@ -1,20 +1,12 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
 import { apiGet, apiPost } from '../lib/api-client.js';
 import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { explainEdtrError } from '../lib/edtr-error.js';
-import {
-  formatDate,
-  formatHours,
-  formatLogSource,
-  formatPeso,
-  formatStatus,
-  shortCode,
-  siteName,
-} from '../lib/format.js';
-import { Button } from '../components/button.js';
+import { addDaysIso, formatDate, formatHours, formatLogSource, formatPeso, formatStatus, isUuid, shortCode, siteName } from '../lib/format.js';
+import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { BookingCode } from '../components/booking-code.js';
@@ -24,19 +16,12 @@ import { CaptureModal } from '../components/capture-modal.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { PageHeader } from '../components/page-header.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
-import { AlertIcon, CheckIcon, ClockIcon, XCircleIcon } from '../components/icons.js';
 import { EmptyState } from '../components/empty-state.js';
-import { ClipboardList } from 'lucide-react';
+import { Check, CircleX, ClipboardList, Clock, TriangleAlert } from 'lucide-react';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { useToast } from '../components/toast.js';
 
-// The day's work, as the office sees it: a queue of field logs with the ones
-// needing a decision at the top. Recording a log and approving one are both
-// modals opened from here, so nobody has to copy an identifier between two
-// standing forms -- which is what the previous version of this screen asked
-// for, and why its Approve button only worked on a log captured seconds
-// earlier.
 const APPROVABLE = new Set(['matched', 'discrepancy']);
 
 interface EdtrListItem {
@@ -54,8 +39,7 @@ interface EdtrListItem {
   } | null;
 }
 
-// Reconciliation states read differently from record states: 'pending' here
-// means "the second log has not arrived", not "queued for processing".
+// 'pending' here means the second log has not arrived, not queued for processing.
 const MATCH_LABELS: Record<string, string> = {
   pending: 'Waiting for the second log',
   single_source: 'Waiting for the second log',
@@ -71,12 +55,12 @@ function matchLabel(status: string): string {
 
 function statusPill(status: string): { tone: StatusTone; icon: ReactNode } {
   if (status === 'reconciled')
-    return { tone: 'recon-match', icon: <CheckIcon className="h-4 w-4" aria-hidden /> };
+    return { tone: 'recon-match', icon: <Check className="h-4 w-4" aria-hidden /> };
   if (status === 'review')
-    return { tone: 'recon-review', icon: <AlertIcon className="h-4 w-4" aria-hidden /> };
+    return { tone: 'recon-review', icon: <TriangleAlert className="h-4 w-4" aria-hidden /> };
   if (status === 'hard_failed')
-    return { tone: 'recon-failed', icon: <XCircleIcon className="h-4 w-4" aria-hidden /> };
-  return { tone: 'recon-review', icon: <ClockIcon className="h-4 w-4" aria-hidden /> };
+    return { tone: 'recon-failed', icon: <CircleX className="h-4 w-4" aria-hidden /> };
+  return { tone: 'recon-review', icon: <Clock className="h-4 w-4" aria-hidden /> };
 }
 
 function MatchText({ row }: { row: EdtrListItem }) {
@@ -89,14 +73,6 @@ function MatchText({ row }: { row: EdtrListItem }) {
       {matchLabel(status)} ({formatHours(deltaHours)} apart)
     </span>
   );
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function addDaysIso(iso: string, days: number): string {
-  const date = new Date(`${iso}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
 }
 
 function EdtrPage() {
@@ -117,15 +93,14 @@ function EdtrPage() {
   const [approving, setApproving] = useState<EdtrListItem | null>(null);
   const [viewing, setViewing] = useState<EdtrListItem | null>(null);
 
-  const [offset, setOffset] = useState(0);
-  // A new filter starts from its first page.
-  useEffect(() => setOffset(0), [search.site, search.equipment, search.week, search.status]);
-  // Deep links from the dashboard's "Needs you" rows: one machine-week. The
-  // filter goes to the API, so the pager counts the filtered rows rather than
-  // filtering whichever page happened to load.
+  // A new filter starts from its first page, in the same render (no request at the old offset).
+  const filterKey = [search.site, search.equipment, search.week, search.status].join('|');
+  const [paging, setPaging] = useState({ key: filterKey, offset: 0 });
+  const offset = paging.key === filterKey ? paging.offset : 0;
+  const setOffset = (next: number) => setPaging({ key: filterKey, offset: next });
+  // The filter goes to the API, so the pager counts the filtered rows.
   const filters = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
   if (search.equipment) filters.set('equipmentId', search.equipment);
-  // The app bar's review-queue pill opens ?status=review (QA 27).
   if (search.status) filters.set('status', search.status);
   if (search.week) {
     filters.set('from', search.week);
@@ -150,9 +125,7 @@ function EdtrPage() {
     void queryClient.invalidateQueries({ queryKey: ['edtr'] });
   }
 
-  // Equipment and week filter on the server; the site is not an API
-  // filter, so it narrows the loaded page. One site runs many machines:
-  // pick the site, then the machine list narrows to the ones logged there.
+  // The site is not an API filter: it narrows only the loaded page.
   // ponytail: move site to an API param if a site's queue spans pages.
   const rentalById = useMemo(() => new Map(rentals.map((r) => [r.id, r])), [rentals]);
   const siteOf = (rentalId: string) => rentalById.get(rentalId)?.projectSiteId;
@@ -186,8 +159,6 @@ function EdtrPage() {
     return site ? siteName(site) : 'Unknown site';
   }
 
-  // Every rental group renders its own table; fixed widths keep their
-  // columns on the same lines down the page.
   const columns: TableColumn<EdtrListItem>[] = [
     {
       header: 'Machine',
@@ -372,7 +343,6 @@ function EdtrPage() {
         equipmentList={equipmentList}
         rentalLabel={rentalLabel}
         onCaptured={onCaptured}
-        toast={toast}
       />
 
       {viewing && (
@@ -407,7 +377,6 @@ function EdtrPage() {
   );
 }
 
-// Logs grouped by the rental (order) they bill against, in first-seen order.
 function groupByRental(items: EdtrListItem[]): [string, EdtrListItem[]][] {
   const groups = new Map<string, EdtrListItem[]>();
   for (const item of items) groups.set(item.rentalId, [...(groups.get(item.rentalId) ?? []), item]);
@@ -422,8 +391,6 @@ interface DepositSummary {
   hoursOrdered: number | null;
 }
 
-// One rental: hours billed vs hours ordered and what is left on the
-// deposit, with its logs underneath. Native <details> is the collapse.
 function RentalGroup({
   rentalId,
   label,
@@ -491,9 +458,6 @@ function RentalGroup({
 
 const drawerHeading = 'text-xs font-semibold text-text-muted';
 
-// One field log, read without leaving the queue (DSD drawer rule): what was
-// recorded, how it matched, and where it belongs -- the booking and the site
-// are links, the bill action hands off to the approve modal.
 function FieldLogDrawer({
   item,
   machine,
@@ -554,9 +518,7 @@ function FieldLogDrawer({
       footer={
         <div className="flex flex-wrap justify-end gap-2">
           {bookingCode && (
-            <Link to="/app/bookings" search={{ open: bookingCode }}>
-              <Button variant="ghost">Open booking</Button>
-            </Link>
+            <Link to="/app/bookings" search={{ open: bookingCode }} className={buttonClass('ghost')}>Open booking</Link>
           )}
           {canBill && (
             <Button variant="approve" onClick={onReview}>
@@ -577,8 +539,6 @@ function FieldLogDrawer({
     </Modal>
   );
 }
-
-// ------------------------------------------------------------------- approve
 
 interface ApproveModalProps {
   item: EdtrListItem;
@@ -617,10 +577,7 @@ function ApproveModal({ item, machine, onClose, onApproved, toast }: ApproveModa
       toast.success(
         'Hours billed to the deposit',
         deducted != null
-          ? `${machine}, ${formatDate(item.reportDate)} - ${new Intl.NumberFormat('en-PH', {
-              style: 'currency',
-              currency: 'PHP',
-            }).format(deducted)} deducted.${
+          ? `${machine}, ${formatDate(item.reportDate)} - ${formatPeso(deducted)} deducted.${
               res.deposit?.accrued ? ` ${formatPeso(res.deposit.accrued)} past the deposit goes on the weekly invoice.` : ''
             }`
           : undefined,
@@ -749,13 +706,12 @@ function ApproveModal({ item, machine, onClose, onApproved, toast }: ApproveModa
 export const edtrRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/ocr',
-  // Shapes the API accepts (uuid, YYYY-MM-DD); anything else is dropped
-  // rather than turned into a 400.
+  // Anything that is not a uuid or YYYY-MM-DD is dropped rather than sent as a 400.
   validateSearch: (
     search: Record<string, unknown>,
   ): { site?: string; equipment?: string; week?: string; status?: 'review' } => ({
-    ...(typeof search.site === 'string' && UUID.test(search.site) ? { site: search.site } : {}),
-    ...(typeof search.equipment === 'string' && UUID.test(search.equipment) ? { equipment: search.equipment } : {}),
+    ...(isUuid(search.site) ? { site: search.site } : {}),
+    ...(isUuid(search.equipment) ? { equipment: search.equipment } : {}),
     ...(typeof search.week === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(search.week) ? { week: search.week } : {}),
     ...(search.status === 'review' ? { status: 'review' as const } : {}),
   }),

@@ -31,8 +31,7 @@ describe('activeNavTarget', () => {
   const targets = ['/app', '/app/deployment', '/app/ocr', '/app/users'];
 
   it('marks only the most specific destination, not every ancestor', () => {
-    // The bug this replaces: `/app` also matched `/app/ocr` by prefix, so the
-    // section root and the page both showed as active.
+    // `/app` also matches `/app/ocr` by prefix; only the page may show active.
     expect(activeNavTarget(targets, '/app/ocr')).toBe('/app/ocr');
   });
 
@@ -52,8 +51,7 @@ describe('activeNavTarget', () => {
     expect(activeNavTarget(targets, '/account')).toBeNull();
   });
 
-  // The bug: `/account` is a prefix of every page in the section, so the cart,
-  // the checkout, the invoice and the company form all lit "Home".
+  // `/account` prefixes every page in its section; Home must not light on them.
   describe('a section root marked exact', () => {
     const accountNav = [
       { to: '/account', exact: true },

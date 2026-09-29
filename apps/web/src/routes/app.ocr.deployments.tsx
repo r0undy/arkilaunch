@@ -7,16 +7,9 @@ import { useScanDeployments } from '../lib/use-scan-deployments.js';
 import { CaptureModal } from '../components/capture-modal.js';
 import { DeploymentScanList } from '../components/deployment-scan-list.js';
 import { PageHeader } from '../components/page-header.js';
-import { useToast } from '../components/toast.js';
 import { Alert } from '../components/alert.js';
 
-// The screen a scan starts from: pick the deployment, then the camera opens
-// already scoped to it. Before this, capture was reached from the review
-// queue with the rental chosen in a dropdown inside the modal -- the same
-// two decisions, but in the order that makes a mis-picked rental easy.
-
-function DeploymentScanPage({ billingTo }: { billingTo?: string }) {
-  const toast = useToast();
+function DeploymentScanPage({ billingTo, submitOnly = false }: { billingTo?: string; submitOnly?: boolean }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { rentals, equipmentList, rentalLabel, error } = useScanDeployments();
@@ -48,10 +41,10 @@ function DeploymentScanPage({ billingTo }: { billingTo?: string }) {
         rentalLabel={rentalLabel}
         {...(scanRentalId ? { initialRentalId: scanRentalId } : {})}
         initialSource="paper_ocr"
+        submitOnly={submitOnly}
         onCaptured={() => {
           void queryClient.invalidateQueries({ queryKey: ['edtr'] });
         }}
-        toast={toast}
       />
     </div>
   );
@@ -63,10 +56,10 @@ export const appOcrDeploymentsRoute = createRoute({
   component: () => <DeploymentScanPage billingTo="/app/billing/weekly" />,
 });
 
-// The timekeeper's twin. Same screen, same permission on the server
-// (`edtr:create`); only the layout guard differs.
+// Same server permission (edtr:create); only the layout guard differs. Timekeepers lack edtr:read, so the
+// modal must not poll the log it just sent.
 export const fieldScanRoute = createRoute({
   getParentRoute: () => fieldLayoutRoute,
   path: '/field/scan',
-  component: () => <DeploymentScanPage />,
+  component: () => <DeploymentScanPage submitOnly />,
 });

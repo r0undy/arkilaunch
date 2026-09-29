@@ -5,25 +5,20 @@ import type { BookingDetailResponse, CheckoutMethod, CouponPreviewResponse } fro
 import { localPhMobile } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, companiesQueries } from '../lib/queries.js';
-import { ApiError, apiErrorText, apiPost } from '../lib/api-client.js';
+import { ApiError, apiErrorText, apiPost, followCheckout } from '../lib/api-client.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { EmptyState } from '../components/empty-state.js';
 import { StatusPill } from '../components/status-pill.js';
-import { AlertIcon } from '../components/icons.js';
+import { TriangleAlert } from 'lucide-react';
 import { formatDate, formatPeso, formatStatus, shortCode } from '../lib/format.js';
 
 type PaymentMethod = CheckoutMethod | 'manual';
 
-// Figma 168:2161 (Digital Bank) and 216:2049 (Bank Transfer). The frames
-// collect card numbers, a GCash login (168:3138) and an OTP (168:3214) in
-// this app. None of that is built on purpose: the customer picks a
-// channel here and PayMongo's hosted page runs the wallet or bank login
-// and the OTP, so no credential ever reaches ArkiLaunch (DSD §4.1 "Don't:
-// collect card data in-app") and there is no card-data compliance scope.
+// No card, wallet or OTP fields on purpose: PayMongo's hosted page takes them, so no credential reaches us.
 const METHODS: { id: PaymentMethod; title: string; description: string }[] = [
   { id: 'gcash', title: 'GCash', description: 'You log in to GCash and confirm with its OTP on the secure payment page.' },
   { id: 'paymaya', title: 'Maya', description: 'You log in to Maya and confirm on the secure payment page.' },
@@ -37,9 +32,7 @@ const METHODS: { id: PaymentMethod; title: string; description: string }[] = [
   },
 ];
 
-// What this checkout will charge, as the server will compute it: the
-// accepted quote plus deposit, or a reservation deposit when no quote
-// exists. Shown, never sent -- the API prices the charge itself.
+// Shown, never sent: the API prices the charge itself.
 export function amountDue(booking: BookingDetailResponse): { rent: number; deposit: number | null; total: number | null } {
   const quote = booking.quotation;
   if (quote?.status === 'accepted') {
@@ -124,8 +117,7 @@ function checkoutError(err: unknown): string {
   return apiErrorText(err);
 }
 
-// The customer names a code; the server says what it takes off (the rent
-// only) and checkout re-checks it. Nothing here computes money.
+// The server says what a code takes off (rent only); nothing here computes money.
 function CouponField({
   bookingId,
   applied,
@@ -195,15 +187,7 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
         void navigate({ to: '/account/invoices/$invoiceId', params: { invoiceId: data.invoiceId } });
         return;
       }
-      // With no payment provider configured the API answers with the stub
-      // adapter's placeholder ("about:blank?amount=..."), a successful
-      // response carrying a URL that is not a payment page. Check the
-      // destination is a real http(s) page before leaving the app.
-      if (/^https?:\/\//i.test(data.checkoutUrl)) {
-        window.location.assign(data.checkoutUrl);
-        return;
-      }
-      setUnavailable(true);
+      if (!followCheckout(data.checkoutUrl)) setUnavailable(true);
     },
   });
 
@@ -225,8 +209,8 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
             : `The rental team is checking ${company.companyName}'s documents. Your quote is safe; you will get a notification when payment opens.`
         }
         action={
-          <Link to="/account/companies">
-            <Button variant="primary">View company</Button>
+          <Link to="/account/companies/$companyId" params={{ companyId: company.id }} className={buttonClass('primary')}>
+            View company
           </Link>
         }
       />
@@ -239,9 +223,7 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
         title="Agree the price first"
         description="This booking has a quote you have not accepted yet. Accept it, or negotiate it, and then come back to pay."
         action={
-          <Link to="/account/negotiation/$bookingId" params={{ bookingId: booking.id }}>
-            <Button variant="primary">Go to negotiation</Button>
-          </Link>
+          <Link to="/account/negotiation/$bookingId" params={{ bookingId: booking.id }} className={buttonClass('primary')}>Go to negotiation</Link>
         }
       />
     );
@@ -354,9 +336,7 @@ function CheckoutPage() {
         title="Payment information"
         description="Choose how to settle this booking."
         actions={
-          <Link to="/account/bookings/$bookingId" params={{ bookingId }}>
-            <Button variant="ghost">Back</Button>
-          </Link>
+          <Link to="/account/bookings/$bookingId" params={{ bookingId }} className={buttonClass('ghost')}>Back</Link>
         }
       />
       <DataPanel
@@ -371,26 +351,20 @@ function CheckoutPage() {
   );
 }
 
-// PayMongo's cancel_url (set per session, back to this storefront). Reaching it means the
-// customer backed out or the wallet/bank declined -- nothing was charged,
-// and the webhook remains the authority either way.
+// PayMongo's cancel_url: nothing was charged, and the webhook stays the authority either way.
 function CheckoutFailedPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title="Payment not completed" />
       <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-4 p-6">
-        <StatusPill tone="recon-failed" label="Not paid" icon={<AlertIcon />} />
+        <StatusPill tone="recon-failed" label="Not paid" icon={<TriangleAlert className="size-full" />} />
         <p className="max-w-prose text-sm text-text-muted">
           The payment was cancelled or declined before it went through, so nothing was charged and your
           booking is unchanged. You can try again with the same or a different method.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Link to="/account/bookings">
-            <Button variant="primary">My bookings</Button>
-          </Link>
-          <Link to="/contact">
-            <Button variant="secondary">Get help</Button>
-          </Link>
+          <Link to="/account/bookings" className={buttonClass('primary')}>My bookings</Link>
+          <Link to="/contact" className={buttonClass('secondary')}>Get help</Link>
         </div>
       </Surface>
     </div>

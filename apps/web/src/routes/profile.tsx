@@ -7,7 +7,7 @@ import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { StatusPill } from '../components/status-pill.js';
-import { CheckIcon } from '../components/icons.js';
+import { Check } from 'lucide-react';
 import { formatDate, formatStatus, shortCode } from '../lib/format.js';
 
 function ProfileRow({ label, value }: { label: string; value: string }) {
@@ -21,11 +21,6 @@ function ProfileRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Figma 271:6855 (Admin Profile) and 360:4903 (Operator Profile). Both
-// frames show an editable profile card; GET /users/me is read-only and
-// there is no endpoint that writes a display name, avatar or phone number
-// back, so this shows the identity the JWT and the API actually agree on
-// and offers no edit affordance it cannot honour.
 function ProfilePage() {
   return (
     <div className="flex flex-col gap-5">
@@ -69,7 +64,7 @@ function ProfilePage() {
                 <StatusPill
                   tone={user.status === 'active' ? 'recon-approved' : 'recon-review'}
                   label={formatStatus(user.status)}
-                  icon={<CheckIcon />}
+                  icon={<Check className="size-full" />}
                 />
               </div>
               <ProfileRow label="Tenant" value={user.tenantName} />

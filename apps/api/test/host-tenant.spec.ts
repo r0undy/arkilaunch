@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { registerTenant } from '@arkilaunch/db';
+import { listCatalogEquipmentForSlug, registerTenant } from '@arkilaunch/db';
 import { AuthService } from '../src/auth/auth.service.js';
 import { RefreshTokenService } from '../src/auth/refresh-token.service.js';
 import { TotpService } from '../src/auth/totp.service.js';
@@ -23,6 +23,17 @@ describe('host-resolved storefront tenant', () => {
   it('names an active tenant and 404s an unknown one', async () => {
     await expect(catalog.getTenant('test-tenant-a')).resolves.toMatchObject({ name: expect.any(String) });
     await expect(catalog.getTenant(`nope-${randomUUID().slice(0, 8)}`)).rejects.toThrow(NotFoundException);
+  });
+
+  it('pages the storefront catalog in a stable order with no unit repeated or skipped', async () => {
+    const all = await listCatalogEquipmentForSlug('test-tenant-a', 100, 0);
+    expect(all.length).toBeGreaterThan(2);
+    const paged = [];
+    for (let offset = 0; offset < all.length; offset += 2) {
+      paged.push(...(await listCatalogEquipmentForSlug('test-tenant-a', 2, offset)));
+    }
+    expect(paged.map((r) => r.id)).toEqual(all.map((r) => r.id));
+    expect(new Set(paged.map((r) => r.id)).size).toBe(all.length);
   });
 
   it('serves nothing and refuses signup for a tenant still under review', async () => {

@@ -7,11 +7,7 @@ import {
   isLocalDatabaseUrl,
 } from '../src/seed/seed-identities.js';
 
-// These are the guardrails around the weak development credentials the
-// anchor seed writes. The seed bypasses UserPasswordSchema by hashing
-// directly, so the only thing standing between "admin"/"admin" and a live
-// multi-tenant database holding RA 10173 personal data is the host check
-// below. It gets a test.
+// The host check is the only thing between the weak seed credentials and a live database.
 describe('seed identities', () => {
   it('covers every role in ROLE_CODES exactly once', () => {
     const seeded = SEED_IDENTITIES.map((i) => i.role).sort();
@@ -97,6 +93,15 @@ describe('assertSeedTargetIsLocal', () => {
   it('allows a remote target behind the explicit override', () => {
     process.env.ALLOW_WEAK_SEED_CREDENTIALS = 'true';
     expect(() => assertSeedTargetIsLocal(REMOTE)).not.toThrow();
+  });
+
+  it('ignores SEED_PASSWORD for a fixed-password seed', () => {
+    process.env.SEED_PASSWORD = 'a'.repeat(20);
+    expect(() => assertSeedTargetIsLocal(REMOTE)).not.toThrow();
+    expect(() => assertSeedTargetIsLocal(REMOTE, { fixedPassword: true })).toThrow(/Refusing to seed development credentials/);
+    expect(() => assertSeedTargetIsLocal(LOCAL, { fixedPassword: true })).not.toThrow();
+    process.env.ALLOW_WEAK_SEED_CREDENTIALS = 'true';
+    expect(() => assertSeedTargetIsLocal(REMOTE, { fixedPassword: true })).not.toThrow();
   });
 
   it('only honours the override when it is exactly "true"', () => {

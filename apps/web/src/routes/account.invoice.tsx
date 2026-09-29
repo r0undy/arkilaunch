@@ -1,6 +1,6 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useState, type ReactElement } from 'react';
-import { apiErrorText, apiPost } from '../lib/api-client.js';
+import { apiErrorText, apiPost, followCheckout } from '../lib/api-client.js';
 import { useToast } from '../components/toast.js';
 import type { InvoiceDetailResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
@@ -8,9 +8,9 @@ import { invoicesQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
-import { CheckIcon, AlertIcon, ClockIcon } from '../components/icons.js';
+import { Check, Clock, TriangleAlert } from 'lucide-react';
 import { PrintFrame } from '../components/print-frame.js';
 import {
   condenseIds,
@@ -22,10 +22,10 @@ import {
 } from '../lib/format.js';
 
 const STATUS_META: Record<string, { tone: StatusTone; icon: ReactElement }> = {
-  paid: { tone: 'recon-approved', icon: <CheckIcon /> },
-  issued: { tone: 'recon-review', icon: <AlertIcon /> },
-  draft: { tone: 'recon-failed', icon: <ClockIcon /> },
-  void: { tone: 'recon-failed', icon: <ClockIcon /> },
+  paid: { tone: 'recon-approved', icon: <Check className="size-full" /> },
+  issued: { tone: 'recon-review', icon: <TriangleAlert className="size-full" /> },
+  draft: { tone: 'recon-failed', icon: <Clock className="size-full" /> },
+  void: { tone: 'recon-failed', icon: <Clock className="size-full" /> },
 };
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -37,13 +37,6 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// The Figma frame (168:2304) pairs a left summary card with a right address
-// card, then an itemized table whose header band and totals band share one
-// accent fill. That accent is the prototype's teal; Yardboard's structural
-// equivalent is --color-success, already used for a table header band on the
-// dashboard, so the layout carries over without importing the palette.
-// A weekly invoice (hours past the deposit) is paid the same two ways as a
-// booking: PayMongo, or cash at the office which staff then record.
 function PayWeekly({ invoiceId }: { invoiceId: string }) {
   const toast = useToast();
   const [pending, setPending] = useState<'online' | 'cash' | null>(null);
@@ -51,9 +44,8 @@ function PayWeekly({ invoiceId }: { invoiceId: string }) {
     setPending(cash ? 'cash' : 'online');
     try {
       const res = await apiPost<{ checkoutUrl: string | null }>(`/me/invoices/${invoiceId}/checkout`, cash ? { cash: true } : {});
-      // Only follow a real payment page; the stub adapter answers "about:blank?...".
-      if (res.checkoutUrl && /^https?:\/\//i.test(res.checkoutUrl)) window.location.assign(res.checkoutUrl);
-      else if (res.checkoutUrl) toast.error('Online payment is off', 'Online payment is not switched on in this environment, so nothing was charged.');
+      if (followCheckout(res.checkoutUrl)) return;
+      if (res.checkoutUrl) toast.error('Online payment is off', 'Online payment is not switched on in this environment, so nothing was charged.');
       else toast.success('Pay at the office', 'Staff will mark this invoice paid when they receive the cash.');
     } catch (err) {
       toast.error('Could not start the payment', apiErrorText(err));
@@ -121,10 +113,6 @@ function InvoiceDetail({ invoice }: { invoice: InvoiceDetailResponse }) {
           {invoice.invoiceType === 'weekly' && invoice.status === 'issued' && <PayWeekly invoiceId={invoice.id} />}
         </Surface>
 
-        {/* The prototype's billing/shipping address pair has no counterpart in
-            the API -- an invoice carries a rental, not an address. The slot
-            shows the deduction's evidence trail instead, which is what RFC-2
-            requires a customer be able to see behind a charge. */}
         <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-4 p-5">
           <h2 className="text-sm font-medium text-text-muted">
             Evidence for this charge
@@ -224,12 +212,7 @@ function AccountInvoicePage() {
         description="What was charged, and the evidence behind it."
         actions={
           <>
-            <Link to="/account/bookings" data-print-hide>
-              <Button variant="ghost">Back</Button>
-            </Link>
-            {/* The frame's "Download PDF" / "Print Statement" pair: print is
-                the browser's and needs no endpoint. A generated PDF does, so
-                it is left out rather than offered and broken. */}
+            <Link to="/account/bookings" data-print-hide className={buttonClass('ghost')}>Back</Link>
             <Button variant="secondary" data-print-hide onClick={() => window.print()}>
               Print statement
             </Button>

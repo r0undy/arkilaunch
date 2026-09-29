@@ -41,6 +41,12 @@ describe('redactAttributes', () => {
     expect(attrs['url.full']).toBe('https://api.arkilaunch.app/api/v1/edtr/9f3c1b2a-uuid');
   });
 
+  it('drops url.query outright', () => {
+    const attrs: Record<string, unknown> = { 'url.query': 'token=abc&signature=x', 'url.path': '/p' };
+    redactAttributes(attrs);
+    expect(attrs).toEqual({ 'url.path': '/p' });
+  });
+
   it('leaves non-sensitive, non-URL attributes untouched', () => {
     const attrs: Record<string, unknown> = { 'arkilaunch.tenant_id': 'abc-123', count: 5 };
     redactAttributes(attrs);

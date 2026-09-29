@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 
-// Copies a reference (booking code, serial number) so nobody retypes it into
-// a call, a chat or another screen. Says what it copied for screen readers.
 export function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
   return (

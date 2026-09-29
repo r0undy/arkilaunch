@@ -2,7 +2,7 @@ import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { storefrontLayoutRoute } from './_storefront.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { EquipmentSchematic } from '../components/equipment-schematic.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
@@ -21,8 +21,7 @@ function EquipmentDetailPage() {
   const { equipmentId } = equipmentDetailRoute.useParams();
   const navigate = useNavigate();
   const signedIn = Boolean(getAccessToken());
-  // Same lock as the catalog list: prices are public, renting is for
-  // verified companies (the API refuses the booking regardless).
+  // Renting is for verified companies; the API refuses the booking regardless.
   const { data: companies } = useQuery({ ...companiesQueries.mine(), enabled: signedIn });
   const rentLocked = Boolean(companies && !companies.some(isSelectableCompany));
   const {
@@ -32,8 +31,7 @@ function EquipmentDetailPage() {
     refetch,
   } = useQuery(catalogQueries.equipmentDetail(equipmentId));
 
-  // __root leaves this page's title alone; the model makes it specific, the
-  // same title the edge Worker writes (lib/brand.ts).
+  // The same title the edge Worker writes (lib/brand.ts).
   const tenantName = useTenantName();
   useEffect(() => {
     const title = equipment && tenantName ? pageTitle(`/equipment/${equipmentId}`, tenantName, equipment.model) : null;
@@ -62,9 +60,7 @@ function EquipmentDetailPage() {
           title="Equipment not found"
           description="That listing may have been rented out or removed."
           action={
-            <Link to="/equipment">
-              <Button variant="secondary">Back to equipments</Button>
-            </Link>
+            <Link to="/equipment" className={buttonClass('secondary')}>Back to equipments</Link>
           }
         />
       </div>
@@ -89,8 +85,7 @@ function EquipmentDetailPage() {
         />
       </div>
       {imageUrl && equipment.photoCredit && (
-        // A reference photo is credited to its source, never passed off as
-        // this unit (migration 0065).
+        // A reference photo is credited to its source, never passed off as this unit.
         <p className="-mt-4 text-xs text-text-muted">
           Reference photo:{' '}
           {equipment.photoSourceUrl ? (
@@ -108,7 +103,7 @@ function EquipmentDetailPage() {
         {equipment.rateValue != null && (
           <p className="mt-2 text-heading-md text-text" data-testid="equipment-price">
             {formatPeso(equipment.rateValue)}
-            <span className="text-sm font-normal text-text-muted"> / {equipment.rateType === 'daily' ? 'day' : 'hour'}</span>
+            <span className="text-sm font-normal text-text-muted"> / hour</span>
           </p>
         )}
       </div>
@@ -131,7 +126,7 @@ function EquipmentDetailPage() {
         disabled={unavailable}
         onClick={() => {
           if (rentLocked) {
-            void navigate({ to: '/account/companies' });
+            void navigate({ to: '/account/applications' });
             return;
           }
           addToCart({
@@ -141,9 +136,6 @@ function EquipmentDetailPage() {
             photoUri: equipment.photoUri,
             ...defaultRentalWindow(),
           });
-          // Same rule as the catalog dialog: a signed-out visitor is sent
-          // to login on purpose, with the cart as the redirect, rather than
-          // being bounced there by requireAuth() with no explanation.
           void navigate(
             signedIn
               ? { to: '/account/cart' }

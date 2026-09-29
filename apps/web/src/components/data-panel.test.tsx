@@ -143,8 +143,7 @@ describe('DataPanel', () => {
     await waitFor(() => expect(screen.getByText('x')).toBeInTheDocument());
     expect(queryFn).toHaveBeenCalledTimes(1);
 
-    // Re-render the parent with new props (the previous bug: a fresh inline
-    // fetcher identity on every render re-triggered the effect).
+    // Re-render with new props: a fresh inline options object must not refetch.
     rerender(
       <QueryClientProvider client={client}>
         <Wrapper tick={1} />

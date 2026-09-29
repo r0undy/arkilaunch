@@ -12,7 +12,6 @@ function count(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
 
-// "₱8,000.00/day × 12 days"; parts join with "+" (1 month + 15 days).
 export function rentText(parts: RentPart[]): string {
   return parts
     .map((part) => {
@@ -44,9 +43,6 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
   );
 }
 
-// The quote as both sides read it: each line with how it was charged, then
-// mobilization, demobilization, discount and total. Shared by the admin
-// quote builder, the customer's negotiation page and the printable quote.
 export function QuoteLines({ quote, typeName }: { quote: QuoteDetail; typeName?: (id: string) => string }) {
   return (
     <div className="flex flex-col gap-3">

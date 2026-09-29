@@ -1,25 +1,16 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-// Every list in the console rendered its whole result set. The API caps a
-// page at 100 rows, so a long list was not just unreadable -- it was silently
-// truncated with nothing on screen to say so.
-
-export const PAGE_SIZE = 20;
+export { PAGE_SIZE } from '../lib/queries.js';
 
 export interface PaginationProps {
-  /** Zero-based index of the first row on this page. */
   offset: number;
   limit: number;
-  /** Total rows matching the query, not the number on this page. */
   total: number;
   onOffsetChange: (offset: number) => void;
-  /** Plural noun for the rows, e.g. "field logs". */
   noun: string;
   busy?: boolean;
 }
 
-// Page numbers to show: always the first, last and the current page's
-// neighbours, with null marking a gap ("1 … 4 5 6 … 50").
 export function pageWindow(page: number, pages: number): (number | null)[] {
   const out: (number | null)[] = [];
   for (let n = 1; n <= pages; n++) {
@@ -37,8 +28,6 @@ export function Pagination({
   noun,
   busy = false,
 }: PaginationProps) {
-  // One page of results needs no controls; showing them implies there is
-  // somewhere else to go.
   if (total <= limit) return null;
 
   const first = offset + 1;
@@ -51,13 +40,9 @@ export function Pagination({
   const arrow =
     'inline-flex min-h-11 min-w-11 items-center justify-center rounded-sm text-text hover:bg-surface-sunk disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring';
 
-  // AWS Console table paging: the range, then ‹ page numbers ›, compact enough
-  // for a container toolbar.
   return (
     <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
       <p className="text-sm text-text-muted" aria-live="polite">
-        {/* The range, not just the page number: "showing 21-40 of 63" answers
-            "where am I" and "how much is there" in one line. */}
         Showing {first.toLocaleString('en-PH')}-{last.toLocaleString('en-PH')} of{' '}
         {total.toLocaleString('en-PH')} {noun}
       </p>

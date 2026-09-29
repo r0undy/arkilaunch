@@ -16,10 +16,7 @@ import { EdtrService } from '../src/edtr/edtr.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { ensurePaidDeposit } from './paid-deposit.js';
 
-// PRD-F2/F3 read surface backing S9 Billing & Deposit Ledger
-// (cr-arkilaunch-f9-read-surface.md). Uses a dedicated rental (not the
-// shared fixture rental other spec files deduct against) so the ledger's
-// exact numbers are deterministic under cross-file test concurrency.
+// A dedicated rental, so the ledger's exact numbers are deterministic whatever other specs left on the shared DB.
 describe('BillingService (PRD-F2/F3 read surface)', () => {
   const billing = new BillingService();
   const edtr = new EdtrService(new EventsService());
@@ -27,20 +24,11 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
   let adminCtxB: RequestContext;
   let equipmentIdA: string;
   let depositRentalId: string;
-  // Large enough that the file's own smaller deductions (test 1: 3400,
-  // evidence-trail test: 1700) never collide with each other across the
-  // shared depositRentalId, while still far below test 2's deliberate
-  // 4000-hour (PHP 3,400,000) over-the-cap attempt.
+  // Large enough that this file's own deductions never collide, far below test 2's over-the-cap attempt.
   const DEPOSIT_REQUIRED = 50000;
 
   beforeAll(async () => {
-    // QAD-T39 runtime gate (audit-ocr-money-path.md #8): this spec's
-    // fixtures carry a real model_id, i.e. model-extracted evidence, and
-    // a deduction from model output is refused unless the golden-set
-    // accuracy has been measured and met. These tests are about the
-    // reconciliation/deduction behaviour, not the accuracy gate, so they
-    // attest a passing measurement. money-path.spec.ts covers the
-    // unattested case failing closed.
+    // Fixtures are model-extracted, so attest a passing accuracy; money-path covers the unattested case.
     process.env.OCR_MEASURED_ACCURACY = '0.95';
     process.env.OCR_MEASURED_SAMPLES = '250';
     const url = process.env.DATABASE_URL_DIRECT;
@@ -53,14 +41,7 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     const tenantIdB = (tenantB as { id: string }).id;
     const [adminA] = await sql`select id from users where tenant_id = ${tenantIdA} and email = 'admin@test-tenant-a.test'`;
     const [adminB] = await sql`select id from users where tenant_id = ${tenantIdB} and email = 'admin@test-tenant-b.test'`;
-    // The equipment_type_id a rate card actually exists for (rate_cards is
-    // keyed by tenant+type, exactly one row per test-tenant seeded).
-    // Deliberately NOT `select ... from equipment ... limit 1`: this live,
-    // never-reset test project accumulates equipment rows from other spec
-    // files' runs (e.g. fleet-engine.spec.ts's own equipment_types lookup
-    // has the same unscoped-limit-1 shape and can resolve to a type with no
-    // rate card), and an unordered `limit 1` over a growing table is not
-    // guaranteed to return the same row every run.
+    // A type a rate card exists for; an unordered `limit 1` over the shared equipment table isn't stable.
     const [rateCardRow] = await sql`select equipment_type_id from rate_cards where tenant_id = ${tenantIdA} and equipment_id is null and rate_type = 'hourly' and (effective_to is null or effective_to > now()) order by effective_from limit 1`;
     const equipmentTypeIdA = (rateCardRow as { equipment_type_id: string }).equipment_type_id;
     const [customerA] = await sql`select id from customers where tenant_id = ${tenantIdA} and company_name like 'test-tenant-% Customer Co.' order by created_at limit 1`;
@@ -69,11 +50,7 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     adminCtxA = { tenantId: tenantIdA, userId: (adminA as { id: string }).id, role: 'admin' };
     adminCtxB = { tenantId: tenantIdB, userId: (adminB as { id: string }).id, role: 'admin' };
 
-    // A dedicated equipment unit (correctly rate-carded) and rental with
-    // its own quotation + rental_contracts chain (depositRequired=5000) so
-    // resolveDepositLedger has a real cap to measure against, and the
-    // deduction math is self-contained -- distinct from the shared fixture
-    // rental/equipment other spec files mutate concurrently.
+    // Dedicated, rate-carded unit and rental with a real contract deposit, isolated from other specs.
     await withTenantTx(adminCtxA, async (tx) => {
       const [equipmentRow] = await tx
         .insert(equipmentTable)
@@ -93,10 +70,7 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
           customerId: (customerA as { id: string }).id,
           projectSiteId: (siteA as { id: string }).id,
           status: 'active',
-          // 2019, so the "no rate card in force" day below (2019-06-01) is
-          // inside the rental: a field log outside it is refused outright
-          // (cr-arkilaunch-edtr-site-hub-approval.md), which is a different
-          // guard from the one that test is about.
+          // 2019, so the "no rate card in force" day below is inside the rental.
           startDate: new Date('2019-01-01T00:00:00Z'),
         })
         .returning();
@@ -119,14 +93,14 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
 
   // Simulates the paper_ocr counterpart directly (same technique as
   // edtr-engine.spec.ts) so a digital_entry capture reconciles to 'matched'.
-  async function insertExtractedPaperCounterpart(reportDate: string, hoursActive: number, hoursIdle: number) {
+  async function insertExtractedPaperCounterpart(reportDate: string, hoursActive: number, hoursIdle: number, equipmentId = equipmentIdA) {
     return withTenantTx(adminCtxA, async (tx) => {
       const [row] = await tx
         .insert(edtrTable)
         .values({
           tenantId: adminCtxA.tenantId,
           rentalId: depositRentalId,
-          equipmentId: equipmentIdA,
+          equipmentId,
           source: 'paper_ocr',
           reportDate,
           rawFileUri: 'storage://fixtures/billing-counterpart.jpg',
@@ -172,13 +146,7 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     expect(polled.reconciliation?.status).toBe('matched');
     const approved = await edtr.approve(adminCtxA, digital.id, { reconciliationId: polled.reconciliation!.id });
 
-    // Pins the rate, not just the direction of travel. The deduction must
-    // price at the seed card in force on report_date (850/hr), never at
-    // whichever card merely sorts newest: quotes-engine.spec.ts (QAD-T44/T48)
-    // leaves a permanent 999999/hr card, effective_from = now, on this
-    // tenant and equipment type in this shared, never-reset test project.
-    // Before edtr.service.ts filtered by effectiveness that card won the
-    // `order by effective_from desc` and priced this at 4 * 999999.
+    // Pins the rate in force on report_date (850/hr), not quotes-engine's permanent newest 999999/hr card.
     expect(approved.deposit.deducted).toBe(4 * 850);
 
     const after = await billing.depositLedger(adminCtxA, depositRentalId);
@@ -188,14 +156,7 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
   });
 
   it('rejects an approve where no rate card was in force on the report date, instead of deducting at zero', async () => {
-    // 2019 is before the seeded card's effective_from (2020-01-01) and long
-    // before the 999999 card quotes-engine.spec.ts leaves at effective_from
-    // = now, so rate cards exist for this equipment type but none covers
-    // the date. That state only became reachable once the deduction path
-    // started filtering by effectiveness; the danger is that it collapses
-    // into the same "no card" branch as an unconfigured equipment type and
-    // silently prices at 0, posting a zero-value deduction invoice that
-    // reads as a real approved one and under-bills the tenant.
+    // Cards exist for this type but none covers 2019; this must not silently price at 0.
     const reportDate = '2019-06-01';
     await insertExtractedPaperCounterpart(reportDate, 3, 0);
     const digital = await edtr.capture(adminCtxA, {
@@ -249,6 +210,21 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     expect(items.every((item) => item.rentalId === depositRentalId && item.invoiceType === 'deposit_deduction')).toBe(true);
   });
 
+  it('GET /invoices date filters are Manila days', async () => {
+    const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    const [row] = await sql`
+      insert into invoices (tenant_id, rental_id, invoice_type, amount, status, due_date, created_at)
+      values (${adminCtxA.tenantId}, ${depositRentalId}, 'deposit', 0, 'void', '2026-08-31T23:00:00Z', '2026-08-31T23:00:00Z')
+      returning id`;
+    await sql.end();
+    const id = (row as { id: string }).id;
+    const list = (from: string, to: string) =>
+      billing.listInvoices(adminCtxA, { rentalId: depositRentalId, from, to, limit: 50, offset: 0 }).then((r) => r.items.map((i) => i.id));
+
+    expect(await list('2026-09-01', '2026-09-01')).toContain(id);
+    expect(await list('2026-08-31', '2026-08-31')).not.toContain(id);
+  });
+
   // QAD-T23: cross-tenant read is denied by RLS itself, not an app-level filter.
   it('QAD-T23: a tenant B admin cannot read tenant A rental deposit ledger or invoices', async () => {
     await expect(billing.depositLedger(adminCtxB, depositRentalId)).rejects.toThrow(NotFoundException);
@@ -257,9 +233,56 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     const invoiceId = items[0]!.id;
     await expect(billing.getInvoice(adminCtxB, invoiceId)).rejects.toThrow(NotFoundException);
   });
-  // Phase 7 rollover: last in the file, because it takes this rental's
-  // deposit to zero. The part past the balance becomes an unbilled accrual
-  // for the weekly invoice instead of failing deposit_exhausted.
+  it('rejects an approve for a type whose only card is non-hourly, and posts no invoice', async () => {
+    const url = process.env.DATABASE_URL_DIRECT!;
+    const sql = postgres(url, { max: 1 });
+    try {
+      const [type] = await sql`insert into equipment_types (name) values (${`Daily Only Type ${Date.now()}`}) returning id`;
+      const typeId = (type as { id: string }).id;
+      const [unit] = await sql`
+        insert into equipment (tenant_id, equipment_type_id, model, serial_no)
+        values (${adminCtxA.tenantId}, ${typeId}, 'Daily Only Unit', ${`test-tenant-a-serial-daily-${Date.now()}`}) returning id
+      `;
+      const unitId = (unit as { id: string }).id;
+      const insertDaily = sql`
+        insert into rate_cards (tenant_id, equipment_type_id, rate_type, rate_value, currency, effective_from)
+        values (${adminCtxA.tenantId}, ${typeId}, 'daily', 8000.00, 'PHP', '2020-01-01')
+      `;
+      const [chk] = await sql`select 1 from pg_constraint where conname = 'rate_cards_hourly_only_chk'`;
+      // Once 0071 is applied a daily card can only be a legacy row, so the CHECK itself is the guard.
+      if (chk) {
+        await expect(insertDaily).rejects.toMatchObject({ code: '23514' });
+        return;
+      }
+      await insertDaily;
+
+      const reportDate = '2021-05-04';
+      await insertExtractedPaperCounterpart(reportDate, 3, 0, unitId);
+      const digital = await edtr.capture(adminCtxA, {
+        source: 'digital_entry',
+        rentalId: depositRentalId,
+        equipmentId: unitId,
+        reportDate,
+        lineItems: { hoursActive: 3, hoursIdle: 0 },
+      });
+      const polled = await edtr.get(adminCtxA, digital.id);
+      expect(polled.reconciliation?.status).toBe('matched');
+
+      const before = await billing.depositLedger(adminCtxA, depositRentalId);
+      const invoicesBefore = await billing.listInvoices(adminCtxA, { rentalId: depositRentalId, limit: 50, offset: 0 });
+      await expect(edtr.approve(adminCtxA, digital.id, { reconciliationId: polled.reconciliation!.id })).rejects.toMatchObject({
+        response: { error: 'rate_card_not_effective' },
+      });
+      const after = await billing.depositLedger(adminCtxA, depositRentalId);
+      expect(after.totalDeducted).toBe(before.totalDeducted);
+      const invoicesAfter = await billing.listInvoices(adminCtxA, { rentalId: depositRentalId, limit: 50, offset: 0 });
+      expect(invoicesAfter.total).toBe(invoicesBefore.total);
+    } finally {
+      await sql.end();
+    }
+  });
+
+  // Last in the file: it takes this rental's deposit to zero.
   it('an approve past the deposit deducts what is left and accrues the rest', async () => {
     const reportDate = '2021-05-02';
     // 4000 hours * 850/hr far exceeds the remaining balance.

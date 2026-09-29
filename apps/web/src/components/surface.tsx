@@ -19,7 +19,6 @@ const RADIUS_CLASSES: Record<SurfaceRadius, string> = {
   lg: 'rounded-lg',
 };
 
-// DESIGN.md §4 Surfaces: border-first structure, --color-surface bg, no backdrop-filter.
 export function Surface({ elevation = 'sm', radius = 'md', className = '', ...rest }: SurfaceProps) {
   return (
     <div

@@ -1,15 +1,5 @@
-# One-time bootstrap: creates the storage account + container that later
-# holds Terraform's remote state for environments/{dev,prod}. Applied
-# manually, ONCE per Azure subscription, with LOCAL state (chicken-and-egg --
-# this can't itself use the remote backend it's creating). Never run by CI.
-#
-# Usage:
-#   cd infra/terraform/bootstrap
-#   terraform init
-#   terraform apply -var subscription_id=<sub-id> -var github_subject_prefix=<prefix>
-#
-# After apply, note the storage_account_name output and put it in
-# environments/{dev,prod}/main.tf's backend "azurerm" block.
+# One-time remote-state bootstrap, applied by hand with LOCAL state (it can't use
+# the backend it creates). Never run by CI.
 
 terraform {
   required_version = ">= 1.9"
@@ -64,8 +54,7 @@ resource "azurerm_resource_group" "state" {
   location = var.location
 }
 
-# GRS: state must survive a single-region outage independent of the
-# environments it describes.
+# GRS: state must survive a single-region outage.
 resource "azurerm_storage_account" "state" {
   name                     = "starkilaunchtfstate"
   resource_group_name      = azurerm_resource_group.state.name
@@ -97,21 +86,8 @@ output "resource_group_name" {
   value = azurerm_resource_group.state.name
 }
 
-# --- GitHub Actions deploy identity -------------------------------------
-#
-# `.github/workflows/deploy.yml` authenticates with OIDC federation, so there
-# is no long-lived Service Principal secret to rotate or leak. Declared here
-# rather than left as README prose because every Deploy run since 2026-08-06
-# failed at `azure/login`: the identity this describes had never been created
-# (docs/cr-arkilaunch-azure-di-provisioning.md section 6).
-#
-# A user-assigned managed identity, not an Entra app registration. Both can
-# carry a GitHub OIDC federated credential, but a managed identity is an ARM
-# resource created with subscription RBAC, while an app registration needs
-# directory privileges. The subscription lives in a tenant we do not
-# administer: it allows creating an app registration and then refuses to let
-# the creator own, modify or delete it, which fails the apply halfway and
-# strands the app. Subscription Owner is enough for everything below.
+# --- GitHub Actions deploy identity (OIDC, no long-lived secret) ---
+# Managed identity, not an app registration: this tenant won't let us own app registrations.
 
 resource "azurerm_resource_group" "identity" {
   name     = "rg-arkilaunch-identity"
@@ -124,39 +100,21 @@ resource "azurerm_user_assigned_identity" "github_deploy" {
   location            = azurerm_resource_group.identity.location
 }
 
-# Contributor at subscription scope: the workflow runs `terraform apply` for
-# whole environments, so it creates and destroys resource groups.
+# Subscription scope: apply creates and destroys whole resource groups.
 resource "azurerm_role_assignment" "github_deploy" {
   scope                = "/subscriptions/${var.subscription_id}"
   role_definition_name = "Contributor"
   principal_id         = azurerm_user_assigned_identity.github_deploy.principal_id
 }
 
-# Contributor is a management-plane role: it can read the storage account's
-# properties but not its blobs. `terraform init` lists blobs in the state
-# container to enumerate workspaces, which is a data-plane call, so without
-# this the backend fails with
-# `403 AuthorizationPermissionMismatch: listing blobs`.
-#
-# Scoped to the state account alone rather than the subscription. The
-# subscription-wide Contributor above is unavoidable (the workflow creates and
-# destroys whole environments); handing the same breadth to blob data would
-# give the deploy identity read and write over every storage account in a
-# subscription that hosts other people's work.
+# `terraform init` lists state blobs (data plane), which Contributor can't; scoped to the state account only.
 resource "azurerm_role_assignment" "github_deploy_state" {
   scope                = azurerm_storage_account.state.id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_user_assigned_identity.github_deploy.principal_id
 }
 
-# Subject must be the `environment:` form, not `ref:refs/heads/`, because both
-# jobs in deploy.yml declare `environment:`. The prefix in front of it comes
-# from GitHub (see var.github_subject_prefix) rather than from string
-# assembly here: with immutable subjects on, GitHub presents
-# `repo:<owner>@<owner-id>/<repo>@<repo-id>`, and a credential built from the
-# readable `repo:<owner>/<repo>` form never matches. Either mistake fails
-# closed at `azure/login`, the first silently and the second as
-# AADSTS700213.
+# `environment:` subject form, since deploy.yml jobs declare `environment:`; a mismatch fails as AADSTS700213.
 resource "azurerm_federated_identity_credential" "github_env" {
   for_each = toset(["dev", "prod"])
 
@@ -167,8 +125,7 @@ resource "azurerm_federated_identity_credential" "github_env" {
   subject                   = "${var.github_subject_prefix}:environment:${each.key}"
 }
 
-# Paste these into the GitHub `dev` and `prod` environments as variables, not
-# secrets: OIDC needs no client secret and neither value is sensitive.
+# GitHub environment variables, not secrets: neither value is sensitive.
 output "github_deploy_client_id" {
   value       = azurerm_user_assigned_identity.github_deploy.client_id
   description = "Set as the AZURE_CLIENT_ID environment variable in GitHub."

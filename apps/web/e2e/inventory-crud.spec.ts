@@ -2,16 +2,7 @@ import { test, expect } from '@playwright/test';
 import { signIn } from './sign-in.js';
 import { choose } from './select.js';
 
-// End-to-end cover for the inventory CRUD surface (Figma 292:1344,
-// 293:2668, 293:3256) against the real fleet endpoints.
-//
-// One test, one round trip: a machine is added, edited, and retired. Split
-// into three tests it would need three fixtures and leave two orphans in the
-// seeded tenant every run; as one journey it cleans up after itself, because
-// the retire IS the cleanup.
-//
-// The serial carries the run's timestamp: serials are unique per tenant, so
-// a fixed one would 409 on the second run against the same database.
+// One journey so the retire is the cleanup. The serial carries the run's timestamp: serials are unique per tenant.
 
 test('a machine can be added, edited and retired from the inventory', async ({ page }) => {
   const serial = `E2E-${Date.now()}`;
@@ -44,8 +35,7 @@ test('a machine can be added, edited and retired from the inventory', async ({ p
   const editDialog = page.getByRole('dialog');
   await expect(editDialog).toBeVisible();
 
-  // The serial is immutable once recorded -- migration 0026 REVOKEs UPDATE
-  // on the column, so the field must not offer to change it.
+  // The serial is immutable: UPDATE on the column is revoked.
   await expect(editDialog.getByLabel('Serial / ID number')).toBeDisabled();
 
   await editDialog.getByLabel('Equipment name').fill('E2E Backhoe II');
@@ -64,8 +54,6 @@ test('a machine can be added, edited and retired from the inventory', async ({ p
 
   await confirm.getByRole('button', { name: 'Delete asset' }).click();
 
-  // Gone from the fleet list. It still exists in the database -- a retire is
-  // not a delete -- but it has left every surface a machine can be booked
-  // from.
+  // Retired, not deleted: gone from every bookable surface.
   await expect(page.getByRole('group', { name: serial })).toBeHidden();
 });

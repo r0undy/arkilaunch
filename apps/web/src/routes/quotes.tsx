@@ -7,8 +7,8 @@ import { requireRole } from '../lib/guards.js';
 import { apiGet, apiPost, apiErrorText } from '../lib/api-client.js';
 import { getEquipmentTypes, getRateCards, type EquipmentTypeRef, type RateCardRef } from '../lib/reference-client.js';
 import type { QuoteDetail } from '../lib/queries.js';
-import { formatPeso, formatRateType, formatStatus, shortCode } from '../lib/format.js';
-import { Button } from '../components/button.js';
+import { formatPeso, formatStatus, isUuid, shortCode } from '../lib/format.js';
+import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
@@ -22,8 +22,6 @@ import { DieselPriceForm, PricingParametersForm, RateCardsPanel, RentalFeesForm 
 import { Tabs } from '../components/tabs.js';
 import { BanRulesEditor, SettingsEditor, TollsEditor, settingsQuery as truckSettingsQuery } from './app.trucks.js';
 
-// A quote line as the builder edits it: a catalog machine priced off its
-// type's rate card, or a free-text item the admin prices by hand.
 type EquipmentLine = {
   key: number;
   kind: 'equipment';
@@ -39,14 +37,9 @@ type Line = EquipmentLine | CustomLine;
 
 let nextKey = 1;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// ?bookingId= arrives from a booking in negotiation ("Revise quote"). With
-// no booking the page is the standard price book: quotes are never drawn up
-// per company; every booking is priced from the book automatically.
 function validateQuoteSearch(search: Record<string, unknown>): { bookingId?: string } {
   const out: { bookingId?: string } = {};
-  if (typeof search.bookingId === 'string' && UUID.test(search.bookingId)) out.bookingId = search.bookingId;
+  if (isUuid(search.bookingId)) out.bookingId = search.bookingId;
   return out;
 }
 
@@ -56,10 +49,6 @@ const PRICE_BOOK_TABS: Array<{ id: PriceBookTab; label: string }> = [
   { id: 'trucking', label: 'Trucking' },
 ];
 
-// The standard price book: one set of prices for every client and prospect.
-// Equipment rental is rate cards + operating costs + the fixed mobilization
-// and demobilization; trucking is its per-trip fees, extras and tolls. A
-// booking is quoted from here the moment it is made.
 function PriceBook() {
   const [tab, setTab] = useState<PriceBookTab>('rental');
   const truck = useQuery(truckSettingsQuery);
@@ -101,10 +90,25 @@ function hireDays(booking: BookingDetailResponse): number {
   return spans.length ? Math.max(1, Math.ceil(Math.max(...spans))) : 1;
 }
 
-// DESIGN.md §4.1 Quotation builder, now only for a booking in negotiation:
-// it starts from the booking's current quote (priced from the price book),
-// and staff meet the customer's counter-offer with an agreed line price or
-// a discount. Mobilization/demobilization stay the price book's.
+function QuoteFigures({ quote, typeName }: { quote: QuoteDetail; typeName: (id: string) => string }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap gap-3">
+        <GaugeReadout
+          label="Diesel price"
+          value={quote.dieselPrice.toFixed(2)}
+          unit="PHP/L"
+          stale={quote.priceStale}
+          staleLabel={`as of ${quote.dieselPriceDate}`}
+        />
+        <GaugeReadout label="Total" value={quote.total.toFixed(2)} unit="PHP" />
+      </div>
+      <QuoteLines quote={quote} typeName={typeName} />
+      <p className="text-sm text-text-muted">Status {formatStatus(quote.status)}.</p>
+    </div>
+  );
+}
+
 function NegotiatedQuote({ bookingId }: { bookingId: string }) {
   const toast = useToast();
   const [equipmentTypes, setEquipmentTypes] = useState<EquipmentTypeRef[]>([]);
@@ -114,12 +118,9 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
   const [customerId, setCustomerId] = useState('');
   const [projectSiteId, setProjectSiteId] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
-  // A fixed peso discount is how staff meet a customer's counter-offer.
   const [discount, setDiscount] = useState('0');
 
   const [result, setResult] = useState<QuoteDetail | null>(null);
-  // A preview is a decision point, so it opens over the form and carries
-  // Create draft in its own footer.
   const [previewOpen, setPreviewOpen] = useState(false);
   const [busy, setBusy] = useState<'preview' | 'create' | 'approve' | null>(null);
   const [confirmingApprove, setConfirmingApprove] = useState(false);
@@ -132,7 +133,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
     const card = cards.find((rc) => rc.equipmentTypeId === typeId);
     return {
       key: nextKey++, kind: 'equipment', equipmentTypeId: typeId, rateCardId: card?.id ?? '', quantity: '1',
-      duration: String(card?.rateType === 'hourly' ? days * 8 : days), agreed: '',
+      duration: String(days * 8), agreed: '',
     };
   }
 
@@ -141,8 +142,6 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
       .then(async ([et, rc]) => {
         setEquipmentTypes(et);
         setRateCards(rc);
-        // A revision is an edit of what the customer saw; with no quote yet
-        // (the price book could not price it), one line per booked span.
         const booking = await apiGet<BookingDetailResponse>(`/bookings/${bookingId}`);
         setCustomerId(booking.customerId);
         setProjectSiteId(booking.projectSiteId);
@@ -158,11 +157,10 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
               return { key: nextKey++, kind: 'custom', description: line.description ?? '', quantity: String(line.quantity), unitPrice: String(line.subtotal / line.quantity) };
             }
             const card = rc.find((r) => r.id === line.rateCardId) ?? rc.find((r) => r.equipmentTypeId === line.equipmentTypeId);
-            const hourly = card?.rateType === 'hourly';
             // A retired card can't price a new revision; fall back to the type's live one.
             return {
               key: nextKey++, kind: 'equipment', equipmentTypeId: line.equipmentTypeId ?? '', rateCardId: card?.id ?? '',
-              quantity: String(line.quantity), duration: String(hourly ? line.estimatedHours : hireDays(booking)), agreed: '',
+              quantity: String(line.quantity), duration: String(line.estimatedHours), agreed: '',
             };
           }),
         );
@@ -192,14 +190,12 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
         if (line.kind === 'custom') {
           return { kind: 'custom', description: line.description, quantity: Number(line.quantity), unitPricePhp: Number(line.unitPrice) };
         }
-        const hourly = rateCards.find((rc) => rc.id === line.rateCardId)?.rateType === 'hourly';
         return {
           kind: 'equipment',
           equipmentTypeId: line.equipmentTypeId,
           rateCardId: line.rateCardId,
           quantity: Number(line.quantity),
-          estimatedHours: hourly ? Number(line.duration) : 0,
-          ...(hourly ? {} : { days: Number(line.duration) }),
+          estimatedHours: Number(line.duration),
           ...(line.agreed ? { agreedSubtotalPhp: Number(line.agreed) } : {}),
         };
       }),
@@ -263,25 +259,6 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
     lines.length === 0 ||
     lines.some((line) => (line.kind === 'custom' ? !line.description.trim() || line.unitPrice === '' : !line.equipmentTypeId || !line.rateCardId));
 
-  function QuoteFigures({ quote }: { quote: QuoteDetail }) {
-    return (
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap gap-3">
-          <GaugeReadout
-            label="Diesel price"
-            value={quote.dieselPrice.toFixed(2)}
-            unit="PHP/L"
-            stale={quote.priceStale}
-            staleLabel={`as of ${quote.dieselPriceDate}`}
-          />
-          <GaugeReadout label="Total" value={quote.total.toFixed(2)} unit="PHP" />
-        </div>
-        <QuoteLines quote={quote} typeName={equipmentTypeName} />
-        <p className="text-sm text-text-muted">Status {formatStatus(quote.status)}.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -339,7 +316,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
                     {cardsFor(line.equipmentTypeId).length === 0 && <option value="">No rate card for this type</option>}
                     {cardsFor(line.equipmentTypeId).map((rc) => (
                       <option key={rc.id} value={rc.id}>
-                        {formatRateType(rc.rateType)}: {formatPeso(rc.rateValue)}
+                        {formatPeso(rc.rateValue)} / hour
                         {rc.equipmentId ? ` (unit ${shortCode('equipment', rc.equipmentId)})` : ''}
                       </option>
                     ))}
@@ -348,8 +325,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
                   <Input
                     numeric
                     id={`duration-${line.key}`}
-                    label={rateCards.find((rc) => rc.id === line.rateCardId)?.rateType === 'hourly' ? 'Hours' : 'Days'}
-                    hint={rateCards.find((rc) => rc.id === line.rateCardId)?.rateType === 'monthly' ? 'Whole months at the monthly rate, leftover days at the daily rate.' : undefined}
+                    label="Hours"
                     type="number"
                     min="0"
                     step="0.5"
@@ -415,7 +391,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
       {quoteId && result && (
         <Surface radius="md" elevation="sm" className="flex max-w-3xl flex-col gap-4 p-6">
           <h2 className="text-heading-md text-text">Revised quote</h2>
-          <QuoteFigures quote={result} />
+          <QuoteFigures quote={result} typeName={equipmentTypeName} />
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -426,10 +402,8 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
             >
               {result.status === 'approved' ? 'Approved' : 'Approve'}
             </Button>
-            <Link to="/app/quotes/$quoteId/print" params={{ quoteId }}>
-              <Button type="button" variant="secondary">
-                Print quote
-              </Button>
+            <Link to="/app/quotes/$quoteId/print" params={{ quoteId }} className={buttonClass('secondary')}>
+              Print quote
             </Link>
           </div>
         </Surface>
@@ -452,7 +426,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
           </>
         }
       >
-        {result && <QuoteFigures quote={result} />}
+        {result && <QuoteFigures quote={result} typeName={equipmentTypeName} />}
       </Modal>
       <ConfirmDialog
         open={confirmingApprove}
@@ -479,8 +453,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
 export const quotesRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/quotes',
-  // Every price-book endpoint needs pricing:manage, which owner lacks: an
-  // owner here got a page of forms that never loaded.
+  // Every price-book endpoint needs pricing:manage, which owner lacks.
   beforeLoad: requireRole('admin'),
   validateSearch: validateQuoteSearch,
   component: QuotesPage,

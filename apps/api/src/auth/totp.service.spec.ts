@@ -2,9 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { generate } from 'otplib';
 import { TotpService } from './totp.service.js';
 
-// PRD US-02/US-07: a round-trip proof that the otplib v13 functional API is
-// wired correctly (secret -> code -> verify), independent of any DB/HTTP
-// layer.
 describe('TotpService', () => {
   it('a code generated from a secret verifies against that same secret', async () => {
     const totp = new TotpService();

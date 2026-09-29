@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import type { EquipmentReportResponse } from '@arkilaunch/shared';
-import { apiErrorText, apiGet } from '../lib/api-client.js';
+import { equipmentQueries } from '../lib/queries.js';
+import { apiErrorText } from '../lib/api-client.js';
 import { formatDate, formatPeso, formatStatus } from '../lib/format.js';
 
 const heading = 'text-heading-md text-text';
@@ -20,13 +20,8 @@ function monthLabel(key: string) {
   return new Date(y!, m! - 1, 1).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' });
 }
 
-// One unit's working life at a glance: four numbers up top, the months
-// and the detail folded underneath so the admin opens only what they need.
 export function EquipmentReport({ equipmentId }: { equipmentId: string }) {
-  const report = useQuery({
-    queryKey: ['equipment', equipmentId, 'report'],
-    queryFn: () => apiGet<EquipmentReportResponse>(`/equipment/${equipmentId}/report`),
-  });
+  const report = useQuery(equipmentQueries.report(equipmentId));
   if (report.isPending) return <p className="text-sm text-text-muted">Loading report...</p>;
   if (report.isError) return <p className="text-sm text-error">{apiErrorText(report.error)}</p>;
   const r = report.data;

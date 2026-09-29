@@ -1,48 +1,21 @@
-// RFC-002 §2 (Locked) specifies the capture step as "a `paper_ocr` image
-// (compressed client-side)", and PRD-NFR8 / SDD NFR-7 / DSD §6 all repeat it:
-// the client compresses before upload so a 12MP phone photo does not cross a
-// 3 to 5 Mbps link whole. That compression was never built. This module is it.
-//
-// It also front-runs the server allowlist. A raw camera photo is routinely
-// HEIC, which apps/api/src/storage/upload-validation.ts refuses with
-// `unsupported_or_forged_content_type` AFTER the whole file has been uploaded.
-// Decoding and re-encoding here turns that into a JPEG the server accepts, or
-// into a local, readable refusal that costs no bandwidth at all.
-//
-// This is a convenience and a bandwidth guard, never a security control. The
-// server still sniffs magic bytes and enforces its own caps on every request;
-// nothing here is trusted by the API.
+import { MAX_UPLOAD_BYTES } from '@arkilaunch/shared';
 
-// MIRRORED PAIR: this cap must stay in step with MAX_UPLOAD_BYTES in
-// apps/api/src/storage/upload-validation.ts. The server is authoritative; this
-// copy exists only so the client can refuse early instead of wasting the
-// upload. The type allowlist is not mirrored: everything this module emits is
-// a JPEG, a WebP (only when a caller asks, which today is equipment photos) or
-// an untouched PDF, so the server's list has nothing to duplicate.
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+// Bandwidth guard only, never a security control: the server re-validates every upload.
 
-// A long edge of 2200px keeps handwriting legible for Azure DI while cutting a
-// 12MP photo to roughly a tenth of its bytes. The retry rung is what a very
-// dense or very noisy photo falls back to before we give up.
+// 2200px long edge keeps handwriting legible for Azure DI.
 const DEFAULT_MAX_EDGE = 2200;
 const DEFAULT_QUALITY = 0.82;
 const RETRY_MAX_EDGE = 1600;
 const RETRY_QUALITY = 0.7;
-// Floors for the stepping ladder below. Past these a photo is mush, and a
-// refusal is more honest than uploading it.
 const MIN_QUALITY = 0.5;
 const MIN_MAX_EDGE = 800;
 
 export type UploadImageType = 'image/jpeg' | 'image/webp';
 
 export interface PrepareUploadOptions {
-  /** Long-edge cap in px. Default 2200. */
   maxEdge?: number;
-  /** Encoder quality, 0..1. Default 0.82. */
   quality?: number;
-  /** Default JPEG. WebP falls back to JPEG where the browser cannot encode it. */
   type?: UploadImageType;
-  /** Byte cap the output must fit. Default MAX_UPLOAD_BYTES. */
   maxBytes?: number;
 }
 
@@ -63,8 +36,6 @@ export interface UploadProblem {
   readonly detail: string;
 }
 
-// Same shape explainEdtrError returns, so the existing toast call sites take
-// it unchanged.
 export function describeUploadProblem(error: unknown): UploadProblem {
   const code = error instanceof UploadPrepareError ? error.code : null;
   switch (code) {
@@ -101,9 +72,7 @@ async function encodeAtScale(
 ): Promise<File> {
   let bitmap: ImageBitmap;
   try {
-    // imageOrientation 'from-image' applies the EXIF rotation during decode,
-    // so a sideways phone photo is stored upright rather than travelling with
-    // an orientation tag the extractor ignores.
+    // Bake EXIF rotation in: the extractor ignores the orientation tag.
     bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   } catch {
     throw new UploadPrepareError('unreadable_image', 'the browser could not decode this image');
@@ -125,8 +94,7 @@ async function encodeAtScale(
 
     let outType = type;
     let blob = await encodeBlob(canvas, outType, quality);
-    // toBlob silently ignores a type it cannot encode and hands back a PNG
-    // (older Safari does this for WebP). Trust the blob, not the request.
+    // toBlob silently returns PNG for a type it cannot encode (older Safari, WebP).
     if (blob && outType !== 'image/jpeg' && blob.type !== outType) {
       outType = 'image/jpeg';
       blob = await encodeBlob(canvas, outType, quality);
@@ -141,10 +109,7 @@ async function encodeAtScale(
   }
 }
 
-// Turns whatever the camera or the file picker handed us into something the
-// API will accept, or throws an UploadPrepareError describing why it cannot.
-// Called with no options by EDTR and KYC: Azure DI reads exactly those bytes,
-// so the defaults are load-bearing and must not drift.
+// EDTR and KYC call this with no options: Azure DI reads exactly those bytes, so the defaults must not drift.
 export async function prepareUpload(file: File, options: PrepareUploadOptions = {}): Promise<File> {
   const {
     maxEdge = DEFAULT_MAX_EDGE,
@@ -153,8 +118,7 @@ export async function prepareUpload(file: File, options: PrepareUploadOptions = 
     maxBytes = MAX_UPLOAD_BYTES,
   } = options;
 
-  // A PDF is passed through untouched. Re-encoding one through a canvas would
-  // destroy it, and the KYC path legitimately accepts scanned corporate docs.
+  // A canvas re-encode would destroy a PDF.
   if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
     if (file.size > maxBytes) {
       throw new UploadPrepareError('file_too_large', 'pdf over the upload cap');
@@ -162,23 +126,17 @@ export async function prepareUpload(file: File, options: PrepareUploadOptions = 
     return file;
   }
 
-  // A file that does not even claim to be an image gets the clearer message.
-  // The decode below would refuse it anyway, so this only improves the copy.
   if (file.type !== '' && !file.type.startsWith('image/')) {
     throw new UploadPrepareError('unsupported_file_type', `content type ${file.type} is not accepted`);
   }
 
-  // One more rung down before giving up, rather than bouncing the user for a
-  // photo we could still have made fit.
   let edge = Math.min(maxEdge, RETRY_MAX_EDGE);
   let q = Math.min(quality, RETRY_QUALITY);
   const rungs: Array<[edge: number, quality: number]> = [
     [maxEdge, quality],
     [edge, q],
   ];
-  // A caller with its own byte cap (equipment photos, 1MB) keeps stepping
-  // down, quality first, then size. The default path stops after the retry:
-  // OCR is better served by a refusal than by a mushier sheet.
+  // Only a caller with its own byte cap steps further down: OCR is better served by a refusal than a mushier sheet.
   if (options.maxBytes !== undefined) {
     while (q > MIN_QUALITY) {
       q = Math.max(MIN_QUALITY, Math.round((q - 0.1) * 10) / 10);

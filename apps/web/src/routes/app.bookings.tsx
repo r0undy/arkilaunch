@@ -6,7 +6,7 @@ import { appLayoutRoute } from './_app.js';
 import { bookingsQueries, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
 import { PageHeader } from '../components/page-header.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass, chipClass } from '../components/button.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { WeeklyBillingCard } from './statement.js';
@@ -21,10 +21,6 @@ import { BOOKING_STATUSES, bookingCodeSearchPrefix, parseBookingCode } from '@ar
 import { formatDate, formatDateTime, formatPeso, formatStatus, siteName } from '../lib/format.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
-
-// The staff side of the customer journey: every rental and truck trip, one
-// tab per service, each paged on the server. A row opens the booking
-// drawer, where the negotiation and every action live.
 
 const RENTAL_COLUMNS: TableColumn<BookingSummaryResponse>[] = [
   { header: 'Booking', kind: 'text', cell: (b) => <BookingCode code={b.code} /> },
@@ -49,8 +45,6 @@ const RENTAL_COLUMNS: TableColumn<BookingSummaryResponse>[] = [
   },
 ];
 
-// QA 27: the rental list's status chips. "New requests" are unpaid
-// ('pending'); the rest follow the booking through payment and delivery.
 const STATUS_CHIPS: { id: BookingStatus | undefined; label: string }[] = [
   { id: undefined, label: 'All' },
   { id: 'pending', label: 'New requests' },
@@ -60,11 +54,6 @@ const STATUS_CHIPS: { id: BookingStatus | undefined; label: string }[] = [
   { id: 'cancelled', label: 'Cancelled' },
 ];
 
-const chip = (active: boolean) =>
-  [
-    'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
-    active ? 'border-accent bg-accent text-white' : 'border-border bg-surface text-text hover:bg-surface-sunk',
-  ].join(' ');
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const TRUCK_COLUMNS: TableColumn<TruckRequestResponse>[] = [
@@ -90,9 +79,6 @@ const TRUCK_COLUMNS: TableColumn<TruckRequestResponse>[] = [
   { header: 'Status', kind: 'status', cell: (t) => <StatusBadge status={t.status} /> },
 ];
 
-// ?open=EQR-2026-0001 deep-links the drawer (notifications, the site hub,
-// the app bar's code box); ?service=truck opens on the Trucks tab. The
-// rental filters live here too, so Back and a shared link keep them.
 export interface BookingsSearch {
   service?: Service;
   open?: string;
@@ -122,7 +108,6 @@ function BookingsPage() {
   const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState('');
   const codePrefix = bookingCodeSearchPrefix(search) ?? '';
-  // A code names its service, so typing TRK- flips to the Trucks tab.
   const service: Service = codePrefix.startsWith('TRK') ? 'truck' : codePrefix.startsWith('EQR') ? 'rental' : (fromUrl ?? 'rental');
   const setService = (next: Service) => {
     setOffset(0);
@@ -130,7 +115,6 @@ function BookingsPage() {
     void navigate({ search: (prev) => ({ ...prev, service: next }), replace: true });
   };
 
-  // Rentals search codes or a company name; trucks search codes only.
   const rentalQuery = codePrefix || search.trim();
   const filters = { ...(status ? { status: [status] } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(sort ? { sort } : {}) };
   const setFilters = (patch: { [K in 'status' | 'from' | 'to' | 'sort']?: BookingsSearch[K] | undefined }) => {
@@ -148,8 +132,6 @@ function BookingsPage() {
   const trucks = useQuery({ ...trucksQueries.list(PAGE_SIZE, offset, codePrefix), enabled: service === 'truck' });
   const openTrucks = useQuery(trucksQueries.list(1, 0, '', 'open'));
 
-  // The drawer is addressed by code in the URL, so a notification or the
-  // site hub can open it and the back button closes it.
   const openCode = open ? parseBookingCode(open) : null;
   const openRental = useQuery({ ...bookingsQueries.list(1, 0, open ?? ''), enabled: openCode?.service === 'rental' });
   const openTruck = useQuery({ ...trucksQueries.list(1, 0, open ?? ''), enabled: openCode?.service === 'truck' });
@@ -194,7 +176,7 @@ function BookingsPage() {
                   const counts = rentals.data?.statusCounts;
                   const n = counts ? (c.id ? (counts[c.id] ?? 0) : Object.values(counts).reduce((a, b) => a + b, 0)) : null;
                   return (
-                    <button key={c.label} type="button" aria-pressed={status === c.id} className={chip(status === c.id)} onClick={() => setFilters({ status: c.id })}>
+                    <button key={c.label} type="button" aria-pressed={status === c.id} className={chipClass(status === c.id)} onClick={() => setFilters({ status: c.id })}>
                       {c.label}
                       {n !== null && <span className="ml-1.5 tabular-nums opacity-80">{n}</span>}
                     </button>
@@ -230,9 +212,7 @@ function BookingsPage() {
         title="Bookings"
         description="Equipment rentals and truck service requests. Open one to negotiate, confirm and move it along."
         actions={
-          <Link to="/app/quotes">
-            <Button variant="secondary">Price book</Button>
-          </Link>
+          <Link to="/app/quotes" className={buttonClass('secondary')}>Price book</Link>
         }
       />
       <Tabs
@@ -282,9 +262,7 @@ function BookingPage() {
         title={booking.data ? `Booking ${booking.data.code}` : 'Booking'}
         {...(booking.data ? { description: formatStatus(booking.data.status) } : {})}
         actions={
-          <Link to="/app/bookings">
-            <Button variant="ghost">All bookings</Button>
-          </Link>
+          <Link to="/app/bookings" className={buttonClass('ghost')}>All bookings</Link>
         }
       />
       {booking.isError && <Alert type="error">{apiErrorText(booking.error)}</Alert>}

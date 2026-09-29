@@ -1,9 +1,6 @@
 import type { ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
 
-// Cloudscape Expandable section: detail a page keeps but does not lead with
-// (DSD §4, CR: console-components). A native <details>, so it opens by
-// keyboard and find-in-page with no script.
 export function ExpandableSection({
   header,
   defaultOpen = false,

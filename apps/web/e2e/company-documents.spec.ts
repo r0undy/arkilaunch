@@ -2,9 +2,7 @@ import { test, expect } from '@playwright/test';
 import { signInAsCustomer } from './sign-in.js';
 import { choose } from './select.js';
 
-// CR truck-booking-and-kyc-docs: the primary registration is a BIR COR or an
-// SEC certificate picked from a dropdown; DTI is optional and secondary.
-// Needs the seeded anchor tenant and the API.
+// Needs the seeded anchor tenant (`pnpm db:seed`) and the API running.
 
 const STORAGE_UNAVAILABLE = Boolean(process.env.CI);
 
@@ -64,7 +62,6 @@ test.describe('company documents', () => {
     if (STORAGE_UNAVAILABLE) return;
     await expect(page.getByText('Company added')).toBeVisible({ timeout: 180_000 });
 
-    // The company page lists each document under its own type.
     await page.goto('/account/applications');
     await page.getByRole('group', { name }).getByRole('link', { name: /manage/i }).click();
     await expect(page.getByText('SEC Certificate of Incorporation')).toBeVisible({ timeout: 30_000 });
