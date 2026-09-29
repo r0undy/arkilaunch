@@ -1,5 +1,6 @@
 import { UnprocessableEntityException, ServiceUnavailableException } from '@nestjs/common';
 import { tollHintsFromSteps, type TruckRoute } from '@arkilaunch/shared';
+import { nominatimJson } from './nominatim.js';
 
 // Road distance between two free-text Philippine addresses: Nominatim to
 // geocode, ORS HGV to route (OSRM car route only as a flagged fallback). The result is only ever an
@@ -26,7 +27,7 @@ async function geocode(place: string): Promise<{ lat: number; lon: number }> {
   url.searchParams.set('format', 'jsonv2');
   url.searchParams.set('limit', '1');
   url.searchParams.set('countrycodes', 'ph');
-  const hits = (await getJson(url)) as { lat?: string; lon?: string }[];
+  const hits = (await nominatimJson(url)) as { lat?: string; lon?: string }[];
   const hit = Array.isArray(hits) ? hits[0] : undefined;
   const lat = Number(hit?.lat);
   const lon = Number(hit?.lon);
@@ -68,7 +69,8 @@ export function parseOrs(body: OrsBody): TruckRoute {
     line: routeLine(feature.geometry.coordinates),
     truckSafe: true,
     ...(steps.length ? { tollHints: tollHintsFromSteps(steps.map((step) => ({
-      name: step.name ?? step.instruction, ref: step.ref,
+      ...(step.name ?? step.instruction ? { name: step.name ?? step.instruction } : {}),
+      ...(step.ref ? { ref: step.ref } : {}),
     }))) } : {}),
   };
 }

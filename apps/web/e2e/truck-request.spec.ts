@@ -113,6 +113,18 @@ test.describe('self-loading truck', () => {
     await customer.getByRole('tab', { name: 'Self-loading truck' }).click();
     await expect(customer.getByRole('button', { name: new RegExp(`^Trip ${code}`) }).getByText('Paid', { exact: true })).toBeVisible();
 
+    // Staff dispatches the paid truck; the customer sees the stored ETA.
+    await admin.goto('/app/trucks');
+    await admin.locator('tr, li').filter({ hasText: code }).first().click();
+    const dispatchDrawer = admin.getByRole('dialog', { name: code });
+    await dispatchDrawer.getByRole('tab', { name: 'Actions' }).click();
+    await dispatchDrawer.getByRole('button', { name: 'Dispatch truck' }).click();
+    await expect(admin.getByText('Truck dispatched')).toBeVisible({ timeout: 60_000 });
+    await customer.reload();
+    await customer.getByRole('tab', { name: 'Self-loading truck' }).click();
+    await customer.getByRole('button', { name: new RegExp(`^Trip ${code}`) }).click();
+    await expect(customer.getByRole('dialog', { name: code }).getByText(/Est\. arrival/)).toBeVisible();
+
     const overflow = await customer.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );

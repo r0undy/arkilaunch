@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, suggestTolls, TruckBanRuleSchema, type TruckBanRule, type TruckBanRuleInput, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
-import { formatDate, formatPeso } from '../lib/format.js';
+import { formatDate, formatDateTime, formatPeso } from '../lib/format.js';
 import { PriceBreakdown } from '../components/truck-trip.js';
 import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
@@ -531,6 +531,11 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
     },
     onError: (e) => toast.error('Not saved', apiErrorText(e)),
   });
+  const dispatch = useMutation({
+    mutationFn: () => apiPost<TruckRequestResponse>(`/truck-requests/${r.id}/dispatch`, {}),
+    onSuccess: () => { refresh(); toast.success('Truck dispatched', 'The customer can now see the estimated arrival.'); },
+    onError: (e) => toast.error('Truck not dispatched', apiErrorText(e)),
+  });
   const confirm = useMutation({
     mutationFn: () =>
       apiPatch<TruckRequestResponse>(`/truck-requests/${r.id}/km`, {
@@ -558,7 +563,7 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
       toast.error('Not accepted', apiErrorText(e));
     },
   });
-  const open = r.status !== 'cancelled' && r.status !== 'paid';
+  const open = r.status !== 'cancelled' && r.status !== 'paid' && r.status !== 'dispatched';
   const overCap = r.capPhp !== null && Number(price) > r.capPhp;
   // Typo guard: a price far from the route's own figure is called out.
   const offBy = r.price.totalPhp > 0 ? Math.abs(Number(price) - r.price.totalPhp) / r.price.totalPhp : 0;
@@ -567,6 +572,12 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {r.status === 'paid' && <section className={section}>
+        <h3 className={heading}>Dispatch</h3>
+        <p className="text-sm text-text-muted">The customer will see an arrival estimate based on the saved drive time and route ban rules.</p>
+        <Button loading={dispatch.isPending} onClick={() => dispatch.mutate()}>Dispatch truck</Button>
+      </section>}
+      {r.etaAt && <p className="text-sm font-semibold text-text">Dispatched. Est. arrival {formatDateTime(r.etaAt)}.</p>}
       <section className={section}>
         <h3 className={heading}>Customer</h3>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">

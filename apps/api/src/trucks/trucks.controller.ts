@@ -162,6 +162,12 @@ export class TrucksController {
     return this.trucks.listTolls(req.ctx);
   }
 
+  @Post('truck-requests/:id/dispatch')
+  @RequirePermission('pricing:manage')
+  dispatch(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+    return this.trucks.dispatch(req.ctx, id);
+  }
+
   @Get('truck-ban-rules')
   @RequirePermission('pricing:manage')
   banRules(@Req() req: CtxRequest) { return this.trucks.listBanRules(req.ctx); }

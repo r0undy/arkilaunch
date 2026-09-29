@@ -1,9 +1,7 @@
 import type { RouteCity } from '@arkilaunch/shared';
+import { nominatimJson } from './nominatim.js';
 
 const REVERSE = 'https://nominatim.openstreetmap.org/reverse';
-const USER_AGENT = 'ArkiLaunch/0.1 (truck route cities)';
-let nextRequestAt = 0;
-let queue = Promise.resolve();
 
 const distanceKm = (a: [number, number], b: [number, number]) => {
   const rad = Math.PI / 180;
@@ -40,28 +38,15 @@ export function sampleRoute(line: [number, number][]): [number, number][] {
 }
 
 async function reverse(point: [number, number]): Promise<RouteCity | null> {
-  const previous = queue;
-  let release!: () => void;
-  queue = new Promise<void>((resolve) => { release = resolve; });
-  await previous;
-  try {
-    const wait = Math.max(0, nextRequestAt - Date.now());
-    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
-    nextRequestAt = Date.now() + 1000;
     const url = new URL(REVERSE);
     url.searchParams.set('lat', String(point[1]));
     url.searchParams.set('lon', String(point[0]));
     url.searchParams.set('format', 'jsonv2');
     url.searchParams.set('zoom', '10');
-    const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(10_000) });
-    if (!response.ok) throw new Error(`Nominatim returned ${response.status}`);
-    const body = await response.json() as { address?: Record<string, string> };
+    const body = await nominatimJson(url) as { address?: Record<string, string> };
     const address = body.address ?? {};
     const city = address.city ?? address.municipality ?? address.town ?? address.city_district;
     return city ? { city, province: address.province ?? address.state ?? '' } : null;
-  } finally {
-    release();
-  }
 }
 
 export async function routeCities(line: [number, number][]): Promise<RouteCity[]> {

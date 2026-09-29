@@ -44,9 +44,9 @@ export function rentalSteps(b: Pick<BookingDetailResponse, 'status' | 'callConfi
 
 // estimated → km confirmed → agreed → paid.
 export function truckSteps(t: Pick<TruckRequestResponse, 'status'>): Step[] {
-  const order = ['estimated', 'km_confirmed', 'agreed', 'paid'];
+  const order = ['estimated', 'km_confirmed', 'agreed', 'paid', 'dispatched'];
   const at = order.indexOf(t.status);
-  return ['Estimated', 'Km confirmed', 'Agreed', 'Paid'].map((label, i) => ({ label, done: at >= i }));
+  return ['Estimated', 'Km confirmed', 'Agreed', 'Paid', 'Dispatched'].map((label, i) => ({ label, done: at >= i }));
 }
 
 function Stepper({ steps, cancelled }: { steps: Step[]; cancelled: boolean }) {
@@ -274,6 +274,8 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
             )}
           </Row>
           <Row label="Pickup">{formatDateTime(truck.scheduledFor)}</Row>
+          <Row label="Est. arrival">{truck.etaAt ? formatDateTime(truck.etaAt)
+            : truck.routeMinutes !== null ? `~ pickup + ${truck.routeMinutes} min drive` : '--'}</Row>
           <Row label="Distance">
             <span className="font-mono tabular-nums">
               {truck.confirmedKm !== null ? `${truck.confirmedKm} km confirmed` : `~${truck.estimatedKm} km estimated`}
@@ -363,7 +365,7 @@ export function BookingDrawer({
               {tab === 'negotiation' && (
                 <NegotiationThread
                   base={`/truck-requests/${shownTruck.id}`}
-                  disabled={shownTruck.status === 'cancelled' || shownTruck.status === 'paid'}
+                  disabled={shownTruck.status === 'cancelled' || shownTruck.status === 'paid' || shownTruck.status === 'dispatched'}
                 />
               )}
               {tab === 'actions' && <RequestRow r={shownTruck} />}

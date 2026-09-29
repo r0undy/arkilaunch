@@ -67,13 +67,14 @@ export function tripSteps(
   const reached = (...statuses: TruckRequestResponse['status'][]) => statuses.includes(r.status);
   return [
     { label: 'Requested', done: true },
-    { label: 'Distance confirmed', done: r.confirmedKm !== null || reached('km_confirmed', 'agreed', 'paid') },
+    { label: 'Distance confirmed', done: r.confirmedKm !== null || reached('km_confirmed', 'agreed', 'paid', 'dispatched') },
     {
       label: 'Price accepted',
-      done: reached('paid') || (reached('agreed') && r.acceptedPricePhp != null && r.acceptedPricePhp === r.agreedPricePhp),
+      done: reached('paid', 'dispatched') || (reached('agreed') && r.acceptedPricePhp != null && r.acceptedPricePhp === r.agreedPricePhp),
     },
-    { label: 'Confirmed by call', done: r.callConfirmedAt !== null || reached('paid') },
-    { label: 'Paid', done: reached('paid') },
+    { label: 'Confirmed by call', done: r.callConfirmedAt !== null || reached('paid', 'dispatched') },
+    { label: 'Paid', done: reached('paid', 'dispatched') },
+    { label: 'Dispatched', done: reached('dispatched') },
   ];
 }
 
@@ -125,6 +126,11 @@ function Dot({ which }: { which: 'A' | 'B' }) {
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+export function tripArrivalText(r: Pick<TruckRequestResponse, 'etaAt' | 'routeMinutes'>): string | null {
+  if (r.etaAt) return `Est. arrival ${when(r.etaAt)}`;
+  return r.routeMinutes === null ? null : `Est. arrival ~ pickup + ${r.routeMinutes} min drive`;
+}
 
 function priceOf(r: TruckRequestResponse) {
   return r.agreedPricePhp !== null
@@ -227,7 +233,7 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
     },
     onError: refresh,
   });
-  const closed = r.status === 'cancelled' || r.status === 'paid';
+  const closed = r.status === 'cancelled' || r.status === 'paid' || r.status === 'dispatched';
   const needsAccept = r.status === 'agreed' && r.agreedPricePhp !== null && r.acceptedPricePhp !== r.agreedPricePhp;
   const accepted = r.status === 'agreed' && !needsAccept;
   const pickup = r.pickupLat !== null && r.pickupLng !== null ? { lat: r.pickupLat, lng: r.pickupLng } : null;
@@ -243,6 +249,7 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
         <StatusBadge status={r.status} />
       </div>
       {pickup && dropoff && <RouteMap pickup={pickup} dropoff={dropoff} route={route.data ?? null} className="h-64" />}
+      {tripArrivalText(r) && <p className="text-sm font-semibold text-text">{tripArrivalText(r)}</p>}
       <div className="flex flex-col gap-1.5 text-sm text-text">
         <span className="flex items-center gap-2">
           <Dot which="A" />

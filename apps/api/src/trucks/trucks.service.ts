@@ -7,7 +7,7 @@ import {
   PH_CLASS3_TOLLS,
   PH_TOLLS_AS_OF,
   priceTruckTrip,
-  banHits,
+  truckEta,
   type TruckBanRuleInput,
   type TruckBanRule,
   type TollRateCreate,
@@ -65,6 +65,9 @@ function toResponse(row: typeof truckRequests.$inferSelect, contact: Contact = N
     notes: row.notes,
     estimatedKm: Number(row.estimatedKm),
     routeCities: row.routeCities,
+    routeMinutes: row.routeMinutes,
+    dispatchedAt: row.dispatchedAt?.toISOString() ?? null,
+    etaAt: row.etaAt?.toISOString() ?? null,
     confirmedKm: row.confirmedKm === null ? null : Number(row.confirmedKm),
     status: row.status as TruckRequestStatus,
     price: row.price,
@@ -278,6 +281,7 @@ export class TrucksService {
           customerId: company.id,
           loadDescription: body.loadDescription,
           estimatedKm: String(km),
+          routeMinutes: route.minutes,
           price,
           // The high end of the estimate: staff are warned before agreeing
           // above it (a typo guard; the customer accepts every price anyway).
@@ -361,9 +365,39 @@ export class TrucksService {
         console.error('Truck route city backfill failed', id, error);
       }
     } else {
-      route.cities = row.routeCities ?? undefined;
+      if (row.routeCities) route.cities = row.routeCities;
     }
     return route;
+  }
+
+  async dispatch(ctx: RequestContext, id: string): Promise<TruckRequestResponse> {
+    const current = await withTenantTx(ctx, (tx) => this.visibleRequest(tx, ctx, id));
+    if (current.status !== 'paid') throw new ConflictException({ error: 'truck_not_paid', status: current.status });
+    let minutes = current.routeMinutes;
+    let cities = current.routeCities;
+    if (minutes === null || cities === null) {
+      const route = await roadRoute(current.pickup, current.dropoff, {
+        ...(current.pickupLat !== null && current.pickupLng !== null ? { a: { lat: Number(current.pickupLat), lon: Number(current.pickupLng) } } : {}),
+        ...(current.dropoffLat !== null && current.dropoffLng !== null ? { b: { lat: Number(current.dropoffLat), lon: Number(current.dropoffLng) } } : {}),
+      });
+      minutes ??= route.minutes;
+      if (cities === null) cities = await routeCities(route.line);
+    }
+    return withTenantTx(ctx, async (tx) => {
+      const row = await this.visibleRequest(tx, ctx, id, true);
+      if (row.status !== 'paid') throw new ConflictException({ error: 'truck_not_paid', status: row.status });
+      const rules = await tx.select().from(truckBanRules).where(eq(truckBanRules.tenantId, ctx.tenantId));
+      const now = new Date();
+      const eta = truckEta(now, minutes!, cities ?? [], rules.map(toBanRule));
+      const [updated] = await tx.update(truckRequests).set({ status: 'dispatched', dispatchedAt: now,
+        etaAt: eta, routeMinutes: minutes, routeCities: cities })
+        .where(and(eq(truckRequests.id, id), eq(truckRequests.tenantId, ctx.tenantId))).returning();
+      await notifyUser(tx, ctx.tenantId, row.requestedBy, 'truck_dispatched',
+        { truck_request_id: id, booking_code: row.code, eta_at: eta.toISOString() });
+      await tx.insert(auditLogs).values({ tenantId: ctx.tenantId, actorId: ctx.userId,
+        action: 'UPDATE', entity: 'truck_requests', entityId: id, reason: `dispatched; ETA ${eta.toISOString()}` });
+      return toResponse(updated!);
+    });
   }
 
   // The admin's km is final: the price is recomputed on it, with today's
@@ -446,7 +480,7 @@ export class TrucksService {
   postMessage(ctx: RequestContext, id: string, body: NegotiationMessageCreate) {
     return withTenantTx(ctx, async (tx) => {
       const request = await this.visibleRequest(tx, ctx, id);
-      if (request.status === 'cancelled' || request.status === 'paid') {
+      if (request.status === 'cancelled' || request.status === 'paid' || request.status === 'dispatched') {
         throw new ConflictException({ error: 'truck_request_closed', status: request.status });
       }
       const [row] = await tx
@@ -496,7 +530,7 @@ export class TrucksService {
   async agree(ctx: RequestContext, id: string, pricePhp: number): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
       const request = await this.visibleRequest(tx, ctx, id, true);
-      if (request.status === 'cancelled' || request.status === 'paid') {
+      if (request.status === 'cancelled' || request.status === 'paid' || request.status === 'dispatched') {
         throw new ConflictException({ error: 'truck_request_closed', status: request.status });
       }
       const was = num(request.agreedPricePhp);
@@ -603,7 +637,7 @@ export class TrucksService {
     return withTenantTx(ctx, async (tx) => {
       const row = await this.visibleRequest(tx, ctx, id, true);
       if (row.status === 'cancelled') throw new ConflictException({ error: 'already_cancelled' });
-      if (row.status === 'paid') throw new ConflictException({ error: 'cancel_after_payment' });
+      if (row.status === 'paid' || row.status === 'dispatched') throw new ConflictException({ error: 'cancel_after_payment' });
       await this.payments.voidUnpaid(tx, { truckRequestId: id });
       const [updated] = await tx
         .update(truckRequests)

@@ -153,7 +153,8 @@ export function banHits(cities: RouteCity[], rules: TruckBanRuleInput[], at: Dat
   const minute = local.getUTCHours() * 60 + local.getUTCMinutes();
   const day = local.getUTCDay();
   return rules.flatMap((rule) => {
-    const cityName = (name: string) => name.toLowerCase().replace(/\s+city$/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const cityName = (name: string) => name.toLowerCase().replace(/^city of\s+/, '').replace(/\s+city$/, '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     if (!cities.some((place) => cityName(place.city) === cityName(rule.city) &&
       (!rule.province || place.province.toLowerCase() === rule.province.toLowerCase() ||
         ['metro manila', 'national capital region'].includes(place.province.toLowerCase()) &&
@@ -281,10 +282,10 @@ export function priceTruckTrip({ km, settings, perKmPhp, fuelLPerKm, dieselPhp, 
   return { km, lines, totalPhp };
 }
 
-export const TRUCK_REQUEST_STATUSES = ['estimated', 'km_confirmed', 'agreed', 'paid', 'cancelled'] as const;
+export const TRUCK_REQUEST_STATUSES = ['estimated', 'km_confirmed', 'agreed', 'paid', 'dispatched', 'cancelled'] as const;
 export type TruckRequestStatus = (typeof TRUCK_REQUEST_STATUSES)[number];
 // Nothing left to do on these: the rest are "open".
-export const CLOSED_TRUCK_STATUSES: readonly TruckRequestStatus[] = ['paid', 'cancelled'];
+export const CLOSED_TRUCK_STATUSES: readonly TruckRequestStatus[] = ['paid', 'dispatched', 'cancelled'];
 
 // GET /truck-requests and /me/truck-requests. `q` finds a TRK- code by
 // prefix, as GET /bookings does; `status` splits open from closed.
@@ -309,6 +310,9 @@ export interface TruckRequestResponse {
   notes: string | null;
   estimatedKm: number;
   routeCities: RouteCity[] | null;
+  routeMinutes: number | null;
+  dispatchedAt: string | null;
+  etaAt: string | null;
   confirmedKm: number | null;
   status: TruckRequestStatus;
   price: TruckPrice;
