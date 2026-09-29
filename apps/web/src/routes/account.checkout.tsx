@@ -13,7 +13,7 @@ import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { EmptyState } from '../components/empty-state.js';
 import { StatusPill } from '../components/status-pill.js';
-import { AlertIcon } from '../components/icons.js';
+import { TriangleAlert } from 'lucide-react';
 import { formatDate, formatPeso, formatStatus, shortCode } from '../lib/format.js';
 
 type PaymentMethod = CheckoutMethod | 'manual';
@@ -367,7 +367,7 @@ function CheckoutFailedPage() {
     <div className="flex flex-col gap-5">
       <PageHeader title="Payment not completed" />
       <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-4 p-6">
-        <StatusPill tone="recon-failed" label="Not paid" icon={<AlertIcon />} />
+        <StatusPill tone="recon-failed" label="Not paid" icon={<TriangleAlert className="size-full" />} />
         <p className="max-w-prose text-sm text-text-muted">
           The payment was cancelled or declined before it went through, so nothing was charged and your
           booking is unchanged. You can try again with the same or a different method.

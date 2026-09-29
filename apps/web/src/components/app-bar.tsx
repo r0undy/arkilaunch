@@ -4,14 +4,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { describeNotification, feedAreaOf, NotificationIcon, notificationQueries } from './notification-feed.js';
 import { apiPatch } from '../lib/api-client.js';
 import { formatStatus } from '../lib/format.js';
-import { ShoppingCart } from 'lucide-react';
+import { Bell, LogOut, Menu, ShoppingCart, TriangleAlert } from 'lucide-react';
 import { clearTokens } from '../lib/auth-client.js';
 import { useCart } from '../lib/cart-client.js';
 import { getCurrentRole, homeHref } from '../lib/guards.js';
 import { edtrQueries, notificationsQueries } from '../lib/queries.js';
 import { StatusPill } from './status-pill.js';
 import { applicationsListQuery } from './application-actions.js';
-import { AlertIcon, BellIcon, LogOutIcon } from './icons.js';
 import { useHeaderColor, useTenant } from '../lib/tenant.js';
 
 // Controls inherit the bar's text (steel bar: paper; a tenant color: its black
@@ -44,11 +43,9 @@ export interface AppBarProps {
 function NotificationBell({
   unreadCount,
   seeMorePath,
-  tone,
 }: {
   unreadCount: number | null;
   seeMorePath: string;
-  tone: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -85,9 +82,9 @@ function NotificationBell({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : 'Notifications'}
-        className={`flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm ${tone}`}
+        className={`flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm ${TILE}`}
       >
-        <BellIcon aria-hidden="true" className="h-5 w-5" />
+        <Bell aria-hidden="true" className="h-5 w-5" />
         {unreadCount !== null && unreadCount > 0 && (
           <span className="rounded-full bg-primary px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-on-primary">
             {unreadCount}
@@ -211,7 +208,6 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
   const bar = useHeaderColor();
   const tenant = useTenant();
   const mark = tenant?.iconUrl ?? tenant?.logoUrl;
-  const tone = TILE;
 
   return (
     <header
@@ -224,17 +220,9 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             type="button"
             onClick={onMenuClick}
             aria-label="Toggle navigation"
-            className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-sm lg:hidden ${tone}`}
+            className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-sm lg:hidden ${TILE}`}
           >
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              className="h-5 w-5"
-            >
-              <path d="M3 6h14M3 10h14M3 14h14" strokeLinecap="round" />
-            </svg>
+            <Menu className="h-5 w-5" />
           </button>
         )}
         <Link
@@ -278,7 +266,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
               className="flex min-h-11 items-center sm:hidden"
             >
               <span className="flex items-center gap-1 rounded-sm bg-recon-review px-1.5 py-1 text-text">
-                <AlertIcon aria-hidden="true" className="h-4 w-4" />
+                <TriangleAlert aria-hidden="true" className="h-4 w-4" />
                 <span className="font-mono text-sm font-semibold tabular-nums">
                   {reviewQueueCount}
                 </span>
@@ -295,7 +283,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
               <StatusPill
                 tone="recon-review"
                 label={reviewQueueLabel}
-                icon={<AlertIcon />}
+                icon={<TriangleAlert className="size-full" />}
                 value={String(reviewQueueCount)}
                 className="whitespace-nowrap"
               />
@@ -310,7 +298,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             // "Cart, 3 items" read aloud beats a bare "3", and the empty cart
             // still needs a name to be reachable at all.
             aria-label={cartCount > 0 ? `Cart, ${cartCount} items` : 'Cart, empty'}
-            className={`flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm px-2 text-sm font-medium sm:gap-2 sm:px-3 ${tone}`}
+            className={`flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm px-2 text-sm font-medium sm:gap-2 sm:px-3 ${TILE}`}
           >
             <ShoppingCart aria-hidden="true" className="h-5 w-5" />
             <span className="hidden sm:inline">Cart</span>
@@ -322,7 +310,7 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
           </Link>
         )}
 
-        <NotificationBell unreadCount={unreadCount} seeMorePath={notificationsPath} tone={tone} />
+        <NotificationBell unreadCount={unreadCount} seeMorePath={notificationsPath} />
 
         {/* Icon-only on a phone. Under real mobile emulation the layout
             viewport is 320px, not the 360px a desktop-sized window reports,
@@ -335,9 +323,9 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
             window.location.assign('/login');
           }}
           aria-label="Sign out"
-          className={`flex min-h-11 min-w-11 items-center justify-center gap-2 whitespace-nowrap rounded-sm px-2 text-sm font-medium sm:px-3 ${tone}`}
+          className={`flex min-h-11 min-w-11 items-center justify-center gap-2 whitespace-nowrap rounded-sm px-2 text-sm font-medium sm:px-3 ${TILE}`}
         >
-          <LogOutIcon aria-hidden="true" className="h-5 w-5 sm:hidden" />
+          <LogOut aria-hidden="true" className="h-5 w-5 sm:hidden" />
           <span className="hidden sm:inline">Sign out</span>
         </button>
       </div>

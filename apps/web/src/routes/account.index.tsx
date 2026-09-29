@@ -7,7 +7,7 @@ import { PageHeader } from '../components/page-header.js';
 import { Modal } from '../components/modal.js';
 import { hasRequiredCompanyDocuments } from '@arkilaunch/shared';
 import { bookingsQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
-import { CheckIcon } from '../components/icons.js';
+import { Check } from 'lucide-react';
 
 export interface SetupStep {
   label: string;
@@ -118,7 +118,7 @@ function StepList({ steps, onNavigate }: { steps: SetupStep[]; onNavigate: () =>
               step.done ? 'border-success bg-success text-white' : 'border-border text-text-muted',
             ].join(' ')}
           >
-            {step.done ? <CheckIcon /> : null}
+            {step.done ? <Check className="size-full" /> : null}
           </span>
           {step.done ? (
             <span className="text-text-muted line-through">{step.label}</span>

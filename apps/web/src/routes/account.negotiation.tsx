@@ -11,7 +11,7 @@ import { Surface } from '../components/surface.js';
 import { Button, buttonClass } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { StatusPill } from '../components/status-pill.js';
-import { CheckIcon, ClockIcon } from '../components/icons.js';
+import { Check, Clock } from 'lucide-react';
 import { NegotiationThread } from '../components/negotiation-thread.js';
 import { QuoteLines } from '../components/quote-lines.js';
 import { PrintFrame } from '../components/print-frame.js';
@@ -54,7 +54,7 @@ function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
     return (
       <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-5">
         <h2 className={heading}>Quote</h2>
-        <StatusPill tone="recon-review" label="Being priced" icon={<ClockIcon />} />
+        <StatusPill tone="recon-review" label="Being priced" icon={<Clock className="size-full" />} />
         <p className="text-sm text-text-muted">
           The rental team is pricing this booking against today&rsquo;s diesel rate. You will get a
           notification when the quote is ready. Tell them anything that affects the price in the
@@ -72,7 +72,7 @@ function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
       <div className="flex items-center justify-between gap-2">
         <h2 className={heading}>Quote &middot; revision {quote.revision}</h2>
         {quote.status === 'accepted' && (
-          <StatusPill tone="recon-approved" label="Agreed" icon={<CheckIcon />} />
+          <StatusPill tone="recon-approved" label="Agreed" icon={<Check className="size-full" />} />
         )}
       </div>
       <LineItems quoteId={quote.id} />
@@ -253,7 +253,7 @@ function NegotiationFinalRoute() {
           ]}
         />
       </div>
-      <StatusPill tone="recon-approved" label="Agreed" icon={<CheckIcon />} />
+      <StatusPill tone="recon-approved" label="Agreed" icon={<Check className="size-full" />} />
       <div className="text-center">
         <h1 className="text-display-md text-text">Negotiation finalised</h1>
         <p className="mt-1 text-sm text-text-muted">

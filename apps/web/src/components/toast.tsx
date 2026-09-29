@@ -9,8 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Info } from 'lucide-react';
-import { AlertIcon, CheckIcon, CloseIcon, XCircleIcon } from './icons.js';
+import { Check, CircleX, Info, TriangleAlert, X } from 'lucide-react';
 
 // Until now a successful mutation produced no visible response at all -- a
 // deduction, a role change and a retired rate card all looked identical to
@@ -62,9 +61,9 @@ const TONE_CLASSES: Record<ToastTone, string> = {
 };
 
 function ToastIcon({ tone }: { tone: ToastTone }) {
-  if (tone === 'success') return <CheckIcon className="h-5 w-5 shrink-0" aria-hidden />;
-  if (tone === 'error') return <XCircleIcon className="h-5 w-5 shrink-0" aria-hidden />;
-  if (tone === 'warning') return <AlertIcon className="h-5 w-5 shrink-0" aria-hidden />;
+  if (tone === 'success') return <Check className="h-5 w-5 shrink-0" aria-hidden />;
+  if (tone === 'error') return <CircleX className="h-5 w-5 shrink-0" aria-hidden />;
+  if (tone === 'warning') return <TriangleAlert className="h-5 w-5 shrink-0" aria-hidden />;
   return <Info className="h-5 w-5 shrink-0" aria-hidden />;
 }
 
@@ -153,7 +152,7 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) 
         aria-label={`Dismiss: ${toast.title}`}
         className="-my-2.5 -mr-2.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm hover:bg-black/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
       >
-        <CloseIcon className="h-4 w-4" aria-hidden />
+        <X className="h-4 w-4" aria-hidden />
       </button>
     </div>
   );

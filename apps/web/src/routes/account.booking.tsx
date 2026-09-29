@@ -10,7 +10,7 @@ import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { Button, buttonClass } from '../components/button.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
-import { CheckIcon, ClockIcon } from '../components/icons.js';
+import { Check, Clock } from 'lucide-react';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
@@ -151,7 +151,7 @@ function Timeline({ booking }: { booking: BookingDetailResponse }) {
               step.done ? 'border-success bg-success text-white' : 'border-border bg-surface text-text-muted',
             ].join(' ')}
           >
-            {step.done ? <CheckIcon /> : null}
+            {step.done ? <Check className="size-full" /> : null}
           </span>
           <span className="min-w-0">
             <span className="block text-sm font-medium text-text">
@@ -497,7 +497,7 @@ function BookingDetailPage() {
               <StatusPill
                 tone={STATUS_TONES[status] ?? 'recon-review'}
                 label={formatStatus(status)}
-                icon={status === 'confirmed' ? <CheckIcon /> : <ClockIcon />}
+                icon={status === 'confirmed' ? <Check className="size-full" /> : <Clock className="size-full" />}
               />
             )}
             {booking.data && bookingStage(booking.data).paid && !bookingStage(booking.data).cancelled && (
@@ -570,7 +570,7 @@ function ExtendRentalPage() {
     return (
       <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
         <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-4 p-6">
-          <StatusPill tone="recon-review" label="Submitted" icon={<ClockIcon />} />
+          <StatusPill tone="recon-review" label="Submitted" icon={<Clock className="size-full" />} />
           <h1 className="text-display-md text-text">Extension requested</h1>
           <p className="text-sm text-text-muted">
             The rental team checks {unit?.equipmentName ?? 'the machine'} is free until{' '}

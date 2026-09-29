@@ -7,7 +7,7 @@ import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { StatusPill } from '../components/status-pill.js';
-import { CheckIcon } from '../components/icons.js';
+import { Check } from 'lucide-react';
 import { formatDate, formatStatus, shortCode } from '../lib/format.js';
 
 function ProfileRow({ label, value }: { label: string; value: string }) {
@@ -69,7 +69,7 @@ function ProfilePage() {
                 <StatusPill
                   tone={user.status === 'active' ? 'recon-approved' : 'recon-review'}
                   label={formatStatus(user.status)}
-                  icon={<CheckIcon />}
+                  icon={<Check className="size-full" />}
                 />
               </div>
               <ProfileRow label="Tenant" value={user.tenantName} />

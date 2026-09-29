@@ -10,7 +10,7 @@ import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { Button, buttonClass } from '../components/button.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
-import { CheckIcon, AlertIcon, ClockIcon } from '../components/icons.js';
+import { Check, Clock, TriangleAlert } from 'lucide-react';
 import { PrintFrame } from '../components/print-frame.js';
 import {
   condenseIds,
@@ -22,10 +22,10 @@ import {
 } from '../lib/format.js';
 
 const STATUS_META: Record<string, { tone: StatusTone; icon: ReactElement }> = {
-  paid: { tone: 'recon-approved', icon: <CheckIcon /> },
-  issued: { tone: 'recon-review', icon: <AlertIcon /> },
-  draft: { tone: 'recon-failed', icon: <ClockIcon /> },
-  void: { tone: 'recon-failed', icon: <ClockIcon /> },
+  paid: { tone: 'recon-approved', icon: <Check className="size-full" /> },
+  issued: { tone: 'recon-review', icon: <TriangleAlert className="size-full" /> },
+  draft: { tone: 'recon-failed', icon: <Clock className="size-full" /> },
+  void: { tone: 'recon-failed', icon: <Clock className="size-full" /> },
 };
 
 function SummaryRow({ label, value }: { label: string; value: string }) {

@@ -7,7 +7,7 @@ import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { buttonClass } from '../components/button.js';
 import { StatusPill } from '../components/status-pill.js';
-import { CheckIcon } from '../components/icons.js';
+import { Check } from 'lucide-react';
 import { isUuid } from '../lib/format.js';
 
 const POLL_MS = 3_000;
@@ -40,7 +40,7 @@ function CheckoutSuccessPage() {
         <StatusPill
           tone={paid ? 'recon-approved' : 'recon-review'}
           label={paid ? 'Paid' : checking ? 'Confirming…' : 'Submitted'}
-          icon={<CheckIcon />}
+          icon={<Check className="size-full" />}
         />
         <div className="flex flex-col gap-2" aria-live="polite">
           <h2 className="text-heading-lg text-text">

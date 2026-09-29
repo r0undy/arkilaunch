@@ -18,7 +18,7 @@ import { MobileInput } from '../components/mobile-input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
 import { StatusPill } from '../components/status-pill.js';
-import { CheckIcon } from '../components/icons.js';
+import { Check } from 'lucide-react';
 import { apiPost } from '../lib/api-client.js';
 import { bookingAlternatives, explainBookingError } from '../lib/booking-error.js';
 import { catalogQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
@@ -293,7 +293,7 @@ function CartPage() {
     return (
       <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
         <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-4 p-6">
-          <StatusPill tone="recon-approved" label="Request sent" icon={<CheckIcon />} />
+          <StatusPill tone="recon-approved" label="Request sent" icon={<Check className="size-full" />} />
           <h1 className="text-display-md text-text">
             Booking{' '}
             <Link to="/account/bookings/$bookingId" params={{ bookingId: booking.id }} className="font-mono underline">

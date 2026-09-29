@@ -1,4 +1,4 @@
-import { ClockIcon } from './icons.js';
+import { Clock } from 'lucide-react';
 
 export type GaugeTrend = 'up' | 'down' | 'flat';
 
@@ -47,7 +47,7 @@ export function GaugeReadout({
       </div>
       {stale && (
         <span className="inline-flex w-fit items-center gap-1 rounded-xs bg-weather-stale px-2 py-0.5 text-xs font-medium text-white">
-          <ClockIcon className="h-3 w-3" />
+          <Clock className="h-3 w-3" />
           {staleLabel}
         </span>
       )}

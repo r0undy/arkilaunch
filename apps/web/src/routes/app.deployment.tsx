@@ -12,16 +12,15 @@ import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { StatusBadge } from '../components/status-badge.js';
-import { CheckIcon, AlertIcon, XCircleIcon } from '../components/icons.js';
 import { formatDate, formatSeverity, siteName } from '../lib/format.js';
 import { BookingCode } from '../components/booking-code.js';
 import { Alert } from '../components/alert.js';
-import { MapPin } from 'lucide-react';
+import { Check, CircleX, MapPin, TriangleAlert } from 'lucide-react';
 
 const SEVERITY_META: Record<string, { tone: StatusTone; icon: ReactElement }> = {
-  none: { tone: 'weather-clear', icon: <CheckIcon /> },
-  watch: { tone: 'weather-yellow', icon: <AlertIcon /> },
-  warning: { tone: 'weather-red', icon: <XCircleIcon /> },
+  none: { tone: 'weather-clear', icon: <Check className="size-full" /> },
+  watch: { tone: 'weather-yellow', icon: <TriangleAlert className="size-full" /> },
+  warning: { tone: 'weather-red', icon: <CircleX className="size-full" /> },
 };
 
 const COLUMNS: TableColumn<SiteResponse>[] = [

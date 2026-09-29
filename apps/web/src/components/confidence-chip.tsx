@@ -1,4 +1,4 @@
-import { AlertIcon, CheckIcon, XCircleIcon } from './icons.js';
+import { Check, CircleX, TriangleAlert } from 'lucide-react';
 
 export type ConfidenceTone = 'match' | 'review' | 'failed';
 
@@ -16,10 +16,10 @@ const TONE_CLASSES: Record<ConfidenceTone, string> = {
   failed: 'bg-recon-failed text-white font-semibold ring-2 ring-offset-1 ring-recon-failed',
 };
 
-const TONE_ICON: Record<ConfidenceTone, typeof CheckIcon> = {
-  match: CheckIcon,
-  review: AlertIcon,
-  failed: XCircleIcon,
+const TONE_ICON: Record<ConfidenceTone, typeof Check> = {
+  match: Check,
+  review: TriangleAlert,
+  failed: CircleX,
 };
 
 // The OCR per-field marker at reconciliation and KYC (DESIGN.md §4). The confidence

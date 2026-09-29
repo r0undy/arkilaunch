@@ -16,9 +16,8 @@ import { CaptureModal } from '../components/capture-modal.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { PageHeader } from '../components/page-header.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
-import { AlertIcon, CheckIcon, ClockIcon, XCircleIcon } from '../components/icons.js';
 import { EmptyState } from '../components/empty-state.js';
-import { ClipboardList } from 'lucide-react';
+import { Check, CircleX, ClipboardList, Clock, TriangleAlert } from 'lucide-react';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { useToast } from '../components/toast.js';
@@ -63,12 +62,12 @@ function matchLabel(status: string): string {
 
 function statusPill(status: string): { tone: StatusTone; icon: ReactNode } {
   if (status === 'reconciled')
-    return { tone: 'recon-match', icon: <CheckIcon className="h-4 w-4" aria-hidden /> };
+    return { tone: 'recon-match', icon: <Check className="h-4 w-4" aria-hidden /> };
   if (status === 'review')
-    return { tone: 'recon-review', icon: <AlertIcon className="h-4 w-4" aria-hidden /> };
+    return { tone: 'recon-review', icon: <TriangleAlert className="h-4 w-4" aria-hidden /> };
   if (status === 'hard_failed')
-    return { tone: 'recon-failed', icon: <XCircleIcon className="h-4 w-4" aria-hidden /> };
-  return { tone: 'recon-review', icon: <ClockIcon className="h-4 w-4" aria-hidden /> };
+    return { tone: 'recon-failed', icon: <CircleX className="h-4 w-4" aria-hidden /> };
+  return { tone: 'recon-review', icon: <Clock className="h-4 w-4" aria-hidden /> };
 }
 
 function MatchText({ row }: { row: EdtrListItem }) {

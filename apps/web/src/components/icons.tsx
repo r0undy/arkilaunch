@@ -1,112 +1,19 @@
 import type { SVGProps } from 'react';
 
-// Minimal inline icon set (no external icon library installed; DESIGN.md's status
-// components need "icon + label", not a full icon system). Consistent 1.5 stroke.
-type IconProps = SVGProps<SVGSVGElement>;
-
-function base(props: IconProps) {
-  return {
-    viewBox: '0 0 20 20',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.5,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    'aria-hidden': true,
-    ...props,
-  };
-}
-
-export function CheckIcon(props: IconProps) {
+// Facebook "f" in a rounded square, drawn like lucide's outline set (Figma
+// footer 168:1472); lucide-react dropped its brand icons.
+export function FacebookIcon(props: SVGProps<SVGSVGElement>) {
   return (
-    <svg {...base(props)}>
-      <path d="M4 10.5l3.5 3.5L16 6" />
-    </svg>
-  );
-}
-
-export function AlertIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <path d="M10 7v4M10 13.5h.01M8.6 3.4a1.6 1.6 0 012.8 0l6 10.6a1.6 1.6 0 01-1.4 2.4H4a1.6 1.6 0 01-1.4-2.4l6-10.6z" />
-    </svg>
-  );
-}
-
-export function XCircleIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <circle cx="10" cy="10" r="7.5" />
-      <path d="M7.5 7.5l5 5m0-5l-5 5" />
-    </svg>
-  );
-}
-
-export function ClockIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <circle cx="10" cy="10" r="7.5" />
-      <path d="M10 5.5V10l3 2" />
-    </svg>
-  );
-}
-
-export function TruckIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <path d="M2.5 13.5V6.5A1 1 0 013.5 5.5h6.5v8" />
-      <path d="M10 8.5h3.2l2.3 2.6v2.4h-15.5" />
-      <circle cx="6" cy="15" r="1.4" />
-      <circle cx="13.5" cy="15" r="1.4" />
-    </svg>
-  );
-}
-
-export function WrenchIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <path d="M12.5 3.5l-3 3 1 1 3-3a3 3 0 11-1 -1z" />
-      <path d="M9.5 6.5L3.5 12.5a1.4 1.4 0 002 2l6-6" />
-    </svg>
-  );
-}
-
-export function MenuIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <path d="M3 6h14M3 10h14M3 14h14" />
-    </svg>
-  );
-}
-
-export function CloseIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <path d="M5 5l10 10M15 5L5 15" />
-    </svg>
-  );
-}
-
-export function BellIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <path d="M10 3a4.5 4.5 0 00-4.5 4.5c0 3-1.5 4.5-1.5 4.5h12s-1.5-1.5-1.5-4.5A4.5 4.5 0 0010 3zM8.6 15a1.6 1.6 0 002.8 0" />
-    </svg>
-  );
-}
-
-export function LogOutIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <path d="M8 17H5a1.5 1.5 0 01-1.5-1.5v-11A1.5 1.5 0 015 3h3M13 14l4-4-4-4M17 10H8" />
-    </svg>
-  );
-}
-// Facebook "f" in a rounded square, outlined like the rest of the set (Figma
-// footer 168:1472). lucide-react dropped its brand icons.
-export function FacebookIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      {...props}
+    >
       <rect x="3" y="3" width="14" height="14" rx="3" />
       <path d="M12.5 7h-1.25A1.75 1.75 0 009.5 8.75V17M8 11h4" />
     </svg>

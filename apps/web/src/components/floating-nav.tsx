@@ -4,7 +4,7 @@ import { getAccessToken } from '../lib/auth-client.js';
 import { homeHref } from '../lib/guards.js';
 import { useHeaderColor, useTenant } from '../lib/tenant.js';
 import { Button, buttonClass } from './button.js';
-import { CloseIcon, MenuIcon } from './icons.js';
+import { Menu, X } from 'lucide-react';
 
 const LINKS = [
   { label: 'Equipment', to: '/equipment' },
@@ -70,7 +70,7 @@ export function FloatingNav() {
           aria-expanded={open}
           className="flex min-h-11 min-w-11 items-center justify-center rounded-sm hover:bg-current/10 sm:hidden"
         >
-          {open ? <CloseIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
+          {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
       </div>
 

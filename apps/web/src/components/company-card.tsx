@@ -15,7 +15,7 @@ import { formatStatus } from '../lib/format.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
 import { StatusPill, type StatusTone } from './status-pill.js';
-import { AlertIcon, CheckIcon, ClockIcon } from './icons.js';
+import { Check, Clock, TriangleAlert } from 'lucide-react';
 import { SiteDialog } from './site-dialog.js';
 import { SiteProofStatus } from './site-proof.js';
 
@@ -178,13 +178,13 @@ function RejectionPanel({ company }: { company: CompanyResponse }) {
 
 export function VerificationPill({ status }: { status: string }) {
   const meta: Record<string, { tone: StatusTone; label: string; icon: ReactElement }> = {
-    approved: { tone: 'recon-approved', label: 'Verified', icon: <CheckIcon /> },
-    rejected: { tone: 'recon-failed', label: 'Not verified', icon: <AlertIcon /> },
+    approved: { tone: 'recon-approved', label: 'Verified', icon: <Check className="size-full" /> },
+    rejected: { tone: 'recon-failed', label: 'Not verified', icon: <TriangleAlert className="size-full" /> },
   };
   const m = meta[status] ?? {
     tone: 'recon-review' as StatusTone,
     label: 'Verification pending',
-    icon: <ClockIcon />,
+    icon: <Clock className="size-full" />,
   };
   return <StatusPill tone={m.tone} label={m.label} icon={m.icon} />;
 }

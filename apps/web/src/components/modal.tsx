@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react';
-import { CloseIcon } from './icons.js';
+import { X } from 'lucide-react';
 
 // The only overlay in the app was the sidebar drawer, which had no focus
 // trap, no Escape handler and no dialog role. Long forms and every
@@ -170,7 +170,7 @@ export function Modal({
             aria-label="Close"
             className="-m-2.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-text-muted hover:bg-surface-sunk hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
           >
-            <CloseIcon className="h-5 w-5" aria-hidden />
+            <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
 

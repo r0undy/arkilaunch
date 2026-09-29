@@ -14,7 +14,6 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Surface } from '../components/surface.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { EquipmentSchematic } from '../components/equipment-schematic.js';
-import { CheckIcon, TruckIcon, WrenchIcon } from '../components/icons.js';
 import { Button, chipClass } from '../components/button.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { EquipmentFormModal } from '../components/equipment-form-modal.js';
@@ -23,12 +22,12 @@ import { useToast } from '../components/toast.js';
 import { Alert } from '../components/alert.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { getCurrentRole } from '../lib/guards.js';
-import { Boxes } from 'lucide-react';
+import { Boxes, Check, Truck, Wrench } from 'lucide-react';
 
 const STATUS_META: Record<string, { tone: StatusTone; label: string; icon: ReactElement }> = {
-  available: { tone: 'fleet-available', label: 'Available', icon: <CheckIcon /> },
-  deployed: { tone: 'fleet-deployed', label: 'Deployed', icon: <TruckIcon /> },
-  maintenance: { tone: 'fleet-maintenance', label: 'In maintenance', icon: <WrenchIcon /> },
+  available: { tone: 'fleet-available', label: 'Available', icon: <Check className="size-full" /> },
+  deployed: { tone: 'fleet-deployed', label: 'Deployed', icon: <Truck className="size-full" /> },
+  maintenance: { tone: 'fleet-maintenance', label: 'In maintenance', icon: <Wrench className="size-full" /> },
 };
 
 // fleet:manage is held by admin and platform_admin (seed/permission-catalog.ts;

@@ -8,10 +8,9 @@ import { MachineName } from '../components/machine-name.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { StatusPill } from '../components/status-pill.js';
-import { CheckIcon, WrenchIcon } from '../components/icons.js';
 import { StatTile } from '../components/stat-tile.js';
 import { formatHours, formatInvoiceType, formatPeso } from '../lib/format.js';
-import { TrendingUp } from 'lucide-react';
+import { Check, TrendingUp, Wrench } from 'lucide-react';
 
 const UTILIZATION_COLUMNS: TableColumn<ReportsSnapshot['utilization']['fleet'][number]>[] = [
   { header: 'Machine', kind: 'text', cell: (row) => <MachineName equipmentId={row.equipmentId} /> },
@@ -21,9 +20,9 @@ const UTILIZATION_COLUMNS: TableColumn<ReportsSnapshot['utilization']['fleet'][n
     header: 'Maintenance', kind: 'text',
     cell: (row) =>
       row.maintenanceDue ? (
-        <StatusPill tone="fleet-maintenance" label="Due" icon={<WrenchIcon />} />
+        <StatusPill tone="fleet-maintenance" label="Due" icon={<Wrench className="size-full" />} />
       ) : (
-        <StatusPill tone="fleet-available" label="On schedule" icon={<CheckIcon />} />
+        <StatusPill tone="fleet-available" label="On schedule" icon={<Check className="size-full" />} />
       ),
   },
 ];
