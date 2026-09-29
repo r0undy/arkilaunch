@@ -8,7 +8,7 @@ import {
   withTenantTx,
   findRefreshTokenByHashForAuth,
 } from '@arkilaunch/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const BOOTSTRAP_ROLE = 'system'; // GUC placeholder; RLS filters on tenant_id only, role is informational
@@ -43,6 +43,7 @@ export class RefreshTokenService {
     userId: string,
     role: string,
     familyId?: string,
+    parentId?: string,
   ): Promise<IssuedRefreshToken> {
     const raw = randomBytes(32).toString('hex');
     const resolvedFamilyId = familyId ?? randomUUID();
@@ -51,6 +52,7 @@ export class RefreshTokenService {
         tenantId,
         userId,
         familyId: resolvedFamilyId,
+        parentId,
         tokenHash: hashToken(raw),
         status: 'active',
         expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
@@ -82,40 +84,41 @@ export class RefreshTokenService {
       throw new UnauthorizedException('user_inactive');
     }
 
-    if (existing.status !== 'active') {
-      await this.revokeFamily(ctx, existing.familyId);
-      await withTenantTx(ctx, (tx) =>
-        tx.insert(auditLogs).values({
-          tenantId: existing.tenantId,
-          actorId: existing.userId,
-          action: 'refresh_reuse_detected',
-          entity: 'refresh_tokens',
-          entityId: existing.id,
-        }),
-      );
-      throw new UnauthorizedException('refresh_reuse_detected');
-    }
+    if (existing.status !== 'active') return this.reuseDetected(ctx, existing);
 
     if (existing.expiresAt.getTime() < Date.now()) {
       throw new UnauthorizedException('refresh_token_expired');
     }
 
-    await withTenantTx(ctx, (tx) =>
+    // Claimed atomically: of two concurrent rotations only one sees status 'active'; the other is a replay.
+    const claimed = await withTenantTx(ctx, (tx) =>
       tx
         .update(refreshTokens)
         .set({ status: 'rotated', rotatedAt: new Date() })
-        .where(eq(refreshTokens.id, existing.id)),
+        .where(and(eq(refreshTokens.id, existing.id), eq(refreshTokens.status, 'active')))
+        .returning({ id: refreshTokens.id }),
     );
+    if (claimed.length === 0) return this.reuseDetected(ctx, existing);
 
-    const issued = await this.issue(ctx.tenantId, ctx.userId, ctx.role, existing.familyId);
-    await withTenantTx(ctx, (tx) =>
-      tx
-        .update(refreshTokens)
-        .set({ parentId: existing.id })
-        .where(eq(refreshTokens.tokenHash, hashToken(issued.token))),
-    );
-
+    const issued = await this.issue(ctx.tenantId, ctx.userId, ctx.role, existing.familyId, existing.id);
     return { tenantId: ctx.tenantId, userId: ctx.userId, role: ctx.role, issued };
+  }
+
+  private async reuseDetected(
+    ctx: { tenantId: string; userId: string; role: string },
+    existing: { id: string; familyId: string },
+  ): Promise<never> {
+    await this.revokeFamily(ctx, existing.familyId);
+    await withTenantTx(ctx, (tx) =>
+      tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'refresh_reuse_detected',
+        entity: 'refresh_tokens',
+        entityId: existing.id,
+      }),
+    );
+    throw new UnauthorizedException('refresh_reuse_detected');
   }
 
   private async resolveCurrentUser(

@@ -56,6 +56,14 @@ describe('RefreshTokenService: rotation and reuse detection', () => {
     expect(rows.length).toBeGreaterThan(0);
   });
 
+  it('two concurrent rotations of one token: one succeeds, the other is treated as reuse', async () => {
+    const issued = await service.issue(tenantId, userId, 'admin');
+    const results = await Promise.allSettled([service.rotate(issued.token), service.rotate(issued.token)]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect((rejected?.reason as Error).message).toBe('refresh_reuse_detected');
+  });
+
   it('an unknown token is rejected without leaking which part was wrong', async () => {
     await expect(service.rotate('not-a-real-token')).rejects.toThrow(UnauthorizedException);
   });
