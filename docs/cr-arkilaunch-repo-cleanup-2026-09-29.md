@@ -111,5 +111,5 @@ Decisions taken while scoping (2026-09-29):
 | `tenant-isolation-checker` | Yes (queries, locks, auth) | PASS |
 | `migration-rls-guardian` | Yes (0071) | PASS |
 | `restraint-guardian` | Yes | PASS. It found one comment encoding defect, fixed in `6153ffd` |
-| `ai-ocr-abuse-runner` | Yes (reconciliation, approval, adapter factory, KYC uploads) | Pending |
+| `ai-ocr-abuse-runner` | Yes (reconciliation, approval, adapter factory, KYC uploads) | PASS (AI-01..AI-06 6/6, money-path 8/8, accuracy harness 7/7) |
 | `edtr-ocr-worker` | Covered by the abuse runner and the tenant check | Not run separately |

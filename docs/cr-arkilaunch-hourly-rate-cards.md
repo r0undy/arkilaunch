@@ -59,6 +59,6 @@ The decision removes the second unit instead of patching around it. Only Almara 
 |---|---|---|
 | `migration-rls-guardian` | Yes. Migration 0071: a data retire plus a CHECK, with no new table and no RLS change | PASS (2026-09-29) |
 | `tenant-isolation-checker` | Yes. Rate-card queries changed. Tenant still comes from ctx, and every read and write runs in `withTenantTx` | PASS (2026-09-29) |
-| `edtr-ocr-worker` | Yes. The EDTR approval deduction gate changed (fails closed harder) | Covered by ai-ocr-abuse-runner (pending) and tenant-isolation PASS |
+| `edtr-ocr-worker` | Yes. The EDTR approval deduction gate changed (fails closed harder) | Covered by ai-ocr-abuse-runner PASS and tenant-isolation PASS |
 | `ai-ocr-abuse-runner` | No. The OCR and extraction path is unchanged | Not run |
 | `restraint-guardian` | Yes | PASS (2026-09-29) |
