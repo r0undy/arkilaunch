@@ -15,8 +15,6 @@ export interface SetupStep {
   to: string;
 }
 
-// What a new customer still has to do before a booking can be paid. Each
-// step is derived from the records, not a stored flag.
 export function setupSteps(
   companies: { kycStatus: string; documents: { documentType: string }[] }[],
   siteCount: number,
@@ -36,8 +34,6 @@ export function setupSteps(
 
 const SEEN_KEY = 'setup-modal-seen';
 
-// Pops up on the first home visit of each session until setup is done;
-// after that the home page only carries a one-line reminder that reopens it.
 function SetupChecklist() {
   const companies = useQuery(companiesQueries.mine());
   const sites = useQuery(customerSitesQueries.mine());

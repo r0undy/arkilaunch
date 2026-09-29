@@ -19,10 +19,6 @@ export function signupError(code: string): string {
   return 'We could not create your account. Check the details and try again.';
 }
 
-// Customer self-signup (customer prerequisites CR). A customer is someone
-// renting equipment from the yard; the rental business registration flow
-// stays at /register. Company details come next, on their own screen,
-// because one login may register several companies.
 function SignupPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');

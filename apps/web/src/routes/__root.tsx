@@ -24,9 +24,7 @@ function RootLayout() {
   const tenant = useQuery(tenantQuery());
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  // Same titles the edge Worker writes (lib/brand.ts), so a crawler that
-  // runs this script sees what one reading the HTML does. An equipment page
-  // titles itself once its model has loaded.
+  // Same titles the edge Worker writes (lib/brand.ts).
   useEffect(() => {
     if (currentHost.kind === 'platform') {
       document.title = 'ArkiLaunch';
@@ -36,8 +34,7 @@ function RootLayout() {
     if (title) document.title = title;
   }, [tenant.data, pathname]);
 
-  // Only once the brand has loaded: clearing it while the query is pending
-  // would strip what the Worker painted and flash the ArkiLaunch defaults.
+  // Only once the brand has loaded: clearing it earlier flashes the ArkiLaunch defaults.
   useEffect(() => {
     if (tenant.data) applyTenantBrand(tenant.data);
   }, [tenant.data]);

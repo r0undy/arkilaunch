@@ -94,10 +94,7 @@ import {
   accountCompanyDocumentsRoute,
 } from './routes/account.companies.js';
 
-// /account/companies was a second, differently-styled list of the same rows
-// the Figma company list (251:1945) now draws at /account/applications.
-// Redirected rather than deleted: it is linked from older emails and the
-// customer journey docs.
+// Redirected, not deleted: /account/companies is linked from older emails.
 const accountCompaniesRedirectRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/companies',
@@ -110,7 +107,6 @@ export const routeTree = rootRoute.addChildren([
   // `/` renders per host: ArkiLaunch landing or the tenant storefront home.
   indexRoute,
   publicLayoutRoute.addChildren([contactRoute, helpRoute, termsRoute, privacyRoute]),
-  // Same paths as before -- only the chrome changes, and only by auth state.
   storefrontLayoutRoute.addChildren([equipmentRoute, equipmentDetailRoute]),
   authLayoutRoute.addChildren([loginRoute, signupRoute, registerRoute, registerCompanyRoute, registerPendingRoute, activateRoute]),
   accountLayoutRoute.addChildren([

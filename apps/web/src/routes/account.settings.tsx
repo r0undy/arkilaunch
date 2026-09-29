@@ -43,8 +43,7 @@ function initials(me: UserSelfResponse) {
 function ProfileTab({ me }: { me: UserSelfResponse }) {
   const toast = useToast();
   const save = useSaveMe();
-  // Held as +639XXXXXXXXX. A number saved before the +63 rule that is not a
-  // PH mobile shows blank, and is left alone unless the customer types one.
+  // Held as +639XXXXXXXXX; a legacy non-PH number shows blank and is kept unless retyped.
   const initialPhone = me.phone && localPhMobile(me.phone) ? normalizePhMobile(me.phone) : '';
   const [phone, setPhone] = useState(initialPhone);
   const [address, setAddress] = useState(me.address ?? '');
@@ -140,8 +139,6 @@ function CompanyForm({ company }: { company: CompanyResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const verified = company.kycStatus === 'approved';
-  // A submitted company waiting on review is read-only; otherwise TIN and
-  // SEC lock once verified.
   const waiting = isWaitingForReview(company);
   const editable = (field: string) =>
     !waiting && (field === 'billingAddress' || !verified);

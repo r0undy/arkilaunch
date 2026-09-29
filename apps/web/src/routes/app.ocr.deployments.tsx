@@ -9,11 +9,6 @@ import { DeploymentScanList } from '../components/deployment-scan-list.js';
 import { PageHeader } from '../components/page-header.js';
 import { Alert } from '../components/alert.js';
 
-// The screen a scan starts from: pick the deployment, then the camera opens
-// already scoped to it. Before this, capture was reached from the review
-// queue with the rental chosen in a dropdown inside the modal -- the same
-// two decisions, but in the order that makes a mis-picked rental easy.
-
 function DeploymentScanPage({ billingTo }: { billingTo?: string }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -60,8 +55,7 @@ export const appOcrDeploymentsRoute = createRoute({
   component: () => <DeploymentScanPage billingTo="/app/billing/weekly" />,
 });
 
-// The timekeeper's twin. Same screen, same permission on the server
-// (`edtr:create`); only the layout guard differs.
+// Same server permission (edtr:create); only the layout guard differs.
 export const fieldScanRoute = createRoute({
   getParentRoute: () => fieldLayoutRoute,
   path: '/field/scan',

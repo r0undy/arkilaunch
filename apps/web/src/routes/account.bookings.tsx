@@ -20,8 +20,6 @@ const SERVICES: { id: Service; label: string }[] = [
   { id: 'truck', label: 'Self-loading truck' },
 ];
 
-// One line on where each booking stands; the detail page shows more as
-// the booking moves along (bookingStage in account.booking.tsx).
 const STAGE_HINT: Record<string, string> = {
   pending: 'Quote and payment next',
   confirmed: 'Paid, waiting for delivery',
@@ -42,8 +40,6 @@ const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
     ),
   },
   {
-    // One line per machine, each with its own dates: units on a booking are
-    // hired, delivered and returned on their own schedules.
     header: 'Machines and dates', kind: 'text',
     cell: (row) =>
       row.items && row.items.length > 0 ? (
@@ -86,8 +82,6 @@ const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
 
 function MyBookingsPage() {
   const [offset, setOffset] = useState(0);
-  // Both services follow the same steps (request, negotiate, pay); one tab
-  // each keeps their different columns from sharing one table.
   const [service, setService] = useState<Service>('rental');
   const [search, setSearch] = useState('');
   const codePrefix = bookingCodeSearchPrefix(search) ?? '';

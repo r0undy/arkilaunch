@@ -27,9 +27,6 @@ function LandingPage() {
     );
   }, [data, query]);
 
-  // The landing page is a shop window, not the catalog: it shows a first
-  // handful and sends you to /equipment for the rest, rather than growing
-  // into an unbounded grid as the fleet does.
   const PREVIEW_COUNT = 6;
   const preview = equipment.slice(0, PREVIEW_COUNT);
   const firstPhoto = data?.items.find((eq) => eq.photoUri)?.photoUri;
@@ -53,8 +50,6 @@ function LandingPage() {
           </Button>
           </div>
         </div>
-        {/* The AWS hero's right half: the tenant's hero, else its first
-            machine's photo, so the fold never reads as half empty. */}
         {heroImage && <img src={heroImage} alt="" className="aspect-[4/3] w-full rounded-lg object-cover" />}
       </section>
 
@@ -108,8 +103,6 @@ function LandingPage() {
   );
 }
 
-// `/` is the one path both hosts serve: ArkiLaunch's landing on the
-// platform host, the tenant's storefront home on a tenant host.
 function HomePage() {
   if (currentHost.kind === 'platform') return <PlatformLanding />;
   return (

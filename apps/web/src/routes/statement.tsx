@@ -10,10 +10,6 @@ import { Button, buttonClass } from '../components/button.js';
 import { PageHeader } from '../components/page-header.js';
 import { PrintFrame } from '../components/print-frame.js';
 
-// Statement of Account (QA 19): a rental's reconciled hours stacked week by
-// week as they are billed, and once the rental is done, a printable
-// statement of every charge, payment and the deposit.
-
 type Scope = 'me' | 'staff';
 const statementQuery = (scope: Scope, rentalId: string) => ({
   queryKey: ['statement', scope, rentalId] as const,
@@ -52,7 +48,6 @@ function WeeksTable({ statement }: { statement: StatementOfAccount }) {
   );
 }
 
-// The booking page's card: the weeks so far, and the statement once done.
 export function WeeklyBillingCard({ rentalId, scope }: { rentalId: string; scope: Scope }) {
   const statement = useQuery(statementQuery(scope, rentalId));
   if (!statement.data) return null;

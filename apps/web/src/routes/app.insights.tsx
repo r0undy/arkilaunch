@@ -28,9 +28,6 @@ const UTILIZATION_COLUMNS: TableColumn<ReportsSnapshot['utilization']['fleet'][n
 ];
 
 function InsightsPage() {
-  // The report arrives whole, so the fleet table pages in the browser. The
-  // financial breakdown is one row per invoice type -- a handful at most, so
-  // a pager there would be furniture.
   const [fleetOffset, setFleetOffset] = useState(0);
   return (
     <div className="flex flex-col gap-5">
@@ -47,10 +44,7 @@ function InsightsPage() {
         isEmpty={() => false}
         render={(data) => (
           <div className="flex flex-col gap-5">
-            {/* The numbers an owner opens this page for, before any table.
-                Deposit deducted is not a tile: it is the deposit_deduction
-                line of the breakdown below, and two figures for one sum read
-                as a double charge (same fix as app.billing.weekly.tsx). */}
+            {/* No deposit-deducted tile: it is a breakdown line below, and two figures read as a double charge. */}
             <div className="grid gap-3 sm:grid-cols-3">
               <StatTile label="Invoiced" value={formatPeso(data.financial.invoiced.total)} />
               <StatTile label="Paid" value={formatPeso(data.financial.paid)} />

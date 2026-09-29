@@ -10,7 +10,6 @@ import { onlyOn } from '../lib/guards.js';
 
 function RegisterPersonalDetailsPage() {
   const navigate = useNavigate();
-  // Back from the company step finds what was typed here (QA 17).
   const [draft] = useState(getPersonalDetails);
   const [firstName, setFirstName] = useState(draft?.firstName ?? '');
   const [lastName, setLastName] = useState(draft?.lastName ?? '');

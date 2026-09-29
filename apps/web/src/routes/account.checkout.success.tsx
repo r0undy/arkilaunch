@@ -13,11 +13,7 @@ import { isUuid } from '../lib/format.js';
 const POLL_MS = 3_000;
 const POLL_FOR_MS = 60_000;
 
-// Figma 168:3376 "Bank Transfer Successful". PayMongo's success_url, with
-// ?invoice=<id> added per session. Arriving here proves nothing -- the URL
-// can be typed -- so the page asks the API, which asks PayMongo server to
-// server (POST /me/invoices/:id/confirm-payment) or has already heard the
-// webhook. "Paid" shows only once the API says the invoice is paid.
+// Arriving here proves nothing (the URL can be typed): "Paid" shows only once the API says so.
 function CheckoutSuccessPage() {
   const { invoice: invoiceId } = accountCheckoutSuccessRoute.useSearch();
   const [startedAt] = useState(() => Date.now());
@@ -30,7 +26,6 @@ function CheckoutSuccessPage() {
       query.state.data?.status === 'issued' && Date.now() - startedAt < POLL_FOR_MS ? POLL_MS : false,
   });
   const paid = confirm.data?.status === 'paid';
-  // Still asking: the last answer (if any) landed inside the polling window.
   const checking = Boolean(invoiceId) && !paid && !confirm.isError && confirm.dataUpdatedAt - startedAt < POLL_FOR_MS;
 
   return (

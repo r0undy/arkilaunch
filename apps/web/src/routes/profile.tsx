@@ -21,11 +21,6 @@ function ProfileRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Figma 271:6855 (Admin Profile) and 360:4903 (Operator Profile). Both
-// frames show an editable profile card; GET /users/me is read-only and
-// there is no endpoint that writes a display name, avatar or phone number
-// back, so this shows the identity the JWT and the API actually agree on
-// and offers no edit affordance it cannot honour.
 function ProfilePage() {
   return (
     <div className="flex flex-col gap-5">

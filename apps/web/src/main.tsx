@@ -13,9 +13,7 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 30_000,
       refetchOnWindowFocus: false,
-      // The auth-client 401 interceptor already owns retrying an expired
-      // access token; retrying a 4xx here would just repeat a request that
-      // is never going to succeed (e.g. a 403 permission denial).
+      // The 401 interceptor owns token refresh; a 4xx will not succeed on retry.
       retry: (failureCount, error) =>
         failureCount < 2 &&
         !(error instanceof ApiError && error.status >= 400 && error.status < 500),
@@ -26,11 +24,7 @@ const queryClient = new QueryClient({
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('#root element missing');
 
-// The access token now lives in memory only (RFC-1 §3), so a reload starts
-// with none -- rehydrate it from the refresh token before the router's own
-// guards run, or every reload of an authed route bounces to /login.
-// One signed-in account per browser (QA 18): a sign-in or sign-out in
-// another tab, or on another ArkiLaunch site, signs this tab out.
+// The access token is memory-only: rehydrate before the router's guards run, or authed reloads bounce to /login.
 watchSessionOwner();
 bootstrapSession().finally(() => {
   createRoot(rootElement).render(
