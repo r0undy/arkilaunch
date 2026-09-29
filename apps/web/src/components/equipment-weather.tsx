@@ -110,6 +110,13 @@ export function EquipmentWeatherList({ data }: { data: SiteEquipmentWeatherRespo
         </p>
       )}
       <LevelLegend />
+      <p className="text-xs text-text-muted">
+        Weather data by{' '}
+        <a href={OPEN_METEO_URL} target="_blank" rel="noreferrer" className="underline">
+          Open-Meteo.com
+        </a>{' '}
+        (CC BY 4.0)
+      </p>
     </div>
   );
 }
