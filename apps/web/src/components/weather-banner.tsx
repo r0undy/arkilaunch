@@ -12,7 +12,7 @@ export interface WeatherBannerProps {
   tagLabel?: string;
   siteName: string;
   condition: string;
-  /** Relative text shown inline ("Reported 3 hours ago"); the exact date/time goes on the element's hover title. */
+  /** Relative text ("3 hours ago"), shown after "Reported"; the exact date/time goes on the element's hover title. */
   timestamp: { relative: string; absolute: string } | null;
   /** Plain-English lines explaining the actual observed readings behind this severity (see lib/weather-explain.ts). Omit if no reading is available yet. */
   breakdown?: string[];
@@ -108,7 +108,7 @@ export function WeatherBanner({
           {condition}
         </p>
         <p className="font-mono text-xs tabular-nums opacity-90" title={timestamp?.absolute}>
-          {timestamp ? timestamp.relative : 'Time unknown'}
+          {timestamp ? `Reported ${timestamp.relative}` : 'Time unknown'}
         </p>
         {coordinates && (
           <a

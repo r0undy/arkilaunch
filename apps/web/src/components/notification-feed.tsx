@@ -599,7 +599,7 @@ function NotificationRow({ notification, area }: { notification: NotificationRes
 
       <div className="flex shrink-0 items-center gap-3">
         <span className="text-right text-sm text-text-muted" title={when?.absolute}>
-          {when?.relative.replace('Reported ', '') ?? '--'}
+          {when?.relative ?? '--'}
         </span>
         {isUnread && (
           <Button
