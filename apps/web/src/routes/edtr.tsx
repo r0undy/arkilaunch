@@ -1,5 +1,5 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
 import { apiGet, apiPost } from '../lib/api-client.js';
@@ -101,9 +101,11 @@ function EdtrPage() {
   const [approving, setApproving] = useState<EdtrListItem | null>(null);
   const [viewing, setViewing] = useState<EdtrListItem | null>(null);
 
-  const [offset, setOffset] = useState(0);
-  // A new filter starts from its first page.
-  useEffect(() => setOffset(0), [search.site, search.equipment, search.week, search.status]);
+  // A new filter starts from its first page, in the same render (no request at the old offset).
+  const filterKey = [search.site, search.equipment, search.week, search.status].join('|');
+  const [paging, setPaging] = useState({ key: filterKey, offset: 0 });
+  const offset = paging.key === filterKey ? paging.offset : 0;
+  const setOffset = (next: number) => setPaging({ key: filterKey, offset: next });
   // Deep links from the dashboard's "Needs you" rows: one machine-week. The
   // filter goes to the API, so the pager counts the filtered rows rather than
   // filtering whichever page happened to load.
