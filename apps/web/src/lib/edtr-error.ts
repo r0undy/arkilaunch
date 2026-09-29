@@ -1,3 +1,5 @@
+import { ApiError, apiErrorText } from './api-client.js';
+
 // The EDTR screen used to render the raw ApiError as JSON. Every gate on the
 // money path answers with a machine code, and several of them are refusals by
 // design rather than faults -- a reviewer needs to know which is which, and
@@ -76,12 +78,28 @@ export function explainEdtrError(error: unknown): EdtrErrorExplanation {
         detail:
           'Automatic extraction is enabled here, so the scan alone is captured and the hours come from the extractor.',
       };
+    case 'report_date_outside_rental':
+      return {
+        title: 'That day is outside the rental',
+        detail: 'Pick a day between the rental start and its return, or check the machine was on this rental that day.',
+      };
+    case 'site_not_assigned':
+      return {
+        title: 'You are not assigned to this site',
+        detail: 'Ask the office to add you as a timekeeper for this site, then record the log again.',
+      };
     case 'file_required':
       return { title: 'The scan is missing', detail: 'A paper log needs the photographed or uploaded sheet attached.' };
     default:
       return {
         title: 'That did not go through',
-        detail: 'The request was refused and nothing was changed. The technical detail below says why.',
+        // A plain Error is our own validation message; a TypeError is a raw network failure.
+        detail:
+          error instanceof ApiError
+            ? apiErrorText(error)
+            : error instanceof Error && error.name === 'Error'
+              ? error.message
+              : 'Try again in a moment.',
       };
   }
 }
