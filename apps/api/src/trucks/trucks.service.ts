@@ -118,10 +118,7 @@ export class TrucksService {
       : DEFAULT_SETTINGS;
   }
 
-  // Per-km and fuel are the tenant's pricing parameters and today's resolved
-  // diesel price (tenant override, else the national GasWatch average) --
-  // the same inputs as every equipment quote. truck_settings.region is no
-  // longer read. low/high are the total +/- the tenant's band.
+  // The same inputs as every equipment quote; low/high are the total +/- the tenant's band.
   private async price(tx: Tx, tenantId: string, km: number, tolls: TruckPriceLine[] = []): Promise<TruckPrice> {
     const settings = await this.readSettings(tx, tenantId);
     const diesel = await this.engine.resolveDieselAndParams(tx, tenantId);
@@ -144,8 +141,7 @@ export class TrucksService {
     });
   }
 
-  // Loads the PH Class 3 expressway matrix as this tenant's own editable
-  // toll rates. Idempotent: a pair already loaded (edited or not) is kept.
+  // Idempotent: a pair already loaded (edited or not) is kept.
   loadPhTolls(ctx: RequestContext): Promise<{ added: number }> {
     return withTenantTx(ctx, async (tx) => {
       const have = new Set(
@@ -170,7 +166,6 @@ export class TrucksService {
     });
   }
 
-  // A TRB change: the admin corrects the fee in place.
   updateToll(ctx: RequestContext, id: string, body: TollRateUpdate): Promise<TollRateResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [t] = await tx.update(tollRates).set({ feePhp: String(body.feePhp) }).where(and(eq(tollRates.id, id), eq(tollRates.tenantId, ctx.tenantId))).returning();
@@ -250,8 +245,7 @@ export class TrucksService {
     return body;
   }
 
-  // Routing runs outside any transaction: two slow network calls should not
-  // hold a DB connection.
+  // Routing runs outside any transaction: slow network calls must not hold a DB connection.
   async estimate(ctx: RequestContext, body: TruckEstimateRequest): Promise<TruckEstimateResponse> {
     const route = await roadRoute(body.pickup, body.dropoff, pins(body));
     const price = await withTenantTx(ctx, (tx) => this.price(tx, ctx.tenantId, route.km));
@@ -262,9 +256,7 @@ export class TrucksService {
     const route = await roadRoute(body.pickup, body.dropoff, pins(body));
     const { km } = route;
     const created = await withTenantTx(ctx, async (tx) => {
-      // Booked for one of the caller's own companies (never a client-trusted
-      // id); a site, when named, must be that company's. A truck trip serves
-      // the company, so the site needs no proof.
+      // One of the caller's own companies (never a client-trusted id); a named site must be that company's.
       const company = (await ownCustomers(tx, ctx)).find((row) => row.id === body.customerId);
       if (!company) throw new NotFoundException({ error: 'customer_not_found' });
       if (body.projectSiteId) {
@@ -290,8 +282,7 @@ export class TrucksService {
           estimatedKm: String(km),
           routeMinutes: route.minutes,
           price,
-          // The high end of the estimate: staff are warned before agreeing
-          // above it (a typo guard; the customer accepts every price anyway).
+          // Staff are warned before agreeing above the estimate's high end (a typo guard).
           capPhp: String(price.highPhp ?? price.totalPhp),
           pickupLat: body.pickupLat !== undefined ? String(body.pickupLat) : null,
           pickupLng: body.pickupLng !== undefined ? String(body.pickupLng) : null,
@@ -311,9 +302,6 @@ export class TrucksService {
     return created;
   }
 
-  // A customer sees only their own requests; staff see the tenant's queue.
-  // `q` narrows to a TRK- code, exactly or by prefix, as GET /bookings does.
-  // `status` splits the queue into open (still to act on) and closed.
   list(ctx: RequestContext, scope: 'mine' | 'all', query: TruckRequestListQuery): Promise<TruckRequestListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const codePrefix = query.q ? bookingCodeSearchPrefix(query.q) : null;
@@ -324,7 +312,6 @@ export class TrucksService {
         query.status === 'open' ? notInArray(truckRequests.status, closed) : undefined,
         query.status === 'closed' ? inArray(truckRequests.status, closed) : undefined,
       );
-      // Company and requester ride along, so staff can call the customer.
       const rows = await tx
         .select({ row: truckRequests, companyName: customers.companyName, first: users.firstName, last: users.lastName, phone: users.phone })
         .from(truckRequests)
@@ -347,9 +334,7 @@ export class TrucksService {
     });
   }
 
-  // GET /truck-requests/:id/route: the road line between a request's saved
-  // pins, for the staff map. The pins are read under RLS (tenant from the
-  // JWT); routing runs after the transaction closes.
+  // Pins are read under RLS; routing runs after the transaction closes.
   async route(ctx: RequestContext, id: string): Promise<TruckRoute> {
     const row = await withTenantTx(ctx, (tx) => this.visibleRequest(tx, ctx, id));
     if (row.pickupLat === null || row.pickupLng === null || row.dropoffLat === null || row.dropoffLng === null) {
@@ -359,7 +344,6 @@ export class TrucksService {
       row.pickup,
       row.dropoff,
       rowPins(row),
-      // Staff get the turn list's toll hints for the toll picker.
       ctx.role !== 'customer',
     );
     if (ctx.role !== 'customer' && row.routeCities === null && route.line.length > 1) {
@@ -404,9 +388,7 @@ export class TrucksService {
     });
   }
 
-  // The admin's km is final: the price is recomputed on it, with today's
-  // inputs, and that is the figure the customer is charged.
-  // A manual toll amount replaces the picked tolls with one line.
+  // The admin's km is final: the price is recomputed on it and that is what the customer is charged.
   async confirmKm(ctx: RequestContext, id: string, body: TruckKmConfirm): Promise<TruckRequestResponse> {
     const { km, tollRateIds = [], manualTollPhp } = body;
     return withTenantTx(ctx, async (tx) => {
@@ -426,8 +408,7 @@ export class TrucksService {
       if (row.status === 'cancelled') throw new ConflictException({ error: 'truck_request_cancelled' });
       const [updated] = await tx
         .update(truckRequests)
-        // An agreed or paid request keeps its status: the km refines the
-        // cost breakdown, the agreed price is what was charged.
+        // An agreed or paid request keeps its status and its charged price.
         .set({
           confirmedKm: String(km),
           status: row.status === 'estimated' ? 'km_confirmed' : row.status,
@@ -439,10 +420,7 @@ export class TrucksService {
     });
   }
 
-  // A customer reaches only their own request; staff reach any in the
-  // tenant (RLS scopes both to the JWT's tenant).
-  // `lock` holds the row for a price or status change, so a staff price
-  // change and a customer accept or cancel never interleave.
+  // RLS scopes both to the JWT's tenant; `lock` stops a staff price change interleaving with an accept or cancel.
   private async visibleRequest(tx: Tx, ctx: RequestContext, id: string, lock = false) {
     const query = tx
       .select()
@@ -458,8 +436,7 @@ export class TrucksService {
     return row;
   }
 
-  // The same negotiation thread rentals use (negotiation_messages), keyed
-  // on the truck request. An offer is a message, never a charge.
+  // An offer is a message, never a charge.
   listMessages(ctx: RequestContext, id: string): Promise<NegotiationMessageResponse[]> {
     return withTenantTx(ctx, async (tx) => {
       await this.visibleRequest(tx, ctx, id);
@@ -480,7 +457,6 @@ export class TrucksService {
     });
   }
 
-  // A staff reply pings the requesting customer; a customer message pings staff.
   postMessage(ctx: RequestContext, id: string, body: NegotiationMessageCreate) {
     return withTenantTx(ctx, async (tx) => {
       const request = await this.visibleRequest(tx, ctx, id);
@@ -514,7 +490,6 @@ export class TrucksService {
     });
   }
 
-  // Names the driver and helper on a trip; shown in the site hub.
   async setCrew(ctx: RequestContext, id: string, crew: TruckCrew): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx
@@ -527,10 +502,7 @@ export class TrucksService {
     });
   }
 
-  // Staff set the price the truck invoice charges; re-agreeing is allowed
-  // until the request is paid. Every change voids the unpaid invoice (and
-  // its PayMongo session/QR), needs the customer's accept again, and lands
-  // in the thread both sides read, as the price history.
+  // Every price change voids the unpaid invoice (and its PayMongo session) and needs the customer's accept again.
   async agree(ctx: RequestContext, id: string, pricePhp: number): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
       const request = await this.visibleRequest(tx, ctx, id, true);
@@ -574,7 +546,6 @@ export class TrucksService {
     });
   }
 
-  // Callback before payment: the customer asks, staff call and confirm.
   // Checkout refuses until call_confirmed_at is set.
   async requestCall(ctx: RequestContext, id: string): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
@@ -602,9 +573,7 @@ export class TrucksService {
     });
   }
 
-  // The customer accepts the agreed price they were shown. A staff change
-  // in between (pricePhp no longer the agreed one) is a 409: they re-read
-  // the new figure and accept that instead.
+  // A staff change since the customer saw the price is a 409: they re-read and accept the new figure.
   async acceptPrice(ctx: RequestContext, id: string, pricePhp: number): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
       const row = await this.visibleRequest(tx, ctx, id, true);
@@ -633,10 +602,7 @@ export class TrucksService {
     });
   }
 
-  // The customer calls a trip off while it is still unpaid. Its unpaid
-  // invoice and any open PayMongo session go with it (a session already
-  // paid refuses: payment_in_progress); a paid trip is the rental team's
-  // to cancel and refund.
+  // A paid trip is the rental team's to cancel and refund; a session already paid refuses (payment_in_progress).
   async cancelOwn(ctx: RequestContext, id: string): Promise<TruckRequestResponse> {
     return withTenantTx(ctx, async (tx) => {
       const row = await this.visibleRequest(tx, ctx, id, true);

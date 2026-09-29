@@ -24,10 +24,6 @@ import { holdDeadline } from '../common/booking-hold.js';
 import { EventsService } from '../events/events.service.js';
 import { PricingEngineService, type PricedQuote } from './pricing-engine.service.js';
 
-// RFC-3 §3: the API returns camelCase (matching this codebase's existing
-// AuthTokens/JwtClaims convention in packages/shared), not the RFC's
-// illustrative snake_case JSON -- the wire shape below is a deliberate
-// naming-convention choice, not a divergence from the RFC's math or fields.
 export interface QuoteResponse {
   id: string;
   revision: number;
@@ -39,14 +35,13 @@ export interface QuoteResponse {
   currency: 'PHP';
   lineItems: Array<{
     kind: 'equipment' | 'custom';
-    // A custom line's own text; unset on equipment lines.
     description?: string;
     equipmentTypeId: string | null;
     equipmentTypeName?: string;
     rateCardId: string | null;
     quantity: number;
     estimatedHours: number;
-    // The rent as charged, e.g. [{ daily, 8000, 12 }] = 8,000/day x 12 days.
+    // e.g. [{ daily, 8000, 12 }] = 8,000/day x 12 days.
     rentParts: RentPart[];
     rent: number;
     hourlyRate: number;
@@ -62,19 +57,14 @@ export interface QuoteResponse {
   discount: number;
   total: number;
   printableUrl: string | null;
-  // Filled by GET /quotes/:id for the printable quote.
   createdAt?: string;
   customerName?: string;
-  // The booking this quote prices (EQR-…), printed on the quote.
   bookingCode?: string;
 }
 
 type QuoteState = { rentalId: string | null; status: string; createdAt: Date };
 
-// Whether staff may re-quote a booking's latest quote. A draft is still
-// staff's own; a declined quote, or one the customer answered in the
-// booking's thread after it was issued, is in negotiation. Otherwise the
-// price book's quote stands.
+// A draft is staff's own; a declined quote, or one the customer answered in the thread since, is in negotiation.
 export async function inNegotiation(tx: Tx, quote: QuoteState): Promise<boolean> {
   if (quote.status === 'rejected' || quote.status === 'draft') return true;
   if (quote.status !== 'approved' || !quote.rentalId) return false;
@@ -118,19 +108,15 @@ export class QuotesService {
     private readonly events: EventsService,
   ) {}
 
-  // POST /quotes/preview: compute only, nothing persisted (RFC-3 §3).
   async preview(ctx: RequestContext, body: QuoteRequest): Promise<QuoteResponse> {
     const priced = await withTenantTx(ctx, (tx) => this.pricingEngine.priceQuote(tx, ctx.tenantId, body));
     return this.toResponse('', 0, 'preview', priced, null);
   }
 
-  // POST /quotes: persist a draft, freeze the snapshot (RFC-3 §3).
   async create(ctx: RequestContext, body: QuoteRequest): Promise<QuoteResponse> {
     const startedAt = Date.now();
     const result = await withTenantTx(ctx, async (tx) => {
-      // A booking has one live quote. Quoting it again is a new revision
-      // that supersedes every open one, so an older, cheaper approved quote
-      // can never still be accepted after the price moved.
+      // Re-quoting supersedes every open revision, so an older, cheaper approved quote can never still be accepted.
       await requireVerifiedCompany(tx, body.customerId);
       let revision = 1;
       let parentQuotationId: string | null = null;
@@ -172,7 +158,6 @@ export class QuotesService {
     return this.toResponse(result.quotation.id, result.quotation.revision, result.quotation.status, result.priced, result.quotation.printableUrl);
   }
 
-  // null leaves the booking for a manual quote (no in-force hourly card, or pricing not set up).
   async autoQuoteBooking(ctx: RequestContext, rentalId: string): Promise<QuoteResponse | null> {
     const body = await withTenantTx(ctx, async (tx): Promise<QuoteRequest | null> => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, rentalId)).limit(1);
@@ -187,7 +172,6 @@ export class QuotesService {
       const now = new Date();
       const items: QuoteRequest['items'] = [];
       for (const line of lines) {
-        // No end date: an open-ended hire has no days to price; manual quote.
         if (!line.end) return null;
         const days = bookingDays(line.start, line.end);
         const [card] = await tx
@@ -226,13 +210,11 @@ export class QuotesService {
       await this.approve(ctx, quote.id, 'auto-quoted from rate cards');
       return { ...quote, status: 'approved' };
     } catch (err) {
-      // No pricing parameters or diesel price yet (422): staff quote by hand.
       if (err instanceof UnprocessableEntityException) return null;
       throw err;
     }
   }
 
-  // POST /quotes/:id/revise: fresh snapshot, supersede the parent (RFC-3 §3).
   async revise(ctx: RequestContext, quotationId: string, body: QuoteRequest): Promise<QuoteResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [parent] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
@@ -250,14 +232,13 @@ export class QuotesService {
         parentQuotationId: parent.id,
       });
 
-      // The parent's numbers are unchanged (QAD-T47); only its status flips.
+      // The parent's numbers are never changed; only its status flips.
       await tx.update(quotations).set({ status: 'superseded' }).where(eq(quotations.id, parent.id));
 
       return this.toResponse(revised.id, revised.revision, 'draft', priced, revised.printableUrl);
     });
   }
 
-  // POST /quotes/:id/approve: draft -> approved, locks the snapshot (RFC-3 §3).
   async approve(ctx: RequestContext, quotationId: string, reason?: string): Promise<{ id: string; status: string }> {
     return withTenantTx(ctx, async (tx) => {
       const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
@@ -276,7 +257,7 @@ export class QuotesService {
         reason: reason ?? null,
       });
       if (quotation.rentalId) {
-        // The customer's turn: a request's hold restarts with the quote (QA 25).
+        // A request's hold restarts with the quote.
         await tx
           .update(rentals)
           .set({ holdExpiresAt: await holdDeadline(tx, ctx.tenantId) })
@@ -292,9 +273,7 @@ export class QuotesService {
     });
   }
 
-  // POST /quotes/:id/accept: the customer takes an approved quote. This is
-  // the only thing that makes rent chargeable at checkout, and it opens the
-  // rental contract whose deposit_required caps every later deduction.
+  // The only thing that makes rent chargeable at checkout; opens the contract whose deposit_required caps deductions.
   async accept(ctx: RequestContext, quotationId: string): Promise<{ id: string; status: string }> {
     return withTenantTx(ctx, async (tx) => {
       const quotation = await this.customerQuote(tx, ctx, quotationId);
@@ -330,8 +309,6 @@ export class QuotesService {
     });
   }
 
-  // POST /quotes/:id/decline: the customer walks away from this revision.
-  // The booking stays open so staff can revise, or the customer can cancel.
   async decline(ctx: RequestContext, quotationId: string): Promise<{ id: string; status: string }> {
     return withTenantTx(ctx, async (tx) => {
       const quotation = await this.customerQuote(tx, ctx, quotationId);
@@ -345,15 +322,12 @@ export class QuotesService {
     });
   }
 
-  // A booking's quote comes from the standard price book. Staff may only
-  // re-quote it in a negotiation: the customer declined it, or wrote in the
-  // booking's thread since it was issued. Otherwise the price book stands.
+  // Staff may re-quote only in a negotiation; otherwise the price book stands.
   private async requireNegotiation(tx: Tx, quote: QuoteState) {
     if (!(await inNegotiation(tx, quote))) throw new ConflictException({ error: 'quote_not_in_negotiation' });
   }
 
-  // A staff-agreed line price is a manual override of the engine, so it is
-  // audit-logged against the quote it lives on.
+  // A staff-agreed line price overrides the engine, so it is audit-logged.
   private async auditAgreedPrices(
     tx: Tx,
     ctx: RequestContext,
@@ -372,9 +346,7 @@ export class QuotesService {
     });
   }
 
-  // Accept/decline are the customer's call on their own quote: 404 for
-  // anyone else's (never confirm the id exists) and for staff, who approve
-  // rather than accept.
+  // 404 for anyone else's quote (never confirm the id exists) and for staff, who approve rather than accept.
   private async customerQuote(tx: Tx, ctx: RequestContext, quotationId: string) {
     const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
     const mine = ctx.role === 'customer' && quotation ? await ownsCustomer(tx, ctx, quotation.customerId) : false;
@@ -384,18 +356,13 @@ export class QuotesService {
     return quotation;
   }
 
-  // GET /quotes/:id: renders entirely from stored columns (RFC-3 §3), so a
-  // print months later shows the exact quoted numbers.
+  // Renders entirely from stored columns, so a later print shows the exact quoted numbers.
   async get(ctx: RequestContext, quotationId: string): Promise<QuoteResponse> {
     return withTenantTx(ctx, async (tx) => {
       const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, quotationId)).limit(1);
       if (!quotation) throw new NotFoundException({ error: 'quote_not_found' });
 
-      // RLS scopes to the tenant, never to the customer, and `customer`
-      // holds quote:read -- so without this a customer JWT plus any
-      // quotation id returns another customer's rates, discounts and
-      // totals (audit-api-surface.md #1). 404 rather than 403: a 403 would
-      // confirm the id exists.
+      // RLS scopes to the tenant, not the customer, and customers hold quote:read; 404 so the id isn't confirmed.
       if (ctx.role === 'customer') {
         if (!(await ownsCustomer(tx, ctx, quotation.customerId))) throw new NotFoundException({ error: 'quote_not_found' });
       }
@@ -433,8 +400,7 @@ export class QuotesService {
             rateCardId: item.rateCardId,
             quantity: item.quantity,
             estimatedHours: Number(item.estimatedHours),
-            // Quotes from before 2.0 carry no rent breakdown: rent shows as
-            // the operating cost, priced per hour.
+            // Pre-2.0 quotes carry no rent breakdown.
             rentParts: inputs.rent_parts ?? [],
             rent: inputs.rent_php ?? Number(item.operatingCostPhp),
             hourlyRate: Number(item.hourlyRatePhp),
@@ -459,7 +425,6 @@ export class QuotesService {
     });
   }
 
-  // A new draft revision with its frozen snapshot and line items.
   private async insertRevision(
     tx: Tx,
     ctx: RequestContext,

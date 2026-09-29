@@ -29,14 +29,9 @@ const isCurrent = (now: Date) => or(isNull(rateCards.effectiveTo), gt(rateCards.
 
 @Injectable()
 export class PricingService {
-  // Platform manual entry (RFC-3 §2/§3 QUOTE-05): used when the scrape
-  // breaks or is off. Audit-logged so a hand-entered price is attributable.
+  // Audit-logged so a hand-entered price is attributable.
   async recordDieselPrice(ctx: RequestContext, input: DieselPriceEntry) {
-    // The insert goes through the SECURITY DEFINER function, because
-    // app_authenticated no longer holds INSERT on this global, un-RLS'd
-    // table (audit-db-tenant-isolation.md #7, migration 0020). It
-    // therefore runs outside the tenant transaction below, which only
-    // writes the audit row.
+    // Via the SECURITY DEFINER function (app_authenticated can't INSERT this global table), so outside the tenant tx.
     const reading = await recordManualDieselReading({
       region: input.region,
       pricePhp: String(input.pricePhp),
@@ -67,8 +62,6 @@ export class PricingService {
     };
   }
 
-  // GET /pricing/diesel-price: the latest national reading (what a quote
-  // prices against when the tenant has no fresh override).
   async latestDieselPrice(region: string) {
     const [latest] = await db
       .select()
@@ -81,9 +74,7 @@ export class PricingService {
       : null;
   }
 
-  // POST /pricing/diesel-price/fetch: the admin "Fetch now" button. Same
-  // fetch as the weekly job; the URL is fixed server-side, so nothing the
-  // caller sends reaches the global reading.
+  // The URL is fixed server-side, so nothing the caller sends reaches the global reading.
   async fetchGasWatchDiesel(ctx: RequestContext, region: string) {
     let reading;
     try {
@@ -103,10 +94,7 @@ export class PricingService {
     return this.latestDieselPrice(region);
   }
 
-  // Tenant diesel override + pricing inputs (RFC-3 §2/§3 QUOTE-05):
-  // time-variant, never overwritten. Closes any prior open-ended row for
-  // the same tenant/region so the "latest effective_from" lookup in
-  // PricingEngineService stays correct, then inserts the new one.
+  // Time-variant, never overwritten: closes the prior open-ended row, then inserts.
   async setPricingParameters(ctx: RequestContext, input: PricingParametersInput) {
     return withTenantTx(ctx, async (tx) => {
       const effectiveFrom = new Date();
@@ -152,9 +140,6 @@ export class PricingService {
     });
   }
 
-  // GET /pricing/parameters?region= (S18). Read-only complement to
-  // setPricingParameters -- the currently-effective row for the region, or
-  // null if none has ever been set.
   async getPricingParameters(ctx: RequestContext, region: string) {
     return withTenantTx(ctx, async (tx) => {
       const now = new Date();
@@ -175,10 +160,6 @@ export class PricingService {
     });
   }
 
-  // GET /rate-cards (S18). Full history by default (the settings screen's
-  // effective-dating timeline); ?includeSuperseded=false narrows to
-  // currently-effective rows, matching ReferenceService.rateCards()'s
-  // pick-list filter.
   async listRateCards(ctx: RequestContext, query: RateCardListQuery) {
     return withTenantTx(ctx, async (tx) => {
       const now = new Date();
@@ -204,16 +185,13 @@ export class PricingService {
     });
   }
 
-  // POST /rate-cards (S18). App-layer overlap guard: no DB exclusion
-  // constraint (would need btree_gist, restraint ladder) -- same posture as
-  // pricing_parameters' own append-only supersede.
+  // App-layer overlap guard: no DB exclusion constraint (would need btree_gist).
   async createRateCard(ctx: RequestContext, input: RateCardCreateRequest) {
     return withTenantTx(ctx, async (tx) => {
       const effectiveFrom = input.effectiveFrom ? new Date(input.effectiveFrom) : new Date();
       const effectiveTo = input.effectiveTo ? new Date(input.effectiveTo) : null;
 
-      // A unit card must name this tenant's unit of this type. The FK alone
-      // would accept another tenant's id (FK checks bypass RLS).
+      // The FK alone would accept another tenant's id (FK checks bypass RLS).
       if (input.equipmentId) {
         const [unit] = await tx.select().from(equipment).where(eq(equipment.id, input.equipmentId)).limit(1);
         if (!unit || unit.equipmentTypeId !== input.equipmentTypeId) {
@@ -264,10 +242,7 @@ export class PricingService {
     });
   }
 
-  // PATCH /rate-cards/:id (S18, QAD-T44). Append-only supersede: closes the
-  // existing row's window and inserts a successor. Never an in-place
-  // UPDATE ... SET rate_value -- migration 0007 also revokes that
-  // privilege at the DB layer, so this is a guarantee, not a convention.
+  // Append-only supersede; the DB revokes in-place UPDATE of rate_value too.
   async supersedeRateCard(ctx: RequestContext, id: string, input: RateCardSupersedeRequest) {
     return withTenantTx(ctx, async (tx) => {
       const [existing] = await tx.select().from(rateCards).where(eq(rateCards.id, id)).limit(1).for('update');
@@ -307,9 +282,7 @@ export class PricingService {
     });
   }
 
-  // DELETE /rate-cards/:id (S18): retire = close the window, never a row
-  // delete. migration 0007 revokes DELETE on rate_cards entirely for
-  // app_authenticated, so this can only ever narrow the effective window.
+  // Retire = close the window; the DB revokes DELETE on rate_cards.
   async retireRateCard(ctx: RequestContext, id: string) {
     return withTenantTx(ctx, async (tx) => {
       const [existing] = await tx.select().from(rateCards).where(eq(rateCards.id, id)).limit(1).for('update');
@@ -335,7 +308,6 @@ export class PricingService {
     });
   }
 
-  // GET/PUT /pricing/billing-settings.
   async getBillingSettings(ctx: RequestContext) {
     return withTenantTx(ctx, (tx) => getBillingSettings(tx, ctx.tenantId));
   }
