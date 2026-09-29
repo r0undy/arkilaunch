@@ -435,6 +435,32 @@ function IdReviewStep({
 }
 
 // Figma 582:3946 / 168:2442 "Add New Company".
+// The document picks both company pages capture, and the ID check on them.
+function useDocumentCapture() {
+  const [governmentId, setGovernmentId] = useState<File | null>(null);
+  const [idDetails, setIdDetails] = useState<IdDetails>(EMPTY_ID);
+  const [idScan, setIdScan] = useState<IdScan | null>(null);
+  const [registration, setRegistration] = useState<File | null>(null);
+  const [registrationType, setRegistrationType] = useState<PrimaryRegistrationType>('bir_cor');
+  const [dti, setDti] = useState<File | null>(null);
+  const [selfie, setSelfie] = useState<File | null>(null);
+  const [scanning, setScanning] = useState(false);
+  // Resolves true once the ID is read, so the caller moves on to its review step.
+  async function scanGovernmentId(): Promise<boolean> {
+    if (!governmentId) return false;
+    setScanning(true);
+    const scan = await scanId(governmentId, idDetails.idType);
+    setIdScan(scan);
+    setIdDetails(scan.details);
+    setScanning(false);
+    return true;
+  }
+  return {
+    governmentId, setGovernmentId, idDetails, setIdDetails, idScan, registration, setRegistration,
+    registrationType, setRegistrationType, dti, setDti, selfie, setSelfie, scanning, setScanning, scanGovernmentId,
+  };
+}
+
 function NewCompanyPage() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -445,13 +471,10 @@ function NewCompanyPage() {
   const [dtiNumber, setDtiNumber] = useState('');
   const [billingAddress, setBillingAddress] = useState('');
   const [contactMobile, setContactMobile] = useState('');
-  const [governmentId, setGovernmentId] = useState<File | null>(null);
-  const [idDetails, setIdDetails] = useState<IdDetails>(EMPTY_ID);
-  const [idScan, setIdScan] = useState<IdScan | null>(null);
-  const [registration, setRegistration] = useState<File | null>(null);
-  const [registrationType, setRegistrationType] = useState<PrimaryRegistrationType>('bir_cor');
-  const [dti, setDti] = useState<File | null>(null);
-  const [selfie, setSelfie] = useState<File | null>(null);
+  const {
+    governmentId, setGovernmentId, idDetails, setIdDetails, idScan, registration, setRegistration,
+    registrationType, setRegistrationType, dti, setDti, selfie, setSelfie, scanning, setScanning, scanGovernmentId,
+  } = useDocumentCapture();
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -481,7 +504,6 @@ function NewCompanyPage() {
   const mine = useQuery(companiesQueries.mine()).data ?? [];
   const idOnFile = mine.some((c) => c.documents.some((d) => d.documentType === 'government_id'));
   const stage = idOnFile && (chosenStage === 'government_id' || chosenStage === 'id_details') ? 'company_registration' : chosenStage;
-  const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState<boolean | null>(null);
   // The registration scan did not read as the paper picked (layoutRecognized).
   const [wrongPaper, setWrongPaper] = useState(false);
@@ -498,13 +520,7 @@ function NewCompanyPage() {
   );
 
   async function checkId() {
-    if (!governmentId) return;
-    setScanning(true);
-    const scan = await scanId(governmentId, idDetails.idType);
-    setIdScan(scan);
-    setIdDetails(scan.details);
-    setScanning(false);
-    setStage('id_details');
+    if (await scanGovernmentId()) setStage('id_details');
   }
 
   async function scanThenEdit() {
@@ -792,15 +808,11 @@ function CompanyDocumentsPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [governmentId, setGovernmentId] = useState<File | null>(null);
-  const [idDetails, setIdDetails] = useState<IdDetails>(EMPTY_ID);
-  const [idScan, setIdScan] = useState<IdScan | null>(null);
-  const [registration, setRegistration] = useState<File | null>(null);
-  const [registrationType, setRegistrationType] = useState<PrimaryRegistrationType>('bir_cor');
-  const [dti, setDti] = useState<File | null>(null);
-  const [selfie, setSelfie] = useState<File | null>(null);
+  const {
+    governmentId, setGovernmentId, idDetails, setIdDetails, idScan, registration, setRegistration,
+    registrationType, setRegistrationType, dti, setDti, selfie, setSelfie, scanning, scanGovernmentId,
+  } = useDocumentCapture();
   const [busy, setBusy] = useState(false);
-  const [scanning, setScanning] = useState(false);
   // Same one-at-a-time order as adding a company, ID check included. The
   // registration is not scanned here: the company already exists, so there
   // is no company form left to prefill.
@@ -821,13 +833,7 @@ function CompanyDocumentsPage() {
   const setFile = stage === 'government_id' ? setGovernmentId : setRegistration;
 
   async function checkId() {
-    if (!governmentId) return;
-    setScanning(true);
-    const scan = await scanId(governmentId, idDetails.idType);
-    setIdScan(scan);
-    setIdDetails(scan.details);
-    setScanning(false);
-    setStage('id_details');
+    if (await scanGovernmentId()) setStage('id_details');
   }
 
   function advanceToRegistration() {
