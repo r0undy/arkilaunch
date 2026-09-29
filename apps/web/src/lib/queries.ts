@@ -57,21 +57,14 @@ import {
 } from './reference-client.js';
 export const PAGE_SIZE = 20;
 
-// `path?a=1&b=2`, skipping empty values.
 function withParams(path: string, params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== '') search.set(key, String(value));
   return `${path}?${search}`;
 }
 
-// Query-key convention: [resourceSegment, ...identifiers, filters?],
-// lowercase, mirroring the API path -- ['equipment'], ['equipment', id],
-// ['reports', 'utilization']. Prefix-first so
-// invalidateQueries({ queryKey: ['reports'] }) hits every reports query.
-// Keys never appear as literals at call sites; only these factories build
-// them, so they cannot drift out of sync with each other.
+// Keys are prefix-first, mirroring the API path, so invalidating ['reports'] hits every reports query.
 
-// The admin Equipment tab's filters (GET /equipment); empty = not applied.
 export interface EquipmentListFilters {
   typeId?: string;
   status?: string;
@@ -106,15 +99,11 @@ export const equipmentQueries = {
     }),
 };
 
-// @Public, anchor-tenant-only for now -- see catalog.service.ts. Unlike the
-// other factories here this is reachable with no access token.
 export const catalogQueries = {
   equipment: () =>
     queryOptions({
       queryKey: ['catalog', 'equipment'] as const,
-      // ponytail: the storefront filters in the browser, so it takes the
-      // API's 100-row ceiling (the default was 50). Past 100 machines, page
-      // on the server -- that needs a total from the catalog SQL function.
+      // ponytail: storefront filters in the browser at the API's 100-row ceiling; page on the server past 100 machines.
       queryFn: () => apiGet<CatalogEquipmentListResponse>('/catalog/equipment?limit=100'),
     }),
   equipmentDetail: (id: string) =>
@@ -136,7 +125,6 @@ export const sitesQueries = {
       queryFn: () =>
         apiGet<SiteListResponse>(withParams('/sites', { limit, offset, deployment })),
     }),
-  // The site hub (cr-arkilaunch-edtr-site-hub-approval.md).
   hub: (siteId: string) =>
     queryOptions({
       queryKey: ['sites', siteId, 'hub'] as const,
@@ -154,8 +142,6 @@ export const sitesQueries = {
     }),
 };
 
-// Both application lists sit under ['tenants', 'applications'], so one
-// invalidation after a decision refreshes them together.
 export const tenantsQueries = {
   applications: (limit: number, offset: number) =>
     queryOptions({
@@ -184,8 +170,6 @@ export const truckBanRulesQuery = {
   queryFn: () => apiGet<TruckBanRule[]>('/truck-ban-rules'),
 };
 
-// Staff truck queue (cr-arkilaunch-console-polish.md). Every key starts
-// with 'truck-requests', so invalidating that prefix refreshes them all.
 export const trucksQueries = {
   list: (limit: number, offset: number, q = '', status?: 'open' | 'closed') =>
     queryOptions({
@@ -193,7 +177,6 @@ export const trucksQueries = {
       queryFn: () =>
         apiGet<TruckRequestListResponse>(withParams('/truck-requests', { limit, offset, q, status })),
     }),
-  // The road line between a request's saved pins, for the drawer map.
   route: (id: string) =>
     queryOptions({
       queryKey: ['truck-requests', id, 'route'] as const,
@@ -201,15 +184,12 @@ export const trucksQueries = {
       staleTime: Infinity,
       retry: false,
     }),
-  // The customer's own requests, one page at a time. Every key starts with
-  // MY_TRUCK_REQUESTS, so invalidating that refreshes every page.
   mine: (limit: number, offset: number, q = '', status?: 'open' | 'closed') =>
     queryOptions({
       queryKey: [...MY_TRUCK_REQUESTS, limit, offset, q, status ?? 'all'] as const,
       queryFn: () =>
         apiGet<TruckRequestListResponse>(withParams('/me/truck-requests', { limit, offset, q, status })),
     }),
-  // The same line for the customer's own request.
   myRoute: (id: string) =>
     queryOptions({
       queryKey: ['my-truck-route', id] as const,
@@ -255,8 +235,6 @@ export const bookingsQueries = {
       queryKey: ['booking', bookingId, 'edtr-sheet'] as const,
       queryFn: () => apiGet<EdtrSheetContext>(`/bookings/${bookingId}/edtr-sheet`),
     }),
-  // `q` narrows to booking codes starting with it (EQR-2026-00…) or a
-  // customer company name; `filters` are the staff list's chips (QA 27).
   list: (limit = PAGE_SIZE, offset = 0, q = '', filters: BookingListFilters = {}) =>
     queryOptions({
       queryKey: ['bookings', limit, offset, q, filters] as const,
@@ -277,7 +255,6 @@ export const bookingsQueries = {
     }),
 };
 
-// Wire shape of QuotesService.get/preview/create (apps/api/src/quotes/quotes.service.ts).
 export interface QuoteLine {
   kind: 'equipment' | 'custom';
   description?: string;
@@ -326,10 +303,6 @@ export interface ReportsSnapshot {
 }
 
 export const reportQueries = {
-  // One query for both reports, shared by app.index.tsx (dashboard gauge)
-  // and app.insights.tsx (full detail) so navigating between them reuses
-  // the cache. Previously each screen awaited these sequentially inside its
-  // own hand-rolled fetcher; Promise.all runs them in parallel.
   snapshot: () =>
     queryOptions({
       queryKey: ['reports', 'snapshot'] as const,
@@ -361,7 +334,6 @@ export const referenceQueries = {
     queryOptions({ queryKey: ['reference', 'project-sites'] as const, queryFn: getProjectSites }),
 };
 
-// Pricing parameters as the API returns them (numeric columns are strings).
 export interface PricingParametersRow {
   region: string;
   operatorHourlyPhp: string;
@@ -393,8 +365,7 @@ export const pricingQueries = {
     }),
 };
 
-// Resends the saved row, diesel override and its date included, with only
-// `patch` changed; a re-stamped date would make a stale override fresh again.
+// Resend the override's own date: a re-stamped date would make a stale override fresh again.
 export function saveParams(row: PricingParametersRow | null | undefined, patch: Partial<PricingParametersInput>) {
   return apiPost('/pricing/parameters', {
     region: row?.region ?? 'NCR',
@@ -419,8 +390,7 @@ export const usersQueries = {
     }),
 };
 
-// Badge counts read `total`, not a page's length: a page tops out at the
-// API's limit, so counting its rows capped every badge at 50.
+// Badges read `total`, never a page's length (capped at the API limit).
 export const notificationsQueries = {
   list: (limit = 20, offset = 0) =>
     queryOptions({
@@ -461,9 +431,6 @@ export const edtrQueries = {
     }),
 };
 
-// Fleet-wide utilization %, derived client-side from the per-unit
-// UtilizationReportResponse.fleet[].utilizationPct (there is no top-level
-// aggregate field on the wire -- see PLAN Phase 1 note).
 export function fleetUtilizationPct(report: UtilizationReportResponse | undefined): number | null {
   if (!report || report.fleet.length === 0) return null;
   const sum = report.fleet.reduce((total, unit) => total + unit.utilizationPct, 0);
@@ -472,16 +439,13 @@ export function fleetUtilizationPct(report: UtilizationReportResponse | undefine
 
 export type { CapabilitiesRef, CustomerRef, EquipmentTypeRef, ProjectSiteRef, RateCardRef, RentalRef };
 
-// Customer prerequisites CR: the caller's own companies and sites.
 export const companiesQueries = {
   mine: () =>
     queryOptions({
       queryKey: ['me', 'companies'] as const,
       queryFn: () => apiGet<CompanyResponse[]>('/me/companies'),
     }),
-  // A 300s signed URL for one of the caller's own KYC documents, used as
-  // the registration-certificate thumbnail on the company card. Short TTL,
-  // so it is not cached beyond the screen that shows it.
+  // Signed URL lives 300s: staleTime must stay under it.
   documentUrl: (companyId: string, documentId: string) =>
     queryOptions({
       queryKey: ['me', 'companies', companyId, 'documents', documentId, 'url'] as const,
@@ -499,10 +463,7 @@ export const companiesQueries = {
 };
 
 export const forecastQueries = {
-  // The server caches on coordinates for the poller's own cadence, so this
-  // staleTime only stops a remount refetching -- it is not the budget
-  // control. Retry is off: an unavailable forecast is a state the rail
-  // renders, not a transient to hammer through against a metered free tier.
+  // No retry: the forecast API is a metered free tier.
   site: (siteId: string) =>
     queryOptions({
       queryKey: ['me', 'sites', siteId, 'forecast'] as const,
@@ -510,7 +471,6 @@ export const forecastQueries = {
       staleTime: 1_800_000,
       retry: false,
     }),
-  // No site of their own yet: the general Metro Manila forecast.
   area: () =>
     queryOptions({
       queryKey: ['me', 'forecast'] as const,
