@@ -56,6 +56,11 @@ export async function reverseGeocode(lat: number, lng: number, key = 'pin'): Pro
   }
 }
 
+// Drops the pending lookup for `key`, so it cannot overwrite what replaced the pin.
+export function cancelReverseGeocode(key: string): void {
+  inflight.get(key)?.abort();
+}
+
 const letters = (name: string) => name.toLowerCase().replace(/[^a-z]/g, '');
 const short = (name: string) => letters(name.toLowerCase().replace(/^city of /, '').replace(/ city$/, ''));
 

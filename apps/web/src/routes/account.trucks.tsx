@@ -6,7 +6,7 @@ import type { CustomerSiteResponse, TruckEstimateResponse, TruckRequestResponse 
 import { PinMap, type LatLng } from '../components/pin-map.js';
 import { PageHeader } from '../components/page-header.js';
 import { formatDrive, hasWebGL, pinned, TripCanvas, type Which } from '../components/route-map.js';
-import { matchPhLocation, reverseGeocode } from '../lib/reverse-geocode.js';
+import { cancelReverseGeocode, matchPhLocation, reverseGeocode } from '../lib/reverse-geocode.js';
 import { accountLayoutRoute } from './_account.js';
 import { apiErrorText, apiPost } from '../lib/api-client.js';
 import { toLocalInput } from './equipment.js';
@@ -133,6 +133,7 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
   function chooseSite(site: CustomerSiteResponse | undefined) {
     setSiteId(site?.id ?? '');
     if (!site) return;
+    cancelReverseGeocode('dropoff');
     const detail = [site.line1, site.barangay && `Brgy. ${site.barangay}`].filter(Boolean).join(', ');
     const place = matchPhLocation({ street: '', barangay: '', city: site.city ?? '', province: site.province ?? '', region: '', postalCode: '' });
     update('dropoff', {
