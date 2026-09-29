@@ -89,7 +89,8 @@ export class PaymentsService {
   // provider_ref + status -- never a card/account number.
   async checkout(ctx: RequestContext, bookingId: string, body: CheckoutRequest = {}, origin?: string) {
     return withTenantTx(ctx, async (tx) => {
-      const [rental] = await tx.select().from(rentals).where(eq(rentals.id, bookingId)).limit(1);
+      // Locked so two concurrent checkouts serialize and the second reuses the first's issued invoice.
+      const [rental] = await tx.select().from(rentals).where(eq(rentals.id, bookingId)).limit(1).for('update');
       if (!rental) throw new NotFoundException({ error: 'booking_not_found' });
 
       if (ctx.role === 'customer') {
@@ -543,7 +544,8 @@ export class PaymentsService {
         .select()
         .from(truckRequests)
         .where(and(eq(truckRequests.id, truckRequestId), eq(truckRequests.requestedBy, ctx.userId)))
-        .limit(1);
+        .limit(1)
+        .for('update');
       if (!request) throw new NotFoundException({ error: 'truck_request_not_found' });
       if (request.status === 'paid' || request.status === 'dispatched') throw new ConflictException({ error: 'already_paid' });
       if (request.status !== 'agreed' || request.agreedPricePhp === null) {

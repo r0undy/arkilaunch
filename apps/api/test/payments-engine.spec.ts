@@ -5,7 +5,7 @@ import { ForbiddenException, HttpException } from '@nestjs/common';
 import postgres from 'postgres';
 import { invoices, payments, rentals, setTenantPaymongoAccount, withTenantTx } from '@arkilaunch/db';
 import { StubPaymentsAdapter, type PaymentsPort, type RequestContext } from '@arkilaunch/shared';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { PaymentsService } from '../src/payments/payments.service.js';
 import { BookingsService } from '../src/bookings/bookings.service.js';
 import { EventsService } from '../src/events/events.service.js';
@@ -152,6 +152,31 @@ describe('PaymentsService (PRD-F2)', () => {
     const [invoice] = await withTenantTx(customerCtxA, (tx) => tx.select().from(invoices).where(eq(invoices.id, result.invoiceId)));
     expect(rental?.status).toBe('pending');
     expect(invoice?.status).toBe('issued');
+  });
+
+  it('two concurrent checkouts of one booking leave one issued invoice and one pending payment', async () => {
+    const bookingId = await createBooking(13);
+    // Real PayMongo gives each session its own id; the stub derives it from the invoice.
+    let session = 0;
+    const service = new PaymentsService(
+      Object.assign(new StubPaymentsAdapter(), {
+        createCheckoutSession: async (amount: number, invoiceId: string) => ({
+          id: `stub_${invoiceId}_${++session}`,
+          checkoutUrl: `about:blank?amount=${amount}`,
+        }),
+      }),
+      events,
+    );
+    await Promise.all([service.checkout(customerCtxA, bookingId), service.checkout(customerCtxA, bookingId)]);
+
+    const issued = await withTenantTx(customerCtxA, (tx) =>
+      tx.select().from(invoices).where(and(eq(invoices.rentalId, bookingId), eq(invoices.status, 'issued'))),
+    );
+    expect(issued).toHaveLength(1);
+    const pending = await withTenantTx(customerCtxA, (tx) =>
+      tx.select().from(payments).where(and(eq(payments.invoiceId, issued[0]!.id), eq(payments.status, 'pending'))),
+    );
+    expect(pending).toHaveLength(1);
   });
 
   it('QAD-T28: a valid signed webhook confirms payment and moves invoice/rental status', async () => {
