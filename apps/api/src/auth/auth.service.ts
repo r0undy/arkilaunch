@@ -151,9 +151,10 @@ export class AuthService {
     const payload = this.verifyTwoFaChallenge(twoFaToken);
     // Keyed by user, not IP: a fresh login mints a fresh challenge, so only a per-account count bounds guessing.
     this.assertNotLockedOut(this.twoFaAttempts, payload.sub);
+    // Counted before any await, so parallel guesses can't all pass the check; a correct code clears it.
+    this.bump(this.twoFaAttempts, payload.sub);
     const secret = await this.getTotpSecret(payload.tenantId, payload.sub, payload.r);
     if (!secret || !(await this.totp.verify(code, secret))) {
-      this.bump(this.twoFaAttempts, payload.sub);
       throw new UnauthorizedException('invalid_totp_code');
     }
     this.twoFaAttempts.delete(payload.sub);

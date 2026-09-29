@@ -95,6 +95,19 @@ describe('AuthService: timekeeper 2FA', () => {
     });
   });
 
+  it('parallel wrong codes are counted before any await, so no more than five get a verdict', async () => {
+    const service = new AuthService(jwtService(), new RefreshTokenService(), new TotpService());
+    const { secret } = service.enroll(timekeeperCtx.userId);
+    await service.enrollConfirm(timekeeperCtx, { secret, code: await generate({ secret }) });
+    const loginResult = (await service.login({ email: timekeeperEmail, password: 'test-password' }, 'test-tenant-a')) as TwoFaChallenge;
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 10 }, () => service.verifyTwoFa({ twoFaToken: loginResult.twoFaToken, code: '000000' })),
+    );
+    const errors = results.map((r) => ((r as PromiseRejectedResult).reason as { message: string }).message);
+    expect(errors.filter((m) => m === 'invalid_totp_code').length).toBeLessThanOrEqual(5);
+  });
+
   it('the 2FA challenge token cannot be used as a normal Bearer access token', async () => {
     const loginResult = (await auth.login({ email: timekeeperEmail, password: 'test-password' }, 'test-tenant-a')) as TwoFaChallenge;
     // JwtClaimsSchema requires a literal `role` claim; the challenge token
