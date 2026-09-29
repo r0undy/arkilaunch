@@ -44,6 +44,7 @@ locals {
     azure-di-key                  = module.document_intelligence.primary_access_key
     paymongo-secret-key           = var.paymongo_secret_key
     paymongo-webhook-secret       = var.paymongo_webhook_secret
+    ors-api-key                   = var.ors_api_key
     turnstile-secret-key          = var.turnstile_secret_key
     vapid-private-key             = var.vapid_private_key
     appinsights-connection-string = module.log_analytics.app_insights_connection_string

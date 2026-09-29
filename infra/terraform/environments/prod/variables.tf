@@ -179,6 +179,12 @@ variable "paymongo_webhook_secret" {
   default   = ""
 }
 
+variable "ors_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
 variable "turnstile_secret_key" {
   type      = string
   sensitive = true

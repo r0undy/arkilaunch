@@ -24,7 +24,7 @@ A paid truck can be dispatched once. The API stores `dispatched_at`, `route_minu
 
 ## Operations and verification
 
-- Set `ORS_API_KEY` in each deployment environment as the `ors-api-key` secret before relying on HGV routing. Confirm an ORS route returns `truckSafe=true` and inspect a fallback route's warning.
+- Set `ORS_API_KEY` as a GitHub environment secret in dev and prod. The deploy workflow passes it as `TF_VAR_ors_api_key`; Terraform creates the Container App `ors-api-key` secret and maps it to the API environment. Confirm an ORS route returns `truckSafe=true` and inspect a fallback route's warning.
 - Review every seeded truck-ban rule with current MMDA and LGU sources. Update city hours, road scope, GVW and permit notes; mark verified only after checking. A city-level rule cannot express a road-specific exemption.
 - API shape was checked against the [OpenRouteService directions documentation](https://giscience.github.io/openrouteservice/api-reference/endpoints/directions/requests-and-return-types). The [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) requires application-wide throttling, an identifying User-Agent and caching; route results are stored per request here, but shared caching and multi-replica coordination remain a deployment follow-up.
 - Shared (261 tests), web (390 tests) and focused API routing (3 tests) suites passed locally. API database and E2E cases were added for isolation, dispatch and customer ETA. Database-backed integration and browser E2E execution require a disposable migrated database and running API/web services; none were available locally, and no production or pilot database was used. Lint and build passed; lint reported two existing warnings in generated Wrangler types.
