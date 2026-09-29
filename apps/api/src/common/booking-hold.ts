@@ -16,7 +16,9 @@ export async function renewLapsedHold(tx: Tx, tenantId: string, rentalId: string
     .select({ status: rentals.status, holdExpiresAt: rentals.holdExpiresAt })
     .from(rentals)
     .where(eq(rentals.id, rentalId))
-    .limit(1);
+    .limit(1)
+    // Rental before units, the order checkout takes, so cash and checkout on one lapsed hold can't deadlock.
+    .for('update');
   if (rental?.status !== 'pending' || !rental.holdExpiresAt || rental.holdExpiresAt > new Date()) return;
 
   const units = await tx

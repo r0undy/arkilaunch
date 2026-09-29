@@ -866,6 +866,8 @@ export class BookingsService {
 
   // Pre-pick requests have no assignmentId and extend every unit; end_date follows the latest unit.
   private async extendRental(tx: Tx, id: string, newEnd: Date, assignmentId: string | null) {
+    // Rental before units, the order checkout takes, so an extension racing a checkout can't deadlock.
+    await tx.select({ id: rentals.id }).from(rentals).where(eq(rentals.id, id)).for('update');
     const live = await tx
       .select()
       .from(equipmentAssignments)

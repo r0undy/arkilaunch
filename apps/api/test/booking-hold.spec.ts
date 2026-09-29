@@ -106,4 +106,23 @@ describe('booking holds (QA 25)', () => {
       response: { error: 'hold_expired' },
     });
   });
+
+  // Checkout locks the rental, then the units; renewal must take them in that order too, or it deadlocks.
+  it('renewal locks the rental before the units', async () => {
+    const id = await hold(-1);
+    const outside = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+    let unitLockable: unknown;
+    await outside.begin(async (t) => {
+      await t`select id from rentals where id = ${id} for update`;
+      const renewal = withTenantTx(ctx, (tx) => renewLapsedHold(tx, tenantId, id));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      unitLockable = await t`select id from equipment where id = ${equipmentId} for update nowait`.then(
+        () => true,
+        (err: { code?: string }) => err.code,
+      );
+      void renewal.catch(() => undefined);
+    });
+    await outside.end();
+    expect(unitLockable).toBe(true);
+  });
 });
