@@ -5,17 +5,14 @@ import { round2HalfUp } from '@arkilaunch/shared';
 
 type Coupon = typeof coupons.$inferSelect;
 
-// cr-arkilaunch-coupons.md. What a coupon takes off the rent: percent of
-// it or a fixed peso amount, never more than the rent itself, rounded the
-// same way as the quote discount (RFC-3 §3).
+// Never more than the rent, rounded the same way as the quote discount.
 export function couponDiscount(coupon: Pick<Coupon, 'discountType' | 'discountValue'>, rentPhp: number): number {
   const value = Number(coupon.discountValue);
   const raw = coupon.discountType === 'percent' ? (rentPhp * value) / 100 : value;
   return round2HalfUp(Math.max(0, Math.min(rentPhp, raw)));
 }
 
-// Active, unexpired and under max_uses. The one definition both the
-// preview and the claim use, so they cannot disagree on "usable".
+// The one definition both preview and claim use, so they can't disagree on "usable".
 const usable = (code: string) =>
   and(
     eq(coupons.code, code),
@@ -24,8 +21,7 @@ const usable = (code: string) =>
     or(isNull(coupons.maxUses), lt(coupons.redeemedCount, coupons.maxUses)),
   );
 
-// Every miss is the same answer, so the endpoint cannot tell a guesser
-// whether a code exists, expired or ran out.
+// Every miss is the same answer, so a guesser can't tell whether a code exists, expired or ran out.
 const invalid = () => new ConflictException({ error: 'coupon_invalid' });
 
 async function assertNotUsedByCustomer(tx: Tx, coupon: Coupon, customerId: string) {
@@ -38,7 +34,6 @@ async function assertNotUsedByCustomer(tx: Tx, coupon: Coupon, customerId: strin
   if (used) throw new ConflictException({ error: 'coupon_used' });
 }
 
-// Read-only: the coupon a preview would apply, and its discount on this rent.
 export async function previewCoupon(tx: Tx, code: string, customerId: string, rentPhp: number) {
   const [coupon] = await tx.select().from(coupons).where(usable(code)).limit(1);
   if (!coupon) throw invalid();
@@ -48,10 +43,7 @@ export async function previewCoupon(tx: Tx, code: string, customerId: string, re
   return { coupon, discountPhp };
 }
 
-// Takes one use of the coupon. The guarded UPDATE is atomic and row-locks
-// the coupon, so two checkouts racing for the last use (or the same
-// company's second use) serialize here; a throw after it rolls the
-// increment back with the rest of the transaction.
+// The guarded UPDATE is atomic and row-locks the coupon, so racing checkouts for the last use serialize here.
 export async function claimCoupon(tx: Tx, code: string, customerId: string, rentPhp: number) {
   const [coupon] = await tx
     .update(coupons)

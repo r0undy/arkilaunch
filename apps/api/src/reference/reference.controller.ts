@@ -5,29 +5,18 @@ import { ReferenceService } from './reference.service.js';
 import { ReferenceRateCardQueryDto } from './dto.js';
 import type { CtxRequest } from '../common/request.js';
 
-// Read-only pick-list endpoints for the staff forms. Every route below is
-// staff-only: `customer` is an intra-tenant role, so it clears the JWT and
-// tenant guards, and an undecorated route left the permissions guard a
-// no-op -- a customer JWT could read every other client company's name and
-// every rental in the tenant (audit-api-surface.md #2).
+// Staff-only: `customer` clears the JWT and tenant guards, so an undecorated route would leak tenant data.
 @Controller('reference')
 export class ReferenceController {
   constructor(private readonly reference: ReferenceService) {}
 
-  // Global equipment-type names: no tenant_id, no tenant data, the same
-  // category as the public /catalog surface. Deliberately left open to any
-  // authenticated caller.
+  // Global, non-tenant data: deliberately open to any authenticated caller.
   @Get('equipment-types')
   equipmentTypes() {
     return this.reference.equipmentTypes();
   }
 
-  // Which capture paths the server will actually accept, so the client can
-  // stop offering one the server rejects. With the OCR pipeline on, a
-  // paper_ocr capture carrying transcribed hours is a 422
-  // (line_items_not_accepted); the web app had no way to know that, so it
-  // sent them anyway. Flag state, not tenant data -- any authenticated
-  // caller may read it.
+  // Which capture paths the server accepts, so the client stops offering a rejected one. Flag state, not tenant data.
   @Get('capabilities')
   capabilities() {
     return { ocrPipeline: isOcrPipelineEnabled(), ocrKyc: isOcrKycEnabled() };

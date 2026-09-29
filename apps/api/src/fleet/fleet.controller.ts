@@ -34,10 +34,6 @@ import {
 } from './dto.js';
 import type { CtxRequest, MulterFile } from '../common/request.js';
 
-// PRD-F4 (Fleet Inventory, Maintenance & Reporting). Reads are open to any
-// authenticated tenant member (RLS is the isolation boundary, matching
-// reference/*); writes are fleet:manage-gated (QAD-T19: an owner with no
-// data-entry permission is denied).
 @Controller()
 export class FleetController {
   constructor(
@@ -63,19 +59,14 @@ export class FleetController {
     return this.fleet.update(req.ctx, id, body);
   }
 
-  // A retire, not a delete -- migration 0026 makes a hard delete impossible.
-  // Keeps the DELETE verb because that is what the caller means and what the
-  // Figma confirm offers; the response says `retired` so nobody is misled.
+  // A retire, not a delete (0026 makes a hard delete impossible); the response says `retired`.
   @Delete('equipment/:id')
   @RequirePermission('fleet:manage')
   retire(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.fleet.retire(req.ctx, id);
   }
 
-  // The object key is built from the verified ctx.tenantId and never from
-  // request input, so a caller cannot address another tenant's prefix.
-  // validateUpload sniffs magic bytes, so a forged Content-Type is rejected.
-  // Display images only (no PDF) and a 1MB cap: this bucket is public-read.
+  // Key built from the verified ctx.tenantId, never request input. Display images only, 1MB: the bucket is public-read.
   @Post('equipment/:id/photo')
   @RequirePermission('fleet:manage')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -119,7 +110,6 @@ export class FleetController {
     return this.fleet.createMaintenanceWindow(req.ctx, id, body);
   }
 
-  // Remove a schedule (a duplicate, or to start a fresh plan).
   @Delete('equipment/:id/maintenance-schedules/:scheduleId')
   @RequirePermission('fleet:manage')
   deleteSchedule(@Param('id') id: string, @Param('scheduleId') scheduleId: string, @Req() req: CtxRequest) {
@@ -137,7 +127,6 @@ export class FleetController {
     return this.fleet.extendMaintenanceWindow(req.ctx, id, windowId, body);
   }
 
-  // Blocks ending within two days, for the admin's extend-or-release cue.
   @Get('equipment/maintenance-windows/ending-soon')
   @RequirePermission(...STAFF_READ)
   windowsEndingSoon(@Req() req: CtxRequest) {
@@ -156,8 +145,7 @@ export class FleetController {
     return this.fleet.deleteMaintenanceWindow(req.ctx, id, windowId);
   }
 
-  // Customers read it too (the booking pickers); only free/taken per day
-  // and the business hours go out, never whose booking holds a day.
+  // Customers read it too: only free/taken per day and business hours, never whose booking holds a day.
   @Get('equipment/:id/availability')
   @RequirePermission('booking:read', ...STAFF_READ)
   availability(@Param('id') id: string, @Query() query: AvailabilityQueryDto, @Req() req: CtxRequest) {

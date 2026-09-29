@@ -6,18 +6,7 @@ import { KycController } from './kyc.controller.js';
 import { KycService } from './kyc.service.js';
 import { DOCUMENT_INTELLIGENCE_PORT } from './kyc.tokens.js';
 
-// This module used to bind a FixtureDocumentIntelligenceAdapter with
-// literal `sec_number: 'CS202312345'` / `tin: '123-456-789'` at 0.95
-// confidence, unconditionally, at module scope -- in every environment
-// including production. The human gate held (KycService lands every
-// extraction at needs_review, and verification requires an admin-supplied
-// portal match), so it could not auto-verify a tenant. But a reviewer was
-// shown invented registration numbers presented as extracted fact at high
-// confidence, on a compliance decision, and fabricated
-// ocr_field_confidence events entered the audit trail.
-//
-// The adapter is now resolved by a factory that fails closed
-// (cr-arkilaunch-pilot-honesty.md §2).
+// The adapter comes from a factory that fails closed; never bind a fixture adapter here.
 @Module({
   imports: [StorageModule],
   controllers: [KycController],

@@ -3,12 +3,7 @@ import { type Tx, invoices, rentals, truckRequests } from '@arkilaunch/db';
 import type { BookingService } from '@arkilaunch/shared';
 
 
-// The one place that turns a rental / truck request / invoice id into the
-// booking reference people read (EQR-… / TRK-…, cr-arkilaunch-uniform-
-// booking-codes.md). Everything that shows or writes a booking reference --
-// invoice responses, notification payloads, payment descriptions, EDTR
-// invoice lines -- goes through here, so no surface can drift back to a
-// UUID fragment. Runs inside the caller's tenant transaction (RLS scopes it).
+// Every surface that shows a booking reference goes through here. Runs in the caller's tenant tx (RLS).
 
 export interface BookingRef {
   service: BookingService;
@@ -16,7 +11,6 @@ export interface BookingRef {
   code: string;
 }
 
-// Codes for many rentals and truck requests in two queries.
 export async function bookingCodes(
   tx: Tx,
   ids: { rentalIds?: (string | null | undefined)[]; truckRequestIds?: (string | null | undefined)[] },
@@ -38,7 +32,7 @@ export async function bookingCodes(
   return out;
 }
 
-// The booking an invoice bills. A rental wins if (defensively) both are set.
+// A rental wins if (defensively) both are set.
 export function invoiceBookingRef(
   invoice: { rentalId: string | null; truckRequestId: string | null },
   codes: Map<string, string>,
@@ -54,9 +48,6 @@ export function invoiceBookingRef(
   return null;
 }
 
-// Resolves whichever booking a notification / event payload points at:
-// rental_id, truck_request_id, or (payments) an invoice_id standing in for
-// the booking it bills. Null when the payload names no booking.
 export async function resolveBookingRef(
   tx: Tx,
   payload: { rental_id?: unknown; truck_request_id?: unknown; invoice_id?: unknown },

@@ -10,15 +10,7 @@ import {
 import type { Response } from 'express';
 import { pgError } from '@arkilaunch/db';
 
-// There was no exception filter of any kind registered, so anything that
-// was not already an HttpException reached the client as a raw 500 with
-// the driver's own message (audit-api-surface.md #6). Two problems: a
-// malformed id read as a server fault rather than a bad request, and
-// Postgres internals were echoed to an unauthenticated caller.
-//
-// 22P02 is `invalid_text_representation` -- a malformed uuid/number/enum
-// reaching a query. That is a client error, so it answers 400. Everything
-// else stays a 500 but says nothing about the database.
+// 22P02 (malformed uuid/number/enum) is a client error: 400. Everything else is a 500 that says nothing about the DB.
 const INVALID_TEXT_REPRESENTATION = '22P02';
 
 const pgCode = (error: unknown) => pgError(error).code;
