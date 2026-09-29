@@ -40,9 +40,9 @@ describe('PricingEngineService: rounding and discount math', () => {
     expect(result.totalPhp).toBe(42.5);
   });
 
-  it('priceItem converts a daily card to hourly with the tenant daily hours, and honours an agreed price', async () => {
+  it('priceItem charges an hourly card per hour, turns days into hours, and honours an agreed price', async () => {
     const engine = new PricingEngineService();
-    const card = { id: 'rc', equipmentTypeId: 't', rateType: 'daily', rateValue: '8000', effectiveFrom: new Date(0), effectiveTo: null, equipmentId: null };
+    const card = { id: 'rc', equipmentTypeId: 't', rateType: 'hourly', rateValue: '1000', effectiveFrom: new Date(0), effectiveTo: null, equipmentId: null };
     const tx = { select: () => ({ from: () => ({ where: () => ({ limit: async () => [card] }) }) }) } as never;
     const diesel = {
       pricePhp: 0, operatorHourlyPhp: 0, maintenanceHourlyPhp: 0, bufferPct: 0,
@@ -50,13 +50,18 @@ describe('PricingEngineService: rounding and discount math', () => {
     } as never;
     const input = { kind: 'equipment' as const, equipmentTypeId: 't', rateCardId: 'rc', quantity: 1, estimatedHours: 10, mobilizationKm: 0, demobilizationKm: 0 };
     const priced = await engine.priceItem(tx, 'tenant', diesel, input, 8);
-    expect(priced.hourlyRatePhp).toBe(1000); // 8000 / 8, not 8000
+    expect(priced.hourlyRatePhp).toBe(1000);
     expect(priced.subtotalPhp).toBe(10000);
     const agreed = await engine.priceItem(tx, 'tenant', diesel, { ...input, agreedSubtotalPhp: 9000 }, 8);
     expect(agreed.subtotalPhp).toBe(9000);
     expect(agreed.pricingInputs).toMatchObject({ agreed_subtotal_php: 9000, computed_subtotal_php: 10000 });
-    expect(priced.rentParts).toEqual([{ rateType: 'daily', ratePhp: 8000, count: 1.25 }]);
+    expect(priced.rentParts).toEqual([{ rateType: 'hourly', ratePhp: 1000, count: 10 }]);
+    const byDays = await engine.priceItem(tx, 'tenant', diesel, { ...input, days: 2 }, 8);
+    expect(byDays.estimatedHours).toBe(16);
+    expect(byDays.subtotalPhp).toBe(16000);
     await expect(engine.priceItem(tx, 'tenant', diesel, { ...input, equipmentTypeId: 'other' }, 8)).rejects.toThrow();
+    const dailyTx = { select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ ...card, rateType: 'daily' }] }) }) }) } as never;
+    await expect(engine.priceItem(dailyTx, 'tenant', diesel, input, 8)).rejects.toThrow();
   });
 
   it('prices a custom line as quantity x unit price, and adds flat transport to the subtotal', async () => {

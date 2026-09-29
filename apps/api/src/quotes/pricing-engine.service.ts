@@ -1,12 +1,9 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
-import { and, desc, eq, gt, gte, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lte, or } from 'drizzle-orm';
 import { db, dieselPriceReadings, getBillingSettings, pricingParameters, rateCards } from '@arkilaunch/db';
-import { rentFor, type Discount, type QuoteItemInput, type QuoteRequest, type RentPart, type RentUnit } from '@arkilaunch/shared';
+import { rentFor, type Discount, type QuoteItemInput, type QuoteRequest, type RentPart } from '@arkilaunch/shared';
 
-// 2.0: rent charged in the card's own unit (rentFor), flat per-quote
-// mobilization, custom lines.
 const FORMULA_VERSION = '2.0';
-const RENT_UNITS: readonly string[] = ['hourly', 'daily', 'monthly'];
 // RFC-3 §3: default staleness window; DOE updates weekly (typically
 // Tuesdays), so a week-old reading is still usable, just labeled stale.
 const STALENESS_WINDOW_DAYS = 7;
@@ -148,9 +145,6 @@ export class PricingEngineService {
     });
   }
 
-  // Prices one line. An equipment line loads its rate card and charges the
-  // rent in the card's own unit (rentFor), plus operator, maintenance and
-  // fuel per hour of the hire; a custom line is the admin's own price.
   async priceItem(
     tx: Tx,
     tenantId: string,
@@ -197,15 +191,13 @@ export class PricingEngineService {
     if (rateCard.equipmentTypeId !== input.equipmentTypeId) {
       throw new UnprocessableEntityException({ error: 'rate_card_type_mismatch', rateCardId: input.rateCardId });
     }
-    if (!RENT_UNITS.includes(rateCard.rateType)) {
+    if (rateCard.rateType !== 'hourly') {
       throw new UnprocessableEntityException({ error: 'rate_type_unsupported', rateType: rateCard.rateType });
     }
-    const rateType = rateCard.rateType as RentUnit;
 
     const rateCardValuePhp = Number(rateCard.rateValue);
-    const dailyRatePhp = rateType === 'monthly' ? await this.dailyRateBeside(tx, tenantId, rateCard, now) : null;
     const hours = input.days !== undefined ? input.days * dailyHours : input.estimatedHours;
-    const rent = rentFor(rateType, rateCardValuePhp, hours, dailyHours, dailyRatePhp);
+    const rent = rentFor(rateCardValuePhp, hours);
     const fuelPerHourCost = diesel.fuelLPerHour * diesel.pricePhp;
     const addersPerHour = diesel.operatorHourlyPhp + diesel.maintenanceHourlyPhp + fuelPerHourCost;
     const hourlyRate = (hours > 0 ? rent.rentPhp / hours : 0) + addersPerHour;
@@ -249,10 +241,9 @@ export class PricingEngineService {
         diesel_price_source: diesel.source,
         rate_card_id: rateCard.id,
         rate_card_value_php: rateCardValuePhp,
-        rate_card_rate_type: rateType,
+        rate_card_rate_type: rateCard.rateType,
         rate_card_equipment_id: rateCard.equipmentId,
         daily_hours: dailyHours,
-        daily_rate_php: dailyRatePhp,
         rent_php: rentPhp,
         rent_parts: rent.parts,
         ...(agreed !== undefined ? { agreed_subtotal_php: subtotal, computed_subtotal_php: computedSubtotal } : {}),
@@ -267,32 +258,6 @@ export class PricingEngineService {
         formula_version: FORMULA_VERSION,
       },
     };
-  }
-
-  // The daily card beside a monthly one (same unit, else same type), which
-  // charges a monthly hire's leftover days. null: pro-rate the month.
-  private async dailyRateBeside(
-    tx: Tx,
-    tenantId: string,
-    card: { equipmentTypeId: string; equipmentId: string | null },
-    now: Date,
-  ): Promise<number | null> {
-    const typeWide = and(eq(rateCards.equipmentTypeId, card.equipmentTypeId), isNull(rateCards.equipmentId));
-    const [daily] = await tx
-      .select({ rateValue: rateCards.rateValue })
-      .from(rateCards)
-      .where(
-        and(
-          eq(rateCards.tenantId, tenantId),
-          eq(rateCards.rateType, 'daily'),
-          card.equipmentId ? or(eq(rateCards.equipmentId, card.equipmentId), typeWide) : typeWide,
-          lte(rateCards.effectiveFrom, now),
-          or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, now)),
-        ),
-      )
-      .orderBy(sql`${rateCards.equipmentId} is null`, desc(rateCards.effectiveFrom))
-      .limit(1);
-    return daily ? Number(daily.rateValue) : null;
   }
 
   // Subtotal = the lines plus the flat mobilization/demobilization; the

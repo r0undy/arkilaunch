@@ -119,14 +119,14 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
 
   // Simulates the paper_ocr counterpart directly (same technique as
   // edtr-engine.spec.ts) so a digital_entry capture reconciles to 'matched'.
-  async function insertExtractedPaperCounterpart(reportDate: string, hoursActive: number, hoursIdle: number) {
+  async function insertExtractedPaperCounterpart(reportDate: string, hoursActive: number, hoursIdle: number, equipmentId = equipmentIdA) {
     return withTenantTx(adminCtxA, async (tx) => {
       const [row] = await tx
         .insert(edtrTable)
         .values({
           tenantId: adminCtxA.tenantId,
           rentalId: depositRentalId,
-          equipmentId: equipmentIdA,
+          equipmentId,
           source: 'paper_ocr',
           reportDate,
           rawFileUri: 'storage://fixtures/billing-counterpart.jpg',
@@ -257,6 +257,55 @@ describe('BillingService (PRD-F2/F3 read surface)', () => {
     const invoiceId = items[0]!.id;
     await expect(billing.getInvoice(adminCtxB, invoiceId)).rejects.toThrow(NotFoundException);
   });
+  it('rejects an approve for a type whose only card is non-hourly, and posts no invoice', async () => {
+    const url = process.env.DATABASE_URL_DIRECT!;
+    const sql = postgres(url, { max: 1 });
+    try {
+      const [type] = await sql`insert into equipment_types (name) values (${`Daily Only Type ${Date.now()}`}) returning id`;
+      const typeId = (type as { id: string }).id;
+      const [unit] = await sql`
+        insert into equipment (tenant_id, equipment_type_id, model, serial_no)
+        values (${adminCtxA.tenantId}, ${typeId}, 'Daily Only Unit', ${`test-tenant-a-serial-daily-${Date.now()}`}) returning id
+      `;
+      const unitId = (unit as { id: string }).id;
+      const insertDaily = sql`
+        insert into rate_cards (tenant_id, equipment_type_id, rate_type, rate_value, currency, effective_from)
+        values (${adminCtxA.tenantId}, ${typeId}, 'daily', 8000.00, 'PHP', '2020-01-01')
+      `;
+      const [chk] = await sql`select 1 from pg_constraint where conname = 'rate_cards_hourly_only_chk'`;
+      // Once 0071 is applied a daily card can only be a legacy row, so the CHECK itself is the guard.
+      if (chk) {
+        await expect(insertDaily).rejects.toMatchObject({ code: '23514' });
+        return;
+      }
+      await insertDaily;
+
+      const reportDate = '2021-05-04';
+      await insertExtractedPaperCounterpart(reportDate, 3, 0, unitId);
+      const digital = await edtr.capture(adminCtxA, {
+        source: 'digital_entry',
+        rentalId: depositRentalId,
+        equipmentId: unitId,
+        reportDate,
+        lineItems: { hoursActive: 3, hoursIdle: 0 },
+      });
+      const polled = await edtr.get(adminCtxA, digital.id);
+      expect(polled.reconciliation?.status).toBe('matched');
+
+      const before = await billing.depositLedger(adminCtxA, depositRentalId);
+      const invoicesBefore = await billing.listInvoices(adminCtxA, { rentalId: depositRentalId, limit: 50, offset: 0 });
+      await expect(edtr.approve(adminCtxA, digital.id, { reconciliationId: polled.reconciliation!.id })).rejects.toMatchObject({
+        response: { error: 'rate_card_not_effective' },
+      });
+      const after = await billing.depositLedger(adminCtxA, depositRentalId);
+      expect(after.totalDeducted).toBe(before.totalDeducted);
+      const invoicesAfter = await billing.listInvoices(adminCtxA, { rentalId: depositRentalId, limit: 50, offset: 0 });
+      expect(invoicesAfter.total).toBe(invoicesBefore.total);
+    } finally {
+      await sql.end();
+    }
+  });
+
   // Phase 7 rollover: last in the file, because it takes this rental's
   // deposit to zero. The part past the balance becomes an unbilled accrual
   // for the weekly invoice instead of failing deposit_exhausted.

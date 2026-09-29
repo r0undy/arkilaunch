@@ -16,7 +16,7 @@ import {
   rentals,
   withTenantTx,
 } from '@arkilaunch/db';
-import { DAYS_PER_MONTH, quoteExpiresAt, type QuoteRequest, type RentPart, type RequestContext } from '@arkilaunch/shared';
+import { quoteExpiresAt, type QuoteRequest, type RentPart, type RequestContext } from '@arkilaunch/shared';
 import { ownsCustomer, requireVerifiedCompany } from '../common/customer-scope.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { holdDeadline } from '../common/booking-hold.js';
@@ -240,14 +240,7 @@ export class QuotesService {
     return this.toResponse(result.quotation.id, result.quotation.revision, result.quotation.status, result.priced, result.quotation.printableUrl);
   }
 
-  // Automatic quote on a new booking: every machine priced off its own rate
-  // card (the unit's, else its type's), picked by hire length: 30+ days
-  // monthly, else daily, else hourly, falling back to whatever card exists.
-  // Hours = booked days x the tenant's hours per day; mobilization and
-  // demobilization are the company defaults. Sent to the customer at once;
-  // staff can still revise it before it is accepted. Returns null, leaving
-  // the booking for a manual quote, when a machine has no rate card or
-  // pricing is not set up.
+  // null leaves the booking for a manual quote (no in-force hourly card, or pricing not set up).
   async autoQuoteBooking(ctx: RequestContext, rentalId: string): Promise<QuoteResponse | null> {
     const body = await withTenantTx(ctx, async (tx): Promise<QuoteRequest | null> => {
       const [rental] = await tx.select().from(rentals).where(eq(rentals.id, rentalId)).limit(1);
@@ -265,13 +258,13 @@ export class QuotesService {
         // No end date: an open-ended hire has no days to price; manual quote.
         if (!line.end) return null;
         const days = Math.max(1, Math.ceil((line.end.getTime() - line.start.getTime()) / 86_400_000));
-        const preferred = days >= DAYS_PER_MONTH ? ['monthly', 'daily', 'hourly'] : ['daily', 'hourly', 'monthly'];
         const [card] = await tx
           .select({ id: rateCards.id })
           .from(rateCards)
           .where(
             and(
               eq(rateCards.tenantId, ctx.tenantId),
+              eq(rateCards.rateType, 'hourly'),
               or(eq(rateCards.equipmentId, line.equipmentId), and(eq(rateCards.equipmentTypeId, line.equipmentTypeId), isNull(rateCards.equipmentId))),
               lte(rateCards.effectiveFrom, now),
               or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, now)),
@@ -279,7 +272,6 @@ export class QuotesService {
           )
           .orderBy(
             sql`${rateCards.equipmentId} is null`,
-            sql`array_position(${sql.raw(`array['${preferred.join("','")}']`)}::text[], ${rateCards.rateType})`,
             desc(rateCards.effectiveFrom),
           )
           .limit(1);

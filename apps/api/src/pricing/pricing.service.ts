@@ -1,5 +1,5 @@
 import { BadGatewayException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, gt, isNull, lte, or } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt, lte, or } from 'drizzle-orm';
 import {
   auditLogs,
   billingSettings,
@@ -23,6 +23,9 @@ import type {
   RequestContext,
 } from '@arkilaunch/shared';
 import { countRows } from '../common/count-rows.js';
+
+// Only a current card may be closed: updating a retired pre-0071 daily row would trip rate_cards_hourly_only_chk.
+const isCurrent = (now: Date) => or(isNull(rateCards.effectiveTo), gt(rateCards.effectiveTo, now));
 
 @Injectable()
 export class PricingService {
@@ -267,12 +270,17 @@ export class PricingService {
   // privilege at the DB layer, so this is a guarantee, not a convention.
   async supersedeRateCard(ctx: RequestContext, id: string, input: RateCardSupersedeRequest) {
     return withTenantTx(ctx, async (tx) => {
-      const [existing] = await tx.select().from(rateCards).where(eq(rateCards.id, id)).limit(1);
+      const [existing] = await tx.select().from(rateCards).where(eq(rateCards.id, id)).limit(1).for('update');
       if (!existing) throw new NotFoundException({ error: 'rate_card_not_found' });
 
-      const effectiveFrom = input.effectiveFrom ? new Date(input.effectiveFrom) : new Date();
-
-      await tx.update(rateCards).set({ effectiveTo: effectiveFrom }).where(eq(rateCards.id, id));
+      const now = new Date();
+      const effectiveFrom = input.effectiveFrom ? new Date(input.effectiveFrom) : now;
+      const [closed] = await tx
+        .update(rateCards)
+        .set({ effectiveTo: effectiveFrom })
+        .where(and(eq(rateCards.id, id), isCurrent(now), lt(rateCards.effectiveFrom, effectiveFrom)))
+        .returning({ id: rateCards.id });
+      if (!closed) throw new ConflictException({ error: 'rate_card_not_current' });
 
       const [successor] = await tx
         .insert(rateCards)
@@ -304,10 +312,16 @@ export class PricingService {
   // app_authenticated, so this can only ever narrow the effective window.
   async retireRateCard(ctx: RequestContext, id: string) {
     return withTenantTx(ctx, async (tx) => {
-      const [existing] = await tx.select().from(rateCards).where(eq(rateCards.id, id)).limit(1);
+      const [existing] = await tx.select().from(rateCards).where(eq(rateCards.id, id)).limit(1).for('update');
       if (!existing) throw new NotFoundException({ error: 'rate_card_not_found' });
 
-      await tx.update(rateCards).set({ effectiveTo: new Date() }).where(eq(rateCards.id, id));
+      const now = new Date();
+      const [closed] = await tx
+        .update(rateCards)
+        .set({ effectiveTo: now })
+        .where(and(eq(rateCards.id, id), isCurrent(now)))
+        .returning({ id: rateCards.id });
+      if (!closed) throw new ConflictException({ error: 'rate_card_not_current' });
 
       await tx.insert(auditLogs).values({
         tenantId: ctx.tenantId,
