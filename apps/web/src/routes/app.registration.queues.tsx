@@ -560,14 +560,11 @@ function DocumentPreviewModal({
   documentId: string;
   onClose: () => void;
 }) {
-  const toast = useToast();
   const [asImage, setAsImage] = useState(true);
   const query = useQuery({
     queryKey: ['customers', companyId, 'documents', documentId, 'url'],
     queryFn: () => apiGet<{ url: string }>(`/customers/${companyId}/documents/${documentId}/url`),
   });
-
-  if (query.isError) toast.error('Could not open the document', apiErrorText(query.error));
 
   return (
     <Modal open onClose={onClose} title="Document" size="lg">
@@ -645,7 +642,14 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   const [preview, setPreview] = useState<{ companyId: string; documentId: string } | null>(null);
   const [rejecting, setRejecting] = useState<CompanyReviewResponse | null>(null);
   const [approving, setApproving] = useState<{ company: CompanyReviewResponse; body: Record<string, unknown> } | null>(null);
-  const open = query.data?.items.find((c) => c.id === openId) ?? null;
+  const onPage = query.data?.items.find((c) => c.id === openId) ?? null;
+  // ponytail: a deep link past page 1 looks in the first 100 (the API max); GET /customers/review/:id if queues grow.
+  const fallback = useQuery({
+    ...companiesQueries.review(kycStatus, 100, 0),
+    enabled: Boolean(openId) && query.isSuccess && !onPage,
+  });
+  const open = onPage ?? fallback.data?.items.find((c) => c.id === openId) ?? null;
+  const missing = Boolean(openId) && fallback.isSuccess && !open;
 
   const decide = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) => apiPatch(`/customers/${id}/kyc`, body),
@@ -662,6 +666,7 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
   return (
     <div className="flex flex-col gap-3">
       {query.isError && <Alert type="error">{apiErrorText(query.error)}</Alert>}
+      {missing && <Alert type="info">That registration is no longer waiting here: it may already be decided.</Alert>}
       <Table
         columns={COLUMNS}
         rows={query.data?.items ?? []}
