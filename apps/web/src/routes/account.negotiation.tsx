@@ -19,12 +19,7 @@ import { useToast } from '../components/toast.js';
 import { LoadError } from '../components/load-error.js';
 import { Skeleton } from '../components/skeleton.js';
 
-// Figma 219:2226 (Proceed to Negotiation), 225:3084 (Messenger Chat Nego),
-// 225:3085 (Call Nego), 225:3087 (Nego Finalized), 238:2649 (Manage Nego
-// Details). Negotiation is a conversation beside the current quote: the
-// customer counters in the thread, staff answer with a revised quote, and
-// the customer accepts or declines the quote itself. Only the accepted
-// quote's engine-priced total is ever charged.
+// Only the accepted quote's engine-priced total is ever charged.
 
 const heading = 'text-heading-md text-text';
 
@@ -131,8 +126,7 @@ function QuoteCard({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-// Only a 404/403 means the booking is not this customer's; anything else is
-// a failed load they can retry, not "booking not found".
+// Only a 404/403 means the booking is not theirs; anything else is a retryable failure.
 function LoadFailed({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   if (error instanceof ApiError && (error.status === 404 || error.status === 403))
     return <NotFound />;
@@ -180,15 +174,11 @@ function NegotiationPage({ bookingId }: { bookingId: string }) {
   );
 }
 
-// Serves /chat too, the Figma frame's own URL for the same screen.
 function NegotiationRoute() {
   const { bookingId } = useParams({ strict: false }) as { bookingId: string };
   return <NegotiationPage bookingId={bookingId} />;
 }
 
-// Figma 225:3085. There is no telephony here and no yard phone number in
-// the data, so the call happens off-app; what comes back into the app is
-// the revised quote the team sends after it.
 function NegotiationCallRoute() {
   const { bookingId } = accountNegotiationCallRoute.useParams();
   const booking = useQuery(bookingsQueries.detail(bookingId));
@@ -214,7 +204,6 @@ function NegotiationCallRoute() {
   );
 }
 
-// Figma 225:3087 "Negotiation Finalized": the agreed numbers, then pay.
 function NegotiationFinalRoute() {
   const { bookingId } = accountNegotiationFinalRoute.useParams();
   const booking = useQuery(bookingsQueries.detail(bookingId));
@@ -288,8 +277,6 @@ function NegotiationFinalRoute() {
   );
 }
 
-// Each quoted line with its own price, so the customer sees what makes up
-// the total, not just the total.
 function LineItems({ quoteId }: { quoteId: string }) {
   const quote = useQuery({ ...quotesQueries.detail(quoteId), enabled: Boolean(quoteId) });
   if (!quote.data?.lineItems.length) return null;
@@ -305,9 +292,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Siblings, not nested: each screen reads its OWN route's params (see the
-// note this replaced in unbacked-screens.tsx -- reading the parent's
-// params from a sibling throws "Could not find an active match").
+// Siblings, not nested: reading a parent's params from a sibling throws "Could not find an active match".
 export const accountNegotiationRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/negotiation/$bookingId',

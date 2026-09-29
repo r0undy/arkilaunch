@@ -19,16 +19,7 @@ import {
 } from '../components/company-card.js';
 import { formatStatus } from '../lib/format.js';
 
-// Figma 251:1945 "Company Applications". The companies one login has
-// registered to rent under, their verification state, and where to manage
-// each.
-//
-// This is NOT the tenant onboarding application (GET /tenants/me/application,
-// a business becoming an ArkiLaunch tenant), which this screen used to read
-// by mistake -- that one is correctly singular, because users.tenantId is a
-// single FK and RLS keys off one tenant per JWT. What the design draws is
-// the `customers` rows behind GET /me/companies, whose own schema comment
-// cites this frame.
+// Not the tenant onboarding application: these are the customers rows behind GET /me/companies.
 
 type StatusFilter = 'all' | 'pending' | 'approved';
 
@@ -48,10 +39,7 @@ function CounterTile({ value, label }: { value: number; label: string }) {
   );
 }
 
-// The registration certificate the customer uploaded, as the card's
-// thumbnail. It is private KYC evidence, so it is fetched as a short-lived
-// signed URL per document rather than served from a public bucket; a company
-// with no certificate yet, or a URL that fails, falls back to the label.
+// Private KYC evidence: a short-lived signed URL per document, never a public bucket.
 function RegistrationThumbnail({ company }: { company: CompanyResponse }) {
   const doc = company.documents.find((d) => isPrimaryRegistration(d.documentType));
   const url = useQuery({
@@ -137,9 +125,7 @@ function ApplicationsPage() {
     pending: rows.filter((c) => c.kycStatus === 'pending').length,
   };
 
-  // ponytail: client-side filter over an unpaginated GET /me/companies --
-  // one login holds a handful of companies. Push status + q into SQL if that
-  // ever grows past a page.
+  // ponytail: client-side filter over unpaginated /me/companies; move status + q into SQL past a page.
   const q = search.trim().toLowerCase();
   const shown = rows.filter((c) => {
     if (status !== 'all' && c.kycStatus !== status) return false;

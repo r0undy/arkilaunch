@@ -21,10 +21,6 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { EstimateRange, PriceBreakdown, TruckRequestCard } from '../components/truck-trip.js';
 import { EMPTY_LOCATION, LocationPicker, locationLabel } from '../components/location-picker.js';
 
-// Map-first truck booking (cr-arkilaunch-truck-map-booking.md): tap the
-// pickup, tap the drop-off, and the road route and price load on their own.
-// The address pickers wait under "Advanced search".
-
 interface Side {
   pin: LatLng | null;
   place: PhLocation;
@@ -32,8 +28,6 @@ interface Side {
 }
 const EMPTY_SIDE: Side = { pin: null, place: EMPTY_LOCATION, detail: '' };
 
-// What the request is saved under: street/barangay and city when known,
-// else the coordinates. Staff read this label.
 function sideLabel(s: Side): string {
   const text = [s.detail.trim(), locationLabel(s.place)].filter(Boolean).join(', ');
   if (text) return text.slice(0, 300);
@@ -50,7 +44,6 @@ function tomorrowMorning() {
 type Tab = 'book' | 'requests';
 
 function TrucksPage() {
-  // ?open=TRK-... (a notification) opens that trip on Your requests.
   const { open } = accountTrucksRoute.useSearch();
   const [tab, setTab] = useState<Tab>(open ? 'requests' : 'book');
   const [justCreated, setJustCreated] = useState<string | null>(null);
@@ -98,8 +91,6 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
   const [when, setWhen] = useState(tomorrowMorning);
   const [locating, setLocating] = useState(false);
   const [load, setLoad] = useState('');
-  // The trip is booked for a company (the only one, else the first verified
-  // one, until the customer picks); its sites are an optional drop-off.
   const companies = useQuery(companiesQueries.mine());
   const [pickedCompany, setPickedCompany] = useState('');
   const companyId =
@@ -112,24 +103,19 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
 
   const update = (which: Which, patch: Partial<Side>) => setSides((s) => ({ ...s, [which]: { ...s[which], ...patch } }));
 
-  // A pin fills the street/barangay and, when the names line up, the
-  // region/province/city pickers; everything stays editable.
   async function placePin(which: Which, at: LatLng) {
     update(which, { pin: at });
     if (which === 'pickup' && !sides.dropoff.pin) setPlacing('dropoff');
     const found = await reverseGeocode(at.lat, at.lng, which);
     if (!found) return;
     const place = matchPhLocation(found);
-    // No sure PSGC match: the pickers clear (a previous pin's province must
-    // not linger) and the geocoded city stays in the street text instead.
+    // No sure PSGC match: clear the pickers so a previous pin's province does not linger.
     const detail = [found.street, found.barangay && `Brgy. ${found.barangay}`, !place && found.city]
       .filter(Boolean)
       .join(', ');
     update(which, { detail, place: place ?? EMPTY_LOCATION });
   }
 
-  // A site is a destination: it pins the drop-off at the site and names it
-  // by the site's own address, not a geocoder's guess.
   function chooseSite(site: CustomerSiteResponse | undefined) {
     setSiteId(site?.id ?? '');
     if (!site) return;
@@ -173,8 +159,6 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
   };
   const ready = pickup.length >= 5 && dropoff.length >= 5;
 
-  // Pins drive the route, so a pin (not its slowly arriving address) keys
-  // the estimate; without a pin the typed place does.
   const estimate = useQuery({
     queryKey: ['truck-estimate', a ? pinned(a) : pickup, b ? pinned(b) : dropoff],
     queryFn: () => apiPost<TruckEstimateResponse>('/me/truck-requests/estimate', { pickup, dropoff, ...pinBody }),
@@ -432,7 +416,6 @@ function YourRequests({ openId, openCode }: { openId: string | null; openCode: s
   const [status, setStatus] = useState<'open' | 'closed'>('open');
   const [offset, setOffset] = useState(0);
   const list = useQuery(trucksQueries.mine(PAGE_SIZE, offset, '', status));
-  // The linked trip, open or past, found by its code.
   const linked = useQuery({ ...trucksQueries.mine(1, 0, openCode ?? ''), enabled: !!openCode });
   const linkedTrip = linked.data?.items.find((r) => r.code === openCode);
   return (

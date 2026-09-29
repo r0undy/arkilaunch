@@ -18,12 +18,7 @@ import { formatDate, formatPeso, formatStatus, shortCode } from '../lib/format.j
 
 type PaymentMethod = CheckoutMethod | 'manual';
 
-// Figma 168:2161 (Digital Bank) and 216:2049 (Bank Transfer). The frames
-// collect card numbers, a GCash login (168:3138) and an OTP (168:3214) in
-// this app. None of that is built on purpose: the customer picks a
-// channel here and PayMongo's hosted page runs the wallet or bank login
-// and the OTP, so no credential ever reaches ArkiLaunch (DSD §4.1 "Don't:
-// collect card data in-app") and there is no card-data compliance scope.
+// No card, wallet or OTP fields on purpose: PayMongo's hosted page takes them, so no credential reaches us.
 const METHODS: { id: PaymentMethod; title: string; description: string }[] = [
   { id: 'gcash', title: 'GCash', description: 'You log in to GCash and confirm with its OTP on the secure payment page.' },
   { id: 'paymaya', title: 'Maya', description: 'You log in to Maya and confirm on the secure payment page.' },
@@ -37,9 +32,7 @@ const METHODS: { id: PaymentMethod; title: string; description: string }[] = [
   },
 ];
 
-// What this checkout will charge, as the server will compute it: the
-// accepted quote plus deposit, or a reservation deposit when no quote
-// exists. Shown, never sent -- the API prices the charge itself.
+// Shown, never sent: the API prices the charge itself.
 export function amountDue(booking: BookingDetailResponse): { rent: number; deposit: number | null; total: number | null } {
   const quote = booking.quotation;
   if (quote?.status === 'accepted') {
@@ -124,8 +117,7 @@ function checkoutError(err: unknown): string {
   return apiErrorText(err);
 }
 
-// The customer names a code; the server says what it takes off (the rent
-// only) and checkout re-checks it. Nothing here computes money.
+// The server says what a code takes off (rent only); nothing here computes money.
 function CouponField({
   bookingId,
   applied,
@@ -359,9 +351,7 @@ function CheckoutPage() {
   );
 }
 
-// PayMongo's cancel_url (set per session, back to this storefront). Reaching it means the
-// customer backed out or the wallet/bank declined -- nothing was charged,
-// and the webhook remains the authority either way.
+// PayMongo's cancel_url: nothing was charged, and the webhook stays the authority either way.
 function CheckoutFailedPage() {
   return (
     <div className="flex flex-col gap-5">

@@ -39,7 +39,6 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
   const [formula, setFormula] = useState(initial.formula || DEFAULT_TRUCK_FORMULA);
   const [rangePct, setRangePct] = useState(String(initial.rangePct));
   const [editing, setEditing] = useState(false);
-  // Every open starts from what is saved, so a cancelled edit leaves nothing behind.
   const open = () => {
     setBase(String(initial.baseFeePhp));
     setDriver(String(initial.driverFeePhp));
@@ -48,8 +47,6 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
     setRangePct(String(initial.rangePct));
     setEditing(true);
   };
-  // The builder's sample trip is priced with the same per-km, fuel and
-  // national diesel figures a real request uses.
   const params = useQuery(pricingQueries.parameters());
   const diesel = useQuery(pricingQueries.diesel());
   const sample: SampleInputs = {
@@ -156,8 +153,6 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
   );
 }
 
-// One toll fee, edited in place (a TRB change): saved when the field loses
-// focus with a changed value.
 function TollFeeInput({ toll }: { toll: TollRateResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -229,9 +224,7 @@ export function TollsEditor() {
   });
   const rows = tolls.data ?? [];
   const expressways = [...new Set(rows.filter((t) => t.expressway).map((t) => t.expressway!))];
-  // ponytail: filtered and paged in the browser. The toll picker needs the
-  // whole matrix anyway, and it is a bounded list (the PH Class 3 matrix
-  // plus the tenant's own); page on the server if it ever passes ~1000.
+  // ponytail: filtered and paged in the browser (bounded toll matrix); page on the server past ~1000.
   const shown = useMemo(() => {
     const needle = find.trim().toLowerCase();
     return rows.filter(
@@ -437,8 +430,6 @@ export function BanRulesEditor() {
   </section>;
 }
 
-// Tolls a trip passes: expressway, then two points on it (either order),
-// and the loaded fee fills in; free-named tolls are picked by name.
 function TollPicker({ tolls, value, onChange }: { tolls: TollRateResponse[]; value: string[]; onChange: (ids: string[]) => void }) {
   const [expressway, setExpressway] = useState('');
   const [a, setA] = useState('');
@@ -518,8 +509,6 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   const queryClient = useQueryClient();
   const tolls = useQuery(tollsQuery);
   const [tollIds, setTollIds] = useState<string[]>([]);
-  // The road route's expressways preselect their tolls once; the admin
-  // changes them freely, or types one manual amount that replaces them.
   const route = useQuery({ ...trucksQueries.route(r.id), enabled: r.pickupLat !== null && r.dropoffLat !== null });
   const suggested = useMemo(
     () => (route.data?.tollHints && tolls.data ? suggestTolls(route.data.tollHints, tolls.data) : []),
@@ -753,8 +742,6 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
 export const appTrucksRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/trucks',
-  // Truck requests now live under Bookings (service = truck); old links
-  // and notifications land there.
   beforeLoad: () => {
     throw redirect({ to: '/app/bookings', search: { service: 'truck' } });
   },

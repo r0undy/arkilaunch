@@ -45,10 +45,6 @@ const COLUMNS: TableColumn<InvoiceSummaryResponse>[] = [
   { header: 'Amount', kind: 'money', cell: (row) => formatPeso(row.amount) },
 ];
 
-// Four columns of a seven-field record, with the id cut to a short code:
-// "which rental is this invoice against?" and "what is its full id?" were
-// unanswerable from this screen, which is awkward for the one table in the
-// console that stands for money already charged.
 export function InvoiceDetail({ invoice, onDone }: { invoice: InvoiceSummaryResponse; onDone: () => void }) {
   const rows: [string, ReactNode][] = [
     [
@@ -78,8 +74,6 @@ export function InvoiceDetail({ invoice, onDone }: { invoice: InvoiceSummaryResp
           </div>
         ))}
       </dl>
-      {/* One row of actions; each opens its own dialog rather than stacking
-          two money forms inside this one. */}
       <div className="flex flex-wrap gap-2 border-t border-border pt-3 empty:hidden">
         {invoice.status === 'issued' && <RecordCash invoice={invoice} onDone={onDone} />}
         {invoice.status === 'issued' && ADJUSTABLE.has(invoice.invoiceType) && <ChangeAmount invoice={invoice} onDone={onDone} />}
@@ -92,9 +86,7 @@ export function InvoiceDetail({ invoice, onDone }: { invoice: InvoiceSummaryResp
 // Invoices the customer checks out (the server's ADJUSTABLE_INVOICE_TYPES).
 const ADJUSTABLE = new Set(['booking', 'deposit', 'truck']);
 
-// Lower what an unpaid invoice charges (never raise it). The customer's next
-// checkout charges the new amount; any open PayMongo page at the old amount
-// is closed. PHP 1.00 is PayMongo's smallest charge. Audit-logged with the reason.
+// Lower only, never raise. PHP 1.00 is PayMongo's smallest charge.
 function ChangeAmount({ invoice, onDone }: { invoice: InvoiceSummaryResponse; onDone: () => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -129,8 +121,7 @@ function ChangeAmount({ invoice, onDone }: { invoice: InvoiceSummaryResponse; on
       <Button variant="secondary" onClick={() => setOpen(true)}>
         Change amount
       </Button>
-      {/* The dialog is the confirm: it states the change in full and takes a
-          deliberate click, never a stray one on the backdrop. */}
+      {/* The dialog is the confirm: never dismissed by a stray backdrop click. */}
       <Modal
         open={open}
         onClose={change.isPending ? () => undefined : close}
@@ -174,8 +165,7 @@ function ChangeAmount({ invoice, onDone }: { invoice: InvoiceSummaryResponse; on
   );
 }
 
-// Cash is only ever settled here, by a staff member with the money in hand
-// (CR truck-booking-and-kyc-docs). The API names them on the payment row.
+// Cash is only settled here, by staff with the money in hand; the API names them.
 function RecordCash({ invoice, onDone }: { invoice: InvoiceSummaryResponse; onDone: () => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -215,9 +205,7 @@ const REASON_LABELS: Record<RefundReason, string> = {
   others: 'Other',
 };
 
-// Online payments only: PayMongo returns the money to the customer's
-// wallet, bank or card. The refund shows on the ledger once PayMongo
-// confirms it (webhook), not when this is clicked. Cash goes back by hand.
+// The refund shows once PayMongo's webhook confirms it, not on click.
 function RefundPayment({ invoice }: { invoice: InvoiceSummaryResponse }) {
   const toast = useToast();
   const [amount, setAmount] = useState(String(invoice.amount));
