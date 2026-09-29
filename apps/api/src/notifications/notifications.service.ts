@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, type SQL } from 'drizzle-orm';
 import { notifications, pushSubscriptions, sendEmail, withTenantTx } from '@arkilaunch/db';
 import { tenantEmailContext } from '../common/notify-customer.js';
+import { countRows } from '../common/count-rows.js';
 import { notificationEmail, renderEmailHtml } from '@arkilaunch/shared';
 import type {
   NotificationListQuery,
@@ -32,7 +33,7 @@ export class NotificationsService {
         .orderBy(desc(notifications.createdAt))
         .limit(query.limit)
         .offset(query.offset);
-      const total = (await tx.select().from(notifications).where(and(...conditions))).length;
+      const total = await countRows(tx, notifications, and(...conditions));
 
       return {
         items: rows.map((row) => ({
@@ -50,13 +51,11 @@ export class NotificationsService {
   async markRead(ctx: RequestContext, id: string) {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx
-        .select()
-        .from(notifications)
+        .update(notifications)
+        .set({ status: 'read' })
         .where(and(eq(notifications.id, id), eq(notifications.userId, ctx.userId)))
-        .limit(1);
+        .returning({ id: notifications.id });
       if (!row) throw new NotFoundException({ error: 'notification_not_found' });
-
-      await tx.update(notifications).set({ status: 'read' }).where(eq(notifications.id, id));
       return { id, status: 'read' };
     });
   }

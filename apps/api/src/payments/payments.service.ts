@@ -32,6 +32,7 @@ import { EventsService } from '../events/events.service.js';
 import { notifyBookingCustomer, notifyStaff, notifyUser } from '../common/notify-customer.js';
 import { customerOwnsInvoice, ownsCustomer } from '../common/customer-scope.js';
 import { renewLapsedHold } from '../common/booking-hold.js';
+import { countRows } from '../common/count-rows.js';
 import { resolveBookingRef } from '../common/booking-ref.js';
 import { checkoutReturnOrigin } from './return-origin.js';
 import { claimCoupon, previewCoupon } from './coupons.js';
@@ -113,11 +114,8 @@ export class PaymentsService {
       // checkout-session creation is throttled per tenant. Postgres-backed
       // (no Redis in V1, SDD §3/§7).
       const windowStart = new Date(Date.now() - CHECKOUT_RATE_WINDOW_MS);
-      const recent = await tx
-        .select()
-        .from(payments)
-        .where(and(eq(payments.tenantId, ctx.tenantId), gte(payments.createdAt, windowStart)));
-      if (recent.length >= CHECKOUT_RATE_LIMIT) {
+      const recent = await countRows(tx, payments, and(eq(payments.tenantId, ctx.tenantId), gte(payments.createdAt, windowStart)));
+      if (recent >= CHECKOUT_RATE_LIMIT) {
         throw new HttpException(
           { error: 'rate_limited', retryAfterSeconds: Math.ceil(CHECKOUT_RATE_WINDOW_MS / 1000) },
           HttpStatus.TOO_MANY_REQUESTS,
