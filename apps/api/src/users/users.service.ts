@@ -86,11 +86,14 @@ export class UsersService {
   // is exposed through UserProfileController, not the user:manage-gated
   // UsersController above.
   async me(ctx: Ctx): Promise<UserSelfResponse> {
-    const result = await withTenantTx(ctx, async (tx) => {
-      const [row] = await this.selectUserWithRole(tx, ctx.userId);
-      if (!row) throw new NotFoundException({ error: 'user_not_found' });
-      const [profile] = await tx
+    const row = await withTenantTx(ctx, async (tx) => {
+      const [found] = await tx
         .select({
+          id: users.id,
+          email: users.email,
+          status: users.status,
+          roleName: roles.name,
+          createdAt: users.createdAt,
           firstName: users.firstName,
           middleName: users.middleName,
           lastName: users.lastName,
@@ -98,23 +101,22 @@ export class UsersService {
           address: users.address,
           avatarKey: users.avatarKey,
           notificationPrefs: users.notificationPrefs,
+          tenantName: tenants.legalName,
+          tenantSlug: tenants.slug,
         })
         .from(users)
+        .innerJoin(roles, eq(roles.id, users.roleId))
+        .leftJoin(tenants, eq(tenants.id, users.tenantId))
         .where(eq(users.id, ctx.userId))
         .limit(1);
-      const [tenant] = await tx
-        .select({ legalName: tenants.legalName, slug: tenants.slug })
-        .from(tenants)
-        .where(eq(tenants.id, ctx.tenantId))
-        .limit(1);
-      return { row, profile, tenant };
+      if (!found) throw new NotFoundException({ error: 'user_not_found' });
+      return found;
     });
-    const { row, profile, tenant } = result;
     // Signed outside the transaction: it is a network call to Storage. A
     // Storage outage costs the picture, never the whole profile.
     const tenantTin = await getTenantTin(ctx.tenantId).catch(() => null);
-    const avatarUrl = profile?.avatarKey
-      ? await this.storage.createSignedDownloadUrl(avatarBucket(), profile.avatarKey).catch(() => null)
+    const avatarUrl = row.avatarKey
+      ? await this.storage.createSignedDownloadUrl(avatarBucket(), row.avatarKey).catch(() => null)
       : null;
     return {
       id: row.id,
@@ -122,16 +124,16 @@ export class UsersService {
       role: row.roleName,
       status: row.status as UserSelfResponse['status'],
       createdAt: row.createdAt,
-      tenantName: tenant?.legalName ?? '',
-      tenantSlug: tenant?.slug ?? '',
+      tenantName: row.tenantName ?? '',
+      tenantSlug: row.tenantSlug ?? '',
       tenantTin,
-      firstName: profile?.firstName ?? null,
-      middleName: profile?.middleName ?? null,
-      lastName: profile?.lastName ?? null,
-      phone: profile?.phone ?? null,
-      address: profile?.address ?? null,
+      firstName: row.firstName,
+      middleName: row.middleName,
+      lastName: row.lastName,
+      phone: row.phone,
+      address: row.address,
       avatarUrl,
-      ...(profile ? { notificationPrefs: profile.notificationPrefs } : {}),
+      notificationPrefs: row.notificationPrefs,
     };
   }
 
@@ -382,25 +384,14 @@ export class UsersService {
     return withTenantTx(ctx, async (tx) => {
       const target = await this.loadTargetForMutation(tx, ctx, id);
 
-      if (checkLastManager) {
-        const remaining = await this.countOtherActiveUserManagers(tx, ctx.tenantId, id);
-        const verdict = evaluateUserAdminAction({
-          actorRole: ctx.role as RoleCode,
-          actorUserId: ctx.userId,
-          targetUserId: id,
-          targetRole: target.roleName as RoleCode,
-          wouldLeaveZeroUserManagers: remaining === 0,
-        });
-        if (!verdict.allowed) throw new ForbiddenException({ error: verdict.reason });
-      } else {
-        const verdict = evaluateUserAdminAction({
-          actorRole: ctx.role as RoleCode,
-          actorUserId: ctx.userId,
-          targetUserId: id,
-          targetRole: target.roleName as RoleCode,
-        });
-        if (!verdict.allowed) throw new ForbiddenException({ error: verdict.reason });
-      }
+      const verdict = evaluateUserAdminAction({
+        actorRole: ctx.role as RoleCode,
+        actorUserId: ctx.userId,
+        targetUserId: id,
+        targetRole: target.roleName as RoleCode,
+        wouldLeaveZeroUserManagers: checkLastManager && (await this.countOtherActiveUserManagers(tx, ctx.tenantId, id)) === 0,
+      });
+      if (!verdict.allowed) throw new ForbiddenException({ error: verdict.reason });
 
       await tx.update(users).set({ status }).where(eq(users.id, id));
       await this.audit(tx, ctx, 'UPDATE', id);
