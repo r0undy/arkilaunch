@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { PaginationQuerySchema } from './pagination.js';
 
+// RFC-3 §3: money rounds half-up to 2 decimals; EPSILON stops 1.005 truncating to 1.00.
+export function round2HalfUp(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 // RFC-3 §3/§7 QUOTE-05: platform manual diesel-price entry and the tenant
 // diesel override, both audit-logged, both usable with ENABLE_DIESEL_SCRAPE
 // off.

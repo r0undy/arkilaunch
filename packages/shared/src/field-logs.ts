@@ -1,4 +1,5 @@
 import type { FieldLogDayStatus } from './edtr.js';
+import { round2HalfUp } from './pricing.js';
 
 // Read models for the site hub and the booking's field-log rollup
 // (cr-arkilaunch-edtr-site-hub-approval.md). Pure; the API assembles them.
@@ -118,7 +119,6 @@ export interface BookingFieldLogs extends FieldLogTotals {
 export const FULL_DAY_HOURS = 8;
 
 export function sumApproved(days: ApprovedDayHours[]): ApprovedDayHours {
-  const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
   const total = days.reduce(
     (acc, d) => ({
       running: acc.running + d.running,
@@ -131,12 +131,12 @@ export function sumApproved(days: ApprovedDayHours[]): ApprovedDayHours {
     { running: 0, billable: 0, idle: 0, breakdown: 0, weather: 0, otherDowntime: 0 },
   );
   return {
-    running: r2(total.running),
-    billable: r2(total.billable),
-    idle: r2(total.idle),
-    breakdown: r2(total.breakdown),
-    weather: r2(total.weather),
-    otherDowntime: r2(total.otherDowntime),
+    running: round2HalfUp(total.running),
+    billable: round2HalfUp(total.billable),
+    idle: round2HalfUp(total.idle),
+    breakdown: round2HalfUp(total.breakdown),
+    weather: round2HalfUp(total.weather),
+    otherDowntime: round2HalfUp(total.otherDowntime),
   };
 }
 

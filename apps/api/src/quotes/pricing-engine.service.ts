@@ -1,7 +1,7 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { and, desc, eq, gte, isNull, lte, or } from 'drizzle-orm';
 import { type Tx, dieselPriceReadings, getBillingSettings, pricingParameters, rateCards } from '@arkilaunch/db';
-import { rentFor, type Discount, type QuoteItemInput, type QuoteRequest, type RentPart } from '@arkilaunch/shared';
+import { rentFor, round2HalfUp, type Discount, type QuoteItemInput, type QuoteRequest, type RentPart } from '@arkilaunch/shared';
 
 const FORMULA_VERSION = '2.0';
 // RFC-3 §3: default staleness window; DOE updates weekly (typically
@@ -9,12 +9,6 @@ const FORMULA_VERSION = '2.0';
 const STALENESS_WINDOW_DAYS = 7;
 
 
-// RFC-3 §3: monetary outputs round half-up to 2 decimals; intermediate
-// values stay full-precision. Number.EPSILON guards the classic
-// floating-point half-up edge case (e.g. 1.005 truncating to 1.00).
-export function round2HalfUp(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
 
 export interface DieselResolution {
   pricePhp: number;

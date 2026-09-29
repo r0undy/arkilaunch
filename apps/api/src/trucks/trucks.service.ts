@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { and, asc, desc, eq, inArray, isNotNull, like, notInArray } from 'drizzle-orm';
 import { type Tx, auditLogs, customers, negotiationMessages, notifications, projectSites, tollRates, truckBanRules, truckRequests, truckSettings, users, withTenantTx } from '@arkilaunch/db';
 import {
+  round2HalfUp,
   bookingCodeSearchPrefix,
   CLOSED_TRUCK_STATUSES,
   PH_CLASS3_TOLLS,
@@ -40,7 +41,6 @@ import { countRows } from '../common/count-rows.js';
 
 const DEFAULT_SETTINGS: TruckSettings = { baseFeePhp: 0, driverFeePhp: 0, extras: [], formula: null, rangePct: 10, region: 'NCR' };
 
-const peso = (n: number) => Math.round(n * 100) / 100;
 const php = (n: number) => `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const num = (v: string | null) => (v === null ? null : Number(v));
 
@@ -126,7 +126,7 @@ export class TrucksService {
       tolls,
     });
     const band = settings.rangePct / 100;
-    return { ...price, lowPhp: peso(price.totalPhp * (1 - band)), highPhp: peso(price.totalPhp * (1 + band)) };
+    return { ...price, lowPhp: round2HalfUp(price.totalPhp * (1 - band)), highPhp: round2HalfUp(price.totalPhp * (1 + band)) };
   }
 
   listTolls(ctx: RequestContext): Promise<TollRateResponse[]> {
@@ -408,7 +408,7 @@ export class TrucksService {
       const tolls =
         manualTollPhp !== undefined
           ? manualTollPhp > 0
-            ? [{ label: 'Toll (manual)', amountPhp: peso(manualTollPhp) }]
+            ? [{ label: 'Toll (manual)', amountPhp: round2HalfUp(manualTollPhp) }]
             : []
           : tollRateIds.length
             ? (await tx.select().from(tollRates).where(inArray(tollRates.id, tollRateIds))).map((t) => ({

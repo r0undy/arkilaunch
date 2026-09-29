@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { billingSettings, depositAccruals, invoiceLineItems, invoices } from './schema/billing.js';
 import { quotationItems, quotations, rentalContracts } from './schema/rentals.js';
 import type { Tx } from './with-tenant-tx.js';
+import { round2HalfUp } from '@arkilaunch/shared';
 
 
 // Default for billing_settings.min_deposit_php when a tenant never set one.
@@ -47,7 +48,7 @@ export async function getBillingSettings(tx: Tx, tenantId: string): Promise<Bill
 // lowBalancePct. No hours value, or pct 0, falls back to the flat minimum.
 export function depositForQuote(settings: Pick<BillingSettings, 'minDepositPhp' | 'depositPct'>, rentedHoursValue: number | null): number {
   if (!rentedHoursValue || rentedHoursValue <= 0 || settings.depositPct <= 0) return settings.minDepositPhp;
-  return cents((rentedHoursValue * settings.depositPct) / 100);
+  return round2HalfUp((rentedHoursValue * settings.depositPct) / 100);
 }
 
 export interface DepositDeduction {
@@ -70,15 +71,13 @@ export interface DepositLedger {
   hoursOrdered: number | null;
 }
 
-const cents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-
 // Rollover: what an approved charge takes from the deposit, and what
 // overflows into an unbilled accrual for the weekly invoice. Never throws:
 // the gate that matters (reconciled or human-approved, RFC-2) ran before.
 export function splitDeduction(balanceBefore: number, amount: number) {
-  const available = Math.max(0, cents(balanceBefore));
-  const deducted = Math.min(available, cents(amount));
-  return { deducted, accrued: cents(amount - deducted), balanceAfter: cents(available - deducted) };
+  const available = Math.max(0, round2HalfUp(balanceBefore));
+  const deducted = Math.min(available, round2HalfUp(amount));
+  return { deducted, accrued: round2HalfUp(amount - deducted), balanceAfter: round2HalfUp(available - deducted) };
 }
 
 // True only on the charge that takes the balance to or under pct% of the
@@ -139,9 +138,9 @@ export async function resolveDepositLedger(tx: Tx, rentalId: string, tenantId: s
         .where(inArray(invoiceLineItems.invoiceId, deductionRows.map((row) => row.id)))
     : [];
   const accruals = await tx.select().from(depositAccruals).where(eq(depositAccruals.rentalId, rentalId));
-  const totalAccrued = cents(accruals.reduce((sum, row) => sum + Number(row.amount), 0));
-  const unbilledAccrued = cents(accruals.filter((row) => !row.invoiceId).reduce((sum, row) => sum + Number(row.amount), 0));
-  const hoursUsed = cents(
+  const totalAccrued = round2HalfUp(accruals.reduce((sum, row) => sum + Number(row.amount), 0));
+  const unbilledAccrued = round2HalfUp(accruals.filter((row) => !row.invoiceId).reduce((sum, row) => sum + Number(row.amount), 0));
+  const hoursUsed = round2HalfUp(
     Number(deductionHours[0]?.hours ?? 0) + accruals.reduce((sum, row) => sum + Number(row.hours), 0),
   );
 

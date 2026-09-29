@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PricingEngineService, round2HalfUp } from './pricing-engine.service.js';
+import { round2HalfUp } from '@arkilaunch/shared';
+import { PricingEngineService } from './pricing-engine.service.js';
 
 // RFC-3 §3/§6, QAD-T46: rounding and discount math are pure and DB-free, so
 // they are unit-tested in isolation. Diesel resolution order (QAD-T45) and

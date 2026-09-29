@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PaginationQuerySchema } from './pagination.js';
+import { round2HalfUp } from './pricing.js';
 
 // RFC-2 §3: the ocr_payload JSONB contract, written verbatim by the
 // edtr-ocr-worker and validated with Zod before use (AI-02: insecure output
@@ -389,8 +390,6 @@ export interface ClassifiedHours {
   meterDelta: number | null;
 }
 
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-
 // The ONE definition of billable / running / downtime, used by the
 // deduction in approve(), the hour meter, the customer portal and every
 // dashboard total, so no two screens can disagree about what was billed.
@@ -405,15 +404,15 @@ export function classifyHours(h: DayHours): ClassifiedHours {
   const breakdown = h.breakdown ?? 0;
   const weather = h.weather ?? 0;
   const otherDowntime = h.otherDowntime ?? 0;
-  const meterDelta = h.meterStart != null && h.meterEnd != null ? round2(h.meterEnd - h.meterStart) : null;
+  const meterDelta = h.meterStart != null && h.meterEnd != null ? round2HalfUp(h.meterEnd - h.meterStart) : null;
   return {
-    running: round2(h.running),
-    billable: round2(h.running + (categorised ? idle : 0)),
-    nonBillable: round2(breakdown + weather + otherDowntime),
-    idle: round2(idle),
-    breakdown: round2(breakdown),
-    weather: round2(weather),
-    otherDowntime: round2(otherDowntime),
+    running: round2HalfUp(h.running),
+    billable: round2HalfUp(h.running + (categorised ? idle : 0)),
+    nonBillable: round2HalfUp(breakdown + weather + otherDowntime),
+    idle: round2HalfUp(idle),
+    breakdown: round2HalfUp(breakdown),
+    weather: round2HalfUp(weather),
+    otherDowntime: round2HalfUp(otherDowntime),
     categorised,
     meterDelta,
   };

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { FORMULA_BASE_VARS, FormulaError, evaluateFormula, formulaVarName } from './formula.js';
 import { PaginationQuerySchema } from './pagination.js';
+import { round2HalfUp } from './pricing.js';
 
 // Self-loading truck service. The per-km and fuel inputs are the tenant's
 // existing pricing parameters and diesel price (the same ones every equipment
@@ -256,29 +257,27 @@ function formulaVars(
   };
 }
 
-const peso = (n: number) => Math.round(n * 100) / 100;
-
 // Pure: the one place the truck price is computed, on the server for the
 // estimate and again when the admin confirms the km.
 export function priceTruckTrip({ km, settings, perKmPhp, fuelLPerKm, dieselPhp, tolls = [] }: TruckPriceInput): TruckPrice {
   const lines: TruckPriceLine[] = [
-    { label: 'Base fee', amountPhp: peso(settings.baseFeePhp) },
-    { label: `Distance (${km} km × ₱${perKmPhp}/km)`, amountPhp: peso(km * perKmPhp) },
-    { label: `Fuel (${km} km × ${fuelLPerKm} L/km × ₱${dieselPhp}/L)`, amountPhp: peso(km * fuelLPerKm * dieselPhp) },
-    { label: "Driver's fee", amountPhp: peso(settings.driverFeePhp) },
+    { label: 'Base fee', amountPhp: round2HalfUp(settings.baseFeePhp) },
+    { label: `Distance (${km} km × ₱${perKmPhp}/km)`, amountPhp: round2HalfUp(km * perKmPhp) },
+    { label: `Fuel (${km} km × ${fuelLPerKm} L/km × ₱${dieselPhp}/L)`, amountPhp: round2HalfUp(km * fuelLPerKm * dieselPhp) },
+    { label: "Driver's fee", amountPhp: round2HalfUp(settings.driverFeePhp) },
     ...settings.extras.map((x) => ({
       label: x.per === 'km' ? `${x.label} (${km} km × ₱${x.amountPhp})` : x.label,
-      amountPhp: peso(x.per === 'km' ? km * x.amountPhp : x.amountPhp),
+      amountPhp: round2HalfUp(x.per === 'km' ? km * x.amountPhp : x.amountPhp),
     })),
-    ...tolls.map((t) => ({ label: `Toll: ${t.label}`, amountPhp: peso(t.amountPhp) })),
+    ...tolls.map((t) => ({ label: `Toll: ${t.label}`, amountPhp: round2HalfUp(t.amountPhp) })),
   ];
-  const sum = peso(lines.reduce((acc, l) => acc + l.amountPhp, 0));
+  const sum = round2HalfUp(lines.reduce((acc, l) => acc + l.amountPhp, 0));
   if (!settings.formula || settings.formula === DEFAULT_TRUCK_FORMULA) return { km, lines, totalPhp: sum };
   // A custom formula sets the total; the breakdown stays, and the gap to it
   // shows as one adjustment line.
   const tollsPhp = tolls.reduce((acc, t) => acc + t.amountPhp, 0);
-  const totalPhp = peso(Math.max(0, evaluateFormula(settings.formula, formulaVars(settings, km, perKmPhp, fuelLPerKm, dieselPhp, tollsPhp))));
-  if (totalPhp !== sum) lines.push({ label: 'Formula adjustment', amountPhp: peso(totalPhp - sum) });
+  const totalPhp = round2HalfUp(Math.max(0, evaluateFormula(settings.formula, formulaVars(settings, km, perKmPhp, fuelLPerKm, dieselPhp, tollsPhp))));
+  if (totalPhp !== sum) lines.push({ label: 'Formula adjustment', amountPhp: round2HalfUp(totalPhp - sum) });
   return { km, lines, totalPhp };
 }
 

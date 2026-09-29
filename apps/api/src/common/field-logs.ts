@@ -13,6 +13,7 @@ import {
   users,
 } from '@arkilaunch/db';
 import {
+  round2HalfUp,
   OFFICE_LOG_NOTE,
   classifyHours,
   downtimeDays,
@@ -257,7 +258,7 @@ export async function loadFieldLogs(tx: Tx, rentalIds: string[], today = manilaD
     tx.select({ amount: depositAccruals.amount }).from(depositAccruals).where(inArray(depositAccruals.rentalId, rentalIds)),
   ]);
   const billedPhp =
-    Math.round([...deducted, ...accrued].reduce((sum, row) => sum + Number(row.amount), 0) * 100) / 100;
+    round2HalfUp([...deducted, ...accrued].reduce((sum, row) => sum + Number(row.amount), 0));
 
   return {
     units,

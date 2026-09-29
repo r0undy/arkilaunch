@@ -31,6 +31,7 @@ import {
   withTenantTx,
 } from '@arkilaunch/db';
 import {
+  round2HalfUp,
   CONFIDENCE_GATE,
   OCR_CORPUS_FLOOR,
   assertAccuracyGate,
@@ -62,7 +63,6 @@ import { EventsService } from '../events/events.service.js';
 import { notifyBookingCustomer, notifyStaff } from '../common/notify-customer.js';
 import { unitReportSpan } from '../common/field-logs.js';
 import { isOcrPipelineEnabled } from '../ports/document-intelligence.port.js';
-import { round2HalfUp } from '../quotes/pricing-engine.service.js';
 
 // Calendar day that a bare `date` column means. Fixed rather than
 // per-tenant because the product is PH-only (docs/clr-arkilaunch.md gap E1,

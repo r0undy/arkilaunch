@@ -1,10 +1,8 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { customers, depositAccruals, invoiceLineItems, invoices, notifications, publicPhotoUrl, rentals, sendEmail, tenants, users } from '@arkilaunch/db';
-import { notificationEmail, renderEmailHtml, tenantWebOrigin } from '@arkilaunch/shared';
+import { round2HalfUp, notificationEmail, renderEmailHtml, tenantWebOrigin } from '@arkilaunch/shared';
 import { makeJobDb } from './db-client.js';
 import { runInstrumentedJob } from './telemetry.js';
-
-const cents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 // Weekly: every rental's unbilled deposit_accruals (reconciled hours billed
 // past the deposit balance, edtr.service.ts approve) roll into ONE
@@ -33,7 +31,7 @@ export async function runWeeklyBilling(): Promise<number> {
           .where(and(eq(depositAccruals.rentalId, rentalId), isNull(depositAccruals.invoiceId)))
           .for('update');
         if (rows.length === 0) return;
-        const amount = cents(rows.reduce((sum, row) => sum + Number(row.amount), 0));
+        const amount = round2HalfUp(rows.reduce((sum, row) => sum + Number(row.amount), 0));
 
         const [invoice] = await tx
           .insert(invoices)

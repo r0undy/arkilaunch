@@ -47,8 +47,8 @@ import type {
   UtilizationQuery,
   UtilizationReportResponse,
 } from '@arkilaunch/shared';
+import { round2HalfUp } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
-import { round2HalfUp } from '../quotes/pricing-engine.service.js';
 import { countRows } from '../common/count-rows.js';
 import { dayAvailability, readCalendar } from '../common/equipment-availability.js';
 

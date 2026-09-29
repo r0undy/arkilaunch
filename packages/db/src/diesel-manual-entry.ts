@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from './client.js';
+import { round2HalfUp } from '@arkilaunch/shared';
 
 export interface DieselManualReadingInput {
   region: string;
@@ -85,7 +86,7 @@ export function averageGasWatchDiesel(payload: unknown): number | null {
     .map((station) => Number(station?.diesel?.p))
     .filter((p) => Number.isFinite(p) && p >= PRICE_SANE_MIN && p <= PRICE_SANE_MAX);
   if (prices.length === 0) return null;
-  return Math.round((prices.reduce((sum, p) => sum + p, 0) / prices.length) * 100) / 100;
+  return round2HalfUp(prices.reduce((sum, p) => sum + p, 0) / prices.length);
 }
 
 // Fetches GasWatch and records the average as today's reading for the

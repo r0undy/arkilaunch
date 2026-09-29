@@ -20,6 +20,7 @@ import {
   withTenantTx,
 } from '@arkilaunch/db';
 import {
+  round2HalfUp,
   PaymongoEventEnvelopeSchema,
   type CheckoutRequest,
   type InvoiceAmountUpdate,
@@ -63,8 +64,6 @@ const RENT_LINE_PREFIX = 'Equipment rental';
 // The invoices a customer checks out; weekly and deposit_deduction invoices
 // are ledger-derived (hours x rate) and are never hand-priced.
 const ADJUSTABLE_INVOICE_TYPES = new Set(['booking', 'deposit', 'truck']);
-
-const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 // metadata.invoice_id is ours, but it is still external input: a non-uuid
 // would make the lookup's uuid cast throw, 500, and PayMongo would retry
@@ -261,9 +260,9 @@ export class PaymentsService {
       return {
         code,
         discountPhp,
-        rentPhp: round2(rentAmount - discountPhp),
+        rentPhp: round2HalfUp(rentAmount - discountPhp),
         depositPhp: depositAmount,
-        totalPhp: round2(rentAmount - discountPhp + depositAmount),
+        totalPhp: round2HalfUp(rentAmount - discountPhp + depositAmount),
       };
     });
   }
@@ -303,7 +302,7 @@ export class PaymentsService {
       .where(and(eq(invoiceLineItems.invoiceId, invoice.id), like(invoiceLineItems.description, `${RENT_LINE_PREFIX}%`)))
       .limit(1);
     if (!rentLine) throw new ConflictException({ error: 'coupon_invalid' });
-    const rentAfter = round2(Number(rentLine.amount) - discountPhp);
+    const rentAfter = round2HalfUp(Number(rentLine.amount) - discountPhp);
     await tx
       .update(invoiceLineItems)
       .set({
@@ -314,7 +313,7 @@ export class PaymentsService {
       .where(eq(invoiceLineItems.id, rentLine.id));
     const [repriced] = await tx
       .update(invoices)
-      .set({ amount: String(round2(Number(invoice.amount) - discountPhp)) })
+      .set({ amount: String(round2HalfUp(Number(invoice.amount) - discountPhp)) })
       .where(eq(invoices.id, invoice.id))
       .returning();
     if (!repriced) throw new Error('invoices update returned no row');
@@ -397,7 +396,7 @@ export class PaymentsService {
         throw new ConflictException({ error: 'invoice_not_adjustable', invoiceType: invoice.invoiceType });
       }
       const current = Number(invoice.amount);
-      const target = round2(body.amountPhp);
+      const target = round2HalfUp(body.amountPhp);
       if (target > current) throw new ConflictException({ error: 'amount_above_invoice', amountPhp: current });
       if (target === current) return { invoiceId, amountPhp: current };
 
@@ -406,21 +405,21 @@ export class PaymentsService {
       const lines = await tx.select().from(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, invoiceId));
       const depositLast = (d: string) => (d.startsWith('Consumable deposit') ? 1 : 0);
       lines.sort((a, b) => depositLast(a.description) - depositLast(b.description));
-      let cut = round2(current - target);
+      let cut = round2HalfUp(current - target);
       for (const line of lines) {
         const take = Math.min(cut, Number(line.amount));
         if (take <= 0) continue;
-        const after = round2(Number(line.amount) - take);
+        const after = round2HalfUp(Number(line.amount) - take);
         await tx
           .update(invoiceLineItems)
           .set({
             amount: String(after),
             // Checkout lines are quantity 1; keep unit price x quantity = amount.
-            unitPrice: String(round2(after / Number(line.quantity || 1))),
+            unitPrice: String(round2HalfUp(after / Number(line.quantity || 1))),
             description: `${line.description}, adjusted by staff -PHP ${take.toFixed(2)}`,
           })
           .where(eq(invoiceLineItems.id, line.id));
-        cut = round2(cut - take);
+        cut = round2HalfUp(cut - take);
       }
 
       await tx.update(invoices).set({ amount: String(target) }).where(eq(invoices.id, invoiceId));

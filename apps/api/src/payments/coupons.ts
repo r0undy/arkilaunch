@@ -1,7 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { and, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
 import { type Tx, couponRedemptions, coupons } from '@arkilaunch/db';
-import { round2HalfUp } from '../quotes/pricing-engine.service.js';
+import { round2HalfUp } from '@arkilaunch/shared';
 
 type Coupon = typeof coupons.$inferSelect;
 

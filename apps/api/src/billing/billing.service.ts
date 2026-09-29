@@ -29,9 +29,8 @@ import type {
 import { bookingCodes, invoiceBookingRef } from '../common/booking-ref.js';
 import { countRows } from '../common/count-rows.js';
 import { customerOwnsInvoice, ownsCustomer } from '../common/customer-scope.js';
+import { round2HalfUp } from '@arkilaunch/shared';
 
-
-const cents = (n: number) => Math.round(n * 100) / 100;
 
 // Monday and Sunday of a YYYY-MM-DD report date's ISO week.
 export function isoWeek(day: string): { weekStart: string; weekEnd: string } {
@@ -284,21 +283,21 @@ export class BillingService {
       };
       for (const d of deducted) {
         const row = week(d.day);
-        row.hours = cents(row.hours + Number(d.hours));
-        row.amount = cents(row.amount + Number(d.amount));
-        row.fromDeposit = cents(row.fromDeposit + Number(d.amount));
+        row.hours = round2HalfUp(row.hours + Number(d.hours));
+        row.amount = round2HalfUp(row.amount + Number(d.amount));
+        row.fromDeposit = round2HalfUp(row.fromDeposit + Number(d.amount));
       }
       for (const a of accrued) {
         const row = week(a.day);
-        row.hours = cents(row.hours + Number(a.hours));
-        row.amount = cents(row.amount + Number(a.amount));
-        if (a.invoiceId) row.invoiced = cents(row.invoiced + Number(a.amount));
-        else row.unbilled = cents(row.unbilled + Number(a.amount));
+        row.hours = round2HalfUp(row.hours + Number(a.hours));
+        row.amount = round2HalfUp(row.amount + Number(a.amount));
+        if (a.invoiceId) row.invoiced = round2HalfUp(row.invoiced + Number(a.amount));
+        else row.unbilled = round2HalfUp(row.unbilled + Number(a.amount));
       }
 
       const ledger = await resolveDepositLedger(tx, rentalId, ctx.tenantId);
-      const charged = cents(invoiceRows.filter((i) => i.invoiceType !== 'deposit_deduction').reduce((sum, i) => sum + Number(i.amount), 0));
-      const paid = cents(paymentRows.filter((p) => p.status === 'paid').reduce((sum, p) => sum + Number(p.amount), 0));
+      const charged = round2HalfUp(invoiceRows.filter((i) => i.invoiceType !== 'deposit_deduction').reduce((sum, i) => sum + Number(i.amount), 0));
+      const paid = round2HalfUp(paymentRows.filter((p) => p.status === 'paid').reduce((sum, p) => sum + Number(p.amount), 0));
       return {
         rentalId,
         bookingCode: rental.code,
@@ -326,13 +325,13 @@ export class BillingService {
         deposit: {
           required: ledger.depositRequired,
           deducted: ledger.totalDeducted,
-          remaining: cents(Math.max(0, ledger.depositRequired - ledger.totalDeducted)),
+          remaining: round2HalfUp(Math.max(0, ledger.depositRequired - ledger.totalDeducted)),
         },
         totals: {
           charged,
           paid,
           unbilled: ledger.unbilledAccrued,
-          balanceDue: cents(Math.max(0, charged - paid) + ledger.unbilledAccrued),
+          balanceDue: round2HalfUp(Math.max(0, charged - paid) + ledger.unbilledAccrued),
         },
         generatedAt: new Date().toISOString(),
       };
