@@ -100,6 +100,25 @@ function hireDays(booking: BookingDetailResponse): number {
   return spans.length ? Math.max(1, Math.ceil(Math.max(...spans))) : 1;
 }
 
+function QuoteFigures({ quote, typeName }: { quote: QuoteDetail; typeName: (id: string) => string }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap gap-3">
+        <GaugeReadout
+          label="Diesel price"
+          value={quote.dieselPrice.toFixed(2)}
+          unit="PHP/L"
+          stale={quote.priceStale}
+          staleLabel={`as of ${quote.dieselPriceDate}`}
+        />
+        <GaugeReadout label="Total" value={quote.total.toFixed(2)} unit="PHP" />
+      </div>
+      <QuoteLines quote={quote} typeName={typeName} />
+      <p className="text-sm text-text-muted">Status {formatStatus(quote.status)}.</p>
+    </div>
+  );
+}
+
 // DESIGN.md §4.1 Quotation builder, now only for a booking in negotiation:
 // it starts from the booking's current quote (priced from the price book),
 // and staff meet the customer's counter-offer with an agreed line price or
@@ -259,25 +278,6 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
     lines.length === 0 ||
     lines.some((line) => (line.kind === 'custom' ? !line.description.trim() || line.unitPrice === '' : !line.equipmentTypeId || !line.rateCardId));
 
-  function QuoteFigures({ quote }: { quote: QuoteDetail }) {
-    return (
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap gap-3">
-          <GaugeReadout
-            label="Diesel price"
-            value={quote.dieselPrice.toFixed(2)}
-            unit="PHP/L"
-            stale={quote.priceStale}
-            staleLabel={`as of ${quote.dieselPriceDate}`}
-          />
-          <GaugeReadout label="Total" value={quote.total.toFixed(2)} unit="PHP" />
-        </div>
-        <QuoteLines quote={quote} typeName={equipmentTypeName} />
-        <p className="text-sm text-text-muted">Status {formatStatus(quote.status)}.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -410,7 +410,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
       {quoteId && result && (
         <Surface radius="md" elevation="sm" className="flex max-w-3xl flex-col gap-4 p-6">
           <h2 className="text-heading-md text-text">Revised quote</h2>
-          <QuoteFigures quote={result} />
+          <QuoteFigures quote={result} typeName={equipmentTypeName} />
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -445,7 +445,7 @@ function NegotiatedQuote({ bookingId }: { bookingId: string }) {
           </>
         }
       >
-        {result && <QuoteFigures quote={result} />}
+        {result && <QuoteFigures quote={result} typeName={equipmentTypeName} />}
       </Modal>
       <ConfirmDialog
         open={confirmingApprove}
