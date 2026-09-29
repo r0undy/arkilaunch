@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EdtrApproveRequestSchema,
   evaluateGate,
   worstDelta,
   type HourDeltas,
@@ -161,5 +162,14 @@ describe('buildManualTranscriptionPayload (human-read paper sheet)', () => {
       DEFAULT_TOLERANCE_HOURS,
     );
     expect(disagreeing).toEqual({ matched: false, reason: 'tolerance_exceeded' });
+  });
+});
+
+describe('EdtrApproveRequestSchema adjustments', () => {
+  const reconciliationId = '00000000-0000-4000-8000-000000000001';
+  it('caps adjusted hours at 24 per day', () => {
+    expect(EdtrApproveRequestSchema.safeParse({ reconciliationId, adjustments: { hoursActive: 80, hoursIdle: 0 } }).success).toBe(false);
+    expect(EdtrApproveRequestSchema.safeParse({ reconciliationId, adjustments: { hoursActive: 0, hoursIdle: 25 } }).success).toBe(false);
+    expect(EdtrApproveRequestSchema.safeParse({ reconciliationId, adjustments: { hoursActive: 24, hoursIdle: 0 } }).success).toBe(true);
   });
 });

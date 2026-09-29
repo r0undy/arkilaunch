@@ -250,8 +250,8 @@ export type EdtrCaptureFields = z.infer<typeof EdtrCaptureFieldsSchema>;
 // A reviewer's corrected figures. The v3 categories are optional so a
 // v2-era client's { hoursActive, hoursIdle } still validates.
 const AdjustmentsSchema = z.object({
-  hoursActive: z.number().finite().min(0),
-  hoursIdle: z.number().finite().min(0),
+  hoursActive: hours,
+  hoursIdle: hours,
   hoursBreakdown: hours.nullable().optional(),
   hoursWeather: hours.nullable().optional(),
   hoursOtherDowntime: hours.nullable().optional(),
