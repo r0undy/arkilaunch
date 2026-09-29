@@ -38,14 +38,12 @@ const TABS: { value: StatusFilter; label: string }[] = [
   { value: 'approved', label: 'Approved' },
 ];
 
-// A <dl> pair, not two loose paragraphs: the number is meaningless read on
-// its own, and "Approved" also appears as a filter tab, so the count needs
-// to be tied to its label rather than sitting near it.
+// dt first as HTML requires; flex-col-reverse keeps the number on top.
 function CounterTile({ value, label }: { value: number; label: string }) {
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-1 p-5">
-      <dd className="text-3xl font-semibold text-text">{value}</dd>
+    <Surface radius="md" elevation="sm" className="flex flex-col-reverse gap-1 p-5">
       <dt className="text-sm text-text-muted">{label}</dt>
+      <dd className="text-3xl font-semibold text-text">{value}</dd>
     </Surface>
   );
 }

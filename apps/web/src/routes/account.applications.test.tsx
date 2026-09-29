@@ -52,6 +52,9 @@ describe('Company Applications', () => {
     expect(within(tile('Total applications')).getByText('4')).toBeInTheDocument();
     expect(within(tile('Approved')).getByText('1')).toBeInTheDocument();
     expect(within(tile('Pending approval')).getByText('3')).toBeInTheDocument();
+    for (const label of ['Total applications', 'Approved', 'Pending approval']) {
+      expect(tile(label).firstElementChild?.tagName).toBe('DT');
+    }
     unmount();
   });
 
