@@ -56,8 +56,8 @@ export function SidebarShell({ navGroups, navTitle, tenantLabel, children }: Sid
         <div className="flex flex-1">
           {/* Named: the catalog renders a second complementary landmark. */}
           {collapsed ? (
-            <aside aria-label="Sidebar" className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-14 shrink-0 flex-col overflow-y-auto overflow-x-hidden border-r border-border bg-surface px-1.5 pb-4 pt-3 [scrollbar-width:thin] lg:flex">
-              <button type="button" onClick={toggleCollapsed} aria-expanded={false} aria-label="Open navigation" title="Open navigation" className={`${railButton} mb-3`}>
+            <aside aria-label="Sidebar" className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-14 shrink-0 flex-col overflow-y-auto overflow-x-hidden border-r border-border bg-surface px-1.5 pb-4 pt-3 [scrollbar-width:none] lg:flex [&::-webkit-scrollbar]:hidden">
+              <button type="button" onClick={toggleCollapsed} aria-expanded={false} aria-label="Open navigation" title="Open navigation" className={`${railButton} mb-3 self-center`}>
                 <Menu aria-hidden strokeWidth={2.25} className="h-5 w-5" />
               </button>
               <NavGroupList groups={navGroups} pathname={pathname} collapsed />
@@ -65,7 +65,7 @@ export function SidebarShell({ navGroups, navTitle, tenantLabel, children }: Sid
           ) : (
             <aside
               aria-label="Sidebar"
-              className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-64 shrink-0 flex-col overflow-y-auto overflow-x-hidden [scrollbar-width:thin] [scrollbar-color:var(--color-border)_transparent] border-r border-border bg-surface px-3 pb-6 pt-3 lg:flex"
+              className="scroll-thin sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-64 shrink-0 flex-col overflow-y-auto overflow-x-hidden border-r border-border bg-surface px-3 pb-6 pt-3 lg:flex"
             >
               <div className="mb-3 flex min-h-11 items-center justify-between gap-2 px-3">
                 <h2 className="min-w-0 truncate text-base font-semibold text-text">{navTitle}</h2>
