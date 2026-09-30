@@ -19,7 +19,7 @@ import { Button } from '../components/button.js';
 import { SegmentedControl } from '../components/segmented-control.js';
 import { useToast } from '../components/toast.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
-import { WeatherInsights } from '../components/weather-insights.js';
+import { WeatherInsights, WeatherInsightsButton } from '../components/weather-insights.js';
 import { getAccessToken } from '../lib/auth-client.js';
 import { RangeCalendar, availabilityProblem, rentalLengthProblem, useAvailability } from '../components/availability-days.js';
 
@@ -139,6 +139,7 @@ function EquipmentPage() {
   const [category, setCategory] = useState('');
   const [offset, setOffset] = useState(0);
   const [configuring, setConfiguring] = useState<CatalogEquipment | null>(null);
+  const [weatherOpen, setWeatherOpen] = useState(false);
   const { data, isPending, isError, refetch } = useQuery(catalogQueries.equipment());
   // The lock is a customer nudge only; the API still gates payment.
   const signedIn = Boolean(getAccessToken());
@@ -171,19 +172,21 @@ function EquipmentPage() {
   const showWeather = signedIn;
   const inShell = useShellNav() !== null;
   return (
-    <div
-      className={[
- inShell ?'grid gap-6' : 'grid gap-6 px-4 py-12 sm:px-8',
-        showWeather ? 'xl:grid-cols-[1fr_320px] xl:items-start' : '',
-      ].join(' ')}
-    >
+    <div className={inShell ? 'grid gap-6' : 'grid gap-6 px-4 py-12 sm:px-8'}>
       <div className="flex min-w-0 flex-col gap-6">
       {inShell ? (
         <PageHeader title="Browse equipment" description="Pick a machine, set its dates, and add it to your cart." />
       ) : (
         <h1 className="text-display-md text-text lg:text-display-lg">Equipment for hire</h1>
       )}
-      <SearchFilterBar query={query} onQueryChange={setQuery} />
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <SearchFilterBar query={query} onQueryChange={setQuery} />
+        </div>
+        {showWeather && (
+          <WeatherInsightsButton onClick={() => setWeatherOpen(true)} />
+        )}
+      </div>
       {categories.length > 1 && (
         <SegmentedControl
           label="Category"
@@ -239,10 +242,10 @@ function EquipmentPage() {
         noun="machines"
       />
       </div>
-      {showWeather && (
-        <aside aria-label="Weather insights">
-          <WeatherInsights />
-        </aside>
+      {weatherOpen && (
+        <Modal open onClose={() => setWeatherOpen(false)} title="Weather insights" size="md">
+          <WeatherInsights bare />
+        </Modal>
       )}
       {configuring && (
         <ConfigureRentalDialog equipment={configuring} onClose={() => setConfiguring(null)} />

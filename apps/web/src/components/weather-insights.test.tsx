@@ -74,7 +74,10 @@ describe('WeatherInsights', () => {
     stub();
     const { unmount } = await renderRoute('/equipment');
 
-    const rail = await screen.findByRole('complementary', { name: 'Weather insights' });
+    // Rain and a thunderstorm in the week: the button flags two rough days.
+    expect(await screen.findByLabelText('2 rough weather days this week')).toHaveTextContent('2');
+    (await screen.findByRole('button', { name: /Weather insights/ })).click();
+    const rail = await screen.findByRole('dialog', { name: 'Weather insights' });
     await waitFor(() => expect(rail).toHaveTextContent('Weather insights'));
     await waitFor(() => expect(rail).toHaveTextContent('Thunderstorms'));
     expect(rail).toHaveTextContent('Rain');
@@ -91,7 +94,8 @@ describe('WeatherInsights', () => {
     stub({ forecastStatus: 503 });
     const { unmount } = await renderRoute('/equipment');
 
-    const rail = await screen.findByRole('complementary', { name: 'Weather insights' });
+    (await screen.findByRole('button', { name: /Weather insights/ })).click();
+    const rail = await screen.findByRole('dialog', { name: 'Weather insights' });
     await waitFor(() => expect(rail).toHaveTextContent(/could not be fetched/i));
     // A transient failure DOES get a retry.
     expect(within(rail).getByRole('button', { name: /retry/i })).toBeInTheDocument();
@@ -106,7 +110,8 @@ describe('WeatherInsights', () => {
     stub({ forecastStatus: 503, reason: 'flag_disabled' });
     const { unmount } = await renderRoute('/equipment');
 
-    const rail = await screen.findByRole('complementary', { name: 'Weather insights' });
+    (await screen.findByRole('button', { name: /Weather insights/ })).click();
+    const rail = await screen.findByRole('dialog', { name: 'Weather insights' });
     await waitFor(() => expect(rail).toHaveTextContent(/switched off/i));
     expect(within(rail).queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
     unmount();
@@ -117,7 +122,8 @@ describe('WeatherInsights', () => {
     stub({ sites: [] });
     const { unmount } = await renderRoute('/equipment');
 
-    const rail = await screen.findByRole('complementary', { name: 'Weather insights' });
+    (await screen.findByRole('button', { name: /Weather insights/ })).click();
+    const rail = await screen.findByRole('dialog', { name: 'Weather insights' });
     await waitFor(() => expect(rail).toHaveTextContent(/general forecast/i));
     expect(rail).toHaveTextContent(/add your project site/i);
     unmount();
@@ -131,7 +137,7 @@ describe('WeatherInsights', () => {
     const { unmount } = await renderRoute('/equipment');
 
     await screen.findByRole('heading', { name: /equipment for hire/i });
-    expect(screen.queryByRole('complementary', { name: 'Weather insights' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Weather insights' })).not.toBeInTheDocument();
     unmount();
   });
 });
