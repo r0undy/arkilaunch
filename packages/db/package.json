@@ -12,6 +12,7 @@
     "migrate": "tsx src/migrate.ts",
     "seed:anchor": "tsx src/seed/anchor.ts",
     "seed:test-two-tenant": "tsx src/seed/test-two-tenant.ts",
+    "seed:login-image": "tsx src/seed/login-image.ts",
     "drizzle:generate": "drizzle-kit generate",
     "drizzle:push": "drizzle-kit push",
     "cleanup:equipment-types": "tsx src/maintenance/clean-equipment-types.ts"

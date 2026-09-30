@@ -66,7 +66,7 @@ describe('LoginPage: redirect preservation', () => {
 
     await userEvent.type(screen.getByLabelText(/email address/i), 'admin@test-tenant-a.test');
     await userEvent.type(screen.getByLabelText(/password/i), 'password123');
-    await userEvent.click(screen.getByRole('button', { name: /sign in to system/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/app/inventory'));
   });
@@ -83,7 +83,7 @@ describe('LoginPage: redirect preservation', () => {
 
     await userEvent.type(screen.getByLabelText(/email address/i), 'timekeeper@test-tenant-a.test');
     await userEvent.type(screen.getByLabelText(/password/i), 'password123');
-    await userEvent.click(screen.getByRole('button', { name: /sign in to system/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     await waitFor(() => expect(screen.getByLabelText(/verification code/i)).toBeInTheDocument());
     expect(getAccessToken()).toBeNull();

@@ -71,7 +71,7 @@ function ImageField({
   hint: string;
   url: string | null;
   basePath: string;
-  kind: 'logo' | 'hero' | 'icon';
+  kind: 'logo' | 'hero' | 'icon' | 'login';
   onChanged: () => void;
 }) {
   const toast = useToast();
@@ -103,11 +103,13 @@ function ImageField({
           src={url}
           alt={`Current ${label.toLowerCase()}`}
           className={
- kind ==='hero'
+            kind === 'hero'
               ? 'aspect-[3/1] w-full max-w-md rounded-sm object-cover'
-              : kind === 'icon'
-                ? 'size-16 rounded-sm object-contain'
-                : 'h-16 w-auto max-w-[200px] object-contain'
+              : kind === 'login'
+                ? 'aspect-[3/4] w-full max-w-[200px] rounded-sm object-cover'
+                : kind === 'icon'
+                  ? 'size-16 rounded-sm object-contain'
+                  : 'h-16 w-auto max-w-[200px] object-contain'
           }
         />
       ) : (
@@ -254,7 +256,7 @@ export function BrandingForm({ basePath }: { basePath: string }) {
       </Surface>
 
       <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-4" aria-label="Images">
-        <h2 className="text-heading-md text-text">Logo, icon and hero image</h2>
+        <h2 className="text-heading-md text-text">Logo, icon and images</h2>
         <div className="grid gap-6 md:grid-cols-2">
           <ImageField
             label="Logo"
@@ -279,6 +281,16 @@ export function BrandingForm({ basePath }: { basePath: string }) {
               url={saved.data.heroUrl}
               basePath={basePath}
               kind="hero"
+              onChanged={refresh}
+            />
+          </div>
+          <div className="md:col-span-2">
+            <ImageField
+              label="Sign-in image"
+              hint="Optional. A tall photo of your fleet or a job site, shown beside your sign-in and sign-up forms. Your hero image is used until you add one."
+              url={saved.data.loginUrl}
+              basePath={basePath}
+              kind="login"
               onChanged={refresh}
             />
           </div>
