@@ -48,7 +48,13 @@ import type {
   RuntimeCorrectionRequest,
   UtilizationQuery,
   UtilizationReportResponse,
+  LeakageReport,
+  LeakageReportQuery,
+  StatementPdfResponse,
 } from '@arkilaunch/shared';
+import { buildLeakageReport } from './leakage-report.js';
+import { renderLeakageReportPdf } from './leakage-report-pdf.js';
+import { tenantBrand } from '../common/tenant-brand.js';
 import { manilaDate, round2HalfUp, type ApprovedDayHours } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { countRows } from '../common/count-rows.js';
@@ -841,6 +847,22 @@ export class FleetService {
         depositDeducted: byType['deposit_deduction'] ?? 0,
       };
     });
+  }
+
+  async leakageReport(ctx: RequestContext, query: LeakageReportQuery): Promise<LeakageReport> {
+    const to = query.to ?? manilaDate(new Date());
+    const from = query.from ?? defaultFromDate(to, DEFAULT_REPORT_WINDOW_DAYS);
+    const utilization = await this.utilizationReport(ctx, { from, to });
+    return buildLeakageReport(ctx, { ...query, from, to }, utilization);
+  }
+
+  async leakageReportPdf(ctx: RequestContext, query: LeakageReportQuery): Promise<StatementPdfResponse> {
+    const report = await this.leakageReport(ctx, query);
+    const bytes = await renderLeakageReportPdf(report, await tenantBrand(ctx));
+    return {
+      filename: `revenue-leakage-${report.period.from}-to-${report.period.to}.pdf`,
+      contentBase64: Buffer.from(bytes).toString('base64'),
+    };
   }
 
   private async currentSchedule(tx: Tx, equipmentId: string) {
