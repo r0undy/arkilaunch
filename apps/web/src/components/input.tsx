@@ -5,12 +5,14 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   label: string;
   error?: string | undefined;
   numeric?: boolean;
-  size?: 'default' | 'field';
+  /** compact: the 32-36px Cloudscape filter control. */
+  size?: 'default' | 'field' | 'compact';
+  labelHidden?: boolean;
   hint?: ReactNode;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, error, numeric = false, size = 'default', hint, id, className = '', required, inputMode, type, value, onChange, disabled, min, max, ...rest },
+  { label, labelHidden, error, numeric = false, size = 'default', hint, id, className = '', required, inputMode, type, value, onChange, disabled, min, max, ...rest },
   ref,
 ) {
   const autoId = useId();
@@ -19,12 +21,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   const hintId = hint && !error ? `${inputId}-hint` : undefined;
 
   if (type === 'date' || type === 'datetime-local') {
-    return <DatePicker id={inputId} label={label} kind={type as 'date' | 'datetime-local'} value={String(value ?? '')} min={min} max={max} required={required} disabled={disabled} error={error} hint={hint} size={size} className={className} onChange={(next) => onChange?.({ target: { value: next }, currentTarget: { value: next } } as ChangeEvent<HTMLInputElement>)} />;
+    return <DatePicker id={inputId} label={label} kind={type as 'date' | 'datetime-local'} value={String(value ?? '')} min={min} max={max} required={required} disabled={disabled} error={error} hint={hint} size={size} labelHidden={labelHidden} className={className} onChange={(next) => onChange?.({ target: { value: next }, currentTarget: { value: next } } as ChangeEvent<HTMLInputElement>)} />;
   }
 
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={inputId} className="text-sm font-medium text-text">
+      <label htmlFor={inputId} className={labelHidden ? 'sr-only' : 'text-sm font-medium text-text'}>
         {label}
         {required && <span aria-hidden="true"> *</span>}
       </label>
@@ -42,8 +44,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         aria-describedby={errorId ?? hintId}
         inputMode={numeric ? 'decimal' : inputMode}
         className={[
-'block w-full rounded-input border bg-surface px-4 py-2.5 text-base text-text',
-          size === 'field' ? 'min-h-12' : 'min-h-11',
+'block w-full rounded-input border bg-surface text-text',
+          size === 'compact' ? 'min-h-9 px-3 py-1.5 text-sm' : `px-4 py-2.5 text-base ${size === 'field' ? 'min-h-12' : 'min-h-11'}`,
           numeric ? 'text-right font-mono tabular-nums' : '',
           error ? 'border-error' : 'border-border hover:border-border-strong',
           'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',

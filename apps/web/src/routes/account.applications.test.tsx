@@ -35,7 +35,12 @@ async function renderApplications() {
   return rendered;
 }
 
-const cards = () => screen.queryAllByRole('group').map((el) => el.getAttribute('aria-label'));
+// Company cards are named groups; the status filter is a group too, so it is left out.
+const cards = () =>
+  screen
+    .queryAllByRole('group')
+    .map((el) => el.getAttribute('aria-label'))
+    .filter((name) => name !== 'Show applications');
 
 describe('Company Applications', () => {
   afterEach(() => {

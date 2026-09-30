@@ -1,7 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { signInAsCustomer as signIn } from './sign-in.js';
 
 // Needs the seeded anchor tenant (`pnpm db:seed`) and the API running.
+
+// Company cards are named groups; the status filter is a group too, so it is left out.
+const companyCards = (page: Page) => page.getByRole('group').and(page.locator(':not([aria-label="Show applications"])'));
 
 test.describe('company applications', () => {
   test('lists the companies, counts them, and filters by status', async ({ page }) => {
@@ -14,25 +17,25 @@ test.describe('company applications', () => {
     // the cards are on the page.
     const total = page.getByText('Total applications').locator('xpath=following-sibling::dd[1]');
     await expect(total).not.toHaveText('0');
-    const cards = page.getByRole('group');
+    const cards = companyCards(page);
     await expect(cards.first()).toBeVisible();
     const all = await cards.count();
 
     await page.getByRole('button', { name: 'Pending approval' }).click();
-    const pending = await page.getByRole('group').count();
+    const pending = await companyCards(page).count();
     await page.getByRole('button', { name: 'Approved' }).click();
-    const approved = await page.getByRole('group').count();
+    const approved = await companyCards(page).count();
     expect(pending + approved).toBeLessThanOrEqual(all);
 
     await page.getByRole('button', { name: 'All applications' }).click();
-    await expect(page.getByRole('group')).toHaveCount(all);
+    await expect(companyCards(page)).toHaveCount(all);
   });
 
   test('search narrows to one company, and says so when nothing matches', async ({ page }) => {
     await signIn(page);
     await page.goto('/account/applications');
 
-    const first = page.getByRole('group').first();
+    const first = companyCards(page).first();
     await expect(first).toBeVisible();
     const name = await first.getAttribute('aria-label');
     expect(name).toBeTruthy();
@@ -43,7 +46,7 @@ test.describe('company applications', () => {
     await page
       .getByRole('searchbox', { name: /search companies/i })
       .fill('no-such-company-zzzzzzzz');
-    await expect(page.getByRole('group')).toHaveCount(0);
+    await expect(companyCards(page)).toHaveCount(0);
     await expect(page.getByText(/No companies match/i)).toBeVisible();
   });
 
@@ -51,7 +54,7 @@ test.describe('company applications', () => {
     await signIn(page);
     await page.goto('/account/applications');
 
-    const card = page.getByRole('group').first();
+    const card = companyCards(page).first();
     const name = await card.getAttribute('aria-label');
     await card.getByRole('link', { name: 'Manage' }).click();
 

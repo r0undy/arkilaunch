@@ -18,6 +18,8 @@ import {
   VerificationPill,
 } from '../components/company-card.js';
 import { formatStatus } from '../lib/format.js';
+import { SearchField } from '../components/search-field.js';
+import { SegmentedControl } from '../components/segmented-control.js';
 
 // Not the tenant onboarding application: these are the customers rows behind GET /me/companies.
 
@@ -154,32 +156,13 @@ function ApplicationsPage() {
       </dl>
 
       <div className="flex flex-col gap-4">
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search companies"
-          aria-label="Search companies"
-          className="min-h-11 w-full rounded-input border border-border bg-surface px-4 py-2 text-base text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+        <SearchField className="w-full max-w-md" value={search} onChange={setSearch} label="Search companies" />
+        <SegmentedControl
+          label="Show applications"
+          value={status}
+          onChange={setStatus}
+          items={TABS.map((tab) => ({ id: tab.value, label: tab.label }))}
         />
-        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
-          {TABS.map((tab) => (
-            <button
-              key={tab.value}
-              type="button"
-              onClick={() => setStatus(tab.value)}
-              aria-pressed={status === tab.value}
-              className={[
-'min-h-11 w-full rounded-pill border px-4 py-2 text-sm font-medium transition-colors sm:w-auto',
-                status === tab.value
-                  ? 'border-primary bg-primary text-on-primary'
-                  : 'border-border bg-surface text-text-muted hover:text-text',
-              ].join(' ')}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {companies.isPending && <Skeleton label="Loading your companies" rows={2} />}

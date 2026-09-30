@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { manilaDate, type SiteDeploymentFilter, type SiteHubResponse, type SiteResponse } from '@arkilaunch/shared';
-import { chipClass } from '../components/button.js';
+import { SegmentedControl } from '../components/segmented-control.js';
 import { appLayoutRoute } from './_app.js';
 import { sitesQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
@@ -154,13 +154,12 @@ function DeploymentPage() {
     void navigate({ search: next ? { deployment: next } : {}, replace: true });
   };
   const filters = (
-    <div role="group" aria-label="Show sites" className="flex flex-wrap gap-2">
-      {FILTERS.map((f) => (
-        <button key={f.label} type="button" aria-pressed={deployment === f.id} className={chipClass(deployment === f.id)} onClick={() => setFilter(f.id)}>
-          {f.label}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      label="Show sites"
+      value={deployment ?? ''}
+      onChange={(next) => setFilter((next || undefined) as SiteDeploymentFilter | undefined)}
+      items={FILTERS.map((f) => ({ id: f.id ?? '', label: f.label }))}
+    />
   );
 
   return (

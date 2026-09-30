@@ -37,9 +37,9 @@ describe('Tabs', () => {
     expect(screen.getByRole('tab', { name: 'Other' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('shows a count badge beside the label', () => {
+  it('shows a count beside the label', () => {
     render(<Harness />);
-    expect(screen.getByRole('tab', { name: 'Trucks 3' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Trucks (3)' })).toBeInTheDocument();
   });
 });
 

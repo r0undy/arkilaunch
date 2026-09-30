@@ -6,7 +6,6 @@ import type { EquipmentResponse, MaintenanceWindowEndingSoon } from '@arkilaunch
 import { appLayoutRoute } from './_app.js';
 import { equipmentQueries, type EquipmentListFilters } from '../lib/queries.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
-import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
@@ -14,7 +13,9 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Surface } from '../components/surface.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { EquipmentSchematic } from '../components/equipment-schematic.js';
-import { Button, chipClass } from '../components/button.js';
+import { Button } from '../components/button.js';
+import { SearchField } from '../components/search-field.js';
+import { SegmentedControl } from '../components/segmented-control.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { EquipmentFormModal } from '../components/equipment-form-modal.js';
 import { MaintenanceModal } from '../components/maintenance-modal.js';
@@ -161,53 +162,44 @@ function FleetFilters({
   const all = categories.reduce((sum, c) => sum + c.count, 0);
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Input
+      <div className="flex flex-wrap items-center gap-2">
+        <SearchField
+          className="min-w-60 max-w-md flex-1"
           label="Search"
-          type="search"
           value={filters.q ?? ''}
-          onChange={(e) => onChange({ ...filters, q: e.target.value })}
+          onChange={(q) => onChange({ ...filters, q })}
           placeholder="Name, model number or serial"
         />
-        <Select label="Status" value={filters.status ?? ''} onChange={(e) => onChange({ ...filters, status: e.target.value })}>
-          <option value="">Any status</option>
-          {Object.entries(STATUS_META).map(([value, meta]) => (
-            <option key={value} value={value}>
-              {meta.label}
-            </option>
-          ))}
-        </Select>
-        <Select
-          label="Needs attention"
-          value={filters.missing ?? ''}
-          onChange={(e) => onChange({ ...filters, missing: e.target.value as 'photo' | 'price' | '' })}
-        >
-          <option value="">Everything</option>
-          <option value="photo">No photo</option>
-          <option value="price">No price (no rate card)</option>
-        </Select>
-      </div>
-      <div role="group" aria-label="Category" className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          aria-pressed={!filters.typeId}
-          className={chipClass(!filters.typeId)}
-          onClick={() => onChange({ ...filters, typeId: '' })}
-        >
-          All ({all})
-        </button>
-        {categories.map((c) => (
-          <button
-            key={c.equipmentTypeId}
-            type="button"
-            aria-pressed={filters.typeId === c.equipmentTypeId}
-            className={chipClass(filters.typeId === c.equipmentTypeId)}
-            onClick={() => onChange({ ...filters, typeId: c.equipmentTypeId })}
+        <div className="w-44">
+          <Select size="compact" labelHidden label="Status" value={filters.status ?? ''} onChange={(e) => onChange({ ...filters, status: e.target.value })}>
+            <option value="">Any status</option>
+            {Object.entries(STATUS_META).map(([value, meta]) => (
+              <option key={value} value={value}>
+                {meta.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="w-56">
+          <Select
+            size="compact"
+            labelHidden
+            label="Needs attention"
+            value={filters.missing ?? ''}
+            onChange={(e) => onChange({ ...filters, missing: e.target.value as 'photo' | 'price' | '' })}
           >
-            {c.name} ({c.count})
-          </button>
-        ))}
+            <option value="">Everything</option>
+            <option value="photo">No photo</option>
+            <option value="price">No price (no rate card)</option>
+          </Select>
+        </div>
       </div>
+      <SegmentedControl
+        label="Category"
+        value={filters.typeId ?? ''}
+        onChange={(typeId) => onChange({ ...filters, typeId })}
+        items={[{ id: '', label: 'All', count: all }, ...categories.map((c) => ({ id: c.equipmentTypeId, label: c.name, count: c.count }))]}
+      />
     </div>
   );
 }
