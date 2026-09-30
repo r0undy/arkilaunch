@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { apiDelete, apiErrorText, apiGet, apiPost, apiPut } from '../lib/api-client.js';
-import { TEST_EMAIL_TYPES, manilaDate, minRentalDays, type TenantCalendar } from '@arkilaunch/shared';
-import { equipmentQueries, pricingQueries, referenceQueries, saveParams, type DieselReading, type PricingParametersRow } from '../lib/queries.js';
+import { FIELD_SHEET_DAILY_LIMIT, TEST_EMAIL_TYPES, manilaDate, minRentalDays, type EdtrPaperSize, type TenantCalendar } from '@arkilaunch/shared';
+import { edtrQueries, equipmentQueries, pricingQueries, referenceQueries, saveParams, type DieselReading, type PricingParametersRow } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { Button } from '../components/button.js';
@@ -778,6 +778,63 @@ export function DieselPriceForm() {
   );
 }
 
+const PAPER_LABELS: Record<EdtrPaperSize, string> = { legal: 'Legal (8.5 x 14 in)', letter: 'Letter (8.5 x 11 in)' };
+
+// The paper size every timekeeper sheet prints on; the office card starts from it too.
+function EdtrFieldSettingsForm() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const query = useQuery(edtrQueries.settings());
+  const [editing, setEditing] = useState(false);
+  const [paper, setPaper] = useState<EdtrPaperSize>('legal');
+  const save = useMutation({
+    mutationFn: () => apiPut('/edtr-settings', { paperSize: paper }),
+    onSuccess: () => {
+      setEditing(false);
+      void queryClient.invalidateQueries({ queryKey: edtrQueries.settings().queryKey });
+      toast.success('EDTR settings saved');
+    },
+    onError: (e) => toast.error('Could not save EDTR settings', apiErrorText(e)),
+  });
+  if (query.isError)
+    return <LoadError message={`EDTR settings could not be loaded. ${apiErrorText(query.error)}`} onRetry={() => void query.refetch()} />;
+  if (!query.data) return <Skeleton label="Loading EDTR settings" />;
+  const saved = query.data;
+  return (
+    <>
+      <SummaryCard
+        title="EDTR / Field"
+        description="How timekeepers print their weekly EDTR sheets from the field app."
+        items={[
+          { label: 'Paper size', value: PAPER_LABELS[saved.paperSize] },
+          { label: 'Downloads per unit per day', value: `${FIELD_SHEET_DAILY_LIMIT} (current week only)` },
+        ]}
+        action={<EditButton what="EDTR settings" onClick={() => { setPaper(saved.paperSize); setEditing(true); }} />}
+      />
+      <Modal
+        open={editing}
+        onClose={() => setEditing(false)}
+        title="EDTR / Field"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>
+              Save EDTR settings
+            </Button>
+          </>
+        }
+      >
+        <Select label="Paper size" hint="Timekeepers always print on this size." value={paper} onChange={(e) => setPaper(e.target.value === 'letter' ? 'letter' : 'legal')}>
+          <option value="legal">{PAPER_LABELS.legal}</option>
+          <option value="letter">{PAPER_LABELS.letter}</option>
+        </Select>
+      </Modal>
+    </>
+  );
+}
+
 function SettingsPage() {
   const [testing, setTesting] = useState(false);
   return (
@@ -794,6 +851,7 @@ function SettingsPage() {
       />
       <BusinessCalendarForm />
       <BillingSettingsForm />
+      <EdtrFieldSettingsForm />
       <TestEmailModal open={testing} onClose={() => setTesting(false)} />
     </div>
   );

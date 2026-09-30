@@ -8,6 +8,7 @@ import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { formatSeverity, siteName } from '../lib/format.js';
+import { FieldSheetsPanel } from '../components/field-sheets-panel.js';
 
 const COLUMNS: TableColumn<SiteResponse>[] = [
   { header: 'Site', kind: 'text', cell: (row) => siteName(row) },
@@ -25,6 +26,7 @@ function OperatorDeploymentPage() {
         title="Your sites"
         description="Where you are assigned, and the weather over each one."
       />
+      <FieldSheetsPanel />
       <DataPanel
         title="Your sites"
         options={sitesQueries.list(PAGE_SIZE, offset)}

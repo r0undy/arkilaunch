@@ -564,12 +564,15 @@ function WeekGrid({
   );
 }
 
+const manilaTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' });
+
 function Equipment({ hub, siteId }: { hub: SiteHubResponse; siteId: string }) {
   const columns: TableColumn<FieldLogUnit>[] = [
     {
       header: 'Machine',
       kind: 'text',
-      width: '26%',
+      width: '22%',
       cell: (u) => (
         <span className="flex flex-col">
           <Link
@@ -586,7 +589,7 @@ function Equipment({ hub, siteId }: { hub: SiteHubResponse; siteId: string }) {
     {
       header: 'Booking',
       kind: 'text',
-      width: '18%',
+      width: '14%',
       cell: (u) => (
         <Link to="/app/bookings" search={{ open: u.bookingCode }} className="hover:underline">
           <BookingCode code={u.bookingCode} />
@@ -596,14 +599,33 @@ function Equipment({ hub, siteId }: { hub: SiteHubResponse; siteId: string }) {
     {
       header: 'On site',
       kind: 'date',
-      width: '22%',
+      width: '18%',
       cell: (u) => `${formatDate(u.span.from)} – ${u.span.to ? formatDate(u.span.to) : 'open'}`,
     },
-    { header: 'Operator', kind: 'text', width: '16%', cell: (u) => u.operatorName ?? '--' },
+    { header: 'Operator', kind: 'text', width: '12%', cell: (u) => u.operatorName ?? '--' },
+    {
+      // Timekeeper sheet downloads today: who and when (the limit is per unit per day).
+      header: 'Sheets today',
+      kind: 'text',
+      width: '18%',
+      cell: (u) => {
+        const today = hub.sheetDownloadsToday.filter((d) => d.equipmentId === u.equipmentId);
+        if (today.length === 0) return '--';
+        return (
+          <span className="flex flex-col text-xs">
+            {today.map((d) => (
+              <span key={d.at}>
+                {d.userName} · {manilaTime(d.at)}
+              </span>
+            ))}
+          </span>
+        );
+      },
+    },
     {
       header: 'Hour meter',
       kind: 'number',
-      width: '18%',
+      width: '16%',
       cell: (u) => (
         <>
           {u.lastMeterReading !== null ? u.lastMeterReading.toFixed(1) : '--'}

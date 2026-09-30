@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { and, asc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
 import {
   addresses,
   auditLogs,
   bookingChangeRequests,
   customers,
+  edtrSheetDownloads,
   projectSites,
   rentals,
   roles,
@@ -14,7 +15,7 @@ import {
   users,
   withTenantTx,
 } from '@arkilaunch/db';
-import type { RequestContext, SiteHubResponse } from '@arkilaunch/shared';
+import { manilaDate, type RequestContext, type SiteHubResponse } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { loadFieldLogs, personName } from '../common/field-logs.js';
 
@@ -78,6 +79,20 @@ export class SiteHubService {
         .from(truckRequests)
         .where(and(eq(truckRequests.projectSiteId, siteId), ne(truckRequests.status, 'cancelled')));
       const documents = await tx.select().from(siteDocuments).where(eq(siteDocuments.projectSiteId, siteId));
+      const downloads = rentalIds.length
+        ? await tx
+            .select({
+              equipmentId: edtrSheetDownloads.equipmentId,
+              at: edtrSheetDownloads.createdAt,
+              firstName: users.firstName,
+              lastName: users.lastName,
+              email: users.email,
+            })
+            .from(edtrSheetDownloads)
+            .innerJoin(users, eq(users.id, edtrSheetDownloads.downloadedBy))
+            .where(and(inArray(edtrSheetDownloads.rentalId, rentalIds), eq(edtrSheetDownloads.downloadDate, manilaDate(new Date()))))
+            .orderBy(desc(edtrSheetDownloads.createdAt))
+        : [];
 
       return {
         site: {
@@ -120,6 +135,7 @@ export class SiteHubService {
             helperName: t.helperName,
           })),
         },
+        sheetDownloadsToday: downloads.map((d) => ({ equipmentId: d.equipmentId, userName: personName(d)!, at: d.at.toISOString() })),
         documents: documents.map((d) => ({
           id: d.id,
           documentType: d.documentType,

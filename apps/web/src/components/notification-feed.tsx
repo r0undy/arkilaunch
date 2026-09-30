@@ -96,6 +96,15 @@ function describeForStaff(type: string, p: Record<string, unknown>): Described |
   switch (type) {
     case 'booking_requested':
       return { title: 'New booking', body: `${ref} was requested.`, action: staffBooking(p) };
+    case 'statement_ready':
+      return {
+        title: 'Statement of Account ready',
+        body: `${ref} is complete. Check its Statement of Account, then email it to the customer.`,
+        action:
+          typeof p.rental_id === 'string'
+            ? { label: 'Open statement', to: '/app/bookings/$bookingId/statement', params: { bookingId: p.rental_id } }
+            : staffBooking(p),
+      };
     case 'truck_requested':
       return { title: 'New truck request', body: `${ref}: a customer requested a self-loading truck.`, action: staffBooking(p) };
     case 'call_requested':
@@ -408,6 +417,12 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
         title: 'Equipment returned',
         body: `The equipment for booking ${ref} is back with the rental team. Your hire is complete.`,
         action: { label: 'View booking', ...toBooking },
+      };
+    case 'statement_ready':
+      return {
+        title: 'Statement of Account ready',
+        body: `Booking ${ref} is complete. Your Statement of Account covers the whole rental.`,
+        action: { label: 'View statement', to: '/account/bookings/$bookingId/statement', params: { bookingId: rentalId } },
       };
     case 'call_confirmed':
       return {

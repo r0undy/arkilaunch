@@ -1,8 +1,8 @@
 import { useTenant } from '../lib/tenant.js';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiErrorText } from '../lib/api-client.js';
-import { bookingsQueries, usersQueries } from '../lib/queries.js';
+import { bookingsQueries, edtrQueries, usersQueries } from '../lib/queries.js';
 import { localDate } from './availability-days.js';
 import { weekStart } from '../lib/format.js';
 import { Surface } from './surface.js';
@@ -21,6 +21,13 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
   const [week, setWeek] = useState(thisMonday);
   const [busy, setBusy] = useState<string | null>(null);
   const [page, setPage] = useState<'legal' | 'letter'>('legal');
+  const settings = useQuery(edtrQueries.settings());
+  // Start from the company's paper size once it loads; staff may still switch for one print.
+  useEffect(() => {
+    if (settings.data) setPage(settings.data.paperSize);
+  }, [settings.data]);
+  // A hand-fill fallback with no booking, QR or dates: office only.
+  const canPrintBlank = me.data?.role === 'admin' || me.data?.role === 'owner';
   const tenant = useTenant();
   const units = context.data?.equipment ?? [];
   const unit = equipmentId || units[0]?.id || '';
@@ -82,15 +89,17 @@ export function EdtrSheetCard({ bookingId, printable }: { bookingId: string; pri
         <option value="legal">Legal (8.5 x 14 in), recommended</option>
         <option value="letter">Letter (8.5 x 11 in)</option>
       </Select>
-      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
-        <span className="text-text-muted">Blank sheet:</span>
-        <Button variant="ghost" loading={busy === 'blank-pdf'} onClick={() => void download('pdf', true)}>
-          PDF
-        </Button>
-        <Button variant="ghost" loading={busy === 'blank-png'} onClick={() => void download('png', true)}>
-          PNG
-        </Button>
-      </div>
+      {canPrintBlank && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
+          <span className="text-text-muted">Blank sheet (fill the header by hand):</span>
+          <Button variant="ghost" loading={busy === 'blank-pdf'} onClick={() => void download('pdf', true)}>
+            PDF
+          </Button>
+          <Button variant="ghost" loading={busy === 'blank-png'} onClick={() => void download('png', true)}>
+            PNG
+          </Button>
+        </div>
+      )}
     </Surface>
   );
 }
