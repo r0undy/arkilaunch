@@ -13,7 +13,7 @@ describe('navForRole', () => {
   it('hides from an owner the pages its route guard would bounce it from', () => {
     const owner = labels('owner');
     for (const label of adminOnly) expect(owner).not.toContain(label);
-    expect(owner).toContain('Reports');
+    expect(owner).toContain('Revenue at risk');
     expect(owner).toContain('Storefront branding');
   });
 

@@ -19,7 +19,6 @@ import {
   Store,
   ExternalLink,
   CalendarCheck,
-  TrendingUp,
   TrendingDown,
   Users,
   Truck,
@@ -92,8 +91,7 @@ export const APP_NAV: NavGroup[] = [
     title: 'Overview',
     items: [
       { label: 'Dashboard', to: '/app', icon: LayoutDashboard, exact: true },
-      { label: 'Reports', to: '/app/insights', icon: TrendingUp },
-      { label: 'Revenue leakage', to: '/app/insights/leakage', icon: TrendingDown },
+      { label: 'Revenue at risk', to: '/app/insights', icon: TrendingDown },
     ],
   },
   {

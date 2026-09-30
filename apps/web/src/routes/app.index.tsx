@@ -15,7 +15,13 @@ import {
   sitesQueries,
   trucksQueries,
   weatherQueries,
+  type ReportsSnapshot,
 } from '../lib/queries.js';
+import { Table, type TableColumn } from '../components/table.js';
+import { PAGE_SIZE, Pagination } from '../components/pagination.js';
+import { MachineName } from '../components/machine-name.js';
+import { StatusPill } from '../components/status-pill.js';
+import { Check, Wrench } from 'lucide-react';
 import { StatTile } from '../components/stat-tile.js';
 import { PageHeader } from '../components/page-header.js';
 import { Skeleton } from '../components/skeleton.js';
@@ -34,6 +40,7 @@ import {
   addDaysIso,
   formatDate,
   formatDateTime,
+  formatHours,
   formatInvoiceType,
   formatPeso,
   formatSeverity,
@@ -61,9 +68,9 @@ const SEVERITY_META: Record<
   },
 };
 
-function Kpi({ label, value, tone, pending }: { label: string; value: string; tone?: 'success'; pending?: boolean }) {
+function Kpi({ label, value, tone, pending, action }: { label: string; value: string; tone?: 'success'; pending?: boolean; action?: { label: string; onClick: () => void } }) {
   return (
-    <div className="flex flex-col gap-0.5 border-r border-border px-4 py-3 even:border-r-0 sm:even:border-r sm:last:border-r-0">
+    <div className="flex flex-col items-start gap-0.5 border-r border-border px-4 py-3 even:border-r-0 sm:even:border-r sm:last:border-r-0">
       <span className="text-sm font-medium text-text-muted">
         {label}
       </span>
@@ -79,8 +86,42 @@ function Kpi({ label, value, tone, pending }: { label: string; value: string; to
           {value}
         </span>
       )}
+      {action && !pending && (
+        <button type="button" onClick={action.onClick} className="text-sm font-medium text-accent hover:underline">
+          {action.label}
+        </button>
+      )}
     </div>
   );
+}
+
+const UTILIZATION_COLUMNS: TableColumn<ReportsSnapshot['utilization']['fleet'][number]>[] = [
+  { header: 'Machine', kind: 'text', cell: (row) => <MachineName equipmentId={row.equipmentId} /> },
+  { header: 'Hours run', kind: 'number', cell: (row) => formatHours(row.runtimeHours) },
+  { header: 'Utilization', kind: 'number', cell: (row) => `${row.utilizationPct.toFixed(1)}%` },
+  {
+    header: 'Maintenance', kind: 'text',
+    cell: (row) =>
+      row.maintenanceDue ? (
+        <StatusPill tone="fleet-maintenance" label="Due" icon={<Wrench className="size-full" />} />
+      ) : (
+        <StatusPill tone="fleet-available" label="On schedule" icon={<Check className="size-full" />} />
+      ),
+  },
+];
+
+const BREAKDOWN_COLUMNS: TableColumn<[string, number]>[] = [
+  { header: 'Invoice type', kind: 'text', cell: (row) => formatInvoiceType(row[0]) },
+  { header: 'Invoiced', kind: 'money', cell: (row) => formatPeso(row[1]) },
+];
+
+function breakdownRows(f: ReportsSnapshot['financial']): [string, number][] {
+  return [
+    ...Object.entries(f.invoiced.byType),
+    ...(f.depositDeducted > 0 && !('deposit_deduction' in f.invoiced.byType)
+      ? [['deposit_deduction', f.depositDeducted] as [string, number]]
+      : []),
+  ];
 }
 
 const ROW =
@@ -118,6 +159,8 @@ function AdminDashboardPage() {
   const [invoiceOpen, setInvoiceOpen] = useState<InvoiceSummaryResponse | null>(null);
   const [incidentOpen, setIncidentOpen] = useState<IncidentResponse | null>(null);
   const [siteOpen, setSiteOpen] = useState<string | null>(null);
+  const [report, setReport] = useState<'breakdown' | 'fleet' | null>(null);
+  const [fleetOffset, setFleetOffset] = useState(0);
 
   const alerts = (sites?.items ?? []).filter(
     (s) => s.latestSeverity && s.latestSeverity !== 'none',
@@ -162,22 +205,24 @@ function AdminDashboardPage() {
             label="Invoiced"
             pending={!snapshot}
             value={snapshot ? formatPeso(snapshot.financial.invoiced.total) : '--'}
+            action={{ label: 'Breakdown', onClick: () => setReport('breakdown') }}
+          />
+          <Kpi
+            label="Paid"
+            pending={!snapshot}
+            value={snapshot ? formatPeso(snapshot.financial.paid) : '--'}
           />
           <Kpi
             label="Utilization"
             pending={!snapshot}
             value={utilizationPct === null ? '--' : `${utilizationPct.toFixed(1)}%`}
             tone="success"
+            action={{ label: 'By machine', onClick: () => { setFleetOffset(0); setReport('fleet'); } }}
           />
           <Kpi
             label="Runtime"
             pending={!snapshot}
             value={recoveredHours === null ? '--' : `${recoveredHours.toFixed(1)} h`}
-          />
-          <Kpi
-            label="Deposit deducted"
-            pending={!snapshot}
-            value={snapshot ? formatPeso(snapshot.financial.depositDeducted) : '--'}
           />
         </div>
         <div className="border-t border-border px-4">
@@ -394,6 +439,28 @@ function AdminDashboardPage() {
         <Link to="/app/incidents" className="mt-3 block text-sm font-medium text-accent hover:underline">
           Open the incident log
         </Link>
+      </Modal>
+
+      {/* No deposit-deducted KPI: it is a breakdown line, and two figures read as a double charge. */}
+      <Modal open={report === 'breakdown'} onClose={() => setReport(null)} title="Financial breakdown" description="Invoiced amounts by invoice type.">
+        {snapshot && report === 'breakdown' && <Table columns={BREAKDOWN_COLUMNS} rows={breakdownRows(snapshot.financial)} rowKey={(row) => row[0]} />}
+      </Modal>
+
+      <Modal open={report === 'fleet'} onClose={() => setReport(null)} title="Fleet utilization" description="Hours run and maintenance status per machine." size="lg">
+        {snapshot && (
+          <Table
+            header={{
+              title: 'Machines',
+              count: snapshot.utilization.fleet.length,
+              pagination: (
+                <Pagination offset={fleetOffset} limit={PAGE_SIZE} total={snapshot.utilization.fleet.length} onOffsetChange={setFleetOffset} noun="machines" />
+              ),
+            }}
+            columns={UTILIZATION_COLUMNS}
+            rows={snapshot.utilization.fleet.slice(fleetOffset, fleetOffset + PAGE_SIZE)}
+            rowKey={(row) => row.equipmentId}
+          />
+        )}
       </Modal>
 
       <Modal open={siteOpen != null} onClose={() => setSiteOpen(null)} title="Site weather" size="lg">

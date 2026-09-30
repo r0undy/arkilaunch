@@ -48,7 +48,6 @@ import { appInventoryRoute } from './routes/app.inventory.js';
 import { appDeploymentRoute } from './routes/app.deployment.js';
 import { appSiteHubRoute } from './routes/app.site-hub.js';
 import { appInsightsRoute } from './routes/app.insights.js';
-import { appInsightsLeakageRoute } from './routes/app.insights.leakage.js';
 import { appIncidentsRoute } from './routes/app.incidents.js';
 import { appPaymentsRoute } from './routes/app.payments.js';
 import { appCouponsRoute } from './routes/app.coupons.js';
@@ -143,7 +142,6 @@ export const routeTree = rootRoute.addChildren([
     appDeploymentRoute,
     appSiteHubRoute,
     appInsightsRoute,
-    appInsightsLeakageRoute,
     appIncidentsRoute,
     appPaymentsRoute,
     appCouponsRoute,

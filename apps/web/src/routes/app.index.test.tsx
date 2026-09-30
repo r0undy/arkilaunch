@@ -71,7 +71,7 @@ describe('Admin dashboard', () => {
   it('leads with the four headline figures rather than a rail of every number', async () => {
     await renderRoute('/app');
 
-    expect(await screen.findByText('Deposit deducted')).toBeInTheDocument();
+    expect(await screen.findByText('Paid')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('412.5 h')).toBeInTheDocument());
     expect(screen.getByText('Invoiced')).toBeInTheDocument();
     expect(screen.getByText('Utilization')).toBeInTheDocument();

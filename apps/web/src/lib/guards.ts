@@ -67,7 +67,7 @@ export function homeRouteForRole(role: RoleCode | null): string {
     case 'customer':
       return '/account';
     case 'owner':
-      return '/app/insights';
+      return '/app';
     case 'timekeeper':
       return '/field';
     case 'platform_admin':
