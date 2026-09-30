@@ -13,6 +13,7 @@ import { formatDate, formatStatus, siteName } from '../lib/format.js';
 import { buttonClass } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { TruckRequestCard } from '../components/truck-trip.js';
+import { SearchField } from '../components/search-field.js';
 
 type Service = 'rental' | 'truck';
 const SERVICES: { id: Service; label: string }[] = [
@@ -92,16 +93,15 @@ function MyBookingsPage() {
         title="My bookings"
         description="Everything you have rented or booked, and where it stands."
       />
-      <input
-        type="search"
+      <SearchField
+        className="w-full max-w-md"
         value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
+        onChange={(next) => {
+          setSearch(next);
           setOffset(0);
         }}
         placeholder="Find by booking code (EQR-2026-0001)"
-        aria-label="Find a booking by code"
-        className="min-h-10 w-full max-w-md rounded-input border border-border bg-surface px-3 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+        label="Find a booking by code"
       />
       <Tabs label="Service" items={SERVICES} value={service} onChange={setService} />
       {service === 'truck' ? (

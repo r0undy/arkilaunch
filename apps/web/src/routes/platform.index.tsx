@@ -11,7 +11,6 @@ import {
   MapPin,
   Phone,
   Receipt,
-  Search,
   SearchX,
   Store,
   X,
@@ -28,6 +27,8 @@ import { apiGet } from '../lib/api-client.js';
 import { onPrimaryFor } from '../lib/brand.js';
 import { tenantOrigin } from '../lib/host.js';
 
+import { SearchField } from '../components/search-field.js';
+import { SegmentedControl } from '../components/segmented-control.js';
 const PLATFORM_DOMAIN = import.meta.env.VITE_PLATFORM_DOMAIN ?? 'arkilaunch.app';
 // ponytail: placeholder contact until the real inbox and line exist; set them per env.
 const CONTACT_EMAIL = import.meta.env.VITE_PLATFORM_CONTACT_EMAIL || `hello@${PLATFORM_DOMAIN}`;
@@ -220,12 +221,6 @@ function Directory() {
   const categories = data?.categories ?? [];
   const locations = data?.locations ?? [];
   const total = data?.total ?? 0;
-  const chip = (on: boolean) =>
-    [
-      'min-h-11 shrink-0 rounded-pill border px-4 text-sm font-medium transition-colors',
-      on ? 'border-nav bg-nav text-text-inverse' : 'border-border bg-surface text-text hover:border-border-strong',
-    ].join(' ');
-
   return (
     <section ref={section} aria-labelledby="directory-title" className="flex scroll-mt-20 flex-col gap-6">
       <div className="flex flex-col gap-2">
@@ -241,18 +236,7 @@ function Directory() {
             <label htmlFor="directory-q" className="text-sm font-medium text-text">
               Company name
             </label>
-            <div className="relative">
-              <Search aria-hidden className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-text-muted" />
-              <input
-                id="directory-q"
-                type="search"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                maxLength={100}
-                placeholder="Search by name"
-                className="min-h-11 w-full rounded-input border border-border bg-surface py-2.5 pl-12 pr-4 text-base text-text hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-              />
-            </div>
+            <SearchField id="directory-q" size="default" value={q} onChange={setQ} maxLength={100} label="Company name" placeholder="Search by name" />
           </div>
           <Select label="City" value={search.location ?? ''} onChange={(e) => apply({ location: e.target.value })}>
             <option value="">Any city</option>
@@ -267,20 +251,12 @@ function Directory() {
           </Select>
         </div>
 
-        <div
-          role="group"
-          aria-label="Equipment"
-          className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden"
-        >
-          {['', ...categories].map((c) => {
-            const on = (search.category ?? '') === c;
-            return (
-              <button key={c || 'all'} type="button" aria-pressed={on} onClick={() => apply({ category: c })} className={chip(on)}>
-                {c || 'All equipment'}
-              </button>
-            );
-          })}
-        </div>
+        <SegmentedControl
+          label="Equipment"
+          value={search.category ?? ''}
+          onChange={(category) => apply({ category })}
+          items={['', ...categories].map((c) => ({ id: c, label: c || 'All equipment' }))}
+        />
 
         <div className="flex min-h-11 flex-wrap items-center gap-2 text-sm">
           <p aria-live="polite" className="mr-2 font-medium text-text">

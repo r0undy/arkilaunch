@@ -3,9 +3,9 @@ import type { RentalRef } from '../lib/reference-client.js';
 import { formatStatus } from '../lib/format.js';
 import { Button } from './button.js';
 import { EmptyState } from './empty-state.js';
-import { Input } from './input.js';
 import { Surface } from './surface.js';
 import { PAGE_SIZE, Pagination } from './pagination.js';
+import { SearchField } from './search-field.js';
 
 export interface DeploymentScanListProps {
   rentals: RentalRef[];
@@ -42,13 +42,13 @@ export function DeploymentScanList({
 
   return (
     <div className="flex flex-col gap-3">
-      <Input
+      <SearchField
         id="deployment-search"
+        className="max-w-md"
         label="Search deployments"
-        type="search"
         value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
+        onChange={(next) => {
+          setSearch(next);
           setOffset(0);
         }}
         placeholder="Client or site"

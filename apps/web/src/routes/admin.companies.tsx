@@ -16,6 +16,7 @@ import { useToast } from '../components/toast.js';
 import { apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { formatDate, formatPeso } from '../lib/format.js';
 import { tenantOrigin } from '../lib/host.js';
+import { SearchField } from '../components/search-field.js';
 
 const companiesQuery = () => ({
   queryKey: ['tenants', 'companies'] as const,
@@ -239,9 +240,7 @@ function CompaniesTable({ items }: { items: PlatformCompany[] }) {
   const rows = q ? items.filter((c) => c.legalName.toLowerCase().includes(q) || c.slug.includes(q)) : items;
   return (
     <div className="flex flex-col gap-3">
-      <div className="max-w-sm">
-        <Input label="Search companies" type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
-      </div>
+      <SearchField className="max-w-sm" label="Search companies" value={query} onChange={setQuery} />
       {rows.length === 0 ? (
         <p className="text-sm text-text-muted">No companies match &ldquo;{query}&rdquo;.</p>
       ) : (

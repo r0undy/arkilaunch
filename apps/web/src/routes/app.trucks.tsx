@@ -17,6 +17,7 @@ import { pricingQueries, truckBanRulesQuery, trucksQueries } from '../lib/querie
 import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
 import { EditButton, SummaryCard } from '../components/summary-card.js';
 import { Select } from '../components/select.js';
+import { SearchField } from '../components/search-field.js';
 import { Alert } from '../components/alert.js';
 
 export const settingsQuery = {
@@ -465,8 +466,10 @@ export function TollsEditor() {
           </div>
   );
   const tollFilter = (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap items-center gap-2">
+          <div className="w-56">
           <Select labelHidden
+            size="compact"
             label="Expressway"
             value={road}
             onChange={(e) => {
@@ -480,16 +483,16 @@ export function TollsEditor() {
             ))}
             {rows.some((t) => !t.expressway) && <option value={OTHER}>Other tolls</option>}
           </Select>
-          <input
-            type="search"
-            aria-label="Find a toll"
+          </div>
+          <SearchField
+            className="min-w-56 max-w-xs flex-1"
+            label="Find a toll"
             placeholder="Find an entry or exit"
             value={find}
-            onChange={(e) => {
-              setFind(e.target.value);
+            onChange={(next) => {
+              setFind(next);
               setOffset(0);
             }}
-            className="min-h-11 w-full max-w-xs rounded-input border border-border bg-surface px-3 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
           />
         </div>
   );

@@ -15,7 +15,8 @@ import { Skeleton } from '../components/skeleton.js';
 import { LoadError } from '../components/load-error.js';
 import { Modal } from '../components/modal.js';
 import { Input } from '../components/input.js';
-import { Button, chipClass } from '../components/button.js';
+import { Button } from '../components/button.js';
+import { SegmentedControl } from '../components/segmented-control.js';
 import { useToast } from '../components/toast.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
 import { WeatherInsights } from '../components/weather-insights.js';
@@ -184,22 +185,15 @@ function EquipmentPage() {
       )}
       <SearchFilterBar query={query} onQueryChange={setQuery} />
       {categories.length > 1 && (
-        <div role="group" aria-label="Category" className="flex flex-wrap gap-2">
-          {[['', 'All'] as const, ...categories.map(([name, n]) => [name, `${name} (${n})`] as const)].map(([value, label]) => (
-            <button
-              key={value || 'all'}
-              type="button"
-              aria-pressed={category === value}
-              onClick={() => {
-                setCategory(value);
-                setOffset(0);
-              }}
-              className={chipClass(category === value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label="Category"
+          value={category}
+          onChange={(value) => {
+            setCategory(value);
+            setOffset(0);
+          }}
+          items={[{ id: '', label: 'All' }, ...categories.map(([name, n]) => ({ id: name, label: name, count: n }))]}
+        />
       )}
       {isPending && <Skeleton label="Loading equipment" rows={3} />}
       {isError && (
