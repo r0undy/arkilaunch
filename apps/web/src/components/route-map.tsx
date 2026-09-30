@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { MapPinned } from 'lucide-react';
 import type { PaddingOptions } from 'maplibre-gl';
 import type { TruckRoute } from '@arkilaunch/shared';
 import type { LatLng } from './pin-map.js';
@@ -21,6 +22,20 @@ export interface RouteMapCanvasProps {
 }
 
 export const TripCanvas = lazy(() => import('./route-map-gl.js'));
+
+// Covers both waits: the lazy MapLibre chunk, then the style and first tiles.
+export function MapSkeleton({ className = '' }: { className?: string }) {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      className={`flex h-full w-full animate-pulse flex-col items-center justify-center gap-2 bg-border/40 text-text-muted ${className}`}
+    >
+      <MapPinned className="h-8 w-8" aria-hidden="true" />
+      <span className="text-sm">Loading the map…</span>
+    </div>
+  );
+}
 
 let webgl: boolean | null = null;
 export function hasWebGL(): boolean {
@@ -56,7 +71,7 @@ export function RouteMap({ pickup, dropoff, route, className = 'h-80' }: RouteMa
     <div className="flex flex-col gap-2">
       {hasWebGL() && (
         <div className={['overflow-hidden rounded-md border border-border bg-surface-sunk', className].join(' ')}>
-          <Suspense fallback={<p className="p-4 text-sm text-text-muted">Loading the map...</p>}>
+          <Suspense fallback={<MapSkeleton />}>
             <TripCanvas mode="view" pickup={pickup} dropoff={dropoff} placing="pickup" line={route?.line ?? null} label="Trip map" />
           </Suspense>
         </div>

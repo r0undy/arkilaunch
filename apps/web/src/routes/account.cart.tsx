@@ -12,6 +12,7 @@ import {
 import { accountLayoutRoute } from './_account.js';
 import { EmptyState } from '../components/empty-state.js';
 import { PageHeader } from '../components/page-header.js';
+import { Skeleton } from '../components/skeleton.js';
 import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { MobileInput } from '../components/mobile-input.js';
@@ -312,6 +313,16 @@ function CartPage() {
             <Link to="/equipment" className={buttonClass('primary')}>Browse equipment</Link>
           }
         />
+      </div>
+    );
+  }
+
+  // Without this the cart flashes its "add a company" and "no company can rent" states while loading.
+  if (companies.isPending || sites.isPending) {
+    return (
+      <div className="flex flex-col gap-4">
+        <PageHeader title="Shopping cart" />
+        <Skeleton label="Loading your cart" rows={items.length + 1} />
       </div>
     );
   }
