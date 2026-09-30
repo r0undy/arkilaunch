@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateTruckCost, isSelfLoadingTruckType, negotiationFloor, priceTruckTrip, truckProfit } from './trucks.js';
+import { estimateTruckCost, TruckCostPolicySchema, isSelfLoadingTruckType, negotiationFloor, priceTruckTrip, truckProfit } from './trucks.js';
 
 describe('priceTruckTrip', () => {
   it('adds base, distance, fuel, driver and per-trip / per-km extras', () => {
@@ -72,6 +72,29 @@ describe('tenant truck pricing policy', () => {
     const cost = estimateTruckCost({ km: 10, fuelLPerKm: 0.3, dieselPhp: 60, settings: { driverFeePhp: 0, extras: [] } });
     expect(cost.lines).toHaveLength(1);
     expect(cost.totalPhp).toBe(180);
+  });
+
+  it('reproduces the Almara sample cost without inventing the unexplained remainder', () => {
+    // Same shape as the anchor seed; helper = km × admin rate.
+    const costPolicy = TruckCostPolicySchema.parse({ fuelFactor: 1.017, miscAllowancePhp: 1000, helper: { kind: 'per_km', value: 7.5 } });
+    const cost = estimateTruckCost({
+      km: 151, fuelLPerKm: 0.35, dieselPhp: 90.93,
+      tolls: [{ label: 'NLEX', amountPhp: 1272 }],
+      settings: { driverFeePhp: 2265, extras: [], roundTripMultiplier: 2, costPolicy },
+    });
+    // fuel 151 × 1.017 × 90.93 × 2 = 27,927.69; helper 151 × 7.5 = 1,132.50
+    expect(cost.lines.map((l) => l.amountPhp)).toEqual([27927.69, 2265, 1132.5, 1000, 1272]);
+    expect(cost.totalPhp).toBe(33597.19); // not the client's 39,517: the gap is theirs to confirm
+  });
+
+  it('never lets one tenant settings change another tenant price', () => {
+    const km = 151;
+    const almara = priceTruckTrip({ km, perKmPhp: 45, fuelLPerKm: 0.35, dieselPhp: 90.93,
+      settings: { ...settings, driverFeePhp: 2265, formula: 'km * round_trip * diesel * quote_multiplier' } });
+    const other = priceTruckTrip({ km, perKmPhp: 45, fuelLPerKm: 0.35, dieselPhp: 90.93,
+      settings: { baseFeePhp: 0, driverFeePhp: 0, extras: [] } });
+    expect(almara.totalPhp).toBe(54921.72); // 151 × 2 × 90.93 × 2
+    expect(other.totalPhp).toBe(11600.65); // default formula: 151 × 45 + 151 × 0.35 × 90.93
   });
 
   it('computes profit and margin', () => {

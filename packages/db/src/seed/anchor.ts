@@ -289,6 +289,22 @@ async function main() {
     });
   }
 
+  // Almara's reference truck policy (0072). Tenant data, not a platform rule;
+  // inserted once so an admin's later edits survive a reseed. Helper is
+  // km × an admin-set rate; 7.5 is a sample value.
+  await db
+    .insert(schema.truckSettings)
+    .values({
+      tenantId: tenant.id,
+      driverFeePhp: '2265.00',
+      formula: 'km * round_trip * diesel * quote_multiplier',
+      roundTripMultiplier: '2',
+      quoteMultiplier: '2',
+      maxDiscountPct: '35',
+      costPolicy: { fuelFactor: 1.017, miscAllowancePhp: 1000, helper: { kind: 'per_km', value: 7.5 } },
+    })
+    .onConflictDoNothing();
+
   const existingCustomer = await db.select().from(schema.customers).where(eq(schema.customers.tenantId, tenant.id));
   const customerRow =
     existingCustomer[0] ??
