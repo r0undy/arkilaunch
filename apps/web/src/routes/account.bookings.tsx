@@ -1,7 +1,7 @@
 import { createRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { bookingCodeSearchPrefix, type BookingSummaryResponse } from '@arkilaunch/shared';
+import { bookingDays, bookingCodeSearchPrefix, type BookingSummaryResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { bookingsQueries, trucksQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
@@ -50,6 +50,9 @@ const COLUMNS: TableColumn<BookingSummaryResponse>[] = [
               <span className="text-text">{item.equipmentName}</span>
               <span className="text-xs text-text-muted">
                 {formatDate(item.start)} to {item.end ? formatDate(item.end) : 'open'}
+                  {item.end && new Date(item.end) > new Date(item.start) && (
+                    <> &middot; {bookingDays(item.start, item.end)} rental day{bookingDays(item.start, item.end) === 1 ? '' : 's'}</>
+                  )}
               </span>
             </li>
           ))}
