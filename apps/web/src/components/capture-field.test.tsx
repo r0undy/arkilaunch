@@ -140,4 +140,19 @@ describe('CaptureField', () => {
     // The stream is released on capture, not left holding the camera open.
     expect(track.stop).toHaveBeenCalled();
   });
+
+  it('holds a KYC PDF for review and reads it only after acceptance', async () => {
+    const prepared = new File(['pdf'], 'accepted.pdf', { type: 'application/pdf' });
+    prepareUpload.mockResolvedValue(prepared);
+    const onAccepted = vi.fn();
+    const { onChange } = renderField({ scanner: true, onAccepted, accept: 'image/*,application/pdf' });
+    await userEvent.upload(screen.getByTestId('scanFile-file'), new File(['pdf'], 'registration.pdf', { type: 'application/pdf' }));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onAccepted).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Use file' }));
+    await waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(1));
+    expect(onAccepted).toHaveBeenCalledWith(prepared);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(prepared);
+  });
 });

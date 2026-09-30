@@ -34,6 +34,18 @@ describe('Modal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a busy dialog open', async () => {
+    const onClose = vi.fn();
+    render(
+      <Modal open closeDisabled onClose={onClose} title="Submitting company">
+        <input aria-label="Company name" />
+      </Modal>,
+    );
+    expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   // Cloudscape Modal: focus opens on the first field, never the dismiss X.
   it('opens with focus on the first field', () => {
     render(

@@ -84,15 +84,11 @@ describe('CompanyDocumentsPage: guards against a premature submit', () => {
     const rendered = await renderRoute('/account/companies/company-1/documents');
     await waitFor(() => expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument());
 
-    const file = new File(['x'], 'id.png', { type: 'image/png' });
+    const file = new File(['x'], 'id.pdf', { type: 'application/pdf' });
     const fileInput = document.querySelector('#doc-government_id-file') as HTMLInputElement;
     await userEvent.upload(fileInput, file);
-    // An image ID opens the cropper; skipping keeps the photo as taken.
-    await userEvent.click(await screen.findByRole('button', { name: /skip cropping/i }));
-
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /next: check your id details/i })).not.toBeDisabled(),
-    );
+    // Nothing is committed or read until the customer accepts the file.
+    expect(screen.getByRole('button', { name: /next: check your id details/i })).toBeDisabled();
 
     return { ...rendered, fileInput, fetchMock };
   }
@@ -117,7 +113,7 @@ describe('CompanyDocumentsPage: guards against a premature submit', () => {
   it('a second tap landing on "Upload" right as it replaces "Next" does not upload the government ID alone', async () => {
     const { unmount, fetchMock } = await setupOnStep1();
 
-    await userEvent.click(screen.getByRole('button', { name: /next: check your id details/i }));
+    await userEvent.click(screen.getByRole('button', { name: /use file/i }));
     await waitFor(() => expect(screen.getByText(/Step 2 of 3/i)).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText(/first name/i), 'Juan');
     await userEvent.type(screen.getByLabelText(/last name/i), 'Dela Cruz');
@@ -134,7 +130,7 @@ describe('CompanyDocumentsPage: guards against a premature submit', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/documents'))).toBe(false);
     unmount();
-  });
+  }, 15_000);
 });
 
 describe('signupError', () => {

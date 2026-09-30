@@ -13,6 +13,8 @@ test.describe('company documents', () => {
   test('customer picks SEC as primary, adds DTI, and submits', async ({ page }) => {
     await signInAsCustomer(page);
     await page.goto('/account/companies/new');
+    await expect(page.getByRole('dialog', { name: 'Add a company' })).toBeVisible();
+    await expect(page.getByRole('complementary', { name: 'Sidebar' })).toHaveCount(0);
     const png = await page.screenshot({ clip: { x: 0, y: 0, width: 64, height: 64 } });
     const file = (name: string) => ({ name, mimeType: 'image/png', buffer: png });
 
@@ -24,41 +26,39 @@ test.describe('company documents', () => {
       }),
     );
 
-    // Step 1: the applicant's ID.
+    // Choose the ID before the camera opens.
+    await choose(page.getByLabel('ID type'), 'philsys');
+    await page.getByRole('button', { name: 'Continue' }).click();
+    // Capture the applicant's ID.
     await page.getByTestId('doc-government_id-file').setInputFiles(file('id.png'));
-    await page.getByRole('button', { name: 'Skip cropping' }).click();
-    await page.getByRole('button', { name: 'Next: check your ID details' }).click();
+    await page.getByRole('button', { name: /Use scan|Use original photo/ }).click();
     await expect(page.getByText('Document not accepted')).toBeVisible();
     ocrDown = true;
     await page.getByTestId('doc-government_id-file').setInputFiles(file('id.png'));
-    await page.getByRole('button', { name: 'Skip cropping' }).click();
-    await page.getByRole('button', { name: 'Next: check your ID details' }).click();
+    await page.getByRole('button', { name: /Use scan|Use original photo/ }).click();
 
     // Step 2: the customer confirms what the ID says.
     await page.getByLabel('First name').fill('Juan');
     await page.getByLabel('Last name').fill('Dela Cruz');
     await page.getByLabel(/PCN/).fill('1234-5678-9012-3456');
-    await page.getByRole('button', { name: 'Next: company registration' }).click();
+    await page.getByRole('button', { name: 'Next: registration type' }).click();
 
-    // Step 2: the dropdown offers exactly BIR and SEC; DTI is never primary.
-    const type = page.getByLabel('Document type');
+    // Choose the primary registration; DTI is never a primary document.
+    const type = page.getByLabel('Registration type');
     await type.click();
     await expect(page.getByRole('option')).toHaveText([
       'BIR Certificate of Registration (Form 2303)',
       'SEC Certificate of Incorporation',
     ]);
     await page.keyboard.press('Escape');
-    const next = page.getByRole('button', { name: 'Next: check the details' });
-    // DTI alone cannot move the application on.
-    await page.getByTestId('doc-dti_certificate-file').setInputFiles(file('dti.png'));
-    await page.getByRole('button', { name: 'Skip cropping' }).click();
-    await expect(next).toBeDisabled();
-
     await choose(type, 'sec_certificate');
+    await page.getByRole('button', { name: 'Continue' }).click();
+    const next = page.getByRole('button', { name: 'Next: optional DTI certificate' });
+    await expect(next).toBeDisabled();
     await page.getByTestId('doc-company_registration-file').setInputFiles(file('sec.png'));
-    await page.getByRole('button', { name: 'Skip cropping' }).click();
-    await expect(next).toBeEnabled();
-    await next.click();
+    await page.getByRole('button', { name: /Use scan|Use original photo/ }).click();
+    await page.getByTestId('doc-dti_certificate-file').setInputFiles(file('dti.png'));
+    await page.getByRole('button', { name: /Use scan|Use original photo/ }).click();
 
     const name = `E2E Docs Corp ${Date.now()}`;
     await page.getByLabel('Company name').fill(name);

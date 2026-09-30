@@ -13,6 +13,7 @@ export interface SidebarShellProps {
   navTitle: string;
   tenantLabel: string;
   children: ReactNode;
+  hideNav?: boolean;
 }
 
 export const ShellNavContext = createContext<{ navGroups: NavGroup[]; tenantLabel: string } | null>(null);
@@ -28,7 +29,7 @@ function readCollapsed(): boolean {
   }
 }
 
-export function SidebarShell({ navGroups, navTitle, tenantLabel, children }: SidebarShellProps) {
+export function SidebarShell({ navGroups, navTitle, tenantLabel, children, hideNav = false }: SidebarShellProps) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readCollapsed);
@@ -52,10 +53,10 @@ export function SidebarShell({ navGroups, navTitle, tenantLabel, children }: Sid
     <ShellNavContext.Provider value={{ navGroups, tenantLabel }}>
       <div className="flex min-h-screen flex-col bg-bg">
         <SkipLink />
-        <AppBar tenantLabel={tenantLabel} onMenuClick={() => setDrawerOpen((v) => !v)} />
+        <AppBar tenantLabel={tenantLabel} {...(!hideNav ? { onMenuClick: () => setDrawerOpen((v) => !v) } : {})} />
         <div className="flex flex-1">
           {/* Named: the catalog renders a second complementary landmark. */}
-          {collapsed ? (
+          {hideNav ? null : collapsed ? (
             <aside aria-label="Sidebar" className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-14 shrink-0 flex-col overflow-y-auto overflow-x-hidden border-r border-border bg-surface px-1.5 pb-4 pt-3 [scrollbar-width:none] lg:flex [&::-webkit-scrollbar]:hidden">
               <button type="button" onClick={toggleCollapsed} aria-expanded={false} aria-label="Open navigation" title="Open navigation" className={`${railButton} mb-3 self-center`}>
                 <Menu aria-hidden strokeWidth={2.25} className="h-5 w-5" />
@@ -77,7 +78,7 @@ export function SidebarShell({ navGroups, navTitle, tenantLabel, children }: Sid
             </aside>
           )}
 
-          <Modal open={drawerOpen} onClose={() => setDrawerOpen(false)} title={navTitle} placement="right" size="sm">
+          <Modal open={!hideNav && drawerOpen} onClose={() => setDrawerOpen(false)} title={navTitle} placement="right" size="sm">
             <NavGroupList groups={navGroups} pathname={pathname} onNavigate={() => setDrawerOpen(false)} />
           </Modal>
 

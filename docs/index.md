@@ -2,7 +2,7 @@
 
 **Project slug:** `arkilaunch`
 **Maintained by:** ArkiLaunch Team (Almara Construction capstone)
-**Last updated:** 2026-09-30
+**Last updated:** 2026-10-01
 **Built on FMD:** v1.28.1
 
 ---
@@ -24,7 +24,7 @@
 | BRD · Business Requirements | [brd-arkilaunch.md](brd-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
 | UES · Unit Economics Sheet | [ues-arkilaunch.md](ues-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
 | PRD · Product Requirements | [prd-arkilaunch.md](prd-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-19 |
-| DSD · Design System | [dsd-arkilaunch.md](dsd-arkilaunch.md) | 0.1 | Locked | 2026-09-30 | 2026-09-30 |
+| DSD · Design System | [dsd-arkilaunch.md](dsd-arkilaunch.md) | 0.1 | Locked | 2026-10-01 | 2026-10-01 |
 | SDD · System Design | [sdd-arkilaunch.md](sdd-arkilaunch.md) | 0.1 | Locked | 2026-09-29 | 2026-09-29 |
 | QAD · QA & Test Plan | [qad-arkilaunch.md](qad-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-07 |
 | SAD · Subagents | [sad-arkilaunch.md](sad-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
@@ -90,6 +90,8 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 
 | CR ID | Date | Summary | Trigger doc | Docs touched | File |
 |-------|------|---------|-------------|--------------|------|
+| cr-arkilaunch-kyc-auto-document-scan | 2026-10-01 | KYC camera detects and straightens documents after a steady hold; selected images get correction and review before OCR | Owner KYC capture request | DSD §4; DESIGN.md | [cr-arkilaunch-kyc-auto-document-scan.md](cr-arkilaunch-kyc-auto-document-scan.md) |
+| cr-arkilaunch-customer-company-wizard | 2026-10-01 | Customer Add company modal becomes a guided wizard with explicit document choices and a separate optional DTI step | Owner onboarding request | DSD §4; DESIGN.md | [cr-arkilaunch-customer-company-wizard.md](cr-arkilaunch-customer-company-wizard.md) |
 | cr-arkilaunch-truck-panel-reveal | 2026-09-30 | Truck map starts at the saved project site and displays its uploaded photo, or starts at current location; trip details opens as a closable dialog after both pins, and map scrolling no longer shows the Ctrl prompt | Owner truck map interaction request | SDD §4; DSD §4; DESIGN.md | [cr-arkilaunch-truck-panel-reveal.md](cr-arkilaunch-truck-panel-reveal.md) |
 | cr-arkilaunch-luzon-maps | 2026-09-30 | Mainland-only map pins and APIs, shaded outside area, map loading, and equipment photos on site pins | Owner map request | SDD §4; DSD §4; DESIGN.md | [cr-arkilaunch-luzon-maps.md](cr-arkilaunch-luzon-maps.md) |
 | cr-arkilaunch-customer-booking-cost-breakdown | 2026-09-30 | Prominent saved-quote costs and per-machine rental days in customer bookings; no pricing or API changes | Customer readability request | DSD section 4.1; DESIGN.md | [cr-arkilaunch-customer-booking-cost-breakdown.md](cr-arkilaunch-customer-booking-cost-breakdown.md) |

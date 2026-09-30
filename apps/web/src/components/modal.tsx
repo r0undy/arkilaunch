@@ -12,6 +12,7 @@ export interface ModalProps {
   footer?: ReactNode;
   size?: ModalSize;
   dismissOnScrim?: boolean;
+  closeDisabled?: boolean;
   placement?: 'center' | 'right';
   role?: 'dialog' | 'alertdialog';
 }
@@ -43,6 +44,7 @@ export function Modal({
   footer,
   size = 'md',
   dismissOnScrim = true,
+  closeDisabled = false,
   placement = 'center',
   role = 'dialog',
 }: ModalProps) {
@@ -55,6 +57,8 @@ export function Modal({
   // Read through a ref: re-running the open effect re-focused the first control on every keystroke.
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const closeDisabledRef = useRef(closeDisabled);
+  closeDisabledRef.current = closeDisabled;
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -65,7 +69,7 @@ export function Modal({
       if (event.key === 'Escape' && active.getAttribute('role') === 'combobox' && active.getAttribute('aria-expanded') === 'true') return;
       if (event.key === 'Escape') {
         event.stopPropagation();
-        onCloseRef.current();
+        if (!closeDisabledRef.current) onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab' || !panel.current) return;
@@ -115,7 +119,7 @@ export function Modal({
     >
       <div
         className="absolute inset-0 bg-[var(--yb-modal-scrim)]"
-        onClick={dismissOnScrim ? onClose : undefined}
+        onClick={dismissOnScrim && !closeDisabled ? onClose : undefined}
         aria-hidden
       />
       <div
@@ -146,8 +150,9 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
+            disabled={closeDisabled}
             aria-label="Close"
-            className="-m-2.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-text-muted hover:bg-surface-sunk hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+            className="-m-2.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-text-muted hover:bg-surface-sunk hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-40"
           >
             <X className="h-5 w-5" aria-hidden />
           </button>
