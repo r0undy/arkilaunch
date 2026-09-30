@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { LEAKAGE_BONES, type LeakageMetric, type LeakageReport } from '@arkilaunch/shared';
 import type { StatementBrand } from '../billing/statement-pdf.js';
+import { isPng } from '../common/tenant-brand.js';
 
 const W = 612;
 const H = 792;
@@ -84,14 +85,24 @@ export async function renderLeakageReportPdf(r: LeakageReport, brand: StatementB
     y -= 6;
   };
 
-  // Letterhead.
-  write(M, brand.name.toUpperCase(), 14, bold);
+  // Letterhead: tenant icon on the left, name and details beside it.
+  const logo = brand.logo ? await (isPng(brand.logo) ? pdf.embedPng(brand.logo) : pdf.embedJpg(brand.logo)).catch(() => null) : null;
+  const top = y;
+  let tx = M;
+  if (logo) {
+    const LOGO = 40;
+    const s = logo.scaleToFit(LOGO, LOGO);
+    page.drawImage(logo, { x: M, y: top + 12 - s.height, width: s.width, height: s.height });
+    tx = M + s.width + 12;
+  }
+  page.drawText(ascii(brand.name.toUpperCase()), { x: tx, y, size: 14, font: bold, color: INK });
   y -= 14;
   for (const line of [brand.address, brand.contact, brand.tin ? `TIN ${brand.tin}` : '']) {
     if (!line) continue;
-    write(M, line, 8, font, MUTED);
+    page.drawText(ascii(line), { x: tx, y, size: 8, font, color: MUTED });
     y -= 11;
   }
+  if (logo) y = Math.min(y, top - 32);
   y -= 6;
   rule(1);
   y -= 22;

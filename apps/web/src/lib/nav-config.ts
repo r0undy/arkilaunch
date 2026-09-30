@@ -19,7 +19,7 @@ import {
   Store,
   ExternalLink,
   CalendarCheck,
-  TrendingUp,
+  TrendingDown,
   Users,
   Truck,
 } from 'lucide-react';
@@ -91,7 +91,7 @@ export const APP_NAV: NavGroup[] = [
     title: 'Overview',
     items: [
       { label: 'Dashboard', to: '/app', icon: LayoutDashboard, exact: true },
-      { label: 'Reports', to: '/app/insights', icon: TrendingUp },
+      { label: 'Reports', to: '/app/insights', icon: TrendingDown },
     ],
   },
   {
