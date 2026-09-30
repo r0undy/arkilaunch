@@ -35,12 +35,12 @@ function BrandPanel() {
       </Link>
       <div className="hidden flex-col gap-10 text-shadow-lg lg:flex">
         <div>
-          <p className="max-w-md border-l-2 border-primary pl-4 text-heading-lg text-balance xl:text-display-md">
+          <p className="max-w-lg text-display-md font-semibold tracking-tight text-pretty xl:text-[2.25rem] xl:leading-[2.75rem]">
             {onPlatform
               ? 'Your rental company, on its own address.'
               : tenant?.tagline || "Your timekeeper's handwriting sits right next to the hours we bill."}
           </p>
-          <p className="mt-4 max-w-sm text-sm text-text-inverse/80">
+          <p className="mt-4 max-w-md text-base text-text-inverse/75">
             {onPlatform
               ? 'For Philippine equipment rental companies.'
               : 'Two independent logs, reconciled before a single peso is deducted.'}
