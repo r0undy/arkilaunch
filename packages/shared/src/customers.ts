@@ -47,7 +47,7 @@ export const CURE_DOCUMENT_TYPES = [
 ] as const;
 export const COMPANY_DOCUMENT_TYPES = [
   'government_id',
-  // Never sent to OCR.
+  // Retired: no longer asked for; kept so old uploads still read.
   'selfie_with_id',
   ...PRIMARY_REGISTRATION_TYPES,
   'dti_certificate',
@@ -70,7 +70,6 @@ export function isPrimaryRegistration(documentType: string): boolean {
 export function hasRequiredCompanyDocuments(documents: { documentType: string }[]): boolean {
   return (
     documents.some((d) => d.documentType === 'government_id') &&
-    documents.some((d) => d.documentType === 'selfie_with_id') &&
     documents.some((d) => isPrimaryRegistration(d.documentType))
   );
 }
@@ -114,16 +113,16 @@ export const KYC_REJECTION_REASONS = {
     label: 'ID could not be verified',
     detail: 'The ID did not check out with its issuer (PhilSys Check for the National ID), or it is unreadable or expired.',
     customer:
-      "Upload a clear photo of a valid Philippine primary ID (National ID with its QR visible, passport, driver's license, UMID, SSS, PRC, postal, voter's or TIN ID), and a new selfie holding it.",
-    cure: ['government_id', 'selfie_with_id'],
+      "Upload a clear photo of a valid Philippine primary ID (National ID with its QR visible, passport, driver's license, UMID, SSS, PRC, postal, voter's or TIN ID).",
+    cure: ['government_id'],
     final: false,
   },
   id_holder_mismatch: {
     label: 'Applicant does not match the ID or the company',
-    detail: 'The selfie does not match the ID, or the ID holder is not a listed officer of the company.',
+    detail: 'The ID holder is not a listed officer of the company.',
     customer:
-      'Upload a Secretary\'s Certificate or Board Resolution naming you as authorized to transact for the company (a Special Power of Attorney for sole proprietors), with your National ID and a new selfie holding it.',
-    cure: ['secretary_certificate', 'government_id', 'selfie_with_id'],
+      'Upload a Secretary\'s Certificate or Board Resolution naming you as authorized to transact for the company (a Special Power of Attorney for sole proprietors), with your National ID.',
+    cure: ['secretary_certificate', 'government_id'],
     final: false,
   },
   document_unreadable: {
@@ -367,7 +366,6 @@ export const CompanyDecisionSchema = z
     identity: z
       .object({
         philsysVerified: z.literal(true),
-        selfieMatches: z.literal(true),
         holderAuthorized: z.literal(true),
       })
       .optional(),
@@ -376,7 +374,7 @@ export const CompanyDecisionSchema = z
     cureDocuments: z.array(z.enum(COMPANY_DOCUMENT_TYPES)).max(COMPANY_DOCUMENT_TYPES.length).default([]),
   })
   .refine((body) => body.decision !== 'approved' || body.identity, {
-    message: 'Confirm the PhilSys QR, the selfie and the holder before approving',
+    message: 'Confirm the PhilSys QR and the holder before approving',
     path: ['identity'],
   })
   .refine((body) => body.decision !== 'rejected' || body.reason, {

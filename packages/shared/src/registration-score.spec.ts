@@ -20,7 +20,6 @@ const clean = (): ScoreInput => ({
       ocr: { first_name: 'JUAN', last_name: 'DELA CRUZ', id_number: '1234 5678 9012 3456', birth_date: '1985-04-02' },
       customer: { first_name: 'Juan', last_name: 'Dela Cruz', id_number: '1234-5678-9012-3456', birth_date: '1985-04-02' },
     },
-    { documentType: 'selfie_with_id', confidence: null, ocr: {}, customer: {} },
   ],
 });
 
@@ -57,7 +56,7 @@ describe('scoreRegistration', () => {
   it('flags an implausible age and missing documents', () => {
     const input = clean();
     input.documents[1]!.customer.birth_date = '2015-01-01';
-    input.documents = input.documents.filter((d) => d.documentType !== 'selfie_with_id');
+    input.documents = input.documents.filter((d) => d.documentType === 'government_id');
     const s = scoreRegistration(input);
     expect(s.checks.find((c) => c.id === 'dob')?.status).toBe('fail');
     expect(s.checks.find((c) => c.id === 'doc_quality')?.status).toBe('fail');

@@ -68,7 +68,6 @@ async function uploadDocuments(
   files: {
     governmentId: File | null;
     idDetails: IdDetails;
-    selfie?: File | null;
     registration: File | null;
     registrationType: PrimaryRegistrationType;
     dti: File | null;
@@ -77,7 +76,6 @@ async function uploadDocuments(
 ): Promise<void> {
   const uploads: [string, File | null, Record<string, string>][] = [
     ['government_id', files.governmentId, filled({ ...files.idDetails })],
-    ['selfie_with_id', files.selfie ?? null, {}],
     [files.registrationType, files.registration, {}],
     ['dti_certificate', files.dti, filled({ dtiNumber: files.dtiNumber ?? '' })],
   ];
@@ -98,7 +96,7 @@ export const DOC_STEPS: { type: DocStep; label: string; hint: string }[] = [
   {
     type: 'government_id',
     label: 'Government-issued ID',
-    hint: 'Step 1 of 3. Any Philippine primary ID: National ID (PhilSys), passport, driver\'s license, UMID, SSS, PRC, postal, voter\'s or TIN ID. The whole card must be in the photo, clear and unexpired; the rental team checks it with the issuer. Add a selfie holding the ID so they can match you to it.',
+    hint: 'Step 1 of 3. Any Philippine primary ID: National ID (PhilSys), passport, driver\'s license, UMID, SSS, PRC, postal, voter\'s or TIN ID. The whole card must be in the photo, clear and unexpired; the rental team checks it with the issuer.',
   },
   {
     type: 'company_registration',
@@ -167,8 +165,6 @@ function DocumentStep({
   onDtiChange,
   showPrimary = true,
   showDti = true,
-  selfie = null,
-  onSelfieChange,
   idType,
   onIdTypeChange,
 }: {
@@ -181,8 +177,6 @@ function DocumentStep({
   onDtiChange: (file: File | null) => void;
   showPrimary?: boolean;
   showDti?: boolean;
-  selfie?: File | null;
-  onSelfieChange?: (file: File | null) => void;
   idType?: PhIdTypeCode;
   onIdTypeChange?: (type: PhIdTypeCode) => void;
 }) {
@@ -222,29 +216,6 @@ function DocumentStep({
           value={value}
           onChange={onChange}
         />
-      )}
-      {!isRegistration && onSelfieChange && (
-        <label className="flex flex-col gap-1 text-sm font-medium text-text">
-          Selfie holding your ID
-          <span className="font-normal text-text-muted">
-            Hold the ID beside your face, both clearly visible. The rental team only compares it with the ID photo; it is
-            never read by a machine.
-          </span>
-          <input
-            id="doc-selfie_with_id"
-            type="file"
-            accept="image/*"
-            capture="user"
-            onChange={(e) => {
-              const file = e.target.files?.[0] ?? null;
-              // Shrink it: a raw 12 MP selfie was the slowest upload on submit.
-              if (!file) return onSelfieChange(null);
-              prepareUpload(file).then(onSelfieChange, () => onSelfieChange(file));
-            }}
-            className="min-h-11 text-sm"
-          />
-          {selfie && <span className="font-normal text-text-muted">{selfie.name}</span>}
-        </label>
       )}
       {isRegistration && showDti && (
         <CroppableCapture
@@ -427,7 +398,6 @@ function useDocumentCapture() {
   const [registration, setRegistration] = useState<File | null>(null);
   const [registrationType, setRegistrationType] = useState<PrimaryRegistrationType>('bir_cor');
   const [dti, setDti] = useState<File | null>(null);
-  const [selfie, setSelfie] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
   // A paper the scan could not read stops the wizard on its step until it is retaken.
   const [scanRejected, setScanRejected] = useState<string | null>(null);
@@ -452,7 +422,7 @@ function useDocumentCapture() {
   }
   return {
     governmentId, setGovernmentId, idDetails, setIdDetails, idScan, registration, setRegistration,
-    registrationType, setRegistrationType, dti, setDti, selfie, setSelfie, scanning, setScanning, scanGovernmentId,
+    registrationType, setRegistrationType, dti, setDti, scanning, setScanning, scanGovernmentId,
     scanRejected, setScanRejected, rejectRegistration,
   };
 }
@@ -469,7 +439,7 @@ function NewCompanyPage() {
   const [contactMobile, setContactMobile] = useState('');
   const {
     governmentId, setGovernmentId, idDetails, setIdDetails, idScan, registration, setRegistration,
-    registrationType, setRegistrationType, dti, setDti, selfie, setSelfie, scanning, setScanning, scanGovernmentId,
+    registrationType, setRegistrationType, dti, setDti, scanning, setScanning, scanGovernmentId,
     scanRejected, setScanRejected, rejectRegistration,
   } = useDocumentCapture();
   const [accepted, setAccepted] = useState(false);
@@ -481,7 +451,7 @@ function NewCompanyPage() {
   // A reload loses the ID photo and its scan, so the ID step starts over.
   const chosenStage: WizardStep = urlStep === 'id_details' && !idScan ? 'government_id' : (urlStep ?? 'government_id');
   const submitted = useRef(false);
-  const dirty = Boolean(governmentId || registration || dti || selfie || companyName || billingAddress);
+  const dirty = Boolean(governmentId || registration || dti || companyName || billingAddress);
   useBlocker({
     shouldBlockFn: ({ current, next }) =>
       !submitted.current &&
@@ -551,7 +521,6 @@ function NewCompanyPage() {
       await uploadDocuments(created.id, {
         governmentId,
         idDetails,
-        selfie,
         registration,
         registrationType,
         dti,
@@ -613,8 +582,6 @@ function NewCompanyPage() {
             onRegistrationTypeChange={setRegistrationType}
             dti={dti}
             onDtiChange={setDti}
-            selfie={selfie}
-            onSelfieChange={setSelfie}
             idType={idDetails.idType}
             onIdTypeChange={(idType) => setIdDetails({ ...idDetails, idType })}
           />
@@ -797,7 +764,7 @@ function CompanyDocumentsPage() {
   const queryClient = useQueryClient();
   const {
     governmentId, setGovernmentId, idDetails, setIdDetails, idScan, registration, setRegistration,
-    registrationType, setRegistrationType, dti, setDti, selfie, setSelfie, scanning, setScanning, scanGovernmentId,
+    registrationType, setRegistrationType, dti, setDti, scanning, setScanning, scanGovernmentId,
     scanRejected, rejectRegistration,
   } = useDocumentCapture();
   const [busy, setBusy] = useState(false);
@@ -837,7 +804,6 @@ function CompanyDocumentsPage() {
       await uploadDocuments(companyId, {
         governmentId,
         idDetails,
-        selfie,
         registration,
         registrationType,
         dti,
@@ -883,8 +849,6 @@ function CompanyDocumentsPage() {
                 onRegistrationTypeChange={setRegistrationType}
                 dti={dti}
                 onDtiChange={setDti}
-                selfie={selfie}
-                onSelfieChange={setSelfie}
                 idType={idDetails.idType}
                 onIdTypeChange={(idType) => setIdDetails({ ...idDetails, idType })}
                 showPrimary={primaryOpen}
