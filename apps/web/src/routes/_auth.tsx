@@ -57,10 +57,39 @@ function AuthLayout() {
     <div className="flex min-h-screen flex-col lg:flex-row">
       <SkipLink />
       <BrandPanel />
-      <main id="main" className="flex flex-1 items-center justify-center bg-bg px-4 py-10 sm:py-12">
-        <Outlet />
-      </main>
+      <div className="flex flex-1 flex-col bg-bg">
+        <div className="flex justify-end px-6 pt-6 sm:px-10">
+          <Link to={homeHref()} className="text-sm font-semibold text-text-muted hover:text-text hover:underline">
+            ← Back to {currentHost.kind === 'platform' ? 'ArkiLaunch' : 'the storefront'}
+          </Link>
+        </div>
+        <main id="main" className="flex flex-1 items-center justify-center px-4 py-10">
+          <Outlet />
+        </main>
+        <HelpFooter />
+      </div>
     </div>
+  );
+}
+
+// The tenant's own contact details, so a stuck customer knows who to call.
+function HelpFooter() {
+  const tenant = useTenant();
+  if (currentHost.kind === 'platform' || !(tenant?.phone || tenant?.contactEmail)) return null;
+  return (
+    <footer className="flex flex-wrap justify-center gap-x-6 gap-y-1 border-t border-border px-6 py-5 text-sm text-text-muted">
+      <span>Need help signing in?</span>
+      {tenant.phone && (
+        <a href={`tel:${tenant.phone}`} className="font-semibold text-text hover:underline">
+          {tenant.phone}
+        </a>
+      )}
+      {tenant.contactEmail && (
+        <a href={`mailto:${tenant.contactEmail}`} className="font-semibold text-text hover:underline">
+          {tenant.contactEmail}
+        </a>
+      )}
+    </footer>
   );
 }
 
