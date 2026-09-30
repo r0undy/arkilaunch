@@ -8,22 +8,9 @@ import { getCurrentRole } from '../lib/guards.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
 import { EmptyState } from './empty-state.js';
-import {
-  Bell,
-  CalendarDays,
-  CircleCheck,
-  CircleX,
-  Clock,
-  MessageSquare,
-  ReceiptText,
-  TriangleAlert,
-  Truck,
-  Wrench,
-  type LucideIcon,
-} from 'lucide-react';
 import { Pagination, PAGE_SIZE } from './pagination.js';
 import { formatRelativeTime } from '../lib/format-time.js';
-import { formatDateTime, formatPeso, formatStatus, shortCode } from '../lib/format.js';
+import { formatDate, formatDateTime, formatPeso, formatStatus, shortCode } from '../lib/format.js';
 import { Skeleton } from './skeleton.js';
 
 function payloadLines(payload: unknown): string[] {
@@ -461,54 +448,80 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
 
 export type NotificationTone = 'success' | 'danger' | 'warning' | 'neutral';
 
-export function notificationIcon(type: string): { Icon: LucideIcon; tone: NotificationTone } {
-  if (/(failed|rejected|mismatch|disputed|cancelled|declined)$/.test(type)) return { Icon: CircleX, tone: 'danger' };
-  if (/^(payment_|weekly_invoice)/.test(type)) {
-    return { Icon: ReceiptText, tone: /(paid|received)$/.test(type) ? 'success' : 'neutral' };
-  }
-  if (type === 'deposit_low') return { Icon: ReceiptText, tone: 'warning' };
-  if (type.startsWith('maintenance_')) return { Icon: Wrench, tone: 'warning' };
-  if (type.includes('weather')) return { Icon: TriangleAlert, tone: 'warning' };
-  if (/(approved|verified|confirmed|accepted|delivered)$/.test(type)) return { Icon: CircleCheck, tone: 'success' };
-  if (type.startsWith('truck_')) return { Icon: Truck, tone: 'neutral' };
-  if (/^(customer_message|negotiation_reply|company_review_comment|document_resubmit_required)$/.test(type)) {
-    return { Icon: MessageSquare, tone: 'neutral' };
-  }
-  if (type.startsWith('edtr_') || type === 'daily_log_approved') {
-    return { Icon: Clock, tone: type === 'edtr_needs_correction' ? 'warning' : 'neutral' };
-  }
-  if (/^(booking_|quote_|change_request_|call_|equipment_)/.test(type)) return { Icon: CalendarDays, tone: 'neutral' };
-  return { Icon: Bell, tone: 'neutral' };
+function toneOf(type: string): NotificationTone {
+  if (/(failed|rejected|mismatch|disputed|cancelled|declined)$/.test(type)) return 'danger';
+  if (/(approved|verified|confirmed|accepted|delivered|paid|received)$/.test(type)) return 'success';
+  if (type === 'deposit_low' || type === 'edtr_needs_correction' || type.startsWith('maintenance_') || type.includes('weather'))
+    return 'warning';
+  return 'neutral';
 }
 
-const TONE_CLASS: Record<NotificationTone, string> = {
-  success: 'bg-success/10 text-success',
-  danger: 'bg-error/10 text-error',
-  // Warning yellow fails contrast as text.
-  warning: 'bg-warning/20 text-text',
-  neutral: 'bg-primary text-on-primary',
+function categoryOf(type: string): string {
+  if (/^(payment_|weekly_invoice|deposit_)/.test(type)) return 'Billing';
+  if (type.startsWith('maintenance_')) return 'Maintenance';
+  if (type.includes('weather')) return 'Weather';
+  if (type.startsWith('truck_')) return 'Truck';
+  if (/^(customer_message|negotiation_reply|company_review_comment)$/.test(type)) return 'Message';
+  if (type.startsWith('edtr_') || type === 'daily_log_approved') return 'Field log';
+  if (/^(company_|document_)/.test(type)) return 'Verification';
+  if (/^(booking_|quote_|change_request_|call_|equipment_)/.test(type)) return 'Booking';
+  return 'Update';
+}
+
+/** What the event is about and how it went: a word, not a pictogram. */
+export function notificationKind(type: string): { label: string; tone: NotificationTone } {
+  return { label: categoryOf(type), tone: toneOf(type) };
+}
+
+// The unread edge carries the tone; warning yellow fails contrast as text, so that label stays ink.
+const EDGE_CLASS: Record<NotificationTone, string> = {
+  success: 'border-l-success',
+  danger: 'border-l-error',
+  warning: 'border-l-warning',
+  neutral: 'border-l-primary',
+};
+const LABEL_CLASS: Record<NotificationTone, string> = {
+  success: 'text-success',
+  danger: 'text-error',
+  warning: 'text-text',
+  neutral: 'text-text-muted',
 };
 
-export function NotificationIcon({ type, unread, className = '' }: { type: string; unread: boolean; className?: string }) {
-  const { Icon, tone } = notificationIcon(type);
-  return (
-    <span
-      aria-hidden="true"
-      className={[
-'flex shrink-0 items-center justify-center rounded-md',
-        unread ? TONE_CLASS[tone] : 'bg-surface-sunk text-text-muted',
-        className,
-      ].join(' ')}
-    >
-      <Icon className="h-5 w-5" />
-    </span>
-  );
+export function notificationEdge(type: string, unread: boolean): string {
+  return `border-l-[3px] ${unread ? EDGE_CLASS[toneOf(type)] : 'border-l-transparent'}`;
+}
+
+export function NotificationKindLabel({ type }: { type: string }) {
+  const { label, tone } = notificationKind(type);
+  return <span className={`text-xs font-semibold uppercase tracking-wider ${LABEL_CLASS[tone]}`}>{label}</span>;
+}
+
+const manilaDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
+function dayHeading(date: Date): string {
+  const now = new Date();
+  if (manilaDay(date) === manilaDay(now)) return 'Today';
+  if (manilaDay(date) === manilaDay(new Date(now.getTime() - 86_400_000))) return 'Yesterday';
+  return formatDate(date);
+}
+
+// Newest first already, so consecutive runs of one day form a group.
+function groupByDay(items: NotificationResponse[]): [string, NotificationResponse[]][] {
+  const groups: [string, NotificationResponse[]][] = [];
+  for (const item of items) {
+    const heading = dayHeading(new Date(item.createdAt));
+    const last = groups.at(-1);
+    if (last?.[0] === heading) last[1].push(item);
+    else groups.push([heading, [item]]);
+  }
+  return groups;
 }
 
 function NotificationRow({ notification, area }: { notification: NotificationResponse; area: FeedArea }) {
   const queryClient = useQueryClient();
   const isUnread = notification.status === 'unread';
-  const when = formatRelativeTime(new Date(notification.createdAt).toISOString());
+  const createdAt = new Date(notification.createdAt).toISOString();
+  const when = formatRelativeTime(createdAt);
   const described = describeNotification(notification.notificationType, notification.payload, area);
 
   const markRead = useMutation({
@@ -517,67 +530,67 @@ function NotificationRow({ notification, area }: { notification: NotificationRes
   });
 
   const content = (
-    <>
-        <NotificationIcon type={notification.notificationType} unread={isUnread} className="h-11 w-11" />
-        <div className="min-w-0">
-          <p className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium text-text">
-              {described?.title ?? formatStatus(notification.notificationType)}
-            </span>
-            <span aria-hidden="true" className="h-1 w-1 rounded-full bg-border" />
-            <span className="font-mono text-xs text-text-muted">
-              {shortCode('log', notification.id)}
-            </span>
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <NotificationKindLabel type={notification.notificationType} />
+      <p className={`text-sm text-text ${isUnread ? 'font-semibold' : ''}`}>
+        {isUnread && <span className="sr-only">Unread: </span>}
+        {described?.title ?? formatStatus(notification.notificationType)}
+      </p>
+      {described ? (
+        <p className="text-sm text-text-muted">{described.body}</p>
+      ) : (
+        payloadLines(notification.payload).map((line) => (
+          <p key={line} className="text-sm text-text-muted">
+            {line}
           </p>
-          {described ? (
-            <p className="text-sm text-text-muted">{described.body}</p>
-          ) : (
-            payloadLines(notification.payload).map((line) => (
-              <p key={line} className="text-sm text-text-muted">
-                {line}
-              </p>
-            ))
-          )}
-          {described?.action && (
-            <span className="mt-1 inline-block text-sm font-semibold text-accent">
-              {described.action.label} <span aria-hidden="true">→</span>
-            </span>
-          )}
-        </div>
-    </>
+        ))
+      )}
+      {described?.action && (
+        <span className="mt-1 text-sm font-medium text-accent underline-offset-2 group-hover:underline">
+          {described.action.label}
+        </span>
+      )}
+    </div>
   );
 
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-4 last:border-b-0">
+    <li
+      className={[
+        'flex items-start gap-4 border-b border-border px-4 py-3.5 last:border-b-0',
+        notificationEdge(notification.notificationType, isUnread),
+        isUnread ? '' : 'bg-surface-sunk/40',
+      ].join(' ')}
+    >
       {described?.action ? (
         <Link
           to={described.action.to}
           params={described.action.params}
           {...(described.action.search ? { search: described.action.search } : {})}
           onClick={() => isUnread && markRead.mutate()}
-          className="-m-2 flex min-w-0 flex-1 items-start gap-3 rounded-md p-2 hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring"
+          className="group min-w-0 flex-1 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring"
         >
           {content}
         </Link>
       ) : (
-        <div className="flex min-w-0 flex-1 items-start gap-3">{content}</div>
+        <div className="min-w-0 flex-1">{content}</div>
       )}
 
-      <div className="flex shrink-0 items-center gap-3">
-        <span className="text-right text-sm text-text-muted" title={when?.absolute}>
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <time dateTime={createdAt} title={when?.absolute} className="font-mono text-xs tabular-nums text-text-muted">
           {when?.relative ?? '--'}
-        </span>
+        </time>
         {isUnread && (
-          <Button
-            variant="secondary"
-            loading={markRead.isPending}
+          <button
+            type="button"
+            disabled={markRead.isPending}
             onClick={() => markRead.mutate()}
+            className="min-h-6 text-xs font-medium text-text-muted underline-offset-2 hover:text-text hover:underline disabled:opacity-50"
           >
-            Dismiss
-          </Button>
+            Mark read
+          </button>
         )}
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -616,9 +629,10 @@ export function NotificationFeed() {
   return (
     <Surface radius="md" elevation="sm" className="overflow-hidden p-0">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <h2 className="text-heading-md text-text">Pending items</h2>
+        <h2 className="text-heading-md text-text">
+          Inbox <span className="font-mono text-sm font-normal tabular-nums text-text-muted">{query.data.total}</span>
+        </h2>
         <div className="flex items-center gap-3">
-          <p className="text-sm text-text-muted">{query.data.total} in total</p>
           {query.data.items.some((item) => item.status === 'unread') && (
             <Button
               variant="secondary"
@@ -630,11 +644,18 @@ export function NotificationFeed() {
           )}
         </div>
       </div>
-      <div>
-        {query.data.items.map((item) => (
-          <NotificationRow key={item.id} notification={item} area={area} />
-        ))}
-      </div>
+      {groupByDay(query.data.items).map(([heading, items]) => (
+        <section key={heading} aria-label={heading}>
+          <h3 className="border-b border-border bg-surface-sunk px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">
+            {heading}
+          </h3>
+          <ul>
+            {items.map((item) => (
+              <NotificationRow key={item.id} notification={item} area={area} />
+            ))}
+          </ul>
+        </section>
+      ))}
       <Pagination
         offset={offset}
         limit={PAGE_SIZE}
