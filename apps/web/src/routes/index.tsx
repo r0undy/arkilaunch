@@ -47,45 +47,24 @@ function LandingPage() {
   const heroImage = tenant?.heroUrl ?? firstPhoto;
 
   return (
-    <div className="flex flex-col gap-16 overflow-x-clip px-4 py-12 sm:px-8 lg:gap-24 lg:py-20">
-      <section className="relative isolate -mb-4 ml-[calc(50%-50vw)] flex min-h-[70vh] w-screen items-end overflow-hidden bg-surface-sunk lg:-mb-8">
-        {heroImage && (
-          <>
-            <img
-              src={heroImage}
-              alt=""
-              loading="eager"
-              fetchPriority="high"
-              className="absolute inset-0 -z-10 size-full object-cover"
-            />
-            <div className="absolute inset-0 -z-10 bg-linear-to-r from-black/70 via-black/40 to-transparent" />
-          </>
-        )}
-        <div
-          className={[
-            'mx-auto flex w-full max-w-shell flex-col gap-6 px-4 py-16 sm:px-8 lg:py-24',
-            heroImage ? 'text-white text-shadow-lg' : 'text-text',
-          ].join(' ')}
-        >
-          <h1 className="max-w-2xl text-display-lg font-semibold tracking-tight text-pretty lg:text-display-xl">
-            {tenant?.tagline || 'Industrial equipment, ready to rent'}
-          </h1>
-          <p className={`max-w-xl text-body-lg ${heroImage ? 'text-white/85' : 'text-text-muted'}`}>
-            Browse the fleet, pick your dates, and book online.
+    <div className="flex flex-col gap-16 px-4 py-12 sm:px-8 lg:gap-24 lg:py-20">
+      <section className="grid items-center gap-10 lg:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-5">
+          <h1 className="text-display-lg text-text lg:text-display-xl">Industrial fleet management &amp; rentals</h1>
+          <p className="max-w-xl text-body-lg text-text-muted">
+            {tenant?.tagline ??
+              'Handwritten field logs get scanned and reconciled before any peso is deducted. Every quote prices against today’s diesel, not last week’s estimate.'}
           </p>
           <div className="flex flex-wrap gap-3">
-            <Button variant="primary" onClick={() => navigate({ to: '/equipment' })}>
-              Rent now
-            </Button>
-            <Button
-              variant="secondary"
-              className={heroImage ? 'border-white/60 bg-transparent text-white hover:bg-white/15' : ''}
-              onClick={() => navigate({ to: '/equipment' })}
-            >
-              View fleet
-            </Button>
+          <Button variant="primary" onClick={() => navigate({ to: '/equipment' })}>
+            Rent now
+          </Button>
+          <Button variant="secondary" onClick={() => navigate({ to: '/equipment' })}>
+            View fleet
+          </Button>
           </div>
         </div>
+        {heroImage && <img src={heroImage} alt="" className="aspect-[4/3] w-full rounded-lg object-cover" />}
       </section>
 
       <section className="flex flex-col gap-6">
