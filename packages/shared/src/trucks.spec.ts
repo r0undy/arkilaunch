@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { costItemQuoteLines, driverPay, estimateTruckCost, TruckCostPolicySchema, isSelfLoadingTruckType, negotiationFloor, priceTruckTrip, truckProfit } from './trucks.js';
+import { costItemQuoteLines, customerTruckLines, driverPay, estimateTruckCost, TruckCostPolicySchema, isSelfLoadingTruckType, negotiationFloor, priceTruckTrip, truckProfit } from './trucks.js';
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 describe('priceTruckTrip', () => {
@@ -192,5 +192,33 @@ describe('tenant truck pricing policy', () => {
   it('computes profit and margin', () => {
     expect(truckProfit(50_000, 30_000)).toEqual({ profitPhp: 20_000, marginPct: 40 });
     expect(truckProfit(0, 100).marginPct).toBeNull();
+  });
+});
+
+describe('customerTruckLines', () => {
+  const price = {
+    km: 40,
+    lines: [
+      { label: 'Base fee', amountPhp: 1000 },
+      { label: 'Distance (40 km × ₱50/km)', amountPhp: 2000 },
+      { label: 'Toll: SLEX', amountPhp: 500 },
+    ],
+    totalPhp: 3500,
+  };
+  const sum = (lines: { amountPhp: number }[]) => Math.round(lines.reduce((a, l) => a + l.amountPhp, 0) * 100) / 100;
+
+  it('keeps the route lines before a price is agreed', () => {
+    expect(customerTruckLines(price, null)).toBe(price.lines);
+  });
+
+  it('rescales to the agreed price, tolls untouched, labels kept', () => {
+    const lines = customerTruckLines(price, 3000.01);
+    expect(sum(lines)).toBe(3000.01);
+    expect(lines.find((l) => l.label === 'Toll: SLEX')!.amountPhp).toBe(500);
+    expect(lines.map((l) => l.label)).toEqual(price.lines.map((l) => l.label));
+  });
+
+  it('falls back to one line when the tolls alone exceed the agreed price', () => {
+    expect(customerTruckLines(price, 400)).toEqual([{ label: 'Agreed trip price', amountPhp: 400 }]);
   });
 });

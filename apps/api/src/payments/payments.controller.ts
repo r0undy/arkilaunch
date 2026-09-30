@@ -37,6 +37,13 @@ export class TruckPaymentsController {
     return this.payments.checkoutTruck(req.ctx, id, body, req.headers.origin);
   }
 
+  @Post('me/truck-requests/:id/coupon')
+  @RequirePermission('payment:checkout')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  previewTruckCoupon(@Param('id') id: string, @Body() body: CouponPreviewRequestDto, @Req() req: CtxRequest) {
+    return this.payments.previewTruckCoupon(req.ctx, id, body.code);
+  }
+
   @Post('me/invoices/:id/checkout')
   @RequirePermission('payment:checkout')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })

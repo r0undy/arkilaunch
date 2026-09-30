@@ -107,7 +107,7 @@ export interface CouponListResponse {
 export interface CouponPreviewResponse {
   code: string;
   discountPhp: number;
-  rentPhp: number;
+  mobilizationPhp: number;
   depositPhp: number;
   totalPhp: number;
 }

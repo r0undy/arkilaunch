@@ -172,6 +172,9 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
       revision: z.number().int(),
       status: z.string(),
       totalPhp: z.number().nullable(),
+      // Paid upfront with the consumable deposit.
+      mobilizationPhp: z.number().optional(),
+      demobilizationPhp: z.number().optional(),
       createdAt: z.coerce.date(),
       inNegotiation: z.boolean().optional(),
     })

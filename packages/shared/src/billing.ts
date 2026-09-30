@@ -97,6 +97,10 @@ export interface StatementWeek {
   fromDeposit: number;
   invoiced: number;
   unbilled: number;
+  // Hours beyond the deposit, billed weekly to the customer: invoiced + unbilled.
+  customerPays: number;
+  paid: number;
+  outstanding: number;
 }
 
 export interface StatementOfAccount {

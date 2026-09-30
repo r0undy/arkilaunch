@@ -10,7 +10,7 @@ import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
 import { Button, buttonClass } from '../components/button.js';
-import { Input } from '../components/input.js';
+import { CouponField } from '../components/coupon-field.js';
 import { EmptyState } from '../components/empty-state.js';
 import { StatusPill } from '../components/status-pill.js';
 import { TriangleAlert } from 'lucide-react';
@@ -32,19 +32,27 @@ const METHODS: { id: PaymentMethod; title: string; description: string }[] = [
   },
 ];
 
-// Shown, never sent: the API prices the charge itself.
-export function amountDue(booking: BookingDetailResponse): { rent: number; deposit: number | null; total: number | null } {
+// Shown, never sent: the API prices the charge itself. Upfront is the
+// consumable deposit (the admin's % of the rented hours) plus mob/demob;
+// hours past the deposit are billed weekly. `rent` is the full quote, for reference.
+export function amountDue(booking: BookingDetailResponse): {
+  rent: number;
+  deposit: number | null;
+  mobilization: number;
+  total: number | null;
+} {
   const quote = booking.quotation;
   if (quote?.status === 'accepted') {
     const rent = quote.totalPhp ?? 0;
+    const mobilization = (quote.mobilizationPhp ?? 0) + (quote.demobilizationPhp ?? 0);
     const depositPaid = booking.invoices.some((i) => i.invoiceType === 'deposit' && i.status === 'paid');
     const deposit = depositPaid ? 0 : (booking.deposit.required ?? 0);
-    // An invoice already issued is charged as it stands (a coupon may have lowered its rent).
+    // An invoice already issued is charged as it stands (a coupon may have lowered it).
     const issued = booking.invoices.find((i) => i.invoiceType === 'booking' && i.status === 'issued');
-    return { rent, deposit, total: issued?.amount ?? rent + deposit };
+    return { rent, deposit, mobilization, total: issued?.amount ?? deposit + mobilization };
   }
   const issued = booking.invoices.find((i) => i.invoiceType === 'deposit' && i.status === 'issued');
-  return { rent: 0, deposit: issued?.amount ?? null, total: issued?.amount ?? null };
+  return { rent: 0, deposit: issued?.amount ?? null, mobilization: 0, total: issued?.amount ?? null };
 }
 
 function OrderSummary({ booking, coupon }: { booking: BookingDetailResponse; coupon: CouponPreviewResponse | null }) {
@@ -70,10 +78,14 @@ function OrderSummary({ booking, coupon }: { booking: BookingDetailResponse; cou
       </div>
 
       <div className="flex flex-col gap-2 text-sm">
-        {booking.quotation?.status === 'accepted' && (
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-text-muted">Consumable deposit (prepaid hours)</span>
+          <span className="font-mono text-text">{due.deposit === null ? 'Set at payment' : formatPeso(due.deposit)}</span>
+        </div>
+        {due.mobilization > 0 && (
           <div className="flex items-center justify-between gap-3">
-            <span className="text-text-muted">Agreed rental (revision {booking.quotation.revision})</span>
-            <span className="font-mono text-text">{formatPeso(due.rent)}</span>
+            <span className="text-text-muted">Mobilization and demobilization</span>
+            <span className="font-mono text-text">{formatPeso(due.mobilization)}</span>
           </div>
         )}
         {coupon && (
@@ -82,14 +94,17 @@ function OrderSummary({ booking, coupon }: { booking: BookingDetailResponse; cou
             <span className="font-mono text-success">-{formatPeso(coupon.discountPhp)}</span>
           </div>
         )}
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-text-muted">Consumable deposit</span>
-          <span className="font-mono text-text">{due.deposit === null ? 'Set at payment' : formatPeso(due.deposit)}</span>
-        </div>
       </div>
 
+      {booking.quotation?.status === 'accepted' && (
+        <p className="text-sm text-text-muted">
+          Agreed rental (revision {booking.quotation.revision}): {formatPeso(due.rent)}. Your deposit is used up by the
+          hours logged; hours after that are billed weekly as used.
+        </p>
+      )}
+
       <div className="flex items-end justify-between gap-3 border-t border-border pt-4">
-        <span className="text-sm font-medium text-text">Total amount</span>
+        <span className="text-sm font-medium text-text">Pay now</span>
         <div className="text-right">
           <p className="font-mono text-display-md text-text">{total === null ? '--' : formatPeso(total)}</p>
           <p className="text-sm font-medium text-text-muted">PHP</p>
@@ -117,57 +132,6 @@ function checkoutError(err: unknown): string {
   return apiErrorText(err);
 }
 
-// The server says what a code takes off (rent only); nothing here computes money.
-function CouponField({
-  bookingId,
-  applied,
-  onApplied,
-}: {
-  bookingId: string;
-  applied: CouponPreviewResponse | null;
-  onApplied: (coupon: CouponPreviewResponse | null) => void;
-}) {
-  const [code, setCode] = useState('');
-  const preview = useMutation({
-    mutationFn: (value: string) => apiPost<CouponPreviewResponse>(`/bookings/${bookingId}/coupon`, { code: value }),
-    onSuccess: (data) => onApplied(data),
-  });
-
-  if (applied) {
-    return (
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="text-text">
-          Coupon <span className="font-mono">{applied.code}</span> applied
-        </span>
-        <Button variant="ghost" onClick={() => onApplied(null)}>
-          Remove
-        </Button>
-      </div>
-    );
-  }
-  return (
-    <form
-      className="flex items-end gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (code.trim()) preview.mutate(code.trim().toUpperCase());
-      }}
-    >
-      <div className="min-w-0 flex-1">
-        <Input
-          label="Coupon code"
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          autoComplete="off"
-          error={preview.isError ? checkoutError(preview.error) : undefined}
-        />
-      </div>
-      <Button type="submit" variant="secondary" loading={preview.isPending}>
-        Apply
-      </Button>
-    </form>
-  );
-}
 
 function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
   const navigate = useNavigate();
@@ -287,7 +251,7 @@ function CheckoutForm({ booking }: { booking: BookingDetailResponse }) {
       <div className="flex min-w-0 flex-col gap-3">
         <OrderSummary booking={booking} coupon={coupon} />
         {booking.quotation?.status === 'accepted' && (
-          <CouponField bookingId={booking.id} applied={coupon} onApplied={setCoupon} />
+          <CouponField previewPath={`/bookings/${booking.id}/coupon`} applied={coupon} onApplied={setCoupon} />
         )}
 
         {method === 'manual' ? (

@@ -368,18 +368,34 @@ export function costItemQuoteLines(
   const items = cost.lines.map((l) => ({ label: plain(l.label), amountPhp: l.amountPhp }));
   const remainder = round2HalfUp(price.totalPhp - items.reduce((acc, l) => acc + l.amountPhp, 0));
   if (remainder >= 0) return remainder > 0 ? [...items, { label: remainderLabel, amountPhp: remainder }] : items;
+  return scaleLinesTo(items, price.totalPhp) ?? price.lines;
+}
+
+// Scales the non-toll lines so all lines sum exactly to targetPhp (tolls are
+// pass-through and keep their amount); rounding drift lands on the largest
+// line. Null when there is nothing to scale or the tolls alone exceed it.
+export function scaleLinesTo(lines: TruckPriceLine[], targetPhp: number): TruckPriceLine[] | null {
   const isToll = (l: TruckPriceLine) => l.label.startsWith('Toll: ');
-  const tolls = items.filter(isToll).reduce((acc, l) => acc + l.amountPhp, 0);
-  const rest = items.filter((l) => !isToll(l)).reduce((acc, l) => acc + l.amountPhp, 0);
-  if (rest <= 0 || tolls >= price.totalPhp) return price.lines;
-  const factor = (price.totalPhp - tolls) / rest;
-  const scaled = items.map((l) => (isToll(l) ? l : { ...l, amountPhp: round2HalfUp(l.amountPhp * factor) }));
-  const drift = round2HalfUp(price.totalPhp - scaled.reduce((acc, l) => acc + l.amountPhp, 0));
+  const tolls = lines.filter(isToll).reduce((acc, l) => acc + l.amountPhp, 0);
+  const rest = lines.filter((l) => !isToll(l)).reduce((acc, l) => acc + l.amountPhp, 0);
+  if (rest <= 0 || tolls >= targetPhp) return null;
+  const factor = (targetPhp - tolls) / rest;
+  const scaled = lines.map((l) => (isToll(l) ? l : { ...l, amountPhp: round2HalfUp(l.amountPhp * factor) }));
+  const drift = round2HalfUp(targetPhp - scaled.reduce((acc, l) => acc + l.amountPhp, 0));
   if (drift !== 0) {
     const largest = scaled.reduce((best, l, i) => (!isToll(l) && l.amountPhp > scaled[best]!.amountPhp ? i : best), scaled.findIndex((l) => !isToll(l)));
     scaled[largest] = { ...scaled[largest]!, amountPhp: round2HalfUp(scaled[largest]!.amountPhp + drift) };
   }
   return scaled;
+}
+
+// The customer's breakdown of the price they actually pay: the quoted lines
+// rescaled to the agreed price, so they always add up. Display only; the
+// saved price, internal cost, floor and profit are never touched.
+export function customerTruckLines(price: TruckPrice, agreedPhp: number | null): TruckPriceLine[] {
+  const sum = round2HalfUp(price.lines.reduce((acc, l) => acc + l.amountPhp, 0));
+  if (agreedPhp === null || agreedPhp === sum) return price.lines;
+  return scaleLinesTo(price.lines, agreedPhp) ?? [{ label: 'Agreed trip price', amountPhp: round2HalfUp(agreedPhp) }];
 }
 
 // Saved on the request when it is priced (0072), so a later policy change

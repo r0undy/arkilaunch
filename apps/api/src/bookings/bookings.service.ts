@@ -473,6 +473,8 @@ export class BookingsService {
               revision: quotation.revision,
               status: quotation.status,
               totalPhp: quotation.totalPhp !== null ? Number(quotation.totalPhp) : null,
+              mobilizationPhp: Number(quotation.mobilizationPhp),
+              demobilizationPhp: Number(quotation.demobilizationPhp),
               createdAt: quotation.createdAt,
               inNegotiation: await inNegotiation(tx, quotation),
             }

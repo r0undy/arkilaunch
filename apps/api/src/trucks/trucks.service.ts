@@ -8,6 +8,7 @@ import {
   DEFAULT_TRUCK_COST_POLICY,
   estimateTruckCost,
   costItemQuoteLines,
+  customerTruckLines,
   negotiationFloor,
   TruckCostPolicySchema,
   truckProfit,
@@ -96,7 +97,8 @@ function toResponse(row: typeof truckRequests.$inferSelect, contact: Contact, ct
     etaAt: row.etaAt?.toISOString() ?? null,
     confirmedKm: row.confirmedKm === null ? null : Number(row.confirmedKm),
     status: row.status as TruckRequestStatus,
-    price: row.price,
+    // A customer sees the breakdown of the price they pay; staff keep the route lines.
+    price: ctx.role === 'customer' ? { ...row.price, lines: customerTruckLines(row.price, num(row.agreedPricePhp)) } : row.price,
     agreedPricePhp: row.agreedPricePhp === null ? null : Number(row.agreedPricePhp),
     capPhp: num(row.capPhp),
     acceptedPricePhp: num(row.acceptedPricePhp),
