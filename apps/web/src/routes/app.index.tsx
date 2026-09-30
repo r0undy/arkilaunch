@@ -18,6 +18,7 @@ import {
 } from '../lib/queries.js';
 import { StatTile } from '../components/stat-tile.js';
 import { PageHeader } from '../components/page-header.js';
+import { Skeleton } from '../components/skeleton.js';
 import { WeatherBanner } from '../components/weather-banner.js';
 import type { WeatherTone } from '../lib/weather-code.js';
 import { Surface } from '../components/surface.js';
@@ -60,26 +61,31 @@ const SEVERITY_META: Record<
   },
 };
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'success' }) {
+function Kpi({ label, value, tone, pending }: { label: string; value: string; tone?: 'success'; pending?: boolean }) {
   return (
     <div className="flex flex-col gap-0.5 border-r border-border px-4 py-3 even:border-r-0 sm:even:border-r sm:last:border-r-0">
       <span className="text-sm font-medium text-text-muted">
         {label}
       </span>
-      <span
-        className={[
-'font-mono text-xl font-medium tabular-nums sm:text-2xl',
-          tone === 'success' ? 'text-success' : 'text-text',
-        ].join(' ')}
-      >
-        {value}
-      </span>
+      {pending ? (
+        <span aria-hidden="true" className="h-7 w-24 animate-pulse rounded-sm bg-border/60 sm:h-8" />
+      ) : (
+        <span
+          className={[
+            'font-mono text-xl font-medium tabular-nums sm:text-2xl',
+            tone === 'success' ? 'text-success' : 'text-text',
+          ].join(' ')}
+        >
+          {value}
+        </span>
+      )}
     </div>
   );
 }
 
 const ROW =
   'flex w-full items-center justify-between gap-3 border-b border-border px-5 py-2.5 text-left text-sm last:border-0 hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring';
+const QueueLoading = ({ label }: { label: string }) => <Skeleton label={label} rows={2} className="px-5 py-3 [&>div]:h-8" />;
 const FOOT_LINK = 'block border-t border-border px-5 py-2.5 text-sm font-medium text-accent hover:underline';
 
 type QueueTab = 'payments' | 'incidents' | 'weather';
@@ -154,19 +160,23 @@ function AdminDashboardPage() {
         <div className="grid grid-cols-2 divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
           <Kpi
             label="Invoiced"
+            pending={!snapshot}
             value={snapshot ? formatPeso(snapshot.financial.invoiced.total) : '--'}
           />
           <Kpi
             label="Utilization"
+            pending={!snapshot}
             value={utilizationPct === null ? '--' : `${utilizationPct.toFixed(1)}%`}
             tone="success"
           />
           <Kpi
             label="Runtime"
+            pending={!snapshot}
             value={recoveredHours === null ? '--' : `${recoveredHours.toFixed(1)} h`}
           />
           <Kpi
             label="Deposit deducted"
+            pending={!snapshot}
             value={snapshot ? formatPeso(snapshot.financial.depositDeducted) : '--'}
           />
         </div>
@@ -217,9 +227,11 @@ function AdminDashboardPage() {
         }
       >
         {reviewItems.length === 0 ? (
-          <p className="px-5 py-3 text-sm text-text-muted">
-            {edtrList ? 'Queue clear. No field logs waiting on a human decision.' : 'Loading...'}
-          </p>
+          edtrList ? (
+            <p className="px-5 py-3 text-sm text-text-muted">Queue clear. No field logs waiting on a human decision.</p>
+          ) : (
+            <QueueLoading label="Loading field logs" />
+          )
         ) : (
           reviewGroups.slice(0, 5).map((group) => (
             <Link
@@ -270,9 +282,11 @@ function AdminDashboardPage() {
         {tab === 'payments' && (
           <div role="tabpanel" aria-label="Payments">
             {pendingInvoices.length === 0 ? (
-              <p className="px-5 py-3 text-sm text-text-muted">
-                {invoices ? 'Nothing awaiting payment.' : 'Loading...'}
-              </p>
+              invoices ? (
+                <p className="px-5 py-3 text-sm text-text-muted">Nothing awaiting payment.</p>
+              ) : (
+                <QueueLoading label="Loading invoices" />
+              )
             ) : (
               pendingInvoices.slice(0, 6).map((invoice) => (
                 <button type="button" key={invoice.id} onClick={() => setInvoiceOpen(invoice)} className={ROW}>
@@ -293,9 +307,11 @@ function AdminDashboardPage() {
         {tab === 'incidents' && (
           <div role="tabpanel" aria-label="Incidents">
             {(incidents?.items ?? []).length === 0 ? (
-              <p className="px-5 py-3 text-sm text-text-muted">
-                {incidents ? 'No weather incidents logged.' : 'Loading...'}
-              </p>
+              incidents ? (
+                <p className="px-5 py-3 text-sm text-text-muted">No weather incidents logged.</p>
+              ) : (
+                <QueueLoading label="Loading incidents" />
+              )
             ) : (
               (incidents?.items ?? []).slice(0, 5).map((incident) => (
                 <button type="button" key={incident.id} onClick={() => setIncidentOpen(incident)} className={ROW}>
@@ -319,9 +335,11 @@ function AdminDashboardPage() {
         {tab === 'weather' && (
           <div role="tabpanel" aria-label="Weather">
             {(sites?.items ?? []).length === 0 ? (
-              <p className="px-5 py-3 text-sm text-text-muted">
-                {sites ? 'No sites registered yet.' : 'Loading...'}
-              </p>
+              sites ? (
+                <p className="px-5 py-3 text-sm text-text-muted">No sites registered yet.</p>
+              ) : (
+                <QueueLoading label="Loading sites" />
+              )
             ) : (
               [...(sites?.items ?? [])]
                 .sort((a, b) => Number(!!b.latestSeverity && b.latestSeverity !== 'none') - Number(!!a.latestSeverity && a.latestSeverity !== 'none'))

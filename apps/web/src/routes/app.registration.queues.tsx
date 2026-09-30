@@ -27,6 +27,7 @@ import { Modal } from '../components/modal.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { Tabs } from '../components/tabs.js';
 import { Alert } from '../components/alert.js';
+import { Skeleton } from '../components/skeleton.js';
 import { ExpandableSection } from '../components/expandable-section.js';
 import { useToast } from '../components/toast.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -549,7 +550,7 @@ function DocumentPreviewModal({
 
   return (
     <Modal open onClose={onClose} title="Document" size="lg">
-      {query.isPending && <p className="text-sm text-text-muted">Loading...</p>}
+      {query.isPending && <Skeleton label="Loading the document" rows={1} className="[&>div]:h-64" />}
       {query.isError && <Alert type="error">{apiErrorText(query.error)}</Alert>}
       {query.data &&
         (asImage ? (
@@ -647,10 +648,9 @@ function CompanyQueue({ kycStatus }: { kycStatus: 'pending' | 'approved' }) {
         rowKey={(c) => c.id}
         onRowClick={(c) => setOpenId(c.id)}
         rowLabel={(c) => `Review ${c.companyName}`}
+        loading={query.isPending}
         empty={
-          query.isPending
-            ? 'Loading...'
-            : kycStatus === 'pending'
+          kycStatus === 'pending'
               ? 'Nothing waiting. Companies customers add appear here for review.'
               : 'No verified companies yet. Companies you approve appear here.'
         }

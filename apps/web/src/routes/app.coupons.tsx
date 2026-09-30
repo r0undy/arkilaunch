@@ -182,7 +182,8 @@ function CouponsPage() {
         columns={COLUMNS}
         rows={coupons.data?.items ?? []}
         rowKey={(c) => c.id}
-        empty={coupons.isPending ? 'Loading coupons...' : 'No coupons yet. Create one and share the code with a customer.'}
+        loading={coupons.isPending}
+        empty="No coupons yet. Create one and share the code with a customer."
         header={{ title: 'Coupons', count: coupons.data?.total ?? 0, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={coupons.data?.total ?? 0} onOffsetChange={setOffset} noun="coupons" busy={coupons.isFetching} /> }}
       />
       <CreateCouponModal open={creating} onClose={() => setCreating(false)} />

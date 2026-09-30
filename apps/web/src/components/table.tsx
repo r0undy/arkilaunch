@@ -2,6 +2,7 @@ import { Fragment, useState, type MouseEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Container, type ContainerHeaderProps } from './container.js';
 import { useMediaQuery } from '../lib/use-media-query.js';
+import { Skeleton } from './skeleton.js';
 
 export type ColumnKind = 'text' | 'date' | 'number' | 'money' | 'status' | 'action';
 
@@ -23,6 +24,8 @@ export interface TableProps<T> {
   header?: ContainerHeaderProps;
   footer?: ReactNode;
   empty?: ReactNode;
+  /** First load: pulse rows in place of `empty`. */
+  loading?: boolean;
   cardUntil?: number;
 }
 
@@ -61,7 +64,7 @@ function RowCards<T>({
   const actions = columns.filter((c) => c.kind === 'action' && c !== title);
   const pairs = columns.filter((c) => c !== title && c !== status && !actions.includes(c));
 
-  if (rows.length === 0) return empty ? <p className="px-4 py-8 text-center text-sm text-text-muted">{empty}</p> : null;
+  if (rows.length === 0) return empty ? <div className="px-4 py-8 text-center text-sm text-text-muted">{empty}</div> : null;
   return (
     <ul className="text-sm text-text">
       {rows.map((row) => {
@@ -142,7 +145,8 @@ function RowCards<T>({
 }
 
 export function Table<T>(props: TableProps<T>) {
-  const { columns, rows, rowKey, onRowClick, rowLabel, renderExpanded, expandLabel, header, footer, empty } = props;
+  const { columns, rows, rowKey, onRowClick, rowLabel, renderExpanded, expandLabel, header, footer } = props;
+  const empty = props.loading ? <Skeleton label="Loading" rows={3} className="[&>div]:h-10" /> : props.empty;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const narrow = useMediaQuery(`(max-width: ${props.cardUntil ?? 767}px)`);
   const fixed = columns.some((c) => c.width);
@@ -160,7 +164,7 @@ export function Table<T>(props: TableProps<T>) {
   if (narrow) {
     return (
       <Container header={header} footer={footer} flush>
-        <RowCards {...props} expanded={expanded} toggle={toggle} />
+        <RowCards {...props} empty={empty} expanded={expanded} toggle={toggle} />
       </Container>
     );
   }

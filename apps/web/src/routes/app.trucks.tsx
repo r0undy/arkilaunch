@@ -439,7 +439,8 @@ export function TollsEditor() {
         columns={columns}
         rows={shown.slice(safeOffset, safeOffset + PAGE_SIZE)}
         rowKey={(t) => t.id}
-        empty={tolls.isPending ? 'Loading toll rates...' : rows.length === 0 ? 'No toll rates yet. Load the PH matrix or add one.' : 'No toll matches that filter.'}
+        loading={tolls.isPending}
+        empty={rows.length === 0 ? 'No toll rates yet. Load the PH matrix or add one.' : 'No toll matches that filter.'}
         header={{ title: 'Toll rates', count: shown.length, description: tollDescription, actions: tollActions, filter: tollFilter, pagination: <Pagination offset={safeOffset} limit={PAGE_SIZE} total={shown.length} onOffsetChange={setOffset} noun="tolls" /> }}
       />
       <Modal
@@ -545,7 +546,8 @@ export function BanRulesEditor() {
   return <section aria-label="Truck ban rules" className="flex flex-col gap-3">
     {rules.isError && <Alert type="error">{apiErrorText(rules.error)}</Alert>}
     <Table columns={columns} rows={rules.data ?? []} rowKey={(r) => r.id}
-      empty={rules.isPending ? 'Loading truck ban rules...' : 'No truck ban rules yet.'}
+      loading={rules.isPending}
+      empty="No truck ban rules yet."
       header={{ title: 'Truck ban rules', count: rules.data?.length ?? 0,
         description: 'Metro Manila entries are starting points. Check current MMDA and city road rules, then mark verified.',
         actions: <Button onClick={() => open()}>Add rule</Button> }} />
