@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { and, count, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import {
   addresses,
@@ -15,6 +15,7 @@ import {
 } from '@arkilaunch/db';
 import {
   manilaDate,
+  onLuzonMainland,
   severityMessage,
   WEATHER_STALE_AFTER_MINUTES,
   type DeploymentCreateRequest,
@@ -246,6 +247,7 @@ export class SitesService {
 
   // project_sites.address_id is NOT NULL, so the address row goes in the same transaction.
   async create(ctx: RequestContext, body: SiteCreateRequest) {
+    if (!onLuzonMainland(body.latitude, body.longitude)) throw new UnprocessableEntityException({ error: 'outside_luzon_mainland' });
     return withTenantTx(ctx, async (tx) => {
       const [address] = await tx
         .insert(addresses)
@@ -293,6 +295,9 @@ export class SitesService {
         .where(eq(projectSites.id, id))
         .limit(1);
       if (!existing) throw new NotFoundException({ error: 'project_site_not_found' });
+
+      if (!onLuzonMainland(body.latitude ?? Number(existing.latitude), body.longitude ?? Number(existing.longitude)))
+        throw new UnprocessableEntityException({ error: 'outside_luzon_mainland' });
 
       const [updated] = await tx
         .update(projectSites)

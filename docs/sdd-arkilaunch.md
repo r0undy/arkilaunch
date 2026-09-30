@@ -465,6 +465,10 @@ erDiagram
 
 ## 4. API Design & External Integrations
 
+**Luzon maps addendum (CR: luzon-maps):** Truck estimate/create geocoding and supplied pins, customer site creation, and project site coordinate creation/update reject locations outside Luzon mainland with 422 `outside_luzon_mainland`. A shared OSM-derived coastline polygon supplies the test; existing records are not migrated. Site hub units include the existing equipment public photo URL for the on-site map pin, under the same tenant transaction.
+
+**Customer site photo map URL (CR: truck-panel-reveal):** `GET /me/sites/:id/photo-url` requires `booking:read` and customer identity. The service checks the requested site belongs to that user inside a tenant RLS transaction, then selects its newest non-rejected `site_photo` document. The controller signs only the stored file key for a five-minute private download URL. A site without a photo returns `url: null`.
+
 **Truck routing addendum (CR: qa-truck-routing):** `POST /me/truck-requests/estimate` and request creation prefer ORS `driving-hgv` via `ORS_API_KEY`; failed or absent ORS uses OSRM with `truckSafe=false`. Staff route reads return ordered cities, which are populated asynchronously after creation and lazily for older requests. `GET /truck-ban-rules` requires `pricing:manage` or `report:read` (admin/owner); `POST /truck-ban-rules` and `PUT/DELETE /truck-ban-rules/:id` require `pricing:manage`. Every query is tenant scoped. `POST /truck-requests/:id/dispatch` requires a paid trip and `pricing:manage`, stores the arrival ETA after applying route-city ban windows, and notifies the customer. Route-city geocoding and external routing run outside tenant transactions.
 
 **API style:** REST over HTTPS, JSON, versioned under `/api/v1`. Passport-JWT bearer auth; every tenant route runs inside the RLS transaction described in §3. Request and response bodies validated with Zod (shared client/server schemas via `nestjs-zod` under evaluation).

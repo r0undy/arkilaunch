@@ -6,13 +6,7 @@ import { useState } from 'react';
 import { SiteDialog } from './site-dialog.js';
 import { ToastProvider } from './toast.js';
 
-vi.mock('leaflet', () => {
-  const marker = { addTo: () => marker, on: () => marker, setLatLng: () => marker };
-  const map = { setView: () => map, on: () => map, remove: () => {} };
-  const layer = { addTo: () => layer };
-  return { default: { map: () => map, tileLayer: () => layer, marker: () => marker, divIcon: () => ({}) } };
-});
-vi.mock('leaflet/dist/leaflet.css', () => ({}));
+vi.mock('./pin-map.js', () => ({ PinMap: () => <div>Click the map to pin the exact spot.</div> }));
 vi.mock('../lib/reverse-geocode.js', () => ({ reverseGeocode: () => Promise.resolve(null) }));
 
 const SITE = { id: '22222222-2222-4222-8222-222222222222' };
@@ -87,5 +81,16 @@ describe('SiteDialog', () => {
 
     expect(screen.getByRole('button', { name: 'Save site' })).toBeDisabled();
     expect(screen.getByText(/click the map to place the pin/i)).toBeInTheDocument();
+  });
+
+  it('rejects a browser location outside Luzon mainland', async () => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      geolocation: { getCurrentPosition: (ok: PositionCallback) => ok({ coords: { latitude: 10.3157, longitude: 123.8854 } } as GeolocationPosition) },
+    });
+    renderDialog();
+    await userEvent.click(screen.getByRole('button', { name: 'Use my location' }));
+    expect(screen.getByText('Choose a location on Luzon mainland.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save site' })).toBeDisabled();
   });
 });

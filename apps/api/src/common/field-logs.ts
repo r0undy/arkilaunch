@@ -8,6 +8,7 @@ import {
   equipment,
   equipmentAssignments,
   equipmentTypes,
+  publicPhotoUrl,
   invoices,
   rentals,
   users,
@@ -118,6 +119,7 @@ export async function loadFieldLogs(tx: Tx, rentalIds: string[], today = manilaD
       availabilityStatus: equipment.availabilityStatus,
       code: rentals.code,
       model: equipment.model,
+      photoUri: equipment.photoUri,
       serialNo: equipment.serialNo,
       runtimeHours: equipment.runtimeHours,
       typeName: equipmentTypes.name,
@@ -228,6 +230,7 @@ export async function loadFieldLogs(tx: Tx, rentalIds: string[], today = manilaD
 
     units.push({
       equipmentId: first.equipmentId,
+      photoUrl: publicPhotoUrl(first.photoUri),
       name: `${first.typeName} · ${first.model}`,
       serialNo: first.serialNo,
       rentalId: first.rentalId,

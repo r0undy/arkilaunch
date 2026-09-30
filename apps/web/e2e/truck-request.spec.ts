@@ -14,7 +14,8 @@ async function pickLocation(page: Page, label: string, city: string) {
 // centre (clear of the floating panel on desktop, east of the bay). Works
 // on the 3D map and on the flat fallback a browser without WebGL gets.
 async function dropPin(page: Page, which: 'Pickup' | 'Drop-off', dx: number) {
-  await page.getByRole('radio', { name: which, exact: true }).click();
+  const selector = page.getByRole('radio', { name: which, exact: true });
+  if (await selector.isVisible()) await selector.click();
   const map = page.getByRole('application').first();
   await map.scrollIntoViewIfNeeded();
   const box = (await map.boundingBox())!;
@@ -28,10 +29,20 @@ test.describe('self-loading truck', () => {
   test('pin, estimate range, request call, negotiate, agree, confirm by phone, pay cash', async ({ page: customer, browser }) => {
     await signInAsCustomer(customer);
     await customer.goto('/account/trucks');
+    await expect(customer.getByText('Trip details', { exact: true })).toHaveCount(0);
+    await expect(customer.getByLabel('Equipment to load')).toHaveCount(0);
 
     // Two taps: the route and price load with no button to press.
     await dropPin(customer, 'Pickup', 0);
+    await expect(customer.getByText('Trip details', { exact: true })).toHaveCount(0);
     await dropPin(customer, 'Drop-off', 60);
+    const tripDetails = customer.getByRole('dialog', { name: 'Trip details' });
+    await expect(tripDetails).toBeVisible();
+    await tripDetails.getByRole('button', { name: 'Close' }).click();
+    await expect(customer.getByLabel('Equipment to load')).toHaveCount(0);
+    await customer.getByRole('button', { name: 'Trip details' }).click();
+    await expect(tripDetails).toBeVisible();
+    await expect(customer.getByLabel('Equipment to load')).toBeVisible();
     await expect(customer.getByText(/₱[\d,.]+ – ₱[\d,.]+/).first()).toBeVisible({ timeout: 30_000 });
     // The typed address waits under Advanced search.
     await customer.getByText('Advanced search').click();

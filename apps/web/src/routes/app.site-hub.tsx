@@ -33,6 +33,7 @@ import { useMediaQuery } from '../lib/use-media-query.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { SiteEquipmentWeather } from '../components/equipment-weather.js';
 import { useToast } from '../components/toast.js';
+import { SiteEquipmentMap } from '../components/site-equipment-map.js';
 
 const TABS = ['overview', 'logs', 'equipment', 'personnel', 'documents'] as const;
 type Tab = (typeof TABS)[number];
@@ -82,6 +83,7 @@ function Overview({ hub, today }: { hub: SiteHubResponse; today: string }) {
     <div className="flex flex-col gap-4">
       <Container header={{ title: 'Site' }}>
         <div className="flex flex-col gap-2 text-sm">
+          <SiteEquipmentMap site={hub.site} units={hub.units} />
           <p className="text-text">{hub.site.address || '--'}</p>
           <p className="text-text-muted">Customer: {hub.site.customerName ?? '--'}</p>
           <ExpandableSection header={<span className="text-sm font-medium">Location details</span>}>

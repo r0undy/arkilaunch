@@ -1,5 +1,5 @@
 import { UnprocessableEntityException, ServiceUnavailableException } from '@nestjs/common';
-import { tollHintsFromSteps, type TruckRoute } from '@arkilaunch/shared';
+import { onLuzonMainland, tollHintsFromSteps, type TruckRoute } from '@arkilaunch/shared';
 import { nominatimJson } from './nominatim.js';
 
 // Only ever an ESTIMATE: the admin confirms the km a customer is charged on.
@@ -24,12 +24,15 @@ async function geocode(place: string): Promise<{ lat: number; lon: number }> {
   url.searchParams.set('format', 'jsonv2');
   url.searchParams.set('limit', '1');
   url.searchParams.set('countrycodes', 'ph');
+  url.searchParams.set('viewbox', '119.35,19.05,124.65,12.1');
+  url.searchParams.set('bounded', '1');
   const hits = (await nominatimJson(url)) as { lat?: string; lon?: string }[];
   const hit = Array.isArray(hits) ? hits[0] : undefined;
   const lat = Number(hit?.lat);
   const lon = Number(hit?.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon))
     throw new UnprocessableEntityException({ error: 'address_not_found', address: place });
+  if (!onLuzonMainland(lat, lon)) throw new UnprocessableEntityException({ error: 'outside_luzon_mainland', address: place });
   return { lat, lon };
 }
 
@@ -97,6 +100,8 @@ export async function roadRoute(
 ): Promise<TruckRoute> {
   const a = pins.a ?? (await geocode(pickup));
   const b = pins.b ?? (await geocode(dropoff));
+  if (!onLuzonMainland(a.lat, a.lon) || !onLuzonMainland(b.lat, b.lon))
+    throw new UnprocessableEntityException({ error: 'outside_luzon_mainland' });
   const key = process.env.ORS_API_KEY?.trim();
   if (key) {
     try {

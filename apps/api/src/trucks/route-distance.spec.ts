@@ -16,9 +16,16 @@ describe('truck routing providers', () => {
     const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({ ok: false, status: 503 } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ code: 'Ok', routes: [{ distance: 5000, duration: 600,
         geometry: { coordinates: [[121, 14], [122, 15]] } }] }) } as Response);
-    const route = await roadRoute('Pasig', 'Makati', { a: { lon: 121, lat: 14 }, b: { lon: 122, lat: 15 } });
+    const route = await roadRoute('Pasig', 'Makati', { a: { lon: 121.085, lat: 14.576 }, b: { lon: 121.024, lat: 14.554 } });
     expect(route.truckSafe).toBe(false);
     expect(fetcher.mock.calls[0]?.[0]).toBe('https://api.heigit.org/openrouteservice/v2/directions/driving-hgv/geojson');
+  });
+
+  it('rejects an off-island pin before calling routing providers', async () => {
+    const fetcher = vi.spyOn(globalThis, 'fetch');
+    await expect(roadRoute('Cebu', 'Manila', { a: { lon: 123.8854, lat: 10.3157 }, b: { lon: 120.9842, lat: 14.5995 } }))
+      .rejects.toMatchObject({ response: { error: 'outside_luzon_mainland' } });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it('keeps the first occurrence of each city in route order', async () => {
