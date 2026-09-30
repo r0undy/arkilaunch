@@ -64,17 +64,6 @@ function LandingPage() {
               View fleet
             </Button>
           </div>
-          {available.length > 0 && (
-            <p className="mt-2 flex flex-wrap gap-x-6 gap-y-1 border-t border-border pt-5 text-sm text-text-muted">
-              <span>
-                <strong className="font-semibold text-text">{available.length}</strong> machines
-              </span>
-              <span>
-                <strong className="font-semibold text-text">{categories.length}</strong>{' '}
-                {categories.length === 1 ? 'category' : 'categories'}
-              </span>
-            </p>
-          )}
         </div>
         {heroImage && <img src={heroImage} alt="" className="aspect-[4/3] w-full rounded-sm object-cover" />}
       </section>
