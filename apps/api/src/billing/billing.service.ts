@@ -1,10 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, type SQL } from 'drizzle-orm';
 import {
   type Tx,
   auditLogs,
   customers,
   depositAccruals,
+  getTenantTin,
+  sendEmail,
+  tenants,
+  users,
   edtr,
   edtrReconciliations,
   invoiceLineItems,
@@ -23,9 +27,13 @@ import type {
   InvoiceListResponse,
   InvoiceSummaryResponse,
   RequestContext,
+  StatementEmailResponse,
   StatementOfAccount,
+  StatementPdfResponse,
   StatementWeek,
 } from '@arkilaunch/shared';
+import { renderStatementPdf } from './statement-pdf.js';
+import { personName } from '../common/field-logs.js';
 import { bookingCodes, invoiceBookingRef } from '../common/booking-ref.js';
 import { countRows } from '../common/count-rows.js';
 import { customerOwnsInvoice, ownsCustomer } from '../common/customer-scope.js';
@@ -314,7 +322,66 @@ export class BillingService {
           balanceDue: round2HalfUp(Math.max(0, charged - paid) + ledger.unbilledAccrued),
         },
         generatedAt: new Date().toISOString(),
+        lastEmailed: ctx.role === 'customer' ? null : await lastStatementEmail(tx, rentalId),
       };
     });
   }
+
+  async statementPdf(ctx: RequestContext, rentalId: string): Promise<StatementPdfResponse> {
+    const soa = await this.statement(ctx, rentalId);
+    const bytes = await renderStatementPdf(soa, await this.brand(ctx));
+    return { filename: `soa-${soa.bookingCode ?? rentalId}.pdf`, contentBase64: Buffer.from(bytes).toString('base64') };
+  }
+
+  // The office sends the PDF by hand after checking it; the customer's account email receives it.
+  async emailStatement(ctx: RequestContext, rentalId: string): Promise<StatementEmailResponse> {
+    const soa = await this.statement(ctx, rentalId);
+    const to = await withTenantTx(ctx, async (tx) => {
+      const [row] = await tx
+        .select({ email: users.email })
+        .from(rentals)
+        .innerJoin(customers, eq(customers.id, rentals.customerId))
+        .innerJoin(users, eq(users.id, customers.userId))
+        .where(eq(rentals.id, rentalId))
+        .limit(1);
+      return row?.email ?? null;
+    });
+    if (!to) throw new UnprocessableEntityException({ error: 'customer_email_missing' });
+    const brand = await this.brand(ctx);
+    const pdf = await renderStatementPdf(soa, brand);
+    const code = soa.bookingCode ?? rentalId;
+    await sendEmail(
+      to,
+      `Statement of Account ${code} from ${brand.name}`,
+      `Attached is the Statement of Account for booking ${code}. Balance due: PHP ${soa.totals.balanceDue.toFixed(2)}.`,
+      undefined,
+      [{ filename: `soa-${code}.pdf`, content: Buffer.from(pdf).toString('base64') }],
+    );
+    const sentAt = new Date();
+    await withTenantTx(ctx, (tx) =>
+      tx.insert(auditLogs).values({ tenantId: ctx.tenantId, actorId: ctx.userId, action: 'CREATE', entity: 'statement_emailed', entityId: rentalId, timestamp: sentAt }),
+    );
+    return { sentTo: to, sentAt: sentAt.toISOString() };
+  }
+
+  private async brand(ctx: RequestContext) {
+    const [tenant] = await withTenantTx(ctx, (tx) => tx.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1));
+    return {
+      name: tenant?.legalName ?? '',
+      address: [tenant?.address, tenant?.city, tenant?.province].filter(Boolean).join(', '),
+      contact: [tenant?.phone, tenant?.contactEmail].filter(Boolean).join(' | '),
+      tin: await getTenantTin(ctx.tenantId).catch(() => null),
+    };
+  }
+}
+
+async function lastStatementEmail(tx: Tx, rentalId: string) {
+  const [row] = await tx
+    .select({ at: auditLogs.timestamp, firstName: users.firstName, lastName: users.lastName, email: users.email })
+    .from(auditLogs)
+    .leftJoin(users, eq(users.id, auditLogs.actorId))
+    .where(and(eq(auditLogs.entity, 'statement_emailed'), eq(auditLogs.entityId, rentalId)))
+    .orderBy(desc(auditLogs.timestamp))
+    .limit(1);
+  return row ? { at: row.at.toISOString(), by: row.email ? (personName({ firstName: row.firstName, lastName: row.lastName, email: row.email }) ?? null) : null } : null;
 }

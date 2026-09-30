@@ -316,3 +316,40 @@ export const couponRedemptions = pgTable(
     check('coupon_redemptions_discount_positive', sql`${table.discountPhp} > 0`),
   ],
 );
+
+// Audit log of field sheet downloads; the per-unit daily limit counts these rows (0073).
+export const edtrSheetDownloads = pgTable(
+  'edtr_sheet_downloads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    rentalId: uuid('rental_id')
+      .notNull()
+      .references(() => rentals.id),
+    equipmentId: uuid('equipment_id')
+      .notNull()
+      .references(() => equipment.id),
+    weekStart: date('week_start').notNull(),
+    downloadedBy: uuid('downloaded_by')
+      .notNull()
+      .references(() => users.id),
+    // Manila calendar day, so the limit resets at local midnight.
+    downloadDate: date('download_date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [tenantIsolationPolicy(), index('edtr_sheet_downloads_unit_day_idx').on(t.tenantId, t.equipmentId, t.downloadDate)],
+);
+
+export const edtrSettings = pgTable(
+  'edtr_settings',
+  {
+    tenantId: uuid('tenant_id')
+      .primaryKey()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    paperSize: text('paper_size').notNull().default('legal'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [tenantIsolationPolicy(), check('edtr_settings_paper_size_chk', sql`${t.paperSize} IN ('legal','letter')`)],
+);

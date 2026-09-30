@@ -512,6 +512,13 @@
       "when": 1790400034000,
       "tag": "0073_hourly_rate_cards_repair",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1790400035000,
+      "tag": "0074_edtr_sheet_downloads",
+      "breakpoints": true
     }
   ]
 }

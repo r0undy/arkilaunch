@@ -13,6 +13,7 @@ import {
   CatalogEquipmentListResponseSchema,
   CatalogEquipmentSchema,
   CatalogTestimonialListResponseSchema,
+  isSelfLoadingTruckType,
   type CatalogEquipment,
   type CatalogTenant,
   type CatalogTenantListQuery,
@@ -49,14 +50,16 @@ export class CatalogService {
   }
 
   async listEquipment(slug: string, query: CatalogEquipmentListQuery): Promise<CatalogEquipmentListResponse> {
-    const items = (await listCatalogEquipmentForSlug(slug, query.limit, query.offset)).map(withPhotoUrl);
+    const items = (await listCatalogEquipmentForSlug(slug, query.limit, query.offset))
+      .filter((row) => !isSelfLoadingTruckType(row.equipmentTypeName))
+      .map(withPhotoUrl);
     // Parse, not cast: a corrupt availability_status fails loudly.
     return CatalogEquipmentListResponseSchema.parse({ items });
   }
 
   async getEquipment(slug: string, id: string): Promise<CatalogEquipment> {
     const row = await getCatalogEquipmentForSlug(slug, id);
-    if (!row) throw new NotFoundException({ error: 'equipment_not_found' });
+    if (!row || isSelfLoadingTruckType(row.equipmentTypeName)) throw new NotFoundException({ error: 'equipment_not_found' });
     return CatalogEquipmentSchema.parse(withPhotoUrl(row));
   }
 

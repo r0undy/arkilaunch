@@ -91,6 +91,8 @@ export interface SiteHubResponse {
     truckCrew: { code: string; scheduledFor: string; driverName: string | null; helperName: string | null }[];
   };
   documents: { id: string; documentType: string; status: string; createdAt: string }[];
+  // Timekeeper sheet downloads today (Manila date), newest first.
+  sheetDownloadsToday: { equipmentId: string; userName: string; at: string }[];
 }
 
 // A customer sees approved days only and a pending count of 0.

@@ -118,4 +118,16 @@ export interface StatementOfAccount {
     balanceDue: number;
   };
   generatedAt: string;
+  // Staff only: the last time the office emailed this statement.
+  lastEmailed?: { at: string; by: string | null } | null;
+}
+
+export interface StatementPdfResponse {
+  filename: string;
+  contentBase64: string;
+}
+
+export interface StatementEmailResponse {
+  sentTo: string;
+  sentAt: string;
 }

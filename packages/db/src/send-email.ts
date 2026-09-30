@@ -1,5 +1,16 @@
 // Transactional email through Resend's HTTP API (plain fetch, no SDK).
-export async function sendEmail(to: string, subject: string, text: string, html?: string): Promise<void> {
+export interface EmailAttachment {
+  filename: string;
+  content: string; // base64
+}
+
+export async function sendEmail(
+  to: string,
+  subject: string,
+  text: string,
+  html?: string,
+  attachments: EmailAttachment[] = [],
+): Promise<void> {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     // Azure Container Apps sets these; a deployed body (activation links) must never reach Log Analytics.
@@ -16,6 +27,7 @@ export async function sendEmail(to: string, subject: string, text: string, html?
       subject,
       text,
       ...(html ? { html } : {}),
+      ...(attachments.length ? { attachments } : {}),
       // Replies go here while the sender is Resend's shared address.
       ...(process.env.EMAIL_REPLY_TO ? { reply_to: process.env.EMAIL_REPLY_TO } : {}),
     }),

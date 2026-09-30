@@ -363,6 +363,19 @@ export function manilaDate(at: Date | string): string {
   }).format(new Date(at));
 }
 
+// Monday of the Manila week that contains `at`.
+export function manilaWeekStart(at: Date | string): string {
+  const day = new Date(`${manilaDate(at)}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7));
+  return day.toISOString().slice(0, 10);
+}
+
+export function addDaysIso(iso: string, days: number): string {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export function reportSpan(start: Date | string, end: Date | string | null): ReportSpan {
   return { from: manilaDate(start), to: end === null ? null : manilaDate(end) };
 }

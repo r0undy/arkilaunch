@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WEATHER_CODES, parseEdtrSheet } from '@arkilaunch/shared';
-import { PAGE, buildEdtrSheetSvg, edtrSheetFilename, edtrSheetQrPayload, sheetIndex } from './edtr-sheet.js';
+import { PAGE, buildEdtrSheetSvg, edtrSheetFilename, edtrSheetQrPayload } from './edtr-sheet.js';
 
 const context = {
   rentalId: '11111111-2222-3333-4444-555555555555',
@@ -54,7 +54,8 @@ describe('buildEdtrSheetSvg (EDTR v3)', () => {
       expect(svg).toContain(s);
     }
     expect(edtrSheetQrPayload(context.rentalId, 'e1', '2026-09-21')).toBe(`ARKI-EDTR3:${context.rentalId}:e1:2026-09-21`);
-    expect(svg).toContain('Sheet 1 of 1 for this rental unit');
+    expect(svg).not.toContain('Sheet ');
+    expect(svg).toContain('REMARKS / DOWNTIME NOTES');
   });
 
   it('sizes the page from one constant, Legal by default and Letter on request', () => {
@@ -77,10 +78,6 @@ describe('buildEdtrSheetSvg (EDTR v3)', () => {
     expect(blank).not.toContain('>09/21<');
   });
 
-  it('counts weekly sheets across a rental', () => {
-    expect(sheetIndex('2026-09-22', '2026-10-20', '2026-10-05')).toEqual({ index: 3, count: 5 });
-    expect(sheetIndex('2026-09-22', null, '2026-09-21')).toEqual({ index: 1, count: null });
-  });
 
   // Round trip at the contract level: the grid as a layout model would
   // return it for this printed header parses back into the v3 fields.

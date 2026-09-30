@@ -1,20 +1,87 @@
 import { createRoute, Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
-import type { StatementOfAccount } from '@arkilaunch/shared';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { StatementEmailResponse, StatementOfAccount, StatementPdfResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { appLayoutRoute } from './_app.js';
-import { apiErrorText, apiGet } from '../lib/api-client.js';
+import { apiErrorText, apiGet, apiPost } from '../lib/api-client.js';
 import { formatDate, formatHours, formatInvoiceType, formatPeso, formatStatus, shortCode } from '../lib/format.js';
 import { Surface } from '../components/surface.js';
 import { Button, buttonClass } from '../components/button.js';
 import { PageHeader } from '../components/page-header.js';
 import { PrintFrame } from '../components/print-frame.js';
+import { ConfirmDialog } from '../components/confirm-dialog.js';
+import { useToast } from '../components/toast.js';
 
 type Scope = 'me' | 'staff';
 const statementQuery = (scope: Scope, rentalId: string) => ({
   queryKey: ['statement', scope, rentalId] as const,
   queryFn: () => apiGet<StatementOfAccount>(`${scope === 'me' ? '/me' : ''}/rentals/${rentalId}/statement`),
 });
+// The server renders the PDF, so the download and the office email are the same file.
+function DownloadSoaButton({ scope, rentalId, variant = 'secondary' }: { scope: Scope; rentalId: string; variant?: 'primary' | 'secondary' }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  async function download() {
+    setBusy(true);
+    try {
+      const res = await apiGet<StatementPdfResponse>(`${scope === 'me' ? '/me' : ''}/rentals/${rentalId}/statement/pdf`);
+      const bytes = Uint8Array.from(atob(res.contentBase64), (c) => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error('Could not download the statement', apiErrorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Button variant={variant} loading={busy} onClick={() => void download()}>
+      Download SOA (PDF)
+    </Button>
+  );
+}
+
+function EmailSoaButton({ rentalId, statement }: { rentalId: string; statement: StatementOfAccount }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const send = useMutation({
+    mutationFn: () => apiPost<StatementEmailResponse>(`/rentals/${rentalId}/statement/email`, {}),
+    onSuccess: (res) => {
+      setConfirming(false);
+      toast.success('Statement emailed', `Sent to ${res.sentTo}.`);
+      void queryClient.invalidateQueries({ queryKey: ['statement', 'staff', rentalId] });
+    },
+    onError: (e) => toast.error('Could not email the statement', apiErrorText(e)),
+  });
+  return (
+    <>
+      <Button variant="secondary" onClick={() => setConfirming(true)}>
+        Email SOA
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        title="Email the Statement of Account?"
+        body={
+          <>
+            The PDF goes to the customer&apos;s account email, with a balance due of {formatPeso(statement.totals.balanceDue)}.
+            {statement.lastEmailed && ` Last emailed ${formatDate(statement.lastEmailed.at)}${statement.lastEmailed.by ? ` by ${statement.lastEmailed.by}` : ''}.`}
+          </>
+        }
+        confirmLabel="Send email"
+        pending={send.isPending}
+        onConfirm={() => send.mutate()}
+        onCancel={() => setConfirming(false)}
+      />
+    </>
+  );
+}
+
 const range = (from: string, to: string) => `${formatDate(from)} – ${formatDate(to)}`;
 
 function WeeksTable({ statement }: { statement: StatementOfAccount }) {
@@ -57,9 +124,12 @@ export function WeeklyBillingCard({ rentalId, scope }: { rentalId: string; scope
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-text-muted">Weekly billing</h2>
         {s.status === 'completed' && (
-          <Link
-            to={scope === 'me' ? '/account/bookings/$bookingId/statement' : '/app/bookings/$bookingId/statement'}
-            params={{ bookingId: rentalId }} className={buttonClass('secondary')}>Print statement of account</Link>
+          <div className="flex flex-wrap gap-2">
+            <DownloadSoaButton scope={scope} rentalId={rentalId} />
+            <Link
+              to={scope === 'me' ? '/account/bookings/$bookingId/statement' : '/app/bookings/$bookingId/statement'}
+              params={{ bookingId: rentalId }} className={buttonClass('secondary')}>View statement of account</Link>
+          </div>
         )}
       </div>
       {s.weeks.length === 0 ? (
@@ -97,6 +167,8 @@ function StatementPage({ scope, rentalId }: { scope: Scope; rentalId: string }) 
           actions={
             <>
               <Link to={back} params={{ bookingId: rentalId }} className={buttonClass('ghost')}>Back to booking</Link>
+              {s && scope === 'staff' && <EmailSoaButton rentalId={rentalId} statement={s} />}
+              <DownloadSoaButton scope={scope} rentalId={rentalId} variant="secondary" />
               <Button variant="primary" disabled={!s} onClick={() => window.print()}>
                 Print
               </Button>

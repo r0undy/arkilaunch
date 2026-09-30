@@ -91,6 +91,37 @@ export interface EdtrSheetContext {
   tenant?: { name: string; address: string; contact: string; logoUrl: string | null };
 }
 
+export const EDTR_PAPER_SIZES = ['legal', 'letter'] as const;
+export type EdtrPaperSize = (typeof EDTR_PAPER_SIZES)[number];
+export const EdtrSettingsSchema = z.object({ paperSize: z.enum(EDTR_PAPER_SIZES) }).strict();
+export type EdtrSettings = z.infer<typeof EdtrSettingsSchema>;
+
+// A timekeeper may download a unit's sheet this many times per Manila day.
+export const FIELD_SHEET_DAILY_LIMIT = 2;
+
+export interface FieldSheetUnit {
+  rentalId: string;
+  equipmentId: string;
+  bookingCode: string;
+  unitName: string;
+  serialNo: string;
+  siteName: string;
+  downloadsToday: number;
+  remainingToday: number;
+}
+export interface FieldSheetListResponse {
+  weekStart: string;
+  items: FieldSheetUnit[];
+}
+export const FieldSheetDownloadRequestSchema = z.object({ rentalId: z.string().uuid(), equipmentId: z.string().uuid() }).strict();
+export type FieldSheetDownloadRequest = z.infer<typeof FieldSheetDownloadRequestSchema>;
+export interface FieldSheetDownloadResponse {
+  context: EdtrSheetContext;
+  weekStart: string;
+  page: EdtrPaperSize;
+  remainingToday: number;
+}
+
 export const BOOKING_STATUSES = ['pending', 'confirmed', 'active', 'completed', 'cancelled'] as const;
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 const IsoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
