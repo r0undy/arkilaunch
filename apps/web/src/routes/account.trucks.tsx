@@ -1,17 +1,17 @@
 import { createRoute } from '@tanstack/react-router';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { LocateFixed, X } from 'lucide-react';
-import type { CustomerSiteResponse, TruckEstimateResponse, TruckRequestResponse } from '@arkilaunch/shared';
+import { onLuzonMainland, type CustomerSiteResponse, type TruckEstimateResponse, type TruckRequestResponse } from '@arkilaunch/shared';
 import { PinMap, type LatLng } from '../components/pin-map.js';
 import { PageHeader } from '../components/page-header.js';
 import { formatDrive, hasWebGL, MapSkeleton, pinned, TripCanvas, type Which } from '../components/route-map.js';
 import { Skeleton } from '../components/skeleton.js';
 import { cancelReverseGeocode, matchPhLocation, reverseGeocode, type PhLocation } from '../lib/reverse-geocode.js';
 import { accountLayoutRoute } from './_account.js';
-import { apiErrorText, apiPost } from '../lib/api-client.js';
+import { apiErrorText, apiGet, apiPost } from '../lib/api-client.js';
 import { toLocalInput } from './equipment.js';
-import { Surface } from '../components/surface.js';
+import { Modal } from '../components/modal.js';
 import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
 import { useToast } from '../components/toast.js';
@@ -80,14 +80,17 @@ function TrucksPage() {
   );
 }
 
-const pinPadding = () =>
-  window.matchMedia?.('(min-width: 1024px)').matches ? { top: 64, bottom: 48, right: 64, left: 440 } : 48;
-
 function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [sides, setSides] = useState<Record<Which, Side>>({ pickup: EMPTY_SIDE, dropoff: EMPTY_SIDE });
   const [placing, setPlacing] = useState<Which>('pickup');
+  const [panelOpen, setPanelOpen] = useState(true);
+  const showPanelButton = useRef<HTMLButtonElement | null>(null);
+  const locateButton = useRef<HTMLButtonElement | null>(null);
+  const initializedStart = useRef(false);
+  const [mapStart, setMapStart] = useState<LatLng | null>(null);
+  const [homeSite, setHomeSite] = useState<CustomerSiteResponse | null>(null);
   const [notes, setNotes] = useState('');
   const [when, setWhen] = useState(tomorrowMorning);
   const [locating, setLocating] = useState(false);
@@ -102,9 +105,47 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
   const [siteId, setSiteId] = useState('');
   const gl = hasWebGL();
 
+  useEffect(() => {
+    if (initializedStart.current || sites.isPending || companies.isPending) return;
+    initializedStart.current = true;
+    const saved = sites.data?.find((site) => site.customerId === companyId && onLuzonMainland(site.latitude, site.longitude));
+    if (saved) {
+      setHomeSite(saved);
+      setMapStart({ lat: saved.latitude, lng: saved.longitude });
+      return;
+    }
+    const manila = () => setMapStart({ lat: 14.5995, lng: 120.9842 });
+    if (!navigator.geolocation) { manila(); return; }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const at = { lat: position.coords.latitude, lng: position.coords.longitude };
+        if (onLuzonMainland(at.lat, at.lng)) setMapStart(at);
+        else manila();
+      },
+      manila,
+      { enableHighAccuracy: false, maximumAge: 300_000, timeout: 8_000 },
+    );
+  }, [sites.isPending, sites.data, companies.isPending, companyId]);
+
+  const homePhoto = useQuery({
+    queryKey: ['me', 'sites', homeSite?.id, 'photo-url'],
+    queryFn: () => apiGet<{ url: string | null }>(`/me/sites/${homeSite!.id}/photo-url`),
+    enabled: !!homeSite?.documents.some((doc) => doc.documentType === 'site_photo' && doc.status !== 'rejected'),
+    staleTime: 4 * 60_000,
+    retry: false,
+  });
+  const sitePreview = homeSite ? {
+    at: { lat: homeSite.latitude, lng: homeSite.longitude },
+    label: [homeSite.line1, homeSite.city].filter(Boolean).join(', ') || 'Saved project site',
+    imageUrl: homePhoto.data?.url ?? null,
+  } : undefined;
+
   const update = (which: Which, patch: Partial<Side>) => setSides((s) => ({ ...s, [which]: { ...s[which], ...patch } }));
 
   async function placePin(which: Which, at: LatLng) {
+    if (!onLuzonMainland(at.lat, at.lng)) { toast.error('Outside service area', 'Choose a location on Luzon mainland.'); return; }
+    if ((which === 'pickup' && sides.dropoff.pin && !sides.pickup.pin) ||
+        (which === 'dropoff' && sides.pickup.pin && !sides.dropoff.pin)) setPanelOpen(true);
     update(which, { pin: at });
     if (which === 'pickup' && !sides.dropoff.pin) setPlacing('dropoff');
     const found = await reverseGeocode(at.lat, at.lng, which);
@@ -118,6 +159,8 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
   }
 
   function chooseSite(site: CustomerSiteResponse | undefined) {
+    if (site && !onLuzonMainland(site.latitude, site.longitude)) { toast.error('Outside service area', 'Choose a site on Luzon mainland.'); return; }
+    if (site && sides.pickup.pin) setPanelOpen(true);
     setSiteId(site?.id ?? '');
     if (!site) return;
     cancelReverseGeocode('dropoff');
@@ -186,6 +229,7 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
       toast.success('Truck requested', 'The rental team will confirm the distance and final price.');
       setSides({ pickup: EMPTY_SIDE, dropoff: EMPTY_SIDE });
       setPlacing('pickup');
+      setPanelOpen(true);
       setNotes('');
       setLoad('');
       setSiteId('');
@@ -197,11 +241,17 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
 
   const whenError = when && new Date(when) <= new Date() ? 'Pick a time in the future.' : undefined;
   const hint = !a ? 'Tap the map to set your pickup' : !b ? 'Now tap your drop-off' : null;
+  const showPanel = Boolean(a && b);
+
+  function togglePanel(open: boolean) {
+    setPanelOpen(open);
+    if (!open) requestAnimationFrame(() => showPanelButton.current?.focus());
+  }
 
   return (
     <div className="relative flex flex-col lg:block">
       <div className="relative h-[60dvh] min-h-[420px] overflow-hidden rounded-md border border-border bg-surface-sunk lg:h-[calc(100dvh-14rem)] lg:min-h-[600px]">
-        {gl ? (
+        {!mapStart ? <MapSkeleton /> : gl ? (
           <Suspense fallback={<MapSkeleton />}>
             <TripCanvas
               mode="edit"
@@ -210,10 +260,12 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
               placing={placing}
               onPlace={(which, at) => void placePin(which, at)}
               line={route?.line ?? null}
-              label="Trip map: tap to place the selected pin, drag a pin to move it"
+              label="Trip map. Tap to pin, or use arrow keys to move the map and Enter to pin."
               labels={{ pickup: sides.pickup.detail || undefined, dropoff: sides.dropoff.detail || undefined }}
-              fitPadding={pinPadding()}
+              fitPadding={48}
               hint={hint}
+              initialCenter={mapStart}
+              {...(sitePreview ? { sitePreview } : {})}
             />
           </Suspense>
         ) : (
@@ -221,9 +273,14 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
             label={placing === 'pickup' ? 'Pickup pin' : 'Drop-off pin'}
             value={sides[placing].pin}
             onChange={(at) => void placePin(placing, at)}
+            other={{ label: placing === 'pickup' ? 'Drop-off pin' : 'Pickup pin', value: sides[placing === 'pickup' ? 'dropoff' : 'pickup'].pin }}
+            initialCenter={mapStart}
+            {...(sitePreview ? { sitePreview } : {})}
+            fill
           />
         )}
         <button
+          ref={locateButton}
           type="button"
           onClick={locateMe}
           disabled={locating}
@@ -232,13 +289,21 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
           <LocateFixed aria-hidden className="h-4 w-4" />
           {locating ? 'Locating...' : 'Use my location'}
         </button>
+        {showPanel && !panelOpen && (
+          <button
+            ref={showPanelButton}
+            type="button"
+            aria-haspopup="dialog"
+            onClick={() => togglePanel(true)}
+            className="absolute bottom-8 left-3 z-10 inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm font-semibold text-text shadow-md hover:bg-surface-sunk focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          >
+            Trip details
+          </button>
+        )}
       </div>
 
-      <Surface
-        radius="md"
-        elevation="md"
-        className="relative z-10 -mt-4 flex flex-col gap-4 rounded-t-xl p-4 lg:absolute lg:bottom-4 lg:left-4 lg:top-4 lg:mt-0 lg:w-[400px] lg:overflow-y-auto lg:rounded-md"
-      >
+      <Modal open={showPanel && panelOpen} onClose={() => togglePanel(false)} title="Trip details" size="lg">
+        <div className="flex flex-col gap-4">
         <div role="radiogroup" aria-label="Pin to place" className="flex flex-col gap-1">
           {(['pickup', 'dropoff'] as const).map((which) => {
             const side = sides[which];
@@ -282,6 +347,8 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
                     onClick={() => {
                       update(which, EMPTY_SIDE);
                       setPlacing(which);
+                      setPanelOpen(true);
+                      requestAnimationFrame(() => locateButton.current?.focus());
                     }}
                     className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-text-muted hover:bg-surface-sunk hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring"
                   >
@@ -408,7 +475,8 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
             <Input label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
         </details>
-      </Surface>
+        </div>
+      </Modal>
     </div>
   );
 }

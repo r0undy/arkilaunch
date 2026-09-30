@@ -103,6 +103,13 @@ export class CustomersController {
     return this.customers.createSite(req.ctx, body);
   }
 
+  @Get('me/sites/:id/photo-url')
+  @RequirePermission('booking:read')
+  async ownSitePhotoUrl(@Param('id') id: string, @Req() req: CtxRequest) {
+    const key = await this.customers.ownSitePhotoKey(req.ctx, id);
+    return { url: key ? await this.storage.createSignedDownloadUrl(kycBucket(), key) : null };
+  }
+
   @Post('me/sites/:id/documents')
   @RequirePermission('booking:create')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { and, desc, eq, inArray, ne } from 'drizzle-orm';
@@ -23,6 +24,7 @@ import {
   withTenantTx,
 } from '@arkilaunch/db';
 import {
+  onLuzonMainland,
   DTI_REGEX,
   manilaDate,
   ExtractionUnavailableError,
@@ -571,6 +573,17 @@ export class CustomersService {
     });
   }
 
+  async ownSitePhotoKey(ctx: RequestContext, siteId: string): Promise<string | null> {
+    assertCustomer(ctx);
+    return withTenantTx(ctx, async (tx) => {
+      await ownSite(tx, ctx, siteId);
+      const [photo] = await tx.select({ fileUri: siteDocuments.fileUri }).from(siteDocuments)
+        .where(and(eq(siteDocuments.projectSiteId, siteId), eq(siteDocuments.documentType, 'site_photo'), ne(siteDocuments.status, 'rejected')))
+        .orderBy(desc(siteDocuments.createdAt)).limit(1);
+      return photo?.fileUri ?? null;
+    });
+  }
+
   // Never sent to OCR; a person looks at it.
   async addSiteDocument(ctx: RequestContext, siteId: string, documentType: string, fileUri: string) {
     assertCustomer(ctx);
@@ -651,6 +664,7 @@ export class CustomersService {
 
   async createSite(ctx: RequestContext, body: CustomerSiteCreate): Promise<CustomerSiteResponse> {
     assertCustomer(ctx);
+    if (!onLuzonMainland(body.latitude, body.longitude)) throw new UnprocessableEntityException({ error: 'outside_luzon_mainland' });
     return withTenantTx(ctx, async (tx) => {
       if (!(await ownsCustomer(tx, ctx, body.customerId)))
         throw new NotFoundException({ error: 'company_not_found' });

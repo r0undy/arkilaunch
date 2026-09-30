@@ -48,6 +48,7 @@ export interface FieldLogDay {
 
 export interface FieldLogUnit {
   equipmentId: string;
+  photoUrl?: string | null;
   name: string;
   serialNo: string;
   rentalId: string;

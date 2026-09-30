@@ -1,8 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import type { CustomerSiteResponse, SiteDocumentType } from '@arkilaunch/shared';
+import { onLuzonMainland, type CustomerSiteResponse, type SiteDocumentType } from '@arkilaunch/shared';
 import { apiErrorText, apiPost } from '../lib/api-client.js';
 import { reverseGeocode } from '../lib/reverse-geocode.js';
 import { Modal } from './modal.js';
@@ -10,16 +8,7 @@ import { Alert } from './alert.js';
 import { Button } from './button.js';
 import { Input } from './input.js';
 import { SiteProofFields, uploadSiteDocument } from './site-proof.js';
-
-const DEFAULT_CENTER: L.LatLngTuple = [14.5995, 120.9842];
-
-// Leaflet's default marker images are not bundled, so the pin is a CSS dot.
-const pinIcon = L.divIcon({
-  className: '',
-  html: '<span style="display:block;width:18px;height:18px;border-radius:50%;background:#c2410c;border:3px solid #fff;box-shadow:0 0 0 1px #0006"></span>',
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
-});
+import { PinMap } from './pin-map.js';
 
 interface SiteDialogProps {
   open: boolean;
@@ -35,9 +24,6 @@ export function SiteDialog(props: SiteDialogProps) {
 
 function SiteDialogBody({ onClose, customerId, onCreated }: SiteDialogProps) {
   const queryClient = useQueryClient();
-  const mapEl = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
   const [pin, setPin] = useState<{ lat: number; lng: number } | null>(null);
   const [line1, setLine1] = useState('');
   const [barangay, setBarangay] = useState('');
@@ -66,42 +52,11 @@ function SiteDialogBody({ onClose, customerId, onCreated }: SiteDialogProps) {
   const [locateError, setLocateError] = useState<string | null>(null);
 
   function placePin(lat: number, lng: number) {
+    if (!onLuzonMainland(lat, lng)) { setLocateError('Choose a location on Luzon mainland.'); return; }
+    setLocateError(null);
     setPin({ lat, lng });
     void fillFromPin(lat, lng);
-    const map = mapRef.current;
-    if (!map) return;
-    if (markerRef.current) {
-      markerRef.current.setLatLng([lat, lng]);
-    } else {
-      markerRef.current = L.marker([lat, lng], { draggable: true, icon: pinIcon, keyboard: true, title: 'Site location' })
-        .addTo(map)
-        .on('dragend', (e) => {
-          const at = (e.target as L.Marker).getLatLng();
-          setPin({ lat: at.lat, lng: at.lng });
-          void fillFromPin(at.lat, at.lng);
-        });
-    }
   }
-
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      if (!mapEl.current || mapRef.current) return;
-      const map = L.map(mapEl.current).setView(DEFAULT_CENTER, 11);
-      // ponytail: OSM's public tiles, fine at pilot volume; move to a paid tile source if traffic grows.
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors',
-      }).addTo(map);
-      map.on('click', (e: L.LeafletMouseEvent) => placePin(e.latlng.lat, e.latlng.lng));
-      mapRef.current = map;
-    });
-    return () => {
-      cancelAnimationFrame(frame);
-      mapRef.current?.remove();
-      mapRef.current = null;
-      markerRef.current = null;
-    };
-  }, []);
 
   function useMyLocation() {
     if (!navigator.geolocation) {
@@ -114,7 +69,6 @@ function SiteDialogBody({ onClose, customerId, onCreated }: SiteDialogProps) {
       (pos) => {
         setLocating(false);
         placePin(pos.coords.latitude, pos.coords.longitude);
-        mapRef.current?.setView([pos.coords.latitude, pos.coords.longitude], 16);
       },
       () => {
         setLocating(false);
@@ -171,12 +125,7 @@ function SiteDialogBody({ onClose, customerId, onCreated }: SiteDialogProps) {
     >
       <form id="new-site-form" onSubmit={submit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
-          <div
-            ref={mapEl}
-            role="application"
-            aria-label="Map. Click to place the site pin."
-            className="h-72 w-full overflow-hidden rounded-md border border-border"
-          />
+          <PinMap label="Site location" value={pin} onChange={(at) => placePin(at.lat, at.lng)} className="h-72" />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-text-muted" aria-live="polite">
               {pin

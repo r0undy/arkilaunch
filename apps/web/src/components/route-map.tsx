@@ -19,6 +19,8 @@ export interface RouteMapCanvasProps {
   labels?: { pickup?: string | undefined; dropoff?: string | undefined };
   fitPadding?: number | PaddingOptions;
   hint?: string | null;
+  initialCenter?: LatLng;
+  sitePreview?: { at: LatLng; label: string; imageUrl: string | null };
 }
 
 export const TripCanvas = lazy(() => import('./route-map-gl.js'));
@@ -29,7 +31,7 @@ export function MapSkeleton({ className = '' }: { className?: string }) {
     <div
       role="status"
       aria-busy="true"
-      className={`flex h-full w-full animate-pulse flex-col items-center justify-center gap-2 bg-border/40 text-text-muted ${className}`}
+      className={`flex h-full w-full flex-col items-center justify-center gap-2 bg-border/40 text-text-muted ${className}`}
     >
       <MapPinned className="h-8 w-8" aria-hidden="true" />
       <span className="text-sm">Loading the map…</span>
