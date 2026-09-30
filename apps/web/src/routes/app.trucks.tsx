@@ -319,10 +319,12 @@ function CostCard({ initial }: { initial: TruckSettings }) {
         })} />}
       >
         <div className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
             <Input label="Fuel factor (L/km)" type="number" min={0} step="any" numeric value={fuelFactor} placeholder="Blank = fuel L/km" onChange={(e) => setFuelFactor(e.target.value)} />
             <Input label="Driver rate (₱ per km)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
             <Input label="Miscellaneous allowance (₱ per trip)" type="number" min={0} numeric value={misc} onChange={(e) => setMisc(e.target.value)} />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
             <Select label="Helper" value={helper.kind} onChange={(e) => setHelper({ ...helper, kind: e.target.value as TruckCostPolicy['helper']['kind'] })}>
               {Object.entries(HELPER_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
