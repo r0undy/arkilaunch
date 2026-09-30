@@ -505,6 +505,13 @@
       "when": 1790400033000,
       "tag": "0072_truck_pricing_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1790400034000,
+      "tag": "0073_hourly_rate_cards_repair",
+      "breakpoints": true
     }
   ]
 }

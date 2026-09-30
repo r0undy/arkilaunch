@@ -6,7 +6,7 @@
 **Version:** 0.1
 **Author:** ArkiLaunch Team (Almara Construction capstone)
 **Status:** `Locked`
-**Last reconciled:** 2026-08-01 (see docs/index.md §1)
+**Last reconciled:** 2026-09-30 (see docs/index.md §1)
 **PRD Reference:** [prd-arkilaunch.md](prd-arkilaunch.md) PRD-F1 (Dynamic Quotation Engine); US-03; BRD-M4
 **SDD Reference:** [sdd-arkilaunch.md](sdd-arkilaunch.md) §3 (RateCard / Quotation / QuotationItem), §4 (`POST /api/v1/quotes`), §4.1(b) (quote sequence)
 **RFC ID:** `arkilaunch-rfc-003`
@@ -232,7 +232,7 @@ discount             = discount_type == 'percent' ? quote_subtotal * (discount_v
 quote_total          = round2( max(0, quote_subtotal - discount) )
 ```
 
-*Addendum ([cr-arkilaunch-hourly-rate-cards.md](cr-arkilaunch-hourly-rate-cards.md), 2026-09-29):* `rate_card_value` is always per hour. Heavy-equipment rate cards are hourly only (`rate_cards_hourly_only_chk`, migration 0071). The interim daily and monthly cards, charged "in the card's own unit" (formula 2.0), are withdrawn, and legacy non-hourly cards are retired, not converted. A line may give `days`, which the engine turns into `H = days × dailyHours`. Rent is `rate_card_value × H`. Historic quotations keep their stored daily or monthly `rent_parts` unchanged (QAD-T44).
+*Addendum ([cr-arkilaunch-hourly-rate-cards.md](cr-arkilaunch-hourly-rate-cards.md), 2026-09-29):* `rate_card_value` is always per hour. Heavy-equipment rate cards are hourly only (`rate_cards_hourly_only_chk`, migration 0071). The interim daily and monthly cards, charged "in the card's own unit" (formula 2.0), are withdrawn, and legacy non-hourly cards are retired, not converted. A line may give `days`, which the engine turns into `H = days × dailyHours`. Rent is `rate_card_value × H`. Historic quotations keep their stored daily or monthly `rent_parts` unchanged (QAD-T44). The dev database had already applied a different 0071 before that migration shipped, so [the migration-history repair](cr-arkilaunch-migration-history-repair.md) applies the hourly rule there through forward migration 0073.
 
 *Addendum ([cr-arkilaunch-coupons.md](cr-arkilaunch-coupons.md)):* a tenant coupon applied at checkout is a second discount taken **after** the quote. It comes off `quote_total` (the rent line of the booking invoice), `coupon_discount = round2( min(quote_total, percent ? quote_total * value/100 : value) )`, and never off the deposit. The quote itself is not changed.
 
