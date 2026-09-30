@@ -26,7 +26,7 @@ describe('Help center', () => {
     expect(await screen.findByRole('link', { name: /ops@almara\.ph/ })).toHaveAttribute('href', 'mailto:ops@almara.ph');
     expect(screen.getAllByRole('link', { name: /09171234567/ }).map((a) => a.getAttribute('href'))).toEqual([
       'tel:09171234567',
-      'viber://call?number=%2B639171234567',
+      'viber://chat?number=%2B639171234567',
       'https://t.me/+639171234567',
     ]);
     expect(screen.queryByText(/arkilaunch2026@gmail\.com/)).not.toBeInTheDocument();
