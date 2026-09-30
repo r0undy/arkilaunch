@@ -45,11 +45,11 @@ export function NavGroupList({ groups, pathname, onNavigate, collapsed = false }
   const renderGroup = (group: NavGroup, labelled: boolean) => (
     <div key={group.title} className={collapsed ? 'border-t border-border pt-2 first:border-0 first:pt-0' : ''}>
       {labelled && !collapsed && !group.hideTitle && (
-        <p className="mb-1 px-3 text-xs font-semibold text-text-muted">
+        <p className="mb-1 px-3 text-sm font-bold text-text">
           {group.title}
         </p>
       )}
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col">
         {group.items.map((item) => {
           const isActive = item.to === active;
           return (
@@ -63,11 +63,10 @@ export function NavGroupList({ groups, pathname, onNavigate, collapsed = false }
               activeOptions={{ exact: true }}
               aria-current={isActive ? 'page' : undefined}
               className={[
-                'flex min-h-11 items-center rounded-sm border-l-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+                // Cloudscape side nav: the active page is bold link-colour text, no fill or bar.
+                'flex min-h-10 items-center rounded-sm text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
                 collapsed ? 'justify-center px-0' : 'gap-3 px-3',
-                isActive
-                  ? 'border-accent bg-surface-sunk font-semibold text-accent'
-                  : 'border-transparent text-text-muted hover:bg-surface-sunk hover:text-text',
+                isActive ? 'font-bold text-accent' : 'text-text hover:text-accent',
               ].join(' ')}
             >
               {item.icon && <item.icon aria-hidden="true" className="h-5 w-5 shrink-0" />}
