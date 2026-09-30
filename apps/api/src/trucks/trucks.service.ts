@@ -48,7 +48,7 @@ import { countRows } from '../common/count-rows.js';
 import { num } from '../common/field-logs.js';
 
 const DEFAULT_SETTINGS: TruckSettings = {
-  baseFeePhp: 0, driverFeePhp: 0, driverRatePhpPerKm: 0, quoteBreakdown: 'formula', remainderLabel: 'Truck trip cost', extras: [], formula: null, rangePct: 10, region: 'NCR',
+  baseFeePhp: 0, driverFeePhp: 0, driverRatePhpPerKm: 0, quoteBreakdown: 'formula', remainderLabel: 'Truck trip cost', minFeeMaxKm: null, minFeePhp: 0, extras: [], formula: null, rangePct: 10, region: 'NCR',
   roundTripMultiplier: 1, quoteMultiplier: 1, maxDiscountPct: null, costPolicy: DEFAULT_TRUCK_COST_POLICY,
 };
 
@@ -132,6 +132,8 @@ export class TrucksService {
           driverRatePhpPerKm: Number(row.driverRatePhpPerKm),
           quoteBreakdown: row.quoteBreakdown,
           remainderLabel: row.remainderLabel,
+          minFeeMaxKm: num(row.minFeeMaxKm),
+          minFeePhp: Number(row.minFeePhp),
           extras: row.extras,
           formula: row.formula,
           rangePct: Number(row.rangePct),
@@ -270,6 +272,8 @@ export class TrucksService {
       driverRatePhpPerKm: String(body.driverRatePhpPerKm),
       quoteBreakdown: body.quoteBreakdown,
       remainderLabel: body.remainderLabel,
+      minFeeMaxKm: body.minFeeMaxKm === null ? null : String(body.minFeeMaxKm),
+      minFeePhp: String(body.minFeePhp),
       extras: body.extras,
       formula: body.formula || null,
       rangePct: String(body.rangePct),

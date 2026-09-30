@@ -47,6 +47,10 @@ export const TruckSettingsSchema = z
     // plus remainderLabel up to the formula total (costItemQuoteLines).
     quoteBreakdown: z.enum(['formula', 'cost_items']).default('formula'),
     remainderLabel: z.string().trim().min(1).max(80).default('Truck trip cost'),
+    // 0077: a trip at or under minFeeMaxKm km is charged minFeePhp instead
+    // of the formula. Null = off.
+    minFeeMaxKm: z.number().positive().max(5000).nullable().default(null),
+    minFeePhp: z.number().nonnegative().max(1_000_000).default(0),
     extras: z.array(TruckExtraSchema).max(20),
     formula: z.string().trim().max(500).nullish(),
     rangePct: z.number().min(0).max(100).default(10),
@@ -232,7 +236,7 @@ export interface TollRateResponse {
 
 export interface TruckPriceInput {
   km: number;
-  settings: FormulaSettings & Pick<TruckSettings, 'formula'>;
+  settings: FormulaSettings & Pick<TruckSettings, 'formula'> & Partial<Pick<TruckSettings, 'minFeeMaxKm' | 'minFeePhp'>>;
   // From pricing_parameters and the resolved diesel price.
   perKmPhp: number;
   fuelLPerKm: number;
@@ -283,6 +287,10 @@ function formulaVars(
 
 // The one place the truck price is computed (estimate and the admin's km confirm).
 export function priceTruckTrip({ km, settings, perKmPhp, fuelLPerKm, dieselPhp, tolls = [] }: TruckPriceInput): TruckPrice {
+  if (settings.minFeeMaxKm != null && km <= settings.minFeeMaxKm) {
+    const fee = round2HalfUp(settings.minFeePhp ?? 0);
+    return { km, lines: [{ label: `Short-trip fee (up to ${settings.minFeeMaxKm} km)`, amountPhp: fee }], totalPhp: fee };
+  }
   const lines: TruckPriceLine[] = [
     { label: 'Base fee', amountPhp: round2HalfUp(settings.baseFeePhp) },
     { label: `Distance (${km} km × ₱${perKmPhp}/km)`, amountPhp: round2HalfUp(km * perKmPhp) },

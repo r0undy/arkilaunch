@@ -48,6 +48,8 @@ function useSaveSettings(initial: TruckSettings, onSaved: () => void) {
         quoteMultiplier: initial.quoteMultiplier ?? 1,
         quoteBreakdown: initial.quoteBreakdown ?? 'formula',
         remainderLabel: initial.remainderLabel ?? 'Truck trip cost',
+        minFeeMaxKm: initial.minFeeMaxKm ?? null,
+        minFeePhp: initial.minFeePhp ?? 0,
         maxDiscountPct: initial.maxDiscountPct ?? null,
         costPolicy: initial.costPolicy ?? DEFAULT_TRUCK_COST_POLICY,
         ...patch,
@@ -88,7 +90,8 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
 
 function QuotationCard({ initial }: { initial: TruckSettings }) {
   const [base, setBase] = useState(String(initial.baseFeePhp));
-  const [driver, setDriver] = useState(String(initial.driverRatePhpPerKm ?? 0));
+  const [minKm, setMinKm] = useState(initial.minFeeMaxKm == null ? '' : String(initial.minFeeMaxKm));
+  const [minFee, setMinFee] = useState(String(initial.minFeePhp ?? 0));
   const [extras, setExtras] = useState<TruckExtra[]>(initial.extras);
   const [formula, setFormula] = useState(initial.formula || DEFAULT_TRUCK_FORMULA);
   const [rangePct, setRangePct] = useState(String(initial.rangePct));
@@ -99,7 +102,8 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
   const [editing, setEditing] = useState(false);
   const open = () => {
     setBase(String(initial.baseFeePhp));
-    setDriver(String(initial.driverRatePhpPerKm ?? 0));
+    setMinKm(initial.minFeeMaxKm == null ? '' : String(initial.minFeeMaxKm));
+    setMinFee(String(initial.minFeePhp ?? 0));
     setExtras(initial.extras);
     setFormula(initial.formula || DEFAULT_TRUCK_FORMULA);
     setRangePct(String(initial.rangePct));
@@ -129,7 +133,7 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
           { label: 'Quotation multiplier', value: `× ${initial.quoteMultiplier ?? 1}` },
           { label: 'Customer breakdown', value: initial.quoteBreakdown === 'cost_items' ? `Cost items + ${initial.remainderLabel ?? 'Truck trip cost'}` : 'Formula lines' },
           { label: 'Base fee (per trip)', value: formatPeso(initial.baseFeePhp) },
-          { label: 'Driver rate (per km)', value: formatPeso(initial.driverRatePhpPerKm ?? 0) },
+          { label: 'Short-trip fee', value: initial.minFeeMaxKm == null ? 'Off' : `${formatPeso(initial.minFeePhp ?? 0)} up to ${initial.minFeeMaxKm} km` },
           ...(initial.driverFeePhp > 0 ? [{ label: "Driver's fee (legacy, per trip)", value: formatPeso(initial.driverFeePhp) }] : []),
           { label: 'Estimate range', value: `± ${initial.rangePct}%` },
           {
@@ -149,7 +153,8 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
         size="xl"
         footer={<SaveFooter pending={save.isPending} onCancel={() => setEditing(false)} label="Save quotation" onSave={() => save.mutate({
           baseFeePhp: Number(base),
-          driverRatePhpPerKm: Number(driver),
+          minFeeMaxKm: minKm.trim() === '' ? null : Number(minKm),
+          minFeePhp: Number(minFee),
           extras,
           formula: formula.trim() === '' || formula.trim() === DEFAULT_TRUCK_FORMULA ? null : formula.trim(),
           rangePct: Number(rangePct),
@@ -165,7 +170,8 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
             <Input label="Quotation multiplier" type="number" min={0} step="any" numeric value={quoteMultiplier} onChange={(e) => setQuoteMultiplier(e.target.value)} />
             <Input label="Estimate range (± %)" type="number" min={0} max={100} numeric value={rangePct} onChange={(e) => setRangePct(e.target.value)} />
             <Input label="Base fee (₱ per trip)" type="number" min={0} numeric value={base} onChange={(e) => setBase(e.target.value)} />
-            <Input label="Driver rate (₱ per km)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
+            <Input label="Short-trip threshold (km)" type="number" min={0} step="any" numeric value={minKm} placeholder="Off" onChange={(e) => setMinKm(e.target.value)} />
+            <Input label="Short-trip fee (₱)" type="number" min={0} numeric disabled={minKm.trim() === ''} value={minFee} onChange={(e) => setMinFee(e.target.value)} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Select label="Customer breakdown" value={breakdown} onChange={(e) => setBreakdown(e.target.value as TruckSettings['quoteBreakdown'])}>
@@ -179,7 +185,7 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
           <FormulaBuilder
             value={formula}
             onChange={setFormula}
-            settings={{ baseFeePhp: Number(base), driverFeePhp: initial.driverFeePhp, driverRatePhpPerKm: Number(driver), extras, roundTripMultiplier: Number(roundTrip) || 1, quoteMultiplier: Number(quoteMultiplier) || 1 }}
+            settings={{ baseFeePhp: Number(base), driverFeePhp: initial.driverFeePhp, driverRatePhpPerKm: initial.driverRatePhpPerKm ?? 0, extras, roundTripMultiplier: Number(roundTrip) || 1, quoteMultiplier: Number(quoteMultiplier) || 1 }}
             sample={sample}
           />
           <ChargeList legend="Extra charges" noun="charge" items={extras} onChange={setExtras} />
@@ -260,6 +266,7 @@ function CostCard({ initial }: { initial: TruckSettings }) {
   const saved = initial.costPolicy ?? DEFAULT_TRUCK_COST_POLICY;
   const [fuelFactor, setFuelFactor] = useState('');
   const [misc, setMisc] = useState('');
+  const [driver, setDriver] = useState('');
   const [helper, setHelper] = useState(saved.helper);
   const [maintenance, setMaintenance] = useState(saved.maintenance);
   const [otherCosts, setOtherCosts] = useState<TruckExtra[]>(saved.otherCosts ?? []);
@@ -268,6 +275,7 @@ function CostCard({ initial }: { initial: TruckSettings }) {
     setOtherCosts(saved.otherCosts ?? []);
     setFuelFactor(saved.fuelFactor == null ? '' : String(saved.fuelFactor));
     setMisc(String(saved.miscAllowancePhp));
+    setDriver(String(initial.driverRatePhpPerKm ?? 0));
     setHelper(saved.helper);
     setMaintenance(saved.maintenance);
     setEditing(true);
@@ -280,6 +288,7 @@ function CostCard({ initial }: { initial: TruckSettings }) {
         description="Staff only, never shown to customers. Used for each trip's expected cost and profit."
         items={[
           { label: 'Fuel factor', value: saved.fuelFactor == null ? 'Fuel L/km (operating costs)' : `${saved.fuelFactor} L/km` },
+          { label: 'Driver rate (per km)', value: formatPeso(initial.driverRatePhpPerKm ?? 0) },
           { label: 'Miscellaneous allowance', value: formatPeso(saved.miscAllowancePhp) },
           { label: 'Helper', value: policyText(HELPER_KINDS, saved.helper) },
           { label: 'Maintenance', value: policyText(MAINTENANCE_KINDS, saved.maintenance) },
@@ -296,9 +305,10 @@ function CostCard({ initial }: { initial: TruckSettings }) {
         open={editing}
         onClose={() => setEditing(false)}
         title="Internal trip cost"
-        description="Fuel = km × fuel factor × diesel × round-trip multiplier. The driver is the driver's fee; tolls and extra charges count as cost."
+        description="Fuel = km × fuel factor × diesel × round-trip multiplier. The driver is km × the driver rate; tolls and extra charges count as cost."
         size="lg"
         footer={<SaveFooter pending={save.isPending} onCancel={() => setEditing(false)} label="Save trip cost" onSave={() => save.mutate({
+          driverRatePhpPerKm: Number(driver),
           costPolicy: {
             fuelFactor: fuelFactor.trim() === '' ? null : Number(fuelFactor),
             miscAllowancePhp: Number(misc),
@@ -311,6 +321,7 @@ function CostCard({ initial }: { initial: TruckSettings }) {
         <div className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Input label="Fuel factor (L/km)" type="number" min={0} step="any" numeric value={fuelFactor} placeholder="Blank = fuel L/km" onChange={(e) => setFuelFactor(e.target.value)} />
+            <Input label="Driver rate (₱ per km)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
             <Input label="Miscellaneous allowance (₱ per trip)" type="number" min={0} numeric value={misc} onChange={(e) => setMisc(e.target.value)} />
             <Select label="Helper" value={helper.kind} onChange={(e) => setHelper({ ...helper, kind: e.target.value as TruckCostPolicy['helper']['kind'] })}>
               {Object.entries(HELPER_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

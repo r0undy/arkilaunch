@@ -533,6 +533,13 @@
       "when": 1790400037000,
       "tag": "0076_truck_quote_breakdown",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1790400038000,
+      "tag": "0077_truck_short_trip_fee",
+      "breakpoints": true
     }
   ]
 }

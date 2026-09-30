@@ -159,6 +159,28 @@ describe('tenant truck pricing policy', () => {
     });
   });
 
+  describe('short-trip fee', () => {
+    const base = { baseFeePhp: 0, driverFeePhp: 0, extras: [], formula: 'km * round_trip * diesel * quote_multiplier', roundTripMultiplier: 2, quoteMultiplier: 2 };
+    const trip = (km: number, minFeeMaxKm: number | null) =>
+      priceTruckTrip({ km, perKmPhp: 0, fuelLPerKm: 0, dieselPhp: 90, settings: { ...base, minFeeMaxKm, minFeePhp: 8000 } });
+
+    it('charges the flat fee at or under the threshold instead of the formula', () => {
+      expect(trip(30, 49)).toEqual({ km: 30, lines: [{ label: 'Short-trip fee (up to 49 km)', amountPhp: 8000 }], totalPhp: 8000 });
+      expect(trip(49, 49).totalPhp).toBe(8000);
+    });
+
+    it('uses the formula above the threshold or when it is off', () => {
+      expect(trip(50, 49).totalPhp).toBe(18000); // 50 × 2 × 90 × 2
+      expect(trip(30, null).totalPhp).toBe(10800);
+    });
+
+    it('still sums the cost-item breakdown to the flat fee', () => {
+      const cost = { lines: [{ label: 'Fuel', amountPhp: 3000 }, { label: 'Driver', amountPhp: 450 }] };
+      const lines = costItemQuoteLines(trip(30, 49), cost);
+      expect(lines.at(-1)).toEqual({ label: 'Truck trip cost', amountPhp: 4550 });
+    });
+  });
+
   it('computes profit and margin', () => {
     expect(truckProfit(50_000, 30_000)).toEqual({ profitPhp: 20_000, marginPct: 40 });
     expect(truckProfit(0, 100).marginPct).toBeNull();
