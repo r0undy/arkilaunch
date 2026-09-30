@@ -22,18 +22,18 @@ function BrandPanel() {
       {photoUrl && (
         <>
           <img src={photoUrl} alt="" className="absolute inset-0 -z-10 size-full object-cover" />
-          <div className="absolute inset-0 -z-10 bg-linear-to-t from-nav via-nav/45 to-nav/20" />
+          <div className="absolute inset-0 -z-10 bg-linear-to-t from-nav from-10% via-nav/60 via-40% to-nav/30" />
         </>
       )}
       <Link
         to={homeHref()}
-        className="flex items-center gap-3 self-start text-heading-md"
+        className="flex items-center gap-3 self-start text-heading-md text-shadow-md"
         aria-label={`${tenantName} home`}
       >
         {logoUrl && <img src={logoUrl} alt="" className="h-10 w-auto max-w-[140px] rounded-sm bg-white object-contain p-1" />}
         {tenantName}
       </Link>
-      <div className="hidden flex-col gap-10 lg:flex">
+      <div className="hidden flex-col gap-10 text-shadow-lg lg:flex">
         <div>
           <p className="max-w-md border-l-2 border-primary pl-4 text-heading-lg text-balance xl:text-display-md">
             {onPlatform
