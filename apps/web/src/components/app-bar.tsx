@@ -60,14 +60,20 @@ function NotificationBell({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : 'Notifications'}
-        className={`flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm ${TILE}`}
+        className={`flex min-h-11 min-w-11 items-center justify-center rounded-sm ${TILE}`}
       >
-        <Bell aria-hidden="true" className="h-5 w-5" />
-        {unreadCount !== null && unreadCount > 0 && (
-          <span className="rounded-full bg-primary px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-on-primary">
-            {unreadCount}
-          </span>
-        )}
+        {/* AWS console style: the count sits on the bell's shoulder, not beside it. */}
+        <span className="relative">
+          <Bell aria-hidden="true" className="h-5 w-5" />
+          {unreadCount !== null && unreadCount > 0 && (
+            <span
+              aria-hidden="true"
+              className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[10px] font-bold leading-none tabular-nums text-white ring-2 ring-surface"
+            >
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </span>
       </button>
       {open && (
         <div
