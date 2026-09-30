@@ -16,6 +16,7 @@ import { StatusBadge } from './status-badge.js';
 import { RouteMap } from './route-map.js';
 import { NegotiationThread } from './negotiation-thread.js';
 import { BookingSide, SiteRepContact } from './booking-actions.js';
+import { MessengerLinks } from './messenger-links.js';
 
 const heading = 'text-heading-md text-text';
 
@@ -243,6 +244,7 @@ function TruckOverview({ truck }: { truck: TruckRequestResponse }) {
                 <a className="underline" href={`tel:${truck.requesterPhone.replace(/[^\d+]/g, '')}`}>
                   {truck.requesterPhone}
                 </a>
+                <MessengerLinks phone={truck.requesterPhone} />
               </>
             )}
           </Row>

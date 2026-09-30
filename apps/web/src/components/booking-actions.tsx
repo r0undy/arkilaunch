@@ -14,6 +14,7 @@ import { SiteProofAdmin } from './site-proof.js';
 import { SiteEquipmentWeather } from './equipment-weather.js';
 import { EdtrSheetCard } from './edtr-sheet-card.js';
 import { useToast } from './toast.js';
+import { MessengerLinks } from './messenger-links.js';
 
 function PendingRequests({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();
@@ -254,6 +255,7 @@ export function SiteRepContact({ name, mobile }: { name: string | null; mobile?:
           <a href={`tel:${mobile}`} className="underline">
             +63 {localPhMobile(mobile)}
           </a>
+          <MessengerLinks phone={mobile} />
         </>
       )}
     </>

@@ -14,6 +14,8 @@ import {
   Store,
   X,
   type LucideIcon,
+  MessageCircle,
+  Send,
 } from 'lucide-react';
 import type { CatalogTenantListItem, CatalogTenantListResponse } from '@arkilaunch/shared';
 import { Button } from '../components/button.js';
@@ -28,6 +30,7 @@ import { tenantOrigin } from '../lib/host.js';
 
 import { SearchField } from '../components/search-field.js';
 import { SegmentedControl } from '../components/segmented-control.js';
+import { messengerHrefs } from '../components/messenger-links.js';
 const PLATFORM_DOMAIN = import.meta.env.VITE_PLATFORM_DOMAIN ?? 'arkilaunch.app';
 // ponytail: placeholder contact until the real inbox and line exist; set them per env.
 const CONTACT_EMAIL = import.meta.env.VITE_PLATFORM_CONTACT_EMAIL || `hello@${PLATFORM_DOMAIN}`;
@@ -558,6 +561,15 @@ function ClosingCta() {
             {CONTACT_PHONE}
           </a>
         )}
+        {(() => {
+          const hrefs = messengerHrefs(CONTACT_PHONE);
+          return hrefs && (
+            <>
+              <a href={hrefs.viber} className={link}><MessageCircle aria-hidden className="size-5 text-primary" />Viber</a>
+              <a href={hrefs.telegram} target="_blank" rel="noreferrer" className={link}><Send aria-hidden className="size-5 text-primary" />Telegram</a>
+            </>
+          );
+        })()}
       </div>
     </section>
   );

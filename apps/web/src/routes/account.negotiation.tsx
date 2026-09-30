@@ -1,6 +1,6 @@
 import { createRoute, Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { normalizePhMobile, PH_MOBILE_REGEX, quoteExpiresAt, type BookingDetailResponse } from '@arkilaunch/shared';
+import { quoteExpiresAt, type BookingDetailResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { useTenant } from '../lib/tenant.js';
 import { bookingsQueries, quotesQueries } from '../lib/queries.js';
@@ -19,6 +19,7 @@ import { PrintFrame } from '../components/print-frame.js';
 import { useToast } from '../components/toast.js';
 import { LoadError } from '../components/load-error.js';
 import { Skeleton } from '../components/skeleton.js';
+import { messengerHrefs } from '../components/messenger-links.js';
 
 // Only the accepted quote's engine-priced total is ever charged.
 
@@ -185,14 +186,13 @@ function NegotiationCallRoute() {
   const booking = useQuery(bookingsQueries.detail(bookingId));
   const code = booking.data?.code;
   const tenant = useTenant();
-  const mobile = tenant?.phone ? normalizePhMobile(tenant.phone) : '';
-  const hasMobile = PH_MOBILE_REGEX.test(mobile);
+  const hrefs = messengerHrefs(tenant?.phone);
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title="Negotiate by phone" {...(code ? { description: `Booking ${code}` } : {})} />
       <Surface radius="md" elevation="sm" className="flex max-w-xl flex-col gap-3 p-6">
         <p className="text-sm text-text">
-          {hasMobile ? 'Call or message the rental team on Viber or Telegram' : 'Call the rental team on the number on our contact page'} and quote your booking reference{' '}
+          {hrefs ? 'Call or message the rental team on Viber or Telegram' : 'Call the rental team on the number on our contact page'} and quote your booking reference{' '}
           <span className="font-mono font-semibold">{code ?? '(loading)'}</span>.
         </p>
         <p className="text-sm text-text-muted">
@@ -200,10 +200,10 @@ function NegotiationCallRoute() {
           the price you pay is always the one written down.
         </p>
         <div className="flex flex-wrap gap-2">
-          {hasMobile ? (
+          {hrefs ? (
             <>
-              <a href={`viber://call?number=${encodeURIComponent(mobile)}`} className={buttonClass('primary')}>Call on Viber</a>
-              <a href={`https://t.me/${mobile}`} target="_blank" rel="noreferrer" className={buttonClass('primary')}>Message on Telegram</a>
+              <a href={hrefs.viber} className={buttonClass('primary')}>Call on Viber</a>
+              <a href={hrefs.telegram} target="_blank" rel="noreferrer" className={buttonClass('primary')}>Message on Telegram</a>
             </>
           ) : (
             <Link to="/contact" className={buttonClass('primary')}>Contact page</Link>

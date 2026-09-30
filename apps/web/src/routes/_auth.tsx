@@ -4,6 +4,7 @@ import { currentHost } from '../lib/host.js';
 import { useTenant } from '../lib/tenant.js';
 import { SkipLink } from '../components/skip-link.js';
 import { rootRoute } from './__root.js';
+import { MessengerLinks, messengerHrefs } from '../components/messenger-links.js';
 
 function BrandPanel() {
   const tenant = useTenant();
@@ -83,6 +84,11 @@ function HelpFooter() {
         <a href={`tel:${tenant.phone}`} className="font-semibold text-text hover:underline">
           {tenant.phone}
         </a>
+      )}
+      {messengerHrefs(tenant.phone) && (
+        <span>
+          Viber / Telegram:<MessengerLinks phone={tenant.phone} className="font-semibold text-text hover:underline" />
+        </span>
       )}
       {tenant.contactEmail && (
         <a href={`mailto:${tenant.contactEmail}`} className="font-semibold text-text hover:underline">
