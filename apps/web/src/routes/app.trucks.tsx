@@ -110,8 +110,6 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
     dieselPhp: Number(diesel.data?.pricePhp ?? 0),
   };
   const save = useSaveSettings(initial, () => setEditing(false));
-  const setExtra = (i: number, patch: Partial<TruckExtra>) =>
-    setExtras((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
   return (
     <>
@@ -165,33 +163,42 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
             settings={{ baseFeePhp: Number(base), driverFeePhp: Number(driver), extras, roundTripMultiplier: Number(roundTrip) || 1, quoteMultiplier: Number(quoteMultiplier) || 1 }}
             sample={sample}
           />
-          <fieldset className="flex flex-col gap-3">
-            <legend className="mb-2 text-sm font-medium text-text">Extra charges</legend>
-            {extras.length === 0 && <p className="text-sm text-text-muted">None.</p>}
-            {extras.map((x, i) => (
-              <div key={i} className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_140px_140px_auto]">
-                <div className="col-span-2 sm:col-span-1">
-                  <Input label="Charge" value={x.label} onChange={(e) => setExtra(i, { label: e.target.value })} />
-                </div>
-                <Input label="₱" type="number" min={0} numeric value={String(x.amountPhp)} onChange={(e) => setExtra(i, { amountPhp: Number(e.target.value) })} />
-                <Select label="Per" value={x.per} onChange={(e) => setExtra(i, { per: e.target.value as TruckExtra['per'] })}>
-                  <option value="trip">trip</option>
-                  <option value="km">km</option>
-                </Select>
-                <Button variant="ghost" onClick={() => setExtras((xs) => xs.filter((_, j) => j !== i))}>
-                  Remove
-                </Button>
-              </div>
-            ))}
-            <div>
-              <Button variant="secondary" onClick={() => setExtras((xs) => [...xs, { label: '', amountPhp: 0, per: 'trip' }])}>
-                Add a charge
-              </Button>
-            </div>
-          </fieldset>
+          <ChargeList legend="Extra charges" noun="charge" items={extras} onChange={setExtras} />
         </div>
       </Modal>
     </>
+  );
+}
+
+// A named ₱ per trip/km list: the quotation's extra charges and the
+// internal other costs.
+function ChargeList({ legend, noun, items, onChange }: { legend: string; noun: string; items: TruckExtra[]; onChange: (items: TruckExtra[]) => void }) {
+  const set = (i: number, patch: Partial<TruckExtra>) => onChange(items.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  return (
+    <fieldset className="flex flex-col gap-3">
+      <legend className="mb-2 text-sm font-medium text-text">{legend}</legend>
+      {items.length === 0 && <p className="text-sm text-text-muted">None.</p>}
+      {items.map((x, i) => (
+        <div key={i} className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_140px_140px_auto]">
+          <div className="col-span-2 sm:col-span-1">
+            <Input label={noun[0]!.toUpperCase() + noun.slice(1)} value={x.label} onChange={(e) => set(i, { label: e.target.value })} />
+          </div>
+          <Input label="₱" type="number" min={0} numeric value={String(x.amountPhp)} onChange={(e) => set(i, { amountPhp: Number(e.target.value) })} />
+          <Select label="Per" value={x.per} onChange={(e) => set(i, { per: e.target.value as TruckExtra['per'] })}>
+            <option value="trip">trip</option>
+            <option value="km">km</option>
+          </Select>
+          <Button variant="ghost" onClick={() => onChange(items.filter((_, j) => j !== i))}>
+            Remove
+          </Button>
+        </div>
+      ))}
+      <div>
+        <Button variant="secondary" onClick={() => onChange([...items, { label: '', amountPhp: 0, per: 'trip' }])}>
+          Add a {noun}
+        </Button>
+      </div>
+    </fieldset>
   );
 }
 
@@ -236,8 +243,10 @@ function CostCard({ initial }: { initial: TruckSettings }) {
   const [misc, setMisc] = useState('');
   const [helper, setHelper] = useState(saved.helper);
   const [maintenance, setMaintenance] = useState(saved.maintenance);
+  const [otherCosts, setOtherCosts] = useState<TruckExtra[]>(saved.otherCosts ?? []);
   const [editing, setEditing] = useState(false);
   const open = () => {
+    setOtherCosts(saved.otherCosts ?? []);
     setFuelFactor(saved.fuelFactor == null ? '' : String(saved.fuelFactor));
     setMisc(String(saved.miscAllowancePhp));
     setHelper(saved.helper);
@@ -251,10 +260,16 @@ function CostCard({ initial }: { initial: TruckSettings }) {
         title="Internal trip cost"
         description="Staff only, never shown to customers. Used for each trip's expected cost and profit."
         items={[
-          { label: 'Fuel factor', value: saved.fuelFactor == null ? 'Fuel L/km (operating costs)' : String(saved.fuelFactor) },
+          { label: 'Fuel factor', value: saved.fuelFactor == null ? 'Fuel L/km (operating costs)' : `${saved.fuelFactor} L/km` },
           { label: 'Miscellaneous allowance', value: formatPeso(saved.miscAllowancePhp) },
           { label: 'Helper', value: policyText(HELPER_KINDS, saved.helper) },
           { label: 'Maintenance', value: policyText(MAINTENANCE_KINDS, saved.maintenance) },
+          {
+            label: 'Other costs',
+            value: saved.otherCosts?.length
+              ? saved.otherCosts.map((x) => `${x.label} ${formatPeso(x.amountPhp)}/${x.per}`).join(', ')
+              : 'None',
+          },
         ]}
         action={<EditButton what="internal trip cost" onClick={open} />}
       />
@@ -270,12 +285,13 @@ function CostCard({ initial }: { initial: TruckSettings }) {
             miscAllowancePhp: Number(misc),
             helper,
             maintenance,
+            otherCosts,
           },
         })} />}
       >
         <div className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Input label="Fuel factor" type="number" min={0} step="any" numeric value={fuelFactor} placeholder="Blank = fuel L/km" onChange={(e) => setFuelFactor(e.target.value)} />
+            <Input label="Fuel factor (L/km)" type="number" min={0} step="any" numeric value={fuelFactor} placeholder="Blank = fuel L/km" onChange={(e) => setFuelFactor(e.target.value)} />
             <Input label="Miscellaneous allowance (₱ per trip)" type="number" min={0} numeric value={misc} onChange={(e) => setMisc(e.target.value)} />
             <Select label="Helper" value={helper.kind} onChange={(e) => setHelper({ ...helper, kind: e.target.value as TruckCostPolicy['helper']['kind'] })}>
               {Object.entries(HELPER_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -286,6 +302,7 @@ function CostCard({ initial }: { initial: TruckSettings }) {
             </Select>
             <Input label="Maintenance value" type="number" min={0} numeric disabled={maintenance.kind === 'none'} value={String(maintenance.value)} onChange={(e) => setMaintenance({ ...maintenance, value: Number(e.target.value) })} />
           </div>
+          <ChargeList legend="Other costs" noun="cost" items={otherCosts} onChange={setOtherCosts} />
         </div>
       </Modal>
     </>
@@ -708,6 +725,7 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   // The tenant's max discount warns, never blocks: going lower is the admin's call.
   const floor = r.internal?.floorPhp ?? null;
   const belowFloor = floor !== null && Number(price) < floor;
+  const floorNote = r.internal?.floorBasis === 'cost' ? 'break-even: the estimated trip cost' : `${r.internal?.maxDiscountPct}% max discount`;
   // Typo guard: a price far from the route's own figure is called out.
   const offBy = r.price.totalPhp > 0 ? Math.abs(Number(price) - r.price.totalPhp) / r.price.totalPhp : 0;
   const section = 'flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0';
@@ -819,7 +837,7 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
         {r.capPhp !== null && <p className="text-xs text-text-muted">Top of the customer's estimate {formatPeso(r.capPhp)}</p>}
         {floor !== null && (
           <p className="text-xs text-text-muted">
-            Negotiation floor {formatPeso(floor)} ({r.internal!.maxDiscountPct}% max discount)
+            Negotiation floor {formatPeso(floor)} ({floorNote})
           </p>
         )}
       </section>
@@ -892,7 +910,7 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
             )}
             {belowFloor && (
               <Alert type="warning" header="Below the negotiation floor">
-                That is under your {formatPeso(floor!)} floor ({r.internal!.maxDiscountPct}% max discount). You can still set it; the audit log will note it.
+                That is under your {formatPeso(floor!)} floor ({floorNote}). You can still set it; the audit log will note it.
               </Alert>
             )}
           </div>

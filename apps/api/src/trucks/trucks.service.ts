@@ -161,7 +161,7 @@ export class TrucksService {
     const cost = estimateTruckCost({ km, settings, fuelLPerKm: diesel.fuelLPerKm, dieselPhp: diesel.pricePhp, tolls });
     return {
       price: { ...price, lowPhp: round2HalfUp(price.totalPhp * (1 - band)), highPhp: round2HalfUp(price.totalPhp * (1 + band)) },
-      internal: { cost, floorPhp: negotiationFloor(price.totalPhp, settings.maxDiscountPct), maxDiscountPct: settings.maxDiscountPct },
+      internal: { cost, ...negotiationFloor(price.totalPhp, settings.maxDiscountPct, cost.totalPhp), maxDiscountPct: settings.maxDiscountPct },
     };
   }
 
@@ -577,7 +577,7 @@ export class TrucksService {
         // The floor warns, never blocks: going below it is the admin's call,
         // and the audit trail says so.
         reason: `agreed price ${was === null ? 'none' : php(was)} -> ${php(pricePhp)}${
-          request.internal?.floorPhp != null && pricePhp < request.internal.floorPhp ? `; below the negotiation floor of ${php(request.internal.floorPhp)}` : ''
+          request.internal?.floorPhp != null && pricePhp < request.internal.floorPhp ? `; below the ${request.internal.floorBasis === 'cost' ? 'break-even cost' : 'negotiation floor'} of ${php(request.internal.floorPhp)}` : ''
         }`,
       });
       await notifyUser(tx, ctx.tenantId, request.requestedBy, 'truck_price_updated', {

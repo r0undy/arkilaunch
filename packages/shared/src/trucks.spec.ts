@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { estimateTruckCost, TruckCostPolicySchema, isSelfLoadingTruckType, negotiationFloor, priceTruckTrip, truckProfit } from './trucks.js';
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 describe('priceTruckTrip', () => {
   it('adds base, distance, fuel, driver and per-trip / per-km extras', () => {
@@ -50,8 +51,25 @@ describe('tenant truck pricing policy', () => {
   });
 
   it('floors a recommended price by the max discount, or not at all', () => {
-    expect(negotiationFloor(78_000, 35)).toBe(50_700);
-    expect(negotiationFloor(78_000, null)).toBeNull();
+    expect(negotiationFloor(78_000, 35)).toEqual({ floorPhp: 50_700, floorBasis: 'discount' });
+    expect(negotiationFloor(78_000, null)).toEqual({ floorPhp: null, floorBasis: 'discount' });
+  });
+
+  it('raises the floor to break-even when the cost is above the discount floor', () => {
+    expect(negotiationFloor(78_000, 35, 39_517)).toEqual({ floorPhp: 50_700, floorBasis: 'discount' });
+    expect(negotiationFloor(54_921.72, 35, 39_517)).toEqual({ floorPhp: 39_517, floorBasis: 'cost' });
+    expect(negotiationFloor(78_000, null, 39_517)).toEqual({ floorPhp: 39_517, floorBasis: 'cost' });
+  });
+
+  it('adds tenant-named other costs to the internal cost only', () => {
+    const base = { km: 151, fuelLPerKm: 0.35, dieselPhp: 90.93, tolls: [{ label: 'NLEX', amountPhp: 1272 }] };
+    const policy = { fuelFactor: 1.017, miscAllowancePhp: 1000, helper: { kind: 'per_km', value: 7.5 } };
+    const settings = { driverFeePhp: 2265, extras: [], roundTripMultiplier: 2 };
+    const without = estimateTruckCost({ ...base, settings: { ...settings, costPolicy: TruckCostPolicySchema.parse(policy) } });
+    const withOther = estimateTruckCost({ ...base, settings: { ...settings, costPolicy: TruckCostPolicySchema.parse({
+      ...policy, otherCosts: [{ label: 'Unconfirmed trip cost', amountPhp: 5920.58, per: 'trip' }] }) } });
+    expect(withOther.totalPhp).toBe(round2(without.totalPhp + 5920.58));
+    expect(withOther.lines).toContainEqual({ label: 'Unconfirmed trip cost', amountPhp: 5920.58 });
   });
 
   it('estimates only the configured cost parts', () => {
@@ -60,7 +78,7 @@ describe('tenant truck pricing policy', () => {
       tolls: [{ label: 'NLEX', amountPhp: 1272 }],
       settings: {
         driverFeePhp: 2265, extras: [], roundTripMultiplier: 2,
-        costPolicy: { fuelFactor: 1.017, miscAllowancePhp: 1000, helper: { kind: 'pct_driver', value: 50 }, maintenance: { kind: 'none', value: 0 } },
+        costPolicy: { fuelFactor: 1.017, miscAllowancePhp: 1000, helper: { kind: 'pct_driver', value: 50 }, maintenance: { kind: 'none', value: 0 }, otherCosts: [] },
       },
     });
     // fuel 151 × 1.017 × 60 × 2 = 18,428.04; helper 50% of 2,265 = 1,132.50

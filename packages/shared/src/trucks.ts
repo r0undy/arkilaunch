@@ -17,8 +17,8 @@ export const DEFAULT_TRUCK_FORMULA = 'base + km * per_km + km * fuel_l_per_km * 
 const Php = z.number().nonnegative().max(1_000_000);
 export const TruckCostPolicySchema = z
   .object({
-    // Fuel cost = km × fuelFactor × diesel × round trip. Null = the
-    // tenant's pricing-parameter fuel L/km. The unit is the tenant's own.
+    // Fuel cost = km × fuelFactor (litres per km) × diesel × round trip.
+    // Null = the tenant's pricing-parameter fuel L/km.
     fuelFactor: z.number().positive().max(100).nullable().default(null),
     miscAllowancePhp: Php.default(0),
     helper: z
@@ -29,6 +29,9 @@ export const TruckCostPolicySchema = z
       .object({ kind: z.enum(['none', 'fixed', 'per_km', 'pct_fuel']), value: Php })
       .strict()
       .default({ kind: 'none', value: 0 }),
+    // Tenant-named cost lines the parts above do not cover (e.g. a cost the
+    // tenant has not itemised yet). Same shape as an extra charge.
+    otherCosts: z.array(TruckExtraSchema).max(10).default([]),
   })
   .strict();
 export type TruckCostPolicy = z.infer<typeof TruckCostPolicySchema>;
@@ -307,7 +310,7 @@ export function estimateTruckCost({ km, settings, fuelLPerKm, dieselPhp, tolls =
   const factor = policy.fuelFactor ?? fuelLPerKm;
   const fuel = round2HalfUp(km * factor * dieselPhp * roundTrip);
   const driver = round2HalfUp(settings.driverFeePhp);
-  const lines: TruckPriceLine[] = [{ label: `Fuel (${km} km × ${factor} × ₱${dieselPhp} × ${roundTrip})`, amountPhp: fuel }];
+  const lines: TruckPriceLine[] = [{ label: `Fuel (${km} km × ${factor} L/km × ₱${dieselPhp} × ${roundTrip})`, amountPhp: fuel }];
   if (driver > 0) lines.push({ label: 'Driver', amountPhp: driver });
   const { helper, maintenance } = policy;
   const helperPhp = { none: 0, fixed: helper.value, per_km: km * helper.value, pct_driver: (driver * helper.value) / 100 }[helper.kind];
@@ -315,7 +318,7 @@ export function estimateTruckCost({ km, settings, fuelLPerKm, dieselPhp, tolls =
   const maintPhp = { none: 0, fixed: maintenance.value, per_km: km * maintenance.value, pct_fuel: (fuel * maintenance.value) / 100 }[maintenance.kind];
   if (maintenance.kind !== 'none') lines.push({ label: 'Maintenance', amountPhp: round2HalfUp(maintPhp) });
   if (policy.miscAllowancePhp > 0) lines.push({ label: 'Miscellaneous allowance', amountPhp: round2HalfUp(policy.miscAllowancePhp) });
-  for (const x of settings.extras) lines.push({ label: x.label, amountPhp: round2HalfUp(x.per === 'km' ? km * x.amountPhp : x.amountPhp) });
+  for (const x of [...(policy.otherCosts ?? []), ...settings.extras]) lines.push({ label: x.label, amountPhp: round2HalfUp(x.per === 'km' ? km * x.amountPhp : x.amountPhp) });
   for (const t of tolls) lines.push({ label: `Toll: ${t.label}`, amountPhp: round2HalfUp(t.amountPhp) });
   return { lines, totalPhp: round2HalfUp(lines.reduce((acc, l) => acc + l.amountPhp, 0)) };
 }
@@ -324,13 +327,22 @@ export function estimateTruckCost({ km, settings, fuelLPerKm, dieselPhp, tolls =
 // never alters a quoted trip. Staff-only.
 export interface TruckInternal {
   cost: { lines: TruckPriceLine[]; totalPhp: number };
-  // Null when the tenant sets no max discount.
   floorPhp: number | null;
   maxDiscountPct: number | null;
+  // Which floor applied: the max discount, or break-even (the cost) when
+  // that is higher. Absent on trips priced before it = 'discount'.
+  floorBasis?: 'discount' | 'cost';
 }
 
-export function negotiationFloor(recommendedPhp: number, maxDiscountPct: number | null): number | null {
-  return maxDiscountPct === null ? null : round2HalfUp(recommendedPhp * (1 - maxDiscountPct / 100));
+// The higher of the max-discount floor and break-even. Warns, never blocks.
+export function negotiationFloor(
+  recommendedPhp: number,
+  maxDiscountPct: number | null,
+  costPhp = 0,
+): { floorPhp: number | null; floorBasis: 'discount' | 'cost' } {
+  const discount = maxDiscountPct === null ? null : round2HalfUp(recommendedPhp * (1 - maxDiscountPct / 100));
+  if (costPhp > 0 && (discount === null || costPhp > discount)) return { floorPhp: round2HalfUp(costPhp), floorBasis: 'cost' };
+  return { floorPhp: discount, floorBasis: 'discount' };
 }
 
 // Profit on the agreed price, else on the route price.
