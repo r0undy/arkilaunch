@@ -1,7 +1,8 @@
 import { createRoute, Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { quoteExpiresAt, type BookingDetailResponse } from '@arkilaunch/shared';
+import { normalizePhMobile, PH_MOBILE_REGEX, quoteExpiresAt, type BookingDetailResponse } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
+import { useTenant } from '../lib/tenant.js';
 import { bookingsQueries, quotesQueries } from '../lib/queries.js';
 import { ApiError, apiErrorText, apiPost } from '../lib/api-client.js';
 import { formatDate, formatPeso, shortCode } from '../lib/format.js';
@@ -183,12 +184,15 @@ function NegotiationCallRoute() {
   const { bookingId } = accountNegotiationCallRoute.useParams();
   const booking = useQuery(bookingsQueries.detail(bookingId));
   const code = booking.data?.code;
+  const tenant = useTenant();
+  const mobile = tenant?.phone ? normalizePhMobile(tenant.phone) : '';
+  const hasMobile = PH_MOBILE_REGEX.test(mobile);
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title="Negotiate by phone" {...(code ? { description: `Booking ${code}` } : {})} />
       <Surface radius="md" elevation="sm" className="flex max-w-xl flex-col gap-3 p-6">
         <p className="text-sm text-text">
-          Call the rental team on the number on our contact page and quote your booking reference{' '}
+          {hasMobile ? 'Call or message the rental team on Viber or Telegram' : 'Call the rental team on the number on our contact page'} and quote your booking reference{' '}
           <span className="font-mono font-semibold">{code ?? '(loading)'}</span>.
         </p>
         <p className="text-sm text-text-muted">
@@ -196,7 +200,14 @@ function NegotiationCallRoute() {
           the price you pay is always the one written down.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Link to="/contact" className={buttonClass('primary')}>Contact page</Link>
+          {hasMobile ? (
+            <>
+              <a href={`viber://call?number=${encodeURIComponent(mobile)}`} className={buttonClass('primary')}>Call on Viber</a>
+              <a href={`https://t.me/${mobile}`} target="_blank" rel="noreferrer" className={buttonClass('primary')}>Message on Telegram</a>
+            </>
+          ) : (
+            <Link to="/contact" className={buttonClass('primary')}>Contact page</Link>
+          )}
           <Link to="/account/negotiation/$bookingId" params={{ bookingId }} className={buttonClass('secondary')}>Back to the conversation</Link>
         </div>
       </Surface>
