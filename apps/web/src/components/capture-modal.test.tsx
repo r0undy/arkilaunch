@@ -50,7 +50,13 @@ describe('CaptureModal', () => {
     );
 
     expect(screen.getByRole('combobox', { name: /machine/i })).toHaveTextContent('Choose the machine');
-    await userEvent.type(screen.getByLabelText(/day worked/i), '2026-09-01');
+    await userEvent.click(screen.getByRole('button', { name: /day worked/i }));
+    const calendar = screen.getByRole('dialog', { name: 'Choose day worked' });
+    const [month, year] = calendar.querySelectorAll('select[aria-hidden]');
+    fireEvent.change(year!, { target: { value: '2026' } });
+    fireEvent.change(month!, { target: { value: '09' } });
+    await userEvent.click(screen.getByRole('button', { name: /september 1, 2026/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Select date' }));
     const record = screen.getByRole('button', { name: 'Record log' });
     expect(record).toBeDisabled();
 
@@ -67,7 +73,7 @@ describe('CaptureModal', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Record log' })).toBeDisabled());
     expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
 
-    fireEvent.submit(screen.getByLabelText(/day worked/i).closest('form')!);
+    fireEvent.submit(screen.getByRole('button', { name: /day worked/i }).closest('form')!);
     expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
   });
 });

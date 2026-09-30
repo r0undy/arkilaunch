@@ -2,7 +2,7 @@
 
 **Project slug:** `arkilaunch`
 **Maintained by:** ArkiLaunch Team (Almara Construction capstone)
-**Last updated:** 2026-09-29
+**Last updated:** 2026-09-30
 **Built on FMD:** v1.28.1
 
 ---
@@ -24,7 +24,7 @@
 | BRD · Business Requirements | [brd-arkilaunch.md](brd-arkilaunch.md) | 0.1 | Draft | 2026-07-25 | N/A |
 | UES · Unit Economics Sheet | [ues-arkilaunch.md](ues-arkilaunch.md) | 0.1 | Draft | 2026-09-27 | N/A |
 | PRD · Product Requirements | [prd-arkilaunch.md](prd-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-19 |
-| DSD · Design System | [dsd-arkilaunch.md](dsd-arkilaunch.md) | 0.1 | Locked | 2026-09-29 | 2026-09-29 |
+| DSD · Design System | [dsd-arkilaunch.md](dsd-arkilaunch.md) | 0.1 | Locked | 2026-09-30 | 2026-09-30 |
 | SDD · System Design | [sdd-arkilaunch.md](sdd-arkilaunch.md) | 0.1 | Locked | 2026-09-29 | 2026-09-29 |
 | QAD · QA & Test Plan | [qad-arkilaunch.md](qad-arkilaunch.md) | 0.1 | Locked | 2026-09-27 | 2026-09-07 |
 | SAD · Subagents | [sad-arkilaunch.md](sad-arkilaunch.md) | 0.1 | Draft | 2026-08-01 | N/A |
@@ -90,6 +90,7 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 
 | CR ID | Date | Summary | Trigger doc | Docs touched | File |
 |-------|------|---------|-------------|--------------|------|
+| cr-arkilaunch-frontend-ux-pass | 2026-09-30 | Shared modal date and date-time picker, quieter review indicators, responsive field-log groups, compact People and Equipment actions, and icon-first weather and incident summaries | Owner screenshots and feedback 2026-09-30 | DSD §4 (+ DESIGN.md), index.md §1/§2 | [cr-arkilaunch-frontend-ux-pass.md](cr-arkilaunch-frontend-ux-pass.md) |
 | cr-arkilaunch-hourly-rate-cards | 2026-09-29 | Heavy-equipment rate cards are hourly only (product decision). Migration 0071 retires in-force non-hourly cards and adds `rate_cards_hourly_only_chk` (NOT VALID, so historic rows stay for the quotes that cite them). Shared inputs accept only `hourly`, and `rentFor` is `rate × hours`. The engine's daily and monthly branches and the auto-quote preference are gone. Supersede and retire act only on a current card (409 `rate_card_not_current`). EDTR approval fails closed with 422 when a type has any card but no in-force hourly one, which closes the ₱0 deduction on a daily-only type. The web drops the rate-type select and always shows "/ hour", and historic quotes still render their day and month parts. Truck pricing is unchanged | Product decision 2026-09-29 | rfc-arkilaunch-quotation-pricing-engine.md §3 (addendum), index.md §2, log-arkilaunch.md §1 | [cr-arkilaunch-hourly-rate-cards.md](cr-arkilaunch-hourly-rate-cards.md) |
 | cr-arkilaunch-repo-cleanup-2026-09-29 | 2026-09-29 | Repo cleanup, third pass: about 50 verified defects fixed with regression tests (checkout, approve/reject and refresh-rotation races, reconciliation pairing, fleet report double counting, Manila day bounds, 2FA verify throttle, auth-client sign-out on network errors, staff capture poll URL, and more), over-engineering cut (shared Tx, rounding, date, job bootstrap and adapter helpers; duplicate web and api helpers merged), and about 8,000 comment lines trimmed to one-line whys. The hourly-only rate cards ship in the same PR | Full-repo audit 2026-09-29 | index.md §2, log-arkilaunch.md §1 | [cr-arkilaunch-repo-cleanup-2026-09-29.md](cr-arkilaunch-repo-cleanup-2026-09-29.md) |
 | cr-arkilaunch-qa-truck-routing | 2026-09-29 | HGV routing with flagged car fallback, ordered route cities, editable unverified Metro Manila ban rules, paid-trip dispatch and customer ETA (migration 0070) | QA feedback 2026-09-29 | SDD §3/§4, DSD §4, OPS, index.md §2 | [cr-arkilaunch-qa-truck-routing.md](cr-arkilaunch-qa-truck-routing.md) |

@@ -23,6 +23,7 @@ export interface TableProps<T> {
   header?: ContainerHeaderProps;
   footer?: ReactNode;
   empty?: ReactNode;
+  cardUntil?: number;
 }
 
 export function columnAlign(kind: ColumnKind): 'left' | 'right' | 'center' {
@@ -143,7 +144,7 @@ function RowCards<T>({
 export function Table<T>(props: TableProps<T>) {
   const { columns, rows, rowKey, onRowClick, rowLabel, renderExpanded, expandLabel, header, footer, empty } = props;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const narrow = useMediaQuery('(max-width: 767px)');
+  const narrow = useMediaQuery(`(max-width: ${props.cardUntil ?? 767}px)`);
   const fixed = columns.some((c) => c.width);
   const span = columns.length + (onRowClick ? 1 : 0) + (renderExpanded ? 1 : 0);
 
