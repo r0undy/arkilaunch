@@ -512,7 +512,7 @@ export class CustomersService {
         .returning();
       if (!row) throw new Error('kyc_documents insert returned no row');
 
-      // The selfie (a face) and the cure papers go to a person only.
+      // Cure papers (and old selfies) go to a person only.
       if (!isOcrDocument(documentType)) {
         await tx.update(kycDocuments).set({ status: 'needs_review' }).where(eq(kycDocuments.id, row.id));
         return { ...row, status: 'needs_review' };
@@ -998,10 +998,11 @@ async function withDocuments(
 }
 
 // Duplicate checks run within this tenant only (RLS): same TIN, ID number or mobile.
+// One login may apply for many companies with one ID and mobile, so its own companies do not count for those.
 async function withScores(tx: Tx, companies: CompanyReviewResponse[]): Promise<CompanyReviewResponse[]> {
   if (companies.length === 0) return companies;
   const [allCompanies, phones, ids] = await Promise.all([
-    tx.select({ id: customers.id, tin: customers.tin }).from(customers),
+    tx.select({ id: customers.id, tin: customers.tin, userId: customers.userId }).from(customers),
     tx
       .select({ customerId: customerContacts.customerId, value: customerContacts.contactValue })
       .from(customerContacts)
@@ -1032,8 +1033,12 @@ async function withScores(tx: Tx, companies: CompanyReviewResponse[]): Promise<C
     return idKey(p.customer_id_type, p.customer_id_number ?? p.id_number);
   };
   const byPcn = holders(ids.map((d) => ({ customerId: d.customerId, key: pcnOf(d.payload) })));
-  const shared = (map: Map<string, Set<string>>, key: string, self: string) =>
-    !!key && [...(map.get(key) ?? [])].some((other) => other !== self);
+  const owner = new Map(allCompanies.map((c) => [c.id, c.userId]));
+  const shared = (map: Map<string, Set<string>>, key: string, self: string, sameLogin = false) =>
+    !!key &&
+    [...(map.get(key) ?? [])].some(
+      (other) => other !== self && !(sameLogin && owner.get(self) && owner.get(other) === owner.get(self)),
+    );
   const today = manilaDate(new Date());
 
   return companies.map((company) => {
@@ -1051,8 +1056,8 @@ async function withScores(tx: Tx, companies: CompanyReviewResponse[]): Promise<C
         today,
         duplicates: {
           tin: shared(byTin, company.tin ? digits(company.tin) : '', company.id),
-          pcn: shared(byPcn, pcn, company.id),
-          mobile: shared(byPhone, phone ? digits(phone).slice(-10) : '', company.id),
+          pcn: shared(byPcn, pcn, company.id, true),
+          mobile: shared(byPhone, phone ? digits(phone).slice(-10) : '', company.id, true),
         },
       }),
     };

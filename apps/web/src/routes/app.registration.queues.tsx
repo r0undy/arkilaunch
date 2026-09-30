@@ -196,8 +196,8 @@ function DocButton({ doc, onOpen }: { doc: ReviewDocument; onOpen: () => void })
   );
 }
 
-type IdentityChecks = { philsysVerified: boolean; selfieMatches: boolean; holderAuthorized: boolean };
-const NO_CHECKS: IdentityChecks = { philsysVerified: false, selfieMatches: false, holderAuthorized: false };
+type IdentityChecks = { philsysVerified: boolean; holderAuthorized: boolean };
+const NO_CHECKS: IdentityChecks = { philsysVerified: false, holderAuthorized: false };
 
 // The extraction decides nothing: the reviewer approves (RFC-2 human gate).
 function CompanyReviewCard({
@@ -231,7 +231,7 @@ function CompanyReviewCard({
   const registryDocs = [sec, bir, dti].filter((d): d is ReviewDocument => Boolean(d));
   const complete = hasRequiredCompanyDocuments(company.documents);
   const allChecked = registryDocs.every((d) => checked.has(d.id));
-  const identityDone = identity.philsysVerified && identity.selfieMatches && identity.holderAuthorized;
+  const identityDone = identity.philsysVerified && identity.holderAuthorized;
   const setCheck = (id: string, on: boolean) =>
     setChecked((current) => {
       const next = new Set(current);
@@ -354,7 +354,6 @@ function CompanyReviewCard({
                 {PH_ID_TYPES[idTypeOf(nationalId.customer.id_type)].label}
               </p>
             )}
-            {!selfie && <p className="text-sm text-text-muted">No selfie with the ID uploaded.</p>}
             {nationalId && (
               <ExpandableSection header={<span className="text-sm font-medium">ID details</span>}>
                 <dl className={dlClass}>
@@ -380,9 +379,6 @@ function CompanyReviewCard({
                 ) : (
                   <>The ID is genuine, unexpired and checked with its issuer, and its details match the card.</>
                 )}
-              </Check>
-              <Check checked={identity.selfieMatches} onChange={(on) => setIdentity({ ...identity, selfieMatches: on })}>
-                The selfie shows the same person as the ID photo, holding this ID.
               </Check>
               <Check checked={identity.holderAuthorized} onChange={(on) => setIdentity({ ...identity, holderAuthorized: on })}>
                 The ID holder may act for the company.
@@ -415,10 +411,10 @@ function CompanyReviewCard({
             </div>
             <p className="text-xs text-text-muted">
               {!complete
-                ? 'Waiting on the ID, a selfie holding it, and a BIR 2303 or SEC certificate.'
+                ? 'Waiting on the ID and a BIR 2303 or SEC certificate.'
                 : allChecked && identityDone
                   ? 'Verifying approves exactly what the customer submitted.'
-                  : 'Check each paper on its registry and tick the three identity checks before verifying.'}
+                  : 'Check each paper on its registry and tick the two identity checks before verifying.'}
             </p>
           </div>
         </>

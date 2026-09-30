@@ -206,7 +206,7 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
     status: complete && legible ? 'pass' : complete ? 'warn' : 'fail',
     hard: false,
     reason: !complete
-      ? 'Missing the ID, the selfie with it, or a BIR 2303 / SEC certificate.'
+      ? 'Missing the ID or a BIR 2303 / SEC certificate.'
       : unrecognized
         ? 'The registration did not read as a BIR 2303 / SEC certificate.'
         : weak.length

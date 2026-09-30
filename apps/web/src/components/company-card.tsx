@@ -22,7 +22,7 @@ import { SiteProofStatus } from './site-proof.js';
 const heading = 'text-heading-md text-text';
 export const DOC_LABELS: Record<string, string> = {
   government_id: 'Government-issued ID',
-  selfie_with_id: 'Selfie holding your ID',
+  selfie_with_id: 'Selfie holding your ID (no longer needed)',
   bir_cor: 'BIR Certificate of Registration (Form 2303)',
   sec_certificate: 'SEC Certificate of Incorporation',
   dti_certificate: 'DTI Business Name (secondary)',
@@ -48,7 +48,6 @@ export function missingDocuments(company: CompanyResponse): string[] {
   const has = (test: (type: string) => boolean) => company.documents.some((d) => test(d.documentType));
   return [
     ...(has((t) => t === 'government_id') ? [] : [DOC_LABELS.government_id!]),
-    ...(has((t) => t === 'selfie_with_id') ? [] : [DOC_LABELS.selfie_with_id!]),
     ...(has(isPrimaryRegistration) ? [] : ['BIR Form 2303 or SEC certificate']),
   ];
 }
@@ -94,8 +93,7 @@ function DocumentUpload({ company, documentType, done }: { company: CompanyRespo
           id={id}
           type="file"
           className="sr-only"
-          accept={documentType === 'selfie_with_id' ? 'image/*' : 'image/*,application/pdf'}
-          {...(documentType === 'selfie_with_id' ? { capture: 'user' as const } : {})}
+          accept="image/*,application/pdf"
           disabled={upload.isPending}
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -176,10 +174,8 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
   const sites = useQuery(customerSitesQueries.mine());
   const [siteOpen, setSiteOpen] = useState(false);
   const mine = (sites.data ?? []).filter((site) => site.customerId === company.id);
-  const has = (test: (type: string) => boolean) => company.documents.some((d) => test(d.documentType));
-  const missing = missingDocuments(company).filter((label) => label !== DOC_LABELS.selfie_with_id);
+  const missing = missingDocuments(company);
   const waiting = isWaitingForReview(company);
-  const needsSelfie = company.kycStatus === 'pending' && !waiting && !has((t) => t === 'selfie_with_id');
 
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-4 p-5">
@@ -204,14 +200,6 @@ export function CompanyCard({ company }: { company: CompanyResponse }) {
             <span className="text-text-muted">&middot; {formatStatus(doc.status)}</span>
           </p>
         ))}
-        {needsSelfie && (
-          <div className="flex flex-col gap-1">
-            <p className="text-text-muted">
-              Take a selfie holding your ID next to your face, so the rental team can match you to the card.
-            </p>
-            <DocumentUpload company={company} documentType="selfie_with_id" done={false} />
-          </div>
-        )}
         {!waiting && company.kycStatus === 'pending' && missing.length > 0 && (
           <p className="text-text-muted">
             Still needed: {missing.join(', ')}.{' '}

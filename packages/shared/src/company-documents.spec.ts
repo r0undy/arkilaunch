@@ -11,12 +11,12 @@ import {
 const docs = (...types: string[]) => types.map((documentType) => ({ documentType }));
 
 describe('company documents (CR truck-booking-and-kyc-docs)', () => {
-  it('needs the ID, a selfie holding it, plus a BIR COR or SEC certificate', () => {
-    expect(hasRequiredCompanyDocuments(docs('government_id', 'selfie_with_id', 'bir_cor'))).toBe(true);
-    expect(hasRequiredCompanyDocuments(docs('government_id', 'selfie_with_id', 'sec_certificate'))).toBe(true);
-    // No selfie, not complete: the reviewer cannot match the person to the ID.
-    expect(hasRequiredCompanyDocuments(docs('government_id', 'sec_certificate'))).toBe(false);
-    expect(hasRequiredCompanyDocuments(docs('government_id', 'selfie_with_id', 'company_registration'))).toBe(true); // legacy
+  it('needs the ID plus a BIR COR or SEC certificate; no selfie', () => {
+    expect(hasRequiredCompanyDocuments(docs('government_id', 'bir_cor'))).toBe(true);
+    expect(hasRequiredCompanyDocuments(docs('government_id', 'sec_certificate'))).toBe(true);
+    expect(hasRequiredCompanyDocuments(docs('sec_certificate'))).toBe(false);
+    expect(hasRequiredCompanyDocuments(docs('government_id'))).toBe(false);
+    expect(hasRequiredCompanyDocuments(docs('government_id', 'company_registration'))).toBe(true); // legacy
   });
 
   it('never accepts DTI alone as the primary registration', () => {
@@ -54,10 +54,10 @@ describe('CompanyDocumentUploadSchema (customer-confirmed fields)', () => {
 describe('registration review: approve or reject (CR pricebook-kyc-weather)', () => {
   const parse = (body: Record<string, unknown>) => CompanyDecisionSchema.safeParse(body).success;
 
-  it('approves only with the three identity checks', () => {
+  it('approves only with both identity checks', () => {
     expect(parse({ decision: 'approved' })).toBe(false);
-    expect(parse({ decision: 'approved', identity: { philsysVerified: true, selfieMatches: true, holderAuthorized: false } })).toBe(false);
-    expect(parse({ decision: 'approved', identity: { philsysVerified: true, selfieMatches: true, holderAuthorized: true } })).toBe(true);
+    expect(parse({ decision: 'approved', identity: { philsysVerified: true, holderAuthorized: false } })).toBe(false);
+    expect(parse({ decision: 'approved', identity: { philsysVerified: true, holderAuthorized: true } })).toBe(true);
   });
 
   it('rejects only with a reason, and never carries edits to what the customer sent', () => {
