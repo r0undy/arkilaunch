@@ -1,5 +1,5 @@
-import { createRoute } from '@tanstack/react-router';
-import { useState } from 'react';
+import { createRoute, useNavigate } from '@tanstack/react-router';
+import { useState, type ReactNode } from 'react';
 import type { IncidentResponse } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { incidentsQueries } from '../lib/queries.js';
@@ -8,6 +8,7 @@ import { PageHeader } from '../components/page-header.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Tabs } from '../components/tabs.js';
+import { Modal } from '../components/modal.js';
 import { formatDateTime, formatSeverity, shortCode } from '../lib/format.js';
 import { CircleCheck, CloudRain, Eye, FileWarning, ShieldAlert, TriangleAlert } from 'lucide-react';
 
@@ -34,18 +35,56 @@ const COLUMNS: TableColumn<IncidentResponse>[] = [
   { header: 'Occurred', kind: 'date', cell: (row) => formatDateTime(row.occurredAt) },
   {
     header: 'Details', kind: 'text',
-    cell: (row) => <details className="max-w-md"><summary className="cursor-pointer text-accent">View details</summary><p className="mt-2 break-words text-text">{row.detail ?? 'Weather advisory crossed at this site'}</p></details>,
+    cell: (row) => <p className="line-clamp-2 max-w-md break-words text-text">{detailText(row)}</p>,
   },
-  {
-    header: 'Project site', kind: 'text',
-    cell: (row) =>
-      row.siteCity ??
-      row.siteProvince ??
-      (row.projectSiteId
-        ? `Unnamed site ${shortCode('site', row.projectSiteId)}`
-        : 'Not linked to a site'),
-  },
+  { header: 'Project site', kind: 'text', cell: siteLabel },
 ];
+
+const detailText = (row: IncidentResponse) => row.detail ?? 'Weather advisory crossed at this site';
+
+function siteLabel(row: IncidentResponse) {
+  const place = [row.siteCity, row.siteProvince].filter(Boolean).join(', ');
+  if (place) return place;
+  return row.projectSiteId ? `Unnamed site ${shortCode('site', row.projectSiteId)}` : 'Not linked to a site';
+}
+
+const humanKey = (key: string) =>
+  key.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (Array.isArray(value)) return value.length ? value.map(formatValue).join('; ') : '—';
+  if (typeof value === 'object') return JSON.stringify(value);
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) return formatDateTime(new Date(value));
+  return String(value);
+}
+
+function IncidentDrawer({ incident, onClose }: { incident: IncidentResponse; onClose: () => void }) {
+  const observed =
+    incident.observed && typeof incident.observed === 'object' && !Array.isArray(incident.observed)
+      ? Object.entries(incident.observed as Record<string, unknown>).filter(([, v]) => v !== undefined)
+      : [];
+  const rows: [string, ReactNode][] = [
+    ['Incident', <IncidentKind key="k" kind={incident.kind} />],
+    ['Severity', <IncidentSeverity key="s" severity={incident.severity} />],
+    ['Occurred', formatDateTime(incident.occurredAt)],
+    ['Project site', siteLabel(incident)],
+    ['Details', detailText(incident)],
+    ...observed.map(([k, v]): [string, ReactNode] => [humanKey(k), formatValue(v)]),
+  ];
+  return (
+    <Modal open onClose={onClose} placement="right" size="lg" title="Incident details">
+      <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-3 text-sm">
+        {rows.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-text-muted">{label}</dt>
+            <dd className="break-words text-text">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </Modal>
+  );
+}
 
 type Kind = 'all' | 'weather' | 'discrepancy' | 'used_despite_warning';
 const KINDS: { id: Kind; label: string }[] = [
@@ -56,6 +95,8 @@ const KINDS: { id: Kind; label: string }[] = [
 ];
 
 function IncidentsPage() {
+  const { open } = appIncidentsRoute.useSearch();
+  const navigate = useNavigate({ from: '/app/incidents' });
   const [offset, setOffset] = useState(0);
   const [kind, setKind] = useState<Kind>('all');
 
@@ -81,14 +122,22 @@ function IncidentsPage() {
         emptyDescription="Weather and liability incidents will appear here as they are auto-logged or recorded."
         emptyIcon={TriangleAlert}
         isEmpty={(data) => data.total === 0}
-        render={(data) => (
-          <Table
-            columns={COLUMNS}
-            rows={data.items}
-            rowKey={(row) => row.id}
-            header={{ title: 'Incidents', count: data.total, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="incidents" /> }}
-          />
-        )}
+        render={(data) => {
+          // ponytail: resolves from the loaded page only; a link to an incident on another page shows nothing.
+          const selected = open ? data.items.find((row) => row.id === open) : undefined;
+          return (
+            <>
+              <Table
+                columns={COLUMNS}
+                rows={data.items}
+                rowKey={(row) => row.id}
+                onRowClick={(row) => void navigate({ search: { open: row.id } })}
+                header={{ title: 'Incidents', count: data.total, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={data.total} onOffsetChange={setOffset} noun="incidents" /> }}
+              />
+              {selected && <IncidentDrawer incident={selected} onClose={() => void navigate({ search: {} })} />}
+            </>
+          );
+        }}
       />
     </div>
   );
@@ -97,5 +146,7 @@ function IncidentsPage() {
 export const appIncidentsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/incidents',
+  validateSearch: (search: Record<string, unknown>): { open?: string } =>
+    typeof search.open === 'string' ? { open: search.open } : {},
   component: IncidentsPage,
 });

@@ -632,7 +632,19 @@ export class SitesService {
           siteCity: site?.city ?? null,
           siteProvince: site?.province ?? null,
           severity: discrepancy || ignored ? 'high' : (properties.severity ?? null),
-          observed: (discrepancy ? properties.system : ignored ? { reasons: properties.reasons ?? [] } : properties.observed) ?? null,
+          // Everything the event recorded, for the detail drawer; minute readings stay summarised in `detail`.
+          observed: discrepancy
+            ? { ...(properties.system as object | undefined), rule: properties.rule, date: properties.date, half: properties.half }
+            : ignored
+              ? {
+                  equipment_id: properties.equipment_id,
+                  level: properties.level,
+                  hours_active: properties.hours_active,
+                  date: properties.date,
+                  warned_at: properties.warned_at,
+                  reasons: properties.reasons ?? [],
+                }
+              : (properties.observed ?? null),
           occurredAt: row.occurredAt,
           kind: ignored ? ('used_despite_warning' as const) : discrepancy ? ('discrepancy' as const) : ('weather' as const),
           detail: ignored
