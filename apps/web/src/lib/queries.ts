@@ -18,6 +18,8 @@ import type {
   CatalogTestimonialListResponse,
   EquipmentListResponse,
   FinancialReportResponse,
+  LeakageReport,
+  LeakageReportQuery,
   IncidentListResponse,
   InvoiceDetailResponse,
   InvoiceListResponse,
@@ -316,7 +318,15 @@ export const reportQueries = {
         return { utilization, financial };
       },
     }),
+  leakage: (query: LeakageReportQuery) =>
+    queryOptions({
+      queryKey: ['reports', 'leakage', query] as const,
+      queryFn: () => apiGet<LeakageReport>(`/reports/leakage?${leakageParams(query)}`),
+    }),
 };
+
+export const leakageParams = (query: LeakageReportQuery) =>
+  new URLSearchParams(Object.entries(query).filter((e): e is [string, string] => Boolean(e[1]))).toString();
 
 export const referenceQueries = {
   capabilities: () =>

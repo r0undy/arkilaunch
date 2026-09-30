@@ -11,6 +11,7 @@ import {
   AvailabilityQuerySchema,
   TenantCalendarSchema,
   UtilizationQuerySchema,
+  LeakageReportQuerySchema,
 } from '@arkilaunch/shared';
 
 // Query DTOs are validated too: nestjs-zod checks metadata.metatype, not paramtype.
@@ -19,6 +20,7 @@ export class EquipmentCreateDto extends createZodDto(EquipmentCreateRequestSchem
 export class EquipmentUpdateDto extends createZodDto(EquipmentUpdateRequestSchema) {}
 export class MaintenanceLogCreateDto extends createZodDto(MaintenanceLogCreateRequestSchema) {}
 export class UtilizationQueryDto extends createZodDto(UtilizationQuerySchema) {}
+export class LeakageReportQueryDto extends createZodDto(LeakageReportQuerySchema) {}
 export class MaintenanceScheduleCreateDto extends createZodDto(MaintenanceScheduleCreateRequestSchema) {}
 export class RuntimeCorrectionDto extends createZodDto(RuntimeCorrectionRequestSchema) {}
 export class MaintenanceWindowCreateDto extends createZodDto(MaintenanceWindowCreateRequestSchema) {}

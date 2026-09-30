@@ -5,9 +5,7 @@ import {
   auditLogs,
   customers,
   depositAccruals,
-  getTenantTin,
   sendEmail,
-  tenants,
   users,
   edtr,
   edtrReconciliations,
@@ -33,6 +31,7 @@ import type {
   StatementWeek,
 } from '@arkilaunch/shared';
 import { renderStatementPdf } from './statement-pdf.js';
+import { tenantBrand } from '../common/tenant-brand.js';
 import { personName } from '../common/field-logs.js';
 import { bookingCodes, invoiceBookingRef } from '../common/booking-ref.js';
 import { countRows } from '../common/count-rows.js';
@@ -364,14 +363,8 @@ export class BillingService {
     return { sentTo: to, sentAt: sentAt.toISOString() };
   }
 
-  private async brand(ctx: RequestContext) {
-    const [tenant] = await withTenantTx(ctx, (tx) => tx.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1));
-    return {
-      name: tenant?.legalName ?? '',
-      address: [tenant?.address, tenant?.city, tenant?.province].filter(Boolean).join(', '),
-      contact: [tenant?.phone, tenant?.contactEmail].filter(Boolean).join(' | '),
-      tin: await getTenantTin(ctx.tenantId).catch(() => null),
-    };
+  private brand(ctx: RequestContext) {
+    return tenantBrand(ctx);
   }
 }
 

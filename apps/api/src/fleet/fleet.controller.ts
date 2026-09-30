@@ -27,6 +27,7 @@ import {
   MaintenanceScheduleCreateDto,
   RuntimeCorrectionDto,
   UtilizationQueryDto,
+  LeakageReportQueryDto,
   MaintenanceWindowCreateDto,
   MaintenanceWindowExtendDto,
   AvailabilityQueryDto,
@@ -180,5 +181,17 @@ export class FleetController {
   @RequirePermission('report:read')
   financialReport(@Query() query: UtilizationQueryDto, @Req() req: CtxRequest) {
     return this.fleet.financialReport(req.ctx, query);
+  }
+
+  @Get('reports/leakage')
+  @RequirePermission('report:read')
+  leakageReport(@Query() query: LeakageReportQueryDto, @Req() req: CtxRequest) {
+    return this.fleet.leakageReport(req.ctx, query);
+  }
+
+  @Get('reports/leakage/pdf')
+  @RequirePermission('report:read')
+  leakageReportPdf(@Query() query: LeakageReportQueryDto, @Req() req: CtxRequest) {
+    return this.fleet.leakageReportPdf(req.ctx, query);
   }
 }
