@@ -20,6 +20,7 @@ import {
   ExternalLink,
   CalendarCheck,
   TrendingUp,
+  TrendingDown,
   Users,
   Truck,
 } from 'lucide-react';
@@ -92,6 +93,7 @@ export const APP_NAV: NavGroup[] = [
     items: [
       { label: 'Dashboard', to: '/app', icon: LayoutDashboard, exact: true },
       { label: 'Reports', to: '/app/insights', icon: TrendingUp },
+      { label: 'Revenue leakage', to: '/app/insights/leakage', icon: TrendingDown },
     ],
   },
   {
