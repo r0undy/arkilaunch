@@ -75,6 +75,9 @@ function rentalDays(item: CartItem): number {
   return bookingDays(item.start, item.end);
 }
 
+// Hours too: a blank hours field means the minimum, which only CartItemDates knows.
+type LineEstimate = { rent: number | null; hours: number };
+
 function CartItemDates({
   item,
   rate,
@@ -88,7 +91,7 @@ function CartItemDates({
   onDate: (field: 'start' | 'end', value: string, hour: number) => void;
   onHours: (hours: number | undefined) => void;
   onProblem: (problem: string | null) => void;
-  onEstimate: (estimate: number | null) => void;
+  onEstimate: (estimate: LineEstimate) => void;
 }) {
   const availability = useAvailability(item.equipmentId, item.end);
   const hours = availability.data?.hours;
@@ -116,7 +119,7 @@ function CartItemDates({
     rate != null && !problem
       ? rentFor(rate, wanted).rentPhp
       : null;
-  useEffect(() => onEstimate(estimate), [estimate, onEstimate]);
+  useEffect(() => onEstimate({ rent: estimate, hours: wanted }), [estimate, wanted, onEstimate]);
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -230,14 +233,16 @@ function CartPage() {
   const reportProblem = (index: number, problem: string | null) =>
     setProblems((prev) => (prev[index] === problem ? prev : { ...prev, [index]: problem }));
   const unavailable = items.some((_, index) => problems[index]);
-  const [estimates, setEstimates] = useState<Record<number, number | null>>({});
-  const reportEstimate = (index: number, estimate: number | null) =>
-    setEstimates((prev) => (prev[index] === estimate ? prev : { ...prev, [index]: estimate }));
+  const [estimates, setEstimates] = useState<Record<number, LineEstimate>>({});
+  const reportEstimate = (index: number, estimate: LineEstimate) =>
+    setEstimates((prev) =>
+      prev[index]?.rent === estimate.rent && prev[index]?.hours === estimate.hours ? prev : { ...prev, [index]: estimate },
+    );
   const rates = useQuery(catalogQueries.equipment());
   const rateById = new Map(rates.data?.items.map((eq) => [eq.id, eq.rateValue ?? null]));
   const optionGroupsById = new Map(rates.data?.items.map((eq) => [eq.id, eq.optionGroups ?? []]));
   // Only a full total is shown: a sum missing an unpriced machine would mislead.
-  const lineEstimates = items.map((_, index) => estimates[index] ?? null);
+  const lineEstimates = items.map((_, index) => estimates[index]?.rent ?? null);
   const estimatedTotal = lineEstimates.every((value) => value !== null)
     ? lineEstimates.reduce<number>((sum, value) => sum + (value ?? 0), 0)
     : null;
@@ -572,6 +577,28 @@ function CartPage() {
               {company.companyName} is not verified yet. You can request a quote once the rental
               team verifies the company.
             </p>
+          )}
+          {items.length > 1 && (
+            <ul aria-label="Cost per machine" className="flex flex-col gap-2 border-b border-border pb-3 text-sm">
+              {items.map((item, index) => {
+                const line = estimates[index];
+                const days = rentalDays(item);
+                return (
+                  <li key={`${item.equipmentId}-${index}`} className="flex justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block truncate text-text">{item.model}</span>
+                      <span className="text-text-muted">
+                        {days} {days === 1 ? 'day' : 'days'}
+                        {line ? ` · ${line.hours} h` : ''}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-text">
+                      {line?.rent != null ? formatPeso(line.rent) : 'Priced in quote'}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           )}
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between gap-3">
