@@ -6,6 +6,7 @@ export interface StatementBrand {
   address: string;
   contact: string;
   tin: string | null;
+  logo?: Uint8Array | null;
 }
 
 const INVOICE_TYPES: Record<string, string> = {

@@ -1,14 +1,15 @@
 import { createRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { appLayoutRoute } from './_app.js';
-import { useQuery } from '@tanstack/react-query';
-import { manilaDate, type LeakageMetric, type LeakageReportQuery, type StatementPdfResponse } from '@arkilaunch/shared';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { manilaDate, type LeakageMetric, type LeakageReport, type LeakageReportQuery, type StatementPdfResponse } from '@arkilaunch/shared';
 import { leakageParams, referenceQueries, reportQueries } from '../lib/queries.js';
 import { apiErrorText, apiGet } from '../lib/api-client.js';
 import { Button } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Modal } from '../components/modal.js';
+import { SegmentedControl } from '../components/segmented-control.js';
 import { useToast } from '../components/toast.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
@@ -38,15 +39,48 @@ const LEAKAGE_COLUMNS: TableColumn<LeakageRow>[] = [
   { header: 'Value', kind: 'number', cell: (row) => formatMetric(row.metric) },
 ];
 
+type ExportFormat = 'pdf' | 'xlsx' | 'csv';
+const FORMATS: { id: ExportFormat; label: string }[] = [
+  { id: 'pdf', label: 'PDF' },
+  { id: 'xlsx', label: 'Excel' },
+  { id: 'csv', label: 'CSV' },
+];
+
+// One flat table for spreadsheets: raw numbers, so the cells stay summable.
+function exportRows(r: LeakageReport): (string | number)[][] {
+  return [
+    ['Category', 'Cause', 'Measured', 'Value', 'Unit', 'Proxy'],
+    ['Summary', 'Invoiced', 'Invoiced', r.summary.invoiced, 'php', ''],
+    ['Summary', 'Collected', 'Collected', r.summary.collected, 'php', ''],
+    ['Summary', 'Collection rate', 'Collection rate', r.summary.collectionRatePct ?? '', 'pct', ''],
+    ['Summary', 'Verified by reconciliation', 'Verified revenue', r.summary.verifiedRevenue, 'php', ''],
+    ['Summary', 'Outstanding', 'Potential leakage', r.summary.outstanding, 'php', ''],
+    ...r.causes.flatMap((c) => c.metrics.map((m) => [c.bone, c.cause, m.label, m.value ?? '', m.unit, m.proxy ? 'yes' : ''])),
+  ];
+}
+
+const csvCell = (v: string | number) => (typeof v === 'number' ? String(v) : /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 const today = () => manilaDate(new Date());
 const monthStart = () => `${today().slice(0, 8)}01`;
 
-function RevenueAtRiskPage() {
+function ReportsPage() {
   const toast = useToast();
   const [query, setQuery] = useState<LeakageReportQuery>({ from: monthStart(), to: today() });
   const [exporting, setExporting] = useState(false);
   const [offset, setOffset] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [format, setFormat] = useState<ExportFormat>('pdf');
+  const queryClient = useQueryClient();
   const customers = useQuery(referenceQueries.customers());
   const types = useQuery(referenceQueries.equipmentTypes());
   const set = (patch: Partial<LeakageReportQuery>) => {
@@ -60,14 +94,23 @@ function RevenueAtRiskPage() {
   async function download() {
     setBusy(true);
     try {
-      const res = await apiGet<StatementPdfResponse>(`/reports/leakage/pdf?${leakageParams(query)}`);
-      const bytes = Uint8Array.from(atob(res.contentBase64), (c) => c.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = res.filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      if (format === 'pdf') {
+        const res = await apiGet<StatementPdfResponse>(`/reports/leakage/pdf?${leakageParams(query)}`);
+        const bytes = Uint8Array.from(atob(res.contentBase64), (c) => c.charCodeAt(0));
+        saveBlob(new Blob([bytes], { type: 'application/pdf' }), res.filename);
+      } else {
+        const report = await queryClient.fetchQuery(reportQueries.leakage(query));
+        const rows = exportRows(report);
+        const name = `revenue-leakage-${report.period.from}-to-${report.period.to}`;
+        if (format === 'csv') {
+          const csv = rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
+          // BOM so Excel reads the file as UTF-8.
+          saveBlob(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }), `${name}.csv`);
+        } else {
+          const { default: writeXlsxFile } = await import('write-excel-file/browser');
+          await writeXlsxFile(rows.map((r, i) => r.map((value) => (i === 0 ? { value, fontWeight: 'bold' as const } : { value })))).toFile(`${name}.xlsx`);
+        }
+      }
       setExporting(false);
     } catch (e) {
       toast.error('Could not generate the report', apiErrorText(e));
@@ -83,7 +126,7 @@ function RevenueAtRiskPage() {
         description="Money you have earned but not yet collected, and what is holding it up."
         actions={
           <Button variant="secondary" onClick={() => setExporting(true)}>
-            <FileDown className="size-4" aria-hidden /> Export PDF
+            <FileDown className="size-4" aria-hidden /> Export
           </Button>
         }
       />
@@ -141,17 +184,18 @@ function RevenueAtRiskPage() {
         open={exporting}
         onClose={() => setExporting(false)}
         title="Export report"
-        description="The PDF uses the filters currently on the page."
+        description="Uses the filters currently on the page."
         size="sm"
         footer={
           <>
             <Button variant="secondary" onClick={() => setExporting(false)}>Cancel</Button>
             <Button onClick={download} loading={busy}>
-              <FileDown className="size-4" aria-hidden /> Download PDF
+              <FileDown className="size-4" aria-hidden /> Download
             </Button>
           </>
         }
       >
+        <SegmentedControl label="File format" items={FORMATS} value={format} onChange={setFormat} className="mb-4" />
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
           <dt className="text-text-muted">Period</dt>
           <dd className="text-text">{query.from || 'Start'} to {query.to || 'today'}</dd>
@@ -168,5 +212,5 @@ function RevenueAtRiskPage() {
 export const appInsightsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/insights',
-  component: RevenueAtRiskPage,
+  component: ReportsPage,
 });

@@ -34,6 +34,14 @@ describe('renderLeakageReportPdf', () => {
     expect(doc.getPageCount()).toBeGreaterThanOrEqual(1);
   });
 
+  it('prints the tenant icon on the letterhead, and survives a corrupt one', async () => {
+    // 1x1 transparent PNG.
+    const png = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'));
+    const withLogo = await renderLeakageReportPdf(report(2), { ...brand, logo: png });
+    expect(Buffer.from(withLogo).toString('latin1')).toContain('/Subtype /Image');
+    await expect(renderLeakageReportPdf(report(2), { ...brand, logo: png.slice(0, 12) })).resolves.toBeInstanceOf(Uint8Array);
+  });
+
   it('flows onto more pages instead of running off the bottom', async () => {
     const doc = await PDFDocument.load(await renderLeakageReportPdf(report(20), brand));
     expect(doc.getPageCount()).toBeGreaterThan(2);
