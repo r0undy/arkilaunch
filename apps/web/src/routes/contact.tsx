@@ -1,7 +1,7 @@
 import { createRoute } from '@tanstack/react-router';
 import { publicLayoutRoute } from './_public.js';
 import { useTenant } from '../lib/tenant.js';
-import { MessengerLinks } from '../components/messenger-links.js';
+import { MessengerLinks, phoneHref } from '../components/messenger-links.js';
 
 function ContactPage() {
   const tenant = useTenant();
@@ -23,7 +23,7 @@ function ContactPage() {
             <>
               <dt className="font-semibold text-text">Phone</dt>
               <dd>
-                <a href={`tel:${tenant.phone}`} className="text-accent hover:underline">
+                <a href={phoneHref(tenant.phone)} className="text-accent hover:underline">
                   {tenant.phone}
                 </a>
                 <MessengerLinks phone={tenant.phone} className="text-accent hover:underline" />
