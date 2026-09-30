@@ -50,7 +50,8 @@ test('admin adds an Others machine, corrects its meter and logs a service that r
   await expect(oil).toContainText('next due at 370 h');
 
   await dialog.getByRole('button', { name: 'Close' }).click();
-  await card.getByRole('button', { name: 'Delete' }).click();
-  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete asset' }).click();
+  await card.getByRole('button', { name: /more actions for/i }).click();
+  await page.getByRole('menuitem', { name: 'Retire equipment' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Retire equipment' }).click();
   await expect(page.getByRole('group', { name: serial })).toBeHidden();
 });

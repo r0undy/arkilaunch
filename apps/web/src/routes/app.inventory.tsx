@@ -20,6 +20,7 @@ import { EquipmentFormModal } from '../components/equipment-form-modal.js';
 import { MaintenanceModal } from '../components/maintenance-modal.js';
 import { useToast } from '../components/toast.js';
 import { Alert } from '../components/alert.js';
+import { ActionMenu } from '../components/action-menu.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { getCurrentRole } from '../lib/guards.js';
 import { Boxes, Check, Truck, Wrench } from 'lucide-react';
@@ -45,8 +46,19 @@ function canManageFleet(): boolean {
   return role === 'admin' || role === 'platform_admin';
 }
 
+function InventoryImage({ equipment, photo }: { equipment: EquipmentResponse; photo: string | undefined }) {
+  const [failed, setFailed] = useState(false);
+  return <div className="flex h-44 items-center justify-center overflow-hidden rounded-t-md bg-surface-sunk">
+    {photo && !failed ? (
+      <img src={photo} alt={`${equipment.model}, ${equipment.serialNo}`} loading="lazy" decoding="async" onError={() => setFailed(true)} className="h-full w-full object-cover" />
+    ) : (
+      <EquipmentSchematic typeName={equipment.equipmentTypeName ?? equipment.model} className="max-h-full p-6" />
+    )}
+  </div>;
+}
+
 // Retiring is the only way out of the fleet (DELETE is revoked) so billed field logs survive.
-function RetireAction({ equipment }: { equipment: EquipmentResponse }) {
+function EquipmentActions({ equipment, onEdit }: { equipment: EquipmentResponse; onEdit: () => void }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
@@ -62,25 +74,26 @@ function RetireAction({ equipment }: { equipment: EquipmentResponse }) {
 
   return (
     <>
-      <Button variant="secondary" onClick={() => setConfirming(true)} loading={retire.isPending}>
-        Delete
-      </Button>
+      <ActionMenu
+        label={`More actions for ${equipment.model}`}
+        items={[
+          { label: 'Edit details', onSelect: onEdit },
+          { label: 'Retire equipment', onSelect: () => setConfirming(true), disabled: retire.isPending, destructive: true },
+        ]}
+      />
       <ConfirmDialog
         open={confirming}
-        title="Delete Asset?"
+        title="Retire this machine?"
         tone="danger"
-        confirmLabel="Delete asset"
+        confirmLabel="Retire equipment"
         pending={retire.isPending}
         body={
           <div className="flex flex-col gap-2">
             <p>
-              Remove <strong>{equipment.model}</strong> ({equipment.serialNo}) from the fleet? It
+              Retire <strong>{equipment.model}</strong> ({equipment.serialNo}) from the fleet? It
               stops appearing in the inventory, the catalog and anywhere a machine can be booked.
             </p>
-            <p>
-              Its rental history, field logs and the invoices they priced are kept. Deleting those
-              would destroy the evidence those invoices were calculated from.
-            </p>
+            <p>Its rental history, field logs and invoices remain available as evidence.</p>
           </div>
         }
         onConfirm={() => {
@@ -259,42 +272,27 @@ function InventoryPage() {
                     key={eq.id}
                     radius="md"
                     elevation="sm"
-                    className="flex flex-col overflow-hidden p-0 transition-shadow hover:shadow-md"
+                    className="flex flex-col p-0 transition-shadow hover:shadow-md"
                     // Also lets the e2e spec scope actions to one machine by its serial.
                     role="group"
                     aria-label={eq.serialNo}
                   >
-                    <div className="flex h-44 items-center justify-center overflow-hidden bg-surface-sunk">
-                      {photo ? (
-                        <img
-                          src={photo}
-                          alt={`${eq.model}, ${eq.serialNo}`}
-                          loading="lazy"
-                          decoding="async"
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <EquipmentSchematic typeName={eq.equipmentTypeName ?? eq.model} className="max-h-full p-6" />
-                      )}
-                    </div>
-                    <div className="flex items-start justify-between gap-2 px-5 pt-4">
+                    <InventoryImage equipment={eq} photo={photo} />
+                    <div className="flex min-w-0 items-start justify-between gap-2 px-5 pt-4">
                       <div className="min-w-0">
                         <p className="text-heading-md text-text">{eq.model}</p>
                         <p className="font-mono text-xs tabular-nums text-text-muted">
                           {eq.serialNo}
                         </p>
                       </div>
-                      <StatusPill tone={meta.tone} label={meta.label} icon={meta.icon} />
+                      <StatusPill tone={meta.tone} label={meta.label} icon={meta.icon} className="shrink-0" />
                     </div>
                     {manageable && (
-                      <div className="mt-auto flex flex-wrap gap-2 border-t border-border px-5 py-4">
-                        <Button variant="secondary" onClick={() => setEditing(eq)}>
-                          Edit
-                        </Button>
-                        <Button variant="secondary" onClick={() => setServicing(eq)}>
+                      <div className="mt-auto flex items-center justify-between gap-2 border-t border-border px-5 py-4">
+                        <Button variant="secondary" className="min-w-0 px-4" onClick={() => setServicing(eq)}>
                           Report &amp; maintenance
                         </Button>
-                        <RetireAction equipment={eq} />
+                        <EquipmentActions equipment={eq} onEdit={() => setEditing(eq)} />
                       </div>
                     )}
                   </Surface>

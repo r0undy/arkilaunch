@@ -6,6 +6,7 @@ import { LoadError } from './load-error.js';
 import { ApiError, payloadField } from '../lib/api-client.js';
 import { customerSitesQueries, forecastQueries } from '../lib/queries.js';
 import { describeWeatherCode, weekdayLabel } from '../lib/weather-code.js';
+import { Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSun, Sun } from 'lucide-react';
 
 const heading = 'text-heading-md text-text';
 
@@ -44,13 +45,15 @@ function ForecastRows({ siteId }: { siteId?: string }) {
       <ul className="flex flex-col gap-1">
         {forecast.data.days.map((day) => {
           const condition = describeWeatherCode(day.code);
+          const Icon = day.code === 0 ? Sun : day.code <= 2 ? CloudSun : day.code === 3 ? Cloud : day.code === 45 || day.code === 48 ? CloudFog : day.code >= 95 ? CloudLightning : day.code >= 51 && day.code <= 57 ? CloudDrizzle : CloudRain;
           return (
             <li key={day.date} className="flex items-center gap-3 py-1 text-sm">
               <span className="w-12 shrink-0 font-medium text-text">
                 {weekdayLabel(day.date)}
               </span>
-              <span className="min-w-0 flex-1 truncate text-text-muted">{condition.label}</span>
-              <span className="shrink-0 tabular-nums text-text">
+              <Icon className={`h-5 w-5 shrink-0 ${condition.tone === 'red' ? 'text-error' : condition.tone === 'orange' ? 'text-warning' : 'text-accent'}`} aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate text-text">{condition.label}</span>
+              <span className="shrink-0 font-mono text-xs tabular-nums text-text-muted">
                 {Math.round(day.tempMaxC)}° / {Math.round(day.tempMinC)}°
               </span>
             </li>

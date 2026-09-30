@@ -31,7 +31,8 @@ test('a machine can be added, edited and retired from the inventory', async ({ p
   await expect(card.getByText('E2E Backhoe')).toBeVisible();
 
   // --- edit --------------------------------------------------------------
-  await card.getByRole('button', { name: 'Edit' }).click();
+  await card.getByRole('button', { name: /more actions for/i }).click();
+  await page.getByRole('menuitem', { name: 'Edit details' }).click();
   const editDialog = page.getByRole('dialog');
   await expect(editDialog).toBeVisible();
 
@@ -45,14 +46,14 @@ test('a machine can be added, edited and retired from the inventory', async ({ p
   await expect(card.getByText('E2E Backhoe II')).toBeVisible();
 
   // --- retire ------------------------------------------------------------
-  await card.getByRole('button', { name: 'Delete' }).click();
+  await card.getByRole('button', { name: /more actions for/i }).click();
+  await page.getByRole('menuitem', { name: 'Retire equipment' }).click();
   const confirm = page.getByRole('alertdialog');
-  await expect(confirm.getByRole('heading', { name: 'Delete Asset?' })).toBeVisible();
-  // The confirm must not repeat the frame's promise to destroy the logs.
-  await expect(confirm.getByText(/history, field logs and the invoices they priced are kept/i))
+  await expect(confirm.getByRole('heading', { name: 'Retire this machine?' })).toBeVisible();
+  await expect(confirm.getByText(/rental history, field logs and invoices remain available/i))
     .toBeVisible();
 
-  await confirm.getByRole('button', { name: 'Delete asset' }).click();
+  await confirm.getByRole('button', { name: 'Retire equipment' }).click();
 
   // Retired, not deleted: gone from every bookable surface.
   await expect(page.getByRole('group', { name: serial })).toBeHidden();

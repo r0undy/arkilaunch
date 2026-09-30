@@ -19,6 +19,7 @@ import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { Modal } from '../components/modal.js';
 import { StatusBadge } from '../components/status-badge.js';
+import { ActionMenu } from '../components/action-menu.js';
 import { Users } from 'lucide-react';
 
 interface UserRow {
@@ -201,39 +202,16 @@ function UserActions({ user }: { user: UserRow }) {
           ))}
         </Select>
       )}
-      {user.status === 'invited' && (
-        <Button
-          variant="secondary"
-          onClick={() => reinvite.mutate()}
-          loading={reinvite.isPending}
-        >
-          Re-invite
-        </Button>
-      )}
-      <Button
-        variant="secondary"
-        onClick={() => setConfirmingReset(true)}
-        loading={resetPassword.isPending}
-      >
-        Reset password
-      </Button>
-      {user.status === 'disabled' ? (
-        <Button
-          variant="secondary"
-          onClick={() => setConfirmingReactivate(true)}
-          loading={reactivate.isPending}
-        >
-          Reactivate
-        </Button>
-      ) : (
-        <Button
-          variant="secondary"
-          onClick={() => setConfirmingDeactivate(true)}
-          loading={deactivate.isPending}
-        >
-          Remove access
-        </Button>
-      )}
+      <ActionMenu
+        label={`More actions for ${user.email}`}
+        items={[
+          ...(user.status === 'invited' ? [{ label: 'Re-invite', onSelect: () => reinvite.mutate(), disabled: reinvite.isPending }] : []),
+          { label: 'Reset password', onSelect: () => setConfirmingReset(true), disabled: resetPassword.isPending },
+          user.status === 'disabled'
+            ? { label: 'Reactivate', onSelect: () => setConfirmingReactivate(true), disabled: reactivate.isPending }
+            : { label: 'Remove access', onSelect: () => setConfirmingDeactivate(true), disabled: deactivate.isPending, destructive: true },
+        ]}
+      />
       {lastToken && (
         <span className="inline-flex items-center gap-1 text-sm text-text-muted">
           Invite token

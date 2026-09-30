@@ -9,7 +9,6 @@ import { clearTokens } from '../lib/auth-client.js';
 import { useCart } from '../lib/cart-client.js';
 import { getCurrentRole, homeHref } from '../lib/guards.js';
 import { edtrQueries, notificationsQueries, tenantsQueries } from '../lib/queries.js';
-import { StatusPill } from './status-pill.js';
 import { useHeaderColor, useTenant } from '../lib/tenant.js';
 
 const TILE = 'hover:bg-current/10';
@@ -212,31 +211,15 @@ export function AppBar({ tenantLabel, onMenuClick }: AppBarProps) {
 
       <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
         {reviewQueueCount !== null && reviewQueueCount > 0 && (
-          <>
-            {/* Amber as a fill with dark text: amber text on the white bar is 2.45:1. */}
-            <Link
-              {...reviewQueueLink}
-              aria-label={`${reviewQueueLabel}: ${reviewQueueCount}. Open it`}
-              className="flex min-h-11 items-center sm:hidden"
-            >
-              <span className="flex items-center gap-1 rounded-sm bg-recon-review px-1.5 py-1 text-text">
-                <TriangleAlert aria-hidden="true" className="h-4 w-4" />
-                <span className="font-mono text-sm font-semibold tabular-nums">
-                  {reviewQueueCount}
-                </span>
-              </span>
-            </Link>
-            {/* Hide via the wrapper: `hidden` on StatusPill loses to its own `inline-flex` by CSS source order. */}
-            <Link {...reviewQueueLink} className="hidden rounded-full hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring sm:block">
-              <StatusPill
-                tone="recon-review"
-                label={reviewQueueLabel}
-                icon={<TriangleAlert className="size-full" />}
-                value={String(reviewQueueCount)}
-                className="whitespace-nowrap"
-              />
-            </Link>
-          </>
+          <Link
+            {...reviewQueueLink}
+            aria-label={`${reviewQueueLabel}: ${reviewQueueCount}. Open it`}
+            className={`inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-sm px-2 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ${TILE}`}
+          >
+            <TriangleAlert aria-hidden="true" className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">{reviewQueueLabel}</span>
+            <span className="font-mono tabular-nums">{reviewQueueCount}</span>
+          </Link>
         )}
 
         {isCustomer && (
