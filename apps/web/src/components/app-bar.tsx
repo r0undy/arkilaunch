@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { describeNotification, feedAreaOf, notificationEdge, NotificationKindLabel } from './notification-feed.js';
+import { describeNotification, feedAreaOf, NotificationKindLabel, notificationRowClass, UnreadBadge } from './notification-feed.js';
 import { apiPatch } from '../lib/api-client.js';
 import { formatStatus } from '../lib/format.js';
 import { Bell, LogOut, Menu, ShoppingCart, TriangleAlert } from 'lucide-react';
@@ -82,14 +82,16 @@ function NotificationBell({
           {latest.data?.items.length === 0 && (
             <p className="px-4 py-3 text-sm text-text-muted">Nothing needs you right now.</p>
           )}
-          <ul className="min-h-0 flex-1 overflow-y-auto">
+          <ul className="scroll-thin min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {latest.data?.items.map((n) => {
               const described = describeNotification(n.notificationType, n.payload, area);
               const body = (
                 <div className="flex min-w-0 flex-col gap-0.5">
-                  <NotificationKindLabel type={n.notificationType} />
-                  <p className={`text-sm text-text ${n.status === 'unread' ? 'font-semibold' : ''}`}>
-                    {n.status === 'unread' && <span className="sr-only">Unread: </span>}
+                  <p className="flex items-center gap-2">
+                    <NotificationKindLabel type={n.notificationType} />
+                    {n.status === 'unread' && <UnreadBadge />}
+                  </p>
+                  <p className={`text-sm text-text ${n.status === 'unread' ? 'font-bold' : ''}`}>
                     {described?.title ?? formatStatus(n.notificationType)}
                   </p>
                   {described && (
@@ -98,7 +100,7 @@ function NotificationBell({
                 </div>
               );
               return (
-                <li key={n.id} className={`border-b border-border last:border-b-0 ${notificationEdge(n.notificationType, n.status === 'unread')}`}>
+                <li key={n.id} className={`border-b border-border last:border-b-0 ${notificationRowClass(n.status === 'unread')}`}>
                   {described?.action ? (
                     <Link
                       to={described.action.to}

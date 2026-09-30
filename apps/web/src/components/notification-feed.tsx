@@ -12,6 +12,7 @@ import { Pagination, PAGE_SIZE } from './pagination.js';
 import { formatRelativeTime } from '../lib/format-time.js';
 import { formatDate, formatDateTime, formatPeso, formatStatus, shortCode } from '../lib/format.js';
 import { Skeleton } from './skeleton.js';
+import { CircleCheck, CircleX, Info, TriangleAlert, type LucideIcon } from 'lucide-react';
 
 function payloadLines(payload: unknown): string[] {
   if (!payload || typeof payload !== 'object') return [];
@@ -473,27 +474,35 @@ export function notificationKind(type: string): { label: string; tone: Notificat
   return { label: categoryOf(type), tone: toneOf(type) };
 }
 
-// The unread edge carries the tone; warning yellow fails contrast as text, so that label stays ink.
-const EDGE_CLASS: Record<NotificationTone, string> = {
-  success: 'border-l-success',
-  danger: 'border-l-error',
-  warning: 'border-l-warning',
-  neutral: 'border-l-primary',
-};
-const LABEL_CLASS: Record<NotificationTone, string> = {
-  success: 'text-success',
-  danger: 'text-error',
-  warning: 'text-text',
-  neutral: 'text-text-muted',
+// Cloudscape status indicator: a small glyph in the status colour beside plain text.
+// Warning yellow fails contrast as text, so only its glyph takes the colour.
+const STATUS: Record<NotificationTone, { Icon: LucideIcon; icon: string; text: string }> = {
+  success: { Icon: CircleCheck, icon: 'text-success', text: 'text-success' },
+  danger: { Icon: CircleX, icon: 'text-error', text: 'text-error' },
+  warning: { Icon: TriangleAlert, icon: 'text-warning', text: 'text-text' },
+  neutral: { Icon: Info, icon: 'text-accent', text: 'text-text-muted' },
 };
 
-export function notificationEdge(type: string, unread: boolean): string {
-  return `border-l-[3px] ${unread ? EDGE_CLASS[toneOf(type)] : 'border-l-transparent'}`;
+/** Unread rows sit on a faint accent wash, as the AWS console's notification list does. */
+export function notificationRowClass(unread: boolean): string {
+  return unread ? 'bg-accent/5' : '';
 }
 
 export function NotificationKindLabel({ type }: { type: string }) {
   const { label, tone } = notificationKind(type);
-  return <span className={`text-xs font-semibold uppercase tracking-wider ${LABEL_CLASS[tone]}`}>{label}</span>;
+  const { Icon, icon, text } = STATUS[tone];
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${text}`}>
+      <Icon aria-hidden="true" strokeWidth={2.5} className={`h-3.5 w-3.5 shrink-0 ${icon}`} />
+      {label}
+    </span>
+  );
+}
+
+export function UnreadBadge() {
+  return (
+    <span className="rounded-full bg-accent px-2 py-px text-xs font-bold leading-4 text-text-inverse">New</span>
+  );
 }
 
 const manilaDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
@@ -531,9 +540,11 @@ function NotificationRow({ notification, area }: { notification: NotificationRes
 
   const content = (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <NotificationKindLabel type={notification.notificationType} />
-      <p className={`text-sm text-text ${isUnread ? 'font-semibold' : ''}`}>
-        {isUnread && <span className="sr-only">Unread: </span>}
+      <p className="flex items-center gap-2">
+        <NotificationKindLabel type={notification.notificationType} />
+        {isUnread && <UnreadBadge />}
+      </p>
+      <p className={`text-sm text-text ${isUnread ? 'font-bold' : ''}`}>
         {described?.title ?? formatStatus(notification.notificationType)}
       </p>
       {described ? (
@@ -557,8 +568,7 @@ function NotificationRow({ notification, area }: { notification: NotificationRes
     <li
       className={[
         'flex items-start gap-4 border-b border-border px-4 py-3.5 last:border-b-0',
-        notificationEdge(notification.notificationType, isUnread),
-        isUnread ? '' : 'bg-surface-sunk/40',
+        notificationRowClass(isUnread),
       ].join(' ')}
     >
       {described?.action ? (
@@ -646,7 +656,7 @@ export function NotificationFeed() {
       </div>
       {groupByDay(query.data.items).map(([heading, items]) => (
         <section key={heading} aria-label={heading}>
-          <h3 className="border-b border-border bg-surface-sunk px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">
+          <h3 className="border-b border-border bg-surface-sunk px-4 py-2 text-sm font-bold text-text">
             {heading}
           </h3>
           <ul>
