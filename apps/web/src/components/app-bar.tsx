@@ -68,7 +68,7 @@ function NotificationBell({
           {unreadCount !== null && unreadCount > 0 && (
             <span
               aria-hidden="true"
-              className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[10px] font-bold leading-none tabular-nums text-white ring-2 ring-surface"
+              className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[10px] font-bold leading-none tabular-nums text-white"
             >
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
