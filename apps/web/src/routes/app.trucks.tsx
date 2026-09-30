@@ -46,6 +46,8 @@ function useSaveSettings(initial: TruckSettings, onSaved: () => void) {
         rangePct: initial.rangePct,
         roundTripMultiplier: initial.roundTripMultiplier ?? 1,
         quoteMultiplier: initial.quoteMultiplier ?? 1,
+        quoteBreakdown: initial.quoteBreakdown ?? 'formula',
+        remainderLabel: initial.remainderLabel ?? 'Truck trip cost',
         maxDiscountPct: initial.maxDiscountPct ?? null,
         costPolicy: initial.costPolicy ?? DEFAULT_TRUCK_COST_POLICY,
         ...patch,
@@ -92,6 +94,8 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
   const [rangePct, setRangePct] = useState(String(initial.rangePct));
   const [roundTrip, setRoundTrip] = useState(String(initial.roundTripMultiplier ?? 1));
   const [quoteMultiplier, setQuoteMultiplier] = useState(String(initial.quoteMultiplier ?? 1));
+  const [breakdown, setBreakdown] = useState(initial.quoteBreakdown ?? 'formula');
+  const [remainderLabel, setRemainderLabel] = useState(initial.remainderLabel ?? 'Truck trip cost');
   const [editing, setEditing] = useState(false);
   const open = () => {
     setBase(String(initial.baseFeePhp));
@@ -101,6 +105,8 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
     setRangePct(String(initial.rangePct));
     setRoundTrip(String(initial.roundTripMultiplier ?? 1));
     setQuoteMultiplier(String(initial.quoteMultiplier ?? 1));
+    setBreakdown(initial.quoteBreakdown ?? 'formula');
+    setRemainderLabel(initial.remainderLabel ?? 'Truck trip cost');
     setEditing(true);
   };
   const params = useQuery(pricingQueries.parameters());
@@ -121,6 +127,7 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
           { label: 'Formula', value: initial.formula ? 'Custom' : 'Standard' },
           { label: 'Round-trip multiplier', value: `× ${initial.roundTripMultiplier ?? 1}` },
           { label: 'Quotation multiplier', value: `× ${initial.quoteMultiplier ?? 1}` },
+          { label: 'Customer breakdown', value: initial.quoteBreakdown === 'cost_items' ? `Cost items + ${initial.remainderLabel ?? 'Truck trip cost'}` : 'Formula lines' },
           { label: 'Base fee (per trip)', value: formatPeso(initial.baseFeePhp) },
           { label: 'Driver rate (per km)', value: formatPeso(initial.driverRatePhpPerKm ?? 0) },
           ...(initial.driverFeePhp > 0 ? [{ label: "Driver's fee (legacy, per trip)", value: formatPeso(initial.driverFeePhp) }] : []),
@@ -148,6 +155,8 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
           rangePct: Number(rangePct),
           roundTripMultiplier: Number(roundTrip),
           quoteMultiplier: Number(quoteMultiplier),
+          quoteBreakdown: breakdown,
+          remainderLabel: remainderLabel.trim() || 'Truck trip cost',
         })} />}
       >
         <div className="flex flex-col gap-4">
@@ -158,6 +167,14 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
             <Input label="Base fee (₱ per trip)" type="number" min={0} numeric value={base} onChange={(e) => setBase(e.target.value)} />
             <Input label="Driver rate (₱ per km)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
           </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Select label="Customer breakdown" value={breakdown} onChange={(e) => setBreakdown(e.target.value as TruckSettings['quoteBreakdown'])}>
+              <option value="formula">Formula lines</option>
+              <option value="cost_items">Cost items + remainder line</option>
+            </Select>
+            <Input label="Remainder line name" disabled={breakdown !== 'cost_items'} value={remainderLabel} maxLength={80} onChange={(e) => setRemainderLabel(e.target.value)} />
+          </div>
+          <p className="text-xs text-text-muted">Cost items + remainder: the customer sees fuel, driver, helper, maintenance, misc, other costs and tolls at their actual amounts, and the rest of the formula price on one line. The total is always the formula price.</p>
           <p className="text-xs text-text-muted">The multipliers only count where the formula uses them, e.g. Distance × Round-trip multiplier × Diesel × Quotation multiplier.</p>
           <FormulaBuilder
             value={formula}

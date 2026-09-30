@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { driverPay, estimateTruckCost, TruckCostPolicySchema, isSelfLoadingTruckType, negotiationFloor, priceTruckTrip, truckProfit } from './trucks.js';
+import { costItemQuoteLines, driverPay, estimateTruckCost, TruckCostPolicySchema, isSelfLoadingTruckType, negotiationFloor, priceTruckTrip, truckProfit } from './trucks.js';
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 describe('priceTruckTrip', () => {
@@ -125,6 +125,38 @@ describe('tenant truck pricing policy', () => {
     expect(cost.lines).toContainEqual({ label: 'Driver', amountPhp: 2265 });
     // A legacy fixed fee still adds on top.
     expect(driverPay({ driverFeePhp: 100, driverRatePhpPerKm: 15 }, 10)).toBe(250);
+  });
+
+  describe('cost-item customer breakdown', () => {
+    const sum = (lines: { amountPhp: number }[]) => round2(lines.reduce((a, l) => a + l.amountPhp, 0));
+    const cost = estimateTruckCost({
+      km: 151, fuelLPerKm: 0.35, dieselPhp: 90.93, tolls: [{ label: 'NLEX', amountPhp: 1272 }],
+      settings: { driverFeePhp: 0, driverRatePhpPerKm: 15, extras: [], roundTripMultiplier: 2,
+        costPolicy: TruckCostPolicySchema.parse({ fuelFactor: 1.017, miscAllowancePhp: 1000, helper: { kind: 'per_km', value: 7.5 } }) },
+    });
+    const quote = (totalPhp: number) => ({ km: 151, lines: [], totalPhp });
+
+    it('shows each cost item at its actual amount and the rest on the remainder line', () => {
+      const lines = costItemQuoteLines(quote(54_921.72), cost);
+      expect(lines.slice(0, -1)).toEqual([
+        { label: 'Fuel', amountPhp: 27927.69 }, { label: 'Driver', amountPhp: 2265 }, { label: 'Helper', amountPhp: 1132.5 },
+        { label: 'Miscellaneous', amountPhp: 1000 }, { label: 'Toll: NLEX', amountPhp: 1272 },
+      ]);
+      expect(lines.at(-1)).toEqual({ label: 'Truck trip cost', amountPhp: round2(54_921.72 - cost.totalPhp) });
+      expect(sum(lines)).toBe(54_921.72);
+      expect(lines.some((l) => /×|₱/.test(l.label))).toBe(false);
+    });
+
+    it('uses the tenant remainder name', () => {
+      expect(costItemQuoteLines(quote(60_000), cost, 'Hauling').at(-1)!.label).toBe('Hauling');
+    });
+
+    it('scales the non-toll items down when they exceed the formula total, keeping tolls', () => {
+      const lines = costItemQuoteLines(quote(20_000), cost);
+      expect(lines.map((l) => l.label)).not.toContain('Truck trip cost');
+      expect(lines).toContainEqual({ label: 'Toll: NLEX', amountPhp: 1272 });
+      expect(sum(lines)).toBe(20_000);
+    });
   });
 
   it('computes profit and margin', () => {

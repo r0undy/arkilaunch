@@ -297,6 +297,7 @@ async function main() {
     .values({
       tenantId: tenant.id,
       driverRatePhpPerKm: '15.00',
+      quoteBreakdown: 'cost_items',
       formula: 'km * round_trip * diesel * quote_multiplier',
       roundTripMultiplier: '2',
       quoteMultiplier: '2',

@@ -15,6 +15,9 @@ export const truckSettings = pgTable(
     driverFeePhp: numeric('driver_fee_php', { precision: 12, scale: 2 }).notNull().default('0'),
     // 0075: driver pay per trip km; the fixed fee above is legacy.
     driverRatePhpPerKm: numeric('driver_rate_php_per_km', { precision: 10, scale: 2 }).notNull().default('0'),
+    // 0076: the customer's line breakdown ('formula' | 'cost_items').
+    quoteBreakdown: text('quote_breakdown').$type<'formula' | 'cost_items'>().notNull().default('formula'),
+    remainderLabel: text('remainder_label').notNull().default('Truck trip cost'),
     extras: jsonb('extras').$type<TruckExtra[]>().notNull().default([]),
     // null formula = the built-in default (DEFAULT_TRUCK_FORMULA).
     formula: text('formula'),

@@ -526,6 +526,13 @@
       "when": 1790400036000,
       "tag": "0075_truck_driver_rate",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1790400037000,
+      "tag": "0076_truck_quote_breakdown",
+      "breakpoints": true
     }
   ]
 }

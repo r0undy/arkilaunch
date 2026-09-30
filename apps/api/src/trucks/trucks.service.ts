@@ -7,6 +7,7 @@ import {
   CLOSED_TRUCK_STATUSES,
   DEFAULT_TRUCK_COST_POLICY,
   estimateTruckCost,
+  costItemQuoteLines,
   negotiationFloor,
   TruckCostPolicySchema,
   truckProfit,
@@ -47,7 +48,7 @@ import { countRows } from '../common/count-rows.js';
 import { num } from '../common/field-logs.js';
 
 const DEFAULT_SETTINGS: TruckSettings = {
-  baseFeePhp: 0, driverFeePhp: 0, driverRatePhpPerKm: 0, extras: [], formula: null, rangePct: 10, region: 'NCR',
+  baseFeePhp: 0, driverFeePhp: 0, driverRatePhpPerKm: 0, quoteBreakdown: 'formula', remainderLabel: 'Truck trip cost', extras: [], formula: null, rangePct: 10, region: 'NCR',
   roundTripMultiplier: 1, quoteMultiplier: 1, maxDiscountPct: null, costPolicy: DEFAULT_TRUCK_COST_POLICY,
 };
 
@@ -129,6 +130,8 @@ export class TrucksService {
           baseFeePhp: Number(row.baseFeePhp),
           driverFeePhp: Number(row.driverFeePhp),
           driverRatePhpPerKm: Number(row.driverRatePhpPerKm),
+          quoteBreakdown: row.quoteBreakdown,
+          remainderLabel: row.remainderLabel,
           extras: row.extras,
           formula: row.formula,
           rangePct: Number(row.rangePct),
@@ -160,6 +163,8 @@ export class TrucksService {
     });
     const band = settings.rangePct / 100;
     const cost = estimateTruckCost({ km, settings, fuelLPerKm: diesel.fuelLPerKm, dieselPhp: diesel.pricePhp, tolls });
+    // The customer's lines only; the total, band and internal cost are unchanged.
+    if (settings.quoteBreakdown === 'cost_items') price.lines = costItemQuoteLines(price, cost, settings.remainderLabel);
     return {
       price: { ...price, lowPhp: round2HalfUp(price.totalPhp * (1 - band)), highPhp: round2HalfUp(price.totalPhp * (1 + band)) },
       internal: { cost, ...negotiationFloor(price.totalPhp, settings.maxDiscountPct, cost.totalPhp), maxDiscountPct: settings.maxDiscountPct },
@@ -263,6 +268,8 @@ export class TrucksService {
       baseFeePhp: String(body.baseFeePhp),
       driverFeePhp: String(body.driverFeePhp),
       driverRatePhpPerKm: String(body.driverRatePhpPerKm),
+      quoteBreakdown: body.quoteBreakdown,
+      remainderLabel: body.remainderLabel,
       extras: body.extras,
       formula: body.formula || null,
       rangePct: String(body.rangePct),

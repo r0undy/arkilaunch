@@ -43,6 +43,10 @@ export const TruckSettingsSchema = z
     // Legacy fixed driver fee; the admin sets driverRatePhpPerKm (0075).
     driverFeePhp: z.number().nonnegative().max(1_000_000),
     driverRatePhpPerKm: z.number().nonnegative().max(100_000).default(0),
+    // 0076: what the customer sees. 'cost_items' = the actual cost items
+    // plus remainderLabel up to the formula total (costItemQuoteLines).
+    quoteBreakdown: z.enum(['formula', 'cost_items']).default('formula'),
+    remainderLabel: z.string().trim().min(1).max(80).default('Truck trip cost'),
     extras: z.array(TruckExtraSchema).max(20),
     formula: z.string().trim().max(500).nullish(),
     rangePct: z.number().min(0).max(100).default(10),
@@ -330,6 +334,33 @@ export function estimateTruckCost({ km, settings, fuelLPerKm, dieselPhp, tolls =
   for (const x of [...(policy.otherCosts ?? []), ...settings.extras]) lines.push({ label: x.label, amountPhp: round2HalfUp(x.per === 'km' ? km * x.amountPhp : x.amountPhp) });
   for (const t of tolls) lines.push({ label: `Toll: ${t.label}`, amountPhp: round2HalfUp(t.amountPhp) });
   return { lines, totalPhp: round2HalfUp(lines.reduce((acc, l) => acc + l.amountPhp, 0)) };
+}
+
+// The customer's lines for a 'cost_items' tenant: each cost item at its
+// actual amount under a plain name (no rates), then one remainder line up to
+// the formula total, so the lines always sum to price.totalPhp. When the
+// items exceed the total, the non-toll items are scaled down to fit instead.
+export function costItemQuoteLines(
+  price: TruckPrice,
+  cost: { lines: TruckPriceLine[] },
+  remainderLabel = 'Truck trip cost',
+): TruckPriceLine[] {
+  const plain = (label: string) => (label === 'Miscellaneous allowance' ? 'Miscellaneous' : label.replace(/\s*\(.*\)$/, ''));
+  const items = cost.lines.map((l) => ({ label: plain(l.label), amountPhp: l.amountPhp }));
+  const remainder = round2HalfUp(price.totalPhp - items.reduce((acc, l) => acc + l.amountPhp, 0));
+  if (remainder >= 0) return remainder > 0 ? [...items, { label: remainderLabel, amountPhp: remainder }] : items;
+  const isToll = (l: TruckPriceLine) => l.label.startsWith('Toll: ');
+  const tolls = items.filter(isToll).reduce((acc, l) => acc + l.amountPhp, 0);
+  const rest = items.filter((l) => !isToll(l)).reduce((acc, l) => acc + l.amountPhp, 0);
+  if (rest <= 0 || tolls >= price.totalPhp) return price.lines;
+  const factor = (price.totalPhp - tolls) / rest;
+  const scaled = items.map((l) => (isToll(l) ? l : { ...l, amountPhp: round2HalfUp(l.amountPhp * factor) }));
+  const drift = round2HalfUp(price.totalPhp - scaled.reduce((acc, l) => acc + l.amountPhp, 0));
+  if (drift !== 0) {
+    const largest = scaled.reduce((best, l, i) => (!isToll(l) && l.amountPhp > scaled[best]!.amountPhp ? i : best), scaled.findIndex((l) => !isToll(l)));
+    scaled[largest] = { ...scaled[largest]!, amountPhp: round2HalfUp(scaled[largest]!.amountPhp + drift) };
+  }
+  return scaled;
 }
 
 // Saved on the request when it is priced (0072), so a later policy change
