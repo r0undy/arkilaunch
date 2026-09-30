@@ -91,7 +91,7 @@ export const APP_NAV: NavGroup[] = [
     title: 'Overview',
     items: [
       { label: 'Dashboard', to: '/app', icon: LayoutDashboard, exact: true },
-      { label: 'Revenue at risk', to: '/app/insights', icon: TrendingDown },
+      { label: 'Reports', to: '/app/insights', icon: TrendingDown },
     ],
   },
   {

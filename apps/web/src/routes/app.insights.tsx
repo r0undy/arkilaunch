@@ -79,7 +79,7 @@ function RevenueAtRiskPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        title="Revenue at risk"
+        title="Reports"
         description="Money you have earned but not yet collected, and what is holding it up."
         actions={
           <Button variant="secondary" onClick={() => setExporting(true)}>
@@ -104,7 +104,7 @@ function RevenueAtRiskPage() {
         </Select>
       </div>
       <DataPanel
-        title="Revenue at risk"
+        title="Reports"
         options={reportQueries.leakage(query)}
         emptyTitle="No activity in this period"
         emptyDescription="Pick a wider date range or clear the filters."
@@ -123,7 +123,7 @@ function RevenueAtRiskPage() {
               return (
                 <Table
                   header={{
-                    title: 'Where it is slipping',
+                    title: 'Revenue leakage',
                     count: rows.length,
                     pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={rows.length} onOffsetChange={setOffset} noun="causes" />,
                   }}
@@ -140,7 +140,7 @@ function RevenueAtRiskPage() {
       <Modal
         open={exporting}
         onClose={() => setExporting(false)}
-        title="Export revenue at risk"
+        title="Export report"
         description="The PDF uses the filters currently on the page."
         size="sm"
         footer={
