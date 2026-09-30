@@ -302,7 +302,7 @@ async function main() {
       roundTripMultiplier: '2',
       quoteMultiplier: '2',
       maxDiscountPct: '35',
-      costPolicy: { fuelFactor: 1.017, miscAllowancePhp: 1000, helper: { kind: 'per_km', value: 7.5 } },
+      costPolicy: { fuelFactor: 1.017, misc: { kind: 'fixed', value: 1000 }, helper: { kind: 'per_km', value: 7.5 } },
     })
     .onConflictDoNothing();
 

@@ -208,11 +208,11 @@ function ChargeList({ legend, noun, items, onChange }: { legend: string; noun: s
           <div className="col-span-2 sm:col-span-1">
             <Input label={noun[0]!.toUpperCase() + noun.slice(1)} value={x.label} onChange={(e) => set(i, { label: e.target.value })} />
           </div>
-          <Input label="₱" type="number" min={0} numeric value={String(x.amountPhp)} onChange={(e) => set(i, { amountPhp: Number(e.target.value) })} />
-          <Select label="Per" value={x.per} onChange={(e) => set(i, { per: e.target.value as TruckExtra['per'] })}>
-            <option value="trip">trip</option>
-            <option value="km">km</option>
+          <Select label="Unit" value={x.per} onChange={(e) => set(i, { per: e.target.value as TruckExtra['per'] })}>
+            <option value="trip">₱ per trip</option>
+            <option value="km">₱ per km</option>
           </Select>
+          <Input label="Value" type="number" min={0} numeric value={String(x.amountPhp)} onChange={(e) => set(i, { amountPhp: Number(e.target.value) })} />
           <Button variant="ghost" onClick={() => onChange(items.filter((_, j) => j !== i))}>
             Remove
           </Button>
@@ -257,27 +257,48 @@ function NegotiationCard({ initial }: { initial: TruckSettings }) {
   );
 }
 
+type CostPart<K extends string> = { kind: K; value: number };
+const DRIVER_KINDS = { none: 'None', fixed: '₱ per trip', per_km: '₱ per km' } as const;
+const MISC_KINDS: Record<TruckCostPolicy['misc']['kind'], string> = { none: 'None', fixed: '₱ per trip', per_km: '₱ per km' };
 const HELPER_KINDS: Record<TruckCostPolicy['helper']['kind'], string> = { none: 'None', fixed: '₱ per trip', per_km: '₱ per km', pct_driver: '% of driver' };
 const MAINTENANCE_KINDS: Record<TruckCostPolicy['maintenance']['kind'], string> = { none: 'None', fixed: '₱ per trip', per_km: '₱ per km', pct_fuel: '% of fuel' };
 const policyText = (kinds: Record<string, string>, p: { kind: string; value: number }) =>
   p.kind === 'none' ? 'None' : `${p.value} ${kinds[p.kind]}`;
 
+// The driver's unit maps onto the per-km rate or the per-trip fee.
+type DriverPart = CostPart<keyof typeof DRIVER_KINDS>;
+const driverPart = (s: TruckSettings): DriverPart =>
+  (s.driverRatePhpPerKm ?? 0) > 0 ? { kind: 'per_km', value: s.driverRatePhpPerKm! }
+    : s.driverFeePhp > 0 ? { kind: 'fixed', value: s.driverFeePhp } : { kind: 'none', value: 0 };
+
+// One cost: its unit, then its value. Every internal cost uses this row.
+function CostRow<K extends string>({ label, kinds, part, onChange }: { label: string; kinds: Record<K, string>; part: CostPart<K>; onChange: (p: CostPart<K>) => void }) {
+  return (
+    <div className="grid grid-cols-2 items-end gap-4">
+      <Select label={label} value={part.kind} onChange={(e) => onChange({ ...part, kind: e.target.value as K })}>
+        {(Object.entries(kinds) as [K, string][]).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+      </Select>
+      <Input label={`${label} value`} type="number" min={0} numeric disabled={part.kind === 'none'} value={String(part.value)} onChange={(e) => onChange({ ...part, value: Number(e.target.value) })} />
+    </div>
+  );
+}
+
 function CostCard({ initial }: { initial: TruckSettings }) {
   const saved = initial.costPolicy ?? DEFAULT_TRUCK_COST_POLICY;
   const [fuelFactor, setFuelFactor] = useState('');
-  const [misc, setMisc] = useState('');
-  const [driver, setDriver] = useState('');
+  const [driver, setDriver] = useState<DriverPart>(driverPart(initial));
+  const [misc, setMisc] = useState(saved.misc);
   const [helper, setHelper] = useState(saved.helper);
   const [maintenance, setMaintenance] = useState(saved.maintenance);
   const [otherCosts, setOtherCosts] = useState<TruckExtra[]>(saved.otherCosts ?? []);
   const [editing, setEditing] = useState(false);
   const open = () => {
-    setOtherCosts(saved.otherCosts ?? []);
     setFuelFactor(saved.fuelFactor == null ? '' : String(saved.fuelFactor));
-    setMisc(String(saved.miscAllowancePhp));
-    setDriver(String(initial.driverRatePhpPerKm ?? 0));
+    setDriver(driverPart(initial));
+    setMisc(saved.misc);
     setHelper(saved.helper);
     setMaintenance(saved.maintenance);
+    setOtherCosts(saved.otherCosts ?? []);
     setEditing(true);
   };
   const save = useSaveSettings(initial, () => setEditing(false));
@@ -288,10 +309,10 @@ function CostCard({ initial }: { initial: TruckSettings }) {
         description="Staff only, never shown to customers. Used for each trip's expected cost and profit."
         items={[
           { label: 'Fuel factor', value: saved.fuelFactor == null ? 'Fuel L/km (operating costs)' : `${saved.fuelFactor} L/km` },
-          { label: 'Driver rate (per km)', value: formatPeso(initial.driverRatePhpPerKm ?? 0) },
-          { label: 'Miscellaneous allowance', value: formatPeso(saved.miscAllowancePhp) },
+          { label: 'Driver', value: policyText(DRIVER_KINDS, driverPart(initial)) },
           { label: 'Helper', value: policyText(HELPER_KINDS, saved.helper) },
           { label: 'Maintenance', value: policyText(MAINTENANCE_KINDS, saved.maintenance) },
+          { label: 'Miscellaneous', value: policyText(MISC_KINDS, saved.misc) },
           {
             label: 'Other costs',
             value: saved.otherCosts?.length
@@ -305,13 +326,14 @@ function CostCard({ initial }: { initial: TruckSettings }) {
         open={editing}
         onClose={() => setEditing(false)}
         title="Internal trip cost"
-        description="Fuel = km × fuel factor × diesel × round-trip multiplier. The driver is km × the driver rate; tolls and extra charges count as cost."
+        description="Fuel = km × fuel factor × diesel × round-trip multiplier. Each cost below is per trip, per km, or off; tolls and extra charges count as cost."
         size="lg"
         footer={<SaveFooter pending={save.isPending} onCancel={() => setEditing(false)} label="Save trip cost" onSave={() => save.mutate({
-          driverRatePhpPerKm: Number(driver),
+          driverRatePhpPerKm: driver.kind === 'per_km' ? driver.value : 0,
+          driverFeePhp: driver.kind === 'fixed' ? driver.value : 0,
           costPolicy: {
             fuelFactor: fuelFactor.trim() === '' ? null : Number(fuelFactor),
-            miscAllowancePhp: Number(misc),
+            misc,
             helper,
             maintenance,
             otherCosts,
@@ -319,21 +341,11 @@ function CostCard({ initial }: { initial: TruckSettings }) {
         })} />}
       >
         <div className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Input label="Fuel factor (L/km)" type="number" min={0} step="any" numeric value={fuelFactor} placeholder="Blank = fuel L/km" onChange={(e) => setFuelFactor(e.target.value)} />
-            <Input label="Driver rate (₱ per km)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
-            <Input label="Miscellaneous allowance (₱ per trip)" type="number" min={0} numeric value={misc} onChange={(e) => setMisc(e.target.value)} />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Select label="Helper" value={helper.kind} onChange={(e) => setHelper({ ...helper, kind: e.target.value as TruckCostPolicy['helper']['kind'] })}>
-              {Object.entries(HELPER_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
-            <Input label="Helper value" type="number" min={0} numeric disabled={helper.kind === 'none'} value={String(helper.value)} onChange={(e) => setHelper({ ...helper, value: Number(e.target.value) })} />
-            <Select label="Maintenance" value={maintenance.kind} onChange={(e) => setMaintenance({ ...maintenance, kind: e.target.value as TruckCostPolicy['maintenance']['kind'] })}>
-              {Object.entries(MAINTENANCE_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
-            <Input label="Maintenance value" type="number" min={0} numeric disabled={maintenance.kind === 'none'} value={String(maintenance.value)} onChange={(e) => setMaintenance({ ...maintenance, value: Number(e.target.value) })} />
-          </div>
+          <Input label="Fuel factor (L/km)" type="number" min={0} step="any" numeric value={fuelFactor} placeholder="Blank = fuel L/km" onChange={(e) => setFuelFactor(e.target.value)} />
+          <CostRow label="Driver" kinds={DRIVER_KINDS} part={driver} onChange={setDriver} />
+          <CostRow label="Helper" kinds={HELPER_KINDS} part={helper} onChange={setHelper} />
+          <CostRow label="Maintenance" kinds={MAINTENANCE_KINDS} part={maintenance} onChange={setMaintenance} />
+          <CostRow label="Miscellaneous" kinds={MISC_KINDS} part={misc} onChange={setMisc} />
           <ChargeList legend="Other costs" noun="cost" items={otherCosts} onChange={setOtherCosts} />
         </div>
       </Modal>

@@ -63,7 +63,7 @@ describe('tenant truck pricing policy', () => {
 
   it('adds tenant-named other costs to the internal cost only', () => {
     const base = { km: 151, fuelLPerKm: 0.35, dieselPhp: 90.93, tolls: [{ label: 'NLEX', amountPhp: 1272 }] };
-    const policy = { fuelFactor: 1.017, miscAllowancePhp: 1000, helper: { kind: 'per_km', value: 7.5 } };
+    const policy = { fuelFactor: 1.017, misc: { kind: 'fixed', value: 1000 }, helper: { kind: 'per_km', value: 7.5 } };
     const settings = { driverFeePhp: 0, driverRatePhpPerKm: 15, extras: [], roundTripMultiplier: 2 };
     const without = estimateTruckCost({ ...base, settings: { ...settings, costPolicy: TruckCostPolicySchema.parse(policy) } });
     const withOther = estimateTruckCost({ ...base, settings: { ...settings, costPolicy: TruckCostPolicySchema.parse({
@@ -78,7 +78,7 @@ describe('tenant truck pricing policy', () => {
       tolls: [{ label: 'NLEX', amountPhp: 1272 }],
       settings: {
         driverFeePhp: 2265, extras: [], roundTripMultiplier: 2,
-        costPolicy: { fuelFactor: 1.017, miscAllowancePhp: 1000, helper: { kind: 'pct_driver', value: 50 }, maintenance: { kind: 'none', value: 0 }, otherCosts: [] },
+        costPolicy: { fuelFactor: 1.017, misc: { kind: 'fixed', value: 1000 }, helper: { kind: 'pct_driver', value: 50 }, maintenance: { kind: 'none', value: 0 }, otherCosts: [] },
       },
     });
     // fuel 151 × 1.017 × 60 × 2 = 18,428.04; helper 50% of 2,265 = 1,132.50
@@ -94,7 +94,7 @@ describe('tenant truck pricing policy', () => {
 
   it('reproduces the Almara sample cost without inventing the unexplained remainder', () => {
     // Same shape as the anchor seed; helper = km × admin rate.
-    const costPolicy = TruckCostPolicySchema.parse({ fuelFactor: 1.017, miscAllowancePhp: 1000, helper: { kind: 'per_km', value: 7.5 } });
+    const costPolicy = TruckCostPolicySchema.parse({ fuelFactor: 1.017, misc: { kind: 'fixed', value: 1000 }, helper: { kind: 'per_km', value: 7.5 } });
     const cost = estimateTruckCost({
       km: 151, fuelLPerKm: 0.35, dieselPhp: 90.93,
       tolls: [{ label: 'NLEX', amountPhp: 1272 }],
@@ -132,7 +132,7 @@ describe('tenant truck pricing policy', () => {
     const cost = estimateTruckCost({
       km: 151, fuelLPerKm: 0.35, dieselPhp: 90.93, tolls: [{ label: 'NLEX', amountPhp: 1272 }],
       settings: { driverFeePhp: 0, driverRatePhpPerKm: 15, extras: [], roundTripMultiplier: 2,
-        costPolicy: TruckCostPolicySchema.parse({ fuelFactor: 1.017, miscAllowancePhp: 1000, helper: { kind: 'per_km', value: 7.5 } }) },
+        costPolicy: TruckCostPolicySchema.parse({ fuelFactor: 1.017, misc: { kind: 'fixed', value: 1000 }, helper: { kind: 'per_km', value: 7.5 } }) },
     });
     const quote = (totalPhp: number) => ({ km: 151, lines: [], totalPhp });
 
@@ -179,6 +179,14 @@ describe('tenant truck pricing policy', () => {
       const lines = costItemQuoteLines(trip(30, 49), cost);
       expect(lines.at(-1)).toEqual({ label: 'Truck trip cost', amountPhp: 4550 });
     });
+  });
+
+  it('prices misc per trip or per km, and reads a pre-unit flat misc as per trip', () => {
+    const run = (misc: unknown) => estimateTruckCost({ km: 100, fuelLPerKm: 0, dieselPhp: 0,
+      settings: { driverFeePhp: 0, extras: [], costPolicy: TruckCostPolicySchema.parse(misc) } }).lines;
+    expect(run({ misc: { kind: 'per_km', value: 5 } })).toContainEqual({ label: 'Miscellaneous allowance', amountPhp: 500 });
+    expect(run({ miscAllowancePhp: 1000 })).toContainEqual({ label: 'Miscellaneous allowance', amountPhp: 1000 });
+    expect(run({ miscAllowancePhp: 0 })).toHaveLength(1); // fuel only
   });
 
   it('computes profit and margin', () => {

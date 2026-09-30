@@ -15,12 +15,21 @@ export const DEFAULT_TRUCK_FORMULA = 'base + km * per_km + km * fuel_l_per_km * 
 // The tenant's internal trip cost policy (0072): staff-only, never on a
 // customer response. Every part is optional; 'none' leaves it out.
 const Php = z.number().nonnegative().max(1_000_000);
-export const TruckCostPolicySchema = z
+// A policy saved before misc took a unit had a flat miscAllowancePhp.
+const legacyMisc = (v: unknown) => {
+  if (!v || typeof v !== 'object' || !('miscAllowancePhp' in v)) return v;
+  const { miscAllowancePhp, ...rest } = v as Record<string, unknown>;
+  return 'misc' in rest || !miscAllowancePhp ? rest : { ...rest, misc: { kind: 'fixed', value: miscAllowancePhp } };
+};
+export const TruckCostPolicySchema = z.preprocess(legacyMisc, z
   .object({
     // Fuel cost = km × fuelFactor (litres per km) × diesel × round trip.
     // Null = the tenant's pricing-parameter fuel L/km.
     fuelFactor: z.number().positive().max(100).nullable().default(null),
-    miscAllowancePhp: Php.default(0),
+    misc: z
+      .object({ kind: z.enum(['none', 'fixed', 'per_km']), value: Php })
+      .strict()
+      .default({ kind: 'none', value: 0 }),
     helper: z
       .object({ kind: z.enum(['none', 'fixed', 'per_km', 'pct_driver']), value: Php })
       .strict()
@@ -33,7 +42,7 @@ export const TruckCostPolicySchema = z
     // tenant has not itemised yet). Same shape as an extra charge.
     otherCosts: z.array(TruckExtraSchema).max(10).default([]),
   })
-  .strict();
+  .strict());
 export type TruckCostPolicy = z.infer<typeof TruckCostPolicySchema>;
 export const DEFAULT_TRUCK_COST_POLICY: TruckCostPolicy = TruckCostPolicySchema.parse({});
 
@@ -338,7 +347,9 @@ export function estimateTruckCost({ km, settings, fuelLPerKm, dieselPhp, tolls =
   if (helper.kind !== 'none') lines.push({ label: 'Helper', amountPhp: round2HalfUp(helperPhp) });
   const maintPhp = { none: 0, fixed: maintenance.value, per_km: km * maintenance.value, pct_fuel: (fuel * maintenance.value) / 100 }[maintenance.kind];
   if (maintenance.kind !== 'none') lines.push({ label: 'Maintenance', amountPhp: round2HalfUp(maintPhp) });
-  if (policy.miscAllowancePhp > 0) lines.push({ label: 'Miscellaneous allowance', amountPhp: round2HalfUp(policy.miscAllowancePhp) });
+  const { misc } = policy;
+  const miscPhp = { none: 0, fixed: misc.value, per_km: km * misc.value }[misc.kind];
+  if (miscPhp > 0) lines.push({ label: 'Miscellaneous allowance', amountPhp: round2HalfUp(miscPhp) });
   for (const x of [...(policy.otherCosts ?? []), ...settings.extras]) lines.push({ label: x.label, amountPhp: round2HalfUp(x.per === 'km' ? km * x.amountPhp : x.amountPhp) });
   for (const t of tolls) lines.push({ label: `Toll: ${t.label}`, amountPhp: round2HalfUp(t.amountPhp) });
   return { lines, totalPhp: round2HalfUp(lines.reduce((acc, l) => acc + l.amountPhp, 0)) };
