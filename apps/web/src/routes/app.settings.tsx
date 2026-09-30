@@ -19,7 +19,7 @@ import { useToast } from '../components/toast.js';
 import { EditButton, SummaryCard } from '../components/summary-card.js';
 import { LoadError } from '../components/load-error.js';
 import { Skeleton } from '../components/skeleton.js';
-import { Mail, Plus, Receipt } from 'lucide-react';
+import { Mail, Plus } from 'lucide-react';
 import { formatDate, formatPeso, WEEKDAYS } from '../lib/format.js';
 
 interface RateCardRow {
@@ -651,8 +651,7 @@ export function RateCardsPanel() {
         title="Rate cards"
         options={rateCardsListQuery(PAGE_SIZE, offset)}
         emptyTitle="No rate cards yet"
-        emptyDescription="Add a rate card to make an equipment type quotable."
-        emptyIcon={Receipt}
+        emptyDescription="Add a rate card to make an equipment type quotable."
         emptyAction={addButton}
         isEmpty={(data) => data.total === 0}
         render={(data) => (

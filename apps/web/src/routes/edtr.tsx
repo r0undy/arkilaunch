@@ -18,7 +18,7 @@ import { PageHeader } from '../components/page-header.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
 import { StatusBadge } from '../components/status-badge.js';
 import { EmptyState } from '../components/empty-state.js';
-import { Check, CircleX, ClipboardList, Clock, TriangleAlert } from 'lucide-react';
+import { Check, CircleX, Clock, TriangleAlert } from 'lucide-react';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { useToast } from '../components/toast.js';
@@ -290,13 +290,11 @@ function EdtrPage() {
         (items.length === 0 ? (
           filtered ? (
             <EmptyState
-              icon={ClipboardList}
               title="Nothing left here"
               description="No field logs for this machine and week. They may already be billed."
             />
           ) : (
           <EmptyState
-            icon={ClipboardList}
             title="No field logs yet"
             description="Record the first one to start matching hours against the deposit."
             action={

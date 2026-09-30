@@ -11,7 +11,7 @@ import { Table, type TableColumn } from '../components/table.js';
 import { Button, buttonClass } from '../components/button.js';
 import { PrintFrame } from '../components/print-frame.js';
 import { formatDate, formatHours, formatInvoiceType, formatPeso } from '../lib/format.js';
-import { CalendarRange } from 'lucide-react';
+
 
 function Statement({ snapshot }: { snapshot: ReportsSnapshot }) {
   const { utilization, financial } = snapshot;
@@ -111,8 +111,7 @@ function WeeklyBillingPage() {
         title="Weekly rundown"
         options={reportQueries.snapshot()}
         emptyTitle="Nothing billed this period"
-        emptyDescription="No machine recorded hours and no invoice was raised in the reporting window."
-        emptyIcon={CalendarRange}
+        emptyDescription="No machine recorded hours and no invoice was raised in the reporting window."
         isEmpty={(data) => data.utilization.fleet.length === 0 && data.financial.invoiced.total === 0}
         render={(data) => <Statement snapshot={data} />}
       />

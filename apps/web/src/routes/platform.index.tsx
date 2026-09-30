@@ -11,7 +11,6 @@ import {
   MapPin,
   Phone,
   Receipt,
-  SearchX,
   Store,
   X,
   type LucideIcon,
@@ -293,7 +292,6 @@ function Directory() {
         </div>
       ) : data.items.length === 0 ? (
         <EmptyState
-          icon={SearchX}
           title="No rental companies match"
           description="Try another name or city, or show every kind of equipment."
           action={
@@ -387,17 +385,15 @@ function Features() {
             key={f.title}
             style={{ transitionDelay: shown ? `${i * 80}ms` : undefined }}
             className={[
-              'group flex flex-col gap-4 rounded-md border border-border bg-surface p-6 transition duration-400 ease-out hover:-translate-y-1 hover:shadow-md',
-              shown ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0',
+              'flex flex-col gap-2 rounded-md border border-border bg-surface p-5 transition-opacity duration-400 ease-out',
+              shown ? 'opacity-100' : 'opacity-0',
             ].join(' ')}
           >
-            <span className="flex size-12 items-center justify-center rounded-sm bg-primary/15 text-text transition-colors group-hover:bg-primary">
-              <f.icon aria-hidden className="size-6" />
-            </span>
-            <div>
-              <h3 className="text-heading-md text-text">{f.title}</h3>
-              <p className="mt-2 text-sm text-text-muted">{f.body}</p>
-            </div>
+            <h3 className="flex items-center gap-2 text-heading-md text-text">
+              <f.icon aria-hidden className="h-5 w-5 shrink-0 text-text-muted" />
+              {f.title}
+            </h3>
+            <p className="text-sm text-text-muted">{f.body}</p>
           </article>
         ))}
       </div>

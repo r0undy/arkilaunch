@@ -15,7 +15,7 @@ import { StatusBadge } from '../components/status-badge.js';
 import { formatDate, formatSeverity, siteName } from '../lib/format.js';
 import { BookingCode } from '../components/booking-code.js';
 import { Alert } from '../components/alert.js';
-import { Check, CircleX, MapPin, TriangleAlert } from 'lucide-react';
+import { Check, CircleX, TriangleAlert } from 'lucide-react';
 
 const SEVERITY_META: Record<string, { tone: StatusTone; icon: ReactElement }> = {
   none: { tone: 'weather-clear', icon: <Check className="size-full" /> },
@@ -172,8 +172,7 @@ function DeploymentPage() {
         title="Sites"
         options={sitesQueries.list(PAGE_SIZE, offset, deployment)}
         emptyTitle="No project sites yet"
-        emptyDescription="Add a project site to deploy equipment to it."
-        emptyIcon={MapPin}
+        emptyDescription="Add a project site to deploy equipment to it."
         // A filter with no match keeps the chips on screen, so it is not "no sites yet".
         isEmpty={(data) => !deployment && data.total === 0}
         render={(data) => (

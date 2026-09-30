@@ -24,7 +24,7 @@ import { Alert } from '../components/alert.js';
 import { ActionMenu } from '../components/action-menu.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch } from '../lib/api-client.js';
 import { getCurrentRole } from '../lib/guards.js';
-import { Boxes, Check, Truck, Wrench } from 'lucide-react';
+import { Check, Truck, Wrench } from 'lucide-react';
 
 const STATUS_META: Record<string, { tone: StatusTone; label: string; icon: ReactElement }> = {
   available: { tone: 'fleet-available', label: 'Available', icon: <Check className="size-full" /> },
@@ -245,8 +245,7 @@ function InventoryPage() {
           Object.values(filters).some(Boolean)
             ? 'Clear a filter or pick another category.'
             : 'Add equipment to the fleet to see it listed here.'
-        }
-        emptyIcon={Boxes}
+        }
         isEmpty={(data) => data.items.length === 0}
         render={(data) => (
           <div className="flex flex-col gap-6">

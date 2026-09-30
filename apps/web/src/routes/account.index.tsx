@@ -8,7 +8,7 @@ import { Modal } from '../components/modal.js';
 import { Skeleton } from '../components/skeleton.js';
 import { hasRequiredCompanyDocuments } from '@arkilaunch/shared';
 import { bookingsQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
-import { Check } from 'lucide-react';
+import { Check, ChevronRight, TriangleAlert } from 'lucide-react';
 
 export interface SetupStep {
   label: string;
@@ -65,23 +65,17 @@ function SetupChecklist() {
         type="button"
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
-        className="relative flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface px-4 py-3 text-left text-sm text-text hover:border-accent"
+        className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface px-4 py-3 text-left text-sm text-text hover:border-border-strong"
       >
-        <span
-          aria-hidden="true"
-          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-warning text-xs font-bold text-white"
-        >
-          !
-        </span>
-        <span>
+        {/* Cloudscape warning status: an inline glyph beside the text, not a corner badge. */}
+        <span className="flex items-center gap-2">
+          <TriangleAlert aria-hidden="true" className="h-4 w-4 shrink-0 text-warning" />
           <span className="font-semibold">
             {todo.length} step{todo.length === 1 ? '' : 's'} left
           </span>{' '}
           <span className="text-text-muted">before you can pay for bookings</span>
         </span>
-        <span aria-hidden="true" className="text-accent">
-          ›
-        </span>
+        <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-text-muted" />
       </button>
       <Modal
         open={open}

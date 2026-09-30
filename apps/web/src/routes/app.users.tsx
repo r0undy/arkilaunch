@@ -20,7 +20,7 @@ import { Select } from '../components/select.js';
 import { Modal } from '../components/modal.js';
 import { StatusBadge } from '../components/status-badge.js';
 import { ActionMenu } from '../components/action-menu.js';
-import { Users } from 'lucide-react';
+
 
 interface UserRow {
   id: string;
@@ -333,8 +333,7 @@ function ManageUsersPage() {
         title="Users"
         options={usersListQuery(PAGE_SIZE, offset)}
         emptyTitle="No users yet"
-        emptyDescription="Invite your first teammate."
-        emptyIcon={Users}
+        emptyDescription="Invite your first teammate."
         isEmpty={(data) => data.total === 0}
         render={(data) => (
           <Table

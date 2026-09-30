@@ -64,7 +64,7 @@ function RowCards<T>({
   const actions = columns.filter((c) => c.kind === 'action' && c !== title);
   const pairs = columns.filter((c) => c !== title && c !== status && !actions.includes(c));
 
-  if (rows.length === 0) return empty ? <div className="px-4 py-8 text-center text-sm text-text-muted">{empty}</div> : null;
+  if (rows.length === 0) return empty ? <div className="px-4 py-8 text-center text-sm font-bold text-text">{empty}</div> : null;
   return (
     <ul className="text-sm text-text">
       {rows.map((row) => {
@@ -211,7 +211,7 @@ export function Table<T>(props: TableProps<T>) {
           <tbody>
             {rows.length === 0 && empty && (
               <tr>
-                <td colSpan={span} className="px-4 py-8 text-center text-text-muted">
+                <td colSpan={span} className="px-4 py-8 text-center text-sm font-bold text-text">
                   {empty}
                 </td>
               </tr>
