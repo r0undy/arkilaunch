@@ -30,7 +30,12 @@ test('booking disables taken dates', async ({ page }) => {
     d.setDate(d.getDate() + offset);
     return d;
   };
-  const blocked = [day(20), day(21)];
+  // Keep pickup and return on open weekdays regardless of when CI runs.
+  const pickupOffset = Array.from({ length: 7 }, (_, n) => 14 + n).find((offset) => day(offset).getDay() === 1)!;
+  const pickup = day(pickupOffset);
+  const blocked = [day(pickupOffset + 1), day(pickupOffset + 2)];
+  const freeStart = day(pickupOffset + 3);
+  const freeEnd = day(pickupOffset + 4);
   const startsAt = new Date(blocked[0]!);
   startsAt.setHours(9, 0, 0, 0);
   const endsAt = new Date(blocked[1]!);
@@ -59,19 +64,31 @@ test('booking disables taken dates', async ({ page }) => {
       await expect(cell(d)).toBeDisabled();
       await expect(cell(d)).toHaveAttribute('aria-label', /Maintenance/);
     }
-    const free = cell(day(22));
+    const free = cell(freeStart);
     await expect(free).toBeEnabled();
 
     // Picking a window across the blocked days is refused before submit.
-    await dialog.getByLabel('Rental start').fill(`${localDate(day(19))}T08:00`);
-    await dialog.getByLabel('Rental end').fill(`${localDate(day(22))}T17:00`);
+    async function chooseRentalDay(label: 'Rental start' | 'Rental end', target: Date) {
+      await dialog.getByLabel(label).click();
+      const picker = page.getByRole('dialog', { name: `Choose ${label.toLowerCase()}` });
+      const targetMonth = target.toLocaleDateString('en-PH', { month: 'long' });
+      if ((await picker.getByRole('combobox', { name: 'Month' }).textContent())?.trim() !== targetMonth) {
+        await picker.getByRole('button', { name: 'Next month' }).click();
+      }
+      await picker.locator(`[data-calendar-day="${localDate(target)}"]`).click();
+      await picker.getByRole('button', { name: 'Select date' }).click();
+    }
+    await chooseRentalDay('Rental start', pickup);
+    await chooseRentalDay('Rental end', freeStart);
     await expect(dialog.getByText(/is not available/)).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Add to cart' })).toBeDisabled();
 
-    // A free day picked on the calendar clears it.
+    // A free range picked on the calendar clears it.
     await free.click();
+    await cell(freeEnd).click();
     await expect(dialog.getByText(/is not available/)).toBeHidden();
-    await expect(dialog.getByRole('button', { name: 'Add to cart' })).toBeEnabled();
+    await expect(free).toHaveAttribute('aria-pressed', 'true');
+    await expect(cell(freeEnd)).toHaveAttribute('aria-pressed', 'true');
   } finally {
     await page.request.delete(`/api/v1/equipment/${equipmentId}/maintenance-windows/${windowId}`, { headers });
   }
