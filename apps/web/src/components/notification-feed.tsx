@@ -483,9 +483,9 @@ const STATUS: Record<NotificationTone, { Icon: LucideIcon; icon: string; text: s
   neutral: { Icon: Info, icon: 'text-accent', text: 'text-text-muted' },
 };
 
-/** Unread rows sit on a faint accent wash, as the AWS console's notification list does. */
+/** Unread rows sit on a faint wash of the tenant's button colour. */
 export function notificationRowClass(unread: boolean): string {
-  return unread ? 'bg-accent/5' : '';
+  return unread ? 'bg-primary/10' : '';
 }
 
 export function NotificationKindLabel({ type }: { type: string }) {
@@ -501,7 +501,7 @@ export function NotificationKindLabel({ type }: { type: string }) {
 
 export function UnreadBadge() {
   return (
-    <span className="rounded-full bg-accent px-2 py-px text-xs font-bold leading-4 text-text-inverse">New</span>
+    <span className="rounded-full bg-primary px-2 py-px text-xs font-bold leading-4 text-on-primary">New</span>
   );
 }
 

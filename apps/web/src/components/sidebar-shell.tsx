@@ -1,6 +1,6 @@
 import { useRouterState } from '@tanstack/react-router';
 import { createContext, useContext, useState, type ReactNode } from 'react';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import type { NavGroup } from '../lib/nav-config.js';
 import { AppBar } from './app-bar.js';
 import { Modal } from './modal.js';
@@ -44,8 +44,9 @@ export function SidebarShell({ navGroups, navTitle, tenantLabel, children }: Sid
     });
   }
 
+  // Cloudscape app layout: a bare glyph (hamburger opens, X closes) that darkens on hover, no tile behind it.
   const railButton =
-    'flex min-h-11 min-w-11 items-center justify-center rounded-sm text-text-muted hover:bg-surface-sunk hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring';
+    'flex min-h-11 min-w-11 items-center justify-center rounded-sm text-text-muted hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring';
 
   return (
     <ShellNavContext.Provider value={{ navGroups, tenantLabel }}>
@@ -57,7 +58,7 @@ export function SidebarShell({ navGroups, navTitle, tenantLabel, children }: Sid
           {collapsed ? (
             <aside aria-label="Sidebar" className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-14 shrink-0 flex-col overflow-y-auto overflow-x-hidden border-r border-border bg-surface px-1.5 pb-4 pt-3 [scrollbar-width:thin] lg:flex">
               <button type="button" onClick={toggleCollapsed} aria-expanded={false} aria-label="Open navigation" title="Open navigation" className={`${railButton} mb-3`}>
-                <PanelLeftOpen aria-hidden className="h-5 w-5" />
+                <Menu aria-hidden strokeWidth={2.25} className="h-5 w-5" />
               </button>
               <NavGroupList groups={navGroups} pathname={pathname} collapsed />
             </aside>
@@ -68,8 +69,8 @@ export function SidebarShell({ navGroups, navTitle, tenantLabel, children }: Sid
             >
               <div className="mb-3 flex min-h-11 items-center justify-between gap-2 px-3">
                 <h2 className="min-w-0 truncate text-base font-semibold text-text">{navTitle}</h2>
-                <button type="button" onClick={toggleCollapsed} aria-expanded aria-label="Close navigation" className={railButton}>
-                  <PanelLeftClose aria-hidden className="h-5 w-5" />
+                <button type="button" onClick={toggleCollapsed} aria-expanded aria-label="Close navigation" title="Close navigation" className={`${railButton} -mr-3`}>
+                  <X aria-hidden strokeWidth={2.25} className="h-5 w-5" />
                 </button>
               </div>
               <NavGroupList groups={navGroups} pathname={pathname} />
