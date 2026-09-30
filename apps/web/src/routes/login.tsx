@@ -2,6 +2,7 @@ import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useRef, useState, type FormEvent } from 'react';
 import { authLayoutRoute } from './_auth.js';
 import { currentHost } from '../lib/host.js';
+import { useTenantName } from '../lib/tenant.js';
 import { login, requestPasswordReset, verify2fa } from '../lib/auth-client.js';
 import { getCurrentRole, homeRouteForRole, redirectIfSignedIn } from '../lib/guards.js';
 import { Button } from '../components/button.js';
@@ -24,6 +25,7 @@ function validateLoginSearch(search: Record<string, unknown>): { redirect?: stri
 
 function LoginPage() {
   const onPlatform = currentHost.kind === 'platform';
+  const tenantName = useTenantName();
   const navigate = useNavigate();
   const { redirect: redirectTo, reason } = loginRoute.useSearch();
   const [email, setEmail] = useState('');
@@ -125,7 +127,7 @@ function LoginPage() {
       freshCaptcha();
     };
     return (
-      <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
+      <Surface radius="lg" elevation="md" className="w-full max-w-md p-8">
         <h1 id="forgot-heading" className="mb-1 text-heading-lg text-text">
           Reset your password
         </h1>
@@ -171,7 +173,7 @@ function LoginPage() {
 
   if (twoFaToken) {
     return (
-      <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
+      <Surface radius="lg" elevation="md" className="w-full max-w-md p-8">
         <form onSubmit={onVerifyCode} aria-labelledby="twofa-heading">
           <h1 id="twofa-heading" className="mb-1 text-heading-lg text-text">
             Enter your code
@@ -219,13 +221,15 @@ function LoginPage() {
   }
 
   return (
-    <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
+    <Surface radius="lg" elevation="md" className="w-full max-w-md p-8">
       <form onSubmit={onSubmit} aria-labelledby="login-heading">
         <h1 id="login-heading" className="mb-1 text-heading-lg text-text">
           Sign in
         </h1>
         <p className="mb-6 text-sm text-text-muted">
-          {onPlatform ? 'Sign in to the ArkiLaunch console.' : 'Enter your credentials to start renting equipment.'}
+          {onPlatform
+            ? 'Sign in to the ArkiLaunch console.'
+            : `Welcome back${tenantName ? ` to ${tenantName}` : ''}. Sign in to book equipment.`}
         </p>
         {reason === 'signed_in_elsewhere' && (
           <p role="status" className="mb-4 rounded-md border border-border bg-surface-sunk p-3 text-sm text-text">
@@ -282,7 +286,7 @@ function LoginPage() {
           disabled={submitting || (loginNeedsCaptcha && waitingOnCaptcha)}
           className="mt-4 w-full"
         >
-          Sign in to system
+          Sign in
         </Button>
 
         <p className="mt-6 text-center text-sm text-text-muted">

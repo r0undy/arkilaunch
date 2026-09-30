@@ -29,8 +29,8 @@ import {
 } from './dto.js';
 import type { CtxRequest, MulterFile } from '../common/request.js';
 
-function imageKind(kind: string): 'logo' | 'hero' | 'icon' {
-  if (kind !== 'logo' && kind !== 'hero' && kind !== 'icon') throw new BadRequestException({ error: 'invalid_kind' });
+function imageKind(kind: string): 'logo' | 'hero' | 'icon' | 'login' {
+  if (kind !== 'logo' && kind !== 'hero' && kind !== 'icon' && kind !== 'login') throw new BadRequestException({ error: 'invalid_kind' });
   return kind;
 }
 

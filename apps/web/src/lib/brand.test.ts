@@ -54,6 +54,7 @@ const almara: CatalogTenant = {
   logoUrl: 'https://cdn.test/logo.png',
   heroUrl: null,
   iconUrl: 'https://cdn.test/icon.png',
+  loginUrl: null,
   primaryColor: '#5ec2c2',
   headerColor: '#a23e01',
   font: 'inter',

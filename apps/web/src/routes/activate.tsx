@@ -55,7 +55,7 @@ function ActivatePage() {
   }
 
   return (
-    <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
+    <Surface radius="lg" elevation="md" className="w-full max-w-md p-8">
       <form onSubmit={onSubmit} aria-labelledby="activate-heading">
         <h1 id="activate-heading" className="mb-1 text-heading-lg text-text">
           Set your password

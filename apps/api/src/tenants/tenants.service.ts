@@ -211,7 +211,7 @@ If you did not register, ignore this email.`,
   async setBrandingImage(
     ctx: RequestContext,
     tenantId: string,
-    kind: 'logo' | 'hero' | 'icon',
+    kind: 'logo' | 'hero' | 'icon' | 'login',
     file: { buffer: Buffer; size: number } | null,
   ) {
     let key: string | null = null;

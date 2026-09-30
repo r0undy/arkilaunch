@@ -93,6 +93,7 @@ export interface CatalogTenantRow {
   logoKey: string | null;
   heroKey: string | null;
   iconKey: string | null;
+  loginKey: string | null;
   primaryColor: string | null;
   headerColor: string | null;
   font: string | null;
@@ -113,6 +114,7 @@ export async function getCatalogTenantForSlug(slug: string): Promise<CatalogTena
     logo_key: string | null;
     hero_key: string | null;
     icon_key: string | null;
+    login_key: string | null;
     primary_color: string | null;
     header_color: string | null;
     font: string | null;
@@ -133,6 +135,7 @@ export async function getCatalogTenantForSlug(slug: string): Promise<CatalogTena
     logoKey: r.logo_key,
     heroKey: r.hero_key,
     iconKey: r.icon_key,
+    loginKey: r.login_key,
     primaryColor: r.primary_color,
     headerColor: r.header_color,
     font: r.font,

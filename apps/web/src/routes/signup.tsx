@@ -52,7 +52,7 @@ function SignupPage() {
   }
 
   return (
-    <Surface radius="lg" elevation="md" className="w-full max-w-sm p-8">
+    <Surface radius="lg" elevation="md" className="w-full max-w-md p-8">
       <form onSubmit={onSubmit} aria-labelledby="signup-heading" className="flex flex-col gap-4">
         <div>
           <h1 id="signup-heading" className="text-heading-lg text-text">

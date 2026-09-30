@@ -98,6 +98,9 @@ describe('self-serve rental company', () => {
       iconUrl: null,
     });
     await expect(tenants.setBrandingImage(ctx as never, reg.tenantId, 'icon', null)).resolves.toMatchObject({ iconUrl: null });
+    // migration 0078: 'login' (the sign-in splash photo) is an image kind too.
+    await expect(tenants.setBrandingImage(ctx as never, reg.tenantId, 'login', null)).resolves.toMatchObject({ loginUrl: null });
+    await expect(catalog.getTenant(slug)).resolves.toMatchObject({ loginUrl: null });
 
     const found = await catalog.listTenants({ q: 'self serve', location: 'cebu', limit: 50, offset: 0 });
     expect(found.items.map((t) => t.slug)).toContain(slug);

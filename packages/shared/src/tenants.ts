@@ -164,6 +164,7 @@ export const TenantBrandingSchema = z.object({
   logoUrl: z.string().nullable(),
   heroUrl: z.string().nullable(),
   iconUrl: z.string().nullable(),
+  loginUrl: z.string().nullable(),
   primaryColor: z.string().nullable(),
   headerColor: z.string().nullable(),
   font: TenantFontSchema.nullable(),

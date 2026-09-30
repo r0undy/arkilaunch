@@ -16,6 +16,7 @@ export const tenants = pgTable(
     logoKey: text('logo_key'),
     heroKey: text('hero_key'),
     iconKey: text('icon_key'),
+    loginKey: text('login_key'),
     primaryColor: text('primary_color'), // #rrggbb, CHECK in 0051
     headerColor: text('header_color'), // #rrggbb, CHECK in 0060
     font: text('font'), // 'inter', 'plex' or NULL (Inter), CHECK in 0061

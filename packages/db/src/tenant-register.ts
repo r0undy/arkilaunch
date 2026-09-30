@@ -269,7 +269,7 @@ export async function updateTenantBranding(
 export async function setTenantBrandingImage(
   tenantId: string,
   actorUserId: string,
-  kind: 'logo' | 'hero' | 'icon',
+  kind: 'logo' | 'hero' | 'icon' | 'login',
   key: string | null,
 ): Promise<void> {
   try {
@@ -312,6 +312,7 @@ export async function getTenantBranding(
       logoKey: string | null;
       heroKey: string | null;
       iconKey: string | null;
+      loginKey: string | null;
     })
   | null
 > {
@@ -321,6 +322,7 @@ export async function getTenantBranding(
     logo_key: string | null;
     hero_key: string | null;
     icon_key: string | null;
+    login_key: string | null;
     primary_color: string | null;
     header_color: string | null;
     font: string | null;
@@ -342,6 +344,7 @@ export async function getTenantBranding(
     logoKey: r.logo_key,
     heroKey: r.hero_key,
     iconKey: r.icon_key,
+    loginKey: r.login_key,
     primaryColor: r.primary_color,
     headerColor: r.header_color,
     font: r.font,
