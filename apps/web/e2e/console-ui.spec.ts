@@ -34,7 +34,7 @@ test.describe('console design pass', () => {
     await fees.getByRole('button', { name: 'Cancel' }).click();
 
     await page.getByRole('tab', { name: 'Trucking' }).click();
-    await expect(page.getByRole('heading', { name: 'Truck pricing' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Customer quotation' })).toBeVisible();
     await expect(page.getByLabel('Mobilization (PHP)', { exact: true })).toHaveCount(0);
   });
 
