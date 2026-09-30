@@ -113,6 +113,7 @@ jobs:
           test/audit-log-immutability.spec.ts
           test/after-commit.spec.ts
           test/seed-identities.spec.ts
+          test/equipment-type-cleanup.spec.ts
           src/deposit-ledger.spec.ts
           src/diesel-gaswatch.spec.ts
           src/send-email.spec.ts
