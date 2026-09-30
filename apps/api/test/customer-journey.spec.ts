@@ -21,7 +21,7 @@ import { EventsService } from '../src/events/events.service.js';
 import { checkoutPaidWebhook } from './paymongo-webhook.js';
 import { fixtureCompanyId } from './fixture-company.js';
 
-// What is charged is the accepted quote plus the contract deposit, once.
+// What is charged upfront is the contract deposit plus mob/demob, once; hours bill weekly.
 describe('Customer journey', () => {
   const events = new EventsService();
   const quotes = new QuotesService(new PricingEngineService(), events);
@@ -152,7 +152,7 @@ describe('Customer journey', () => {
     return quote;
   }
 
-  it('negotiates, accepts, and charges the accepted quote plus the deposit exactly once', async () => {
+  it('negotiates, accepts, and charges the deposit plus mob/demob exactly once', async () => {
     const booking = await book(0);
 
     // The price book quotes it at once; the customer is told.
@@ -194,19 +194,20 @@ describe('Customer journey', () => {
     const deposit = Number(contract?.depositRequired);
     expect(deposit).toBeGreaterThan(0);
 
-    // One booking invoice: rent + deposit, itemised; a retry reuses it.
+    // One booking invoice: consumable deposit + mob/demob upfront, itemised; the
+    // hours bill weekly against the deposit. A retry reuses it.
+    const [stored] = await withTenantTx(adminCtx, (tx) => tx.select().from(quotations).where(eq(quotations.id, second.id)));
+    const upfrontLines = [deposit, Number(stored?.mobilizationPhp ?? 0), Number(stored?.demobilizationPhp ?? 0)].filter((n) => n > 0);
     const checkout = await payments.checkout(customerCtx, booking.id, { method: 'gcash' });
     const retry = await payments.checkout(customerCtx, booking.id, { method: 'gcash' });
     expect(retry.invoiceId).toBe(checkout.invoiceId);
     const [invoice] = await withTenantTx(adminCtx, (tx) => tx.select().from(invoices).where(eq(invoices.id, checkout.invoiceId)));
     expect(invoice?.invoiceType).toBe('booking');
-    expect(Number(invoice?.amount)).toBeCloseTo(second.total + deposit, 2);
+    expect(Number(invoice?.amount)).toBeCloseTo(upfrontLines.reduce((a, b) => a + b, 0), 2);
     const lines = await withTenantTx(adminCtx, (tx) =>
       tx.select().from(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, checkout.invoiceId)),
     );
-    expect(lines.map((line) => Number(line.amount)).sort((a, b) => a - b)).toEqual(
-      [second.total, deposit].sort((a, b) => a - b),
-    );
+    expect(lines.map((line) => Number(line.amount)).sort((a, b) => a - b)).toEqual(upfrontLines.sort((a, b) => a - b));
 
     // The webhook confirms it, tells the customer, and it cannot be paid twice.
     const { rawBody, header } = await checkoutPaidWebhook(adminCtx, checkout.invoiceId, webhookSecret);

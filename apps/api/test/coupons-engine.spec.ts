@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
 import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
-import { couponRedemptions, coupons, invoiceLineItems, invoices, payments, rentalContracts, withTenantTx } from '@arkilaunch/db';
+import { couponRedemptions, coupons, invoiceLineItems, invoices, payments, quotations, rentalContracts, withTenantTx } from '@arkilaunch/db';
 import { StubPaymentsAdapter, type RequestContext } from '@arkilaunch/shared';
 import { BookingsService } from '../src/bookings/bookings.service.js';
 import { PaymentsService } from '../src/payments/payments.service.js';
@@ -132,7 +132,11 @@ describe('Coupons at checkout', () => {
     const [contract] = await withTenantTx(adminCtx, (tx) =>
       tx.select().from(rentalContracts).where(eq(rentalContracts.quotationId, quote.id)),
     );
-    return { id: created.id, rent: quote.total, deposit: Number(contract?.depositRequired) };
+    const [stored] = await withTenantTx(adminCtx, (tx) => tx.select().from(quotations).where(eq(quotations.id, quote.id)));
+    const mob = Number(stored?.mobilizationPhp ?? 0) + Number(stored?.demobilizationPhp ?? 0);
+    const deposit = Number(contract?.depositRequired);
+    // Upfront: consumable deposit + mob/demob; the hours themselves bill weekly.
+    return { id: created.id, mob, deposit, upfront: Math.round((mob + deposit) * 100) / 100 };
   }
 
   async function invoiceLines(invoiceId: string) {
@@ -140,27 +144,31 @@ describe('Coupons at checkout', () => {
     const lines = await withTenantTx(adminCtx, (tx) =>
       tx.select().from(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, invoiceId)),
     );
-    const rent = lines.find((line) => line.description.startsWith('Equipment rental'));
     const deposit = lines.find((line) => line.description.startsWith('Consumable deposit'));
-    return { amount: Number(invoice?.amount), rent: Number(rent?.amount), rentText: rent?.description, deposit: Number(deposit?.amount) };
+    const mob = lines
+      .filter((line) => /^(Mobilization|Demobilization)/.test(line.description))
+      .reduce((sum, line) => sum + Number(line.amount), 0);
+    return { amount: Number(invoice?.amount), mob, deposit: Number(deposit?.amount ?? 0), depositText: deposit?.description };
   }
 
-  it('takes a percent coupon off the rent line only, never the consumable deposit', async () => {
+  it('takes a percent coupon off the upfront deposit + mob/demob, deposit line first', async () => {
     const code = `TEN${run}`;
     await couponsService.create(adminCtx, { code, discountType: 'percent', discountValue: 10, oncePerCustomer: false });
     const booking = await acceptedBooking();
-    const discount = Math.round(booking.rent * 10) / 100;
+    const discount = Math.round(booking.upfront * 10) / 100;
 
     const preview = await paymentsService.previewCoupon(customerCtx, booking.id, code);
     expect(preview.discountPhp).toBeCloseTo(discount, 2);
     expect(preview.depositPhp).toBeCloseTo(booking.deposit, 2);
+    expect(preview.totalPhp).toBeCloseTo(booking.upfront - discount, 2);
 
     const checkout = await paymentsService.checkout(customerCtx, booking.id, { method: 'gcash', couponCode: code });
     const inv = await invoiceLines(checkout.invoiceId);
-    expect(inv.rent).toBeCloseTo(booking.rent - discount, 2);
-    expect(inv.rentText).toContain(code);
-    expect(inv.deposit).toBeCloseTo(booking.deposit, 2);
-    expect(inv.amount).toBeCloseTo(booking.rent - discount + booking.deposit, 2);
+    const offDeposit = Math.min(discount, booking.deposit);
+    expect(inv.deposit).toBeCloseTo(booking.deposit - offDeposit, 2);
+    expect(inv.depositText).toContain(code);
+    expect(inv.mob).toBeCloseTo(booking.mob - (discount - offDeposit), 2);
+    expect(inv.amount).toBeCloseTo(booking.upfront - discount, 2);
     expect(inv.amount).toBeCloseTo(preview.totalPhp, 2);
 
     // A retry with the same code is the same invoice at the same price, one use.
@@ -248,7 +256,7 @@ describe('Coupons at checkout', () => {
     expect(redemptions.map((r) => r.invoiceId)).toEqual([checkout.invoiceId]);
   });
 
-  it('lets staff lower an unpaid invoice to PHP 5: rent first, deposit last, old session closed, never raised', async () => {
+  it('lets staff lower an unpaid invoice to PHP 5: mob/demob first, deposit last, old session closed, never raised', async () => {
     const booking = await acceptedBooking();
     const first = await paymentsService.checkout(customerCtx, booking.id, { method: 'gcash' });
     const before = await invoiceLines(first.invoiceId);
@@ -260,8 +268,8 @@ describe('Coupons at checkout', () => {
     await paymentsService.adjustAmount(adminCtx, first.invoiceId, { amountPhp: 5, reason: 'capstone live test' });
     const after = await invoiceLines(first.invoiceId);
     expect(after.amount).toBe(5);
-    // The whole rent went before the deposit was touched.
-    expect(after.rent).toBe(0);
+    // The whole mob/demob went before the deposit was touched.
+    expect(after.mob).toBe(0);
     expect(after.deposit).toBeCloseTo(5, 2);
 
     const rows = await withTenantTx(adminCtx, (tx) => tx.select().from(payments).where(eq(payments.invoiceId, first.invoiceId)));
