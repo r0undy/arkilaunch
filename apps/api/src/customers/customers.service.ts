@@ -371,8 +371,12 @@ export class CustomersService {
       if (!current) throw new NotFoundException({ error: 'company_not_found' });
       if (current.kycStatus === 'approved' && (body.tin !== undefined || body.secNumber !== undefined))
         throw new ConflictException({ error: 'company_verified_fields_locked' });
+      const live = await liveDocuments(tx, id);
+      // A scanned SEC certificate owns the number: the upload copies the read onto the company.
+      if (body.secNumber !== undefined && live.some((d) => d.documentType === 'sec_certificate'))
+        throw new ConflictException({ error: 'sec_number_from_document' });
       const keys = Object.keys(body);
-      if (keys.length > 0 && current.kycStatus === 'pending' && hasRequiredCompanyDocuments(await liveDocuments(tx, id)))
+      if (keys.length > 0 && current.kycStatus === 'pending' && hasRequiredCompanyDocuments(live))
         throw new ConflictException({ error: 'company_locked', fields: keys });
       if (keys.length > 0 && isFinalRejection(current)) throw new ConflictException({ error: 'rejection_final' });
       if (keys.length > 0) await tx.update(customers).set(body).where(eq(customers.id, id));
@@ -524,8 +528,8 @@ export class CustomersService {
     let status = row.status;
     if (read.extractionAvailable) {
       status = 'needs_review';
-      await withTenantTx(ctx, (tx) =>
-        tx
+      await withTenantTx(ctx, async (tx) => {
+        await tx
           .update(kycDocuments)
           .set({
             ocrPayload: { ...read.ocrPayload, ...customerPayload },
@@ -533,8 +537,14 @@ export class CustomersService {
             ...(read.confidence === null ? {} : { confidence: read.confidence.toFixed(4) }),
             status,
           })
-          .where(eq(kycDocuments.id, row.id)),
-      );
+          .where(eq(kycDocuments.id, row.id));
+        // The certificate's number wins over what was typed; a verified company's number stays frozen.
+        if (documentType === 'sec_certificate' && read.formatValid.secNumber)
+          await tx
+            .update(customers)
+            .set({ secNumber: read.suggestions.secNumber })
+            .where(and(eq(customers.id, customerId), ne(customers.kycStatus, 'approved')));
+      });
     }
 
     return {
