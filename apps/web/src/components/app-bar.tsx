@@ -73,7 +73,7 @@ function NotificationBell({
         <div
           role="region"
           aria-label="Latest notifications"
-          className="fixed inset-x-3 top-14 z-50 overflow-hidden rounded-md border border-border bg-surface shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80"
+          className="fixed inset-x-3 top-14 z-50 flex max-h-[min(32rem,calc(100dvh-5rem))] flex-col overflow-hidden rounded-md border border-border bg-surface shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80"
         >
           {latest.isPending && <p className="px-4 py-3 text-sm text-text-muted">Loading…</p>}
           {latest.isError && (
@@ -82,7 +82,7 @@ function NotificationBell({
           {latest.data?.items.length === 0 && (
             <p className="px-4 py-3 text-sm text-text-muted">Nothing needs you right now.</p>
           )}
-          <ul>
+          <ul className="min-h-0 flex-1 overflow-y-auto">
             {latest.data?.items.map((n) => {
               const described = describeNotification(n.notificationType, n.payload, area);
               const body = (
@@ -122,7 +122,7 @@ function NotificationBell({
           <Link
             to={seeMorePath}
             onClick={closePanel}
-            className="block border-t border-border px-4 py-3 text-center text-sm font-medium text-text hover:bg-surface-sunk"
+            className="block shrink-0 border-t border-border bg-surface px-4 py-3 text-center text-sm font-medium text-accent hover:bg-surface-sunk"
           >
             See more
           </Link>
