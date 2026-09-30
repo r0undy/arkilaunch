@@ -296,7 +296,7 @@ async function main() {
     .insert(schema.truckSettings)
     .values({
       tenantId: tenant.id,
-      driverFeePhp: '2265.00',
+      driverRatePhpPerKm: '15.00',
       formula: 'km * round_trip * diesel * quote_multiplier',
       roundTripMultiplier: '2',
       quoteMultiplier: '2',

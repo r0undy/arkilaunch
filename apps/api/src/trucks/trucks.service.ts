@@ -47,7 +47,7 @@ import { countRows } from '../common/count-rows.js';
 import { num } from '../common/field-logs.js';
 
 const DEFAULT_SETTINGS: TruckSettings = {
-  baseFeePhp: 0, driverFeePhp: 0, extras: [], formula: null, rangePct: 10, region: 'NCR',
+  baseFeePhp: 0, driverFeePhp: 0, driverRatePhpPerKm: 0, extras: [], formula: null, rangePct: 10, region: 'NCR',
   roundTripMultiplier: 1, quoteMultiplier: 1, maxDiscountPct: null, costPolicy: DEFAULT_TRUCK_COST_POLICY,
 };
 
@@ -128,6 +128,7 @@ export class TrucksService {
       ? {
           baseFeePhp: Number(row.baseFeePhp),
           driverFeePhp: Number(row.driverFeePhp),
+          driverRatePhpPerKm: Number(row.driverRatePhpPerKm),
           extras: row.extras,
           formula: row.formula,
           rangePct: Number(row.rangePct),
@@ -261,6 +262,7 @@ export class TrucksService {
     const values = {
       baseFeePhp: String(body.baseFeePhp),
       driverFeePhp: String(body.driverFeePhp),
+      driverRatePhpPerKm: String(body.driverRatePhpPerKm),
       extras: body.extras,
       formula: body.formula || null,
       rangePct: String(body.rangePct),

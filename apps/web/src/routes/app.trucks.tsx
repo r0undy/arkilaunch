@@ -40,6 +40,7 @@ function useSaveSettings(initial: TruckSettings, onSaved: () => void) {
       apiPut('/truck-settings', {
         baseFeePhp: initial.baseFeePhp,
         driverFeePhp: initial.driverFeePhp,
+        driverRatePhpPerKm: initial.driverRatePhpPerKm ?? 0,
         extras: initial.extras,
         formula: initial.formula ?? null,
         rangePct: initial.rangePct,
@@ -85,7 +86,7 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
 
 function QuotationCard({ initial }: { initial: TruckSettings }) {
   const [base, setBase] = useState(String(initial.baseFeePhp));
-  const [driver, setDriver] = useState(String(initial.driverFeePhp));
+  const [driver, setDriver] = useState(String(initial.driverRatePhpPerKm ?? 0));
   const [extras, setExtras] = useState<TruckExtra[]>(initial.extras);
   const [formula, setFormula] = useState(initial.formula || DEFAULT_TRUCK_FORMULA);
   const [rangePct, setRangePct] = useState(String(initial.rangePct));
@@ -94,7 +95,7 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
   const [editing, setEditing] = useState(false);
   const open = () => {
     setBase(String(initial.baseFeePhp));
-    setDriver(String(initial.driverFeePhp));
+    setDriver(String(initial.driverRatePhpPerKm ?? 0));
     setExtras(initial.extras);
     setFormula(initial.formula || DEFAULT_TRUCK_FORMULA);
     setRangePct(String(initial.rangePct));
@@ -121,7 +122,8 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
           { label: 'Round-trip multiplier', value: `× ${initial.roundTripMultiplier ?? 1}` },
           { label: 'Quotation multiplier', value: `× ${initial.quoteMultiplier ?? 1}` },
           { label: 'Base fee (per trip)', value: formatPeso(initial.baseFeePhp) },
-          { label: "Driver's fee (per trip)", value: formatPeso(initial.driverFeePhp) },
+          { label: 'Driver rate (per km)', value: formatPeso(initial.driverRatePhpPerKm ?? 0) },
+          ...(initial.driverFeePhp > 0 ? [{ label: "Driver's fee (legacy, per trip)", value: formatPeso(initial.driverFeePhp) }] : []),
           { label: 'Estimate range', value: `± ${initial.rangePct}%` },
           {
             label: 'Extra charges',
@@ -140,7 +142,7 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
         size="xl"
         footer={<SaveFooter pending={save.isPending} onCancel={() => setEditing(false)} label="Save quotation" onSave={() => save.mutate({
           baseFeePhp: Number(base),
-          driverFeePhp: Number(driver),
+          driverRatePhpPerKm: Number(driver),
           extras,
           formula: formula.trim() === '' || formula.trim() === DEFAULT_TRUCK_FORMULA ? null : formula.trim(),
           rangePct: Number(rangePct),
@@ -154,13 +156,13 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
             <Input label="Quotation multiplier" type="number" min={0} step="any" numeric value={quoteMultiplier} onChange={(e) => setQuoteMultiplier(e.target.value)} />
             <Input label="Estimate range (± %)" type="number" min={0} max={100} numeric value={rangePct} onChange={(e) => setRangePct(e.target.value)} />
             <Input label="Base fee (₱ per trip)" type="number" min={0} numeric value={base} onChange={(e) => setBase(e.target.value)} />
-            <Input label="Driver's fee (₱ per trip)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
+            <Input label="Driver rate (₱ per km)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
           </div>
           <p className="text-xs text-text-muted">The multipliers only count where the formula uses them, e.g. Distance × Round-trip multiplier × Diesel × Quotation multiplier.</p>
           <FormulaBuilder
             value={formula}
             onChange={setFormula}
-            settings={{ baseFeePhp: Number(base), driverFeePhp: Number(driver), extras, roundTripMultiplier: Number(roundTrip) || 1, quoteMultiplier: Number(quoteMultiplier) || 1 }}
+            settings={{ baseFeePhp: Number(base), driverFeePhp: initial.driverFeePhp, driverRatePhpPerKm: Number(driver), extras, roundTripMultiplier: Number(roundTrip) || 1, quoteMultiplier: Number(quoteMultiplier) || 1 }}
             sample={sample}
           />
           <ChargeList legend="Extra charges" noun="charge" items={extras} onChange={setExtras} />

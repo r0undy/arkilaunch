@@ -40,7 +40,9 @@ export const DEFAULT_TRUCK_COST_POLICY: TruckCostPolicy = TruckCostPolicySchema.
 export const TruckSettingsSchema = z
   .object({
     baseFeePhp: z.number().nonnegative().max(1_000_000),
+    // Legacy fixed driver fee; the admin sets driverRatePhpPerKm (0075).
     driverFeePhp: z.number().nonnegative().max(1_000_000),
+    driverRatePhpPerKm: z.number().nonnegative().max(100_000).default(0),
     extras: z.array(TruckExtraSchema).max(20),
     formula: z.string().trim().max(500).nullish(),
     rangePct: z.number().min(0).max(100).default(10),
@@ -236,7 +238,11 @@ export interface TruckPriceInput {
 
 // The multipliers default to 1, so settings saved before 0072 price as before.
 type FormulaSettings = Pick<TruckSettings, 'baseFeePhp' | 'driverFeePhp' | 'extras'> &
-  Partial<Pick<TruckSettings, 'roundTripMultiplier' | 'quoteMultiplier'>>;
+  Partial<Pick<TruckSettings, 'roundTripMultiplier' | 'quoteMultiplier' | 'driverRatePhpPerKm'>>;
+
+// Driver pay for one trip: trip km (one-way) × the tenant's rate, plus any legacy fixed fee.
+export const driverPay = (settings: Pick<TruckSettings, 'driverFeePhp'> & Partial<Pick<TruckSettings, 'driverRatePhpPerKm'>>, km: number) =>
+  round2HalfUp(settings.driverFeePhp + km * (settings.driverRatePhpPerKm ?? 0));
 
 function formulaVars(
   settings: FormulaSettings,
@@ -263,7 +269,7 @@ function formulaVars(
     fuel_l_per_km: fuelLPerKm,
     round_trip: settings.roundTripMultiplier ?? 1,
     quote_multiplier: settings.quoteMultiplier ?? 1,
-    driver_fee: settings.driverFeePhp,
+    driver_fee: driverPay(settings, km),
     tolls: tollsPhp,
     // ponytail: requests carry no load weight yet, so weight_t is 0.
     weight_t: 0,
@@ -277,7 +283,10 @@ export function priceTruckTrip({ km, settings, perKmPhp, fuelLPerKm, dieselPhp, 
     { label: 'Base fee', amountPhp: round2HalfUp(settings.baseFeePhp) },
     { label: `Distance (${km} km × ₱${perKmPhp}/km)`, amountPhp: round2HalfUp(km * perKmPhp) },
     { label: `Fuel (${km} km × ${fuelLPerKm} L/km × ₱${dieselPhp}/L)`, amountPhp: round2HalfUp(km * fuelLPerKm * dieselPhp) },
-    { label: "Driver's fee", amountPhp: round2HalfUp(settings.driverFeePhp) },
+    {
+      label: settings.driverRatePhpPerKm ? `Driver (${km} km × ₱${settings.driverRatePhpPerKm})` : "Driver's fee",
+      amountPhp: driverPay(settings, km),
+    },
     ...settings.extras.map((x) => ({
       label: x.per === 'km' ? `${x.label} (${km} km × ₱${x.amountPhp})` : x.label,
       amountPhp: round2HalfUp(x.per === 'km' ? km * x.amountPhp : x.amountPhp),
@@ -294,7 +303,7 @@ export function priceTruckTrip({ km, settings, perKmPhp, fuelLPerKm, dieselPhp, 
 
 export interface TruckCostInput {
   km: number;
-  settings: Pick<TruckSettings, 'driverFeePhp' | 'extras'> & Partial<Pick<TruckSettings, 'roundTripMultiplier' | 'costPolicy'>>;
+  settings: Pick<TruckSettings, 'driverFeePhp' | 'extras'> & Partial<Pick<TruckSettings, 'roundTripMultiplier' | 'costPolicy' | 'driverRatePhpPerKm'>>;
   fuelLPerKm: number;
   dieselPhp: number;
   tolls?: TruckPriceLine[];
@@ -302,14 +311,14 @@ export interface TruckCostInput {
 
 // Pure: the tenant's estimated operating cost of one trip, from its own
 // policy. Only configured parts appear; nothing is added to reach a target.
-// Driver is the existing per-trip fee (a per-km driver rule is future work).
+// Driver is driverPay: trip km × the tenant's rate.
 // Tolls and extra charges are passed through as cost.
 export function estimateTruckCost({ km, settings, fuelLPerKm, dieselPhp, tolls = [] }: TruckCostInput): { lines: TruckPriceLine[]; totalPhp: number } {
   const policy = settings.costPolicy ?? DEFAULT_TRUCK_COST_POLICY;
   const roundTrip = settings.roundTripMultiplier ?? 1;
   const factor = policy.fuelFactor ?? fuelLPerKm;
   const fuel = round2HalfUp(km * factor * dieselPhp * roundTrip);
-  const driver = round2HalfUp(settings.driverFeePhp);
+  const driver = driverPay(settings, km);
   const lines: TruckPriceLine[] = [{ label: `Fuel (${km} km × ${factor} L/km × ₱${dieselPhp} × ${roundTrip})`, amountPhp: fuel }];
   if (driver > 0) lines.push({ label: 'Driver', amountPhp: driver });
   const { helper, maintenance } = policy;

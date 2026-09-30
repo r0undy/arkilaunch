@@ -519,6 +519,13 @@
       "when": 1790400035000,
       "tag": "0074_edtr_sheet_downloads",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1790400036000,
+      "tag": "0075_truck_driver_rate",
+      "breakpoints": true
     }
   ]
 }
