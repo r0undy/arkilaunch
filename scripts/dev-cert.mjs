@@ -1,17 +1,5 @@
-// Generates the self-signed certificate apps/web/vite.config.ts picks up to
-// serve https in dev.
-//
-// Why this exists: getUserMedia is unavailable outside a secure context, so
-// the DTR viewfinder cannot be tested from a phone over a plain
-// http://192.168.x.x LAN address. The phone silently falls back to the file
-// input instead, which looks exactly like the feature working -- the worst
-// kind of failed test. `localhost` is already a secure context, so a laptop
-// needs none of this.
-//
-// Every LAN address of this machine goes into the SAN list, because the cert
-// has to name whatever the phone types. Browsers stopped honouring the CN
-// field years ago; a cert without a matching SAN entry fails outright rather
-// than warning.
+// Self-signed dev cert so a phone on the LAN gets a secure context (getUserMedia needs one).
+// Every LAN address goes in the SAN list: browsers ignore CN.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
@@ -26,9 +14,7 @@ const addresses = Object.values(networkInterfaces())
   .filter((i) => i && i.family === 'IPv4' && !i.internal)
   .map((i) => i.address);
 
-// Tenant hosts are `{slug}.localhost` (apps/web/src/lib/host.ts). Browsers
-// reject a *.localhost wildcard, so each tenant host is listed; add more
-// with DEV_CERT_TENANTS=slug1,slug2.
+// Browsers reject a *.localhost wildcard, so each tenant host is listed (DEV_CERT_TENANTS=a,b).
 const tenants = ['almara', 'test-tenant-a', 'test-tenant-b', ...(process.env.DEV_CERT_TENANTS?.split(',') ?? [])];
 const sans = [
   'DNS:localhost',
@@ -39,8 +25,7 @@ const sans = [
 
 mkdirSync(certDir, { recursive: true });
 
-// -nodes leaves the key unencrypted, which is the point: Vite reads it
-// unattended. It is a throwaway key for 192.168.x.x and is gitignored.
+// -nodes: unencrypted so Vite reads it unattended; throwaway and gitignored.
 try {
   execFileSync(
     'openssl',
@@ -64,7 +49,6 @@ if (!existsSync(keyPath) || !existsSync(certPath)) {
   process.exit(1);
 }
 
-// A convenience only: makes the address to type on the phone obvious.
 writeFileSync(`${certDir}README.txt`, `Dev certificate for: ${sans.join(', ')}\n`);
 
 console.log('Wrote apps/web/certs/dev-{key,cert}.pem, valid for:');

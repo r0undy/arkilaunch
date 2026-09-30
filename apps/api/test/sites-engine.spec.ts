@@ -7,10 +7,7 @@ import type { RequestContext } from '@arkilaunch/shared';
 import { SitesService } from '../src/sites/sites.service.js';
 import { EventsService } from '../src/events/events.service.js';
 
-// PRD-F4/F5 read+write surface backing S12/S13/S14
-// (cr-arkilaunch-f9-read-surface.md). Uses a dedicated equipment unit
-// (not the shared fixture units edtr-engine.spec.ts / bookings-engine.spec.ts
-// mutate) since deployment writes flip equipment.availabilityStatus.
+// A dedicated unit: deployment writes flip equipment.availabilityStatus.
 describe('SitesService (PRD-F4/F5)', () => {
   const sites = new SitesService(new EventsService());
   let adminCtxA: RequestContext;
@@ -38,10 +35,7 @@ describe('SitesService (PRD-F4/F5)', () => {
     adminCtxB = { tenantId: tenantIdB, userId: (adminB as { id: string }).id, role: 'admin' };
     equipmentTypeIdA = (equipmentType as { id: string }).id;
 
-    // A dedicated site + unit + rental (rental.project_site_id === this
-    // site) so this file's deployment writes never touch rows other spec
-    // files mutate concurrently, and createDeployment's own
-    // rental.projectSiteId === siteId check (sites.service.ts) always holds.
+    // Dedicated site + unit + rental, so deployment writes never touch rows other specs mutate.
     await withTenantTx(adminCtxA, async (tx) => {
       const [address] = await tx
         .insert(addresses)
@@ -163,6 +157,32 @@ describe('SitesService (PRD-F4/F5)', () => {
         end: '2031-03-05T00:00:00.000Z',
       }),
     ).rejects.toThrow(ConflictException);
+  });
+
+  it('refuses to deploy a retired unit, even one still marked available', async () => {
+    const [retired] = await withTenantTx(adminCtxA, (tx) =>
+      tx
+        .insert(equipmentTable)
+        .values({
+          tenantId: adminCtxA.tenantId,
+          equipmentTypeId: equipmentTypeIdA,
+          model: 'Retired Sites Test Unit',
+          serialNo: `test-tenant-a-serial-sites-retired-${Date.now()}`,
+          retiredAt: new Date(),
+        })
+        .returning(),
+    );
+
+    await expect(
+      sites.createDeployment(adminCtxA, siteIdA, {
+        equipmentId: retired!.id,
+        rentalId: dedicatedRentalId,
+        start: '2031-04-01T00:00:00.000Z',
+        end: '2031-04-05T00:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({ response: { error: 'equipment_unavailable' } });
+    const [after] = await withTenantTx(adminCtxA, (tx) => tx.select().from(equipmentTable).where(eq(equipmentTable.id, retired!.id)));
+    expect(after?.availabilityStatus).toBe('available');
   });
 
   // QAD-T24: a spoofed/foreign site id is denied by RLS, not an app filter.

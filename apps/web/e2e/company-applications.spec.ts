@@ -1,11 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signInAsCustomer as signIn } from './sign-in.js';
 
-// The Figma company list (251:1945) at /account/applications, in a browser.
 // Needs the seeded anchor tenant (`pnpm db:seed`) and the API running.
-//
-// Sign-in comes from the shared helper, which fails rather than skips: a
-// skipped sign-in reports green while asserting nothing.
 
 test.describe('company applications', () => {
   test('lists the companies, counts them, and filters by status', async ({ page }) => {
@@ -16,15 +12,12 @@ test.describe('company applications', () => {
 
     // The seeded customer owns at least one company, so Total is non-zero and
     // the cards are on the page.
-    const total = page.getByText('Total applications').locator('xpath=preceding-sibling::dd[1]');
+    const total = page.getByText('Total applications').locator('xpath=following-sibling::dd[1]');
     await expect(total).not.toHaveText('0');
     const cards = page.getByRole('group');
     await expect(cards.first()).toBeVisible();
     const all = await cards.count();
 
-    // Each tab is a subset of All, and the two together account for every
-    // card -- a company is pending or approved, never both and never neither
-    // once rejected ones are excluded.
     await page.getByRole('button', { name: 'Pending approval' }).click();
     const pending = await page.getByRole('group').count();
     await page.getByRole('button', { name: 'Approved' }).click();
@@ -74,8 +67,6 @@ test.describe('company applications', () => {
     await expect(page).toHaveURL(/\/account\/companies\/new$/);
   });
 
-  // /account/companies was a second list of the same rows. It redirects
-  // rather than 404s: it is linked from older material.
   test('the old companies list redirects here', async ({ page }) => {
     await signIn(page);
     await page.goto('/account/companies');

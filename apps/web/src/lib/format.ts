@@ -1,11 +1,3 @@
-// Screens were showing people raw database values: truncated UUIDs as the
-// only identifier for a rental or an invoice, and lowercase enum members
-// ('paper_ocr', 'timekeeper', 'deposit_deduction') as labels. This module
-// turns both into something a yard supervisor can read, and is the single
-// place those names are decided.
-
-// ---------------------------------------------------------------- short codes
-
 const CODE_PREFIXES = {
   invoice: 'INV',
   equipment: 'EQP',
@@ -19,35 +11,13 @@ const CODE_PREFIXES = {
 
 export type CodeKind = keyof typeof CODE_PREFIXES;
 
-/**
- * A short, speakable reference for a record -- "RNT-F320" rather than
- * "f320ddee-f25e-4533-8d25-a1df25f1ca12".
- *
- * This is a display convenience, not an identifier: it is derived from the
- * UUID's first four hex characters and is not guaranteed unique. Always show
- * it beside a real human label (the machine, the dates, the customer), never
- * as the only thing distinguishing two rows, and keep the full id for
- * anything the API has to receive.
- */
+// Display only, not unique: show beside a human label and send the full id to the API.
 export function shortCode(kind: CodeKind, id: string | null | undefined): string {
   if (!id) return '--';
   const stem = id.replace(/-/g, '').slice(0, 4).toUpperCase();
   return `${CODE_PREFIXES[kind]}-${stem}`;
 }
 
-/**
- * Replace bare UUIDs inside server-generated prose with short codes.
- *
- * Invoice line descriptions are written by the reconciliation engine and
- * embed the ids it acted on, e.g. "EDTR reconciliation 90aa8b0a-2b49-...
- * (sources: 7a2a8af6-..., 680d7442-...)". That is three 36-character
- * identifiers on the line a customer reads to understand a charge, which
- * live QA of the invoice screen showed wrapping across two lines and
- * crowding out the part that means something.
- *
- * The ids are not dropped -- they become the same REC-/LOG- style reference
- * used everywhere else, so the row stays traceable and stays readable.
- */
 export function condenseIds(text: string, kind: CodeKind = 'recon'): string {
   return text.replace(
     /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
@@ -55,10 +25,12 @@ export function condenseIds(text: string, kind: CodeKind = 'recon'): string {
   );
 }
 
-// ---------------------------------------------------------------- enum labels
+const labeler =
+  (table: Record<string, string>, empty: string) =>
+  (value: string | null | undefined): string =>
+    value ? (table[value] ?? titleCase(value)) : empty;
 
 const STATUS_LABELS: Record<string, string> = {
-  // lifecycle
   active: 'Active',
   inactive: 'Inactive',
   pending: 'Pending',
@@ -74,11 +46,9 @@ const STATUS_LABELS: Record<string, string> = {
   approved: 'Approved',
   rejected: 'Rejected',
   expired: 'Expired',
-  // equipment
   available: 'Available',
   deployed: 'Deployed',
   maintenance: 'In maintenance',
-  // billing
   issued: 'Issued',
   paid: 'Paid',
   unpaid: 'Unpaid',
@@ -86,7 +56,6 @@ const STATUS_LABELS: Record<string, string> = {
   failed: 'Failed',
   disputed: 'Disputed',
   refunded: 'Refunded',
-  // field logs
   queued: 'Waiting to be read',
   extracting: 'Being read',
   extracted: 'Read, awaiting match',
@@ -97,23 +66,18 @@ const STATUS_LABELS: Record<string, string> = {
   discrepancy: 'Logs disagree',
   unreadable: 'Unreadable',
   single_source: 'Waiting for the second log',
-  // kyc
   needs_review: 'Needs review',
   verified: 'Verified',
   unverified: 'Not verified',
   submitted: 'Submitted',
 };
 
-/** Title-cases an unknown enum member rather than showing raw snake_case. */
 function titleCase(value: string): string {
   const spaced = value.replace(/[_-]+/g, ' ').trim();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-export function formatStatus(value: string | null | undefined): string {
-  if (!value) return 'Unknown';
-  return STATUS_LABELS[value] ?? titleCase(value);
-}
+export const formatStatus = labeler(STATUS_LABELS, 'Unknown');
 
 const ROLE_LABELS: Record<string, string> = {
   platform_admin: 'Platform administrator',
@@ -123,22 +87,7 @@ const ROLE_LABELS: Record<string, string> = {
   customer: 'Customer',
 };
 
-export function formatRole(value: string | null | undefined): string {
-  if (!value) return 'Unknown role';
-  return ROLE_LABELS[value] ?? titleCase(value);
-}
-
-const RATE_TYPE_LABELS: Record<string, string> = {
-  hourly: 'Per hour',
-  daily: 'Per day',
-  weekly: 'Per week',
-  monthly: 'Per month',
-};
-
-export function formatRateType(value: string | null | undefined): string {
-  if (!value) return '--';
-  return RATE_TYPE_LABELS[value] ?? titleCase(value);
-}
+export const formatRole = labeler(ROLE_LABELS, 'Unknown role');
 
 const INVOICE_TYPE_LABELS: Record<string, string> = {
   deposit: 'Deposit',
@@ -149,10 +98,7 @@ const INVOICE_TYPE_LABELS: Record<string, string> = {
   booking: 'Rental and deposit',
 };
 
-export function formatInvoiceType(value: string | null | undefined): string {
-  if (!value) return '--';
-  return INVOICE_TYPE_LABELS[value] ?? titleCase(value);
-}
+export const formatInvoiceType = labeler(INVOICE_TYPE_LABELS, '--');
 
 const SOURCE_LABELS: Record<string, string> = {
   paper_ocr: 'Paper sheet',
@@ -160,10 +106,7 @@ const SOURCE_LABELS: Record<string, string> = {
   manual_transcription: 'Typed from the sheet',
 };
 
-export function formatLogSource(value: string | null | undefined): string {
-  if (!value) return '--';
-  return SOURCE_LABELS[value] ?? titleCase(value);
-}
+export const formatLogSource = labeler(SOURCE_LABELS, '--');
 
 const SEVERITY_LABELS: Record<string, string> = {
   none: 'Clear',
@@ -172,12 +115,7 @@ const SEVERITY_LABELS: Record<string, string> = {
   stop_work: 'Stop work',
 };
 
-export function formatSeverity(value: string | null | undefined): string {
-  if (!value) return 'No reading';
-  return SEVERITY_LABELS[value] ?? titleCase(value);
-}
-
-// ------------------------------------------------------------------- numbers
+export const formatSeverity = labeler(SEVERITY_LABELS, 'No reading');
 
 export function formatPeso(amount: number | string | null | undefined): string {
   const value = typeof amount === 'string' ? Number(amount) : amount;
@@ -191,12 +129,9 @@ export function formatHours(value: number | string | null | undefined): string {
   return `${hours.toLocaleString('en-PH', { maximumFractionDigits: 2 })} h`;
 }
 
-/** "1 site" / "3 sites" -- the app previously wrote "site(s)". */
 export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
   return `${count.toLocaleString('en-PH')} ${count === 1 ? singular : plural}`;
 }
-
-// --------------------------------------------------------------------- dates
 
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return '--';
@@ -205,13 +140,7 @@ export function formatDate(value: string | Date | null | undefined): string {
   return date.toLocaleDateString('en-PH', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-/**
- * Date and time together, for a log entry where the hour matters.
- *
- * Takes a string as well as a Date on purpose: these values arrive as JSON,
- * so a field typed `Date` on the wire schema is a string at runtime, and
- * calling .toLocaleString() on it silently returned the raw ISO text.
- */
+// Accepts strings: a wire `Date` is a string at runtime.
 export function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return '--';
   const date = value instanceof Date ? value : new Date(value);
@@ -225,12 +154,6 @@ export function formatDateTime(value: string | Date | null | undefined): string 
   });
 }
 
-// -------------------------------------------------------------- place naming
-
-/**
- * A site's display name, falling back through what the record actually has.
- * The last resort is a short code, never a bare UUID fragment.
- */
 export function siteName(site: {
   id: string;
   city?: string | null;
@@ -240,11 +163,17 @@ export function siteName(site: {
   return site.name ?? site.city ?? site.province ?? `Unnamed site ${shortCode('site', site.id)}`;
 }
 
-/**
- * Monday (YYYY-MM-DD, UTC) of the week a date falls in. The review queue
- * groups daily field logs by machine and week, matching the weekly EDTR
- * sheet (docs/proposal-edtr-weather-attestation.md §2.2).
- */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const isUuid = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);
+
+export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+export function addDaysIso(iso: string, days: number): string {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export function weekStart(value: string | Date): string {
   const date = new Date(value);
   date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));

@@ -37,12 +37,6 @@ export interface SampleInputs {
   dieselPhp: number;
 }
 
-/**
- * The truck price formula, built by clicking: variables as named chips,
- * operators, numbers. The text stays the source of truth (and editable for
- * anyone who prefers typing); every change is checked by the same evaluator
- * the server uses and priced on a sample trip.
- */
 export function FormulaBuilder({
   value,
   onChange,
@@ -62,8 +56,6 @@ export function FormulaBuilder({
   const append = (token: string) => onChange(`${value.trim()} ${token}`.trim());
   const undo = () => onChange(list.slice(0, -1).join(' '));
 
-  // Priced on a sample 100 km trip with two ₱500 tolls, by the same code
-  // that prices a real request.
   let preview: { total: number; sum: number } | null = null;
   let error: string | null = null;
   try {

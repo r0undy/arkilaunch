@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DISPLAY_IMAGE_TYPES, EQUIPMENT_PHOTO_RULES, MAX_UPLOAD_BYTES, validateUpload } from './upload-validation.js';
+import { MAX_UPLOAD_BYTES } from '@arkilaunch/shared';
+import { DISPLAY_IMAGE_TYPES, EQUIPMENT_PHOTO_RULES, validateUpload } from './upload-validation.js';
 
 const file = (buffer: Buffer) => ({ buffer, size: buffer.length });
 const errorOf = (fn: () => unknown) => {

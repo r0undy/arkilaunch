@@ -2,24 +2,8 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'reac
 import { Button } from './button.js';
 import { describeUploadProblem, prepareUpload, type PrepareUploadOptions } from '../lib/image-compression.js';
 
-// The "DTR Form Capture" view: a live viewfinder with an alignment frame, a
-// shutter, a torch toggle and a folder button, matching the prototype.
-//
-// This supersedes the file-input-only decision in
-// docs/cr-arkilaunch-camera-capture-split.md -- see
-// docs/cr-arkilaunch-viewfinder-capture.md for why. What that Change Record
-// got right is kept: the OS file picker is still here as its own deliberate
-// button, so a timekeeper can attach a photo already on the phone and a KYC
-// operator can attach a PDF.
-//
-// The viewfinder is never assumed. getUserMedia does not exist on an
-// insecure origin and rejects when permission is denied or no camera is
-// present; every one of those falls back to the original two-button file
-// input, which is the path that has always worked.
-//
-// ponytail: no edge detection or auto-capture -- the frame is a static CSS
-// guide. Add OpenCV.js (or a Sobel pass on a downscaled canvas) only if
-// operators actually mis-frame sheets often enough to matter.
+// getUserMedia is missing on insecure origins and rejects without permission or a camera: always keep the file-input fallback.
+// ponytail: static CSS frame, no edge detection; add a Sobel pass only if operators mis-frame sheets.
 
 export interface CaptureFieldProps {
   id: string;
@@ -27,19 +11,15 @@ export interface CaptureFieldProps {
   value: File | null;
   onChange: (file: File | null) => void;
   accept: string;
-  /** 'field' matches the 48px timekeeper-console touch target (DESIGN.md §4). */
   size?: 'default' | 'field';
   disabled?: boolean;
-  /** Steadying hints shown beside the viewfinder. Omit for none. */
   tips?: { title: string; detail: string }[];
-  /** What this scan is attached to, shown as the session panel. */
   sessionData?: { label: string; value: string }[];
-  /** Passed to prepareUpload. Omit for the OCR/KYC defaults, which Azure DI depends on. */
+  /** Omit for OCR/KYC: Azure DI depends on prepareUpload's defaults. */
   uploadOptions?: PrepareUploadOptions;
 }
 
-// Torch lives behind a capability TypeScript's DOM lib does not model.
-// Narrowed here rather than an `any` at each call site.
+// TypeScript's DOM lib does not model torch.
 type TorchCapableTrack = Omit<MediaStreamTrack, 'getCapabilities'> & {
   getCapabilities?: () => { torch?: boolean };
 };
@@ -70,16 +50,11 @@ export function CaptureField({
   const [preview, setPreview] = useState<string | null>(null);
   const [problem, setProblem] = useState<{ title: string; detail: string } | null>(null);
   const [preparing, setPreparing] = useState(false);
-  // null while the viewfinder is still being asked for; a sentence once it is
-  // known to be unavailable and the file inputs are the only path.
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
 
-  // The previous implementation created an object URL per selection and never
-  // revoked one. Tying the URL to the current value and revoking on replace or
-  // unmount keeps a long capture session from leaking every photo it saw.
   useEffect(() => {
     if (!value || value.type === 'application/pdf') {
       setPreview(null);
@@ -100,9 +75,7 @@ export function CaptureField({
     setTorchAvailable(false);
   }, []);
 
-  // Hold the camera open only while there is nothing captured yet. A stream
-  // left running keeps the phone's camera light on and drains the battery
-  // through a whole review.
+  // Camera only while nothing is captured: a live stream drains the battery.
   useEffect(() => {
     if (value || disabled || cameraError !== null) return;
     let cancelled = false;
@@ -150,8 +123,6 @@ export function CaptureField({
       const prepared = await prepareUpload(picked, uploadOptions);
       onChange(prepared);
     } catch (err) {
-      // Never leave a value and an error standing together: the field is
-      // either holding something we will send, or it is empty and saying why.
       onChange(null);
       setProblem(describeUploadProblem(err));
     } finally {
@@ -161,17 +132,14 @@ export function CaptureField({
 
   async function onPicked(event: ChangeEvent<HTMLInputElement>) {
     const picked = event.target.files?.[0];
-    // Reset both inputs so picking the same file twice still fires a change,
-    // which is what "Retake" after a bad shot relies on.
+    // Reset so re-picking the same file still fires change (Retake).
     if (cameraRef.current) cameraRef.current.value = '';
     if (fileRef.current) fileRef.current.value = '';
     if (!picked) return;
     await hand(picked);
   }
 
-  // Grab the frame at the sensor's own resolution: the sheet's small printed
-  // numbers are the whole point, and prepareUpload downscales afterwards
-  // under the EXIF and size rules already agreed.
+  // Full sensor resolution; prepareUpload downscales afterwards.
   async function shoot() {
     const video = videoRef.current;
     if (!video || !video.videoWidth) return;
@@ -269,8 +237,6 @@ export function CaptureField({
               </div>
             </div>
           ) : cameraError !== null ? (
-            // Fallback: exactly the two-button file input this screen had
-            // before the viewfinder, plus a plain reason.
             <div className="flex flex-col gap-2">
               <p className="text-sm text-text-muted">{cameraError}</p>
               <div className="flex flex-wrap gap-2">
@@ -302,8 +268,6 @@ export function CaptureField({
                 muted
                 className="aspect-[3/4] w-full object-cover sm:aspect-[4/3]"
               />
-              {/* Alignment frame. Decorative, so the instruction below it is
-                  what a screen reader actually gets. */}
               <div aria-hidden className="pointer-events-none absolute inset-6">
                 <span className="absolute left-0 top-0 h-10 w-10 border-l-2 border-t-2 border-accent" />
                 <span className="absolute right-0 top-0 h-10 w-10 border-r-2 border-t-2 border-accent" />

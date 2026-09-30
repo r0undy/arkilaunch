@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { appLayoutRoute } from './_app.js';
 import { requireRole } from '../lib/guards.js';
 import { apiDelete, apiErrorText, apiGet, apiPost, apiPut } from '../lib/api-client.js';
-import { TEST_EMAIL_TYPES, minRentalDays, type TenantCalendar } from '@arkilaunch/shared';
-import { equipmentQueries, referenceQueries } from '../lib/queries.js';
+import { TEST_EMAIL_TYPES, manilaDate, minRentalDays, type TenantCalendar } from '@arkilaunch/shared';
+import { equipmentQueries, pricingQueries, referenceQueries, saveParams, type DieselReading, type PricingParametersRow } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { Button } from '../components/button.js';
@@ -20,13 +20,12 @@ import { EditButton, SummaryCard } from '../components/summary-card.js';
 import { LoadError } from '../components/load-error.js';
 import { Skeleton } from '../components/skeleton.js';
 import { Mail, Plus, Receipt } from 'lucide-react';
-import { formatDate, formatPeso, formatRateType } from '../lib/format.js';
+import { formatDate, formatPeso, WEEKDAYS } from '../lib/format.js';
 
 interface RateCardRow {
   id: string;
   equipmentTypeId: string;
   equipmentId: string | null;
-  rateType: 'hourly' | 'daily' | 'monthly';
   rateValue: string;
   currency: string;
   effectiveFrom: string;
@@ -46,7 +45,6 @@ const rateCardsListQuery = (limit: number, offset: number) => ({
     ),
 });
 
-// Adding a rate card, in a dialog opened from the rate card list.
 function RateCardModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -55,7 +53,6 @@ function RateCardModal({ open, onClose }: { open: boolean; onClose: () => void }
   const [equipmentId, setEquipmentId] = useState('');
   const fleet = useQuery(equipmentQueries.list(100));
   const units = (fleet.data?.items ?? []).filter((unit) => unit.equipmentTypeId === equipmentTypeId);
-  const [rateType, setRateType] = useState<'hourly' | 'daily' | 'monthly'>('daily');
   const [rateValue, setRateValue] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +61,7 @@ function RateCardModal({ open, onClose }: { open: boolean; onClose: () => void }
       apiPost('/rate-cards', {
         equipmentTypeId,
         ...(equipmentId ? { equipmentId } : {}),
-        rateType,
+        rateType: 'hourly',
         rateValue: Number(rateValue),
       }),
     onSuccess: () => {
@@ -137,20 +134,8 @@ function RateCardModal({ open, onClose }: { open: boolean; onClose: () => void }
           </Select>
         </div>
         <div>
-          <Select
-            label="Rate type"
-            id="rate-type"
-            value={rateType}
-            onChange={(e) => setRateType(e.target.value as typeof rateType)}
-          >
-            <option value="hourly">Hourly</option>
-            <option value="daily">Daily</option>
-            <option value="monthly">Monthly</option>
-          </Select>
-        </div>
-        <div>
           <Input
-            label="Rate (PHP)"
+            label="Rate per hour (PHP)"
             id="rate-value"
             type="number"
             min="0.01"
@@ -211,11 +196,8 @@ function RetireAction({ id, label }: { id: string; label: string }) {
   );
 }
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DEFAULT_CALENDAR: TenantCalendar = { openTime: '07:00', closeTime: '17:00', openDays: [1, 2, 3, 4, 5, 6], blackouts: [] };
 
-// Office hours + holidays/blackouts. Bookings must start and end inside
-// them; the customer's date pickers grey the closed days.
 function BusinessCalendarForm() {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -256,7 +238,7 @@ function BusinessCalendarForm() {
           current
             ? [
                 { label: 'Hours', value: `${current.openTime} to ${current.closeTime}` },
-                { label: 'Open days', value: current.openDays.map((d) => DAY_NAMES[d]).join(', ') || 'None' },
+                { label: 'Open days', value: current.openDays.map((d) => WEEKDAYS[d]).join(', ') || 'None' },
                 {
                   label: 'Holidays and blackouts',
                   value: current.blackouts.length ? current.blackouts.map((b) => b.date).join(', ') : 'None',
@@ -296,7 +278,7 @@ function BusinessCalendarForm() {
           </div>
           <fieldset className="flex flex-wrap gap-3">
             <legend className="mb-1 text-sm font-medium text-text">Open days</legend>
-            {DAY_NAMES.map((name, day) => (
+            {WEEKDAYS.map((name, day) => (
               <label key={name} className="flex min-h-11 items-center gap-1.5 text-sm text-text">
                 <input
                   type="checkbox"
@@ -358,9 +340,6 @@ interface BillingSettings {
   holdHours: number;
 }
 
-// Draft/save/close for a form over the billing settings row. The deposit
-// block here and the mobilization fees in the price book save the same
-// row, so they share this rather than two copies of it.
 function useBillingSettingsEditor(saved: { title: string; detail?: string }, failed: string) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -387,8 +366,6 @@ function useBillingSettingsEditor(saved: { title: string; detail?: string }, fai
   return { query, current, draft, editing, open: () => setEditing(true), close, save, edit };
 }
 
-// Hours in a rental day (a daily card is divided by this), the minimum
-// deposit a booking holds, and when to warn that a deposit is running low.
 function BillingSettingsForm() {
   const form = useBillingSettingsEditor({ title: 'Billing settings saved' }, 'Could not save billing settings');
   const { current, query } = form;
@@ -440,8 +417,6 @@ function BillingSettingsForm() {
   );
 }
 
-// Sends one sample payment/invoice email, with this tenant's logo and
-// brand color, to any address -- to check how customers and staff see it.
 const TEST_EMAIL_LABELS: Record<(typeof TEST_EMAIL_TYPES)[number], string> = {
   payment_received: 'Customer: payment receipt',
   payment_failed: 'Customer: payment failed',
@@ -499,9 +474,6 @@ function TestEmailModal({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
-// Equipment rental's fixed mobilization and demobilization: the same for
-// every client, on every booking's quote. Trucking has no mob/demob (it is
-// the trip). Saved with the rest of the billing settings.
 export function RentalFeesForm() {
   const form = useBillingSettingsEditor(
     { title: 'Mobilization fees saved', detail: 'New quotes use them from now on.' },
@@ -556,13 +528,10 @@ const PRICING_FIELDS = [
   ['bufferPct', 'Buffer (%)'],
 ] as const;
 
-// The operating inputs every equipment line is priced with: operator and
-// maintenance per hour, fuel burn, transport per km and the buffer. The
-// transport and fuel-per-km figures also price trucking trips.
 export function PricingParametersForm() {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<PricingParametersRow | null>('/pricing/parameters') });
+  const params = useQuery(pricingQueries.parameters());
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, string> | null>(null);
   const fromSaved = (p: PricingParametersRow | null | undefined): Record<string, string> =>
@@ -581,18 +550,13 @@ export function PricingParametersForm() {
   };
   const save = useMutation({
     mutationFn: () =>
-      apiPost('/pricing/parameters', {
-        region: params.data?.region ?? 'NCR',
+      saveParams(params.data, {
         operatorHourlyPhp: Number(current.operatorHourlyPhp),
         maintenanceHourlyPhp: Number(current.maintenanceHourlyPhp),
         fuelLPerHour: Number(current.fuelLPerHour),
         fuelLPerKm: Number(current.fuelLPerKm),
         transportPhpPerKm: Number(current.transportPhpPerKm),
         bufferPct: Number(current.bufferPct) / 100,
-        // Keep the company's own diesel price, if one is set.
-        ...(params.data?.dieselOverridePhp
-          ? { dieselOverridePhp: Number(params.data.dieselOverridePhp), dieselOverrideDate: new Date().toISOString().slice(0, 10) }
-          : {}),
       }),
     onSuccess: () => {
       close();
@@ -649,12 +613,9 @@ export function PricingParametersForm() {
   );
 }
 
-// Every live rate card, by equipment type, with its retire action.
 export function RateCardsPanel() {
   const [offset, setOffset] = useState(0);
   const [adding, setAdding] = useState(false);
-  // The table showed a UUID stub where the form's own dropdown already had
-  // the readable name; same source, now used in both places.
   const equipmentTypes = useQuery(referenceQueries.equipmentTypes());
   const typeName = (id: string): string =>
     (equipmentTypes.data ?? []).find((type) => type.id === id)?.name ?? 'Unknown type';
@@ -664,15 +625,14 @@ export function RateCardsPanel() {
       header: 'Equipment type', kind: 'text',
       cell: (row) => (row.equipmentId ? `${typeName(row.equipmentTypeId)} (one unit)` : typeName(row.equipmentTypeId)),
     },
-    { header: 'Charged', kind: 'text', cell: (row) => formatRateType(row.rateType) },
-    { header: 'Rate', kind: 'money', cell: (row) => formatPeso(row.rateValue) },
+    { header: 'Rate per hour', kind: 'money', cell: (row) => formatPeso(row.rateValue) },
     { header: 'In use since', kind: 'date', cell: (row) => formatDate(row.effectiveFrom) },
     {
       header: 'Actions', kind: 'action',
       cell: (row) => (
         <RetireAction
           id={row.id}
-          label={`${typeName(row.equipmentTypeId)} (${formatRateType(row.rateType).toLowerCase()})`}
+          label={typeName(row.equipmentTypeId)}
         />
       ),
     },
@@ -709,24 +669,6 @@ export function RateCardsPanel() {
   );
 }
 
-interface DieselReading {
-  pricePhp: number;
-  observedDate: string;
-  source: string;
-}
-
-// Pricing parameters as the API returns them (numeric columns are strings).
-interface PricingParametersRow {
-  region: string;
-  operatorHourlyPhp: string;
-  maintenanceHourlyPhp: string;
-  bufferPct: string;
-  fuelLPerHour: string;
-  fuelLPerKm: string;
-  transportPhpPerKm: string;
-  dieselOverridePhp: string | null;
-}
-
 const DIESEL_SOURCE: Record<string, string> = {
   gaswatch: 'GasWatch PH national average',
   doe_scrape: 'DOE',
@@ -734,14 +676,12 @@ const DIESEL_SOURCE: Record<string, string> = {
   admin_override: 'Admin override',
 };
 
-// The national diesel price quotes charge fuel at (refreshed from GasWatch
-// PH every Monday, or now with the button), and this company's own price,
-// which wins while it is set and less than the staleness window old.
+// This company's own diesel price wins while it is set and newer than the staleness window.
 export function DieselPriceForm() {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const latest = useQuery({ queryKey: ['diesel-price'], queryFn: () => apiGet<DieselReading | null>('/pricing/diesel-price') });
-  const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<PricingParametersRow | null>('/pricing/parameters') });
+  const latest = useQuery(pricingQueries.diesel());
+  const params = useQuery(pricingQueries.parameters());
   const [editing, setEditing] = useState(false);
   const [override, setOverride] = useState<string | null>(null);
   const close = () => {
@@ -753,7 +693,6 @@ export function DieselPriceForm() {
     onSuccess: (reading) => {
       void queryClient.invalidateQueries({ queryKey: ['diesel-price'] });
       toast.success('Diesel price fetched', reading ? `${formatPeso(reading.pricePhp)} per litre. Save it to use it.` : undefined);
-      // Put the fetched average in the field; the admin still saves it.
       if (reading && params.data) {
         setOverride(String(Number(reading.pricePhp)));
         setEditing(true);
@@ -762,19 +701,11 @@ export function DieselPriceForm() {
     onError: (e) => toast.error('Could not reach GasWatch', apiErrorText(e)),
   });
   const saveOverride = useMutation({
-    mutationFn: (price: number | undefined) => {
-      const p = params.data!;
-      return apiPost('/pricing/parameters', {
-        region: p.region,
-        operatorHourlyPhp: Number(p.operatorHourlyPhp),
-        maintenanceHourlyPhp: Number(p.maintenanceHourlyPhp),
-        bufferPct: Number(p.bufferPct),
-        fuelLPerHour: Number(p.fuelLPerHour),
-        fuelLPerKm: Number(p.fuelLPerKm),
-        transportPhpPerKm: Number(p.transportPhpPerKm),
-        ...(price !== undefined ? { dieselOverridePhp: price, dieselOverrideDate: new Date().toISOString().slice(0, 10) } : {}),
-      });
-    },
+    mutationFn: (price: number | undefined) =>
+      saveParams(params.data, {
+        dieselOverridePhp: price,
+        dieselOverrideDate: price === undefined ? undefined : manilaDate(new Date()),
+      }),
     onSuccess: () => {
       close();
       void queryClient.invalidateQueries({ queryKey: ['pricing-parameters'] });

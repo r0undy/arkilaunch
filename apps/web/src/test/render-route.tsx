@@ -5,9 +5,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { routeTree } from '../router.js';
 import { ToastProvider } from '../components/toast.js';
 
-// Drives the REAL route tree (not a stub) through createMemoryHistory, so a
-// route-level test exercises the actual beforeLoad guards and validateSearch
-// exactly as the browser would, without needing a browser.
 export async function renderRoute(
   initialPath: string,
 ): Promise<RenderResult & { router: AnyRouter }> {
@@ -16,8 +13,7 @@ export async function renderRoute(
   const router = createRouter({ routeTree, history });
 
   const result = render(
-    // Mirrors main.tsx: any screen that calls useToast (the EDTR capture
-    // modal, now reachable from two consoles) throws without this.
+    // Mirrors main.tsx: useToast throws without the provider.
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <RouterProvider router={router} />

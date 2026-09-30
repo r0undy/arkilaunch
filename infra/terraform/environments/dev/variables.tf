@@ -1,8 +1,6 @@
-# Non-secret config (defaults live in terraform.tfvars, committed).
-
 variable "location" {
   type    = string
-  default = "southeastasia" # PH data-residency intent, docs/clr-arkilaunch.md gap E1. Azure DI model/region availability confirmed (docs/cr-arkilaunch-azure-di-provisioning.md); the RA 10173 cross-border transfer basis (AIA-R7) is the remaining open item, not region availability.
+  default = "southeastasia" # PH data residency; RA 10173 cross-border basis still open
 }
 
 variable "image_tag" {
@@ -68,36 +66,27 @@ variable "enable_turnstile" {
 
 variable "jwt_access_token_ttl" {
   type    = string
-  default = "600" # seconds; see apps/api/src/auth/auth.service.ts's JWT_ACCESS_TOKEN_TTL read
+  default = "600" # seconds
 }
 
-# Cron cadences: only weather-poll's is stated in ops-arkilaunch.md (SLO-8,
-# every 30 min). The other three are this plan's inferred defaults, not a
-# settled spec -- confirm with product/ops before relying on them.
 variable "weather_poll_cron" {
   type    = string
   default = "*/30 * * * *"
 }
 
-# Open-Meteo free tier caps at 10,000 calls/day
-# (docs/cr-arkilaunch-open-meteo-free-tier.md). At the 30-min cadence above
-# that is 48 calls/site/day, so this ceiling supports ~200 active sites; a
-# poll cycle over the ceiling truncates loudly rather than over-calling.
+# Open-Meteo free tier: 10k calls/day, ~200 sites at 30-min cadence; over the ceiling truncates loudly.
 variable "weather_poll_max_sites" {
   type    = number
   default = 200
 }
 
-# Pre-workday weather briefing: 05:30 Asia/Manila = 21:30 UTC the day
-# before (docs/cr-arkilaunch-weather-monitoring.md).
+# 05:30 Asia/Manila = 21:30 UTC the day before.
 variable "weather_briefing_cron" {
   type    = string
   default = "30 21 * * *"
 }
 
-# Web Push (W3C Push API) keys: generate once with
-# `npx web-push generate-vapid-keys`. Free, no third-party account. Empty =
-# push is skipped and only logged; in-app and email still go out.
+# Generate once with `npx web-push generate-vapid-keys`; empty skips push.
 variable "vapid_public_key" {
   type    = string
   default = ""
@@ -134,8 +123,7 @@ variable "hold_expiry_cron" {
   default = "5 * * * *"
 }
 
-# --- Secrets: sourced from GitHub encrypted secrets via TF_VAR_* in CI,
-# never committed to terraform.tfvars. ---
+# --- Secrets: TF_VAR_* from GitHub encrypted secrets, never committed. ---
 
 variable "database_url_direct" {
   type      = string

@@ -3,9 +3,6 @@ export interface SearchFilterBarProps {
   onQueryChange: (value: string) => void;
 }
 
-// Search only. The availability pills (All / Available / Deployed / In
-// maintenance) are gone: the customer side shows what can be rented and
-// labels nothing, so there is no status left to filter by.
 export function SearchFilterBar({ query, onQueryChange }: SearchFilterBarProps) {
   return (
     <input

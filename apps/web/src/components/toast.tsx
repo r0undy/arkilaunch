@@ -9,16 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Info } from 'lucide-react';
-import { AlertIcon, CheckIcon, CloseIcon, XCircleIcon } from './icons.js';
-
-// Until now a successful mutation produced no visible response at all -- a
-// deduction, a role change and a retired rate card all looked identical to
-// nothing happening. Toasts give every write an acknowledgement.
-//
-// Hand-rolled rather than pulled from a library: the app has no headless-UI
-// dependency and this needs ~80 lines. Announced through an aria-live region
-// so the acknowledgement is not sighted-only.
+import { Check, CircleX, Info, TriangleAlert, X } from 'lucide-react';
 
 export type ToastTone = 'success' | 'error' | 'info' | 'warning';
 
@@ -33,18 +24,11 @@ interface ToastContextValue {
   show: (toast: Omit<Toast, 'id'>) => void;
   success: (title: string, detail?: string) => void;
   error: (title: string, detail?: string) => void;
-  info: (title: string, detail?: string) => void;
-  warning: (title: string, detail?: string) => void;
-  dismiss: (id: number) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
-// The shell's Flashbar slot (AWS Console): toasts render there, at the top of
-// the content column, when a shell has mounted one.
 const SlotContext = createContext<(el: HTMLElement | null) => void>(() => {});
 
-// Errors stay put: a failure the reader misses is worse than one they
-// dismiss. Confirmations clear themselves.
 const DISMISS_AFTER_MS: Record<ToastTone, number | null> = {
   success: 5000,
   info: 5000,
@@ -52,8 +36,6 @@ const DISMISS_AFTER_MS: Record<ToastTone, number | null> = {
   error: null,
 };
 
-// Filled bars (Cloudscape Flashbar). White text: 5.4:1 on success, 5.6:1 on
-// error, 6.8:1 on accent. Warning yellow takes dark text.
 const TONE_CLASSES: Record<ToastTone, string> = {
   success: 'bg-success text-white',
   error: 'bg-error text-white',
@@ -62,9 +44,9 @@ const TONE_CLASSES: Record<ToastTone, string> = {
 };
 
 function ToastIcon({ tone }: { tone: ToastTone }) {
-  if (tone === 'success') return <CheckIcon className="h-5 w-5 shrink-0" aria-hidden />;
-  if (tone === 'error') return <XCircleIcon className="h-5 w-5 shrink-0" aria-hidden />;
-  if (tone === 'warning') return <AlertIcon className="h-5 w-5 shrink-0" aria-hidden />;
+  if (tone === 'success') return <Check className="h-5 w-5 shrink-0" aria-hidden />;
+  if (tone === 'error') return <CircleX className="h-5 w-5 shrink-0" aria-hidden />;
+  if (tone === 'warning') return <TriangleAlert className="h-5 w-5 shrink-0" aria-hidden />;
   return <Info className="h-5 w-5 shrink-0" aria-hidden />;
 }
 
@@ -85,19 +67,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ToastContextValue>(
     () => ({
       show,
-      dismiss,
       success: (title, detail) => show({ tone: 'success', title, ...(detail ? { detail } : {}) }),
       error: (title, detail) => show({ tone: 'error', title, ...(detail ? { detail } : {}) }),
-      info: (title, detail) => show({ tone: 'info', title, ...(detail ? { detail } : {}) }),
-      warning: (title, detail) => show({ tone: 'warning', title, ...(detail ? { detail } : {}) }),
     }),
-    [show, dismiss],
+    [show],
   );
 
   const region = (
     <div
-      // polite, not assertive: a confirmation should not interrupt what a
-      // screen reader is already saying.
+      // polite: a confirmation should not interrupt the screen reader.
       aria-live="polite"
       aria-atomic="false"
       className="flex flex-col gap-2"
@@ -121,8 +99,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => void }) {
-  // The timer holds while the pointer or focus is on the bar, so a message
-  // being read (or its dismiss button reached by keyboard) does not vanish.
+  // Hold the timer while pointer or focus is on the bar, so a message being read never vanishes.
   const [held, setHeld] = useState(false);
   useEffect(() => {
     const after = DISMISS_AFTER_MS[toast.tone];
@@ -153,7 +130,7 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) 
         aria-label={`Dismiss: ${toast.title}`}
         className="-my-2.5 -mr-2.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm hover:bg-black/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
       >
-        <CloseIcon className="h-4 w-4" aria-hidden />
+        <X className="h-4 w-4" aria-hidden />
       </button>
     </div>
   );
@@ -165,7 +142,6 @@ export function useToast(): ToastContextValue {
   return context;
 }
 
-// Sits at the top of a shell's content column; sticky flush under the 56px bar.
 export function FlashbarSlot() {
   const setSlot = useContext(SlotContext);
   return <div ref={setSlot} className="sticky top-14 z-50 [&_[aria-live]:not(:empty)]:mb-4" />;

@@ -9,10 +9,7 @@ import { Input } from '../components/input.js';
 import { Surface } from '../components/surface.js';
 import { captchaError, Turnstile, TURNSTILE_SITE_KEY } from '../components/turnstile.js';
 
-// Only accept an internal path (starts with '/', not '//'); a leaf value
-// like `//evil.com` is protocol-relative and would send a successful login
-// off-site. This is the input-validation half of the redirect-preservation
-// feature the guards raise via ?redirect=.
+// Internal paths only: `//evil.com` is protocol-relative and would send a login off-site.
 function isSafeInternalRedirect(value: unknown): value is string {
   return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//');
 }
@@ -33,16 +30,10 @@ function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  // Set once AuthService.login returns a TwoFaChallenge instead of
-  // AuthTokens; presence of this token switches the form to the code-entry
-  // step (POST /auth/2fa/verify), which is a live, tested backend endpoint.
   const [twoFaToken, setTwoFaToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
-  // 'form' shows the forgot-password email box; 'sent' its confirmation.
   const [forgot, setForgot] = useState<'off' | 'form' | 'sent'>('off');
-  // Turnstile (turnstile CR). Forgot-password always asks for it; sign-in
-  // only once the API answers 'captcha_required' after repeated failures,
-  // and then retries by itself as soon as the widget passes.
+  // Turnstile: forgot-password always; sign-in only once the API answers 'captcha_required'.
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [captchaKey, setCaptchaKey] = useState(0);
   const [loginNeedsCaptcha, setLoginNeedsCaptcha] = useState(false);

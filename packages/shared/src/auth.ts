@@ -1,16 +1,11 @@
 import { z } from 'zod';
 
-// Boundary schemas for the identity/auth surface (RFC-1 §3). Shared client and server
-// so there is exactly one definition of "what a login/refresh request looks like".
-
 export const LoginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
 export type LoginRequest = z.infer<typeof LoginRequestSchema>;
 
-// POST /auth/forgot-password. No email provider exists (BUILD §3), so this
-// only alerts the tenant's admins, who reset the password by hand.
 export const ForgotPasswordRequestSchema = LoginRequestSchema.pick({ email: true });
 export type ForgotPasswordRequest = z.infer<typeof ForgotPasswordRequestSchema>;
 
@@ -26,8 +21,7 @@ export const AuthTokensSchema = z.object({
 });
 export type AuthTokens = z.infer<typeof AuthTokensSchema>;
 
-// JWT claims. Never trust a client-supplied tenantId; this shape is only ever
-// produced by verifying a signed access token (AGENTS.md "Never" list).
+// Never trust a client-supplied tenantId: this is only ever produced by verifying a signed access token.
 export const JwtClaimsSchema = z.object({
   sub: z.string().uuid(), // user id
   tenantId: z.string().uuid(),
@@ -37,13 +31,7 @@ export const JwtClaimsSchema = z.object({
 });
 export type JwtClaims = z.infer<typeof JwtClaimsSchema>;
 
-// The login response when a second factor is still owed (PRD-F3 US-02,
-// PRD-F7 US-07: timekeepers enroll TOTP and pass it before EDTR access).
-// This is a discriminated shape, not AuthTokens: `requires2fa: true` carries
-// no access/refresh token, only a short-lived, single-purpose challenge
-// token (see auth.service.ts / jwt.strategy.ts -- it deliberately does not
-// satisfy JwtClaimsSchema, so it can never be replayed as a Bearer token on
-// a normal guarded route).
+// Carries no tokens, only a single-purpose challenge that cannot satisfy JwtClaimsSchema as a Bearer.
 export const TwoFaChallengeSchema = z.object({
   requires2fa: z.literal(true),
   twoFaToken: z.string(),

@@ -1,5 +1,5 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   bookingDays,
@@ -8,24 +8,23 @@ import {
   rentFor,
   type BookingCreateResponse,
   type EquipmentOptionGroup,
-  type RentUnit,
 } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { EmptyState } from '../components/empty-state.js';
 import { PageHeader } from '../components/page-header.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { Input } from '../components/input.js';
 import { MobileInput } from '../components/mobile-input.js';
 import { Select } from '../components/select.js';
 import { Surface } from '../components/surface.js';
 import { StatusPill } from '../components/status-pill.js';
-import { CheckIcon } from '../components/icons.js';
+import { Check } from 'lucide-react';
 import { apiPost } from '../lib/api-client.js';
 import { bookingAlternatives, explainBookingError } from '../lib/booking-error.js';
 import { catalogQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
 import { SiteDialog } from '../components/site-dialog.js';
 import { NegotiateChoice } from '../components/negotiate-choice.js';
-import { formatPeso, shortCode } from '../lib/format.js';
+import { formatPeso, isUuid, shortCode } from '../lib/format.js';
 import { equipmentImageUrl } from '../lib/equipment-images.js';
 import {
   validateCart,
@@ -36,11 +35,11 @@ import {
   MAX_SITE_NOTES,
   type CartFieldErrors,
 } from '../lib/cart-validation.js';
-import { RangeCalendar, availabilityProblem, rentalLengthProblem, useAvailability } from '../components/availability-days.js';
+import { RangeCalendar, availabilityProblem, localDate, rentalLengthProblem, useAvailability } from '../components/availability-days.js';
 import { SiteProofStatus } from '../components/site-proof.js';
 import {
-  getCart,
   removeFromCart,
+  useCart,
   clearCart,
   updateCartItem,
   type CartItem,
@@ -49,11 +48,7 @@ import {
 const heading = 'text-heading-md text-text';
 
 // <input type="date"> speaks YYYY-MM-DD in local time; the cart stores ISO.
-function toDateInput(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+const toDateInput = (iso: string) => localDate(new Date(iso));
 
 function fromDateInput(value: string, hour: number): string {
   const [y, m, d] = value.split('-').map(Number);
@@ -65,9 +60,7 @@ function cartPhoto(item: CartItem): string | undefined {
   return (item.photoUri?.startsWith('http') ? item.photoUri : null) ?? equipmentImageUrl(item.model);
 }
 
-// One choice per option group the unit has now, defaulting to the first. The
-// catalog's groups are the authority, so a stale or swapped cart line cannot
-// carry a pick the unit no longer offers.
+// The catalog's groups win: a stale cart line cannot keep a pick the unit no longer offers.
 function resolvedOptions(item: CartItem, groups: readonly EquipmentOptionGroup[]): Record<string, string> {
   return Object.fromEntries(
     groups.map((g) => {
@@ -81,8 +74,6 @@ function rentalDays(item: CartItem): number {
   return bookingDays(item.start, item.end);
 }
 
-// One cart line's date fields plus its availability grid. Taken days are
-// disabled; a window that touches one is flagged and blocks submit.
 function CartItemDates({
   item,
   rate,
@@ -92,7 +83,7 @@ function CartItemDates({
   onEstimate,
 }: {
   item: CartItem;
-  rate: { rateType: string | null; rateValue: number | null } | undefined;
+  rate: number | null | undefined;
   onDate: (field: 'start' | 'end', value: string, hour: number) => void;
   onHours: (hours: number | undefined) => void;
   onProblem: (problem: string | null) => void;
@@ -106,7 +97,6 @@ function CartItemDates({
   const days = rentalDays(item);
   const minHours = minBookingHours(days, dailyHours);
   const maxHours = maxBookingHours(days);
-  // Left blank, the booking takes the minimum (the API does the same).
   const wanted = item.hours ?? minHours;
   const dateProblem =
     availabilityProblem(availability.data, item.start, item.end) ??
@@ -122,8 +112,8 @@ function CartItemDates({
   useEffect(() => onProblem(problem), [problem, onProblem]);
   // Rent only, from the published card; the quote adds diesel, operator and transport.
   const estimate =
-    rate?.rateValue != null && !problem
-      ? rentFor(rate.rateType as RentUnit, rate.rateValue, wanted, dailyHours).rentPhp
+    rate != null && !problem
+      ? rentFor(rate, wanted).rentPhp
       : null;
   useEffect(() => onEstimate(estimate), [estimate, onEstimate]);
   return (
@@ -171,13 +161,10 @@ function CartItemDates({
   );
 }
 
-// Figma 168:1982 Cart Page / 219:2226 Nego Options. The frame prices the
-// cart on the spot (diesel, toll, driver, helper); nothing can do that
-// honestly before the site and dates are known, so the cart submits a
-// booking request and the price arrives as a quote to negotiate.
+// No on-the-spot price before site and dates are known: the cart requests a quote.
 function CartPage() {
   const navigate = useNavigate();
-  const [items, setItems] = useState<CartItem[]>(() => getCart());
+  const items = useCart();
   const [chosenCompanyId, setCompanyId] = useState('');
   const [projectSiteId, setProjectSiteId] = useState('');
   const [siteOpen, setSiteOpen] = useState(false);
@@ -187,16 +174,13 @@ function CartPage() {
   const [error, setError] = useState<string | null>(null);
   const [swap, setSwap] = useState<ReturnType<typeof bookingAlternatives>>(null);
   const catalog = useQuery({ ...catalogQueries.equipment(), enabled: swap !== null });
-  // The "request sent" screen is addressed in the URL (?booked=), so a
-  // refresh or Back-then-Forward shows it again instead of an empty cart.
   const { booked, code } = accountCartRoute.useSearch();
   const booking = booked && code ? { id: booked, code } : null;
   const companies = useQuery(companiesQueries.mine());
   const sites = useQuery(customerSitesQueries.mine());
   const [submitted, setSubmitted] = useState(false);
   const allCompanies = companies.data ?? [];
-  // Only a verified company can be booked against, so "the obvious one" is
-  // the only selectable one -- not merely the only one on the account.
+  // Only a verified company can be booked against.
   const selectable = allCompanies.filter(isSelectableCompany);
   const companyId = chosenCompanyId || (selectable.length === 1 ? selectable[0]!.id : '');
   const company = allCompanies.find((c) => c.id === companyId);
@@ -212,18 +196,12 @@ function CartPage() {
     siteContactMobile,
     siteNotes,
   });
-  // Errors stay quiet until the first submit, then follow every keystroke --
-  // a form that reddens fields the customer has not reached yet reads as
-  // broken rather than helpful.
-  // Spread rather than passed as a value: `exactOptionalPropertyTypes` makes
-  // an explicit `error={undefined}` a type error on the primitives.
+  // Spread, not a value: exactOptionalPropertyTypes rejects error={undefined}.
   const show = (field: keyof Omit<CartFieldErrors, 'items'>) => {
     const message = submitted ? errors[field] : undefined;
     return message ? { error: message } : {};
   };
 
-  // A customer with no company yet has nothing to book against -- send them
-  // to registration instead of leaving them to notice the empty state.
   useEffect(() => {
     if (companies.data && companies.data.length === 0) {
       // replace: Back from registration must not bounce straight here again.
@@ -233,14 +211,12 @@ function CartPage() {
 
   function handleRemove(index: number) {
     removeFromCart(index);
-    setItems(getCart());
   }
 
   function handleSwap(equipmentId: string, model: string) {
     items.forEach((item, index) => {
       if (item.equipmentId === swap?.equipmentId) updateCartItem(index, { equipmentId, model, selectedOptions: undefined });
     });
-    setItems(getCart());
     setSwap(null);
     setError(null);
   }
@@ -248,24 +224,16 @@ function CartPage() {
   function handleDate(index: number, field: 'start' | 'end', value: string, hour: number) {
     if (!value) return;
     updateCartItem(index, { [field]: fromDateInput(value, hour) });
-    setItems(getCart());
   }
-  // Availability problems per cart line; any one blocks submit.
   const [problems, setProblems] = useState<Record<number, string | null>>({});
-  const reportProblem = useCallback(
-    (index: number, problem: string | null) =>
-      setProblems((prev) => (prev[index] === problem ? prev : { ...prev, [index]: problem })),
-    [],
-  );
+  const reportProblem = (index: number, problem: string | null) =>
+    setProblems((prev) => (prev[index] === problem ? prev : { ...prev, [index]: problem }));
   const unavailable = items.some((_, index) => problems[index]);
   const [estimates, setEstimates] = useState<Record<number, number | null>>({});
-  const reportEstimate = useCallback(
-    (index: number, estimate: number | null) =>
-      setEstimates((prev) => (prev[index] === estimate ? prev : { ...prev, [index]: estimate })),
-    [],
-  );
+  const reportEstimate = (index: number, estimate: number | null) =>
+    setEstimates((prev) => (prev[index] === estimate ? prev : { ...prev, [index]: estimate }));
   const rates = useQuery(catalogQueries.equipment());
-  const rateById = new Map(rates.data?.items.map((eq) => [eq.id, { rateType: eq.rateType ?? null, rateValue: eq.rateValue ?? null }]));
+  const rateById = new Map(rates.data?.items.map((eq) => [eq.id, eq.rateValue ?? null]));
   const optionGroupsById = new Map(rates.data?.items.map((eq) => [eq.id, eq.optionGroups ?? []]));
   // Only a full total is shown: a sum missing an unpriced machine would mislead.
   const lineEstimates = items.map((_, index) => estimates[index] ?? null);
@@ -296,7 +264,6 @@ function CartPage() {
     onSuccess: (data: BookingCreateResponse) => {
       void navigate({ to: '/account/cart', search: { booked: data.id, code: data.code }, replace: true });
       clearCart();
-      setItems([]);
     },
     onError: (err: unknown) => {
       setError(explainBookingError(err));
@@ -308,7 +275,7 @@ function CartPage() {
     return (
       <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
         <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-4 p-6">
-          <StatusPill tone="recon-approved" label="Request sent" icon={<CheckIcon />} />
+          <StatusPill tone="recon-approved" label="Request sent" icon={<Check className="size-full" />} />
           <h1 className="text-display-md text-text">
             Booking{' '}
             <Link to="/account/bookings/$bookingId" params={{ bookingId: booking.id }} className="font-mono underline">
@@ -322,23 +289,12 @@ function CartPage() {
             has no published rate, the rental team prices it and notifies you. Ask questions or
             counter-offer any time. Nothing is charged until you accept a quote and pay.
           </p>
-          {/* Figma 219:2226 splits "Proceed to Negotiation" into a channel
-              choice -- phone call or messenger. The frame puts it on the cart
-              beside "Proceed to Payment"; there is no price to pay at that
-              point (see the note above the component), so the choice belongs
-              here, where the request has actually gone in. Two buttons rather
-              than the frame's dropdown: it is two options, and the app has no
-              menu primitive worth building one for. */}
           <div className="flex flex-wrap gap-2">
             <NegotiateChoice
               onInApp={() => void navigate({ to: '/account/negotiation/$bookingId/chat', params: { bookingId: booking.id } })}
             />
-            <Link to="/account/negotiation/$bookingId/call" params={{ bookingId: booking.id }}>
-              <Button variant="secondary">Negotiate by phone</Button>
-            </Link>
-            <Link to="/account/bookings/$bookingId" params={{ bookingId: booking.id }}>
-              <Button variant="ghost">Booking details</Button>
-            </Link>
+            <Link to="/account/negotiation/$bookingId/call" params={{ bookingId: booking.id }} className={buttonClass('secondary')}>Negotiate by phone</Link>
+            <Link to="/account/bookings/$bookingId" params={{ bookingId: booking.id }} className={buttonClass('ghost')}>Booking details</Link>
           </div>
         </Surface>
       </div>
@@ -353,9 +309,7 @@ function CartPage() {
           title="Your cart is empty"
           description="Add equipment from the catalog to start a booking."
           action={
-            <Link to="/equipment">
-              <Button variant="primary">Browse equipment</Button>
-            </Link>
+            <Link to="/equipment" className={buttonClass('primary')}>Browse equipment</Link>
           }
         />
       </div>
@@ -370,18 +324,13 @@ function CartPage() {
           title="Add your company first"
           description="Your cart is saved. Tell us which company you are renting for, then come back to request a quote."
           action={
-            <Link to="/account/companies/new">
-              <Button variant="primary">Add a company</Button>
-            </Link>
+            <Link to="/account/companies/new" className={buttonClass('primary')}>Add a company</Link>
           }
         />
       </div>
     );
   }
 
-  // Every company on the account is pending or rejected. The form would render
-  // with nothing selectable and a submit that always refuses, so say why here
-  // instead and point at the thing that actually unblocks them.
   if (companies.isSuccess && selectable.length === 0) {
     const anyPending = allCompanies.some((c) => c.kycStatus === 'pending');
     return (
@@ -395,9 +344,7 @@ function CartPage() {
               : 'Verification was declined for the companies on your account. Your cart is saved — add another company or contact the rental team.'
           }
           action={
-            <Link to="/account/applications">
-              <Button variant="primary">See your applications</Button>
-            </Link>
+            <Link to="/account/applications" className={buttonClass('primary')}>See your applications</Link>
           }
         />
       </div>
@@ -415,11 +362,7 @@ function CartPage() {
         </Link>
       </div>
 
-      {/* A real <form>: the submit button used to be a bare button whose only
-          feedback was being disabled, so a customer could not find out which
-          field was at fault. noValidate because the messages come from
-          validateCart(), which knows about verification state and stale cart
-          dates -- things no HTML constraint can express. */}
+      {/* noValidate: validateCart() knows verification and stale dates, which no HTML constraint can. */}
       <form
         noValidate
         onSubmit={(e) => {
@@ -428,8 +371,6 @@ function CartPage() {
           setError(null);
           setSwap(null);
           if (hasErrors(errors) || unavailable) {
-            // Put the caret on the first thing that is wrong rather than
-            // leaving the customer to hunt for the red field.
             const firstInvalid = e.currentTarget.querySelector<HTMLElement>('[aria-invalid="true"]');
             firstInvalid?.focus();
             return;
@@ -441,7 +382,10 @@ function CartPage() {
         <div className="flex min-w-0 flex-col gap-4">
           <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
             <h2 className={heading}>Selected equipment ({items.length})</h2>
-            {items.map((item, index) => (
+            {items.map((item, index) => {
+              const groups = optionGroupsById.get(item.equipmentId) ?? [];
+              const picks = resolvedOptions(item, groups);
+              return (
               <div
                 key={`${item.equipmentId}-${index}`}
                 role="group"
@@ -449,9 +393,6 @@ function CartPage() {
                 className="flex flex-col gap-3 rounded-md border border-border p-3"
               >
                 <div className="flex items-start gap-3">
-                  {/* Photo, name and type open the machine's page. The dates
-                      below sit outside this link, so editing them never
-                      navigates away. */}
                   <Link
                     to="/equipment/$equipmentId"
                     params={{ equipmentId: item.equipmentId }}
@@ -470,10 +411,7 @@ function CartPage() {
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="text-heading-md text-text">{item.model}</p>
-                      {/* The frame prints the yard's serial here. That column is
-                          deliberately outside the public catalog's allowlist
-                          (migration 0028), so this is the same short display code
-                          the rest of the app uses for a unit. */}
+                      {/* Not the yard serial: that column is deliberately outside the public catalog's allowlist. */}
                       <p className="text-sm text-text-muted">
                         {item.equipmentTypeName ? `${item.equipmentTypeName} · ` : ''}
                         {shortCode('equipment', item.equipmentId)}
@@ -491,22 +429,14 @@ function CartPage() {
                     Remove
                   </Button>
                 </div>
-                {(optionGroupsById.get(item.equipmentId) ?? []).length > 0 && (
+                {groups.length > 0 && (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {(optionGroupsById.get(item.equipmentId) ?? []).map((group) => (
+                    {groups.map((group) => (
                       <Select
                         key={group.name}
                         label={group.name}
-                        value={resolvedOptions(item, optionGroupsById.get(item.equipmentId) ?? [])[group.name]}
-                        onChange={(e) => {
-                          updateCartItem(index, {
-                            selectedOptions: {
-                              ...resolvedOptions(item, optionGroupsById.get(item.equipmentId) ?? []),
-                              [group.name]: e.target.value,
-                            },
-                          });
-                          setItems(getCart());
-                        }}
+                        value={picks[group.name]}
+                        onChange={(e) => updateCartItem(index, { selectedOptions: { ...picks, [group.name]: e.target.value } })}
                       >
                         {group.values.map((value) => (
                           <option key={value} value={value}>
@@ -521,10 +451,7 @@ function CartPage() {
                   item={item}
                   rate={rateById.get(item.equipmentId)}
                   onDate={(field, value, hour) => handleDate(index, field, value, hour)}
-                  onHours={(hours) => {
-                    updateCartItem(index, { hours });
-                    setItems(getCart());
-                  }}
+                  onHours={(hours) => updateCartItem(index, { hours })}
                   onProblem={(problem) => reportProblem(index, problem)}
                   onEstimate={(estimate) => reportEstimate(index, estimate)}
                 />
@@ -534,19 +461,14 @@ function CartPage() {
                   </p>
                 )}
               </div>
-            ))}
-            <Link to="/equipment" className="self-start">
-              <Button variant="secondary">Add another machine</Button>
-            </Link>
+              );
+            })}
+            <Link to="/equipment" className={buttonClass('secondary', 'default', 'self-start')}>Add another machine</Link>
           </Surface>
 
           <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
             <h2 className={heading}>Logistics and delivery</h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              {/* Shown whenever there is a choice to make OR a company that
-                  cannot be chosen -- hiding the field when the only company is
-                  unverified left the customer with a dead submit and no reason
-                  on screen. */}
               {(allCompanies.length > 1 || selectable.length === 0) && (
                 <Select
                   label="Company"
@@ -661,8 +583,7 @@ function CartPage() {
             operator and upkeep, as soon as you submit. Transport to your site can be added by the
             rental team. You can negotiate it before anything is charged.
           </p>
-          {/* Not disabled on invalid: a dead button explains nothing. It
-              submits, validation runs, and the form says what is wrong. */}
+          {/* Not disabled on invalid: submitting runs validation, which says what is wrong. */}
           <Button
             type="submit"
             variant="primary"
@@ -709,7 +630,7 @@ export const accountCartRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/cart',
   validateSearch: (search: Record<string, unknown>): { booked?: string; code?: string } =>
-    typeof search.booked === 'string' && /^[0-9a-f-]{36}$/i.test(search.booked) && typeof search.code === 'string'
+    isUuid(search.booked) && typeof search.code === 'string'
       ? { booked: search.booked, code: search.code.slice(0, 20) }
       : {},
   component: CartPage,

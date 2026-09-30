@@ -1,8 +1,4 @@
-// Canonical port + stub adapter live in packages/shared so a browser bundle
-// (apps/web) can share the contract without pulling Node builtins (same
-// convention as document-intelligence.port.ts). The real adapter lives
-// here: it needs `fetch` against a live endpoint and an env-scoped secret,
-// which have no place in a browser-shared package.
+// The real adapter lives here, not in packages/shared: it needs fetch and an env secret, no place in a browser bundle.
 import {
   CHECKOUT_METHODS,
   StubPaymentsAdapter,
@@ -15,14 +11,7 @@ import {
 
 const PAYMONGO_API_BASE = 'https://api.paymongo.com/v1';
 
-// Real PayMongo Hosted Checkout adapter (PRD-F2). Every request/response
-// shape below was exercised against the live test-mode API on 2026-09-26
-// (cr-arkilaunch-paymongo-linked-accounts.md §Findings): the
-// {data:{attributes}} envelope, the five channel codes, metadata copied
-// onto the payment intent and payment, GET returning `payments[]`, and
-// POST /v1/refunds. ArkiLaunch's key is the PayMongo *parent*; each
-// session routes its net amount to the tenant's child account with
-// split_payment.transfer_to.
+// ArkiLaunch's key is the PayMongo parent; each session routes its net amount to the tenant's child account.
 export class PayMongoAdapter implements PaymentsPort {
   constructor(private readonly secretKey: string) {}
 
@@ -43,8 +32,6 @@ export class PayMongoAdapter implements PaymentsPort {
 
   async createCheckoutSession(amountPhp: number, invoiceId: string, options: CheckoutOptions): Promise<CheckoutSession> {
     const label = options.label ?? 'Rental deposit';
-    // The customer reads the booking code on PayMongo's page and receipt,
-    // the same reference every other screen shows.
     const name = options.bookingCode ? `${options.bookingCode} · ${label}` : label;
     const body = await this.call<{ data: { id: string; attributes: { checkout_url: string } } }>('POST', '/checkout_sessions', {
       line_items: [
@@ -56,13 +43,11 @@ export class PayMongoAdapter implements PaymentsPort {
           quantity: 1,
         },
       ],
-      // The customer's pick from our method screen, else every channel.
       payment_method_types: options.methods ?? [...CHECKOUT_METHODS],
       success_url: options.successUrl,
       cancel_url: options.cancelUrl,
       description: `${name} for invoice ${invoiceId}`,
-      // Rides onto the payment PayMongo creates, so payment.* webhooks
-      // resolve our invoice (verified on a live test payment).
+      // Rides onto the payment PayMongo creates, so payment.* webhooks resolve our invoice.
       metadata: { invoice_id: invoiceId, ...(options.bookingCode ? { booking_code: options.bookingCode } : {}) },
       ...(options.transferTo ? { split_payment: { transfer_to: options.transferTo } } : {}),
     });
@@ -77,7 +62,6 @@ export class PayMongoAdapter implements PaymentsPort {
     return paid ? { paid: true, paymentId: paid.id, amountCentavos: paid.attributes.amount } : { paid: false };
   }
 
-  // POST /v1/checkout_sessions/:id/expire (no body).
   async expireCheckoutSession(sessionId: string): Promise<void> {
     await this.call('POST', `/checkout_sessions/${encodeURIComponent(sessionId)}/expire`);
   }
@@ -92,9 +76,7 @@ export class PayMongoAdapter implements PaymentsPort {
   }
 }
 
-// ENABLE_PAYMENTS defaults off (stub). On, it refuses to boot without both
-// secrets -- same posture as the OCR flags: a half-configured payment path
-// would take a customer to a checkout whose webhook can never be verified.
+// On, it refuses to boot without both secrets: a half-configured path would take customers to an unverifiable checkout.
 export function createPaymentsAdapter(): PaymentsPort {
   if (process.env.ENABLE_PAYMENTS !== 'true') return new StubPaymentsAdapter();
   const secretKey = process.env.PAYMONGO_SECRET_KEY;

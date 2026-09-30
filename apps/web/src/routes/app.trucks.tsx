@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_TRUCK_COST_POLICY, DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, type TruckCostPolicy, suggestTolls, TruckBanRuleSchema, type TruckBanRule, type TruckBanRuleInput, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
-import { formatDate, formatDateTime, formatPeso } from '../lib/format.js';
+import { formatDate, formatDateTime, formatPeso, WEEKDAYS } from '../lib/format.js';
 import { PriceBreakdown } from '../components/truck-trip.js';
 import { Input } from '../components/input.js';
 import { Button } from '../components/button.js';
@@ -13,7 +13,7 @@ import { Modal } from '../components/modal.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
-import { truckBanRulesQuery, trucksQueries } from '../lib/queries.js';
+import { pricingQueries, truckBanRulesQuery, trucksQueries } from '../lib/queries.js';
 import { FormulaBuilder, type SampleInputs } from '../components/formula-builder.js';
 import { EditButton, SummaryCard } from '../components/summary-card.js';
 import { Select } from '../components/select.js';
@@ -92,7 +92,6 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
   const [roundTrip, setRoundTrip] = useState(String(initial.roundTripMultiplier ?? 1));
   const [quoteMultiplier, setQuoteMultiplier] = useState(String(initial.quoteMultiplier ?? 1));
   const [editing, setEditing] = useState(false);
-  // Every open starts from what is saved, so a cancelled edit leaves nothing behind.
   const open = () => {
     setBase(String(initial.baseFeePhp));
     setDriver(String(initial.driverFeePhp));
@@ -103,10 +102,8 @@ function QuotationCard({ initial }: { initial: TruckSettings }) {
     setQuoteMultiplier(String(initial.quoteMultiplier ?? 1));
     setEditing(true);
   };
-  // The builder's sample trip is priced with the same per-km, fuel and
-  // national diesel figures a real request uses.
-  const params = useQuery({ queryKey: ['pricing-parameters'], queryFn: () => apiGet<{ transportPhpPerKm: string; fuelLPerKm: string } | null>('/pricing/parameters') });
-  const diesel = useQuery({ queryKey: ['diesel-price'], queryFn: () => apiGet<{ pricePhp: number } | null>('/pricing/diesel-price') });
+  const params = useQuery(pricingQueries.parameters());
+  const diesel = useQuery(pricingQueries.diesel());
   const sample: SampleInputs = {
     perKmPhp: Number(params.data?.transportPhpPerKm ?? 0),
     fuelLPerKm: Number(params.data?.fuelLPerKm ?? 0),
@@ -368,9 +365,7 @@ export function TollsEditor() {
   });
   const rows = tolls.data ?? [];
   const expressways = [...new Set(rows.filter((t) => t.expressway).map((t) => t.expressway!))];
-  // ponytail: filtered and paged in the browser. The toll picker needs the
-  // whole matrix anyway, and it is a bounded list (the PH Class 3 matrix
-  // plus the tenant's own); page on the server if it ever passes ~1000.
+  // ponytail: filtered and paged in the browser (bounded toll matrix); page on the server past ~1000.
   const shown = useMemo(() => {
     const needle = find.trim().toLowerCase();
     return rows.filter(
@@ -491,6 +486,11 @@ const blankBan: TruckBanRuleInput = {
   minGvwKg: null, permitNote: '', verified: false,
 };
 
+const BAN_FIELDS: Record<string, string> = {
+  days: 'Days', windows: 'Ban hours', minGvwKg: 'Minimum GVW', city: 'City', province: 'Province', permitNote: 'Permit note',
+};
+class RuleInputError extends Error {}
+
 export function BanRulesEditor() {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -510,17 +510,22 @@ export function BanRulesEditor() {
   };
   const save = useMutation({
     mutationFn: async () => {
-      const body = TruckBanRuleSchema.parse({ ...draft,
-        days: daysText.split(',').map((s) => Number(s.trim())),
+      const parsed = TruckBanRuleSchema.safeParse({ ...draft,
+        days: daysText.split(',').map((s) => s.trim()).filter(Boolean).map(Number),
         windows: windowsText.split(',').map((s) => {
           const [from, to] = s.trim().split('-');
           return { from, to };
         }),
       });
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        throw new RuleInputError(`${BAN_FIELDS[String(issue?.path[0])] ?? 'Rule'}: ${issue?.message}`);
+      }
+      const body = parsed.data;
       return editing === 'new' ? apiPost('/truck-ban-rules', body) : apiPut(`/truck-ban-rules/${(editing as TruckBanRule).id}`, body);
     },
     onSuccess: () => { setEditing(null); refresh(); toast.success('Truck ban rule saved'); },
-    onError: (error) => toast.error('Rule not saved', apiErrorText(error)),
+    onError: (error) => toast.error('Rule not saved', error instanceof RuleInputError ? error.message : apiErrorText(error)),
   });
   const remove = useMutation({
     mutationFn: (id: string) => apiDelete(`/truck-ban-rules/${id}`),
@@ -529,7 +534,7 @@ export function BanRulesEditor() {
   });
   const columns: TableColumn<TruckBanRule>[] = [
     { header: 'City', kind: 'text', cell: (r) => `${r.city}, ${r.province}` },
-    { header: 'Days', kind: 'text', cell: (r) => r.days.map((day) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][day]).join(', ') },
+    { header: 'Days', kind: 'text', cell: (r) => r.days.map((day) => WEEKDAYS[day]).join(', ') },
     { header: 'Ban hours', kind: 'text', cell: (r) => r.windows.map((w) => `${w.from}-${w.to}`).join(', ') },
     { header: 'Status', kind: 'text', cell: (r) => r.verified ? 'Verified' : 'Rule not verified' },
     { header: 'Actions', kind: 'action', cell: (r) => <div className="flex gap-2">
@@ -566,8 +571,6 @@ export function BanRulesEditor() {
   </section>;
 }
 
-// Tolls a trip passes: expressway, then two points on it (either order),
-// and the loaded fee fills in; free-named tolls are picked by name.
 function TollPicker({ tolls, value, onChange }: { tolls: TollRateResponse[]; value: string[]; onChange: (ids: string[]) => void }) {
   const [expressway, setExpressway] = useState('');
   const [a, setA] = useState('');
@@ -647,8 +650,6 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   const queryClient = useQueryClient();
   const tolls = useQuery(tollsQuery);
   const [tollIds, setTollIds] = useState<string[]>([]);
-  // The road route's expressways preselect their tolls once; the admin
-  // changes them freely, or types one manual amount that replaces them.
   const route = useQuery({ ...trucksQueries.route(r.id), enabled: r.pickupLat !== null && r.dropoffLat !== null });
   const suggested = useMemo(
     () => (route.data?.tollHints && tolls.data ? suggestTolls(route.data.tollHints, tolls.data) : []),
@@ -908,8 +909,6 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
 export const appTrucksRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/app/trucks',
-  // Truck requests now live under Bookings (service = truck); old links
-  // and notifications land there.
   beforeLoad: () => {
     throw redirect({ to: '/app/bookings', search: { service: 'truck' } });
   },

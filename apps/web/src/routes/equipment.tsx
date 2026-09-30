@@ -15,31 +15,21 @@ import { Skeleton } from '../components/skeleton.js';
 import { LoadError } from '../components/load-error.js';
 import { Modal } from '../components/modal.js';
 import { Input } from '../components/input.js';
-import { Button } from '../components/button.js';
+import { Button, chipClass } from '../components/button.js';
 import { useToast } from '../components/toast.js';
 import { addToCart, defaultRentalWindow } from '../lib/cart-client.js';
-import { WeatherInsights, weatherInsightsVisible } from '../components/weather-insights.js';
+import { WeatherInsights } from '../components/weather-insights.js';
 import { getAccessToken } from '../lib/auth-client.js';
 import { RangeCalendar, availabilityProblem, rentalLengthProblem, useAvailability } from '../components/availability-days.js';
 
-// <input type="datetime-local"> speaks local "YYYY-MM-DDTHH:mm"; the cart
-// stores ISO. The frame draws date and time as two fields per end of the
-// window; one native datetime-local carries both and validates itself.
+// datetime-local speaks local "YYYY-MM-DDTHH:mm"; the cart stores ISO.
 export function toLocalInput(iso: string): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// Figma 209:2977 "Rental Page- rent": the Rent button on a catalog card opens
-// Configure Rental rather than walking the customer to the listing and leaving
-// them to fix the dates later in the cart.
-//
-// The frame also asks for a pickup point and a drop-off point per machine.
-// Those are not here on purpose: a booking is delivered to one project site,
-// and the cart already chooses that site once for the whole booking
-// (account.cart.tsx, projectSiteId). Asking per line would let a customer
-// build a cart that no single booking can satisfy.
+// No per-machine pickup/drop-off: a booking goes to one project site, chosen once in the cart.
 function ConfigureRentalDialog({
   equipment,
   onClose,
@@ -53,25 +43,17 @@ function ConfigureRentalDialog({
   const [start, setStart] = useState(() => toLocalInput(initial.start));
   const [end, setEnd] = useState(() => toLocalInput(initial.end));
 
-  // The API refuses an end that is not after the start; say so here rather
-  // than letting the cart's submit be the first time anyone finds out.
   const order = !start || !end || new Date(end) <= new Date(start);
-  // Taken days and closed hours, from the same check the server runs.
   const availability = useAvailability(equipment.id, end);
   const problem = order ? null : (availabilityProblem(availability.data, start, end) ?? rentalLengthProblem(availability.data, start, end));
   const invalid = order || problem !== null;
 
-  // Keeps any pickup/return time already typed; else opening/closing time.
   function pickRange(startDate: string, endDate: string) {
     setStart(`${startDate}T${start.slice(11) || (availability.data?.hours?.openTime ?? '08:00')}`);
     setEnd(`${endDate}T${end.slice(11) || (availability.data?.hours?.closeTime ?? '17:00')}`);
   }
 
-  // /account/cart is behind requireAuth(), so "Book now" used to hand a
-  // signed-out visitor a silent guard bounce to /login -- which reads as the
-  // button having eaten the click. Send them there deliberately instead, with
-  // the cart as the redirect target: the cart survives in sessionStorage, so
-  // they arrive signed in with the machine already in it.
+  // /account/cart is behind requireAuth: send signed-out users to /login with the cart as redirect (it survives in sessionStorage).
   const signedIn = Boolean(getAccessToken());
 
   function commit(thenGoToCart: boolean) {
@@ -157,9 +139,7 @@ function EquipmentPage() {
   const [offset, setOffset] = useState(0);
   const [configuring, setConfiguring] = useState<CatalogEquipment | null>(null);
   const { data, isPending, isError, refetch } = useQuery(catalogQueries.equipment());
-  // A signed-in customer with no verified company sees the same list but
-  // cannot rent from it yet. Staff get an error from /me/companies and are
-  // not locked -- the lock is a customer nudge, the API still gates payment.
+  // The lock is a customer nudge only; the API still gates payment.
   const signedIn = Boolean(getAccessToken());
   const { data: companies } = useQuery({ ...companiesQueries.mine(), enabled: signedIn });
   const rentLocked = Boolean(companies && !companies.some(isSelectableCompany));
@@ -168,15 +148,12 @@ function EquipmentPage() {
     () =>
       (data?.items ?? []).filter(
         (eq) =>
-          // A deployed unit is still bookable for later dates; the
-          // availability grid shows which.
           eq.availabilityStatus !== 'maintenance' &&
           (!category || eq.equipmentTypeName === category) &&
           `${eq.model} ${eq.equipmentTypeName}`.toLowerCase().includes(query.toLowerCase()),
       ),
     [data, query, category],
   );
-  // Categories with a bookable unit, counted before the category filter.
   const categories = useMemo(() => {
     const counts = new Map<string, number>();
     for (const eq of data?.items ?? []) {
@@ -186,22 +163,11 @@ function EquipmentPage() {
     return [...counts].sort(([a], [b]) => a.localeCompare(b));
   }, [data]);
 
-  // Narrowing the filters can leave the offset past the end of the new
-  // result, which would render an empty grid with no controls to escape it
-  // (Pagination hides itself on a single page).
+  // Narrowed filters can leave the offset past the end: an empty grid with no pager to escape.
   const safeOffset = offset < equipment.length ? offset : 0;
   const page = equipment.slice(safeOffset, safeOffset + PAGE_SIZE);
 
-  // Weather sits top-right, level with the heading, and only when there is
-  // something to show: a signed-out visitor has no site to forecast, and
-  // reserving 320px for a panel that renders nothing would leave a hole.
-  //
-  // The column waits for xl. Below that it took 320px out of a viewport that
-  // had already given 240px to the account sidebar, leaving the catalog ~440px
-  // and three cards squeezed to 201px with the machine names wrapping -- so it
-  // stacks under the catalog there rather than crowding it or vanishing.
-  const showWeather = weatherInsightsVisible();
-  // In the signed-in shell the main column already pads; public pages pad here.
+  const showWeather = signedIn;
   const inShell = useShellNav() !== null;
   return (
     <div
@@ -228,10 +194,7 @@ function EquipmentPage() {
                 setCategory(value);
                 setOffset(0);
               }}
-              className={[
-                'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
-                category === value ? 'border-accent bg-accent text-white' : 'border-border bg-surface text-text hover:bg-surface-sunk',
-              ].join(' ')}
+              className={chipClass(category === value)}
             >
               {label}
             </button>
@@ -246,13 +209,6 @@ function EquipmentPage() {
         />
       )}
       {data && (
-        // auto-fill against a minimum card width, not viewport breakpoints. The
-        // same viewport means different content widths here depending on whether
-        // the sidebar and the rail are present, so a breakpoint cannot know how
-        // many cards fit -- the grid measures itself instead.
-        //
-        // 280px is where a machine name still fits on one line beside the Rent
-        // button: at 240 the name had ~155px and "Almara Backhoe #1" wrapped.
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
           {page.map((eq) => {
             const imageUrl = eq.photoUri ?? equipmentImageUrl(eq.model);
@@ -260,14 +216,13 @@ function EquipmentPage() {
               <EquipmentCard
                 key={eq.id}
                 rateValue={eq.rateValue ?? null}
-                rateType={eq.rateType ?? null}
                 imageAlt={`${eq.equipmentTypeName} ${eq.model}`}
                 {...(imageUrl ? { imageUrl } : {})}
                 model={eq.model}
                 make={eq.equipmentTypeName}
                 {...(rentLocked ? { rentLabel: 'Verify to rent' } : {})}
                 onRent={() =>
-                  rentLocked ? navigate({ to: '/account/companies' }) : setConfiguring(eq)
+                  rentLocked ? navigate({ to: '/account/applications' }) : setConfiguring(eq)
                 }
                 onViewDetails={() =>
                   navigate({ to: '/equipment/$equipmentId', params: { equipmentId: eq.id } })

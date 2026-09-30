@@ -5,18 +5,15 @@ import { accountLayoutRoute } from './_account.js';
 import { apiPost } from '../lib/api-client.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { buttonClass } from '../components/button.js';
 import { StatusPill } from '../components/status-pill.js';
-import { CheckIcon } from '../components/icons.js';
+import { Check } from 'lucide-react';
+import { isUuid } from '../lib/format.js';
 
 const POLL_MS = 3_000;
 const POLL_FOR_MS = 60_000;
 
-// Figma 168:3376 "Bank Transfer Successful". PayMongo's success_url, with
-// ?invoice=<id> added per session. Arriving here proves nothing -- the URL
-// can be typed -- so the page asks the API, which asks PayMongo server to
-// server (POST /me/invoices/:id/confirm-payment) or has already heard the
-// webhook. "Paid" shows only once the API says the invoice is paid.
+// Arriving here proves nothing (the URL can be typed): "Paid" shows only once the API says so.
 function CheckoutSuccessPage() {
   const { invoice: invoiceId } = accountCheckoutSuccessRoute.useSearch();
   const [startedAt] = useState(() => Date.now());
@@ -29,7 +26,6 @@ function CheckoutSuccessPage() {
       query.state.data?.status === 'issued' && Date.now() - startedAt < POLL_FOR_MS ? POLL_MS : false,
   });
   const paid = confirm.data?.status === 'paid';
-  // Still asking: the last answer (if any) landed inside the polling window.
   const checking = Boolean(invoiceId) && !paid && !confirm.isError && confirm.dataUpdatedAt - startedAt < POLL_FOR_MS;
 
   return (
@@ -39,7 +35,7 @@ function CheckoutSuccessPage() {
         <StatusPill
           tone={paid ? 'recon-approved' : 'recon-review'}
           label={paid ? 'Paid' : checking ? 'Confirming…' : 'Submitted'}
-          icon={<CheckIcon />}
+          icon={<Check className="size-full" />}
         />
         <div className="flex flex-col gap-2" aria-live="polite">
           <h2 className="text-heading-lg text-text">
@@ -55,12 +51,10 @@ function CheckoutSuccessPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {invoiceId && (
-            <Link to="/account/invoices/$invoiceId" params={{ invoiceId }}>
-              <Button variant="primary">View invoice</Button>
-            </Link>
+            <Link to="/account/invoices/$invoiceId" params={{ invoiceId }} className={buttonClass('primary')}>View invoice</Link>
           )}
-          <Link to="/account/bookings">
-            <Button variant={invoiceId ? 'secondary' : 'primary'}>View my bookings</Button>
+          <Link to="/account/bookings" className={buttonClass(invoiceId ? 'secondary' : 'primary')}>
+            View my bookings
           </Link>
         </div>
       </Surface>
@@ -68,12 +62,10 @@ function CheckoutSuccessPage() {
   );
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export const accountCheckoutSuccessRoute = createRoute({
   getParentRoute: () => accountLayoutRoute,
   path: '/account/checkout/success',
   validateSearch: (search: Record<string, unknown>): { invoice?: string } =>
-    typeof search.invoice === 'string' && UUID_RE.test(search.invoice) ? { invoice: search.invoice } : {},
+    isUuid(search.invoice) ? { invoice: search.invoice } : {},
   component: CheckoutSuccessPage,
 });

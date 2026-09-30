@@ -8,9 +8,6 @@ import { TrucksService } from '../src/trucks/trucks.service.js';
 import { PricingEngineService } from '../src/quotes/pricing-engine.service.js';
 import { EventsService } from '../src/events/events.service.js';
 
-// Truck checkout gates (feedback phases 4-5): the confirming call, and the
-// customer's accept of exactly the agreed price (QA 21: a staff change voids
-// the unpaid invoice and needs a new accept).
 describe('Truck checkout gates', () => {
   const events = new EventsService();
   const payments = new PaymentsService(new StubPaymentsAdapter(), events);

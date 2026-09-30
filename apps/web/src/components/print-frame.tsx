@@ -5,12 +5,7 @@ import { usersQueries } from '../lib/queries.js';
 import { getAccessToken } from '../lib/auth-client.js';
 import { formatDate } from '../lib/format.js';
 
-// Every printed document's letterhead and running footer (QA 20): the
-// rental company's logo, name, address, contacts and TIN in its own brand
-// colour, then the document's title, reference, dates and key facts. Shown
-// only on paper; the screen keeps its own layout. A div, not a <header>:
-// print CSS hides <header> (the app bar). Page X of Y comes from the @page
-// margin box in index.css.
+// A div, not <header>: print CSS hides <header>.
 
 const printedAt = () =>
   new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' });
@@ -24,7 +19,6 @@ export function PrintFrame({
   title: string;
   docRef: string;
   issuedAt?: string | Date | null | undefined;
-  // Document-specific facts: bill-to, period, due date, status...
   details?: [label: string, value: ReactNode][];
 }) {
   const tenant = useTenant();

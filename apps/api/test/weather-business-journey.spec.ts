@@ -29,9 +29,7 @@ import { SitesService } from '../src/sites/sites.service.js';
 import { NotificationsService } from '../src/notifications/notifications.service.js';
 import { checkoutPaidWebhook } from './paymongo-webhook.js';
 import { fixtureCompanyId } from './fixture-company.js';
-// The weather jobs themselves, run as the ACA jobs run them (service_role).
-// Loaded by path at run time, not statically imported: the jobs package
-// compiles with import.meta, which the API's tsconfig does not allow.
+// Loaded by path at run time: the jobs package compiles with import.meta, which the API's tsconfig disallows.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const JOBS = '../../../jobs/src/';
 type DeployedSite = { id: string; tenantId: string; latitude: string; longitude: string; name: string };
@@ -47,15 +45,7 @@ async function loadJobs() {
 }
 const manilaNow = () => ({ date: new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10) });
 
-// docs/cr-arkilaunch-weather-monitoring.md, end to end through the
-// customer's business process:
-//   customer books heavy equipment -> quote -> accept -> pay (webhook) ->
-//   delivered to site + timekeeper assigned -> pre-workday briefing ->
-//   hourly watch -> live Stop-work warning -> timekeeper files the EDTR ->
-//   checked against the recorded weather -> incident log -> office review
-//   and billing -> return -> monitoring stops.
-// Every weather notice must reach the timekeeper AND the customer; nothing
-// the weather check finds may move money on its own (RFC-2).
+// Every weather notice must reach the timekeeper AND the customer; nothing the weather check finds may move money.
 describe('Weather monitoring across the heavy-equipment rental journey', () => {
   const events = new EventsService();
   const quotes = new QuotesService(new PricingEngineService(), events);

@@ -1,23 +1,16 @@
 import { Body, Controller, Post, Req } from '@nestjs/common';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { AuthService } from './auth.service.js';
 import { Enroll2faConfirmDto } from './dto.js';
+import type { CtxRequest } from '../common/request.js';
 
-type CtxRequest = Request & { ctx: RequestContext };
-
-// Unlike AuthController, this one is NOT @Public(): enrolling 2FA requires
-// an authenticated, tenant-scoped caller (an unenrolled timekeeper still
-// gets a normal access token from login(), see auth.service.ts).
+// NOT @Public(): enrolling needs an authenticated, tenant-scoped caller.
 @Controller('auth/2fa')
 export class TwoFaController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('enroll')
   enroll(@Req() req: CtxRequest) {
-    // JwtStrategy's JwtClaimsSchema does not carry email; the enroll step
-    // only needs *a* label for the authenticator app, so the user id is a
-    // perfectly good fallback account label.
+    // The claims carry no email; the user id is a fine authenticator label.
     return this.auth.enroll(req.ctx.userId);
   }
 

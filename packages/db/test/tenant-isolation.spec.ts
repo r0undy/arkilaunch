@@ -1,9 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { directSql, pooledSql, getTenantId, setTenantGuc } from './helpers.js';
 
-// QAD §3: "A test that 'confirms isolation' against a single-tenant
-// database proves nothing." Requires `pnpm db:seed:test` to have run
-// against this database first.
+// QAD §3: isolation needs two tenants. Requires `pnpm db:seed:test` first.
 describe('cross-tenant isolation (two-tenant fixture)', () => {
   const direct = directSql();
   const pooled = pooledSql();
@@ -21,13 +19,8 @@ describe('cross-tenant isolation (two-tenant fixture)', () => {
   });
 
   it('no GUC set: app_authenticated never sees another tenant\'s rows (fail-closed)', async () => {
-    // Supavisor's transaction-mode pooler does not reliably reset a custom
-    // GUC to NULL between logical sessions on a reused physical connection
-    // (verified directly against this project: it lands on '' instead).
-    // '' cannot cast to uuid, so the policy check errors rather than
-    // silently matching -- an even stronger fail-closed outcome than an
-    // empty result set. Either outcome is acceptable; returning real rows
-    // is not.
+    // Supavisor may leave a reused connection's GUC at '' instead of NULL; ''::uuid errors,
+    // which is also fail-closed. Returning real rows is the only failure.
     await setTenantGuc(pooled, null);
     try {
       const rows = await pooled`select id from equipment`;
@@ -38,8 +31,12 @@ describe('cross-tenant isolation (two-tenant fixture)', () => {
   });
 
   it('tenant A context: reads only tenant A equipment, never tenant B rows', async () => {
-    await setTenantGuc(pooled, tenantAId);
-    const rows = await pooled<{ tenant_id: string }[]>`select tenant_id from equipment`;
+    // One transaction, as withTenantTx does: the transaction-mode pooler may run the next statement on
+    // another backend, so a GUC set in its own statement can be gone and the read comes back empty.
+    const rows = await pooled.begin(async (t) => {
+      await t`select set_config('app.current_tenant_id', ${tenantAId}, true)`;
+      return t<{ tenant_id: string }[]>`select tenant_id from equipment`;
+    });
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
       expect(row.tenant_id).toBe(tenantAId);
@@ -65,9 +62,6 @@ describe('cross-tenant isolation (two-tenant fixture)', () => {
     ).rejects.toThrow();
   });
 
-  // PRD-F4: maintenance_logs is a new access path this pass introduced
-  // (apps/api/src/fleet). Same tenant_isolation policy as every other
-  // table, proven concretely rather than assumed by resemblance.
   it('tenant A context: reads only tenant A maintenance_logs, never tenant B rows', async () => {
     await setTenantGuc(pooled, tenantAId);
     const rows = await pooled<{ tenant_id: string }[]>`select tenant_id from maintenance_logs`;
@@ -77,8 +71,6 @@ describe('cross-tenant isolation (two-tenant fixture)', () => {
     }
   });
 
-  // PRD-F5: weather_alerts is a new access path this pass introduced
-  // (apps/api/src/sites, jobs/src/weather-poll.ts).
   it('tenant A context: reads only tenant A weather_alerts, never tenant B rows', async () => {
     await setTenantGuc(pooled, tenantAId);
     const rows = await pooled<{ tenant_id: string }[]>`select tenant_id from weather_alerts`;

@@ -4,9 +4,6 @@ export interface TestimonialCardProps {
   testimonial: CatalogTestimonial;
 }
 
-// Marketing card conventions (rounded-md surface-mk card, transition-shadow hover:shadow-md,
-// DSD §4); this is the anchor tenant's own quote, fetched via
-// GET /catalog/testimonials -- see queries.ts catalogQueries.testimonials.
 export function TestimonialCard({ testimonial }: TestimonialCardProps) {
   return (
     <div className="flex flex-col gap-4 rounded-md bg-surface p-6 transition-shadow hover:shadow-md">

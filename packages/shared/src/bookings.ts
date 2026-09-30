@@ -3,58 +3,36 @@ import { PaginationQuerySchema } from './pagination.js';
 import { SelectedOptionsSchema } from './fleet.js';
 import { PhMobileSchema } from './phone.js';
 
-// PRD-F8 (Client Booking Portal), SDD §4 `POST /api/v1/bookings` contract,
-// built as an authenticated `customer`-role surface rather than the PRD's
-// public/guest sketch (cr-arkilaunch-f2-f8-bookings-payments.md: RFC-1's
-// "tenant_id only from a verified JWT" rules out an unauthenticated write).
-// A booking is a `rentals` row plus one `equipment_assignments` row per
-// item -- no new table (SDD §3's 35-table catalog already covers both).
-
 export const BookingItemRequestSchema = z
   .object({
     equipmentId: z.string().uuid(),
     start: z.string().datetime({ offset: true }),
     end: z.string().datetime({ offset: true }),
-    // Hours the customer means to run the machine, minBookingHours to
-    // maxBookingHours. Omitted (staff, older clients) = the minimum.
     hours: z.number().finite().positive().max(100_000).optional(),
-    // One choice per option group on the unit ("Bucket size" -> "3/4"),
-    // checked against the unit server-side. Omitted = the unit has none.
     selectedOptions: SelectedOptionsSchema.optional(),
   })
   .refine((item) => new Date(item.end).getTime() > new Date(item.start).getTime(), {
     message: 'end must be after start',
   });
 
-// Calendar days a window spans, a part day counting whole (pricing agrees).
 export function bookingDays(start: string | Date, end: string | Date): number {
   return Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000));
 }
 
-// The shortest booking a tenant takes, in days: its minimum hours at a full
-// working day each. A flat hour floor ignored the dates, so 16 days could be
-// asked to carry 500 hours no crew can run in them (QA 24).
 export function minRentalDays(dailyHours: number, minHours: number): number {
   return minHours > 0 ? Math.ceil(minHours / dailyHours) : 1;
 }
 
-// The fewest hours a booking may ask for: a full working day for every day
-// the dates span. A window of at least minRentalDays always covers the
-// tenant minimum.
 export function minBookingHours(days: number, dailyHours: number): number {
   return days * dailyHours;
 }
 
-// The most: every hour of every day the dates span.
 export function maxBookingHours(days: number): number {
   return days * 24;
 }
 export type BookingItemRequest = z.infer<typeof BookingItemRequestSchema>;
 
-// customerId: for staff, the customer being booked for. For a `customer`
-// caller it picks WHICH of their own companies books (one login may own
-// several); the server checks it is theirs and never trusts it otherwise
-// (bookings.service.ts). Omitted, a customer with one company uses it.
+// For a customer caller this picks which of their own companies books; the server verifies it, never trusts it.
 export const BookingCreateRequestSchema = z.object({
   customerId: z.string().uuid().optional(),
   projectSiteId: z.string().uuid(),
@@ -64,8 +42,6 @@ export const BookingCreateRequestSchema = z.object({
   items: z.array(BookingItemRequestSchema).min(1),
 });
 export type BookingCreateRequest = z.infer<typeof BookingCreateRequestSchema>;
-
-// --- Response schemas (egress allowlists). ---
 
 export const BookingCreateResponseSchema = z.object({
   id: z.string().uuid(),
@@ -77,29 +53,22 @@ export type BookingCreateResponse = z.infer<typeof BookingCreateResponseSchema>;
 
 export const BookingSummaryResponseSchema = z.object({
   id: z.string().uuid(),
-  // EQR-YYYY-NNNN (booking-code.ts), assigned by the database.
   code: z.string(),
   status: z.string(),
   projectSiteId: z.string().uuid(),
   siteCity: z.string().nullable(),
   siteProvince: z.string().nullable(),
-  // QA 27: optional so a cached response from before they existed parses.
   customerName: z.string().nullable().optional(),
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().nullable().optional(),
-  // QA 25: when an unpaid request lets its dates go; null once paid.
   holdExpiresAt: z.coerce.date().nullable().optional(),
-  // Each unit with its own dates; units never share one merged range.
-  // Optional so a cached response from before it existed still parses.
   items: z
     .array(z.object({ equipmentName: z.string(), start: z.coerce.date(), end: z.coerce.date().nullable() }))
     .optional(),
 });
 export type BookingSummaryResponse = z.infer<typeof BookingSummaryResponseSchema>;
 
-// GET /bookings/:id/edtr-sheet: the pre-printed EDTR header
-// (v3: cr-arkilaunch-edtr-v3-sheet.md). Built server-side; the tenant is
-// the verified JWT's, never the caller's (RFC-1).
+// The tenant is the verified JWT's, never the caller's (RFC-1).
 export interface EdtrSheetContext {
   rentalId: string;
   chargeTo: string;
@@ -109,14 +78,11 @@ export interface EdtrSheetContext {
     type: string;
     model: string;
     serialNo: string;
-    // v3: the unit's own span on this booking and its crew.
     start?: string;
     end?: string | null;
     operatorName?: string | null;
-    // The last approved hour-meter end reading, pre-printed as the week's start.
     lastHourMeter?: number | null;
   }[];
-  // v3 header.
   bookingCode?: string;
   customerName?: string;
   siteRep?: string | null;
@@ -125,16 +91,6 @@ export interface EdtrSheetContext {
   tenant?: { name: string; address: string; contact: string; logoUrl: string | null };
 }
 
-// Paging, same shape as the users/invoices/equipment lists. GET /bookings
-// was the one list module with no query DTO at all, so the ?limit=&offset=
-// the UI already sent was silently discarded and page 2 returned page 1
-// (audit-api-surface.md #5).
-// `q` finds a booking by its code, exactly or by prefix ("EQR-2026-00"),
-// case-insensitively (cr-arkilaunch-uniform-booking-codes.md). Text that
-// cannot be the start of a code is ignored rather than matching nothing.
-// QA 27: `q` also finds a booking by its customer's company name; `status`
-// is a comma list; `from`/`to` (YYYY-MM-DD, Manila) keep bookings whose
-// dates touch that range; `sort` is newest first or soonest start first.
 export const BOOKING_STATUSES = ['pending', 'confirmed', 'active', 'completed', 'cancelled'] as const;
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 const IsoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -154,8 +110,6 @@ export type BookingListQuery = z.infer<typeof BookingListQuerySchema>;
 export const BookingListResponseSchema = z.object({
   items: z.array(BookingSummaryResponseSchema),
   total: z.number().int(),
-  // Bookings per status under every filter but `status`, for the chips.
-  // Optional so a cached response from before it existed still parses.
   statusCounts: z.record(z.string(), z.number().int()).optional(),
 });
 export type BookingListResponse = z.infer<typeof BookingListResponseSchema>;
@@ -163,27 +117,21 @@ export type BookingListResponse = z.infer<typeof BookingListResponseSchema>;
 export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
   trackerUrl: z.string(),
   customerId: z.string().uuid(),
-  // The customer's company, for the staff drawer header. Optional so a
-  // cached response from before it existed still parses.
   customerName: z.string().nullable().optional(),
   items: z.array(
     z.object({
-      // The equipment_assignments row: the unit's own line on this booking.
       id: z.string().uuid(),
       equipmentId: z.string().uuid(),
-      // "Excavator · CAT 320 · SN 123", so no screen names a unit by UUID.
       equipmentName: z.string().optional(),
       start: z.coerce.date(),
       end: z.coerce.date().nullable(),
       status: z.string(),
-      // What the customer picked for this unit (migration 0065).
       selectedOptions: SelectedOptionsSchema.optional(),
     }),
   ),
   siteContact: z.string().nullable(),
   siteContactMobile: z.string().nullable().optional(),
   siteNotes: z.string().nullable(),
-  // Callback before payment: checkout waits for callConfirmedAt.
   callRequestedAt: z.coerce.date().nullable(),
   callConfirmedAt: z.coerce.date().nullable(),
   createdAt: z.coerce.date(),
@@ -194,12 +142,9 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
       status: z.string(),
       totalPhp: z.number().nullable(),
       createdAt: z.coerce.date(),
-      // Staff may re-quote only now: the customer declined this quote or
-      // wrote in the thread since it was issued (or it is still a draft).
       inNegotiation: z.boolean().optional(),
     })
     .nullable(),
-  // resolveDepositLedger's view: required is null when no contract exists.
   deposit: z.object({
     required: z.number().nullable(),
     totalDeducted: z.number(),
@@ -209,7 +154,6 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
     z.object({
       id: z.string().uuid(),
       kind: z.string(),
-      // The unit an extension is for; null = every unit (older requests).
       assignmentId: z.string().uuid().nullable().optional(),
       requestedEnd: z.coerce.date().nullable(),
       reason: z.string().nullable(),
@@ -234,9 +178,7 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
       providerRef: z.string().nullable(),
     }),
   ),
-  // Approved field logs (cr-arkilaunch-edtr-site-hub-approval.md): totals
-  // and each approved day. A customer never sees a pending day, and gets a
-  // pending count of 0.
+  // A customer never sees a pending day (their pending count is 0).
   fieldLogs: z
     .object({
       running: z.number(),
@@ -268,9 +210,7 @@ export const BookingDetailResponseSchema = BookingSummaryResponseSchema.extend({
 });
 export type BookingDetailResponse = z.infer<typeof BookingDetailResponseSchema>;
 
-// --- Negotiation thread (customer journey CR). An offer is a proposal in a
-// conversation; it is never charged. The charged number is always the
-// accepted quotation's engine-priced total.
+// An offer is never charged; the charged number is always the accepted quotation's engine-priced total.
 export const NegotiationMessageCreateSchema = z.object({
   body: z.string().trim().min(1).max(2000),
   offerPhp: z.number().finite().positive().max(100_000_000).optional(),
@@ -287,11 +227,9 @@ export const NegotiationMessageResponseSchema = z.object({
 });
 export type NegotiationMessageResponse = z.infer<typeof NegotiationMessageResponseSchema>;
 
-// --- Change requests (Figma 231:5204 Extend Rental, and cancel after pay).
 export const ChangeRequestCreateSchema = z
   .object({
     kind: z.enum(['extend', 'cancel']),
-    // Which unit to extend: each keeps its own return date.
     assignmentId: z.string().uuid().optional(),
     requestedEnd: z.string().datetime({ offset: true }).optional(),
     reason: z.string().trim().max(1000).optional(),
@@ -311,10 +249,7 @@ export const ChangeRequestResolveSchema = z.object({
 });
 export type ChangeRequestResolve = z.infer<typeof ChangeRequestResolveSchema>;
 
-// --- Booking availability (feedback phase 3). ---
-
-// Business hours are Asia/Manila wall-clock "HH:MM"; openDays are
-// 0 = Sunday .. 6 = Saturday; blackouts are Manila calendar dates.
+// Asia/Manila wall-clock HH:MM; openDays 0 = Sunday; blackouts are Manila dates.
 const HhMm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 export const TenantCalendarSchema = z
   .object({
@@ -333,7 +268,6 @@ export const TenantCalendarSchema = z
   .refine((c) => c.closeTime > c.openTime, { message: 'closeTime must be after openTime' });
 export type TenantCalendar = z.infer<typeof TenantCalendarSchema>;
 
-// GET /equipment/:id/availability?from&to (dates, YYYY-MM-DD, Manila).
 export const AvailabilityQuerySchema = z
   .object({
     from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -342,25 +276,19 @@ export const AvailabilityQuerySchema = z
   .refine((q) => q.to >= q.from, { message: 'to must not be before from' });
 export type AvailabilityQuery = z.infer<typeof AvailabilityQuerySchema>;
 
-// 'hold': an unpaid request holding the dates until heldUntil (QA 25).
 export type AvailabilityBlocker = 'assignment' | 'hold' | 'maintenance' | 'closed' | 'holiday' | 'operator';
 
 export interface AvailabilityResponse {
-  // null = the tenant set no calendar: any time of any day.
   hours: { openTime: string; closeTime: string; openDays: number[] } | null;
-  // Billing settings the cart needs for minBookingHours.
   dailyHours: number;
   minHours: number;
   days: { date: string; available: boolean; reason: AvailabilityBlocker | null; heldUntil?: string }[];
 }
 
-// GET /bookings/:id/reschedule-suggestion (staff).
 export interface RescheduleSuggestion {
   items: {
     equipmentId: string;
-    // Nearest free window of the same length on the same unit, or null.
     sameUnit: { start: string; end: string } | null;
-    // Other units of the same type free for the original window.
     alternatives: string[];
   }[];
 }

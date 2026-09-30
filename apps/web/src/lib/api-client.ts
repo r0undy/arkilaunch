@@ -1,7 +1,5 @@
 import { authorizedFetch } from './auth-client.js';
 
-// Minimal JSON helpers for the POC screens (quotes/edtr/kyc) and the
-// TanStack Query layer alike.
 export class ApiError extends Error {
   readonly status: number;
   readonly payload: unknown;
@@ -14,73 +12,49 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiPost<T>(path: string, body: unknown, headers: Record<string, string> = {}): Promise<T> {
-  const res = await authorizedFetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(body),
-  });
+export function payloadField(error: unknown, key: string): unknown {
+  const payload = typeof error === 'object' && error !== null ? (error as { payload?: unknown }).payload : undefined;
+  return typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>)[key] : undefined;
+}
+
+async function send<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await authorizedFetch(path, init);
   const payload = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, payload);
   return payload as T;
 }
 
-// POST multipart/form-data (EDTR/KYC file capture, backend-unblock plan
-// workstream 4 -- replaces the old base64 data: URL hack). No
-// Content-Type header set here: the browser derives the multipart
-// boundary itself, which it cannot do if we set the header manually.
-export async function apiPostForm<T>(path: string, fields: Record<string, string>, file?: File): Promise<T> {
+const json = (method: string, body: unknown, headers: Record<string, string> = {}): RequestInit => ({
+  method,
+  headers: { 'Content-Type': 'application/json', ...headers },
+  body: JSON.stringify(body),
+});
+
+export const apiGet = <T>(path: string) => send<T>(path);
+export const apiPost = <T>(path: string, body: unknown, headers: Record<string, string> = {}) =>
+  send<T>(path, json('POST', body, headers));
+export const apiPatch = <T>(path: string, body: unknown) => send<T>(path, json('PATCH', body));
+export const apiPut = <T>(path: string, body: unknown) => send<T>(path, json('PUT', body));
+export const apiDelete = (path: string) => send<unknown>(path, { method: 'DELETE' }).then(() => undefined);
+
+// Multipart: no Content-Type header, so the browser sets the boundary itself.
+export function apiPostForm<T>(path: string, fields: Record<string, string>, file?: File): Promise<T> {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) form.append(key, value);
   if (file) form.append('file', file);
-
-  const res = await authorizedFetch(path, { method: 'POST', body: form });
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, payload);
-  return payload as T;
+  return send<T>(path, { method: 'POST', body: form });
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const res = await authorizedFetch(path);
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, payload);
-  return payload as T;
+// Leaves for a real http(s) payment page only; the stub adapter answers "about:blank?...".
+export function followCheckout(url: string | null): boolean {
+  if (!url || !/^https?:\/\//i.test(url)) return false;
+  window.location.assign(url);
+  return true;
 }
 
-export function apiPut<T>(path: string, body: unknown): Promise<T> {
-  return apiPatch<T>(path, body, 'PUT');
-}
-
-export async function apiPatch<T>(path: string, body: unknown, method: 'PATCH' | 'PUT' = 'PATCH'): Promise<T> {
-  const res = await authorizedFetch(path, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, payload);
-  return payload as T;
-}
-
-export async function apiDelete(path: string): Promise<void> {
-  const res = await authorizedFetch(path, { method: 'DELETE' });
-  if (!res.ok) {
-    const payload = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, payload);
-  }
-}
-
-// Quotes, KYC and checkout each dumped `JSON.stringify(error)` into the page
-// -- an API error code in a <pre> block is developer output, not an answer.
-// The codes are snake_case (`rate_card_expired`), which reads as a sentence
-// with the underscores taken out, so this is a formatter rather than a
-// per-screen message table. Screens with a real vocabulary of failures still
-// get their own mapper (lib/booking-error.ts, lib/edtr-error.ts).
 export function apiErrorText(error: unknown): string {
   if (error instanceof ApiError) {
     const code = error.message;
-    // A rental company not yet linked to PayMongo takes cash only
-    // (booking, truck and weekly-invoice checkouts all answer this).
     if (code === 'online_payment_unavailable') {
       return 'This rental company does not take online payment yet. Choose cash at the office instead.';
     }

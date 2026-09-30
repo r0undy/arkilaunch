@@ -11,9 +11,6 @@ import { PricingEngineService } from '../src/quotes/pricing-engine.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { fixtureCompanyId } from './fixture-company.js';
 
-// cr-arkilaunch-coupons.md: a tenant's coupon comes off the rent line of the
-// booking invoice only -- never the consumable deposit -- and honours
-// expiry, max uses, once-per-company and tenant isolation.
 describe('Coupons at checkout', () => {
   const events = new EventsService();
   const quotes = new QuotesService(new PricingEngineService(), events);

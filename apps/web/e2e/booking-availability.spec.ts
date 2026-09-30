@@ -1,10 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signInAsCustomer, TENANT_HEADERS } from './sign-in.js';
 
-// Phase 3: the rent dialog greys the days a unit cannot take. The admin
-// blocks two maintenance days on the first catalog unit through the API,
-// the customer sees exactly those days disabled, and the window is removed
-// afterwards so no other spec inherits it.
+// The blocked window is removed afterwards so no other spec inherits it.
 const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'admin@admin.com';
 const PASSWORD = process.env.SEED_PASSWORD ?? 'admin';
 
@@ -16,7 +13,6 @@ function localDate(d: Date): string {
 test('booking disables taken dates', async ({ page }) => {
   await signInAsCustomer(page);
   await page.goto('/equipment');
-  // The machine name on the first card links to its detail page (and id).
   await page.locator('h3 button').first().click();
   await expect(page).toHaveURL(/\/equipment\/[0-9a-f-]{36}/);
   const equipmentId = page.url().split('/equipment/')[1]!.split(/[?#]/)[0]!;
@@ -50,13 +46,11 @@ test('booking disables taken dates', async ({ page }) => {
     await page.goto('/equipment');
     const card = page.locator('h3 button').first();
     await expect(card).toBeVisible();
-    // Same first card; its Rent button opens the dialog.
     await page.getByRole('button', { name: /rent/i }).first().click();
     const dialog = page.getByRole('dialog');
     const calendar = dialog.getByRole('group', { name: /^Rental dates/ });
     await expect(calendar).toBeVisible();
     const cell = (d: Date) => calendar.locator(`[data-date="${localDate(d)}"]`);
-    // The calendar opens on this month; page forward to the blocked days.
     for (let i = 0; i < 3 && (await cell(blocked[1]!).count()) === 0; i++) {
       await dialog.getByRole('button', { name: 'Next month' }).click();
     }

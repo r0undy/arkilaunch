@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findSameCompany } from './customers.js';
+import { CustomerSignupSchema, findSameCompany } from './customers.js';
 
 describe('findSameCompany', () => {
   const mine = [
@@ -15,5 +15,13 @@ describe('findSameCompany', () => {
     expect(findSameCompany({ companyName: 'X', secNumber: 'cs 201912345' }, mine)?.id).toBe('b');
     expect(findSameCompany({ companyName: 'RESPONSE BASICS, INCORPORATED' }, mine)?.id).toBe('a');
     expect(findSameCompany({ companyName: 'New Co', tin: '111-222-333-000' }, mine)).toBeUndefined();
+  });
+});
+
+describe('CustomerSignupSchema', () => {
+  it('requires a 12-character password', () => {
+    const base = { email: 'a@b.test', acceptedTerms: true };
+    expect(CustomerSignupSchema.safeParse({ ...base, password: 'a'.repeat(11) }).success).toBe(false);
+    expect(CustomerSignupSchema.safeParse({ ...base, password: 'a'.repeat(12) }).success).toBe(true);
   });
 });

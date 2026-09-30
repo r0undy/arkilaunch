@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { customerSitesQueries, sitesQueries } from '../lib/queries.js';
 import { Link } from '@tanstack/react-router';
 import {
   EQUIPMENT_WEATHER_CLASS_INFO,
@@ -8,11 +9,11 @@ import {
   type SiteEquipmentWeatherResponse,
   type WeatherLevel,
 } from '@arkilaunch/shared';
-import { ApiError, apiErrorText, apiGet } from '../lib/api-client.js';
+import { ApiError, apiErrorText } from '../lib/api-client.js';
 import { formatDateTime } from '../lib/format.js';
 import { Surface } from './surface.js';
+import { OPEN_METEO_URL } from './weather-banner.js';
 
-// PAGASA-style colours, text always beside them (never colour alone).
 const CHIP: Record<WeatherLevel, string> = {
   normal: 'border-success text-text',
   advisory: 'border-warning bg-warning/10 text-text',
@@ -29,7 +30,6 @@ export function LevelChip({ level }: { level: WeatherLevel }) {
   );
 }
 
-// What each level means, the same for customer and staff.
 export function LevelLegend() {
   return (
     <details className="text-sm">
@@ -55,7 +55,6 @@ export function LevelLegend() {
   );
 }
 
-// Every machine on a site with its level, why, and what to do.
 export function EquipmentWeatherList({ data }: { data: SiteEquipmentWeatherResponse }) {
   return (
     <div className="flex flex-col gap-3">
@@ -109,16 +108,20 @@ export function EquipmentWeatherList({ data }: { data: SiteEquipmentWeatherRespo
         </p>
       )}
       <LevelLegend />
+      <p className="text-xs text-text-muted">
+        Weather data by{' '}
+        <a href={OPEN_METEO_URL} target="_blank" rel="noreferrer" className="underline">
+          Open-Meteo.com
+        </a>{' '}
+        (CC BY 4.0)
+      </p>
     </div>
   );
 }
 
-// The customer's machines on one of their sites. A site that is not theirs
-// (the yard's own) answers 404, which simply shows nothing.
 export function MyEquipmentWeather({ siteId }: { siteId: string }) {
   const query = useQuery({
-    queryKey: ['me', 'sites', siteId, 'equipment-weather'],
-    queryFn: () => apiGet<SiteEquipmentWeatherResponse>(`/me/sites/${siteId}/equipment-weather`),
+    ...customerSitesQueries.equipmentWeather(siteId),
     refetchInterval: 5 * 60_000,
     retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 2,
   });
@@ -138,11 +141,9 @@ export function MyEquipmentWeather({ siteId }: { siteId: string }) {
   );
 }
 
-// Staff: every machine on a site.
 export function SiteEquipmentWeather({ siteId }: { siteId: string }) {
   const query = useQuery({
-    queryKey: ['sites', siteId, 'equipment-weather'],
-    queryFn: () => apiGet<SiteEquipmentWeatherResponse>(`/sites/${siteId}/equipment-weather`),
+    ...sitesQueries.equipmentWeather(siteId),
     refetchInterval: 5 * 60_000,
   });
   if (query.isPending) return <p className="text-sm text-text-muted">Loading equipment weather...</p>;

@@ -4,9 +4,7 @@ import type { RouteCity, TruckBanRuleInput, TruckCostPolicy, TruckExtra, TruckIn
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 
-// Self-loading truck service (migration 0031). One settings row per tenant:
-// the truck's own fees and any extra charges the admin adds. Per-km and fuel
-// come from pricing_parameters, never duplicated here.
+// Per-km and fuel come from pricing_parameters, never duplicated here.
 export const truckSettings = pgTable(
   'truck_settings',
   {
@@ -16,11 +14,11 @@ export const truckSettings = pgTable(
     baseFeePhp: numeric('base_fee_php', { precision: 12, scale: 2 }).notNull().default('0'),
     driverFeePhp: numeric('driver_fee_php', { precision: 12, scale: 2 }).notNull().default('0'),
     extras: jsonb('extras').$type<TruckExtra[]>().notNull().default([]),
-    // 0037: null formula = the built-in default (DEFAULT_TRUCK_FORMULA).
+    // null formula = the built-in default (DEFAULT_TRUCK_FORMULA).
     formula: text('formula'),
     rangePct: numeric('range_pct', { precision: 5, scale: 2 }).notNull().default('10'),
     region: text('region').notNull().default('NCR'),
-    // 0071: formula multipliers, the negotiation floor and the internal
+    // 0072: formula multipliers, the negotiation floor and the internal
     // cost policy (staff-only).
     roundTripMultiplier: numeric('round_trip_multiplier', { precision: 6, scale: 3 }).notNull().default('1'),
     quoteMultiplier: numeric('quote_multiplier', { precision: 8, scale: 3 }).notNull().default('1'),
@@ -41,14 +39,13 @@ export const truckRequests = pgTable(
     requestedBy: uuid('requested_by')
       .notNull()
       .references(() => users.id),
-    // 0058: TRK-YYYY-NNNN, same generator and rules as rentals.code.
+    // Same generator and immutability rules as rentals.code.
     code: text('code').notNull().default(sql`NULL`),
     pickup: text('pickup').notNull(),
     dropoff: text('dropoff').notNull(),
     scheduledFor: timestamp('scheduled_for', { withTimezone: true }).notNull(),
     notes: text('notes'),
-    // Road distance from the routing estimate; confirmed_km is the admin's
-    // figure and is the only one a price is ever charged on.
+    // confirmed_km is the admin's figure and the only one a price is ever charged on.
     estimatedKm: numeric('estimated_km', { precision: 8, scale: 1 }).notNull(),
     routeCities: jsonb('route_cities').$type<RouteCity[]>(),
     routeMinutes: integer('route_minutes'),
@@ -58,7 +55,7 @@ export const truckRequests = pgTable(
     status: text('status').notNull().default('estimated'),
     agreedPricePhp: numeric('agreed_price_php', { precision: 14, scale: 2 }),
     price: jsonb('price').$type<TruckPrice>().notNull(),
-    // 0071: cost and negotiation floor saved when priced; staff-only.
+    // 0072: cost and negotiation floor saved when priced; staff-only.
     internal: jsonb('internal').$type<TruckInternal>(),
     // 0037: exact map pins (null = routed from the typed place names), the
     // cap locked at request time, and the callback before payment.
@@ -70,16 +67,11 @@ export const truckRequests = pgTable(
     callRequestedAt: timestamp('call_requested_at', { withTimezone: true }),
     callConfirmedAt: timestamp('call_confirmed_at', { withTimezone: true }),
     callConfirmedBy: uuid('call_confirmed_by').references(() => users.id),
-    // 0055: the customer's project site this trip serves, so staff can open
-    // its proof documents. FK in SQL (project_sites lives in rentals.ts,
-    // which imports this file). Null on requests made before 0055.
+    // FK in SQL (project_sites lives in rentals.ts, which imports this file).
     projectSiteId: uuid('project_site_id'),
-    // 0059: who drives and loads, for the site hub's personnel tab.
     driverName: text('driver_name'),
     helperName: text('helper_name'),
-    // 0067: the company the trip is booked for (the site is optional), what
-    // it carries, and the agreed price the customer last accepted. FK in
-    // SQL, like project_site_id.
+    // FKs in SQL, like project_site_id.
     customerId: uuid('customer_id'),
     loadDescription: text('load_description'),
     acceptedPricePhp: numeric('accepted_price_php', { precision: 14, scale: 2 }),
@@ -95,8 +87,7 @@ export const truckRequests = pgTable(
   ],
 );
 
-// 0058: one counter per tenant, service and Asia/Manila year behind
-// rentals.code / truck_requests.code. Written only by the insert trigger.
+// Written only by the booking-code insert trigger.
 export const bookingCodeCounters = pgTable(
   'booking_code_counters',
   {
@@ -114,7 +105,6 @@ export const bookingCodeCounters = pgTable(
   ],
 );
 
-// 0037: named tolls the admin picks from when confirming a trip's km.
 export const tollRates = pgTable(
   'toll_rates',
   {
@@ -124,7 +114,6 @@ export const tollRates = pgTable(
       .references(() => tenants.id, { onDelete: 'restrict' }),
     name: text('name').notNull(),
     feePhp: numeric('fee_php', { precision: 12, scale: 2 }).notNull(),
-    // 0046: an expressway entry-to-exit fee (null on a free-named toll).
     expressway: text('expressway'),
     entryPoint: text('entry_point'),
     exitPoint: text('exit_point'),

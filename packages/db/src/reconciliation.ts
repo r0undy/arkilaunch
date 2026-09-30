@@ -1,4 +1,4 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import {
   evaluateGate,
   worstDelta,
@@ -6,17 +6,14 @@ import {
   type HourDeltas,
   type ReconciliationReason,
 } from '@arkilaunch/shared';
-import { db } from './client.js';
+import type { Tx } from './with-tenant-tx.js';
 import { edtr, edtrLineItems, edtrReconciliations } from './schema/index.js';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export interface ReconcileResult {
   edtrId: string;
   reconciliationId: string;
-  // 'approved' and 'rejected' are terminal: reconcileEdtr reports them
-  // back unchanged rather than re-deriving them, so a re-run over an
-  // already-decided pair is a no-op (audit-ocr-money-path.md #6).
+  // approved/rejected are terminal: returned unchanged, so a re-run is a no-op.
   status: 'pending' | 'matched' | 'discrepancy' | 'approved' | 'rejected';
   counterpartEdtrId: string | null;
   deltaHours: number | null;
@@ -32,10 +29,7 @@ function minFieldConfidence(source: string, ocrPayload: unknown): number {
 
 interface HourSums {
   active: number;
-  // null when ANY line item on this side did not record idle hours, which
-  // is the normal case for a paper capture -- the real Almara form has no
-  // idle column (migration 0017). Summing a NULL as 0 would understate the
-  // total and manufacture a disagreement with a log that did record it.
+  // null when any line item lacks idle hours; summing NULL as 0 would fake a disagreement.
   idle: number | null;
 }
 
@@ -49,18 +43,9 @@ function sumHours(items: Array<{ hoursActive: string; hoursIdle: string | null }
   );
 }
 
-// active and idle are compared as their own dimensions, not folded into one
-// number, because the deduction prices hours_active alone -- see the
-// evaluateGate() comment in packages/shared/src/edtr.ts for the
-// offsetting-misclassification hole this closes. `total` is kept as a third
-// dimension so the new gate cannot be looser than the summed-total one it
-// replaces.
+// Active and idle compared separately: the deduction prices hours_active alone.
 function hourDeltas(a: HourSums, b: HourSums): HourDeltas {
-  // Idle is only comparable when BOTH logs recorded it. If either did not,
-  // the idle dimension and the summed total that contains it are dropped
-  // and the gate decides on active hours alone -- which is the figure the
-  // deduction is priced on. See the HourDeltas comment in
-  // packages/shared/src/edtr.ts for why this is not defaulted to zero.
+  // Idle (and total) only when BOTH logs recorded it; never default it to zero.
   const comparableIdle = a.idle !== null && b.idle !== null;
   return {
     active: Math.abs(a.active - b.active),
@@ -69,25 +54,9 @@ function hourDeltas(a: HourSums, b: HourSums): HourDeltas {
   };
 }
 
-// RFC-2 §2/§3 double-entry reconciliation, run by the edtr-ocr-worker after
-// extraction (jobs/src/edtr-ocr-worker.ts) and re-runnable from the API
-// whenever a second log lands. Shared here (not in apps/api or jobs alone)
-// because both need the same DB-touching orchestration around the pure
-// evaluateGate() in packages/shared.
-//
-// One nuance: edtr_reconciliations.edtr_id is UNIQUE per row, so pairing A
-// with B and (later) reconciling from B's side creates two rows, one keyed
-// on each edtr id, both pointing at the same counterpart and the same
-// computed delta/status. This is redundant but not unsafe: the deduction
-// gate (RFC2-04) only ever reads the reconciliation row keyed on the EDTR
-// the admin is approving, so duplication here does not weaken the gate.
-//
-// `counterpartId` pins the pairing. The site hub's office log is written
-// FOR one specific submission (cr-arkilaunch-edtr-site-hub-approval.md), and
-// the equipment-day is not unique (audit-db-tenant-isolation.md #4), so an
-// unpinned lookup could pair the office log with an older, rejected row for
-// the same day. The pinned row must still be same equipment, same day and
-// the other source, or nothing pairs.
+// RFC-2 double-entry reconciliation. edtr_id is UNIQUE, so reconciling from each side
+// writes two rows; safe because the gate reads only the row keyed on the approved EDTR.
+// `counterpartId` pins the pairing: the equipment-day is not unique.
 export async function reconcileEdtr(
   tx: Tx,
   tenantId: string,
@@ -108,8 +77,11 @@ export async function reconcileEdtr(
         ne(edtr.id, record.id),
         ne(edtr.source, record.source),
         opts.counterpartId ? eq(edtr.id, opts.counterpartId) : undefined,
+        // A decided pair's rows must never be re-paired (their status would be rewritten).
+        sql`not exists (select 1 from ${edtrReconciliations} r where (r.edtr_id = ${edtr.id} and r.status in ('approved', 'rejected')) or (r.counterpart_edtr_id = ${edtr.id} and r.status = 'approved'))`,
       ),
-    );
+    )
+    .orderBy(desc(edtr.createdAt));
   const pairablStatuses = new Set(['extracted', 'reconciled', 'review']);
   const counterpart = candidates.find((c) => pairablStatuses.has(c.status)) ?? null;
 
@@ -120,16 +92,7 @@ export async function reconcileEdtr(
     .limit(1);
   const tolerance = existingRecon ? Number(existingRecon.tolerance) : DEFAULT_TOLERANCE_HOURS;
 
-  // A terminal reconciliation is not re-openable by re-running the machine
-  // over it. Both write paths below used an unconditional `.set(values)`,
-  // so any future caller, manual re-reconcile or backfill would reset an
-  // 'approved' row to 'matched'/'pending' -- and approve() would then
-  // deduct a second time against the same equipment-day. No caller does
-  // this today, which is what made it latent rather than live
-  // (audit-ocr-money-path.md #6). approve()'s in-transaction status check
-  // plus FOR UPDATE closes the concurrent-HTTP race; this closes the one
-  // outside that transaction. Guarded here, before either branch, so
-  // neither can drift from the other.
+  // Terminal rows are never re-opened: resetting 'approved' would let approve() deduct twice.
   if (existingRecon && (existingRecon.status === 'approved' || existingRecon.status === 'rejected')) {
     return {
       edtrId: record.id,
@@ -142,10 +105,7 @@ export async function reconcileEdtr(
   }
 
   if (!counterpart) {
-    // AwaitingCounterpart in the RFC-2 stateDiagram: only one of the two
-    // independent logs exists so far. A single source can never auto-accept
-    // (RFC-2 §2 "that would defeat the whole point"), so this always routes
-    // to review, not a silent wait state.
+    // Single source never auto-accepts (RFC-2): always review.
     const values = {
       tenantId,
       edtrId: record.id,
@@ -178,20 +138,9 @@ export async function reconcileEdtr(
     tx.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, record.id)),
     tx.select().from(edtrLineItems).where(eq(edtrLineItems.edtrId, counterpart.id)),
   ]);
-  // A side with no line items at all sums to zero in every dimension, which
-  // would otherwise read as perfect agreement and auto-accept a pair that
-  // carries no evidence whatsoever. Fail closed instead: this is the money
-  // path, and "no hours recorded" is a reason for a human to look, never a
-  // reason to match. reconcileEdtr() is reachable from the worker
-  // (jobs/src/edtr-ocr-worker.ts) as well as from capture, so this cannot
-  // rely on the caller having validated line items.
+  // Fail closed: a side with no line items sums to zero and would read as agreement.
   const noEvidence = aItems.length === 0 || bItems.length === 0;
 
-  // Deltas are only meaningful when both sides actually recorded hours.
-  // Measuring against an absent log would persist a delta computed against
-  // a phantom all-zero side -- a reviewer would read "the logs disagree
-  // about 8 active hours" when the truth is that one log has no hours at
-  // all. null instead, exactly as the single_source branch above does.
   const deltas = noEvidence ? null : hourDeltas(sumHours(aItems), sumHours(bItems));
   const deltaHours = deltas ? worstDelta(deltas) : null;
 
@@ -214,10 +163,6 @@ export async function reconcileEdtr(
     deltaHours: deltaHours === null ? null : String(deltaHours),
     tolerance: String(tolerance),
     status,
-    // `deltas` is the per-dimension breakdown behind the single delta_hours
-    // scalar, so a reviewer can see WHICH dimension diverged rather than
-    // just that something did. Lives in the existing free-form jsonb
-    // alongside `reason`; no schema change.
     adjustments: { reason: gate.reason, deltas },
   };
   const [reconciliation] = existingRecon

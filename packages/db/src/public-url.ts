@@ -1,6 +1,4 @@
-// Public URL of an object in the public equipment-photos bucket (equipment
-// photos, tenant logo/hero). No SUPABASE_URL configured (unit tests, local
-// runs without storage) is not an error: there is simply nothing to render.
+// Public-read is deliberate: photos and logos are not evidence or KYC data. No SUPABASE_URL = nothing to render.
 export function publicPhotoUrl(key: string | null): string | null {
   if (!key) return null;
   const base = process.env.SUPABASE_URL?.replace(/\/$/, '');

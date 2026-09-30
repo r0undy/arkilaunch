@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { crossesLowBalance, depositForQuote, splitDeduction } from './deposit-ledger.js';
+import { crossesLowBalance, depositForQuote, resolveDepositLedger, splitDeduction } from './deposit-ledger.js';
+import { customers, invoices, projectSites, rentals } from './schema/index.js';
+import { withTenantTx } from './with-tenant-tx.js';
+import postgres from 'postgres';
 
 describe('deposit rollover math', () => {
   it('takes the whole charge from a deposit that covers it', () => {
@@ -36,5 +39,43 @@ describe('depositForQuote', () => {
     expect(depositForQuote(settings, null)).toBe(5000);
     expect(depositForQuote(settings, 0)).toBe(5000);
     expect(depositForQuote({ minDepositPhp: 5000, depositPct: 0 }, 100000)).toBe(5000);
+  });
+});
+
+describe('resolveDepositLedger', () => {
+  it('reports totalDeducted to the cent, with no float drift', async () => {
+    const direct = postgres(process.env.DATABASE_URL_DIRECT ?? '', { max: 1 });
+    const [tenant] = await direct`select id from tenants where slug = 'test-tenant-a'`;
+    await direct.end();
+    const tenantId = (tenant as { id: string }).id;
+    const rollback = new Error('rollback');
+    await expect(
+      withTenantTx({ tenantId, userId: tenantId, role: 'admin' }, async (tx) => {
+        const [customer] = await tx.select({ id: customers.id }).from(customers).limit(1);
+        const [site] = await tx.select({ id: projectSites.id }).from(projectSites).limit(1);
+        const [rental] = await tx
+          .insert(rentals)
+          .values({
+            tenantId,
+            customerId: customer!.id,
+            projectSiteId: site!.id,
+            status: 'active',
+            startDate: new Date('2037-01-01T00:00:00Z'),
+          })
+          .returning();
+        await tx.insert(invoices).values(
+          ['100.10', '200.20'].map((amount) => ({
+            tenantId,
+            rentalId: rental!.id,
+            invoiceType: 'deposit_deduction',
+            amount,
+            status: 'issued',
+            dueDate: new Date(),
+          })),
+        );
+        expect((await resolveDepositLedger(tx, rental!.id, tenantId)).totalDeducted).toBe(300.3);
+        throw rollback;
+      }),
+    ).rejects.toBe(rollback);
   });
 });

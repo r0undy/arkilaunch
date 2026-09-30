@@ -24,13 +24,7 @@ export interface VerifyPaymongoSignatureOptions {
   nowSeconds?: number; // injectable for tests; defaults to the real clock
 }
 
-// PayMongo webhook signature scheme (verified 2026-08-02 against
-// docs.paymongo.com/docs/developer-tools-webhook-setup-management):
-// header "Paymongo-Signature: t=<unix_ts>,te=<test_sig>,li=<live_sig>".
-// Sign `${t}.${rawBody}` with HMAC-SHA256 using the endpoint secret; compare
-// the live (li) or test (te) hex digest with a timing-safe check. This runs
-// BEFORE the body is ever parsed (QAD-T28: signature verified before body
-// parse; a bad signature is rejected, never processed).
+// HMAC-SHA256 of `${t}.${rawBody}`, timing-safe compared against li (live) or te (test); runs BEFORE any body parse.
 export function verifyPaymongoSignature(
   rawBody: string,
   signatureHeader: string,

@@ -496,9 +496,15 @@
       "idx": 71,
       "version": "7",
       "when": 1790400032000,
-      "tag": "0071_truck_pricing_policy",
+      "tag": "0071_hourly_rate_cards",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1790400033000,
+      "tag": "0072_truck_pricing_policy",
       "breakpoints": true
     }
   ]
 }
-

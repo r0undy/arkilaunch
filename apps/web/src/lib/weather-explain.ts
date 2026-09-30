@@ -1,11 +1,5 @@
 import { DEFAULT_WEATHER_THRESHOLDS, type WeatherObservation, type WeatherSeverity, type WeatherThresholds } from '@arkilaunch/shared';
 
-// Turns one observed reading + its computed severity into the sentences a
-// human needs to trust the conclusion: both the wind and rainfall numbers,
-// each compared against the actual threshold that matters for it, worded to
-// reflect how close (or not) the reading actually is -- a calm day and a
-// stormy day never produce the same sentence with different numbers
-// swapped in. Pure, no IO, so it's testable without rendering anything.
 export function explainAdvisory(
   observed: WeatherObservation,
   severity: WeatherSeverity,

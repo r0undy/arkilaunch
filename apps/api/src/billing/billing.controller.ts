@@ -1,17 +1,9 @@
 import { Controller, Get, Param, Query, Req } from '@nestjs/common';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
 import { RequirePermission } from '../common/decorators/require-permission.decorator.js';
-import { UuidParamPipe } from '../common/uuid-param.pipe.js';
 import { BillingService } from './billing.service.js';
 import { InvoiceListQueryDto } from './dto.js';
+import type { CtxRequest } from '../common/request.js';
 
-type CtxRequest = Request & { ctx: RequestContext };
-
-// PRD-F2/F3 read surface backing S9 Billing & Deposit Ledger
-// (cr-arkilaunch-f9-read-surface.md). billing:read-gated; owner holds it
-// read-mostly (QAD-T19), admin/platform_admin hold it too. Read-only: every
-// write to invoices/payments happens in edtr.service.ts / payments.service.ts.
 @Controller()
 export class BillingController {
   constructor(private readonly billing: BillingService) {}
@@ -28,24 +20,23 @@ export class BillingController {
     return this.billing.getInvoice(req.ctx, id);
   }
 
-  // The customer's own invoice (ownership checked in the service).
+  // Ownership checked in the service.
   @Get('me/invoices/:id')
   @RequirePermission('booking:read')
   mine(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.billing.getInvoice(req.ctx, id);
   }
 
-  // Statement of Account (QA 19): staff on any rental, a customer on their
-  // own (ownership checked in the service).
+  // Ownership checked in the service for a customer.
   @Get('rentals/:id/statement')
   @RequirePermission('billing:read')
-  statement(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  statement(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.billing.statement(req.ctx, id);
   }
 
   @Get('me/rentals/:id/statement')
   @RequirePermission('booking:read')
-  myStatement(@Param('id', UuidParamPipe) id: string, @Req() req: CtxRequest) {
+  myStatement(@Param('id') id: string, @Req() req: CtxRequest) {
     return this.billing.statement(req.ctx, id);
   }
 

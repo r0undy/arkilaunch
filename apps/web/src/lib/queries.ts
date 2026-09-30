@@ -28,10 +28,21 @@ import type {
   UserSelfResponse,
   UtilizationReportResponse,
   WeatherAdvisoryListResponse,
+  PricingParametersInput,
+  AvailabilityResponse,
+  EdtrSheetContext,
+  EquipmentReportResponse,
+  MaintenanceDetailResponse,
+  NotificationListResponse,
+  SiteDocument,
+  SiteEquipmentWeatherResponse,
+  TenantApplicationListResponse,
+  TenantBranding,
 } from '@arkilaunch/shared';
-import { apiGet } from './api-client.js';
+import { apiGet, apiPost } from './api-client.js';
 import {
   getCustomers,
+  getEquipment,
   getEquipmentTypes,
   getProjectSites,
   getRateCards,
@@ -44,16 +55,16 @@ import {
   type CapabilitiesRef,
   type RentalRef,
 } from './reference-client.js';
-import { PAGE_SIZE } from '../components/pagination.js';
+export const PAGE_SIZE = 20;
 
-// Query-key convention: [resourceSegment, ...identifiers, filters?],
-// lowercase, mirroring the API path -- ['equipment'], ['equipment', id],
-// ['reports', 'utilization']. Prefix-first so
-// invalidateQueries({ queryKey: ['reports'] }) hits every reports query.
-// Keys never appear as literals at call sites; only these factories build
-// them, so they cannot drift out of sync with each other.
+function withParams(path: string, params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== '') search.set(key, String(value));
+  return `${path}?${search}`;
+}
 
-// The admin Equipment tab's filters (GET /equipment); empty = not applied.
+// Keys are prefix-first, mirroring the API path, so invalidating ['reports'] hits every reports query.
+
 export interface EquipmentListFilters {
   typeId?: string;
   status?: string;
@@ -62,6 +73,21 @@ export interface EquipmentListFilters {
 }
 
 export const equipmentQueries = {
+  report: (equipmentId: string) =>
+    queryOptions({
+      queryKey: ['equipment', equipmentId, 'report'] as const,
+      queryFn: () => apiGet<EquipmentReportResponse>(`/equipment/${equipmentId}/report`),
+    }),
+  maintenance: (equipmentId: string) =>
+    queryOptions({
+      queryKey: ['equipment', equipmentId, 'maintenance'] as const,
+      queryFn: () => apiGet<MaintenanceDetailResponse>(`/equipment/${equipmentId}/maintenance`),
+    }),
+  availability: (equipmentId: string, from: string, to: string) =>
+    queryOptions({
+      queryKey: ['equipment', equipmentId, 'availability', from, to] as const,
+      queryFn: () => apiGet<AvailabilityResponse>(`/equipment/${equipmentId}/availability?from=${from}&to=${to}`),
+    }),
   list: (limit = PAGE_SIZE, offset = 0, filters: EquipmentListFilters = {}) =>
     queryOptions({
       queryKey: ['equipment', limit, offset, filters] as const,
@@ -73,15 +99,11 @@ export const equipmentQueries = {
     }),
 };
 
-// @Public, anchor-tenant-only for now -- see catalog.service.ts. Unlike the
-// other factories here this is reachable with no access token.
 export const catalogQueries = {
   equipment: () =>
     queryOptions({
       queryKey: ['catalog', 'equipment'] as const,
-      // ponytail: the storefront filters in the browser, so it takes the
-      // API's 100-row ceiling (the default was 50). Past 100 machines, page
-      // on the server -- that needs a total from the catalog SQL function.
+      // ponytail: storefront filters in the browser at the API's 100-row ceiling; page on the server past 100 machines.
       queryFn: () => apiGet<CatalogEquipmentListResponse>('/catalog/equipment?limit=100'),
     }),
   equipmentDetail: (id: string) =>
@@ -101,13 +123,35 @@ export const sitesQueries = {
     queryOptions({
       queryKey: ['sites', limit, offset, deployment ?? 'all'] as const,
       queryFn: () =>
-        apiGet<SiteListResponse>(`/sites?limit=${limit}&offset=${offset}${deployment ? `&deployment=${deployment}` : ''}`),
+        apiGet<SiteListResponse>(withParams('/sites', { limit, offset, deployment })),
     }),
-  // The site hub (cr-arkilaunch-edtr-site-hub-approval.md).
   hub: (siteId: string) =>
     queryOptions({
       queryKey: ['sites', siteId, 'hub'] as const,
       queryFn: () => apiGet<SiteHubResponse>(`/sites/${siteId}/hub`),
+    }),
+  documents: (siteId: string) =>
+    queryOptions({
+      queryKey: ['sites', siteId, 'documents'] as const,
+      queryFn: () => apiGet<{ documents: SiteDocument[]; proofComplete: boolean }>(`/sites/${siteId}/documents`),
+    }),
+  equipmentWeather: (siteId: string) =>
+    queryOptions({
+      queryKey: ['sites', siteId, 'equipment-weather'] as const,
+      queryFn: () => apiGet<SiteEquipmentWeatherResponse>(`/sites/${siteId}/equipment-weather`),
+    }),
+};
+
+export const tenantsQueries = {
+  applications: (limit: number, offset: number) =>
+    queryOptions({
+      queryKey: ['tenants', 'applications', limit, offset] as const,
+      queryFn: () => apiGet<TenantApplicationListResponse>(`/tenants/applications?limit=${limit}&offset=${offset}`),
+    }),
+  branding: (basePath: string) =>
+    queryOptions({
+      queryKey: ['branding', basePath] as const,
+      queryFn: () => apiGet<TenantBranding>(`${basePath}/branding`),
     }),
 };
 
@@ -126,18 +170,13 @@ export const truckBanRulesQuery = {
   queryFn: () => apiGet<TruckBanRule[]>('/truck-ban-rules'),
 };
 
-// Staff truck queue (cr-arkilaunch-console-polish.md). Every key starts
-// with 'truck-requests', so invalidating that prefix refreshes them all.
 export const trucksQueries = {
   list: (limit: number, offset: number, q = '', status?: 'open' | 'closed') =>
     queryOptions({
       queryKey: ['truck-requests', limit, offset, q, status ?? 'all'] as const,
       queryFn: () =>
-        apiGet<TruckRequestListResponse>(
-          `/truck-requests?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}${status ? `&status=${status}` : ''}`,
-        ),
+        apiGet<TruckRequestListResponse>(withParams('/truck-requests', { limit, offset, q, status })),
     }),
-  // The road line between a request's saved pins, for the drawer map.
   route: (id: string) =>
     queryOptions({
       queryKey: ['truck-requests', id, 'route'] as const,
@@ -145,17 +184,12 @@ export const trucksQueries = {
       staleTime: Infinity,
       retry: false,
     }),
-  // The customer's own requests, one page at a time. Every key starts with
-  // MY_TRUCK_REQUESTS, so invalidating that refreshes every page.
   mine: (limit: number, offset: number, q = '', status?: 'open' | 'closed') =>
     queryOptions({
       queryKey: [...MY_TRUCK_REQUESTS, limit, offset, q, status ?? 'all'] as const,
       queryFn: () =>
-        apiGet<TruckRequestListResponse>(
-          `/me/truck-requests?limit=${limit}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ''}${status ? `&status=${status}` : ''}`,
-        ),
+        apiGet<TruckRequestListResponse>(withParams('/me/truck-requests', { limit, offset, q, status })),
     }),
-  // The same line for the customer's own request.
   myRoute: (id: string) =>
     queryOptions({
       queryKey: ['my-truck-route', id] as const,
@@ -170,7 +204,7 @@ export const invoicesQueries = {
     queryOptions({
       queryKey: ['invoices', limit, offset, status ?? 'all'] as const,
       queryFn: () =>
-        apiGet<InvoiceListResponse>(`/invoices?limit=${limit}&offset=${offset}${status ? `&status=${status}` : ''}`),
+        apiGet<InvoiceListResponse>(withParams('/invoices', { limit, offset, status })),
     }),
   detail: (invoiceId: string) =>
     queryOptions({
@@ -184,7 +218,7 @@ export const incidentsQueries = {
     queryOptions({
       queryKey: ['incidents', limit, offset, kind ?? 'all'] as const,
       queryFn: () =>
-        apiGet<IncidentListResponse>(`/incidents?limit=${limit}&offset=${offset}${kind ? `&kind=${kind}` : ''}`),
+        apiGet<IncidentListResponse>(withParams('/incidents', { limit, offset, kind })),
     }),
 };
 
@@ -196,8 +230,11 @@ export interface BookingListFilters {
 }
 
 export const bookingsQueries = {
-  // `q` narrows to booking codes starting with it (EQR-2026-00…) or a
-  // customer company name; `filters` are the staff list's chips (QA 27).
+  edtrSheet: (bookingId: string) =>
+    queryOptions({
+      queryKey: ['booking', bookingId, 'edtr-sheet'] as const,
+      queryFn: () => apiGet<EdtrSheetContext>(`/bookings/${bookingId}/edtr-sheet`),
+    }),
   list: (limit = PAGE_SIZE, offset = 0, q = '', filters: BookingListFilters = {}) =>
     queryOptions({
       queryKey: ['bookings', limit, offset, q, filters] as const,
@@ -218,7 +255,6 @@ export const bookingsQueries = {
     }),
 };
 
-// Wire shape of QuotesService.get/preview/create (apps/api/src/quotes/quotes.service.ts).
 export interface QuoteLine {
   kind: 'equipment' | 'custom';
   description?: string;
@@ -267,10 +303,6 @@ export interface ReportsSnapshot {
 }
 
 export const reportQueries = {
-  // One query for both reports, shared by app.index.tsx (dashboard gauge)
-  // and app.insights.tsx (full detail) so navigating between them reuses
-  // the cache. Previously each screen awaited these sequentially inside its
-  // own hand-rolled fetcher; Promise.all runs them in parallel.
   snapshot: () =>
     queryOptions({
       queryKey: ['reports', 'snapshot'] as const,
@@ -294,12 +326,61 @@ export const referenceQueries = {
     }),
   rateCards: () =>
     queryOptions({ queryKey: ['reference', 'rate-cards'] as const, queryFn: getRateCards }),
+  equipment: () => queryOptions({ queryKey: ['reference', 'equipment'] as const, queryFn: getEquipment }),
   rentals: () => queryOptions({ queryKey: ['reference', 'rentals'] as const, queryFn: getRentals }),
   customers: () =>
     queryOptions({ queryKey: ['reference', 'customers'] as const, queryFn: getCustomers }),
   projectSites: () =>
     queryOptions({ queryKey: ['reference', 'project-sites'] as const, queryFn: getProjectSites }),
 };
+
+export interface PricingParametersRow {
+  region: string;
+  operatorHourlyPhp: string;
+  maintenanceHourlyPhp: string;
+  bufferPct: string;
+  fuelLPerHour: string;
+  fuelLPerKm: string;
+  transportPhpPerKm: string;
+  dieselOverridePhp: string | null;
+  dieselOverrideDate: string | null;
+}
+
+export interface DieselReading {
+  pricePhp: number;
+  observedDate: string;
+  source: string;
+}
+
+export const pricingQueries = {
+  parameters: () =>
+    queryOptions({
+      queryKey: ['pricing-parameters'] as const,
+      queryFn: () => apiGet<PricingParametersRow | null>('/pricing/parameters'),
+    }),
+  diesel: () =>
+    queryOptions({
+      queryKey: ['diesel-price'] as const,
+      queryFn: () => apiGet<DieselReading | null>('/pricing/diesel-price'),
+    }),
+};
+
+// Resend the override's own date: a re-stamped date would make a stale override fresh again.
+export function saveParams(row: PricingParametersRow | null | undefined, patch: Partial<PricingParametersInput>) {
+  return apiPost('/pricing/parameters', {
+    region: row?.region ?? 'NCR',
+    operatorHourlyPhp: Number(row?.operatorHourlyPhp),
+    maintenanceHourlyPhp: Number(row?.maintenanceHourlyPhp),
+    bufferPct: Number(row?.bufferPct),
+    fuelLPerHour: Number(row?.fuelLPerHour),
+    fuelLPerKm: Number(row?.fuelLPerKm),
+    transportPhpPerKm: Number(row?.transportPhpPerKm),
+    ...(row?.dieselOverridePhp
+      ? { dieselOverridePhp: Number(row.dieselOverridePhp), dieselOverrideDate: row.dieselOverrideDate ?? undefined }
+      : {}),
+    ...patch,
+  });
+}
 
 export const usersQueries = {
   me: () =>
@@ -309,9 +390,13 @@ export const usersQueries = {
     }),
 };
 
-// Badge counts read `total`, not a page's length: a page tops out at the
-// API's limit, so counting its rows capped every badge at 50.
+// Badges read `total`, never a page's length (capped at the API limit).
 export const notificationsQueries = {
+  list: (limit = 20, offset = 0) =>
+    queryOptions({
+      queryKey: ['notifications', limit, offset] as const,
+      queryFn: () => apiGet<NotificationListResponse>(`/notifications?limit=${limit}&offset=${offset}`),
+    }),
   unreadCount: () =>
     queryOptions({
       queryKey: ['notifications', 'unread-count'] as const,
@@ -328,10 +413,11 @@ export const weatherQueries = {
 };
 
 export const edtrQueries = {
-  list: () =>
+  review: () =>
     queryOptions({
-      queryKey: ['edtr'] as const,
-      queryFn: () => apiGet<{ items: unknown[] }>('/edtr'),
+      queryKey: ['edtr', 'review'] as const,
+      queryFn: () =>
+        apiGet<{ items: { id: string; equipmentId: string; reportDate: string }[] }>('/edtr?status=review'),
     }),
   reviewCount: () =>
     queryOptions({
@@ -345,9 +431,6 @@ export const edtrQueries = {
     }),
 };
 
-// Fleet-wide utilization %, derived client-side from the per-unit
-// UtilizationReportResponse.fleet[].utilizationPct (there is no top-level
-// aggregate field on the wire -- see PLAN Phase 1 note).
 export function fleetUtilizationPct(report: UtilizationReportResponse | undefined): number | null {
   if (!report || report.fleet.length === 0) return null;
   const sum = report.fleet.reduce((total, unit) => total + unit.utilizationPct, 0);
@@ -356,16 +439,13 @@ export function fleetUtilizationPct(report: UtilizationReportResponse | undefine
 
 export type { CapabilitiesRef, CustomerRef, EquipmentTypeRef, ProjectSiteRef, RateCardRef, RentalRef };
 
-// Customer prerequisites CR: the caller's own companies and sites.
 export const companiesQueries = {
   mine: () =>
     queryOptions({
       queryKey: ['me', 'companies'] as const,
       queryFn: () => apiGet<CompanyResponse[]>('/me/companies'),
     }),
-  // A 300s signed URL for one of the caller's own KYC documents, used as
-  // the registration-certificate thumbnail on the company card. Short TTL,
-  // so it is not cached beyond the screen that shows it.
+  // Signed URL lives 300s: staleTime must stay under it.
   documentUrl: (companyId: string, documentId: string) =>
     queryOptions({
       queryKey: ['me', 'companies', companyId, 'documents', documentId, 'url'] as const,
@@ -383,10 +463,7 @@ export const companiesQueries = {
 };
 
 export const forecastQueries = {
-  // The server caches on coordinates for the poller's own cadence, so this
-  // staleTime only stops a remount refetching -- it is not the budget
-  // control. Retry is off: an unavailable forecast is a state the rail
-  // renders, not a transient to hammer through against a metered free tier.
+  // No retry: the forecast API is a metered free tier.
   site: (siteId: string) =>
     queryOptions({
       queryKey: ['me', 'sites', siteId, 'forecast'] as const,
@@ -394,7 +471,6 @@ export const forecastQueries = {
       staleTime: 1_800_000,
       retry: false,
     }),
-  // No site of their own yet: the general Metro Manila forecast.
   area: () =>
     queryOptions({
       queryKey: ['me', 'forecast'] as const,
@@ -409,5 +485,10 @@ export const customerSitesQueries = {
     queryOptions({
       queryKey: ['me', 'sites'] as const,
       queryFn: () => apiGet<CustomerSiteResponse[]>('/me/sites'),
+    }),
+  equipmentWeather: (siteId: string) =>
+    queryOptions({
+      queryKey: ['me', 'sites', siteId, 'equipment-weather'] as const,
+      queryFn: () => apiGet<SiteEquipmentWeatherResponse>(`/me/sites/${siteId}/equipment-weather`),
     }),
 };

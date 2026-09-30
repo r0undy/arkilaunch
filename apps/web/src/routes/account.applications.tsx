@@ -1,5 +1,5 @@
 import { createRoute, Link } from '@tanstack/react-router';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { CompanyResponse } from '@arkilaunch/shared';
 import { isPrimaryRegistration } from '@arkilaunch/shared';
@@ -7,7 +7,7 @@ import { accountLayoutRoute } from './_account.js';
 import { companiesQueries } from '../lib/queries.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { buttonClass } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { Skeleton } from '../components/skeleton.js';
 import { LoadError } from '../components/load-error.js';
@@ -19,16 +19,7 @@ import {
 } from '../components/company-card.js';
 import { formatStatus } from '../lib/format.js';
 
-// Figma 251:1945 "Company Applications". The companies one login has
-// registered to rent under, their verification state, and where to manage
-// each.
-//
-// This is NOT the tenant onboarding application (GET /tenants/me/application,
-// a business becoming an ArkiLaunch tenant), which this screen used to read
-// by mistake -- that one is correctly singular, because users.tenantId is a
-// single FK and RLS keys off one tenant per JWT. What the design draws is
-// the `customers` rows behind GET /me/companies, whose own schema comment
-// cites this frame.
+// Not the tenant onboarding application: these are the customers rows behind GET /me/companies.
 
 type StatusFilter = 'all' | 'pending' | 'approved';
 
@@ -38,22 +29,17 @@ const TABS: { value: StatusFilter; label: string }[] = [
   { value: 'approved', label: 'Approved' },
 ];
 
-// A <dl> pair, not two loose paragraphs: the number is meaningless read on
-// its own, and "Approved" also appears as a filter tab, so the count needs
-// to be tied to its label rather than sitting near it.
+// dt first as HTML requires; flex-col-reverse keeps the number on top.
 function CounterTile({ value, label }: { value: number; label: string }) {
   return (
-    <Surface radius="md" elevation="sm" className="flex flex-col gap-1 p-5">
-      <dd className="text-3xl font-semibold text-text">{value}</dd>
+    <Surface radius="md" elevation="sm" className="flex flex-col-reverse gap-1 p-5">
       <dt className="text-sm text-text-muted">{label}</dt>
+      <dd className="text-3xl font-semibold text-text">{value}</dd>
     </Surface>
   );
 }
 
-// The registration certificate the customer uploaded, as the card's
-// thumbnail. It is private KYC evidence, so it is fetched as a short-lived
-// signed URL per document rather than served from a public bucket; a company
-// with no certificate yet, or a URL that fails, falls back to the label.
+// Private KYC evidence: a short-lived signed URL per document, never a public bucket.
 function RegistrationThumbnail({ company }: { company: CompanyResponse }) {
   const doc = company.documents.find((d) => isPrimaryRegistration(d.documentType));
   const url = useQuery({
@@ -122,9 +108,7 @@ function ApplicationCard({ company }: { company: CompanyResponse }) {
           )}
         </p>
       </div>
-      <Link to="/account/companies/$companyId" params={{ companyId: company.id }}>
-        <Button variant="secondary">Manage</Button>
-      </Link>
+      <Link to="/account/companies/$companyId" params={{ companyId: company.id }} className={buttonClass('secondary')}>Manage</Link>
     </Surface>
   );
 }
@@ -135,30 +119,23 @@ function ApplicationsPage() {
   const [status, setStatus] = useState<StatusFilter>('all');
 
   const rows = companies.data ?? [];
-  const counts = useMemo(
-    () => ({
-      total: rows.length,
-      approved: rows.filter((c) => c.kycStatus === 'approved').length,
-      pending: rows.filter((c) => c.kycStatus === 'pending').length,
-    }),
-    [rows],
-  );
+  const counts = {
+    total: rows.length,
+    approved: rows.filter((c) => c.kycStatus === 'approved').length,
+    pending: rows.filter((c) => c.kycStatus === 'pending').length,
+  };
 
-  // ponytail: client-side filter over an unpaginated GET /me/companies --
-  // one login holds a handful of companies. Push status + q into SQL if that
-  // ever grows past a page.
-  const shown = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return rows.filter((c) => {
-      if (status !== 'all' && c.kycStatus !== status) return false;
-      if (!q) return true;
-      return (
-        c.companyName.toLowerCase().includes(q) ||
-        (c.secNumber ?? '').toLowerCase().includes(q) ||
-        (c.tin ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [rows, search, status]);
+  // ponytail: client-side filter over unpaginated /me/companies; move status + q into SQL past a page.
+  const q = search.trim().toLowerCase();
+  const shown = rows.filter((c) => {
+    if (status !== 'all' && c.kycStatus !== status) return false;
+    if (!q) return true;
+    return (
+      c.companyName.toLowerCase().includes(q) ||
+      (c.secNumber ?? '').toLowerCase().includes(q) ||
+      (c.tin ?? '').toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="flex flex-col gap-5">
@@ -166,9 +143,7 @@ function ApplicationsPage() {
         title="Applications"
         description="The companies you rent under, and where each verification stands."
         actions={
-          <Link to="/account/companies/new">
-            <Button variant="primary">Add company</Button>
-          </Link>
+          <Link to="/account/companies/new" className={buttonClass('primary')}>Add company</Link>
         }
       />
 
@@ -219,9 +194,7 @@ function ApplicationsPage() {
           title="Add your company first"
           description="We need the company you are renting for before a booking: its TIN, billing address, an ID and its registration."
           action={
-            <Link to="/account/companies/new">
-              <Button variant="primary">Add company</Button>
-            </Link>
+            <Link to="/account/companies/new" className={buttonClass('primary')}>Add company</Link>
           }
         />
       )}

@@ -19,8 +19,6 @@ const FIELD_ERRORS = {
 } as const;
 type OwnField = keyof typeof FIELD_ERRORS;
 
-// A zod 400 names the field; everything else was one generic line, which
-// hid a mistyped TIN behind "Something went wrong".
 type SubmitError = { field?: OwnField; back?: boolean; text: string };
 
 export function submitError(err: unknown): SubmitError {
@@ -45,7 +43,6 @@ export function submitError(err: unknown): SubmitError {
 
 function RegisterCompanyDetailsPage() {
   const navigate = useNavigate();
-  // Prefilled from the landing page's address preview, if the visitor typed one.
   const [companyName, setCompanyName] = useState(() => {
     try {
       return sessionStorage.getItem('arkilaunch.registrationCompanyName') ?? '';

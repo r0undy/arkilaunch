@@ -10,10 +10,6 @@ import {
   defaultRentalWindow,
 } from './cart-client.js';
 
-// The cart is read by three places that do not know about each other -- the
-// cart page, the sidebar count and the browse rail. Before useCart they each
-// held a private copy and a change in one never reached the others.
-
 function machine(model: string) {
   return { equipmentId: `id-${model}`, model, ...defaultRentalWindow() };
 }
@@ -50,9 +46,7 @@ describe('useCart', () => {
     expect(result.current.map((i) => i.model)).toEqual(['B2']);
   });
 
-  // clearCart is the one mutator that does not route through saveCart, and it
-  // runs right after a booking is placed. Miss it and the sidebar keeps
-  // counting machines the customer has already booked.
+  // clearCart does not route through saveCart and must still publish.
   it('re-renders when the cart is cleared after checkout', () => {
     addToCart(machine('JCB 3CX'));
     const { result } = renderHook(() => useCart());
@@ -84,5 +78,20 @@ describe('useCart', () => {
     });
     expect(() => getCart()).not.toThrow();
     spy.mockRestore();
+  });
+
+  it('keeps earlier items when storage is blocked', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const { result } = renderHook(() => useCart());
+    act(() => addToCart(machine('A')));
+    act(() => addToCart(machine('B')));
+    expect(result.current.map((i) => i.model)).toEqual(['A', 'B']);
+    get.mockRestore();
+    set.mockRestore();
   });
 });

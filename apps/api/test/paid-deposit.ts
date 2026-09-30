@@ -2,9 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { invoices, withTenantTx } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
 
-// An EDTR deduction draws only on a deposit actually paid (edtr.service.ts
-// deposit_not_paid gate). Engine specs that exercise the deduct path give
-// their rentals one, as checkout + webhook (or a cash receipt) would.
+// A deduction draws only on a paid deposit, so deduct-path specs give their rentals one.
 export async function ensurePaidDeposit(ctx: RequestContext, ...rentalIds: string[]): Promise<void> {
   await withTenantTx(ctx, async (tx) => {
     for (const rentalId of rentalIds) {

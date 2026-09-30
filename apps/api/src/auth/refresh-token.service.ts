@@ -7,8 +7,9 @@ import {
   roles,
   withTenantTx,
   findRefreshTokenByHashForAuth,
+  type Tx,
 } from '@arkilaunch/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const BOOTSTRAP_ROLE = 'system'; // GUC placeholder; RLS filters on tenant_id only, role is informational
@@ -29,13 +30,8 @@ interface RotateResult {
   issued: IssuedRefreshToken;
 }
 
-// RFC-1 §3: rotating refresh tokens, family lineage, reuse detection. A
-// token replayed after rotation revokes the entire family and writes a
-// refresh_reuse_detected audit row (QAD abuse gate). Every write here runs
-// through withTenantTx (normal RLS path) once the tenant is known; only the
-// initial lookup-by-hash uses the SECURITY DEFINER function in
-// packages/db/src/auth-lookup.ts, because that lookup has no tenant
-// context yet by definition.
+// A token replayed after rotation revokes the whole family. Only the lookup-by-hash uses SECURITY DEFINER
+// (no tenant context yet); every write runs through withTenantTx.
 @Injectable()
 export class RefreshTokenService {
   async issue(
@@ -43,20 +39,9 @@ export class RefreshTokenService {
     userId: string,
     role: string,
     familyId?: string,
+    parentId?: string,
   ): Promise<IssuedRefreshToken> {
-    const raw = randomBytes(32).toString('hex');
-    const resolvedFamilyId = familyId ?? randomUUID();
-    await withTenantTx({ tenantId, userId, role }, (tx) =>
-      tx.insert(refreshTokens).values({
-        tenantId,
-        userId,
-        familyId: resolvedFamilyId,
-        tokenHash: hashToken(raw),
-        status: 'active',
-        expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
-      }),
-    );
-    return { token: raw, familyId: resolvedFamilyId };
+    return withTenantTx({ tenantId, userId, role }, (tx) => insertToken(tx, tenantId, userId, familyId, parentId));
   }
 
   async rotate(rawToken: string): Promise<RotateResult> {
@@ -67,55 +52,52 @@ export class RefreshTokenService {
       throw new UnauthorizedException('invalid_refresh_token');
     }
 
-    // Re-read the user's current role rather than trusting anything about
-    // the old session: a role change or deactivation between refreshes
-    // takes effect immediately.
+    // Re-read the current role: a role change or deactivation takes effect at the next refresh.
     const current = await this.resolveCurrentUser(existing.tenantId, existing.userId);
     const ctx = { tenantId: existing.tenantId, userId: existing.userId, role: current.role };
 
     if (current.status !== 'active') {
-      // Without this check a deactivated user could keep rotating a refresh
-      // token for up to REFRESH_TOKEN_TTL_MS (30 days); deactivation would
-      // be cosmetic. Revoke the family too, so this refresh token cannot be
-      // replayed once the user is later reactivated.
+      // Else a deactivated user could keep rotating for 30 days; revoking the family stops a replay after reactivation.
       await this.revokeFamily(ctx, existing.familyId);
       throw new UnauthorizedException('user_inactive');
     }
 
-    if (existing.status !== 'active') {
-      await this.revokeFamily(ctx, existing.familyId);
-      await withTenantTx(ctx, (tx) =>
-        tx.insert(auditLogs).values({
-          tenantId: existing.tenantId,
-          actorId: existing.userId,
-          action: 'refresh_reuse_detected',
-          entity: 'refresh_tokens',
-          entityId: existing.id,
-        }),
-      );
-      throw new UnauthorizedException('refresh_reuse_detected');
-    }
+    if (existing.status !== 'active') return this.reuseDetected(ctx, existing);
 
     if (existing.expiresAt.getTime() < Date.now()) {
       throw new UnauthorizedException('refresh_token_expired');
     }
 
-    await withTenantTx(ctx, (tx) =>
-      tx
+    // Claimed atomically: of two concurrent rotations only one sees status 'active'; the other is a replay.
+    // The child is inserted in the same tx, so the loser's family revoke waits for it and revokes it too.
+    const issued = await withTenantTx(ctx, async (tx) => {
+      const claimed = await tx
         .update(refreshTokens)
         .set({ status: 'rotated', rotatedAt: new Date() })
-        .where(eq(refreshTokens.id, existing.id)),
-    );
-
-    const issued = await this.issue(ctx.tenantId, ctx.userId, ctx.role, existing.familyId);
-    await withTenantTx(ctx, (tx) =>
-      tx
-        .update(refreshTokens)
-        .set({ parentId: existing.id })
-        .where(eq(refreshTokens.tokenHash, hashToken(issued.token))),
-    );
-
+        .where(and(eq(refreshTokens.id, existing.id), eq(refreshTokens.status, 'active')))
+        .returning({ id: refreshTokens.id });
+      if (claimed.length === 0) return null;
+      return insertToken(tx, ctx.tenantId, ctx.userId, existing.familyId, existing.id);
+    });
+    if (!issued) return this.reuseDetected(ctx, existing);
     return { tenantId: ctx.tenantId, userId: ctx.userId, role: ctx.role, issued };
+  }
+
+  private async reuseDetected(
+    ctx: { tenantId: string; userId: string; role: string },
+    existing: { id: string; familyId: string },
+  ): Promise<never> {
+    await this.revokeFamily(ctx, existing.familyId);
+    await withTenantTx(ctx, (tx) =>
+      tx.insert(auditLogs).values({
+        tenantId: ctx.tenantId,
+        actorId: ctx.userId,
+        action: 'refresh_reuse_detected',
+        entity: 'refresh_tokens',
+        entityId: existing.id,
+      }),
+    );
+    throw new UnauthorizedException('refresh_reuse_detected');
   }
 
   private async resolveCurrentUser(
@@ -148,10 +130,7 @@ export class RefreshTokenService {
     );
   }
 
-  // Reusable by any admin action that must take effect immediately rather
-  // than waiting out the access-token TTL: a role change or deactivation
-  // (S19) revokes every outstanding refresh-token family for the target
-  // user, in the caller's own tenant-scoped transaction.
+  // For admin actions that must take effect now rather than after the access-token TTL.
   async revokeAllForUser(
     ctx: { tenantId: string; userId: string; role: string },
     targetUserId: string,
@@ -163,4 +142,25 @@ export class RefreshTokenService {
         .where(eq(refreshTokens.userId, targetUserId)),
     );
   }
+}
+
+async function insertToken(
+  tx: Tx,
+  tenantId: string,
+  userId: string,
+  familyId?: string,
+  parentId?: string,
+): Promise<IssuedRefreshToken> {
+  const raw = randomBytes(32).toString('hex');
+  const resolvedFamilyId = familyId ?? randomUUID();
+  await tx.insert(refreshTokens).values({
+    tenantId,
+    userId,
+    familyId: resolvedFamilyId,
+    parentId,
+    tokenHash: hashToken(raw),
+    status: 'active',
+    expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+  });
+  return { token: raw, familyId: resolvedFamilyId };
 }

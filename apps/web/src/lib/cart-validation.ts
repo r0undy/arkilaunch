@@ -1,21 +1,12 @@
 import { PH_MOBILE_REGEX, type CompanyResponse } from '@arkilaunch/shared';
 import type { CartItem } from './cart-client.js';
 
-// What the cart refuses to submit, and why, in one place a test can drive.
-//
-// The cart used to express all of this as one `disabled` prop on the submit
-// button: a customer could see the button dead without being told which field
-// was at fault, and the date inputs were never checked at all -- a stale cart
-// (dates sat in sessionStorage past their start) went to the API and came back
-// a 400.
-
 export interface CartFieldErrors {
   companyId?: string;
   projectSiteId?: string;
   siteContact?: string;
   siteContactMobile?: string;
   siteNotes?: string;
-  // Keyed by cart index.
   items: Record<number, string>;
 }
 
@@ -24,14 +15,7 @@ export const MAX_SITE_CONTACT = 200;
 export const MAX_SITE_NOTES = 1000;
 
 export function hasErrors(errors: CartFieldErrors): boolean {
-  return Boolean(
-    errors.companyId ||
-      errors.projectSiteId ||
-      errors.siteContact ||
-      errors.siteContactMobile ||
-      errors.siteNotes ||
-      Object.keys(errors.items).length > 0,
-  );
+  return Object.entries(errors).some(([key, value]) => (key === 'items' ? Object.keys(value).length > 0 : Boolean(value)));
 }
 
 function startOfToday(): number {
@@ -40,15 +24,7 @@ function startOfToday(): number {
   return d.getTime();
 }
 
-/**
- * A company can only be booked against once staff have verified it.
- *
- * This is stricter than the API, which accepts a booking from an unverified
- * company and gates only payment (409 `company_not_verified`). Recorded as
- * superseding that decision in cr-arkilaunch-cart-validation.md: a quote
- * negotiated against a company that never passes KYC wastes the rental team's
- * pricing work and the customer's time, so the block moves earlier.
- */
+// Deliberately stricter than the API, which only gates payment on verification.
 export function isSelectableCompany(company: CompanyResponse): boolean {
   return company.kycStatus === 'approved';
 }
@@ -63,11 +39,8 @@ export interface ValidateCartInput {
   companies: CompanyResponse[];
   companyId: string;
   projectSiteId: string;
-  // The chosen site is the customer's own and has no proof on file yet; the
-  // API refuses it (409 site_proof_required). Optional: false when omitted.
   siteNeedsProof?: boolean;
   siteContact: string;
-  /** +639XXXXXXXXX, or '' when not given. */
   siteContactMobile: string;
   siteNotes: string;
 }
@@ -114,8 +87,6 @@ export function validateCart(input: ValidateCartInput): CartFieldErrors {
       errors.items[index] = 'Set a rental start and end.';
       return;
     }
-    // A cart persists in sessionStorage. Dates that were fine when the machine
-    // went in can be in the past by the time it is submitted.
     if (start < today) {
       errors.items[index] = 'That start date has passed. Pick a new one.';
       return;
@@ -128,8 +99,6 @@ export function validateCart(input: ValidateCartInput): CartFieldErrors {
       errors.items[index] = `A single booking runs at most ${MAX_RENTAL_DAYS} days.`;
       return;
     }
-    // Each unit keeps its own dates; the same unit twice must not overlap
-    // itself (the server refuses it too).
     const clash = input.items.some(
       (other, j) =>
         j < index &&

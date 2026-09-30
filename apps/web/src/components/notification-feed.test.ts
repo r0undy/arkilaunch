@@ -2,10 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { describeNotification, feedAreaOf, notificationIcon, type FeedArea } from './notification-feed.js';
 import { routeTree } from '../router.js';
 
-// Every notification type the backend writes, by who receives it. Each must
-// resolve to a real destination in that person's console, so a row is
-// never a dead end (admin feedback item 4). Adding a writer means adding it
-// here, or this list drifts from the code.
+// Every notification type the backend writes, by recipient; each must resolve to a real destination.
+// Adding a writer means adding it here.
 const RENTAL = { rental_id: '11111111-1111-4111-8111-111111111111', booking_code: 'EQR-2026-0001' };
 const TRUCK = { truck_request_id: '22222222-2222-4222-8222-222222222222', booking_code: 'TRK-2026-0001' };
 
@@ -90,8 +88,7 @@ describe('describeNotification: every written type has a destination', () => {
         const described = describeNotification(type, payload, area);
         const action = described?.action;
         expect(action?.to, `${type} in ${area}`).toBeTruthy();
-        // Each console links into itself only: the platform host serves no
-        // /app screen, and a customer bounces off every staff one (QA 26).
+        // Each console links into itself only.
         expect(action!.to.startsWith(`/${area}`)).toBe(true);
         // ...to a route that exists, with every path param filled.
         expect(ROUTES).toContain(action!.to);

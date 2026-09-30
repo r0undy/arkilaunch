@@ -2,10 +2,7 @@ import { createRoute } from '@tanstack/react-router';
 import { publicLayoutRoute } from './_public.js';
 import { EmptyState } from '../components/empty-state.js';
 
-// The full rental terms are still being drafted. The weather monitoring
-// policy is published now because customers must know about it before
-// they book (docs/cr-arkilaunch-weather-monitoring.md); checkout links to
-// #weather-monitoring.
+// Checkout links to #weather-monitoring.
 function TermsPage() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-10 sm:px-10">

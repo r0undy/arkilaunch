@@ -11,9 +11,6 @@ export interface PageHeaderProps {
   actions?: ReactNode;
 }
 
-// AWS Console breadcrumbs: tenant, then the nav destination this page belongs
-// to when it is a page under it, then this page. Derived from the shell's nav,
-// so no page keeps its own trail. Outside a shell there is none.
 function Breadcrumbs({ title }: { title: string }) {
   const shell = useShellNav();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -47,8 +44,6 @@ function Breadcrumbs({ title }: { title: string }) {
   );
 }
 
-// One header rhythm shared by every console screen: breadcrumbs, a 500-weight
-// sentence-case title (DESIGN.md §2.3) and an action slot.
 export function PageHeader({ title, description, actions }: PageHeaderProps) {
   return (
     <div>

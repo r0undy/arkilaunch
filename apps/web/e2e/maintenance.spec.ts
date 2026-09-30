@@ -2,9 +2,7 @@ import { test, expect } from '@playwright/test';
 import { signIn } from './sign-in.js';
 import { choose } from './select.js';
 
-// Phase 2: an "Others" machine carries a free-text category, and logging a
-// service resets that task's hours since service. The retire at the end is
-// the cleanup, as in inventory-crud.spec.ts.
+// The retire at the end is the cleanup.
 test('admin adds an Others machine, corrects its meter and logs a service that resets the hours', async ({
   page,
 }) => {

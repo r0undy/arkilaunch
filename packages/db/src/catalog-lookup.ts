@@ -1,11 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from './client.js';
 
-// Pre-tenant-context lookup for the @Public catalog endpoint only (see
-// migrations/0008_public_catalog.sql). Calls a narrow SECURITY DEFINER
-// function, not an RLS-protected table directly -- there is no tenant
-// context yet for an unauthenticated caller, same rationale as
-// auth-lookup.ts / payments-lookup.ts.
+// @Public, pre-tenant-context: calls narrow SECURITY DEFINER functions, not RLS tables.
 
 export interface CatalogEquipmentRow {
   id: string;
@@ -13,10 +9,8 @@ export interface CatalogEquipmentRow {
   model: string;
   availabilityStatus: string;
   photoUri: string | null;
-  // The upfront public price (0038 detail, 0042 list): unit card, else type card.
   rateType: string | null;
   rateValue: number | null;
-  // Migration 0065: the unit's choices and its photo credit.
   optionGroups: { name: string; values: string[] }[];
   photoCredit: string | null;
   photoSourceUrl: string | null;
@@ -24,62 +18,20 @@ export interface CatalogEquipmentRow {
 
 export type CatalogEquipmentDetailRow = CatalogEquipmentRow;
 
-// Bounded at the database: this is an unauthenticated route, and every
-// storefront page load used to ship the anchor tenant's entire equipment
-// table (audit-api-surface.md #8). LIMIT/OFFSET wrap the SECURITY DEFINER
-// function's result set, so the function itself is unchanged.
-export async function listCatalogEquipmentForSlug(
-  slug: string,
-  limit: number,
-  offset: number,
-): Promise<CatalogEquipmentRow[]> {
-  const rows = await db.execute<{
-    id: string;
-    equipment_type_name: string;
-    model: string;
-    availability_status: string;
-    photo_uri: string | null;
-    rate_type: string | null;
-    rate_value: string | null;
-    option_groups: { name: string; values: string[] }[] | null;
-    photo_credit: string | null;
-    photo_source_url: string | null;
-  }>(sql`select * from catalog_list_equipment(${slug}) limit ${limit} offset ${offset}`);
-  return rows.map((row) => ({
-    id: row.id,
-    equipmentTypeName: row.equipment_type_name,
-    model: row.model,
-    availabilityStatus: row.availability_status,
-    photoUri: row.photo_uri,
-    rateType: row.rate_type,
-    rateValue: row.rate_value !== null ? Number(row.rate_value) : null,
-    optionGroups: row.option_groups ?? [],
-    photoCredit: row.photo_credit,
-    photoSourceUrl: row.photo_source_url,
-  }));
+interface CatalogEquipmentDbRow extends Record<string, unknown> {
+  id: string;
+  equipment_type_name: string;
+  model: string;
+  availability_status: string;
+  photo_uri: string | null;
+  rate_type: string | null;
+  rate_value: string | null;
+  option_groups: { name: string; values: string[] }[] | null;
+  photo_credit: string | null;
+  photo_source_url: string | null;
 }
 
-// GET /catalog/equipment/:id (@Public, anchor-tenant only -- backend-unblock
-// plan Phase 2). Same catalog_get_equipment SECURITY DEFINER function
-// (migration 0012); null means not found OR belongs to a different/inactive
-// tenant -- the caller cannot distinguish those cases, same as the RLS
-// posture elsewhere (a 404, never a 403, since there is no tenant context
-// to leak).
-export async function getCatalogEquipmentForSlug(slug: string, id: string): Promise<CatalogEquipmentDetailRow | null> {
-  const rows = await db.execute<{
-    id: string;
-    equipment_type_name: string;
-    model: string;
-    availability_status: string;
-    photo_uri: string | null;
-    rate_type: string | null;
-    rate_value: string | null;
-    option_groups: { name: string; values: string[] }[] | null;
-    photo_credit: string | null;
-    photo_source_url: string | null;
-  }>(sql`select * from catalog_get_equipment(${slug}, ${id})`);
-  const row = rows[0];
-  if (!row) return null;
+function toCatalogEquipment(row: CatalogEquipmentDbRow): CatalogEquipmentRow {
   return {
     id: row.id,
     equipmentTypeName: row.equipment_type_name,
@@ -94,9 +46,25 @@ export async function getCatalogEquipmentForSlug(slug: string, id: string): Prom
   };
 }
 
-// GET /catalog/testimonials (@Public, anchor-tenant only). Same
-// pre-tenant-context, SECURITY DEFINER rationale as
-// listCatalogEquipmentForSlug (migration 0015).
+// Bounded at the database: this is an unauthenticated route. The function has no ORDER BY, so paging needs one here.
+export async function listCatalogEquipmentForSlug(
+  slug: string,
+  limit: number,
+  offset: number,
+): Promise<CatalogEquipmentRow[]> {
+  const rows = await db.execute<CatalogEquipmentDbRow>(
+    sql`select * from catalog_list_equipment(${slug}) order by equipment_type_name, model, id limit ${limit} offset ${offset}`,
+  );
+  return rows.map(toCatalogEquipment);
+}
+
+// GET /catalog/equipment/:id (@Public). null means not found OR another/inactive tenant: a 404, never a 403.
+export async function getCatalogEquipmentForSlug(slug: string, id: string): Promise<CatalogEquipmentDetailRow | null> {
+  const rows = await db.execute<CatalogEquipmentDbRow>(sql`select * from catalog_get_equipment(${slug}, ${id})`);
+  return rows[0] ? toCatalogEquipment(rows[0]) : null;
+}
+
+// Anchor-tenant only; same SECURITY DEFINER rationale.
 export interface CatalogTestimonialRow {
   id: string;
   quote: string;
@@ -119,9 +87,7 @@ export async function listCatalogTestimonialsForSlug(slug: string): Promise<Cata
   }));
 }
 
-// GET /catalog/tenant (@Public). The host tenant's public branding; null
-// for an unknown or not-yet-active slug (migrations 0048, 0051, 0060).
-// Image fields are storage keys; the API turns them into URLs.
+// null for an unknown or not-yet-active slug. Image fields are storage keys, not URLs.
 export interface CatalogTenantRow {
   name: string;
   logoKey: string | null;
@@ -182,8 +148,7 @@ export async function getCatalogTenantForSlug(slug: string): Promise<CatalogTena
   };
 }
 
-// GET /catalog/tenants (@Public). The platform directory (migrations 0051,
-// 0062): active rental companies only, public columns only. NULL filter = none.
+// Active companies and public columns only. NULL filter = none.
 export interface CatalogTenantListRow {
   slug: string;
   name: string;
@@ -213,8 +178,7 @@ export async function listCatalogTenants(
   }>(
     sql`select * from catalog_list_tenants(${filters.q}, ${filters.category}, ${filters.location}) limit ${limit} offset ${offset}`,
   );
-  // total_count rides on every row; a page past the end has no rows, so it
-  // reads 0 there -- the client only ever asks for pages inside the total.
+  // total_count rides on every row, so a page past the end reads 0.
   return {
     total: rows.length ? Number(rows[0]!.total_count) : 0,
     rows: rows.map((r) => ({
@@ -230,14 +194,11 @@ export async function listCatalogTenants(
   };
 }
 
-// The directory's City dropdown (migration 0062): cities listed companies are in.
 export async function listCatalogLocations(): Promise<string[]> {
   const rows = await db.execute<{ city: string }>(sql`select city from catalog_list_locations()`);
   return rows.map((r) => r.city);
 }
 
-// The directory's category filter options: equipment types some listed
-// company actually rents out (migration 0052; type names only).
 export async function listEquipmentTypeNames(): Promise<string[]> {
   const rows = await db.execute<{ name: string }>(sql`select name from catalog_list_categories()`);
   return rows.map((r) => r.name);

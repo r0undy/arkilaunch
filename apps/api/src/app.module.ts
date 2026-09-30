@@ -23,17 +23,11 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { TenantContextGuard } from './common/guards/tenant-context.guard.js';
 import { PermissionsGuard } from './common/guards/permissions.guard.js';
 
-// Guard order matters: throttling first (QAD-T22/T31 abuse gate, applies
-// even to @Public routes like /auth/login -- in-process storage, no Redis
-// in V1 per BUILD §3), then identity, then tenant-context derivation, then
-// RBAC (AGENTS.md §4). @Public() routes (auth, health) opt out of the
-// latter three, not the throttle.
+// Guard order matters: throttle first (even on @Public routes), then identity, tenant context, RBAC.
+// @Public() opts out of the latter three, not the throttle.
 @Module({
   imports: [
-    // A generous global default (120 req/min); specific expensive/money
-    // routes (POST /edtr, /kyc/extract, /quotes, /bookings/:id/checkout)
-    // override this 'default' bucket down to a tighter limit per-route via
-    // @Throttle (QAD-T31 "resource abuse / cost bomb").
+    // Expensive and money routes override this default bucket down per-route via @Throttle.
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     AuthModule,
     HealthModule,

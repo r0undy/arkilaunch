@@ -36,8 +36,6 @@ function BrandPanel() {
   );
 }
 
-// Sign-in and registration pages on both hosts; the brand panel follows the
-// host (ArkiLaunch on the platform, the tenant's name on its own host).
 function AuthLayout() {
   return (
     <div

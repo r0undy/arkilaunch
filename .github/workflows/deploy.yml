@@ -1,25 +1,7 @@
 name: Deploy
 
-# push to `dev` -> deploy the dev environment: the backend (image, migrations,
-# terraform apply), then the web app to Cloudflare Workers at arkilaunch.app
-# (docs/cr-arkilaunch-cloudflare-frontend.md). `.github/workflows/ci.yml`'s
-# lint/typecheck/test/build gate is unchanged and still runs on every PR --
-# this workflow only builds/deploys.
-#
-# `main` is deliberately NOT a trigger. Prod has never been provisioned --
-# there is no acrarkilaunchprod, and `infra/terraform/environments/prod`
-# still carries placeholder values -- so every one of the eight deploys this
-# workflow attempted from `main` between 2026-08-07 and 2026-09-15 failed at
-# `az acr login`, and would have kept failing.
-#
-# It could not have succeeded on its own, either: the deploy job pushes the
-# image BEFORE `terraform apply` (so apply never points a Container App at a
-# tag the registry has not seen), but apply is also what creates the
-# registry. That order is right for an environment that already exists and
-# impossible for one that does not. Standing prod up therefore needs a real
-# prod Supabase project, the prod tfvars and environment secrets filled in,
-# and one apply run by hand to create the registry -- after which `main` can
-# be added back here.
+# `main` is not a trigger: prod is unprovisioned, and the push-before-apply order
+# needs the registry to exist. Create prod's registry with one manual apply first.
 on:
   push:
     branches: [dev]
@@ -31,13 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  # Runs on any PR touching infra/terraform/**, and on every deploying push,
-  # against whichever environment the target branch maps to. Never applies.
-  # On push it is what `deploy` gates on: a plan that errors stops the apply
-  # before an image is built or a migration runs.
-  #
-  # `github.base_ref` is set only on pull_request, and is empty on push, so
-  # the fallback picks the branch being pushed.
+  # Plan-only; gates `deploy` on push. base_ref is empty on push, so fall back to ref_name.
   terraform-plan:
     runs-on: ubuntu-latest
     environment: ${{ (github.base_ref || github.ref_name) == 'main' && 'prod' || 'dev' }}
@@ -89,10 +65,7 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # Build/push happens before terraform apply so the image the apply
-      # references (image_tag=$GITHUB_SHA) already exists in the registry --
-      # apply would otherwise create/update a Container App pointing at a
-      # tag ACR has never seen.
+      # Push before apply so the Container App never points at a tag ACR hasn't seen.
       - name: Build and push image
         working-directory: .
         run: |
@@ -100,12 +73,7 @@ jobs:
           docker build -t acrarkilaunch${{ env.ENV_NAME }}.azurecr.io/arkilaunch-backend:${{ github.sha }} .
           docker push acrarkilaunch${{ env.ENV_NAME }}.azurecr.io/arkilaunch-backend:${{ github.sha }}
 
-      # Migrations run after the image exists but before `terraform apply`,
-      # because apply is what rolls the API revision and the cron jobs onto
-      # the new image. Applying first would leave new code reading a schema
-      # that is not there yet. Migrations here are expand-only and idempotent
-      # (docs/cr-arkilaunch-m4-money-path-gates.md), so the old revision
-      # tolerates the new schema for the length of the apply.
+      # Migrate before apply (which rolls the new image); migrations are expand-only.
       - uses: pnpm/action-setup@v4
         with:
           version: 11.11.0
@@ -120,13 +88,9 @@ jobs:
         working-directory: .
         run: pnpm db:migrate
         env:
-          # Direct connection, session mode. The pooled URL is transaction
-          # mode and cannot carry the prepared statements the migrator needs.
+          # Session-mode direct URL: the transaction pooler can't carry prepared statements.
           DATABASE_URL_DIRECT: ${{ secrets.DATABASE_URL_DIRECT }}
-          # Not optional in practice: packages/db/src/migrate.ts only warns
-          # when this is absent, so omitting it would leave the step green
-          # while app_authenticated keeps a stale password and every pooled
-          # runtime connection fails.
+          # Required: migrate.ts only warns if absent, leaving app_authenticated with a stale password.
           APP_AUTHENTICATED_PASSWORD: ${{ secrets.APP_AUTHENTICATED_PASSWORD }}
 
       - uses: hashicorp/setup-terraform@v3
@@ -146,11 +110,7 @@ jobs:
           TF_VAR_ors_api_key: ${{ secrets.ORS_API_KEY }}
           TF_VAR_turnstile_secret_key: ${{ secrets.TURNSTILE_SECRET_KEY }}
 
-  # Static Vite build served by an assets-only Worker (apps/web/wrangler.jsonc)
-  # on arkilaunch.app + *.arkilaunch.app. After `deploy` so the frontend never
-  # ships ahead of the API it calls, and after the apply that points the API's
-  # CORS (WEB_ORIGIN / PLATFORM_DOMAIN) at this host. Only `dev` exists today;
-  # prod's host is decided when prod is provisioned.
+  # After `deploy` so the frontend never ships ahead of the API and its CORS.
   web:
     if: github.event_name == 'push'
     needs: deploy
@@ -167,18 +127,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # VITE_* is inlined at build time, so the API URL has to be here, not
-      # on the Worker. Absolute (the ACA ingress FQDN + /api/v1): there is no
-      # same-origin /api proxy in front of the static assets.
+      # VITE_* is inlined at build time; absolute URL, no same-origin /api proxy.
       - run: pnpm --filter @arkilaunch/shared build && pnpm --filter @arkilaunch/web build
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-          # Public by design (it ships in the bundle); the secret half is
-          # TF_VAR_turnstile_secret_key above.
+          # Public by design; the secret half is TF_VAR_turnstile_secret_key.
           VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
 
-      # The Worker script (worker/index.ts) reads tenant branding from the
-      # same API the bundle calls, for each tenant's SEO head.
       - run: pnpm --filter @arkilaunch/web exec wrangler deploy --var "API_BASE_URL:${{ vars.VITE_API_BASE_URL }}"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

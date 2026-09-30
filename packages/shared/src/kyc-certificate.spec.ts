@@ -2,10 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DocumentText } from './document-intelligence-port.js';
 import { parseCertificateDate, parseRegistrationCertificate, yearFromWords } from './kyc-certificate.js';
 
-// Fixtures follow what prebuilt-layout returned for real certificates on
-// 2026-09-27 (docs/cr-arkilaunch-kyc-sec-bir-parsing.md): the same labels,
-// sentences, line order, positions and OCR noise, with every identifier
-// (names, numbers, addresses) replaced by a synthetic one.
+// Fixtures mirror real prebuilt-layout output, with every identifier replaced by a synthetic one.
 
 type Row = [text: string, x0: number, y0: number, x1: number, y1: number];
 

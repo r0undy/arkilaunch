@@ -12,23 +12,14 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
-import type { RequestContext } from '@arkilaunch/shared';
-import { MAX_UPLOAD_BYTES, validateUpload } from '../storage/upload-validation.js';
-import { StorageService } from '../storage/storage.service.js';
-import { avatarBucket, UsersService } from './users.service.js';
+import { MAX_UPLOAD_BYTES } from '@arkilaunch/shared';
+import { validateUpload } from '../storage/upload-validation.js';
+import { StorageService, kycBucket } from '../storage/storage.service.js';
+import { UsersService } from './users.service.js';
 import { UserPasswordChangeDto, UserSelfUpdateDto } from './dto.js';
+import type { CtxRequest, MulterFile } from '../common/request.js';
 
-type CtxRequest = Request & { ctx: RequestContext };
-type MulterFile = { buffer: Buffer; size: number; mimetype: string };
-
-// The /users/me family -- deliberately a separate controller from
-// UsersController, which class-level gates every route on user:manage.
-// Reading and editing your own record is not a privileged action (same
-// posture as tenants.controller.ts's me/application), so these have no
-// @RequirePermission at all; the global JwtAuthGuard/TenantContextGuard chain
-// (any authenticated tenant member) is the only gate. Every write targets
-// ctx.userId from the verified JWT, never an id from the request.
+// No @RequirePermission (UsersController gates on user:manage): every write targets ctx.userId from the JWT.
 @Controller('users')
 export class UserProfileController {
   constructor(
@@ -46,9 +37,7 @@ export class UserProfileController {
     return this.usersService.updateSelf(req.ctx, body);
   }
 
-  // Key built from the verified tenant, never request input; validateUpload
-  // sniffs magic bytes. PDFs pass that check for KYC, so they are refused
-  // here explicitly -- a profile picture is an image.
+  // Key built from the verified tenant, never input. PDFs pass validateUpload for KYC, so refused here explicitly.
   @Post('me/avatar')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } }))
@@ -57,7 +46,7 @@ export class UserProfileController {
     if (!validated.contentType.startsWith('image/'))
       throw new UnprocessableEntityException({ error: 'avatar_must_be_image' });
     const key = this.storage.buildObjectKey(req.ctx.tenantId, validated.extension);
-    await this.storage.uploadObject(avatarBucket(), key, file!.buffer, validated.contentType);
+    await this.storage.uploadObject(kycBucket(), key, file!.buffer, validated.contentType);
     return this.usersService.setAvatar(req.ctx, key);
   }
 

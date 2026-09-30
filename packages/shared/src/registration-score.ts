@@ -2,16 +2,11 @@ import { z } from 'zod';
 import { hasRequiredCompanyDocuments, isPrimaryRegistration } from './customers.js';
 import { PH_ID_TYPES, SEC_REGEX, TIN_REGEX, idTypeOf, normalizeSecNumber, normalizeTin, sameTin, validIdNumber } from './kyc.js';
 
-// Advisory confidence for a company registration under review
-// (cr-arkilaunch-registration-scoring.md). Pure: the API adds the one fact
-// only it can know (duplicates in the tenant) and the reviewer reads the
-// result. It never approves or rejects; the staff decision stays the human
-// gate (RFC-2 KYC path).
+// Advisory only: never approves or rejects; the staff decision stays the human gate (RFC-2).
 
 export interface ScoreDocument {
   documentType: string;
   confidence: number | null;
-  // What the upload-time scan read, and what the customer confirmed.
   ocr: Record<string, string>;
   customer: Record<string, string>;
 }
@@ -21,9 +16,7 @@ export interface ScoreInput {
   tin: string | null;
   secNumber: string | null;
   documents: ScoreDocument[];
-  // Another company in this tenant already holds the same value.
   duplicates: { tin: boolean; pcn: boolean; mobile: boolean };
-  // YYYY-MM-DD, for the age check.
   today: string;
 }
 
@@ -34,10 +27,8 @@ export const RegistrationCheckSchema = z.object({
   id: z.enum(REGISTRATION_CHECK_IDS),
   label: z.string(),
   weight: z.number(),
-  // 0..1 share of the weight earned.
   credit: z.number(),
   status: z.enum(['pass', 'warn', 'fail']),
-  // A failed hard check caps the whole score at Low.
   hard: z.boolean(),
   reason: z.string(),
 });
@@ -53,7 +44,6 @@ export type RegistrationScore = z.infer<typeof RegistrationScoreSchema>;
 export const SCORE_BANDS = { high: 85, medium: 60 } as const;
 
 const alnum = (s: string) => s.replace(/[^a-z0-9]/gi, '').toLowerCase();
-// Case, spaces and dashes say nothing different.
 export const sameValue = (a: string, b: string) => alnum(a) === alnum(b);
 
 function levenshtein(a: string, b: string): number {
@@ -71,8 +61,6 @@ function levenshtein(a: string, b: string): number {
   return prev[b.length]!;
 }
 
-// Token-sorted similarity for names and addresses: "Dela Cruz, Juan" and
-// "JUAN DELA CRUZ" are the same person. 1 = identical.
 export function nameSimilarity(a: string, b: string): number {
   const norm = (s: string) =>
     s
@@ -110,7 +98,6 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
   const bir = doc('bir_cor');
   const sec = doc('sec_certificate');
 
-  // 1. OCR field confidence.
   const confidences = input.documents.map((d) => d.confidence).filter((c): c is number => c !== null);
   const mean = confidences.length ? confidences.reduce((s, c) => s + c, 0) / confidences.length : null;
   checks.push({
@@ -123,7 +110,6 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
     reason: mean === null ? 'No document was read by the scanner.' : `Average read confidence ${Math.round(mean * 100)}%.`,
   });
 
-  // 2. What the customer typed against what the scan read.
   const pairs: { label: string; typed: string; scanned: string; key: string }[] = [];
   const add = (label: string, key: string, typed: string | null | undefined, scanned: string | undefined) => {
     if (typed && scanned) pairs.push({ label, key, typed, scanned });
@@ -159,8 +145,6 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
           : `Differs from the scan: ${disagreeing.map((p) => p.label).join(', ')}.`,
   });
 
-  // 3. ID number formats (hard).
-  // The ID's number in its own card's format (QA 15; untyped = PhilSys).
   const pcn = id ? (id.customer.id_number ?? id.ocr.id_number) : undefined;
   const idType = idTypeOf(id?.customer.id_type);
   const invalid: string[] = [];
@@ -182,7 +166,6 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
         : 'TIN, SEC number and ID number are well formed.',
   });
 
-  // 4. Date of birth plausibility.
   const birth = id ? (id.customer.birth_date ?? id.ocr.birth_date) : undefined;
   const age = birth ? ageOn(birth, input.today) : null;
   const plausible = age !== null && age >= 18 && age <= 100;
@@ -196,7 +179,6 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
     reason: age === null ? 'No readable date of birth.' : plausible ? `Age ${age}.` : `Age ${age} is outside 18 to 100.`,
   });
 
-  // 5. Duplicates in this tenant (hard).
   const dups = [
     input.duplicates.tin && 'TIN',
     input.duplicates.pcn && 'ID number',
@@ -212,11 +194,8 @@ export function scoreRegistration(input: ScoreInput): RegistrationScore {
     reason: dups.length ? `Another company here uses the same ${dups.join(', ')}.` : 'No other company shares its TIN, ID number or mobile.',
   });
 
-  // 6. Document quality.
   const complete = hasRequiredCompanyDocuments(input.documents);
   const weak = input.documents.filter((d) => d.confidence !== null && d.confidence < 0.7);
-  // The scan could not read the registration as the paper it was uploaded
-  // as (kyc-certificate.ts): as doubtful as an illegible one.
   const unrecognized = input.documents.some((d) => isPrimaryRegistration(d.documentType) && d.ocr.layout === 'unrecognized');
   const legible = weak.length === 0 && !unrecognized;
   checks.push({

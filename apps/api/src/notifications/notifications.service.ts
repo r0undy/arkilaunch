@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, type SQL } from 'drizzle-orm';
 import { notifications, pushSubscriptions, sendEmail, withTenantTx } from '@arkilaunch/db';
 import { tenantEmailContext } from '../common/notify-customer.js';
+import { countRows } from '../common/count-rows.js';
 import { notificationEmail, renderEmailHtml } from '@arkilaunch/shared';
 import type {
   NotificationListQuery,
@@ -11,13 +12,7 @@ import type {
   TestEmailRequest,
 } from '@arkilaunch/shared';
 
-// Global nav notifications feed (PRD §5.2: "notifications (PM alerts,
-// weather advisories, review-queue count)... on every authed screen").
-// jobs/src/maintenance-notify.ts already writes rows here; nothing could
-// read them before this pass. Scoped to the caller's OWN rows
-// (notifications.user_id = ctx.userId) -- reading your own notifications
-// is not a privileged action, so there is no @RequirePermission gate; the
-// user_id predicate is the boundary, RLS is the backstop behind it.
+// Scoped to the caller's OWN rows: the user_id predicate is the boundary, RLS the backstop.
 @Injectable()
 export class NotificationsService {
   async list(ctx: RequestContext, query: NotificationListQuery): Promise<NotificationListResponse> {
@@ -32,7 +27,7 @@ export class NotificationsService {
         .orderBy(desc(notifications.createdAt))
         .limit(query.limit)
         .offset(query.offset);
-      const total = (await tx.select().from(notifications).where(and(...conditions))).length;
+      const total = await countRows(tx, notifications, and(...conditions));
 
       return {
         items: rows.map((row) => ({
@@ -50,18 +45,15 @@ export class NotificationsService {
   async markRead(ctx: RequestContext, id: string) {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx
-        .select()
-        .from(notifications)
+        .update(notifications)
+        .set({ status: 'read' })
         .where(and(eq(notifications.id, id), eq(notifications.userId, ctx.userId)))
-        .limit(1);
+        .returning({ id: notifications.id });
       if (!row) throw new NotFoundException({ error: 'notification_not_found' });
-
-      await tx.update(notifications).set({ status: 'read' }).where(eq(notifications.id, id));
       return { id, status: 'read' };
     });
   }
 
-  // PATCH /notifications/read-all (Figma 603:4981 "Mark all as read").
   async markAllRead(ctx: RequestContext) {
     return withTenantTx(ctx, async (tx) => {
       const rows = await tx
@@ -73,8 +65,7 @@ export class NotificationsService {
     });
   }
 
-  // One sample of a money email with this tenant's branding and made-up
-  // booking data, sent right away (no notification row, nothing committed).
+  // A sample money email with made-up data, sent right away (no notification row).
   async sendTestEmail(ctx: RequestContext, body: TestEmailRequest) {
     const { brand, origin } = await withTenantTx(ctx, (tx) => tenantEmailContext(tx));
     const staff = body.type === 'payment_paid' || body.type === 'payment_amount_mismatch';
@@ -98,9 +89,7 @@ export class NotificationsService {
     return { sent: true, delivered: Boolean(process.env.RESEND_API_KEY) };
   }
 
-  // A browser's Web Push subscription for the caller. The endpoint is unique per tenant:
-  // re-subscribing the same browser (or the same browser after a
-  // sign-in as someone else) moves it to the caller rather than duplicating.
+  // The endpoint is unique per tenant: re-subscribing moves it to the caller rather than duplicating.
   async subscribePush(ctx: RequestContext, body: PushSubscriptionCreate) {
     return withTenantTx(ctx, async (tx) => {
       await tx

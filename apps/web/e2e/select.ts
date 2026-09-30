@@ -1,9 +1,6 @@
 import type { Locator } from '@playwright/test';
 
-// The AWS-style dropdown (components/select.tsx) is a combobox over a hidden
-// native <select>, so Playwright's selectOption has nothing visible to act
-// on. This opens the menu and clicks the option instead. A string picks by
-// value, like selectOption('x'); { label } matches the option's text.
+// select.tsx is a combobox over a hidden native <select>, so selectOption has nothing visible to act on.
 export async function choose(
   trigger: Locator,
   pick: string | { label: string } | { value: string } | { index: number },

@@ -6,13 +6,7 @@ import { WEATHER_STALE_AFTER_MINUTES, type RequestContext } from '@arkilaunch/sh
 import { SitesService } from '../src/sites/sites.service.js';
 import { EventsService } from '../src/events/events.service.js';
 
-// PRD-F5: GET /api/v1/sites/:id/weather. QAD-T5 (advisory) is exercised at
-// the poller level (jobs/src/weather-poll.spec.ts); this covers the read
-// endpoint's own contract -- no-reading fallback, staleness, and isolation.
-// Each scenario gets its OWN project site so a later test's "latest row"
-// query is never affected by an earlier test's rows for a shared site.
-// (Read+write endpoints beyond weather() -- sites CRUD, deployments,
-// advisories, incidents -- are covered in sites-engine.spec.ts.)
+// Each scenario gets its OWN site so a later "latest row" query never sees an earlier test's rows.
 describe('SitesService (PRD-F5)', () => {
   const sites = new SitesService(new EventsService());
   let ctxA: RequestContext;

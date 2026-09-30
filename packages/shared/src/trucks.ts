@@ -1,11 +1,7 @@
 import { z } from 'zod';
 import { FORMULA_BASE_VARS, FormulaError, evaluateFormula, formulaVarName } from './formula.js';
 import { PaginationQuerySchema } from './pagination.js';
-
-// Self-loading truck service. The per-km and fuel inputs are the tenant's
-// existing pricing parameters and diesel price (the same ones every equipment
-// quote uses); what a tenant sets here is only the truck's own fees plus any
-// extra charges the admin wants to add.
+import { round2HalfUp } from './pricing.js';
 
 export const TruckExtraSchema = z.object({
   label: z.string().trim().min(1).max(80),
@@ -14,11 +10,9 @@ export const TruckExtraSchema = z.object({
 });
 export type TruckExtra = z.infer<typeof TruckExtraSchema>;
 
-// The current priceTruckTrip() sum as a formula; `extras` is every extra
-// summed (per-km ones times km), each extra is also its own variable.
 export const DEFAULT_TRUCK_FORMULA = 'base + km * per_km + km * fuel_l_per_km * diesel + driver_fee + extras + tolls';
 
-// The tenant's internal trip cost policy (0071): staff-only, never on a
+// The tenant's internal trip cost policy (0072): staff-only, never on a
 // customer response. Every part is optional; 'none' leaves it out.
 const Php = z.number().nonnegative().max(1_000_000);
 export const TruckCostPolicySchema = z
@@ -45,13 +39,11 @@ export const TruckSettingsSchema = z
     baseFeePhp: z.number().nonnegative().max(1_000_000),
     driverFeePhp: z.number().nonnegative().max(1_000_000),
     extras: z.array(TruckExtraSchema).max(20),
-    // Null/absent = DEFAULT_TRUCK_FORMULA.
     formula: z.string().trim().max(500).nullish(),
-    // The estimate is shown as total ± rangePct; the high end is the cap.
     rangePct: z.number().min(0).max(100).default(10),
-    // Legacy: trucks now price on the national diesel average; not read.
+    // Legacy: not read.
     region: z.string().trim().min(1).max(40).default('NCR'),
-    // 0071: formula variables round_trip and quote_multiplier (e.g. a
+    // 0072: formula variables round_trip and quote_multiplier (e.g. a
     // tenant's `km * round_trip * diesel * quote_multiplier`). Round trip
     // also scales the internal fuel cost.
     roundTripMultiplier: z.number().positive().max(10).default(1),
@@ -77,7 +69,6 @@ const Place = z.string().trim().min(5).max(300);
 const Lat = z.number().min(-90).max(90);
 const Lng = z.number().min(-180).max(180);
 
-// Map pins, when given, are routed as-is (no geocoding).
 export const TruckEstimateRequestSchema = z
   .object({
     pickup: Place,
@@ -91,15 +82,11 @@ export const TruckEstimateRequestSchema = z
 export type TruckEstimateRequest = z.infer<typeof TruckEstimateRequestSchema>;
 
 export const TruckRequestCreateSchema = TruckEstimateRequestSchema.extend({
-  // A pickup in the past can never be run.
   scheduledFor: z.coerce.date().refine((d) => d.getTime() > Date.now(), { message: 'scheduledFor must be in the future' }),
   notes: z.string().trim().max(1000).optional(),
-  // The company the trip is booked for (one of the caller's own; checkout
-  // needs it verified), and what goes on the truck, which both sides read.
+  // One of the caller's own companies, verified server-side.
   customerId: z.string().uuid(),
   loadDescription: z.string().trim().min(1).max(300),
-  // Optional: one of that company's sites, which pins the drop-off. A
-  // truck trip serves the company, so the site needs no proof.
   projectSiteId: z.string().uuid().optional(),
 }).strict();
 export type TruckRequestCreate = z.infer<typeof TruckRequestCreateSchema>;
@@ -107,13 +94,10 @@ export type TruckRequestCreate = z.infer<typeof TruckRequestCreateSchema>;
 export const TruckAgreeSchema = z.object({ pricePhp: z.number().positive().max(100_000_000) }).strict();
 export type TruckAgree = z.infer<typeof TruckAgreeSchema>;
 
-// POST /me/truck-requests/:id/approve-price: the customer accepts the price
-// they were shown. A staff change in between makes it a 409, never a
-// silent accept of a figure they did not see.
+// A staff change in between is a 409, never a silent accept of a figure they did not see.
 export const TruckAcceptPriceSchema = z.object({ pricePhp: z.number().positive().max(100_000_000) }).strict();
 export type TruckAcceptPrice = z.infer<typeof TruckAcceptPriceSchema>;
 
-// PATCH /truck-requests/:id/crew: who drives and loads (site hub personnel).
 export const TruckCrewSchema = z
   .object({
     driverName: z.string().trim().max(120).nullable(),
@@ -122,8 +106,6 @@ export const TruckCrewSchema = z
   .strict();
 export type TruckCrew = z.infer<typeof TruckCrewSchema>;
 
-// A manual toll amount, when given, replaces the picked tolls with one
-// line (0 = no tolls on this trip).
 export const TruckKmConfirmSchema = z
   .object({
     km: z.number().positive().max(5000),
@@ -141,21 +123,17 @@ export interface TruckPrice {
   km: number;
   lines: TruckPriceLine[];
   totalPhp: number;
-  // total ± the tenant's rangePct; highPhp is the cap a request locks.
   lowPhp?: number;
   highPhp?: number;
 }
 
-// The road route between two pins, for drawing on a map: [lng, lat] pairs
-// (GeoJSON order), simplified by the router. An estimate, like the km.
 export interface TruckRoute {
   km: number;
   minutes: number;
   line: [number, number][];
   truckSafe?: boolean;
   cities?: RouteCity[];
-  // Staff route only: the expressways the road route runs on, for the toll
-  // picker's suggestion (ph-tolls.ts suggestTolls).
+  // Staff route only.
   tollHints?: TollHint[];
 }
 
@@ -178,8 +156,7 @@ export interface TruckBanHit { city: string; window: string; permitNote: string;
 const PH_OFFSET_MS = 8 * 60 * 60 * 1000;
 const minutesOf = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
 
-// Evaluate the rule in Philippine civil time. Overnight windows inherit the
-// previous day's start day. Return the end instant so dispatch can wait.
+// Philippine civil time; overnight windows inherit the previous day's start day.
 export function banHits(cities: RouteCity[], rules: TruckBanRuleInput[], at: Date): TruckBanHit[] {
   const local = new Date(at.getTime() + PH_OFFSET_MS);
   const minute = local.getUTCHours() * 60 + local.getUTCMinutes();
@@ -225,8 +202,6 @@ export interface TollHint {
   exit: string | null;
 }
 
-// POST /me/truck-requests/estimate. `route` is null when the router gave
-// no geometry.
 export type TruckEstimateResponse = TruckPrice & { route: TruckRoute | null };
 
 export const TollRateCreateSchema = z
@@ -239,7 +214,6 @@ export interface TollRateResponse {
   id: string;
   name: string;
   feePhp: number;
-  // Set on an expressway matrix fee; null on a free-named toll.
   expressway: string | null;
   entryPoint: string | null;
   exitPoint: string | null;
@@ -257,7 +231,7 @@ export interface TruckPriceInput {
   tolls?: TruckPriceLine[];
 }
 
-// The multipliers default to 1, so settings saved before 0071 price as before.
+// The multipliers default to 1, so settings saved before 0072 price as before.
 type FormulaSettings = Pick<TruckSettings, 'baseFeePhp' | 'driverFeePhp' | 'extras'> &
   Partial<Pick<TruckSettings, 'roundTripMultiplier' | 'quoteMultiplier'>>;
 
@@ -294,29 +268,24 @@ function formulaVars(
   };
 }
 
-const peso = (n: number) => Math.round(n * 100) / 100;
-
-// Pure: the one place the truck price is computed, on the server for the
-// estimate and again when the admin confirms the km.
+// The one place the truck price is computed (estimate and the admin's km confirm).
 export function priceTruckTrip({ km, settings, perKmPhp, fuelLPerKm, dieselPhp, tolls = [] }: TruckPriceInput): TruckPrice {
   const lines: TruckPriceLine[] = [
-    { label: 'Base fee', amountPhp: peso(settings.baseFeePhp) },
-    { label: `Distance (${km} km × ₱${perKmPhp}/km)`, amountPhp: peso(km * perKmPhp) },
-    { label: `Fuel (${km} km × ${fuelLPerKm} L/km × ₱${dieselPhp}/L)`, amountPhp: peso(km * fuelLPerKm * dieselPhp) },
-    { label: "Driver's fee", amountPhp: peso(settings.driverFeePhp) },
+    { label: 'Base fee', amountPhp: round2HalfUp(settings.baseFeePhp) },
+    { label: `Distance (${km} km × ₱${perKmPhp}/km)`, amountPhp: round2HalfUp(km * perKmPhp) },
+    { label: `Fuel (${km} km × ${fuelLPerKm} L/km × ₱${dieselPhp}/L)`, amountPhp: round2HalfUp(km * fuelLPerKm * dieselPhp) },
+    { label: "Driver's fee", amountPhp: round2HalfUp(settings.driverFeePhp) },
     ...settings.extras.map((x) => ({
       label: x.per === 'km' ? `${x.label} (${km} km × ₱${x.amountPhp})` : x.label,
-      amountPhp: peso(x.per === 'km' ? km * x.amountPhp : x.amountPhp),
+      amountPhp: round2HalfUp(x.per === 'km' ? km * x.amountPhp : x.amountPhp),
     })),
-    ...tolls.map((t) => ({ label: `Toll: ${t.label}`, amountPhp: peso(t.amountPhp) })),
+    ...tolls.map((t) => ({ label: `Toll: ${t.label}`, amountPhp: round2HalfUp(t.amountPhp) })),
   ];
-  const sum = peso(lines.reduce((acc, l) => acc + l.amountPhp, 0));
+  const sum = round2HalfUp(lines.reduce((acc, l) => acc + l.amountPhp, 0));
   if (!settings.formula || settings.formula === DEFAULT_TRUCK_FORMULA) return { km, lines, totalPhp: sum };
-  // A custom formula sets the total; the breakdown stays, and the gap to it
-  // shows as one adjustment line.
   const tollsPhp = tolls.reduce((acc, t) => acc + t.amountPhp, 0);
-  const totalPhp = peso(Math.max(0, evaluateFormula(settings.formula, formulaVars(settings, km, perKmPhp, fuelLPerKm, dieselPhp, tollsPhp))));
-  if (totalPhp !== sum) lines.push({ label: 'Formula adjustment', amountPhp: peso(totalPhp - sum) });
+  const totalPhp = round2HalfUp(Math.max(0, evaluateFormula(settings.formula, formulaVars(settings, km, perKmPhp, fuelLPerKm, dieselPhp, tollsPhp))));
+  if (totalPhp !== sum) lines.push({ label: 'Formula adjustment', amountPhp: round2HalfUp(totalPhp - sum) });
   return { km, lines, totalPhp };
 }
 
@@ -336,22 +305,22 @@ export function estimateTruckCost({ km, settings, fuelLPerKm, dieselPhp, tolls =
   const policy = settings.costPolicy ?? DEFAULT_TRUCK_COST_POLICY;
   const roundTrip = settings.roundTripMultiplier ?? 1;
   const factor = policy.fuelFactor ?? fuelLPerKm;
-  const fuel = peso(km * factor * dieselPhp * roundTrip);
-  const driver = peso(settings.driverFeePhp);
+  const fuel = round2HalfUp(km * factor * dieselPhp * roundTrip);
+  const driver = round2HalfUp(settings.driverFeePhp);
   const lines: TruckPriceLine[] = [{ label: `Fuel (${km} km × ${factor} × ₱${dieselPhp} × ${roundTrip})`, amountPhp: fuel }];
   if (driver > 0) lines.push({ label: 'Driver', amountPhp: driver });
   const { helper, maintenance } = policy;
   const helperPhp = { none: 0, fixed: helper.value, per_km: km * helper.value, pct_driver: (driver * helper.value) / 100 }[helper.kind];
-  if (helper.kind !== 'none') lines.push({ label: 'Helper', amountPhp: peso(helperPhp) });
+  if (helper.kind !== 'none') lines.push({ label: 'Helper', amountPhp: round2HalfUp(helperPhp) });
   const maintPhp = { none: 0, fixed: maintenance.value, per_km: km * maintenance.value, pct_fuel: (fuel * maintenance.value) / 100 }[maintenance.kind];
-  if (maintenance.kind !== 'none') lines.push({ label: 'Maintenance', amountPhp: peso(maintPhp) });
-  if (policy.miscAllowancePhp > 0) lines.push({ label: 'Miscellaneous allowance', amountPhp: peso(policy.miscAllowancePhp) });
-  for (const x of settings.extras) lines.push({ label: x.label, amountPhp: peso(x.per === 'km' ? km * x.amountPhp : x.amountPhp) });
-  for (const t of tolls) lines.push({ label: `Toll: ${t.label}`, amountPhp: peso(t.amountPhp) });
-  return { lines, totalPhp: peso(lines.reduce((acc, l) => acc + l.amountPhp, 0)) };
+  if (maintenance.kind !== 'none') lines.push({ label: 'Maintenance', amountPhp: round2HalfUp(maintPhp) });
+  if (policy.miscAllowancePhp > 0) lines.push({ label: 'Miscellaneous allowance', amountPhp: round2HalfUp(policy.miscAllowancePhp) });
+  for (const x of settings.extras) lines.push({ label: x.label, amountPhp: round2HalfUp(x.per === 'km' ? km * x.amountPhp : x.amountPhp) });
+  for (const t of tolls) lines.push({ label: `Toll: ${t.label}`, amountPhp: round2HalfUp(t.amountPhp) });
+  return { lines, totalPhp: round2HalfUp(lines.reduce((acc, l) => acc + l.amountPhp, 0)) };
 }
 
-// Saved on the request when it is priced (0071), so a later policy change
+// Saved on the request when it is priced (0072), so a later policy change
 // never alters a quoted trip. Staff-only.
 export interface TruckInternal {
   cost: { lines: TruckPriceLine[]; totalPhp: number };
@@ -361,22 +330,19 @@ export interface TruckInternal {
 }
 
 export function negotiationFloor(recommendedPhp: number, maxDiscountPct: number | null): number | null {
-  return maxDiscountPct === null ? null : peso(recommendedPhp * (1 - maxDiscountPct / 100));
+  return maxDiscountPct === null ? null : round2HalfUp(recommendedPhp * (1 - maxDiscountPct / 100));
 }
 
 // Profit on the agreed price, else on the route price.
 export function truckProfit(pricePhp: number, costPhp: number): { profitPhp: number; marginPct: number | null } {
-  const profitPhp = peso(pricePhp - costPhp);
+  const profitPhp = round2HalfUp(pricePhp - costPhp);
   return { profitPhp, marginPct: pricePhp > 0 ? Math.round((profitPhp / pricePhp) * 10_000) / 100 : null };
 }
 
 export const TRUCK_REQUEST_STATUSES =['estimated', 'km_confirmed', 'agreed', 'paid', 'dispatched', 'cancelled'] as const;
 export type TruckRequestStatus = (typeof TRUCK_REQUEST_STATUSES)[number];
-// Nothing left to do on these: the rest are "open".
 export const CLOSED_TRUCK_STATUSES: readonly TruckRequestStatus[] = ['paid', 'dispatched', 'cancelled'];
 
-// GET /truck-requests and /me/truck-requests. `q` finds a TRK- code by
-// prefix, as GET /bookings does; `status` splits open from closed.
 export const TruckRequestListQuerySchema = PaginationQuerySchema.extend({
   q: z.string().trim().max(40).optional(),
   status: z.enum(['open', 'closed']).optional(),
@@ -390,7 +356,6 @@ export interface TruckRequestListResponse {
 
 export interface TruckRequestResponse {
   id: string;
-  // TRK-YYYY-NNNN (booking-code.ts); the same reference shape as a rental's.
   code: string;
   pickup: string;
   dropoff: string;
@@ -404,30 +369,20 @@ export interface TruckRequestResponse {
   confirmedKm: number | null;
   status: TruckRequestStatus;
   price: TruckPrice;
-  // The negotiated price staff accepted; what the invoice charges. Null
-  // until agreed.
   agreedPricePhp: number | null;
-  // The high end of the request-time estimate; staff are warned when the
-  // agreed price goes above it.
   capPhp: number | null;
-  // The agreed price the customer last accepted. Checkout needs it to equal
-  // agreedPricePhp: every staff price change is accepted again.
+  // Checkout requires this to equal agreedPricePhp: every staff price change is accepted again.
   acceptedPricePhp: number | null;
   callRequestedAt: string | null;
   callConfirmedAt: string | null;
-  // Optional since 0067; null on requests made before 0055.
   projectSiteId: string | null;
-  // 0067: the company the trip is for and what it carries (null on older
-  // requests), and who asked, so staff can call them.
   customerId: string | null;
   companyName: string | null;
   loadDescription: string | null;
   requesterName: string | null;
   requesterPhone: string | null;
-  // Crew on the trip (0059); null until staff name them.
   driverName: string | null;
   helperName: string | null;
-  // The exact map pins, when the customer dropped them (0037).
   pickupLat: number | null;
   pickupLng: number | null;
   dropoffLat: number | null;
@@ -435,6 +390,6 @@ export interface TruckRequestResponse {
   createdAt: string;
   // Staff responses only (never a customer's): the saved cost and floor,
   // and profit on the agreed (else route) price. Absent on requests priced
-  // before 0071.
+  // before 0072.
   internal?: TruckInternal & { profitPhp: number; marginPct: number | null };
 }

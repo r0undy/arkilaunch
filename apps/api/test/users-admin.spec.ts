@@ -50,37 +50,19 @@ describe('UsersService (S19)', () => {
     const [customerA] =
       await sql`select u.id from users u join roles r on r.id = u.role_id where u.tenant_id = ${tenantIdA} and r.name = 'customer' limit 1`;
 
-    // The two-tenant seed has no `owner`-role user; this API has no
-    // endpoint that can create one (RFC-1's reserved-role posture), so
-    // this is inserted directly to test the target-role-protection case
-    // against a real row.
+    // No endpoint can create an owner, so one is inserted directly for the target-role-protection case.
     const [ownerRole] = await sql`select id from roles where name = 'owner'`;
     const [adminHashRow] = await sql`select password_hash from users where id = ${(adminA as { id: string }).id}`;
     const passwordHash = (adminHashRow as { password_hash: string }).password_hash;
 
-    // Restore the seeded admin before anything else. The last_user_manager
-    // test below deactivates users for real, and if its assertion fails the
-    // admin is left disabled -- which breaks not just this file but
-    // auth-lockout and refresh-rotation, both of which log in as it. The
-    // test's own `finally` covers the normal path; this covers the run that
-    // already went wrong, so the suite heals instead of staying broken.
+    // Restore the seeded admin first: other files log in as it, so a failed run must heal, not stay broken.
     await sql`
       update users set status = 'active'
       where id = ${(adminA as { id: string }).id} and status <> 'active'
     `;
 
-    // Clear accumulated user:manage holders BEFORE inserting this run's
-    // owner fixture, so exactly two managers exist when the guard is
-    // tested: the seeded admin and that fixture.
-    //
-    // `owner` belongs in this list. It gained user:manage in
-    // cr-arkilaunch-f9-read-surface.md, this file inserts one active owner
-    // per run and never removes it, and its earlier omission is what let 18
-    // of them accumulate: with a spare manager always active, the guard
-    // correctly allowed deactivating the admin, the assertion failed, and
-    // the admin was disabled as a side effect. Ordering matters -- run this
-    // after the insert and it would disable the fixture owner the test
-    // needs.
+    // Clear accumulated user:manage holders (owner included) BEFORE inserting this run's owner fixture, so
+    // exactly two managers exist when the guard is tested.
     await sql`
       update users set status = 'disabled'
       where tenant_id = ${tenantIdA} and status = 'active' and id != ${(adminA as { id: string }).id}
@@ -96,11 +78,7 @@ describe('UsersService (S19)', () => {
     adminCtxA = { tenantId: tenantIdA, userId: (adminA as { id: string }).id, role: 'admin' };
     adminCtxB = { tenantId: tenantIdB, userId: (adminB as { id: string }).id, role: 'admin' };
     ownerCtxA = { tenantId: tenantIdA, userId: (adminA as { id: string }).id, role: 'owner' };
-    // A platform_admin acting in tenant A's context is never itself a row
-    // in tenant A's users table (support/onboarding context, RFC-1 §3) --
-    // borrow the tenant's own customer id as a stand-in actor identity so
-    // the last-user-manager guard's "exclude the actor" logic is exercised
-    // against a userId that is genuinely not a manager.
+    // A platform_admin is never a row in tenant A; the customer id stands in as a non-manager actor.
     platformCtxA = { tenantId: tenantIdA, userId: (customerA as { id: string }).id, role: 'platform_admin' };
     projectSiteIdA = (siteA as { id: string } | undefined)?.id ?? '00000000-0000-0000-0000-000000000000';
     ownerUserIdA = (ownerRow as { id: string }).id;
@@ -165,36 +143,17 @@ describe('UsersService (S19)', () => {
 
   describe('last_user_manager guard', () => {
     it('deactivating the last remaining user:manage holder is rejected', async () => {
-      // adminCtxA deactivating THEMSELVES is self-mutation (a different,
-      // earlier-checked denial); this guard needs a DIFFERENT actor --
-      // platformCtxA, a support/onboarding context (RFC-1 §3).
-      //
-      // The seeded tenant has TWO active user:manage holders, not one:
-      // `owner` gained user:manage and tenant:manage in
-      // cr-arkilaunch-f9-read-surface.md ("a provisioned tenant's first
-      // user is owner"), see ROLE_PERMISSIONS in the seed catalog. So
-      // deactivating the admin alone leaves the owner still managing and
-      // the guard is RIGHT to allow it. This test asserted otherwise on a
-      // stale reading of the catalog, and its failure disabled the seeded
-      // admin as a side effect -- which is what cascaded into
-      // auth-lockout, refresh-rotation and billing-engine.
-      //
-      // So stand the invariant up honestly: remove the other holder first,
-      // and then the admin really is the last one.
+      // Needs a non-self actor, and the owner removed first so the admin really is the last manager.
       await usersService.deactivate(platformCtxA, ownerUserIdA);
       try {
         await expect(usersService.deactivate(platformCtxA, adminCtxA.userId)).rejects.toThrow(
           ForbiddenException,
         );
-        // The admin is still active afterwards: a refused deactivation must
-        // not have written anything, which rejects.toThrow() alone does not
-        // prove.
+        // A refused deactivation must not have written anything.
         const stillThere = await usersService.get(platformCtxA, adminCtxA.userId);
         expect(stillThere.status).toBe('active');
       } finally {
-        // Restore the fixture whatever happened above -- every spec file in
-        // this package draws the same seeded tenant and vitest runs them in
-        // parallel.
+        // Restore the fixture whatever happened: every spec shares the seeded tenant.
         await usersService.reactivate(platformCtxA, ownerUserIdA);
       }
     });
@@ -212,17 +171,7 @@ describe('UsersService (S19)', () => {
   });
 
   describe('owner administers its own tenant, within limits (QAD-T19)', () => {
-    // This block asserted that an owner cannot invite at all, on two
-    // premises that are both stale: cr-arkilaunch-f9-read-surface.md gave
-    // owner `user:manage` + `tenant:manage`, and ROLE_ASSIGNABLE_BY.owner
-    // is now ['admin','timekeeper','customer'] -- because a self-service
-    // tenant's FIRST user is an owner, who could otherwise never add
-    // anyone. The seed catalog says it outright: "QAD-T19 was never a rule
-    // against an owner administering their own company's users."
-    //
-    // QAD-T19 still means something -- owner is read-mostly on OPERATIONAL
-    // data, not powerless over its own roster -- so assert the boundary
-    // that actually exists rather than dropping the coverage.
+    // Owner holds user:manage for its own roster (QAD-T19 is about operational data), so assert the real boundary.
     it('owner can invite a timekeeper to its own tenant', async () => {
       const email = uniqueEmail('owner-invited');
       const invited = await usersService.invite(ownerCtxA, { email, role: 'timekeeper' });
@@ -230,9 +179,7 @@ describe('UsersService (S19)', () => {
     });
 
     it('owner still cannot mint another owner', async () => {
-      // 'owner' is absent from ROLE_ASSIGNABLE_BY.owner, so an owner cannot
-      // clone its own privilege level -- the escalation that widening
-      // user:manage could have opened.
+      // An owner cannot clone its own privilege level.
       await expect(
         usersService.invite(ownerCtxA, { email: uniqueEmail('owner-escalate'), role: 'owner' as never }),
       ).rejects.toThrow(ForbiddenException);
@@ -248,9 +195,7 @@ describe('UsersService (S19)', () => {
       // Cannot log in yet -- status is 'invited', no password is known.
       await expect(auth.login({ email, password: 'whatever-12345' }, 'test-tenant-a')).rejects.toThrow(UnauthorizedException);
 
-      // The activation token is not a Bearer token: it deliberately fails
-      // JwtClaimsSchema (no `role` claim, carries `purpose` instead) -- the
-      // same construction signTwoFaChallenge already uses.
+      // Not a Bearer token: it deliberately fails JwtClaimsSchema.
       const decoded = jwtService().decode(invited.activationToken);
       expect(JwtClaimsSchema.safeParse(decoded).success).toBe(false);
 
@@ -317,11 +262,7 @@ describe('UsersService (S19)', () => {
     });
 
     it('round-trips a set for a timekeeper: set, read back, shrink', async () => {
-      // A DEDICATED invited timekeeper, not the shared seeded one
-      // (timekeeperUserIdA): edtr-engine.spec.ts relies on the seed's own
-      // timekeeper -> site assignment staying intact, and this test's own
-      // "shrink to empty" step would otherwise strip it out from under
-      // that file when run against the same real database.
+      // A dedicated timekeeper: edtr-engine relies on the seeded one's site assignment.
       const dedicated = await usersService.invite(adminCtxA, { email: uniqueEmail('site-assign'), role: 'timekeeper' });
 
       const result = await usersService.setSiteAssignments(adminCtxA, dedicated.id, {

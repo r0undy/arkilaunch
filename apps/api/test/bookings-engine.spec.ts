@@ -8,9 +8,6 @@ import { BookingsService } from '../src/bookings/bookings.service.js';
 import { EventsService } from '../src/events/events.service.js';
 import { fixtureCompanyId } from './fixture-company.js';
 
-// PRD-F8 (Client Booking Portal), built as an authenticated `customer`-role
-// surface (cr-arkilaunch-f2-f8-bookings-payments.md). QAD-T9 (happy path),
-// QAD-T21 (never overbooks), QAD-T23/T24 (cross-tenant read/write).
 describe('BookingsService (PRD-F8)', () => {
   // Auto-quoting off: this suite covers bookings/payments, not pricing
   // (customer-journey.spec.ts covers the automatic quote).
@@ -52,18 +49,8 @@ describe('BookingsService (PRD-F8)', () => {
     equipmentTypeIdA = (equipmentRow as { equipment_type_id: string }).equipment_type_id;
     customerIdA = (customerRow as { id: string }).id;
 
-    // Idempotency: this spec reuses fixed 2030-01-* windows, so a prior
-    // run's leftover assignments/rentals for the same unit would otherwise
-    // make the overlap check see stale bookings (same rationale as
-    // edtr-engine.spec.ts's testDates cleanup). The >= 2030-01-01 filter
-    // also catches payments-engine.spec.ts's 2031-01-* rentals on this same
-    // shared unit, which DO have invoices/payments attached (checkout()) --
-    // those must clear first or the rentals delete violates the
-    // invoices_rental_id_rentals_id_fk constraint (same order
-    // payments-engine.spec.ts's own cleanup already uses). Capped below
-    // 2032: the customer-journey, onboarding and delivery specs own the
-    // 2032-* windows on this unit and clean their own (they carry invoice
-    // line items and quotes this cleanup does not know about).
+    // Fixed 2030-01-* windows: clear stale rows (invoices first, for the FK). Capped below 2032, which other
+    // specs own and clean themselves.
     const staleAssignments = await sql`
       select id, rental_id from equipment_assignments
       where equipment_id = ${(equipmentRow as { id: string }).id} and start >= '2030-01-01' and start < '2032-01-01'
@@ -125,6 +112,13 @@ describe('BookingsService (PRD-F8)', () => {
 
   it('a customer cannot book on behalf of a different customer', async () => {
     const { start, end } = window(3);
+    const denials = async () => {
+      const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });
+      const [row] = await sql`select count(*)::int as n from audit_logs where entity = 'booking_customer_scope_denied' and actor_id = ${customerCtxA.userId}`;
+      await sql.end();
+      return (row as { n: number }).n;
+    };
+    const before = await denials();
     await expect(
       bookings.create(customerCtxA, {
         customerId: '00000000-0000-0000-0000-000000000000',
@@ -132,6 +126,7 @@ describe('BookingsService (PRD-F8)', () => {
         items: [{ equipmentId: equipmentIdA, start, end }],
       }),
     ).rejects.toThrow(ForbiddenException);
+    expect(await denials()).toBe(before + 1);
   });
 
   it('QAD-T23/T24: a booking under tenant A is invisible to tenant B (RLS)', async () => {

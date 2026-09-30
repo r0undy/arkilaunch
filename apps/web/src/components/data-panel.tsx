@@ -14,16 +14,9 @@ export interface DataPanelProps<T, TQueryKey extends QueryKey = QueryKey> {
   isEmpty: (data: T) => boolean;
   render: (data: T) => ReactNode;
   emptyIcon?: LucideIcon;
-  // The next step from an empty list, e.g. an "Add" button.
   emptyAction?: ReactNode;
 }
 
-// Shared loading/error/success/empty wrapper (DESIGN.md §4.1) for the
-// admin-console screens with a live GET endpoint but no bespoke UI yet.
-// Backed by TanStack Query: the query key (not a fetcher function identity)
-// is what determines re-fetch behavior, so a call site passing a fresh
-// options object literal on every render (the previous fetcher-prop shape's
-// bug) no longer causes a refetch loop.
 export function DataPanel<T, TQueryKey extends QueryKey = QueryKey>({
   title,
   options,
@@ -38,10 +31,7 @@ export function DataPanel<T, TQueryKey extends QueryKey = QueryKey>({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* No <h1> here. Every screen already renders one through PageHeader,
-          and rendering a second produced the visible duplicate title -- and
-          two competing document outlines for a screen reader. `title` is
-          still used to word the states below. */}
+      {/* No <h1>: PageHeader already renders one. */}
       {query.isPending && <Skeleton label={`Loading ${title.toLowerCase()}`} />}
       {query.isError && (
         <LoadError

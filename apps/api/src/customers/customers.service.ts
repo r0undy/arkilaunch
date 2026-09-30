@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import {
+  type Tx,
   addresses,
   auditLogs,
   customerContacts,
@@ -20,10 +21,10 @@ import {
   siteDocuments,
   users,
   withTenantTx,
-  type db,
 } from '@arkilaunch/db';
 import {
   DTI_REGEX,
+  manilaDate,
   ExtractionUnavailableError,
   findSameCompany,
   hasRequiredCompanyDocuments,
@@ -72,29 +73,17 @@ import type {
   CustomerSiteResponse,
   RequestContext,
 } from '@arkilaunch/shared';
-import { ownCustomers, ownsCustomer } from '../common/customer-scope.js';
+import { ownCustomers, ownsCustomer, ownSite } from '../common/customer-scope.js';
 import { EventsService } from '../events/events.service.js';
 import { notifyStaff } from '../common/notify-customer.js';
 import { siteDocumentsFor, siteProofComplete } from '../common/site-proof.js';
 import { latestEquipmentWeather } from '../common/equipment-weather.js';
 import { countRows } from '../common/count-rows.js';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-// Customer prerequisites CR: the companies a customer login owns (Figma
-// 582:3946 "Add New Company"), their verification documents, and the
-// project sites they deliver to. RLS bounds the tenant; ownCustomers()
-// bounds a customer to their own companies.
+// RLS bounds the tenant; ownCustomers() bounds a customer to their own companies.
 
-// Forecasts are cached in-process, keyed on coordinates rounded to ~100 m so
-// neighbouring sites share one upstream call.
-//
-// This is the load-bearing half: a client-side staleTime does nothing about N
-// customers each opening the browse page. The free tier's daily call budget
-// (docs/cr-arkilaunch-open-meteo-free-tier.md) was sized for the poller
-// alone, and this route is the first thing customers can trigger directly.
-// Successes only -- a cached failure would turn one bad minute into thirty.
-//
+// Cached by ~100 m coordinates, successes only: customers trigger this route and the free-tier budget was sized for the poller.
 // ponytail: per-instance Map. A shared cache only matters above ~2 replicas.
 const FORECAST_TTL_MS = WEATHER_POLL_CADENCE_MINUTES * 60_000;
 const forecastCache = new Map<string, { days: DailyForecast[]; fetchedAt: string; at: number }>();
@@ -122,13 +111,10 @@ function writeForecastCache(
   forecastCache.set(forecastKey(latitude, longitude), { days, fetchedAt, at: Date.now() });
 }
 
-/** Test seam: the cache is module state and would otherwise leak across specs. */
 export function __clearForecastCache(): void {
   forecastCache.clear();
 }
 
-// Response field -> the snake_case port key azure-adapter.ts maps it to.
-// One table for every read, so adding a field is one line, not six.
 const READ_FIELDS = {
   companyName: 'company_name',
   tin: 'tin',
@@ -146,21 +132,15 @@ const READ_FIELDS = {
 } as const;
 type ReadField = keyof typeof READ_FIELDS;
 
-// Which fields each paper actually prints. The customer's scan suggests only
-// these, so a SEC certificate never prefills a TIN it does not carry.
 const SCAN_FIELDS: Record<string, ReadField[]> = {
   government_id: ['firstName', 'middleName', 'lastName', 'idNumber', 'birthDate', 'sex', 'address'],
-  // No address: an SEC certificate prints only the SEC's own letterhead
-  // address, which a read used to hand back as the company's.
+  // No address: an SEC certificate prints only the SEC's own letterhead address.
   sec_certificate: ['companyName', 'secNumber', 'registrationDate'],
   bir_cor: ['companyName', 'tin', 'registeredAddress', 'registrationDate'],
   dti_certificate: ['companyName', 'dtiNumber', 'registeredAddress'],
   company_registration: ['companyName', 'tin', 'secNumber', 'registeredAddress', 'registrationDate'],
 };
 
-// Format checks per field. A scan suggestion failing its check is dropped;
-// a staff read reports it as invalid instead. The ID number is checked in
-// its own card's format (QA 15; PhilSys unless the customer said otherwise).
 type FieldFormat = { normalize?: (v: string) => string; re: RegExp };
 const FIELD_FORMAT: Partial<Record<ReadField, FieldFormat>> = {
   tin: { normalize: normalizeTin, re: TIN_REGEX },
@@ -171,30 +151,22 @@ function formatOf(field: ReadField, idType: PhIdTypeCode): FieldFormat | undefin
   return field === 'idNumber' ? PH_ID_TYPES[idType] : FIELD_FORMAT[field];
 }
 
-// Long free-text fields read at structurally lower confidence than a
-// number or a name, so they do not count toward a document's legibility.
+// Long free text reads at structurally lower confidence, so it doesn't count toward legibility.
 const LEGIBILITY_EXCLUDED = new Set<ReadField>(['address', 'registeredAddress']);
 
-// The customer's "hard to read" hint on a scan also leaves out middle name
-// (often blank) and, on a PhilSys card, sex (not printed on its front), so
-// the read's low-score guesses at them never flag a perfectly sharp image.
-// The staff read above keeps them (its confidence feeds the RFC-2 review
-// gate, which this must not loosen).
+// The scan hint also skips middle name (often blank) and PhilSys sex (not printed). The staff
+// read keeps them: its confidence feeds the RFC-2 review gate.
 const scanHintExcluded = (field: ReadField, idType: PhIdTypeCode) =>
   LEGIBILITY_EXCLUDED.has(field) || field === 'middleName' || (field === 'sex' && idType === 'philsys');
 
-// The card prints "M"/"F" or "MALE"/"FEMALE"; the form takes the letter.
 function normalizeSex(value: string): string {
   const v = value.trim();
   return /^m/i.test(v) ? 'M' : /^f/i.test(v) ? 'F' : v;
 }
 
-// OCR dates come as printed ("JANUARY 01, 1990", "1990/01/01"); the form's
-// date input needs YYYY-MM-DD. Unparseable text is passed through as read.
 function normalizeDate(value: string): string {
   const v = value.trim().replace(/\//g, '-');
-  // Already ISO: returned as is, since Date.parse reads it as UTC midnight
-  // and the local getters below would shift it a day west of Greenwich.
+  // Date.parse reads ISO as UTC midnight; the local getters below would shift it a day.
   if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
   const t = Date.parse(v);
   if (Number.isNaN(t)) return value.trim();
@@ -206,8 +178,6 @@ function normalizeDate(value: string): string {
 function normalizeRead(field: ReadField, value: string, idType: PhIdTypeCode): string {
   if (field === 'sex') return normalizeSex(value);
   if (field === 'birthDate') return normalizeDate(value);
-  // Printed as 11/25/2013 or "24th day of April, Twenty Twenty Three";
-  // anything else is shown to the reviewer as read.
   if (field === 'registrationDate') return parseCertificateDate(value) ?? value.trim();
   if (field === 'companyName' || field === 'registeredAddress') return value.replace(/\s+/g, ' ').trim();
   return formatOf(field, idType)?.normalize?.(value) ?? value.trim();
@@ -215,11 +185,6 @@ function normalizeRead(field: ReadField, value: string, idType: PhIdTypeCode): s
 
 type CertificateLayout = 'sec_coi' | 'bir_2303' | 'unrecognized';
 
-// One read of a document. For an SEC certificate or a BIR 2303 the label
-// parser (packages/shared/src/kyc-certificate.ts) is primary and queryFields
-// fill only what it did not find; every other paper is queryFields alone.
-// `layout` is null when there is no page text to judge the paper by, and
-// 'unrecognized' when the text is not the paper it was uploaded as.
 function readCertificate(
   documentType: string,
   result: DocumentExtractionResult,
@@ -229,14 +194,11 @@ function readCertificate(
   }
   const parsed = parseRegistrationCertificate(documentType, result.text);
   const fallback = { ...result.fields };
-  // On a recognised SEC certificate the query's date is not evidence: it
-  // read the Revised Corporation Code's effectivity date on real ones.
+  // On a recognised SEC certificate the queried date is the Corporation Code's effectivity date, not evidence.
   if (parsed.layout === 'sec_coi') delete fallback.registration_date;
   return { fields: { ...fallback, ...parsed.fields }, layout: parsed.layout ?? 'unrecognized' };
 }
 
-// What the customer typed on the upload, stored as customer_* keys beside
-// the OCR's own keys (and decide()'s confirmed_* ones) on ocr_payload.
 export type ConfirmedDocumentFields = Omit<CompanyDocumentUpload, 'documentType'>;
 const CUSTOMER_KEYS: Record<keyof ConfirmedDocumentFields, string> = {
   firstName: 'customer_first_name',
@@ -250,12 +212,10 @@ const CUSTOMER_KEYS: Record<keyof ConfirmedDocumentFields, string> = {
   dtiNumber: 'customer_dti_number',
 };
 
-// format_valid as stored: snake_case, the keys ocr_payload uses.
 function storedFormat(v: CompanyDocumentReadResponse['formatValid']) {
   return { tin: v.tin, sec_number: v.secNumber, dti_number: v.dtiNumber, id_number: v.idNumber };
 }
 
-// The keys a person wrote (customer_* at upload, confirmed_* at decide()).
 function humanKeys(payload: unknown): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries((payload as Record<string, unknown> | null) ?? {}).filter(
@@ -264,43 +224,24 @@ function humanKeys(payload: unknown): Record<string, unknown> {
   );
 }
 
-// The onboarding form scans each paper (POST /me/kyc/scan) and then uploads
-// the same bytes on submit; reading them twice doubled the wait and the
-// Azure spend. A read is kept for the login that asked for it, keyed by the
-// file's hash, so the upload reuses what the scan already computed. The
-// server made the read; nothing here comes from the client.
-// ponytail: per-instance Map; a miss (other instance, restart, expiry) just
-// runs OCR again. Move it to Redis if the API ever scales out wide.
+// Scan and upload send the same bytes, so the upload reuses the server's own read (per login + file hash).
+// ponytail: per-instance Map; a miss just runs OCR again. Move to Redis if the API scales out wide.
 const OCR_CACHE_TTL_MS = 30 * 60_000;
 const OCR_CACHE_MAX = 200;
 
 @Injectable()
 export class CustomersService {
-  // Per service instance, so a read is only ever reused from the same port.
   private readonly ocrCache = new Map<string, { at: number; result: Promise<DocumentExtractionResult> }>();
 
   constructor(
     private readonly events: EventsService,
     @Inject(DOCUMENT_INTELLIGENCE_PORT) private readonly port: DocumentIntelligencePort,
-    // Injected by token, not by type: an interface erases to `Object` in the
-    // DI metadata, so a bare `weather: WeatherForecastPort` makes Nest look
-    // for a provider called Object and refuse to construct this service at
-    // boot. The default keeps the spec able to pass a counting stub.
+    // Injected by token: an interface erases to Object in DI metadata and Nest refuses to boot.
     @Inject(WEATHER_FORECAST_PORT)
     private readonly weather: WeatherForecastPort = createWeatherAdapter(),
   ) {}
 
-  /**
-   * POST /me/kyc/scan. Reads a corporate document the customer is about to
-   * upload and hands back what it saw, so the form arrives filled in and
-   * they correct it rather than typing everything.
-   *
-   * This is a typing aid and nothing more. It writes no kyc_documents row,
-   * makes no verification decision, and a value that fails its format check
-   * is dropped rather than suggested -- staff still review the uploaded
-   * document under RFC-2's human gate, against what the customer submitted.
-   * When no extraction adapter is available the form simply opens empty.
-   */
+  /** Typing aid only: writes no row and decides nothing; staff still review under the RFC-2 human gate. */
   async scanDocument(
     ctx: RequestContext,
     documentType: string,
@@ -339,11 +280,9 @@ export class CustomersService {
       // The form takes no registration date; the staff read keeps it.
       if (!read || (field !== 'registeredAddress' && !(field in suggestions))) continue;
       const value = normalizeRead(field, read.value, idType);
-      // A dropped value is never shown, so it does not score either.
       const format = formatOf(field, idType);
       if (format && !format.re.test(value)) continue;
       if (!scanHintExcluded(field, idType)) confidences.push(read.confidence);
-      // A certificate's registered address suggests the billing address.
       suggestions[(field === 'registeredAddress' ? 'address' : field) as keyof typeof suggestions] = value;
     }
     return {
@@ -359,13 +298,10 @@ export class CustomersService {
     return withTenantTx(ctx, async (tx) => withDocuments(tx, await ownCustomers(tx, ctx)));
   }
 
-  // A new company starts unverified: it can request quotes, but checkout
-  // waits until staff approve it (payments.service.ts).
+  // Starts unverified: quotes are allowed, checkout waits for staff approval.
   async createCompany(ctx: RequestContext, body: CompanyCreate): Promise<CompanyResponse> {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
-      // One application per company per login. A pending or verified one is
-      // already in; a rejected one is cured and reapplied from its own page.
       const same = findSameCompany(body, await ownCustomers(tx, ctx));
       if (same) {
         throw new ConflictException({ error: 'company_already_applied', companyId: same.id, status: same.kycStatus });
@@ -390,9 +326,7 @@ export class CustomersService {
         contactValue: body.contactMobile,
         isPrimary: 'true',
       });
-      // The National ID belongs to the login, not a company: captured once,
-      // it is copied onto each new company so every review (and
-      // hasRequiredCompanyDocuments) still sees it on that company.
+      // The login's National ID is copied onto each new company so every review sees it.
       const [id] = await tx
         .select()
         .from(kycDocuments)
@@ -428,11 +362,7 @@ export class CustomersService {
     });
   }
 
-  // PATCH /me/companies/:id. TIN and SEC number are what staff verified, so
-  // they are frozen once the company is approved -- editing them would
-  // silently void the check. A submitted company waiting for review is
-  // read-only (the reviewer approves or rejects exactly what was sent); a
-  // rejected one opens again so the customer can correct it and reapply.
+  // TIN/SEC freeze once approved (editing would void the check); a complete pending application is read-only.
   async updateCompany(ctx: RequestContext, id: string, body: CompanyUpdate): Promise<CompanyResponse> {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
@@ -451,10 +381,6 @@ export class CustomersService {
     });
   }
 
-  // Which model a document type reads with: the registration cert asks for
-  // company facts, the National ID asks for the holder's name. Shared by
-  // the upload-time read and the reviewer's manual re-read, so there is
-  // exactly one place that decides which model a document type gets.
   private modelIdFor(documentType: string): string {
     return documentType === 'government_id' ? NATIONAL_ID_MODEL_ID : KYC_MODEL_ID;
   }
@@ -466,26 +392,17 @@ export class CustomersService {
     const hit = ocrCache.get(key);
     if (hit && now - hit.at < OCR_CACHE_TTL_MS) return hit.result;
     const result = this.port.analyze(modelId, bytes);
-    // A failed read is not kept: the next attempt asks Azure again.
     result.catch(() => ocrCache.delete(key));
     ocrCache.set(key, { at: now, result });
-    // Oldest first (Map keeps insertion order).
     while (ocrCache.size > OCR_CACHE_MAX) ocrCache.delete(ocrCache.keys().next().value!);
     return result;
   }
 
-  // One OCR pass, whichever fields its model returns. The company model
-  // yields company_name/tin/sec_number/dti_number, the National ID model the
-  // holder's name, PCN, birth date, sex and address -- azure-adapter.ts
-  // already maps Azure's query fields to these port keys, so this reads
-  // whichever keys came back rather than branching on documentType.
   private async analyzeDocument(
     ctx: RequestContext,
     documentType: string,
     bytes: Buffer,
-    // A reviewer's manual re-read asks Azure afresh; the upload reuses the scan.
     cached = true,
-    // Which primary ID a government_id is, for its number's format.
     idType: PhIdTypeCode = 'philsys',
   ): Promise<CompanyDocumentReadResponse & { ocrPayload: Record<string, unknown> }> {
     const suggestions = Object.fromEntries(
@@ -512,27 +429,19 @@ export class CustomersService {
     }
 
     const { fields, layout } = readCertificate(documentType, result);
-    // Which paper the text read as, so the reviewer is told when an upload
-    // is not the SEC certificate or 2303 it claims to be.
     const ocrPayload: Record<string, unknown> = layout ? { layout } : {};
     const confidences: number[] = [];
     for (const [field, key] of Object.entries(READ_FIELDS) as [ReadField, string][]) {
       const read = fields[key];
-      // Only what this paper prints: one model serves all three
-      // certificates, and its low-confidence guess at a TIN on an SEC
-      // certificate is neither evidence nor a legibility signal.
+      // Only what this paper prints: one model reads all three certificates and guesses at the rest.
       if (!read || !(SCAN_FIELDS[documentType]?.includes(field) ?? true)) continue;
       const value = normalizeRead(field, read.value, idType);
       suggestions[field] = value;
       ocrPayload[key] = value;
-      // sec_confidence, not sec_number_confidence: the key kyc.service.ts
-      // and every stored row already use.
+      // sec_confidence, not sec_number_confidence: the key stored rows already use.
       ocrPayload[key === 'sec_number' ? 'sec_confidence' : `${key}_confidence`] = read.confidence;
       if (!LEGIBILITY_EXCLUDED.has(field)) confidences.push(read.confidence);
     }
-    // Every number with a known format gets its check recorded, not only
-    // the TIN and SEC number: a DTI number or PCN that fails is as much a
-    // signal to the reviewer.
     const valid = (field: 'tin' | 'secNumber' | 'dtiNumber' | 'idNumber') => {
       const value = suggestions[field];
       return value ? formatOf(field, idType)!.re.test(value) : false;
@@ -543,23 +452,12 @@ export class CustomersService {
       dtiNumber: valid('dtiNumber'),
       idNumber: valid('idNumber'),
     };
-    // The lowest confidence of whatever was found: a reviewer (or the
-    // upload-time gate) should judge a document by its weakest field, not
-    // its strongest.
     const confidence = confidences.length > 0 ? Math.min(...confidences) : null;
 
     return { documentId: '', suggestions, formatValid, confidence, extractionAvailable: true, ocrPayload };
   }
 
-  // The file is already validated and in storage (controller); this
-  // records it against a company the caller owns, then reads it with the
-  // same OCR pass a reviewer would later trigger manually, and it goes to
-  // the staff queue ('needs_review') however well it read. The selfie and
-  // cure papers are never sent to OCR. Nothing is bounced back: a reviewer
-  // who cannot use a document rejects with a reason. A document type
-  // already on file is replaced only while the company is still being
-  // assembled or after a (non-final) rejection, as its cure; the old row is
-  // kept as 'superseded' evidence. Verification stays decide()'s call.
+  // Every OCR'd document lands in 'needs_review'; verification stays decide()'s call.
   async addDocument(
     ctx: RequestContext,
     customerId: string,
@@ -569,15 +467,12 @@ export class CustomersService {
     confirmed: ConfirmedDocumentFields = {},
   ) {
     assertCustomer(ctx);
-    // What the customer checked on screen, kept even when OCR is off so the
-    // reviewer still sees the PCN they typed.
     const customerPayload = Object.fromEntries(
       (Object.entries(confirmed) as [keyof ConfirmedDocumentFields, string | undefined][])
         .filter(([k, v]) => v && CUSTOMER_KEYS[k])
         .map(([k, v]) => [CUSTOMER_KEYS[k], v]),
     );
-    // The row is recorded first and the OCR read runs after that transaction
-    // commits: a slow Azure call must not hold a pooled connection open.
+    // OCR runs after this tx commits: a slow Azure call must not hold a pooled connection.
     const row = await withTenantTx(ctx, async (tx) => {
       if (!(await ownsCustomer(tx, ctx, customerId)))
         throw new NotFoundException({ error: 'company_not_found' });
@@ -585,10 +480,7 @@ export class CustomersService {
       const onFile = live.some((d) => d.documentType === documentType);
       const [company] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
       if (company && isFinalRejection(company)) throw new ConflictException({ error: 'rejection_final' });
-      // A company still being assembled (not yet submitted) may replace a
-      // document, e.g. a fresh ID over the one carried from another company;
-      // a rejected one may replace any, curing the rejection. A submitted or
-      // verified company's papers are what was reviewed, so they stay.
+      // A submitted or verified company's papers are what was reviewed, so they stay (a rejection may be cured).
       if (onFile && company?.kycStatus !== 'rejected' && hasRequiredCompanyDocuments(live))
         throw new ConflictException({ error: 'document_locked' });
       if (onFile) {
@@ -627,8 +519,7 @@ export class CustomersService {
       return { id: row.id, documentType: row.documentType, status: row.status, createdAt: row.createdAt };
     }
 
-    // Usually a cache hit: the form scanned these same bytes a moment ago.
-    // A read that fails leaves the row 'pending' for the reviewer's re-read.
+    // A failed read leaves the row 'pending' for the reviewer's re-read.
     const read = await this.analyzeDocument(ctx, documentType, bytes, true, idTypeOf(confirmed.idType));
     let status = row.status;
     if (read.extractionAvailable) {
@@ -670,17 +561,11 @@ export class CustomersService {
     });
   }
 
-  // POST /me/sites/:id/documents. The file is validated and in storage
-  // (controller); this records it against a site of a company the caller
-  // owns. A person looks at it; it is never sent to OCR.
+  // Never sent to OCR; a person looks at it.
   async addSiteDocument(ctx: RequestContext, siteId: string, documentType: string, fileUri: string) {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
-      const ids = (await ownCustomers(tx, ctx)).map((row) => row.id);
-      const [site] = ids.length
-        ? await tx.select().from(projectSites).where(and(eq(projectSites.id, siteId), inArray(projectSites.customerId, ids))).limit(1)
-        : [];
-      if (!site) throw new NotFoundException({ error: 'site_not_found' });
+      await ownSite(tx, ctx, siteId);
       const [row] = await tx
         .insert(siteDocuments)
         .values({ tenantId: ctx.tenantId, projectSiteId: siteId, documentType, fileUri, uploadedBy: ctx.userId })
@@ -691,8 +576,6 @@ export class CustomersService {
     });
   }
 
-  // GET /sites/:id/documents (staff). What a booking's or truck trip's site
-  // carries as proof, for staff to open before confirming the job.
   async listSiteDocuments(ctx: RequestContext, siteId: string) {
     return withTenantTx(ctx, async (tx) => {
       const docs = (await siteDocumentsFor(tx, [siteId])).get(siteId) ?? [];
@@ -713,37 +596,14 @@ export class CustomersService {
     });
   }
 
-  /**
-   * GET /me/sites/:id/forecast. Five days for one of the caller's own sites.
-   *
-   * The weather routes on sites.controller.ts are STAFF_READ, so a customer
-   * could not read weather at all -- this is the customer's own surface, and
-   * it is bounded the same way every other /me read is. RLS puts every
-   * customer of a tenant in one scope; ownCustomers() on top is what stops
-   * one customer reading the forecast for another's site, which would leak
-   * where that company is working (audit-api-surface.md #1).
-   */
+  // ownSite() on top of RLS: every customer of a tenant shares one RLS scope.
   async siteForecast(ctx: RequestContext, siteId: string): Promise<SiteForecastResponse> {
     assertCustomer(ctx);
-    const site = await withTenantTx(ctx, async (tx) => {
-      const ids = (await ownCustomers(tx, ctx)).map((row) => row.id);
-      if (ids.length === 0) throw new NotFoundException({ error: 'site_not_found' });
-      const [row] = await tx
-        .select()
-        .from(projectSites)
-        .where(and(eq(projectSites.id, siteId), inArray(projectSites.customerId, ids)))
-        .limit(1);
-      // Not-found rather than forbidden, so the check confirms no ids.
-      if (!row) throw new NotFoundException({ error: 'site_not_found' });
-      return row;
-    });
+    const { site } = await withTenantTx(ctx, (tx) => ownSite(tx, ctx, siteId));
 
     return { siteId, ...(await this.forecastAt(Number(site.latitude), Number(site.longitude))) };
   }
 
-  // GET /me/forecast. Metro Manila, where most of the yard's work is, for a
-  // customer with no site yet: the same cached, honest-when-unavailable
-  // forecast as a site's, labelled as a general one.
   async areaForecast(ctx: RequestContext): Promise<AreaForecastResponse> {
     assertCustomer(ctx);
     return { area: 'Metro Manila', ...(await this.forecastAt(14.5995, 120.9842)) };
@@ -757,9 +617,7 @@ export class CustomersService {
     try {
       days = await this.weather.getForecast(latitude, longitude);
     } catch (err) {
-      // Unavailable is reported as unavailable. Never an empty week, never
-      // zeros: packages/shared/src/weather-port.spec.ts pins why a
-      // fabricated all-clear is the one failure mode that can hurt someone.
+      // Unavailable is reported as unavailable; a fabricated all-clear is the one failure that can hurt someone.
       throw new ServiceUnavailableException({
         error: 'weather_unavailable',
         reason: err instanceof WeatherUnavailableError ? err.reason : 'upstream_failed',
@@ -771,20 +629,11 @@ export class CustomersService {
     return { days, fetchedAt };
   }
 
-  // GET /me/sites/:id/equipment-weather. The weather level of each machine
-  // the caller rents on their own site, from the latest poll, with what to
-  // do about it. Only their own machines, never a neighbour's.
+  // Only the caller's own machines on the site, never a neighbour's.
   async siteEquipmentWeather(ctx: RequestContext, siteId: string): Promise<SiteEquipmentWeatherResponse> {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
-      const ids = (await ownCustomers(tx, ctx)).map((row) => row.id);
-      if (ids.length === 0) throw new NotFoundException({ error: 'site_not_found' });
-      const [site] = await tx
-        .select({ id: projectSites.id })
-        .from(projectSites)
-        .where(and(eq(projectSites.id, siteId), inArray(projectSites.customerId, ids)))
-        .limit(1);
-      if (!site) throw new NotFoundException({ error: 'site_not_found' });
+      const { customerIds: ids } = await ownSite(tx, ctx, siteId);
       const mine = await tx.select({ id: rentals.id }).from(rentals).where(and(eq(rentals.projectSiteId, siteId), inArray(rentals.customerId, ids)));
       return latestEquipmentWeather(tx, siteId, mine.map((row) => row.id));
     });
@@ -823,11 +672,6 @@ export class CustomersService {
     });
   }
 
-  // --- Staff verification queue (kyc:verify).
-
-  // Each document carries its stored reads, so the reviewer sees what the
-  // upload-time OCR and the customer said without a click (or an Azure
-  // spend); "Re-read" stays for a fresh pass.
   async listForReview(ctx: RequestContext, kycStatus: string, limit = 50, offset = 0): Promise<CompanyReviewListResponse> {
     return withTenantTx(ctx, async (tx) => {
       const where = eq(customers.kycStatus, kycStatus);
@@ -842,16 +686,7 @@ export class CustomersService {
     });
   }
 
-  /**
-   * GET /me/companies/:id/documents/:documentId/url. The customer's own
-   * copy of documentKey().
-   *
-   * RLS bounds the tenant and nothing more, and `customer` is an
-   * intra-tenant role -- without ownsCustomer() on top, one customer of a
-   * tenant could read another's registration certificate by guessing a
-   * customer id (audit-api-surface.md #1). Refuses as not-found rather
-   * than forbidden so the check leaks no ids.
-   */
+  // ownsCustomer() on top of RLS (customers share a tenant scope); 404 rather than 403 so ids don't leak.
   async ownDocumentKey(ctx: RequestContext, customerId: string, documentId: string): Promise<string> {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
@@ -880,18 +715,7 @@ export class CustomersService {
     });
   }
 
-  /**
-   * POST /customers/:id/documents/:documentId/read. A reviewer's "Read
-   * document" click: extracts what it can from the document already in
-   * storage and saves it on the row as evidence.
-   *
-   * It decides nothing. `kyc_status` is untouched, the values land in
-   * `ocr_payload`/`format_valid`/`confidence` for the reviewer to edit, and
-   * approval stays the explicit decide() call (RFC-2's human gate). A value
-   * failing its format check is reported as invalid rather than hidden: a
-   * reviewer told "TIN read as 12-34, format invalid" is better informed
-   * than one shown nothing.
-   */
+  // Decides nothing: kyc_status is untouched and approval stays the explicit decide() call (RFC-2 human gate).
   async readDocument(
     ctx: RequestContext,
     customerId: string,
@@ -912,8 +736,7 @@ export class CustomersService {
         await tx
           .update(kycDocuments)
           .set({
-            // A re-read replaces the OCR's keys, never what the customer or
-            // a reviewer confirmed.
+            // Replaces the OCR's keys, never what a person confirmed.
             ocrPayload: { ...read.ocrPayload, ...humanKeys(doc.ocrPayload) },
             formatValid: storedFormat(read.formatValid),
             ...(read.confidence === null ? {} : { confidence: read.confidence.toFixed(4) }),
@@ -926,10 +749,6 @@ export class CustomersService {
     });
   }
 
-  // POST /me/companies/:id/reapply. After a (non-final) rejection the
-  // customer uploads the papers that cure it and sends the company back to
-  // the queue for a fresh decision. Refused until every cure paper has been
-  // uploaded since the rejection, and the company is complete again.
   async reapply(ctx: RequestContext, customerId: string): Promise<CompanyResponse> {
     assertCustomer(ctx);
     return withTenantTx(ctx, async (tx) => {
@@ -946,8 +765,7 @@ export class CustomersService {
       if (missing.length > 0) throw new ConflictException({ error: 'cure_documents_missing', documentTypes: missing });
       if (!hasRequiredCompanyDocuments(live)) throw new ConflictException({ error: 'documents_incomplete' });
 
-      // The rejection stays on the row so the reviewer sees what this
-      // reapplication answers; decide() clears or replaces it.
+      // The rejection stays on the row so the reviewer sees what this answers.
       await tx.update(customers).set({ kycStatus: 'pending' }).where(eq(customers.id, customerId));
       await tx
         .update(kycDocuments)
@@ -971,12 +789,7 @@ export class CustomersService {
     });
   }
 
-  // PATCH /customers/:id/kyc. Verification is a human decision on exactly
-  // what the customer submitted: the reviewer never edits it. Approval
-  // needs every registry paper checked on its registry plus the identity
-  // checks (PhilSys QR verified on PhilSys Check, selfie matches the ID,
-  // holder authorized for the company). A rejection needs a reason, which
-  // tells the customer what cures it.
+  // Human gate: approval needs every registry paper checked plus the identity checks; the reviewer never edits the submission.
   async decide(ctx: RequestContext, customerId: string, body: CompanyDecision) {
     return withTenantTx(ctx, async (tx) => {
       const [row] = await tx.select().from(customers).where(eq(customers.id, customerId)).limit(1);
@@ -991,8 +804,6 @@ export class CustomersService {
       if (body.decision === 'approved') {
         if (!body.identity) throw new ConflictException({ error: 'identity_checks_required' });
         if (!hasRequiredCompanyDocuments(docs)) throw new ConflictException({ error: 'documents_incomplete' });
-        // Every SEC, 2303 and DTI paper is checked on its public registry by
-        // a human before approval: a missed tick refuses the approval.
         const checked = new Set(body.registryChecked);
         const unchecked = registryDocs.filter((d) => !checked.has(d.id));
         if (unchecked.length > 0) {
@@ -1012,9 +823,7 @@ export class CustomersService {
             identityChecks: { ...body.identity, checked_by: ctx.userId, checked_at: new Date().toISOString() },
           })
           .where(eq(customers.id, customerId));
-        // The legal name the customer confirmed off their National ID lands
-        // on their user account, now that the reviewer verified the card on
-        // PhilSys Check -- the person's identity, not this company's.
+        // The confirmed legal name moves to the user account only once the reviewer has verified the ID.
         const id = docs.find((d) => d.documentType === 'government_id');
         const confirmed = (id?.ocrPayload as Record<string, unknown> | null) ?? {};
         const name = (key: string) => (typeof confirmed[`customer_${key}`] === 'string' ? (confirmed[`customer_${key}`] as string) : undefined);
@@ -1050,7 +859,6 @@ export class CustomersService {
             rejectedAt: new Date(),
           })
           .where(eq(customers.id, customerId));
-        // What the reviewer saw on the registry, recorded against the paper.
         if (reason === 'sec_not_in_good_standing') {
           const secDocs = registryDocs.filter((d) => d.documentType === 'sec_certificate');
           if (secDocs.length > 0)
@@ -1087,8 +895,6 @@ export class CustomersService {
   }
 }
 
-// A rejection whose reason cannot be cured by reapplying (a tampered or
-// fraudulent paper): the company stays rejected.
 function isFinalRejection(row: typeof customers.$inferSelect): boolean {
   return (
     row.kycStatus === 'rejected' &&
@@ -1097,8 +903,7 @@ function isFinalRejection(row: typeof customers.$inferSelect): boolean {
   );
 }
 
-// /me/* is the customer's own workspace. Staff act on customers through
-// the review endpoints, never by creating companies under their own login.
+// /me/* is the customer's own workspace; staff act through the review endpoints.
 function assertCustomer(ctx: RequestContext) {
   if (ctx.role !== 'customer') throw new ForbiddenException({ error: 'customer_only' });
 }
@@ -1131,9 +936,7 @@ function toCompany(
   };
 }
 
-// The confirmed legal name lives on the linked user's account (decide()),
-// not on the company row -- one login can register several companies and
-// the name follows the login, not any one of them.
+// The name follows the login (one login can register several companies).
 async function withUserNames(tx: Tx, rows: (typeof customers.$inferSelect)[]) {
   const userIds = [...new Set(rows.map((row) => row.userId).filter((id): id is string => !!id))];
   if (userIds.length === 0) return new Map<string, typeof users.$inferSelect>();
@@ -1176,8 +979,7 @@ async function withDocuments(
       .map((doc) => ({
         id: doc.id,
         documentType: doc.documentType,
-        // Documents are no longer bounced back; an old row still carrying
-        // that status reads as waiting like any other.
+        // Legacy 'resubmit_required' rows read as waiting.
         status: doc.status === 'resubmit_required' ? 'pending' : doc.status,
         createdAt: doc.createdAt,
         ...(withReads ? documentReads(doc) : {}),
@@ -1185,10 +987,7 @@ async function withDocuments(
   }));
 }
 
-// Adds the applicant's mobile and the advisory score to each company under
-// review (cr-arkilaunch-registration-scoring.md). Duplicates are the one
-// input only the database knows: another company in THIS tenant (RLS) with
-// the same TIN, the same PCN on its National ID, or the same mobile.
+// Duplicate checks run within this tenant only (RLS): same TIN, ID number or mobile.
 async function withScores(tx: Tx, companies: CompanyReviewResponse[]): Promise<CompanyReviewResponse[]> {
   if (companies.length === 0) return companies;
   const [allCompanies, phones, ids] = await Promise.all([
@@ -1215,8 +1014,7 @@ async function withScores(tx: Tx, companies: CompanyReviewResponse[]): Promise<C
   };
   const byTin = holders(allCompanies.map((c) => ({ customerId: c.id, key: c.tin ? digits(c.tin) : '' })));
   const byPhone = holders(phones.map((p) => ({ customerId: p.customerId, key: digits(p.value).slice(-10) })));
-  // Keyed by card type and number (QA 15): a passport and an SSS number
-  // that share digits are not the same ID.
+  // Keyed by card type and number: a passport and an SSS number sharing digits differ.
   const idKey = (type: unknown, value: unknown) =>
     typeof value === 'string' && digits(value) ? `${idTypeOf(type)}:${value.toUpperCase().replace(/[^A-Z0-9]/g, '')}` : '';
   const pcnOf = (payload: unknown) => {
@@ -1226,7 +1024,7 @@ async function withScores(tx: Tx, companies: CompanyReviewResponse[]): Promise<C
   const byPcn = holders(ids.map((d) => ({ customerId: d.customerId, key: pcnOf(d.payload) })));
   const shared = (map: Map<string, Set<string>>, key: string, self: string) =>
     !!key && [...(map.get(key) ?? [])].some((other) => other !== self);
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
+  const today = manilaDate(new Date());
 
   return companies.map((company) => {
     const phone = phones.find((p) => p.customerId === company.id)?.value ?? null;
@@ -1251,8 +1049,6 @@ async function withScores(tx: Tx, companies: CompanyReviewResponse[]): Promise<C
   });
 }
 
-// A company's current documents: a re-upload leaves the one it replaced
-// behind as 'superseded' evidence, which no longer counts.
 function liveDocuments(tx: Tx, customerId: string) {
   return tx
     .select()
@@ -1260,9 +1056,6 @@ function liveDocuments(tx: Tx, customerId: string) {
     .where(and(eq(kycDocuments.customerId, customerId), ne(kycDocuments.status, 'superseded')));
 }
 
-// ocr_payload split for the reviewer: the OCR's own string values, and the
-// customer's (customer_* keys, prefix dropped). Per-field confidences stay
-// server-side; the document-level one is enough to judge by.
 function documentReads(doc: typeof kycDocuments.$inferSelect) {
   const ocr: Record<string, string> = {};
   const customer: Record<string, string> = {};

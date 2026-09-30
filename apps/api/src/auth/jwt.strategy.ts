@@ -3,9 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { JwtClaims, JwtClaimsSchema } from '@arkilaunch/shared';
 
-// RS256 with an explicit algorithm allowlist (RFC-1 §3): alg:none and
-// algorithm-confusion attempts (e.g. HS256 signed with the public key) are
-// rejected by construction, not by convention.
+// Explicit RS256 allowlist: alg:none and algorithm confusion are rejected by construction.
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor() {
@@ -20,8 +18,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: unknown): JwtClaims {
-    // Re-validate the decoded payload shape; a syntactically valid JWT does
-    // not guarantee our claim contract.
+    // A syntactically valid JWT doesn't guarantee our claim contract.
     return JwtClaimsSchema.parse(payload);
   }
 }

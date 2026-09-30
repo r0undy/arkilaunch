@@ -4,10 +4,6 @@ import { apiGet, apiPost } from '../lib/api-client.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
 
-// "Weather alerts on this device" (docs/cr-arkilaunch-weather-monitoring.md):
-// standard Web Push -- the browser's own push service and our VAPID key,
-// no Firebase or other paid SDK. Hidden where the browser cannot do push.
-
 type State = 'loading' | 'unsupported' | 'unconfigured' | 'denied' | 'off' | 'on';
 
 function base64UrlToBytes(value: string): Uint8Array {
@@ -38,7 +34,11 @@ export function PushAlertsToggle() {
         if (Notification.permission === 'denied') return setState('denied');
         const registration = await navigator.serviceWorker.getRegistration('/sw.js');
         const existing = await registration?.pushManager.getSubscription();
-        if (!cancelled) setState(existing ? 'on' : 'off');
+        // Re-register so the subscription belongs to whoever is signed in now.
+        const registered = existing
+          ? await apiPost('/notifications/push-subscriptions', existing.toJSON()).then(() => true, () => false)
+          : false;
+        if (!cancelled) setState(registered ? 'on' : 'off');
       } catch {
         if (!cancelled) setState('unconfigured');
       }
@@ -52,6 +52,7 @@ export function PushAlertsToggle() {
     if (!publicKey) return;
     setBusy(true);
     setError(null);
+    let subscription: PushSubscription | undefined;
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
@@ -60,13 +61,14 @@ export function PushAlertsToggle() {
       }
       const registration = await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
+      subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: base64UrlToBytes(publicKey),
       });
       await apiPost('/notifications/push-subscriptions', subscription.toJSON());
       setState('on');
     } catch {
+      await subscription?.unsubscribe().catch(() => false);
       setError('Alerts could not be turned on for this device. Try again.');
     } finally {
       setBusy(false);

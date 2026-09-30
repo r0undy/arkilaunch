@@ -11,7 +11,7 @@ describe('WeatherBanner', () => {
         tagLabel="PAGASA red"
         siteName="Bagumbayan"
         condition="Heavy rainfall"
-        timestamp={{ relative: 'Reported 40 minutes ago', absolute: '2026-08-02 14:30' }}
+        timestamp={{ relative: '40 minutes ago', absolute: '2026-08-02 14:30' }}
       />,
     );
     expect(html).toContain('Severe weather warning');
@@ -29,7 +29,7 @@ describe('WeatherBanner', () => {
         severityLabel="Stale reading"
         siteName="Bagumbayan"
         condition="Last known: heavy rainfall"
-        timestamp={{ relative: 'Reported 2 days ago', absolute: '2026-08-01 09:00' }}
+        timestamp={{ relative: '2 days ago', absolute: '2026-08-01 09:00' }}
       />,
     );
     expect(html).toContain('Stale reading');
@@ -52,7 +52,7 @@ describe('WeatherBanner', () => {
         tagLabel="PAGASA red"
         siteName="Bagumbayan"
         condition="Heavy rainfall"
-        timestamp={{ relative: 'Reported 40 minutes ago', absolute: '2026-08-02 14:30' }}
+        timestamp={{ relative: '40 minutes ago', absolute: '2026-08-02 14:30' }}
         breakdown={['Wind: 65 kph — above the 60 kph warning threshold.']}
       />,
     );
@@ -89,9 +89,7 @@ describe('WeatherBanner', () => {
     expect(html).not.toContain('View live map');
   });
 
-  // CC BY 4.0 requires attribution wherever Open-Meteo's data is displayed
-  // (docs/cr-arkilaunch-open-meteo-free-tier.md); this must render
-  // regardless of whether site coordinates are also available.
+  // CC BY 4.0: the attribution renders with or without coordinates.
   it('always renders the Open-Meteo CC BY 4.0 attribution link', () => {
     const html = renderToStaticMarkup(
       <WeatherBanner tone="clear" severityLabel="Clear" siteName="Bagumbayan" condition="No advisory" timestamp={null} />,
@@ -124,7 +122,7 @@ describe('WeatherBanner', () => {
         tagLabel="PAGASA red"
         siteName="Bagumbayan"
         condition="Heavy rainfall"
-        timestamp={{ relative: 'Reported 40 minutes ago', absolute: '2026-08-02 14:30' }}
+        timestamp={{ relative: '40 minutes ago', absolute: '2026-08-02 14:30' }}
         action={<a href="/app/weather/incidents/1">View incident</a>}
       />,
     );

@@ -18,9 +18,7 @@ import type { RequestContext, SiteHubResponse } from '@arkilaunch/shared';
 import { EventsService } from '../events/events.service.js';
 import { loadFieldLogs, personName } from '../common/field-logs.js';
 
-// The per-site hub (cr-arkilaunch-edtr-site-hub-approval.md §7): overview,
-// the day x unit field-log grid, equipment, personnel and documents, in one
-// read. Every query runs under the tenant's RLS transaction.
+// Every query runs under the tenant's RLS transaction.
 @Injectable()
 export class SiteHubService {
   constructor(private readonly events: EventsService) {}
@@ -132,7 +130,6 @@ export class SiteHubService {
     });
   }
 
-  // Add or remove one timekeeper on this site, from the hub's personnel tab.
   async setTimekeeper(ctx: RequestContext, siteId: string, userId: string, assigned: boolean) {
     return withTenantTx(ctx, async (tx) => {
       const [site] = await tx.select({ id: projectSites.id }).from(projectSites).where(eq(projectSites.id, siteId)).limit(1);

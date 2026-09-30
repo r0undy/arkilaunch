@@ -39,8 +39,6 @@ const usersListQuery = (limit: number, offset: number) => ({
   queryFn: () => apiGet<UserListResponse>(`/users?limit=${limit}&offset=${offset}`),
 });
 
-// Invite in a dialog. Once sent, the dialog stays open on the activation
-// token (there is no email provider yet), and closing it clears the form.
 function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState('');
@@ -55,8 +53,7 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
       setEmail('');
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
-    // One account per email platform-wide (migration 0063): the address may
-    // belong to another rental company's customer or staff.
+    // One account per email platform-wide: the address may belong to another company's user.
     onError: (e) =>
       setError(
         e instanceof ApiError && e.message === 'email_taken'
@@ -118,9 +115,11 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
             {...(error ? { error } : {})}
           />
           <Select label="Role" id="invite-role" value={role} onChange={(e) => setRole(e.target.value as AssignableRole)}>
-            <option value="customer">Customer</option>
-            <option value="timekeeper">Timekeeper</option>
-            <option value="admin">Admin</option>
+            {ASSIGNABLE_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {formatRole(r)}
+              </option>
+            ))}
           </Select>
         </form>
       )}
@@ -235,7 +234,6 @@ function UserActions({ user }: { user: UserRow }) {
           Remove access
         </Button>
       )}
-      {/* The raw token is long; copy it rather than print it in the row. */}
       {lastToken && (
         <span className="inline-flex items-center gap-1 text-sm text-text-muted">
           Invite token

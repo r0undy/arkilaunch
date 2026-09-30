@@ -4,10 +4,7 @@ import { Reflector } from '@nestjs/core';
 import postgres from 'postgres';
 import { PermissionsGuard } from '../src/common/guards/permissions.guard.js';
 
-// QAD abuse gate: a user cannot grant itself a permission or act as
-// platform_admin by presenting a role it does not actually hold. This
-// guard has no path that trusts anything other than the DB-backed
-// role_permissions join for the role in the verified JWT claims.
+// Access is decided by the DB-backed role_permissions join for the verified role, never a claimed string.
 describe('PermissionsGuard: role escalation abuse', () => {
   let tenantId: string;
   let timekeeperUserId: string;
@@ -25,10 +22,7 @@ describe('PermissionsGuard: role escalation abuse', () => {
 
   it('a role with no matching role_permissions row is denied a permission it lacks', async () => {
     const reflector = new Reflector();
-    // Simulate @RequirePermission by directly checking the reflector path
-    // is exercised: request a permission code that is not in the seeded
-    // catalog for a non-admin role and confirm the guard's DB-backed check
-    // (not the claimed role string alone) is what decides access.
+    // An uncatalogued code for a non-admin role: the guard's DB check must decide.
     const req = { ctx: { tenantId, userId: timekeeperUserId, role: 'timekeeper' } };
     const context = {
       switchToHttp: () => ({ getRequest: () => req }),

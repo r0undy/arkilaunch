@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react';
-import { CloseIcon } from './icons.js';
-
-// The only overlay in the app was the sidebar drawer, which had no focus
-// trap, no Escape handler and no dialog role. Long forms and every
-// consequential action now open through this instead, so the accessibility
-// work is done once.
+import { X } from 'lucide-react';
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -16,13 +11,8 @@ export interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   size?: ModalSize;
-  // A destructive confirmation should not be dismissible by a stray click on
-  // the scrim; an informational form should be.
   dismissOnScrim?: boolean;
-  // 'right' is a full-height drawer from the right edge (the booking
-  // drawer); same dialog semantics, focus trap and Escape handling.
   placement?: 'center' | 'right';
-  // 'alertdialog' for a confirm that interrupts to ask (ConfirmDialog).
   role?: 'dialog' | 'alertdialog';
 }
 
@@ -36,8 +26,7 @@ const SIZE_CLASSES: Record<ModalSize, string> = {
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-// Skips what Tab never reaches: the hidden native <select> behind a
-// dropdown (tabIndex -1) and anything in a closed <details> or [hidden].
+// Skip what Tab never reaches: hidden native <select>s and closed <details>/[hidden].
 function focusables(root: HTMLElement | null): HTMLElement[] {
   if (!root) return [];
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
@@ -63,21 +52,16 @@ export function Modal({
   const restoreFocusTo = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
-  // Callers pass inline arrows. Read through a ref so a re-render does not
-  // re-run the open effect -- that re-focused the first control (and
-  // re-bound the keys) on every keystroke in a form inside the dialog.
+  // Read through a ref: re-running the open effect re-focused the first control on every keystroke.
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      // Only the dialog that holds focus answers. A confirm opened from
-      // inside a drawer owns Escape and Tab; otherwise one Escape closed
-      // both, and the drawer's trap pulled focus out of the confirm.
+      // Only the dialog holding focus answers, so a confirm inside a drawer owns Escape and Tab.
       const active = document.activeElement;
       if (!panel.current || !(active instanceof Element) || active.closest('[role="dialog"], [role="alertdialog"]') !== panel.current) return;
-      // An open dropdown (components/select.tsx) owns its own Escape: it
-      // closes the menu, not the dialog around it.
+      // An open dropdown owns its own Escape.
       if (event.key === 'Escape' && active.getAttribute('role') === 'combobox' && active.getAttribute('aria-expanded') === 'true') return;
       if (event.key === 'Escape') {
         event.stopPropagation();
@@ -85,8 +69,6 @@ export function Modal({
         return;
       }
       if (event.key !== 'Tab' || !panel.current) return;
-      // Keep Tab inside the dialog, so focus cannot wander onto the page
-      // behind it while it is open.
       const focusable = focusables(panel.current);
       if (focusable.length === 0) return;
       const first = focusable[0]!;
@@ -109,10 +91,7 @@ export function Modal({
     document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', handleKeyDown, true);
 
-    // A dialog nested inside this one (its effect runs first) may already
-    // hold focus; leave it there. Otherwise open on the first field, else the
-    // first footer action (Cancel in a confirm), never the dismiss X
-    // (Cloudscape Modal).
+    // A nested dialog (its effect runs first) may already hold focus. Never open on the dismiss X.
     if (!panel.current?.contains(document.activeElement)) {
       (focusables(body.current)[0] ?? focusables(foot.current)[0] ?? panel.current)?.focus();
     }
@@ -170,7 +149,7 @@ export function Modal({
             aria-label="Close"
             className="-m-2.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-text-muted hover:bg-surface-sunk hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
           >
-            <CloseIcon className="h-5 w-5" aria-hidden />
+            <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
 

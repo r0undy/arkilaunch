@@ -1,16 +1,5 @@
-# Reusable ACA Job for one of jobs/src/{weather-poll,diesel,maintenance-notify,
-# edtr-ocr-worker,weekly-billing}.ts. parallelism=1 + replica_completion_count=1 is the
-# overlap guard ops-arkilaunch.md requires (A8: "two runs overlap despite the
-# guard" is itself a P1/P2 alert condition) -- a second scheduled run cannot
-# start concurrently with one still in flight.
-#
-# Pulls via a pre-created UserAssigned identity (modules/managed_identity),
-# not SystemAssigned -- same rationale as api_app/main.tf: a SystemAssigned
-# identity's AcrPull role can only be granted after the job already exists
-# and is already trying to pull, and Azure's own provisioning timeout can
-# expire waiting for that role to propagate (observed in practice, not
-# hypothetical). Callers must set depends_on = [module.<identity module>]
-# on this module block.
+# parallelism=1 + replica_completion_count=1 is the overlap guard: no concurrent runs.
+# UserAssigned identity for the same reason as api_app; callers must depends_on it.
 resource "azurerm_container_app_job" "this" {
   name                         = var.name
   resource_group_name          = var.resource_group_name

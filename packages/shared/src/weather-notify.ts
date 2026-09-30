@@ -1,12 +1,5 @@
 import { LEVEL_RANK, WEATHER_LEVEL_INFO, type WeatherLevel } from './equipment-weather.js';
 
-// Weather monitoring notices (docs/cr-arkilaunch-weather-monitoring.md):
-// the pre-workday briefing, the hourly outlook while the forecast is bad,
-// and the live Caution/Stop-work warning. One text for the in-app feed,
-// the email and the Web Push, so the three never say different things.
-// The site's timekeepers, the customer who rents the machine and the
-// tenant's admins all get the same notice; only the link differs.
-
 export const WEATHER_NOTICE_TYPES = [
   'equipment_weather_briefing',
   'equipment_weather_outlook',
@@ -24,7 +17,6 @@ export interface WeatherNoticeMachine {
   equipmentType: string;
   level: WeatherLevel;
   reasons: string[];
-  // Site-local "HH:00" hours at Caution or worse (forecast notices only).
   hours?: string[];
 }
 
@@ -36,7 +28,6 @@ function levelOf(value: unknown): WeatherLevel {
   return typeof value === 'string' && value in LEVEL_RANK ? (value as WeatherLevel) : 'caution';
 }
 
-// "13:00-15:00" for a run of hours, "09:00, 13:00-14:00" for gaps.
 export function hourRanges(hours: string[]): string {
   const sorted = [...new Set(hours)].sort();
   const runs: [string, string][] = [];
@@ -96,8 +87,6 @@ export function weatherNoticeText(
   };
 }
 
-// Where the notice opens: the customer's booking, the timekeeper's field
-// screen, the admin's site hub.
 export function weatherNoticePath(audience: WeatherAudience, payload: Record<string, unknown>): string {
   const rentalId = typeof payload.rental_id === 'string' ? payload.rental_id : machinesOf(payload)[0]?.rentalId;
   const siteId = typeof payload.project_site_id === 'string' ? payload.project_site_id : '';
@@ -106,7 +95,6 @@ export function weatherNoticePath(audience: WeatherAudience, payload: Record<str
   return siteId ? `/app/deployment/${siteId}` : '/app/incidents';
 }
 
-// Plain-text email; renderEmailHtml turns the trailing "Label: URL" into a button.
 export function weatherEmail(
   type: WeatherNoticeType,
   payload: Record<string, unknown>,

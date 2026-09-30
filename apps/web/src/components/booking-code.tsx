@@ -1,11 +1,6 @@
 import { BOOKING_SERVICE_LABEL, type BookingService } from '@arkilaunch/shared';
 import { CopyButton } from './copy-button.js';
 
-// The one way a booking is named on screen, for both services
-// (cr-arkilaunch-uniform-booking-codes.md): the database-assigned code in
-// the gauge mono face, optionally with the service beside it. Replaces the
-// UUID-derived BKG-/RNT- fragments, which named one rental two ways.
-
 export function ServiceBadge({ service }: { service: BookingService }) {
   return (
     <span
@@ -26,9 +21,7 @@ export function BookingCode({
   className = '',
 }: {
   code: string | null | undefined;
-  // Given, the service badge is shown beside the code.
   service?: BookingService;
-  // Given, a copy button sits beside the code.
   copyable?: boolean;
   className?: string;
 }) {

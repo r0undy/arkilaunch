@@ -3,11 +3,8 @@ import { eq } from 'drizzle-orm';
 import { withTenantTx, equipment } from '../src/index.js';
 import { directSql, getTenantId } from './helpers.js';
 
-// RFC-1's named top hazard: a pooled (Supavisor) connection must not carry
-// one request's tenant GUC into the next. local=true binds the GUC to the
-// transaction, so it must reset at commit even if the underlying TCP
-// connection is reused by the pool. This is why the plan requires Supabase
-// cloud, not Docker Postgres, for this specific test.
+// RFC-1's top hazard: a pooled connection must not carry one request's tenant GUC into the next.
+// Needs the real Supavisor pooler, not Docker Postgres.
 describe('withTenantTx: no GUC leak across sequential pooled transactions', () => {
   const direct = directSql();
   let tenantAId: string;

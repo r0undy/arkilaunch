@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ROLE_CODES, type RoleCode } from './permissions.js';
-import { AssignableRoleSchema, evaluateUserAdminAction, type AssignableRole } from './users.js';
+import { AssignableRoleSchema, evaluateUserAdminAction, UserPasswordChangeSchema, type AssignableRole } from './users.js';
 
 const ASSIGNABLE_ROLES = AssignableRoleSchema.options;
 const ACTOR_ID = 'actor';
@@ -22,11 +22,7 @@ describe('evaluateUserAdminAction (S19 privilege-escalation policy, pure)', () =
     }
   });
 
-  // The exhaustive matrix: every (actorRole x targetRole x requestedRole)
-  // triple. This is what catches a future ROLE_CODES addition silently
-  // becoming grantable by editing the wrong array -- platform_admin and
-  // owner must NEVER appear in an allowed outcome as a requestedRole, no
-  // matter which actor role is tried.
+  // Exhaustive matrix: platform_admin and owner must NEVER be an allowed requestedRole.
   it('never allows granting platform_admin or owner, for any actor', () => {
     for (const actorRole of ROLE_CODES) {
       for (const targetRole of ROLE_CODES) {
@@ -83,12 +79,6 @@ describe('evaluateUserAdminAction (S19 privilege-escalation policy, pure)', () =
     }
   });
 
-  // This case used to be folded into the assertion above, which asserted
-  // that `owner` could never act on anyone. That stopped being true when
-  // `owner` was granted governance of its own tenant's users (users.ts
-  // ROLE_PROTECTED_FROM, "owner gained governance of its OWN tenant"), but
-  // the assertion was never updated -- packages/shared's suite ran in no CI
-  // job until cr-arkilaunch-pilot-honesty.md, so it failed unnoticed.
   it('owner governs its own tenant staff but is blocked from platform_admin', () => {
     for (const targetRole of ['admin', 'timekeeper', 'customer'] as RoleCode[]) {
       const verdict = evaluateUserAdminAction({
@@ -111,17 +101,8 @@ describe('evaluateUserAdminAction (S19 privilege-escalation policy, pure)', () =
     expect(blocked).toEqual({ allowed: false, reason: 'target_role_protected' });
   });
 
-  // Pinned deliberately so the behaviour cannot drift silently either way.
-  // NOTE: this documents current behaviour, which is NOT obviously the
-  // intended one. ROLE_PROTECTED_FROM.owner lists only 'platform_admin', so
-  // one owner may deactivate or role-change a co-owner. That is the same
-  // lateral-takeover shape the table's own comment says it exists to
-  // prevent ("an admin who can deactivate the tenant's own owner ... has
-  // taken the tenant over"). It is currently low-reach because no role can
-  // GRANT 'owner' through this API, so a second owner can only arrive via
-  // platform seeding. Raised as a finding in cr-arkilaunch-pilot-honesty.md;
-  // if the decision is to tighten it, add 'owner' to ROLE_PROTECTED_FROM
-  // .owner and flip this assertion.
+  // Pins current behaviour, which is NOT obviously intended: an owner may act on a co-owner. Low reach (no API
+  // grants owner); to tighten, add 'owner' to ROLE_PROTECTED_FROM.owner and flip this assertion.
   it('owner-on-owner: currently permitted (open finding, see comment)', () => {
     const verdict = evaluateUserAdminAction({
       actorRole: 'owner',
@@ -150,5 +131,12 @@ describe('evaluateUserAdminAction (S19 privilege-escalation policy, pure)', () =
       wouldLeaveZeroUserManagers: false,
     });
     expect(allowed).toEqual({ allowed: true });
+  });
+});
+
+describe('UserPasswordChangeSchema', () => {
+  it('requires a 12-character new password', () => {
+    expect(UserPasswordChangeSchema.safeParse({ currentPassword: 'x', newPassword: 'a'.repeat(11) }).success).toBe(false);
+    expect(UserPasswordChangeSchema.safeParse({ currentPassword: 'x', newPassword: 'a'.repeat(12) }).success).toBe(true);
   });
 });

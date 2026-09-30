@@ -1,13 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { screen } from '@testing-library/react';
+import { renderRoute } from '../test/render-route.js';
+import { makeToken, makeValidClaims } from '../test/make-token.js';
+import { setAccessToken } from '../lib/auth-client.js';
 import type { BookingDetailResponse } from '@arkilaunch/shared';
 import { bookingStage, bookingTimeline, leaseProgress } from './account.booking.js';
 import { amountDue } from './account.checkout.js';
 import { describeNotification } from '../components/notification-feed.js';
 
-// The progress bar is the one piece of arithmetic on the booking screen, and
-// the failure that matters is not an off-by-one percentage -- it is showing
-// a confident "0% complete, 0 days remaining" on a hire whose dates are not
-// actually known, which reads as "your rental is over".
+// The failure that matters: a confident "0% complete" on a hire whose dates are unknown.
 describe('leaseProgress', () => {
   const start = '2026-10-01T00:00:00.000Z';
   const end = '2026-10-11T00:00:00.000Z';
@@ -73,8 +74,7 @@ const accepted = {
   createdAt: new Date('2026-09-02T00:00:00Z'),
 };
 
-// What the checkout screen tells the customer they will pay. It must match
-// the server's rule, above all never showing the deposit twice.
+// Must match the server's rule, above all never showing the deposit twice.
 describe('amountDue', () => {
   it('is the accepted quote plus the contract deposit', () => {
     const due = amountDue(
@@ -185,5 +185,30 @@ describe('bookingStage', () => {
     expect(bookingStage(booking())).toEqual({ paid: false, onSite: false, cancelled: false });
     expect(bookingStage(booking({ status: 'confirmed' }))).toEqual({ paid: true, onSite: false, cancelled: false });
     expect(bookingStage(booking({ status: 'active' }))).toEqual({ paid: true, onSite: true, cancelled: false });
+  });
+});
+
+describe('customer booking page', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setAccessToken(null);
+  });
+
+  it('names the machine without asking for the staff-only fleet list', async () => {
+    setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
+    const b = booking();
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(String(url).includes(`/bookings/${b.id}`) ? { ...b, items: [{ ...b.items[0], equipmentName: 'CAT 320D' }] } : []),
+          { status: 200 },
+        ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await renderRoute(`/account/bookings/${b.id}`);
+
+    expect(await screen.findByText('CAT 320D')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/equipment?'))).toBe(false);
   });
 });

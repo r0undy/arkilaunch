@@ -1,7 +1,5 @@
 import { defineConfig } from 'vitest/config';
 
-// Integration tests require DATABASE_URL_DIRECT against the real Supabase
-// project (jobs connect the same way packages/db/src/migrate.ts does).
 export default defineConfig({
   test: {
     environment: 'node',

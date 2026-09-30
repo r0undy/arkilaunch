@@ -4,13 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BookingDetailResponse } from '@arkilaunch/shared';
 import { WeeklyBillingCard } from './statement.js';
 import { accountLayoutRoute } from './_account.js';
-import { bookingsQueries, equipmentQueries } from '../lib/queries.js';
+import { bookingsQueries } from '../lib/queries.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
-import { CheckIcon, ClockIcon } from '../components/icons.js';
+import { Check, Clock } from 'lucide-react';
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
@@ -27,14 +27,7 @@ const STATUS_TONES: Record<string, StatusTone> = {
   cancelled: 'recon-failed',
 };
 
-/**
- * How far through the hire we are, as a percentage.
- *
- * Returns null rather than a number whenever the window cannot be measured
- * -- no end date, an unparseable date, or a zero-length window -- so the
- * caller shows nothing instead of a confident "0% complete" on a booking
- * whose dates simply are not known yet.
- */
+// Null when the window cannot be measured, so the caller shows nothing rather than 0%.
 export function leaseProgress(
   start: Date | string,
   end: Date | string | null,
@@ -53,13 +46,8 @@ export function leaseProgress(
 
 type BookingItem = BookingDetailResponse['items'][number];
 
-// One machine on the booking, with ITS dates: each unit has its own window
-// (and its own deliveries, returns and extensions), so no unit is shown
-// under another's dates.
 function MachineCard({ item, onSite }: { item: BookingItem; onSite: boolean }) {
   const { equipmentId } = item;
-  const fleet = useQuery(equipmentQueries.list());
-  const match = fleet.data?.items.find((unit) => unit.id === equipmentId);
   const progress = onSite && item.status === 'active' ? leaseProgress(item.start, item.end) : null;
 
   return (
@@ -95,40 +83,12 @@ function MachineCard({ item, onSite }: { item: BookingItem; onSite: boolean }) {
           </p>
         </div>
       )}
-      {match ? (
-        <>
-          <p className="text-heading-lg text-text">{match.model}</p>
-          <p className="font-mono text-sm text-text-muted">
-            Serial {match.serialNo} &middot; {shortCode('equipment', equipmentId)}
-          </p>
-          {/* The frame prints horsepower, operating weight and fuel system
-              beside the machine. EquipmentSummaryResponse carries model,
-              serial, status and runtime hours -- no spec sheet -- so the
-              strip shows what the fleet record actually knows. */}
-          <dl className="grid grid-cols-2 gap-3 border-t border-border pt-3 text-sm">
-            <div>
-              <dt className="text-sm font-medium text-text-muted">
-                Status
-              </dt>
-              <dd className="text-text">{formatStatus(match.availabilityStatus)}</dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-text-muted">
-                Runtime hours
-              </dt>
-              <dd className="font-mono text-text">{match.runtimeHours}</dd>
-            </div>
-          </dl>
-        </>
-      ) : (
-        <p className="text-sm text-text-muted">{item.equipmentName ?? shortCode('equipment', equipmentId)}</p>
-      )}
+      <p className="text-sm text-text-muted">{item.equipmentName ?? shortCode('equipment', equipmentId)}</p>
     </Surface>
   );
 }
 
-// The earliest start across the booking's machines.
-export function earliestStart(items: { start: Date | string }[]): string | null {
+function earliestStart(items: { start: Date | string }[]): string | null {
   if (items.length === 0) return null;
   return new Date(Math.min(...items.map((item) => new Date(item.start).getTime()))).toISOString();
 }
@@ -139,20 +99,11 @@ export interface TimelineStep {
   detail: string | null;
 }
 
-/**
- * Where the booking is in the journey, derived from the records that prove
- * each step: an accepted quote, a paid payment, and the booking status staff
- * move on site (`active` once delivered, `completed` once returned).
- */
 export function bookingTimeline(booking: BookingDetailResponse): TimelineStep[] {
-  // The booking's span: the first machine in, the last one back. Each
-  // machine's own dates are on its card.
   const firstIn = earliestStart(booking.items);
   const lastOut = latestEnd(booking.items);
-  const onSite = booking.status === 'active' || booking.status === 'completed';
+  const { onSite, paid } = bookingStage(booking);
   const returned = booking.status === 'completed';
-  const paid =
-    onSite || booking.status === 'confirmed' || booking.payments.some((payment) => payment.status === 'paid');
   const quoted = booking.quotation?.status === 'accepted';
   return [
     { label: 'Requested', done: true, detail: formatDate(booking.createdAt) },
@@ -182,7 +133,7 @@ function Timeline({ booking }: { booking: BookingDetailResponse }) {
               step.done ? 'border-success bg-success text-white' : 'border-border bg-surface text-text-muted',
             ].join(' ')}
           >
-            {step.done ? <CheckIcon /> : null}
+            {step.done ? <Check className="size-full" /> : null}
           </span>
           <span className="min-w-0">
             <span className="block text-sm font-medium text-text">
@@ -199,28 +150,21 @@ function Timeline({ booking }: { booking: BookingDetailResponse }) {
 
 function NextStep({ booking }: { booking: BookingDetailResponse }) {
   const quote = booking.quotation;
-  const paid = booking.status === 'confirmed' || booking.payments.some((payment) => payment.status === 'paid');
-  if (booking.status === 'cancelled' || paid) return null;
+  const { paid, cancelled } = bookingStage(booking);
+  if (cancelled || paid) return null;
   const toNegotiation = (label: string) => (
-    <Link to="/account/negotiation/$bookingId" params={{ bookingId: booking.id }}>
-      <Button variant="primary">{label}</Button>
-    </Link>
+    <Link to="/account/negotiation/$bookingId" params={{ bookingId: booking.id }} className={buttonClass('primary')}>{label}</Link>
   );
   if (!quote) return toNegotiation('Talk to the rental team');
   if (quote.status === 'approved') return toNegotiation('Review your quote');
   if (quote.status === 'accepted') {
     return (
-      <Link to="/account/checkout/$bookingId" params={{ bookingId: booking.id }}>
-        <Button variant="primary">Pay now</Button>
-      </Link>
+      <Link to="/account/checkout/$bookingId" params={{ bookingId: booking.id }} className={buttonClass('primary')}>Pay now</Link>
     );
   }
   return toNegotiation('Open negotiation');
 }
 
-// What a customer can see grows with the booking: before payment only the
-// request and its quote; once paid, invoices, payments and the deposit;
-// once the machine is on site, hire progress and the deposit being used.
 export function bookingStage(booking: BookingDetailResponse) {
   const onSite = booking.status === 'active' || booking.status === 'completed';
   const paid = onSite || booking.status === 'confirmed' || booking.payments.some((payment) => payment.status === 'paid');
@@ -305,11 +249,6 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
           <MachineCard key={item.id} item={item} onSite={onSite} />
         ))}
 
-        {/* A booking with no equipment lines is a real state in this data --
-            the seeded active booking has none -- and the page used to fall
-            through to the timeline's "no return date" copy, which told the
-            customer the wrong thing about a booking that has no machine on
-            it at all. Say which it is. */}
         {booking.items.length === 0 && (
           <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-2 p-5">
             <h2 className="text-sm font-medium text-text-muted">
@@ -359,7 +298,6 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
           ) : (
             <p className="text-sm text-text-muted">The rental team is preparing your quote. Invoices and your deposit show here once you pay.</p>
           )}
-          {/* QA 25: an unpaid request holds its dates for a limited time. */}
           {booking.status === 'pending' && booking.holdExpiresAt && (
             <p className="rounded-md border border-border bg-surface-sunk px-3 py-2 text-sm text-text">
               {new Date(booking.holdExpiresAt) > new Date()
@@ -404,9 +342,7 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
             {formatPeso(invoiceTotal)}
           </span>
         </div>
-        {/* The frame's "excl. VAT (20%)" line is not reproduced: nothing in
-            the API states a tax rate, and 20% is not the Philippine rate the
-            rest of this product is priced in. */}
+        {/* No VAT line: the API states no tax rate. */}
       </Surface>
       )}
       {paid && <DepositCard booking={booking} />}
@@ -417,8 +353,6 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-// Before paying, a customer cancels outright; after, it is a request the
-// billing team resolves (they also issue any refund).
 function CancelAction({ booking }: { booking: BookingDetailResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -464,9 +398,7 @@ function CancelAction({ booking }: { booking: BookingDetailResponse }) {
   );
 }
 
-// The customer's daily logs: approved days only, never a pending one
-// (cr-arkilaunch-edtr-site-hub-approval.md). Billable = running + idle;
-// breakdown and weather are shown so the customer sees they were not billed.
+// Approved days only, never pending. Billable = running + idle.
 export function FieldLogTable({ booking }: { booking: BookingDetailResponse }) {
   const logs = booking.fieldLogs;
   if (!logs || logs.days.length === 0) return null;
@@ -532,13 +464,11 @@ function BookingDetailPage() {
               <StatusPill
                 tone={STATUS_TONES[status] ?? 'recon-review'}
                 label={formatStatus(status)}
-                icon={status === 'confirmed' ? <CheckIcon /> : <ClockIcon />}
+                icon={status === 'confirmed' ? <Check className="size-full" /> : <Clock className="size-full" />}
               />
             )}
             {booking.data && bookingStage(booking.data).paid && !bookingStage(booking.data).cancelled && (
-              <Link to="/account/bookings/$bookingId/extend" params={{ bookingId }}>
-                <Button variant="secondary">Extend rental</Button>
-              </Link>
+              <Link to="/account/bookings/$bookingId/extend" params={{ bookingId }} className={buttonClass('secondary')}>Extend rental</Link>
             )}
             {booking.data && <CancelAction booking={booking.data} />}
           </>
@@ -558,9 +488,7 @@ function BookingDetailPage() {
   );
 }
 
-// The latest return date across a booking's machines; null when any unit is
-// open-ended (no fixed date to extend from).
-export function latestEnd(items: { end: Date | string | null }[]): string | null {
+function latestEnd(items: { end: Date | string | null }[]): string | null {
   let latest: number | null = null;
   for (const item of items) {
     if (item.end === null) return null;
@@ -570,9 +498,6 @@ export function latestEnd(items: { end: Date | string | null }[]): string | null
   return latest === null ? null : new Date(latest).toISOString();
 }
 
-// Figma 231:5204 (Extend Rental) and 237:1855 (Extend Rental Submitted).
-// The customer asks for a new return date; staff approve it after the
-// server re-checks that no other booking has those days.
 function ExtendRentalPage() {
   const { bookingId } = accountBookingExtendRoute.useParams();
   const navigate = useNavigate();
@@ -580,8 +505,6 @@ function ExtendRentalPage() {
   const [end, setEnd] = useState('');
   const [reason, setReason] = useState('');
   const [sent, setSent] = useState(false);
-  // One machine at a time: each keeps its own return date, so extending one
-  // never drags the others along.
   const units = (booking.data?.items ?? []).filter((item) => item.status !== 'cancelled' && item.status !== 'completed');
   const [chosen, setChosen] = useState('');
   const unit = units.find((item) => item.id === chosen) ?? (units.length === 1 ? units[0] : undefined);
@@ -607,7 +530,7 @@ function ExtendRentalPage() {
     return (
       <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
         <Surface radius="md" elevation="sm" className="flex flex-col items-start gap-4 p-6">
-          <StatusPill tone="recon-review" label="Submitted" icon={<ClockIcon />} />
+          <StatusPill tone="recon-review" label="Submitted" icon={<Clock className="size-full" />} />
           <h1 className="text-display-md text-text">Extension requested</h1>
           <p className="text-sm text-text-muted">
             The rental team checks {unit?.equipmentName ?? 'the machine'} is free until{' '}
@@ -661,9 +584,7 @@ function ExtendRentalPage() {
             <Button type="submit" variant="primary" loading={request.isPending} disabled={!end || !unit}>
               Request extension
             </Button>
-            <Link to="/account/bookings/$bookingId" params={{ bookingId }}>
-              <Button variant="ghost">Cancel</Button>
-            </Link>
+            <Link to="/account/bookings/$bookingId" params={{ bookingId }} className={buttonClass('ghost')}>Cancel</Link>
           </div>
           {request.isError && <p role="alert" className="text-sm text-error">{apiErrorText(request.error)}</p>}
         </form>

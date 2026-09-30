@@ -3,15 +3,9 @@ import Cropper, { type Area, type MediaSize } from 'react-easy-crop';
 import { Modal } from './modal.js';
 import { Button } from './button.js';
 
-// A PhilSys card is ID-1 size, 85.6 x 54 mm. Square is offered for a
-// photo taken too close to fit the card's shape. Free is the default: it
-// starts on the whole photo and its width and height are set separately,
-// which suits an A4 certificate as well as a card.
 export const ID_CARD_ASPECT = 85.6 / 54;
 type Shape = 'free' | number;
 
-// Cuts the chosen area out of the photo at full resolution, JPEG 0.95 like
-// the viewfinder's own capture (capture-field.tsx).
 async function cropToFile(src: string, area: Area, name: string): Promise<File> {
   const image = new Image();
   image.src = src;
@@ -38,8 +32,7 @@ export function IdCropDialog({
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [aspect, setAspect] = useState<Shape>('free');
-  // Free crop: react-easy-crop has no draggable edges, so the frame's size
-  // is two sliders, each a share of the photo as displayed.
+  // react-easy-crop has no draggable edges, so the free crop's size is two sliders.
   const [media, setMedia] = useState<MediaSize | null>(null);
   const [freeSize, setFreeSize] = useState({ width: 1, height: 1 });
   const free = aspect === 'free';

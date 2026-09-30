@@ -10,16 +10,7 @@ import {
   assertSeedTargetIsLocal,
 } from './seed-identities.js';
 
-// Loading dotenv happens in permission-catalog.js (imported above), which
-// every seed entrypoint already imports.
-
-// Seeds Almara Construction as the anchor tenant (PRD, README), plus enough
-// sample operational data (equipment, a rate card, pricing parameters, a
-// customer, and a rental) that the admin/timekeeper POC screens have real
-// IDs to reference instead of requiring a hand-typed UUID guess. Idempotent.
 async function main() {
-  // Before opening a connection: these are weak, shared development
-  // credentials and must never land in a live environment.
   assertSeedTargetIsLocal(process.env.DATABASE_URL_DIRECT);
 
   const { db, client } = makeServiceDb();
@@ -37,10 +28,6 @@ async function main() {
     .returning();
   if (!tenant) throw new Error('failed to seed the Almara tenant');
 
-  // Almara's storefront brand (Figma 144:1386, CR: tenant-brand-kit). Only
-  // fills what is unset, so edits made in Storefront branding survive a
-  // re-seed. The logo/icon is docs/assets/tenants/almara/logo.png, uploaded
-  // through the form (it lives in storage, not in this row).
   await db
     .update(schema.tenants)
     .set({
@@ -51,21 +38,11 @@ async function main() {
     })
     .where(eq(schema.tenants.id, tenant.id));
 
-  // Every role in ROLE_CODES gets a seeded account, so RBAC can be
-  // exercised end-to-end rather than only for the three roles that used to
-  // exist here (owner and customer had none, which made QAD-T19's
-  // read-mostly owner posture and the customer booking path untestable
-  // without hand-creating users).
   for (const role of ROLE_CODES) {
     if (!roleIds.get(role)) throw new Error(`${role} role missing from seeded catalog`);
   }
 
-  // Phase 2 (S25 Platform Console): platform_admin is RFC-1's reserved
-  // cross-tenant role. It needs SOME tenant row to satisfy users.tenant_id
-  // NOT NULL, even though its authority is cross-tenant via withPlatformTx,
-  // never via this tenant's own RLS scope. A dedicated "platform" tenant
-  // (not Almara) keeps that distinction visible rather than overloading the
-  // anchor tenant with a role that doesn't belong to it.
+  // platform_admin needs a tenant row for users.tenant_id NOT NULL; its authority is via withPlatformTx, not RLS.
   const [platformTenant] = await db
     .insert(schema.tenants)
     .values({
@@ -91,10 +68,6 @@ async function main() {
     });
   }
 
-  // Per-tenant testimonial for the public storefront (GET
-  // /catalog/testimonials, catalog_list_testimonials). Different text per
-  // tenant so switching tenant host (almara.localhost vs another)
-  // demonstrably changes what the storefront shows, not just structurally.
   const existingTestimonial = await db
     .select()
     .from(schema.testimonials)
@@ -109,8 +82,6 @@ async function main() {
     });
   }
 
-  // Phase 2 approval needs a plan to attach to the trialing subscription it
-  // creates; subscription_plans has no other writer anywhere in the codebase.
   await db
     .insert(schema.subscriptionPlans)
     .values([
@@ -119,28 +90,12 @@ async function main() {
     ])
     .onConflictDoNothing();
 
-  // --- Users -------------------------------------------------------------
-  //
-  // One password across all five roles (see seed-identities.ts for why that
-  // is safe only against a local database, and what stops it reaching a
-  // real one).
-  //
-  // An already-seeded database is migrated by UPDATEing the old rows rather
-  // than deleting them. users.id is referenced by rentals, EDTR reports,
-  // weather incidents, deposit ledger entries and timekeeper site
-  // assignments, mostly without ON DELETE CASCADE, so delete-and-recreate
-  // would either fail on a foreign key or force wiping the operational data
-  // these accounts are here to look at. Renaming keeps every reference and
-  // every piece of seeded history intact.
   const passwordHash = await hash(SEED_PASSWORD);
 
   for (const [legacyEmail, currentEmail] of LEGACY_EMAIL_MIGRATIONS) {
     const [legacy] = await db.select().from(schema.users).where(eq(schema.users.email, legacyEmail));
     if (!legacy) continue;
-    // If a row already exists under the new address IN THE SAME TENANT (a
-    // fresh seed ran first) the unique index would reject the rename, so
-    // leave the legacy row be and let the upsert below own the address.
-    // Scoped by tenant because users_tenant_email_uq is (tenant_id, email).
+    // Scoped by tenant: users_tenant_email_uq is (tenant_id, email).
     const [taken] = await db
       .select()
       .from(schema.users)
@@ -161,15 +116,7 @@ async function main() {
         passwordHash,
         status: 'active',
       })
-      // Re-seeding resets the password and re-asserts the role, so an
-      // account that drifted (or was renamed above) converges on the
-      // identity declared in seed-identities.ts.
-      //
-      // The conflict target is (tenant_id, email), not email: users.email is
-      // only unique PER TENANT (`users_tenant_email_uq`, migration 0002,
-      // declared in raw SQL rather than in the Drizzle table). Naming email
-      // alone would fail at runtime with "no unique or exclusion constraint
-      // matching the ON CONFLICT specification".
+      // Target must be (tenant_id, email): email alone has no matching unique constraint.
       .onConflictDoUpdate({
         target: [schema.users.tenantId, schema.users.email],
         set: { passwordHash, roleId: roleIds.get(identity.role)!, status: 'active' },
@@ -201,8 +148,6 @@ async function main() {
     })
     .onConflictDoNothing();
 
-  // By serial, not "any unit": the catalog units seeded below share the
-  // tenant, and the sample rental must keep citing this same backhoe.
   const existingEquipment = await db
     .select()
     .from(schema.equipment)
@@ -222,12 +167,6 @@ async function main() {
     )[0];
   if (!equipmentRow) throw new Error('failed to seed equipment for Almara');
 
-  // Almara's catalog (cr-arkilaunch-equipment-options.md). Names and choices
-  // are the owner's own labels; nothing here is a verified spec -- "10 tons"
-  // is a size label, not weight_capacity_tons. No rate cards: the owner
-  // prices these later. Serials are seed placeholders, one per unit.
-  // Photos are manufacturer/dealer reference shots (equipment-images.ts),
-  // credited to their source, never presented as the unit itself.
   const typeIdByName = new Map(
     (await db.select().from(schema.equipmentTypes)).map((type) => [type.name, type.id]),
   );
@@ -303,14 +242,9 @@ async function main() {
         photoCredit: unit.photoCredit ?? null,
         photoSourceUrl: unit.photoSourceUrl ?? null,
       })
-      // Re-seeding leaves a unit the owner has since edited alone.
       .onConflictDoNothing({ target: [schema.equipment.tenantId, schema.equipment.serialNo] });
   }
 
-  // PRD-F4: maintenance-schedule writes are out of scope for this pass
-  // (fleet.service.ts only advances an existing row's next_due); seed one
-  // per unit here so the PM cron and the maintenance-detail endpoint have
-  // real data to work against.
   const existingSchedule = await db
     .select()
     .from(schema.maintenanceSchedules)
@@ -361,9 +295,6 @@ async function main() {
     (await db.insert(schema.customers).values({ tenantId: tenant.id, companyName: 'Almara Sample Customer Co.' }).returning())[0];
   if (!customerRow) throw new Error('failed to seed a customer for Almara');
 
-  // Bind the customer-role login to the customer record, so customer@admin.com
-  // actually resolves to a customer with rentals and a deposit rather than an
-  // authenticated user with nothing to read (PRD-F8/F2).
   const [customerUser] = await db
     .select()
     .from(schema.users)
@@ -372,11 +303,7 @@ async function main() {
     await db.update(schema.customers).set({ userId: customerUser.id }).where(eq(schema.customers.id, customerRow.id));
   }
 
-  // Verified, not the `pending` the column defaults to. The cart only offers a
-  // verified company (cr-arkilaunch-cart-validation.md §2), so a `pending`
-  // sample customer leaves the seeded environment unable to reach the booking
-  // flow at all -- the cart renders its "still being verified" state and the
-  // whole demo path behind it is dead, including the e2e specs.
+  // Verified: the cart only offers a verified company, so `pending` dead-ends the demo booking flow.
   if (customerRow.kycStatus !== 'approved') {
     await db
       .update(schema.customers)
@@ -423,9 +350,6 @@ async function main() {
     )[0];
   if (!rental) throw new Error('failed to seed a rental for Almara');
 
-  // A site of the demo customer's own, with its proof on file (a site photo
-  // and a building permit), so a truck trip or a booking onto it passes the
-  // site-proof gate (0055). The files are placeholders; nothing opens them.
   const [ownSite] = await db.select().from(schema.projectSites).where(eq(schema.projectSites.customerId, customerRow.id)).limit(1);
   const customerSite =
     ownSite ??
@@ -455,12 +379,6 @@ async function main() {
       .onConflictDoNothing();
   }
 
-  // ---- Expanded demo dataset ----
-  // The block above seeds the single POC unit the sample-ID printout at the
-  // bottom depends on; everything below adds enough breadth (every fleet
-  // status, every EDTR/reconciliation state, the full PAGASA scale, etc.) for
-  // the console UI to look like a real yard instead of an empty one. Guarded
-  // on equipmentTypes count so re-running the seed does not duplicate rows.
   const allTypes = await db.select().from(schema.equipmentTypes);
   if (allTypes.length < 8) {
     const EXTRA_TYPE_NAMES = [
@@ -479,7 +397,6 @@ async function main() {
   const equipmentTypes = await db.select().from(schema.equipmentTypes);
   const typeByName = new Map(equipmentTypes.map((t) => [t.name, t]));
 
-  // Rate cards for every type not yet priced.
   for (const t of equipmentTypes) {
     const existing = await db
       .select()
@@ -497,8 +414,6 @@ async function main() {
     }
   }
 
-  // Fleet: spread additional units across every availability_status with
-  // realistic serials and runtime hours.
   const FLEET_PLAN: { type: string; model: string; serial: string; status: string; hours: string }[] = [
     { type: 'Excavator', model: 'Komatsu PC200', serial: 'almara-serial-002', status: 'available', hours: '1420.50' },
     { type: 'Excavator', model: 'CAT 320D', serial: 'almara-serial-003', status: 'deployed', hours: '3105.00' },
@@ -564,12 +479,7 @@ async function main() {
     }
   }
 
-  // Project sites across real Luzon coordinates, each with its own address
-  // and a weather_alerts row spanning the full PAGASA scale plus one stale
-  // cached reading.
-  // severity values must match WeatherSeveritySchema ('none' | 'watch' |
-  // 'warning' -- packages/shared/src/weather-port.ts), which is what
-  // sites.service.ts casts this column to on the read path.
+  // severity must match WeatherSeveritySchema ('none' | 'watch' | 'warning').
   const SITE_PLAN: {
     line1: string;
     city: string;
@@ -632,7 +542,6 @@ async function main() {
     }
   }
 
-  // Customers, each with a contact, a billing address, and a rental.
   const CUSTOMER_PLAN = [
     { name: 'Almara Sample Customer Co.', existing: customerRow },
     { name: 'Bataan Infra Builders Inc.' },
@@ -689,7 +598,6 @@ async function main() {
     if (row) seededRentals.push(row);
   }
 
-  // Quotations: one plain quote, one revision chain, one stale-priced quote.
   const [dieselReading] = await db.select().from(schema.dieselPriceReadings).limit(1);
   if (rateCard && seededCustomers[0] && dieselReading) {
     const existingQuote = await db.select().from(schema.quotations).where(eq(schema.quotations.tenantId, tenant.id));
@@ -756,8 +664,6 @@ async function main() {
     }
   }
 
-  // EDTR rows across every status, plus reconciliations covering matched,
-  // discrepancy (the Hazard Divider / blocked-deduction case), and approved.
   const EDTR_PLAN: { status: string; source: string; hoursActive: string; hoursIdle: string; recon?: { status: string; delta: string } }[] = [
     { status: 'queued', source: 'paper_ocr', hoursActive: '0', hoursIdle: '0' },
     { status: 'extracting', source: 'paper_ocr', hoursActive: '0', hoursIdle: '0' },
@@ -769,11 +675,7 @@ async function main() {
   ];
   const existingEdtr = await db.select().from(schema.edtr).where(eq(schema.edtr.tenantId, tenant.id));
   if (existingEdtr.length === 0 && seededRentals[0]) {
-    // One distinct report_date per plan row. RFC-2 models an EDTR as one
-    // log per equipment-day, so reusing today's date for all seven made
-    // the fixture contradict the model it demonstrates -- and would
-    // violate the (tenant_id, equipment_id, report_date, source) unique
-    // once audit-db-tenant-isolation.md #4 lands.
+    // One report_date per row: an EDTR is one log per equipment-day.
     const dayOffset = (n: number) => {
       const d = new Date();
       d.setUTCDate(d.getUTCDate() - n);
@@ -808,13 +710,7 @@ async function main() {
       if (!row) continue;
       if (!plan.recon) continue;
 
-      // A reconciliation is RFC-2's "two independent logs per
-      // equipment-day", so the fixture now seeds the SECOND log and links
-      // it. It used to write matched/approved rows with
-      // counterpart_edtr_id NULL, which approve() would happily deduct
-      // against because its counterpart lock is optional -- the seed was
-      // manufacturing the exact state audit-ocr-money-path.md #1 is about,
-      // and edtr_recon_matched_needs_counterpart_chk now rejects it.
+      // matched/approved needs a linked counterpart EDTR (edtr_recon_matched_needs_counterpart_chk).
       const counterpartSource = plan.source === 'paper_ocr' ? 'digital_entry' : 'paper_ocr';
       const counterpart = await insertEdtr(
         counterpartSource,
@@ -835,7 +731,6 @@ async function main() {
     }
   }
 
-  // Invoices + line items + payments across type and status.
   const existingInvoices = await db.select().from(schema.invoices).where(eq(schema.invoices.tenantId, tenant.id));
   if (existingInvoices.length === 0 && seededRentals[0]) {
     const INVOICE_PLAN: { type: string; amount: string; status: string; payMethod?: string; payStatus?: string }[] = [
@@ -877,7 +772,6 @@ async function main() {
     }
   }
 
-  // Notifications for the app-bar badge.
   if (timekeeper) {
     const existingNotifications = await db
       .select()
@@ -891,8 +785,6 @@ async function main() {
     }
   }
 
-  // 30 days of diesel price history so the staleness/date labelling has
-  // something to show beyond a single reading.
   const existingHistory = await db.select().from(schema.dieselPriceReadings);
   if (existingHistory.length < 5) {
     const base = 61.45;

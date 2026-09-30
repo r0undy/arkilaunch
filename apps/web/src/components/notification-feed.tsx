@@ -1,16 +1,9 @@
 import { useState } from 'react';
+import { notificationsQueries } from '../lib/queries.js';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { queryOptions } from '@tanstack/react-query';
-import {
-  isWeatherNotice,
-  weatherNoticeText,
-  type NotificationListResponse,
-  type NotificationResponse,
-  type WeatherAudience,
-  type WeatherNoticeType,
-} from '@arkilaunch/shared';
-import { apiGet, apiPatch } from '../lib/api-client.js';
+import { isWeatherNotice, weatherNoticeText, type NotificationResponse, type WeatherAudience, type WeatherNoticeType } from '@arkilaunch/shared';
+import { apiPatch } from '../lib/api-client.js';
 import { getCurrentRole } from '../lib/guards.js';
 import { Surface } from './surface.js';
 import { Button } from './button.js';
@@ -33,26 +26,10 @@ import { formatRelativeTime } from '../lib/format-time.js';
 import { formatDateTime, formatPeso, formatStatus, shortCode } from '../lib/format.js';
 import { Skeleton } from './skeleton.js';
 
-export const notificationQueries = {
-  list: (limit = 20, offset = 0) =>
-    queryOptions({
-      queryKey: ['notifications', limit, offset] as const,
-      queryFn: () =>
-        apiGet<NotificationListResponse>(`/notifications?limit=${limit}&offset=${offset}`),
-    }),
-};
-
-// The payload column is typed `unknown` in the shared schema on purpose --
-// each notification type writes its own shape, and the only current writer
-// (jobs/src/maintenance-notify.ts) stores equipment_id/threshold/
-// runtime_hours. Read it defensively: an unrecognised payload still renders
-// its type, time and read state rather than crashing the feed or, worse,
-// printing "[object Object]".
 function payloadLines(payload: unknown): string[] {
   if (!payload || typeof payload !== 'object') return [];
   return Object.entries(payload as Record<string, unknown>)
     .filter(([, value]) => value !== null && typeof value !== 'object')
-    // The booking code names the booking; its raw ids add nothing.
     .filter(([key]) => !('booking_code' in (payload as object)) || !key.endsWith('_id'))
     .map(([key, value]) => {
       const label = formatStatus(key);
@@ -63,23 +40,15 @@ function payloadLines(payload: unknown): string[] {
     });
 }
 
-// The customer-journey events (bookings/quotes/payments services write
-// these) get a sentence and a destination; anything else falls back to the
-// generic type + payload rendering above.
 interface Described {
   title: string;
   body: string;
   action?: { label: string; to: string; params: Record<string, string>; search?: Record<string, string> };
 }
 
-// Which console the feed is mounted in: the same notification type links to
-// the admin's screen or the customer's.
 export type FeedArea = 'app' | 'account' | 'field' | 'admin';
 
-// The reader's role decides, not the URL: a customer's bell renders on
-// storefront pages too (/equipment), which read as 'app' and sent them to
-// staff screens that bounce (QA 26). The URL is the fallback when no role
-// is known.
+// Role first, URL only as fallback: a customer's bell also renders on storefront pages.
 export function feedAreaOf(pathname: string, role: string | null = getCurrentRole()): FeedArea {
   if (role === 'customer') return 'account';
   if (role === 'timekeeper') return 'field';
@@ -89,9 +58,6 @@ export function feedAreaOf(pathname: string, role: string | null = getCurrentRol
   return first === 'account' || first === 'field' || first === 'admin' ? first : 'app';
 }
 
-// Staff open a booking in the drawer by its code, on the tab the
-// notification is about (a call request opens Actions); the full page is
-// the fallback for a row that somehow has no code.
 function staffBooking(
   p: Record<string, unknown>,
   label = 'Open booking',
@@ -105,15 +71,12 @@ function staffBooking(
     : { label, to: '/app/bookings', params: {} };
 }
 
-// A payment event opens its booking (the email links there too); one with
-// no booking behind it falls back to the payments list.
 function staffPayment(p: Record<string, unknown>): NonNullable<Described['action']> {
   return typeof p.booking_code === 'string' || typeof p.rental_id === 'string'
     ? staffBooking(p, 'Open booking', 'actions')
     : { label: 'Open payments', to: '/app/payments', params: {} };
 }
 
-// The platform admin's feed: rental companies signing up (migration 0069).
 function describeForPlatform(type: string, p: Record<string, unknown>): Described | null {
   if (type !== 'tenant_registered') return null;
   const name = typeof p.company_name === 'string' ? p.company_name : 'A rental company';
@@ -127,8 +90,6 @@ function describeForPlatform(type: string, p: Record<string, unknown>): Describe
   };
 }
 
-// Staff-side types (written by notifyStaff). Every one has a destination
-// (cr-arkilaunch-uniform-booking-codes.md, admin feedback item 4).
 function describeForStaff(type: string, p: Record<string, unknown>): Described | null {
   const ref = typeof p.booking_code === 'string' ? p.booking_code : 'a booking';
   const trip = typeof p.truck_request_id === 'string';
@@ -257,7 +218,6 @@ function describeForStaff(type: string, p: Record<string, unknown>): Described |
   }
 }
 
-// The timekeeper's feed: their submissions' outcomes and site weather.
 function describeForField(type: string, p: Record<string, unknown>): Described | null {
   const day = typeof p.report_date === 'string' ? p.report_date : 'a day';
   const ref = typeof p.booking_code === 'string' ? ` on ${p.booking_code}` : '';
@@ -307,11 +267,8 @@ function describeWeather(type: WeatherNoticeType, p: Record<string, unknown>, ar
 
 export function describeNotification(type: string, payload: unknown, area: FeedArea = 'app'): Described | null {
   const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
-  // Weather monitoring: the same words as the email and the push
-  // (weatherNoticeText); the link follows the console reading it.
   if (isWeatherNotice(type)) return describeWeather(type, p, area);
   if (area === 'field') return describeForField(type, p);
-  // The platform host serves none of the /app screens a staff link opens.
   if (area === 'admin') return describeForPlatform(type, p);
   if (area === 'app') {
     const staff = describeForStaff(type, p);
@@ -325,8 +282,7 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
       action: { label: 'Open People', to: '/app/users', params: {} },
     };
   }
-  // document_resubmit_required is no longer written; old rows read as the
-  // reviewer's note it has become.
+  // document_resubmit_required is legacy: old rows still exist.
   if (type === 'company_review_comment' || type === 'document_resubmit_required') {
     const name = typeof p.company_name === 'string' ? p.company_name : 'your company';
     return {
@@ -366,7 +322,6 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
           },
         };
   }
-  // A customer's truck trip: every update opens their truck requests.
   if (typeof p.truck_request_id === 'string') {
     const code = typeof p.booking_code === 'string' ? p.booking_code : 'your truck request';
     const offer = typeof p.offer_php === 'number' ? ` with an offer of ${formatPeso(p.offer_php)}` : '';
@@ -392,7 +347,6 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
   }
   const rentalId = typeof p.rental_id === 'string' ? p.rental_id : null;
   if (!rentalId) {
-    // A payment keyed only by its invoice still has somewhere to go.
     if (typeof p.invoice_id === 'string' && type.startsWith('payment_')) {
       return {
         title: formatStatus(type),
@@ -402,8 +356,6 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
     }
     return null;
   }
-  // booking_code is added to every booking notification by the database
-  // (migration 0058), including rows written before it.
   const ref = typeof p.booking_code === 'string' ? p.booking_code : 'your booking';
   const toNegotiation = { to: '/account/negotiation/$bookingId', params: { bookingId: rentalId } };
   const toBooking = { to: '/account/bookings/$bookingId', params: { bookingId: rentalId } };
@@ -507,8 +459,6 @@ export function describeNotification(type: string, payload: unknown, area: FeedA
   }
 }
 
-// The icon names the kind of event, the tone says how it went. Same tints
-// as StatusBadge (DESIGN.md §6: never colour alone, the icon carries it).
 export type NotificationTone = 'success' | 'danger' | 'warning' | 'neutral';
 
 export function notificationIcon(type: string): { Icon: LucideIcon; tone: NotificationTone } {
@@ -534,7 +484,7 @@ export function notificationIcon(type: string): { Icon: LucideIcon; tone: Notifi
 const TONE_CLASS: Record<NotificationTone, string> = {
   success: 'bg-success/10 text-success',
   danger: 'bg-error/10 text-error',
-  // Warning yellow fails contrast as text; the tint carries it.
+  // Warning yellow fails contrast as text.
   warning: 'bg-warning/20 text-text',
   neutral: 'bg-primary text-on-primary',
 };
@@ -615,7 +565,7 @@ function NotificationRow({ notification, area }: { notification: NotificationRes
 
       <div className="flex shrink-0 items-center gap-3">
         <span className="text-right text-sm text-text-muted" title={when?.absolute}>
-          {when?.relative.replace('Reported ', '') ?? '--'}
+          {when?.relative ?? '--'}
         </span>
         {isUnread && (
           <Button
@@ -631,18 +581,10 @@ function NotificationRow({ notification, area }: { notification: NotificationRes
   );
 }
 
-// One feed, three mount points: the admin console, the customer account and
-// the field console all read the same tenant-scoped GET /notifications.
-// The Figma frames (168:3011, 276:7669, 359:2970) differ only in their
-// surrounding shell, which the layout routes already supply.
 export function NotificationFeed() {
-  // "Load more" grew the page size and re-requested from offset 0, so
-  // reaching the fourth page re-fetched the first three, and there was no
-  // way back up a long feed. Every other list in the console pages through
-  // the same server limit/offset; this one now does too.
   const [offset, setOffset] = useState(0);
   const area = feedAreaOf(useRouterState({ select: (s) => s.location.pathname }));
-  const query = useQuery(notificationQueries.list(PAGE_SIZE, offset));
+  const query = useQuery(notificationsQueries.list(PAGE_SIZE, offset));
   const queryClient = useQueryClient();
   const markAll = useMutation({
     mutationFn: () => apiPatch('/notifications/read-all', {}),

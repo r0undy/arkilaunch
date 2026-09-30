@@ -19,63 +19,26 @@ Note the `storage_account_name` output.
 
 ## 2. Wire the environments to it
 
-`environments/dev/main.tf` and `environments/prod/main.tf` each have a
-`backend "azurerm"` block referencing `storage_account_name` and a
-per-environment `key` (state file path within the `tfstate` container). Fill
-in the storage account name from step 1 (already parameterized via
-`-backend-config` at `terraform init` time — see each environment's own
-README/comments).
+Each environment's `backend "azurerm"` block takes the account name at init
+time: `terraform init -backend-config="storage_account_name=<output>"` (CI reads
+it from the `TF_STATE_STORAGE_ACCOUNT` variable).
 
 ## 3. OIDC federated credential (for CI)
 
-`deploy.yml` authenticates to Azure via an OIDC federated credential, not a
-long-lived Service Principal secret. This is now part of this bootstrap's
-Terraform (`main.tf`), so step 1's `terraform apply` creates it. It used to be
-described here as a manual `az ad` sequence, which is why it was never
-actually created and why every Deploy run since 2026-08-06 failed at
-`azure/login` in about twelve seconds.
-
-Pass the subject prefix GitHub will present, so the credential is scoped to this repository:
-
-```
-terraform apply \
-  -var subscription_id=<sub-id> \
-  -var github_subject_prefix="$(gh api repos/<org>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix)"
-```
-
-That declares a user-assigned managed identity, a Contributor role assignment
-at subscription scope, and one federated credential per environment with these
-subjects:
+`deploy.yml` authenticates via OIDC, not a long-lived secret. Step 1's apply
+creates a user-assigned managed identity, a subscription-scope Contributor
+assignment, and one federated credential per environment:
 
 ```
 <prefix>:environment:dev
 <prefix>:environment:prod
 ```
 
-Read the prefix from GitHub, never assemble it by hand. With immutable
-subjects on, which is the default for new repositories, GitHub presents
-`repo:<owner>@<owner-id>/<repo>@<repo-id>` rather than the readable
-`repo:<owner>/<repo>`, and a credential built from the readable form is
-rejected with `AADSTS700213: No matching federated identity record found`.
-The `gh api .../actions/oidc/customization/sub` call above returns the exact
-prefix that repository will present.
-
-Note the `environment:` form. An earlier version of this README prescribed
-`repo:<org>/<repo>:ref:refs/heads/dev` instead, which cannot work here: both
-jobs in `deploy.yml` declare `environment:`, and GitHub then issues the token
-with an `environment:` subject claim rather than a branch ref. A credential
-registered against the ref form is silently unmatchable, and `azure/login`
-fails closed with no useful message.
-
-A managed identity rather than an Entra app registration, because the
-subscription sits in a tenant we do not administer. That directory allows
-creating an app registration and then refuses to let the creator own, modify
-or delete it, so the app-registration version of this failed halfway: the
-application was created, the service principal and both credentials got 403,
-and the ownerless application cannot be cleaned up from here. A managed
-identity is an ARM resource, so subscription Owner is sufficient and no
-directory privilege is involved. Nothing in `deploy.yml` changes either way;
-`azure/login` takes the same client, tenant and subscription ids.
+Read the prefix from GitHub (the `gh api` call in step 1), never assemble it by
+hand: with immutable subjects GitHub presents
+`repo:<owner>@<owner-id>/<repo>@<repo-id>`, and the readable form fails with
+`AADSTS700213`. A managed identity, not an app registration, because this
+tenant lets us create app registrations but not own them.
 
 Then set these on the GitHub `dev` and `prod` environments (the workflow reads
 them per-environment, with a repo-scope fallback): `AZURE_CLIENT_ID` and
@@ -87,7 +50,7 @@ storage account name isn't sensitive. Plus every app secret from
 `.env.example` (`DATABASE_URL_POOLED`, `JWT_PRIVATE_KEY`,
 `PAYMONGO_SECRET_KEY`, etc.) as encrypted **secrets** — see
 `docs/runbook-local-dev.md` for the full list and what each one is.
-`AZURE_DI_ENDPOINT`/`AZURE_DI_KEY` are no longer GitHub secrets: Terraform
+`AZURE_DI_ENDPOINT`/`AZURE_DI_KEY` are not GitHub secrets: Terraform
 provisions the Document Intelligence resource directly and feeds its
 `endpoint`/`primary_access_key` outputs into the Container App secrets (see
 `infra/terraform/modules/document_intelligence`).

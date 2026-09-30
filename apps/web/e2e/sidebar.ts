@@ -1,14 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
-// Below lg the sidebar is an off-canvas drawer, so a spec that just looks for
-// a nav link finds nothing on a phone -- which is how the mobile project
-// earned its keep the first time it ran.
-//
-// Opening the drawer also means the links exist TWICE: the hidden desktop
-// <aside> is still in the DOM beside the drawer's copy, and Playwright's
-// strict mode counts both. Every query here is filtered to the visible one.
-// Scoped to the sidebar and its phone drawer: breadcrumbs repeat a nav
-// destination's name on the pages under it.
+// Below lg the sidebar is a drawer and the hidden desktop <aside> stays in the DOM (strict mode counts both),
+// so every query is filtered to the visible copy.
 export function sidebarLink(page: Page, name: string): Locator {
   return page
     .locator('aside[aria-label="Sidebar"], [role="dialog"]')
@@ -16,15 +9,7 @@ export function sidebarLink(page: Page, name: string): Locator {
     .filter({ visible: true });
 }
 
-/**
- * Make the sidebar's links reachable, at either viewport.
- *
- * The first version asked `isVisible()` the instant the call was made, which
- * is a snapshot rather than a wait: on a slow CI boot the app bar had not
- * rendered yet, the answer was "no menu button", the drawer was never opened
- * and the spec failed looking for links that were display:none. It passed on
- * a warm run and failed on a cold one -- a flake, not a bug in the app.
- */
+// Waits instead of snapshotting isVisible(): on a cold CI boot the app bar has not rendered yet.
 export async function openSidebar(page: Page): Promise<void> {
   const menu = page.getByRole('button', { name: 'Toggle navigation' });
   const onPhone = await menu

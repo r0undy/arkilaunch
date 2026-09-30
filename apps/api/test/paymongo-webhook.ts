@@ -3,11 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { invoices, payments, withTenantTx } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
 
-// A signed checkout_session.payment.paid for the invoice's pending online
-// payment, in the shape a live test-mode delivery carries (2026-09-26):
-// the session (our provider_ref) with payments[] and our metadata. Signs
-// both te and li, since which one the handler checks follows the
-// PAYMONGO_SECRET_KEY prefix of the env the suite runs under.
+// Shaped like a live test-mode delivery; signs both te and li since the handler's choice follows the key prefix.
 export async function checkoutPaidWebhook(ctx: RequestContext, invoiceId: string, secret: string) {
   const { sessionId, amountCentavos } = await withTenantTx(ctx, async (tx) => {
     const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId));

@@ -34,3 +34,4 @@ export * from './phone.js';
 export * from './equipment-weather.js';
 export * from './notification-email.js';
 export * from './weather-notify.js';
+export * from './uploads.js';

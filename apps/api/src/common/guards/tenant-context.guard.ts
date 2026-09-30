@@ -4,9 +4,7 @@ import type { Request } from 'express';
 import { RequestContextSchema, type JwtClaims } from '@arkilaunch/shared';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator.js';
 
-// Populates request.ctx from the already-verified JWT claims (JwtAuthGuard
-// runs first). tenant_id NEVER comes from a header, query param, or body --
-// only from here (AGENTS.md "Never": trust a client-supplied tenant_id).
+// tenant_id comes only from the verified JWT claims, NEVER a header, query param or body.
 @Injectable()
 export class TenantContextGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}

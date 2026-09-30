@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { matchPhLocation, toPinAddress } from './reverse-geocode.js';
+import { describe, expect, it, vi } from 'vitest';
+import { cancelReverseGeocode, matchPhLocation, reverseGeocode, toPinAddress } from './reverse-geocode.js';
 
 describe('reverse geocode', () => {
   it('maps Nominatim address parts to street, barangay, city, province, ZIP', () => {
@@ -43,5 +43,21 @@ describe('reverse geocode', () => {
     const at = (city: string) => ({ street: '', barangay: '', city, province: '', region: '', postalCode: '' });
     expect(matchPhLocation(at('Quezon City'))).toMatchObject({ province: 'Metro Manila' });
     expect(matchPhLocation(at('San Juan'))).toBeNull();
+  });
+});
+
+describe('cancelReverseGeocode', () => {
+  it('drops a lookup still in flight, so a chosen site keeps its own address', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))),
+      ),
+    );
+    const pending = reverseGeocode(14.5, 121, 'dropoff');
+    cancelReverseGeocode('dropoff');
+    await expect(pending).resolves.toBeNull();
+    vi.unstubAllGlobals();
   });
 });

@@ -232,6 +232,8 @@ discount             = discount_type == 'percent' ? quote_subtotal * (discount_v
 quote_total          = round2( max(0, quote_subtotal - discount) )
 ```
 
+*Addendum ([cr-arkilaunch-hourly-rate-cards.md](cr-arkilaunch-hourly-rate-cards.md), 2026-09-29):* `rate_card_value` is always per hour. Heavy-equipment rate cards are hourly only (`rate_cards_hourly_only_chk`, migration 0071). The interim daily and monthly cards, charged "in the card's own unit" (formula 2.0), are withdrawn, and legacy non-hourly cards are retired, not converted. A line may give `days`, which the engine turns into `H = days × dailyHours`. Rent is `rate_card_value × H`. Historic quotations keep their stored daily or monthly `rent_parts` unchanged (QAD-T44).
+
 *Addendum ([cr-arkilaunch-coupons.md](cr-arkilaunch-coupons.md)):* a tenant coupon applied at checkout is a second discount taken **after** the quote. It comes off `quote_total` (the rent line of the booking invoice), `coupon_discount = round2( min(quote_total, percent ? quote_total * value/100 : value) )`, and never off the deposit. The quote itself is not changed.
 
 **Rounding rule:** monetary outputs round to 2 decimals (PHP centavos), **half-up**, applied at the item subtotal and at the quote total. Intermediate values stay full-precision (the `NUMERIC` columns above); only the two named outputs round. This keeps the sum of rounded line items equal to the rounded total within a defined tolerance (see QAD `QAD-T46`, §7 below).

@@ -1,8 +1,3 @@
-// Plain-text email for the money events (transactions and invoices). Every
-// other notification type stays in-app only, so this returns null for it.
-// Each email ends in "Label: URL", which renderEmailHtml turns into a button
-// that opens that exact invoice, booking or checkout.
-
 export interface InvoiceInfo {
   invoiceId: string;
   invoiceType: string; // booking, deposit, weekly, truck
@@ -13,9 +8,7 @@ export interface InvoiceInfo {
   truckRequestId: string | null;
 }
 
-// A tenant's pages are served only on its own host ({slug}.<platform
-// domain>, dev: {slug}.localhost:5173); the bare domain redirects them to
-// its home page, so a link must carry the tenant's host.
+// The bare domain redirects tenant pages home, so a link must carry the tenant's host.
 export function tenantWebOrigin(slug: string, webOrigin: string, platformDomain?: string): string {
   if (platformDomain) return `https://${slug}.${platformDomain}`;
   const url = new URL(webOrigin);
@@ -42,7 +35,6 @@ export function notificationEmail(
   const ref = inv.code ?? 'your booking';
 
   if (audience === 'customer') {
-    // A truck invoice has no booking page; the truck requests list is its home.
     const invoicePage = inv.truckRequestId ? `${base}/account/trucks` : `${base}/account/invoices/${inv.invoiceId}`;
     const retry =
       inv.truckRequestId
@@ -82,8 +74,6 @@ export function notificationEmail(
     }
   }
 
-  // Staff open the booking's drawer by its code (the same deep link the
-  // in-app feed uses); a mismatch is reviewed on the payments screen.
   const booking = inv.code
     ? `Open ${inv.code}: ${base}/app/bookings?open=${encodeURIComponent(inv.code)}`
     : `Open payments: ${base}/app/payments`;
@@ -110,8 +100,6 @@ export function notificationEmail(
   }
 }
 
-// The tenant's storefront branding (tenants.logo_key / primary_color,
-// migration 0051), rendered into the HTML part of the email.
 export interface EmailBrand {
   name: string;
   logoUrl: string | null;
@@ -123,8 +111,6 @@ const FALLBACK_COLOR = '#1f2933';
 const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-// Black or white text, whichever reads better on the brand color (WCAG
-// relative luminance), so a pale brand yellow still gets legible text.
 export function textOn(hex: string): '#000000' | '#ffffff' {
   const [r, g, b] = [1, 3, 5].map((i) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255;
@@ -133,10 +119,7 @@ export function textOn(hex: string): '#000000' | '#ffffff' {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.179 ? '#000000' : '#ffffff';
 }
 
-// The HTML part, derived from the plain-text body so the two never drift:
-// paragraphs stay paragraphs, a line ending in a URL becomes a button in the
-// brand color. Table layout and inline styles because mail clients strip
-// <style> and flexbox.
+// Table layout and inline styles: mail clients strip <style> and flexbox.
 export function renderEmailHtml(brand: EmailBrand, text: string): string {
   const color = brand.color && /^#[0-9a-f]{6}$/i.test(brand.color) ? brand.color : FALLBACK_COLOR;
   const ink = textOn(color);

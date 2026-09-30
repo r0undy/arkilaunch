@@ -1,10 +1,6 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 import { Surface } from './surface.js';
 
-// The AWS Console container: a header (title, a muted (count), actions on the
-// right, then an optional toolbar of filter left, paging right), a divider,
-// then content. Tables pass `flush` so rows run to the card's edge.
-
 export interface ContainerHeaderProps {
   title: string;
   count?: number | null | undefined;

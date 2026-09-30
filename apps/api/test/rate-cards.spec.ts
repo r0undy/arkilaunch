@@ -6,9 +6,7 @@ import { rateCards, withTenantTx } from '@arkilaunch/db';
 import type { RequestContext } from '@arkilaunch/shared';
 import { PricingService } from '../src/pricing/pricing.service.js';
 
-// S18 Rate Cards & Tenant Settings (PRD-F1/F7, QAD-T44/T19/T24). Uses a
-// dedicated equipment_types row so this file's writes never touch the
-// shared seeded rate card quotes-engine.spec.ts prices against.
+// A dedicated equipment type, so writes never touch the shared card quotes-engine prices against.
 describe('PricingService: rate cards + tenant settings (S18)', () => {
   const pricing = new PricingService();
   let adminCtxA: RequestContext;
@@ -116,6 +114,40 @@ describe('PricingService: rate cards + tenant settings (S18)', () => {
       equipmentTypeId: dedicatedEquipmentTypeId,
       includeSuperseded: false, limit: 50, offset: 0 });
     expect(currentAfter.length).toBe(0);
+  });
+
+  it('superseding or retiring a card that is no longer current is a 409 and inserts no successor', async () => {
+    const all = await pricing.listRateCards(adminCtxA, {
+      equipmentTypeId: dedicatedEquipmentTypeId,
+      includeSuperseded: true, limit: 50, offset: 0 });
+    const retired = all.items[0]!;
+    expect(retired.effectiveTo).not.toBeNull();
+
+    await expect(pricing.supersedeRateCard(adminCtxA, retired.id, { rateValue: 900 })).rejects.toMatchObject({
+      response: { error: 'rate_card_not_current' },
+    });
+    await expect(pricing.retireRateCard(adminCtxA, retired.id)).rejects.toMatchObject({
+      response: { error: 'rate_card_not_current' },
+    });
+    const [row] = await withTenantTx(adminCtxA, (tx) => tx.select().from(rateCards).where(eq(rateCards.id, retired.id)));
+    expect(row!.effectiveTo).toEqual(retired.effectiveTo);
+    const after = await pricing.listRateCards(adminCtxA, {
+      equipmentTypeId: dedicatedEquipmentTypeId,
+      includeSuperseded: true, limit: 50, offset: 0 });
+    expect(after.total).toBe(all.total);
+  });
+
+  it('supersede refuses an effectiveFrom not after the current card starts', async () => {
+    const card = await pricing.createRateCard(adminCtxA, {
+      equipmentTypeId: dedicatedEquipmentTypeId,
+      rateType: 'hourly',
+      rateValue: 800,
+      currency: 'PHP',
+    });
+    await expect(
+      pricing.supersedeRateCard(adminCtxA, card!.id, { rateValue: 900, effectiveFrom: '2020-01-01T00:00:00Z' }),
+    ).rejects.toMatchObject({ response: { error: 'rate_card_not_current' } });
+    await pricing.retireRateCard(adminCtxA, card!.id);
   });
 
   it('a tenant-B ctx cannot read or supersede a tenant-A rate card (T24)', async () => {

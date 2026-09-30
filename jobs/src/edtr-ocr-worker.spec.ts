@@ -7,15 +7,8 @@ import type { DocumentExtractionResult } from '@arkilaunch/shared';
 import { runEdtrOcrWorker } from './edtr-ocr-worker.js';
 import { makeJobDb } from './db-client.js';
 
-// RFC-2 §2/§3 (RFC2-02/RFC2-03): the worker's claim/extract/fan-out/
-// reconcile loop, run against the stub-equivalent
-// FixtureDocumentIntelligenceAdapter so it is fully exercisable offline (no
-// live Azure DI resource).
-//
-// Fixtures are TABLES, not document-level fields: the real Almara EDTR is a
-// multi-day timesheet grid and the worker reads prebuilt-layout's table
-// output (docs/cr-arkilaunch-edtr-real-form.md). The header shape below is
-// the one the live resource actually returned for that form.
+// RFC2-02/RFC2-03. Fixtures are prebuilt-layout TABLES; the header shape is
+// what the live resource returned for the real form.
 describe('edtr-ocr-worker', () => {
   let tenantId: string;
   let rentalId: string;
@@ -34,19 +27,14 @@ describe('edtr-ocr-worker', () => {
     await sql.end();
   });
 
-  // The worker gates on ENABLE_OCR_PIPELINE before anything else (see
-  // edtr-ocr-worker.ts); these tests exercise the loop itself, so they
-  // always run with the flag on.
   beforeEach(() => {
     process.env.ENABLE_OCR_PIPELINE = 'true';
   });
 
   const stubFetchBytes = async () => Buffer.from('fixture-bytes');
 
-  // Every date in this file sits in 2022, a year no other spec uses. The
-  // worker pairs on (equipment_id, report_date) against the shared seeded
-  // tenant, so a date another suite -- or an older run of this one -- also
-  // touches makes a test reconcile against a row it never created.
+  // Dates sit in 2022, a year no other spec uses, so pairing on
+  // (equipment_id, report_date) never hits another suite's row.
 
   const HEADER = [
     ['DATE', 'AM', '', 'PM', '', 'OVERTIME', '', 'TOTAL HOURS', 'SIGNATURE'],
@@ -76,10 +64,7 @@ describe('edtr-ocr-worker', () => {
     };
   }
 
-  // Dates are written in full ISO form so no test depends on the
-  // capture-date year resolution, which has its own unit tests in
-  // packages/shared/src/edtr-sheet.spec.ts. 07:00-11:30 plus 13:00-17:00 is
-  // 8.5 hours, so a total of '8.5' is self-consistent.
+  // 07:00-11:30 plus 13:00-17:00 is 8.5 hours, so a total of '8.5' is self-consistent.
   function day(date: string, total: string): string[] {
     return [date, '07:00', '11:30', '13:00', '17:00', '', '', total, ''];
   }
@@ -130,10 +115,7 @@ describe('edtr-ocr-worker', () => {
   });
 
   it('fans one multi-day sheet out into one edtr row per dated line', async () => {
-    // The load-bearing case for the real form: a single photograph carries a
-    // week of equipment-days, and each has to reconcile against its own
-    // counterpart separately. Keeping them in one row would let a +2h error
-    // on Monday cancel a -2h error on Tuesday inside a summed total.
+    // One row per day, so a +2h error on Monday cannot cancel a -2h on Tuesday.
     const row = await insertQueuedPaperEdtr('2022-04-01');
     const dates = ['2022-04-01', '2022-04-02', '2022-04-03'];
 
@@ -194,10 +176,7 @@ describe('edtr-ocr-worker', () => {
   });
 
   it('auto-accepts against a digital counterpart even though the paper log has no idle hours', async () => {
-    // The paper form records no idle time at all, so the idle dimension is
-    // not comparable and the gate decides on active hours -- the figure the
-    // deduction is priced on. Before migration 0017 this pair could only
-    // match by fabricating a 0 for the paper side.
+    // No idle on paper: the gate decides on active hours alone.
     const reportDate = '2022-02-03';
     const paperRow = await insertQueuedPaperEdtr(reportDate);
 
@@ -316,9 +295,7 @@ describe('edtr-ocr-worker', () => {
   });
 
   it('a dated row with an unreadable total fails the whole sheet, naming the lost day', async () => {
-    // The dangerous shape: the sheet reads fine except for one total. Taking
-    // the readable days and dropping the rest would lose a billable day with
-    // nothing downstream able to tell it ever existed.
+    // Reading the good days and dropping one would silently lose a billable day.
     const row = await insertQueuedPaperEdtr('2022-02-06');
 
     await runEdtrOcrWorker(
@@ -340,11 +317,6 @@ describe('edtr-ocr-worker', () => {
   // Placed last: both leave rows behind that a subsequent worker run in this
   // file would claim, so each cleans up after itself.
   it('claims at most CLAIM_BATCH_SIZE rows and leaves the rest queued, never stranded in extracting', async () => {
-    // The regression: the claim UPDATE matched every queued row and the
-    // batch limit was applied to its RESULT, so rows 11..n were flipped to
-    // 'extracting' with locked_at set and then never processed by anyone --
-    // the claim predicate only looks at 'queued'. On any backlog over ten,
-    // captures were silently lost.
     const dates = Array.from({ length: 12 }, (_, i) => `2022-03-${String(i + 1).padStart(2, '0')}`);
     const rows = [];
     for (const date of dates) rows.push(await insertQueuedPaperEdtr(date));
@@ -380,8 +352,7 @@ describe('edtr-ocr-worker', () => {
   it('reclaims a row abandoned in extracting by a dead worker, burning one attempt', async () => {
     const row = await insertQueuedPaperEdtr('2022-03-20');
     const { db, client } = makeJobDb();
-    // What a crash between the claim UPDATE and the terminal write leaves
-    // behind. Before the reaper this row was unreachable forever.
+    // What a crash between the claim UPDATE and the terminal write leaves behind.
     await db
       .update(edtr)
       .set({ status: 'extracting', lockedAt: new Date(Date.now() - 60 * 60 * 1000) })

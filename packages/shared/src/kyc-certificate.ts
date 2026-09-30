@@ -1,31 +1,17 @@
 import { spanConfidence, type DocumentText, type ExtractedField } from './document-intelligence-port.js';
 import { normalizeSecNumber, normalizeTin, SEC_REGEX, TIN_REGEX } from './kyc.js';
 
-// Reads the fields KYC needs off an SEC Certificate of Incorporation or a
-// BIR Form 2303 from the text prebuilt-layout returned, anchored on the
-// labels and sentences those papers actually print
-// (docs/cr-arkilaunch-kyc-sec-bir-parsing.md). Pure, like parseEdtrSheet().
-//
-// Why not queryFields alone: measured on real certificates it read the
-// SEC's own letterhead address as the company's, the Revised Corporation
-// Code's effectivity date ("took effect on February 23, 2019") as the
-// registration date, and filed the eSPARC reg no. under the wrong query.
-//
-// A value's confidence is the lowest OCR word confidence across the text it
-// came from -- a measurement, the same rule as a table cell's.
+// Anchored on printed labels: queryFields alone read the SEC letterhead address and the RCC effectivity date as the company's.
 
 export type CertificateLayout = 'sec_coi' | 'bir_2303';
 export type CertificateFieldKey = 'company_name' | 'sec_number' | 'tin' | 'registered_address' | 'registration_date';
 
 export interface CertificateParse {
-  // null: the text is not the paper it was uploaded as (or is unreadable).
   layout: CertificateLayout | null;
   fields: Partial<Record<CertificateFieldKey, ExtractedField>>;
 }
 
 const clean = (s: string) => s.replace(/\s+/g, ' ').trim();
-
-// --- Dates ---------------------------------------------------------------
 
 const MONTH_RE =
   /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?/i;
@@ -40,8 +26,6 @@ const TENS: Record<string, number> = {
   twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
 };
 
-// The SEC writes the year out: "Two Thousand Twenty Two", "Twenty Twenty
-// Three", "Nineteen Ninety Eight", "Two Thousand and Ten".
 export function yearFromWords(text: string): number | null {
   const words: string[] = [];
   for (const t of text.toLowerCase().split(/[^a-z]+/).filter(Boolean)) {
@@ -62,7 +46,6 @@ export function yearFromWords(text: string): number | null {
     }
     return total + current;
   }
-  // Paired two-digit groups: [twenty][twenty three] = 2023.
   const groups: number[] = [];
   for (let i = 0; i < words.length; i++) {
     const w = words[i]!;
@@ -85,15 +68,10 @@ function isoIfValid(y: number, m: number, d: number, today: Date): string | null
   if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
   const date = new Date(Date.UTC(y, m - 1, d));
   if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return null;
-  // SEC was created in 1936; nothing on either paper predates it, and a
-  // registration cannot be in the future.
   if (y < 1936 || date.getTime() > today.getTime()) return null;
   return `${y}-${pad(m)}-${pad(d)}`;
 }
 
-// A printed date as YYYY-MM-DD, or null when it is not one date: ISO, BIR's
-// MM/DD/YYYY, "June 11, 2024", "16 September 2022", or the SEC's
-// "24th day of April, Twenty Twenty Three".
 export function parseCertificateDate(raw: string, today: Date = new Date()): string | null {
   const s = clean(raw);
   let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
@@ -117,12 +95,9 @@ export function parseCertificateDate(raw: string, today: Date = new Date()): str
   return year === null ? null : isoIfValid(year, monthIndex, day, today);
 }
 
-// --- SEC Certificate of Incorporation -------------------------------------
-
 const SEC_HEADER = /SECURITIES\s+AND\s+EXCHANGE\s+COMMISSION/i;
 const SEC_REG_LABEL = /\b(?:COMPANY|SEC)\s+REG(?:ISTRATION)?\s*\.?\s*(?:NO|NUMBER)\s*\.?\s*:?/i;
 const SEC_TITLE = /CERTIFICATE\s+OF\s+(?:INCORPORATION|REGISTRATION|RECORDING|FILING)/i;
-// A diagonal "SAMPLE ONLY" / "SPECIMEN" stamp comes back as its own line.
 const WATERMARK_LINE = /^\W*(?:SAMPLE|SPECIMEN)\W*T?\W*(?:ONLY|COPY)?\W*$/i;
 
 interface Piece {
@@ -131,9 +106,6 @@ interface Piece {
   end: number;
 }
 
-// The reg no. printed after its label, on the same line. OCR splits it
-// ("CS 2023 10876", "2022090068683 - 02"), so up to three adjacent tokens
-// are joined and the longest that is a valid SEC number wins.
 function secNumber(content: string): Piece | null {
   const label = SEC_REG_LABEL.exec(content);
   if (label) {
@@ -154,7 +126,6 @@ function secNumber(content: string): Piece | null {
     }
     if (best) return best;
   }
-  // No usable label: accept only an unambiguous eSPARC or CS/CN number.
   const found = [...content.matchAll(/\b(?:\d{13}\s*-\s*\d{2}|C[SN]\d{9})\b/g)];
   const distinct = new Set(found.map((f) => normalizeSecNumber(f[0])));
   if (distinct.size !== 1) return null;
@@ -162,9 +133,6 @@ function secNumber(content: string): Piece | null {
   return { value: normalizeSecNumber(f[0]), start: f.index!, end: f.index! + f[0].length };
 }
 
-// The name sits between "Articles of Incorporation and By-Laws of" and
-// "were duly approved"; a trade name after "DOING BUSINESS UNDER THE NAME
-// AND STYLE OF" is not the registered name.
 function secCompanyName(content: string): Piece[] | null {
   const anchor =
     /Articles\s+of\s+(?:Incorporation|Partnership)(?:\s+and\s+By[\s-]*Laws)?(?:\s+of\b)?\s*:?/i.exec(content);
@@ -185,9 +153,7 @@ function secCompanyName(content: string): Piece[] | null {
   return /[A-Za-z]{2}/.test(name) && name.length <= 200 ? pieces : null;
 }
 
-// Only the IN WITNESS WHEREOF clause dates the certificate: "this 24th day
-// of April, Twenty Twenty Three" or "this day of 16 September Two Thousand
-// Twenty Two". Any other date in the body is something else.
+// Only the IN WITNESS WHEREOF clause dates the certificate.
 function secDate(content: string, today: Date): { iso: string; piece: Piece } | null {
   const witness = /IN\s+WITNESS\s+WHEREOF/i.exec(content);
   if (!witness) return null;
@@ -216,14 +182,10 @@ function parseSec(text: DocumentText, today: Date): CertificateParse {
   return { layout: 'sec_coi', fields };
 }
 
-// --- BIR Form 2303 ---------------------------------------------------------
-
 const BIR_HEADER = /RENTAS\s+INTERNAS|INTERNAL\s+REVENUE|\bBIR\b/i;
 const BIR_TITLE = /CERTIFICATE\s+OF\s+REGISTRATION|\b2303\b/;
 
-// Every label printed on the 1997 and 2019 forms. A line starting with one
-// is a label (its value may follow on the same line); anything else is a
-// value. Order matters where one label is a prefix of another.
+// Order matters where one label is a prefix of another.
 const LABELS = {
   tinDate: /^TIN\s+ISSUANCE\s+DATE\b/i,
   tin: /^TIN(?:\s*(?:&|AND)\s*BRANCH\s+CODE)?\b/i,
@@ -237,8 +199,6 @@ const LABELS = {
 } as const;
 type LabelKind = keyof typeof LABELS;
 
-// The form's microprint background ("BUREAU OF INTERNAL REVENUE" repeated)
-// can surface as lines of its own.
 const WATERMARK_WORDS = /^(?:\W*(?:BUREAU|OF|INTERNAL|INTERN\w*|REVENUE|REVEN\w*|BIR)\W*)+$/i;
 
 interface Box {
@@ -263,8 +223,7 @@ function labelOf(text: string): [LabelKind | null, number] {
 }
 
 function boxes(text: DocumentText): Box[] {
-  // A photo is rarely square to the camera. The median slope of the line
-  // tops is the page's tilt; shearing it out keeps "the same row" true.
+  // Shear out the page tilt (median slope of line tops) so "the same row" stays true.
   const slopes = text.lines
     .map((l) => (l.polygon[3]! - l.polygon[1]!) / (l.polygon[2]! - l.polygon[0]! || 1))
     .sort((a, b) => a - b);
@@ -289,18 +248,7 @@ function boxes(text: DocumentText): Box[] {
   });
 }
 
-// What a label's box holds, nearest first: the rest of its own line, the
-// nearest line to its right on the same row, then the lines below it in
-// its column. A column runs from the label to the next label on its row,
-// the way the form's boxes are ruled.
-//
-// How far down: 'row' stops at the next label anywhere below, the right
-// bound for a box closed by the next ruled row (the 2019 NAME OF TAXPAYER
-// box ends where REGISTERING OFFICE begins). 'column' stops only at the
-// next label in the same column, for a header over a value row that has
-// its own label at the left (2019 business block: REGISTRATION DATE sits
-// above the date, which shares a row with TRADE NAME 1). A 'column' read
-// can run long, so it is only for fields where the first match wins.
+// 'row' stops at the next label anywhere below; 'column' only at the next label in its column (first match wins).
 function valuesOf(label: Box, all: Box[], reach: 'row' | 'column'): Piece[] {
   const h = label.y1 - label.y0;
   const centre = (b: Box) => (b.y0 + b.y1) / 2;
@@ -332,13 +280,9 @@ function valuesOf(label: Box, all: Box[], reach: 'row' | 'column'): Piece[] {
   return out.filter((p) => !WATERMARK_WORDS.test(p.value.trim()));
 }
 
-// OCR reads a 0 as O or D and a 1 as I or l, but only between digits is
-// that a safe repair.
+// O/D -> 0 and I/l -> 1 is only safe between digits.
 const repairDigits = (s: string) => s.replace(/(?<=\d[\s-]?)[OoD](?=[\s-]?\d)/g, '0').replace(/(?<=\d[\s-]?)[Il|](?=[\s-]?\d)/g, '1');
-// A trailing digit means a malformed branch ("000-000-000-0000"), which must
-// not be read as its first nine digits.
 const TIN_TOKEN = /\b\d{3}[-\s]?\d{3}[-\s]?\d{3}(?:[-\s]?(?:\d{5}|\d{3}))?\b(?![-\s]?\d)/;
-// The blank form prints zeros where the TIN goes.
 const isPlaceholderTin = (tin: string) => /^0{3}-0{3}-0{3}/.test(tin);
 
 function tinIn(piece: Piece): Piece | null {
@@ -352,8 +296,6 @@ function tinIn(piece: Piece): Piece | null {
 const hasWords = (s: string) => /[A-Za-z]{2}/.test(s);
 const isTinOrDate = (s: string) => TIN_TOKEN.test(s) || /\d{1,2}\/\d{1,2}\/\d{4}/.test(s);
 
-// An individual's COR names the person (SURNAME, GIVEN); their business is
-// the trade name. Entities are named as registered.
 const ORG_SUFFIX =
   /\b(?:INC|INCORPORATED|CORP|CORPORATION|CO|COMPANY|LTD|LIMITED|OPC|PARTNERSHIP|COOPERATIVE|FOUNDATION|ASSOCIATION)\b\.?/i;
 const INDIVIDUAL_TYPE = /PROPRIETOR|INDIVIDUAL|INCOME\s+EARNER|PROFESSIONAL/i;
@@ -375,7 +317,6 @@ function parseBir(text: DocumentText, today: Date): CertificateParse {
   let tin: Piece | null = null;
   for (const p of values('tin', 'column')) if ((tin = tinIn(p))) break;
   if (!tin) {
-    // No TIN under its label: accept the only dashed TIN on the page.
     const found = [...repairDigits(content).matchAll(/\b\d{3}-\d{3}-\d{3}(?:-\d{5}|-\d{3})?\b(?!-?\d)/g)].filter(
       (f) => !isPlaceholderTin(f[0]),
     );
@@ -386,9 +327,6 @@ function parseBir(text: DocumentText, today: Date): CertificateParse {
   }
   if (tin) fields.tin = { value: tin.value, confidence: conf(tin) };
 
-  // The name box holds the name alone, so every line in it is the name (a
-  // long one wraps); the trade name is the first line under its label (the
-  // PSIC line of business sits beside it on the 1997 form).
   const registrant = values('name', 'row').filter((p) => hasWords(p.value) && !isTinOrDate(p.value));
   const registrantName = clean(registrant.map((p) => p.value).join(' '));
   const trade = values('tradeName', 'row').find(
@@ -396,7 +334,6 @@ function parseBir(text: DocumentText, today: Date): CertificateParse {
       hasWords(p.value) &&
       !/^\s*\d{4}\b/.test(p.value) &&
       clean(p.value) !== '-' &&
-      // A blank trade name box has the next column's date beside it.
       !isTinOrDate(p.value) &&
       !parseCertificateDate(p.value, today),
   );
@@ -423,8 +360,6 @@ function parseBir(text: DocumentText, today: Date): CertificateParse {
   }
   return { layout: 'bir_2303', fields };
 }
-
-// --- Entry point -----------------------------------------------------------
 
 export function parseRegistrationCertificate(
   documentType: string,

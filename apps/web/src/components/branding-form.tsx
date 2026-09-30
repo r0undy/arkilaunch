@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react';
+import { tenantsQueries } from '../lib/queries.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { TenantBranding, TenantBrandingUpdateRequest } from '@arkilaunch/shared';
-import { apiDelete, apiErrorText, apiGet, apiPatch, apiPostForm } from '../lib/api-client.js';
-import { MAX_UPLOAD_BYTES, prepareUpload } from '../lib/image-compression.js';
+import { MAX_UPLOAD_BYTES, type TenantBranding, type TenantBrandingUpdateRequest } from '@arkilaunch/shared';
+import { apiDelete, apiErrorText, apiPatch, apiPostForm } from '../lib/api-client.js';
+import { prepareUpload } from '../lib/image-compression.js';
 import { onPrimaryFor } from '../lib/brand.js';
 import { Button } from './button.js';
 import { ConfirmDialog } from './confirm-dialog.js';
@@ -12,7 +13,6 @@ import { Surface } from './surface.js';
 import { useToast } from './toast.js';
 
 const DEFAULT_PRIMARY = '#f2a100';
-// What the storefront bar shows with no header color (--paper-100).
 const DEFAULT_HEADER = '#f5f2eb';
 const HEX = /^#[0-9a-f]{6}$/i;
 
@@ -53,8 +53,7 @@ function toRequest(d: Draft): TenantBrandingUpdateRequest {
   };
 }
 
-// A PNG logo keeps its transparency; anything else goes through the shared
-// compressor (which re-encodes to JPEG).
+// A PNG keeps its transparency; the compressor would re-encode it to JPEG.
 async function prepareImage(file: File): Promise<File> {
   if (file.type === 'image/png' && file.size <= MAX_UPLOAD_BYTES) return file;
   return prepareUpload(file);
@@ -151,8 +150,6 @@ function ImageField({
   );
 }
 
-// A picker plus a hex field for one color. An empty hex means no override;
-// the picker then shows what the storefront uses instead.
 function ColorField({
   id,
   label,
@@ -194,20 +191,16 @@ function ColorField({
   );
 }
 
-// The company's public storefront branding. `basePath` is /tenants/me for
-// the company's own owner/admin, /tenants/{id} for a platform admin. The
-// legal name is shown but never editable (the API rejects it too).
 export function BrandingForm({ basePath }: { basePath: string }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const queryKey = ['branding', basePath] as const;
-  const saved = useQuery({ queryKey, queryFn: () => apiGet<TenantBranding>(`${basePath}/branding`) });
+  const brandingQuery = tenantsQueries.branding(basePath);
+  const saved = useQuery(brandingQuery);
   const [draft, setDraft] = useState<Draft | null>(null);
   const current = draft ?? (saved.data ? toDraft(saved.data) : null);
 
   const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey });
-    // The storefront on this host re-reads its branding too.
+    void queryClient.invalidateQueries({ queryKey: brandingQuery.queryKey });
     void queryClient.invalidateQueries({ queryKey: ['catalog', 'tenant'] });
   };
 

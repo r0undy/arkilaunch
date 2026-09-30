@@ -1,12 +1,7 @@
 import type { CatalogEquipment, CatalogTenant } from '@arkilaunch/shared';
 import { brandVars, headTags, isIndexable, pageTitle, robotsFor, sitemapXml, type PageDetail } from '../src/lib/brand.js';
 
-// Edge head for tenant storefronts (CR: tenant-brand-kit). The SPA shell is
-// one file for every host, so a crawler or a Facebook link preview reading
-// the HTML saw "ArkiLaunch" and noindex on every tenant. On a tenant host
-// this writes that tenant's own title, description, Open Graph, favicon,
-// JSON-LD and first-paint colors into the shell, and serves its robots.txt
-// and sitemap. Anything that fails falls back to the untouched shell.
+// Writes the tenant's own head tags into the shared SPA shell; any failure serves the untouched shell.
 
 interface Env {
   ASSETS: Fetcher;
@@ -29,8 +24,7 @@ function tenantSlug(hostname: string, platformDomain: string): string | null {
   return null;
 }
 
-// One catalog read, cached per tenant. The key carries the slug, so one
-// tenant's branding can never be served for another.
+// The cache key carries the slug, so one tenant's branding is never served for another.
 async function catalog<T>(env: Env, ctx: ExecutionContext, slug: string, path: string): Promise<T | null> {
   const key = new Request(`https://edge-cache.invalid/${slug}${path}`);
   const cache = caches.default;
@@ -111,7 +105,6 @@ export default {
       const icon = tenant?.iconUrl ?? tenant?.logoUrl;
       return icon ? Response.redirect(icon, 302) : env.ASSETS.fetch(request);
     }
-    // A file (has an extension) is served as is; every other path is a page.
     if (/\.[a-z0-9]+$/i.test(url.pathname)) return env.ASSETS.fetch(request);
     return tenantPage(request, env, ctx, slug);
   },

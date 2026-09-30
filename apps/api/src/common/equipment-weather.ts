@@ -1,5 +1,5 @@
 import { desc, eq } from 'drizzle-orm';
-import { weatherAlerts, type db } from '@arkilaunch/db';
+import { type Tx, weatherAlerts } from '@arkilaunch/db';
 import {
   WEATHER_STALE_AFTER_MINUTES,
   type EquipmentWeather,
@@ -7,14 +7,10 @@ import {
   type WeatherLevel,
 } from '@arkilaunch/shared';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 type StoredReading = { level?: WeatherLevel; equipment?: EquipmentWeather[]; pagasa?: SiteEquipmentWeatherResponse['pagasa'] };
 
-// The machines' levels from a site's latest poll. `rentalIds` narrows it to
-// one customer's own machines (a customer never sees what another company
-// runs on a shared site). No reading reads as stale with no machines --
-// never as an all-clear.
+// `rentalIds` narrows it to one customer's machines; no reading reads as stale, never as an all-clear.
 export async function latestEquipmentWeather(tx: Tx, siteId: string, rentalIds?: string[]): Promise<SiteEquipmentWeatherResponse> {
   const [latest] = await tx
     .select()

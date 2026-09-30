@@ -9,9 +9,6 @@ import {
 } from './cart-validation.js';
 import type { CartItem } from './cart-client.js';
 
-// The cart is the last screen before a booking request reaches the rental
-// team. Everything it refuses, it has to refuse for a reason it can show.
-
 function company(id: string, kycStatus: string): CompanyResponse {
   return {
     id,

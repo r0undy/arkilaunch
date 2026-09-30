@@ -6,13 +6,9 @@ import { appLayoutRoute } from './_app.js';
 import { apiErrorText, apiGet } from '../lib/api-client.js';
 import { formatDate, formatHours, formatInvoiceType, formatPeso, formatStatus, shortCode } from '../lib/format.js';
 import { Surface } from '../components/surface.js';
-import { Button } from '../components/button.js';
+import { Button, buttonClass } from '../components/button.js';
 import { PageHeader } from '../components/page-header.js';
 import { PrintFrame } from '../components/print-frame.js';
-
-// Statement of Account (QA 19): a rental's reconciled hours stacked week by
-// week as they are billed, and once the rental is done, a printable
-// statement of every charge, payment and the deposit.
 
 type Scope = 'me' | 'staff';
 const statementQuery = (scope: Scope, rentalId: string) => ({
@@ -52,7 +48,6 @@ function WeeksTable({ statement }: { statement: StatementOfAccount }) {
   );
 }
 
-// The booking page's card: the weeks so far, and the statement once done.
 export function WeeklyBillingCard({ rentalId, scope }: { rentalId: string; scope: Scope }) {
   const statement = useQuery(statementQuery(scope, rentalId));
   if (!statement.data) return null;
@@ -64,10 +59,7 @@ export function WeeklyBillingCard({ rentalId, scope }: { rentalId: string; scope
         {s.status === 'completed' && (
           <Link
             to={scope === 'me' ? '/account/bookings/$bookingId/statement' : '/app/bookings/$bookingId/statement'}
-            params={{ bookingId: rentalId }}
-          >
-            <Button variant="secondary">Print statement of account</Button>
-          </Link>
+            params={{ bookingId: rentalId }} className={buttonClass('secondary')}>Print statement of account</Link>
         )}
       </div>
       {s.weeks.length === 0 ? (
@@ -104,9 +96,7 @@ function StatementPage({ scope, rentalId }: { scope: Scope; rentalId: string }) 
           {...(s?.bookingCode ? { description: `Booking ${s.bookingCode}` } : {})}
           actions={
             <>
-              <Link to={back} params={{ bookingId: rentalId }}>
-                <Button variant="ghost">Back to booking</Button>
-              </Link>
+              <Link to={back} params={{ bookingId: rentalId }} className={buttonClass('ghost')}>Back to booking</Link>
               <Button variant="primary" disabled={!s} onClick={() => window.print()}>
                 Print
               </Button>

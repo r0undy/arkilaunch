@@ -1,32 +1,17 @@
-// Lives in packages/shared (not apps/api/src/ports) so the ACA Jobs package
-// (jobs/src/weather-poll.ts, PRD-F5) can share the same port contract
-// without reaching into apps/api's internals -- the same convention
-// document-intelligence-port.ts already established for the
-// edtr-ocr-worker. Test doubles live in `@arkilaunch/shared/testing`.
 export interface WeatherObservation {
   tempC: number;
   windKph: number;
   precipMm: number;
   code: number;
-  // Newer readings only (per-equipment levels); absent on older rows.
   gustKph?: number;
   humidityPct?: number;
 }
 
-// Open-Meteo FREE tier (PRD-F5). The free tier is keyless and restricted to
-// non-commercial use; ArkiLaunch ships against it anyway as a deliberate,
-// recorded divergence from the Locked PRD's "requires the commercial plan"
-// line -- see docs/cr-arkilaunch-open-meteo-free-tier.md before assuming
-// this contradicts anything. CC BY 4.0 attribution is rendered in
-// apps/web/src/components/weather-banner.tsx; the non-commercial-use
-// exposure is carried as an open item there, not resolved.
+// Open-Meteo free tier (keyless, non-commercial) is a deliberate divergence: docs/cr-arkilaunch-open-meteo-free-tier.md.
 export interface WeatherPort {
   getConditions(latitude: number, longitude: number): Promise<WeatherObservation>;
 }
 
-// One day of the outlook. Separate from WeatherObservation on purpose: that
-// is a reading taken now, this is a prediction for a whole day, and the two
-// must never be mistaken for each other in a UI.
 export interface DailyForecast {
   date: string; // YYYY-MM-DD, site-local (the adapter already asks for Asia/Manila)
   tempMaxC: number;
@@ -36,45 +21,24 @@ export interface DailyForecast {
   code: number;
 }
 
-// A SEPARATE interface, not an optional method on WeatherPort: every
-// implementation of that -- jobs/src/weather-poll.ts's consumer and each
-// test double in `@arkilaunch/shared/testing` -- would otherwise have to
-// grow a method it does not use, and every caller an `if (!port.getForecast)`
-// branch guarding a case that cannot happen.
 export interface WeatherForecastPort {
-  /**
-   * Exactly FORECAST_DAYS entries, day 0 = today.
-   *
-   * Throws rather than returning a short array. A four-day week rendered
-   * under a five-day heading is a quiet lie, and the same reasoning as
-   * UnavailableWeatherAdapter applies: no data must look like no data.
-   */
+  /** Exactly FORECAST_DAYS entries, day 0 = today; throws rather than return a short array. */
   getForecast(latitude: number, longitude: number): Promise<DailyForecast[]>;
 }
 
 export const FORECAST_DAYS = 5;
 
-// One hour of the forecast, in the shape the per-equipment rules judge
-// (evaluateSiteEquipment), so a forecast hour and a live reading run the
-// same rules. `time` is site-local (YYYY-MM-DDTHH:00, Asia/Manila).
+// `time` is site-local (YYYY-MM-DDTHH:00, Asia/Manila).
 export interface HourlyForecast {
   time: string;
   observed: WeatherObservation;
 }
 
-// Its own interface for the same reason as WeatherForecastPort: only the
-// pre-workday briefing and the hourly watch read it (jobs/src/weather-briefing.ts).
 export interface HourlyForecastPort {
   /** The next `hours` hours from the current hour. Throws, never a short array. */
   getHourlyForecast(latitude: number, longitude: number, hours: number): Promise<HourlyForecast[]>;
 }
 
-// 'no_credentials' stays in the union for symmetry with
-// ExtractionUnavailableReason's shared vocabulary, but is unreachable in
-// production now that the free tier needs no key -- there is nothing left
-// to be missing. 'no_adapter' is UnavailableWeatherAdapter's default for
-// exactly that reason: a default of 'no_credentials' would name a cause
-// that can no longer be true.
 export type WeatherUnavailableReason = 'no_credentials' | 'no_adapter' | 'flag_disabled';
 
 export class WeatherUnavailableError extends Error {
@@ -87,17 +51,7 @@ export class WeatherUnavailableError extends Error {
   }
 }
 
-// The honest failure mode, and the most safety-relevant change in this
-// file's history. The former StubWeatherAdapter returned
-// `{ tempC: 0, windKph: 0, precipMm: 0, code: 0 }`. Those zeros are not
-// "no data" -- evaluateSeverity() reads them as calm conditions and returns
-// 'none', which severityMessage() renders as "No weather advisory in
-// effect". That is a fabricated all-clear for a construction site: a false
-// negative on the one output where a false negative can get someone hurt.
-//
-// Throwing means jobs/src/weather-poll.ts writes no weather_alerts row at
-// all, and sites.service.ts's existing `!latest` branch already reports
-// that honestly as `isStale: true, polledAt: null`.
+// Throws, never zeros: zeros read as calm and would render a fabricated all-clear for a site.
 export class UnavailableWeatherAdapter implements WeatherPort, WeatherForecastPort, HourlyForecastPort {
   constructor(private readonly reason: WeatherUnavailableReason = 'no_adapter') {}
 
@@ -105,9 +59,6 @@ export class UnavailableWeatherAdapter implements WeatherPort, WeatherForecastPo
     throw new WeatherUnavailableError(this.reason);
   }
 
-  // Same contract as getConditions: throw, never hand back a shape that
-  // reads as a real forecast. An empty array in the rail would render as a
-  // blank week rather than "unavailable".
   async getForecast(_latitude: number, _longitude: number): Promise<DailyForecast[]> {
     throw new WeatherUnavailableError(this.reason);
   }

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import postgres from 'postgres';
 import { NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { registerTenant } from '@arkilaunch/db';
+import { ApplicationNotPendingError, decideTenantApplication, registerTenant } from '@arkilaunch/db';
 import { TenantBrandingUpdateRequestSchema } from '@arkilaunch/shared';
 import { AuthService } from '../src/auth/auth.service.js';
 import { RefreshTokenService } from '../src/auth/refresh-token.service.js';
@@ -32,9 +32,6 @@ const branding = {
   province: 'Cebu',
 };
 
-// CR: tenant-self-serve-branding (migration 0051). Registration is
-// auto-approved, owner activation takes the company live, branding is
-// editable except the name, and the directory lists only active companies.
 describe('self-serve rental company', () => {
   const auth = new AuthService(jwtService(), new RefreshTokenService(), new TotpService());
   const tenants = new TenantsService(auth, null as never);
@@ -56,6 +53,11 @@ describe('self-serve rental company', () => {
       contactMobile: '09170000000',
       contactJobTitle: 'Owner',
     });
+
+    // Auto-approved, so deciding it again is application_not_pending, not a 500.
+    await expect(decideTenantApplication(reg.applicationId, 'approved', reg.ownerUserId)).rejects.toThrow(
+      ApplicationNotPendingError,
+    );
 
     // QA 26 (migration 0069): every active platform admin hears of it.
     const sql = postgres(process.env.DATABASE_URL_DIRECT!, { max: 1 });

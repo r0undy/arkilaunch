@@ -3,27 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { Surface } from './surface.js';
 import { Skeleton } from './skeleton.js';
 import { LoadError } from './load-error.js';
-import { getAccessToken } from '../lib/auth-client.js';
-import { ApiError } from '../lib/api-client.js';
+import { ApiError, payloadField } from '../lib/api-client.js';
 import { customerSitesQueries, forecastQueries } from '../lib/queries.js';
 import { describeWeatherCode, weekdayLabel } from '../lib/weather-code.js';
 
-// The weather at the site a customer is renting for, beside the catalog they
-// are choosing from (Figma 185:1599). The cart panel that used to sit here is
-// gone: the cart is one affordance in the app bar, next to Sign out, rather
-// than the same thing drawn twice.
-
 const heading = 'text-heading-md text-text';
 
-// The API answers 503 { error: 'weather_unavailable', reason } when it cannot
-// get a forecast, and the reason decides what to say. An adapter switched off
-// by configuration will never succeed, so offering "Retry" there is a button
-// that cannot work.
 function unavailableReason(error: unknown): string | null {
-  if (!(error instanceof ApiError)) return null;
-  const payload = error.payload;
-  if (typeof payload !== 'object' || payload === null || !('reason' in payload)) return null;
-  return String((payload as { reason: unknown }).reason);
+  const reason = payloadField(error, 'reason');
+  return error instanceof ApiError && reason !== undefined ? String(reason) : null;
 }
 
 function ForecastRows({ siteId }: { siteId?: string }) {
@@ -32,11 +20,9 @@ function ForecastRows({ siteId }: { siteId?: string }) {
   const forecast = siteId ? siteForecast : areaForecast;
 
   if (forecast.isPending) return <Skeleton label="Loading the forecast" rows={2} />;
-  // A response without a week in it is treated as unavailable, never as
-  // an empty (calm-looking) one.
+  // A response with no week is unavailable, never an empty (calm-looking) one.
   if (forecast.isError || !Array.isArray(forecast.data?.days)) {
     const reason = unavailableReason(forecast.error);
-    // Configuration, not a hiccup: say so plainly and offer no retry.
     if (reason === 'flag_disabled' || reason === 'no_adapter') {
       return (
         <p className="text-sm text-text-muted">
@@ -71,9 +57,6 @@ function ForecastRows({ siteId }: { siteId?: string }) {
           );
         })}
       </ul>
-      {/* Never "live": the response is served from a short-lived cache, and
-          saying otherwise is the same class of overclaim as a fabricated
-          all-clear. */}
       <p className="text-xs text-text-muted">
         As of{' '}
         {new Date(forecast.data.fetchedAt).toLocaleTimeString(undefined, {
@@ -81,8 +64,7 @@ function ForecastRows({ siteId }: { siteId?: string }) {
           minute: '2-digit',
         })}
         {' · '}
-        {/* CC BY 4.0 requires attribution wherever Open-Meteo data is shown
-            (docs/cr-arkilaunch-open-meteo-free-tier.md). */}
+        {/* CC BY 4.0 requires attribution wherever Open-Meteo data is shown. */}
         Weather by{' '}
         <a href="https://open-meteo.com/" className="underline" rel="noreferrer" target="_blank">
           Open-Meteo
@@ -92,20 +74,15 @@ function ForecastRows({ siteId }: { siteId?: string }) {
   );
 }
 
-function WeatherRail() {
+export function WeatherInsights() {
   const sites = useQuery(customerSitesQueries.mine());
 
-  // The customer's first site stands in for "where this is going". A picker
-  // belongs here once a customer with several sites asks for one; guessing at
-  // that shape now would be building for an imagined user.
   const site = sites.data?.[0];
 
   return (
     <Surface radius="md" elevation="sm" className="flex flex-col gap-3 p-4">
       <h2 className={heading}>Weather insights</h2>
       {sites.isPending && <Skeleton label="Loading your sites" rows={2} />}
-      {/* No company or site yet (or the sites cannot be read): the general
-          forecast, so the rail is never empty for a customer with no order. */}
       {(sites.isError || (sites.isSuccess && !site)) && (
         <>
           <p className="text-sm text-text-muted">Metro Manila · general forecast</p>
@@ -129,15 +106,4 @@ function WeatherRail() {
         )}
     </Surface>
   );
-}
-
-// The forecast is a customer's own data: a signed-out visitor has no project
-// site and no endpoint to read, so there is nothing to render for them. The
-// page checks the same thing before reserving a column for it.
-export function weatherInsightsVisible(): boolean {
-  return Boolean(getAccessToken());
-}
-
-export function WeatherInsights() {
-  return <WeatherRail />;
 }

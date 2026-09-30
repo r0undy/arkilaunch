@@ -1,10 +1,3 @@
-// Mirrors apps/api/src/storage/storage.service.ts's createSignedDownloadUrl
-// + download, as a plain function rather than a Nest @Injectable: jobs has
-// no Nest container, and apps/api cannot be imported from here (cr-arkilaunch-
-// pilot-honesty.md §3.2 deliberately removed @arkilaunch/jobs from apps/api's
-// dependencies; the reverse edge has never existed either). If a third
-// consumer needs this, promote both into one shared module instead of adding
-// a third copy.
 const SIGNED_URL_TTL_SECONDS = 300;
 
 export async function fetchStorageObject(bucket: string, key: string): Promise<Buffer> {

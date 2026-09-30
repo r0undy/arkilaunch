@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
-import type { PgDatabase } from 'drizzle-orm/pg-core';
+import type { Executor } from './with-tenant-tx.js';
 import {
   compareReportedWeather,
   estimatePagasa,
@@ -23,10 +23,7 @@ import { events } from './schema/events.js';
 import { weatherAlerts } from './schema/weather.js';
 import { notifySiteWeather } from './weather-notify.js';
 
-// Shared by the weather poll (service_role, so every query names the
-// tenant explicitly -- RFC-2 §8) and the API (RLS-scoped transactions).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Executor = PgDatabase<any, any, any>;
+// Shared by the weather poll (service_role: every query names the tenant explicitly) and the API (RLS).
 
 export interface PagasaInForce {
   tcws: number;
@@ -35,8 +32,6 @@ export interface PagasaInForce {
   validUntil: string;
 }
 
-// Every machine on a site right now: delivered ('active') assignments on
-// the site's rentals.
 export async function machinesOnSite(ex: Executor, tenantId: string, siteId: string) {
   return ex
     .select({
@@ -65,27 +60,20 @@ export interface SiteEquipmentLevels {
   pagasa: PagasaInForce | null;
 }
 
-// Each machine's level from its class, the reading and PAGASA's warnings
-// for the site's province; the site's level is the worst of them.
 export async function evaluateSiteEquipment(
   ex: Executor,
   tenantId: string,
   siteId: string,
   observed: WeatherObservation,
   now = new Date(),
-  // Preloaded machinesOnSite() rows, so judging many forecast hours for one
-  // site reads the machines once.
   preloaded?: Awaited<ReturnType<typeof machinesOnSite>>,
 ): Promise<SiteEquipmentLevels> {
-  // PAGASA-equivalent conditions estimated from the reading itself
-  // (estimatePagasa): no bulletin keyed in per province.
   const estimate = estimatePagasa(observed);
   const pagasa: PagasaInForce = { ...estimate, validUntil: new Date(now.getTime() + 30 * 60_000).toISOString() };
   const inputs = {
     windKph: observed.windKph,
     gustKph: observed.gustKph ?? null,
-    // Open-Meteo's current precipitation, read as the rain rate the PAGASA
-    // colours are defined on (mm in the past hour).
+    // Current precipitation read as the rain rate PAGASA colours are defined on (mm/h).
     rainMmPerHour: observed.precipMm,
     heatIndexC: observed.humidityPct !== undefined ? heatIndexC(observed.tempC, observed.humidityPct) : null,
     thunderstorm: pagasa.thunderstorm,
@@ -115,10 +103,7 @@ function manilaDay(date: string): { from: Date; to: Date } {
   return { from, to: new Date(from.getTime() + 86_400_000) };
 }
 
-// "Used despite warning" (CR pricebook-kyc-weather): an EDTR that logs
-// hours on a machine the customer was warned to stop that day goes to the
-// S14 incident log with the warning it ignored. Evidence only -- it never
-// touches money or the EDTR's status (RFC-2). Logged once per EDTR.
+// Evidence only: never touches money or the EDTR's status (RFC-2). Logged once per EDTR.
 export async function flagUsedDespiteWarning(ex: Executor, tenantId: string, edtrId: string): Promise<boolean> {
   const [row] = await ex
     .select({ id: edtr.id, rentalId: edtr.rentalId, equipmentId: edtr.equipmentId, reportDate: edtr.reportDate, siteId: rentals.projectSiteId })
@@ -151,8 +136,6 @@ export async function flagUsedDespiteWarning(ex: Executor, tenantId: string, edt
   const worst = warnings
     .map((w) => ({ at: w.occurredAt, ...(w.properties as { level: WeatherLevel; reasons?: string[] }) }))
     .sort((a, b) => LEVEL_RANK[b.level] - LEVEL_RANK[a.level])[0];
-  // Only a Stop work warning makes any use an incident; Caution allows
-  // limited work, so it is left to the reviewer.
   if (!worst || worst.level !== 'stop_work') return false;
 
   const [already] = await ex
@@ -179,11 +162,6 @@ export async function flagUsedDespiteWarning(ex: Executor, tenantId: string, edt
   return true;
 }
 
-// The warning a crew receives the moment a machine's level rises to
-// Caution or Stop work: the site's timekeepers, the customer who rents it
-// and the tenant's admins, in-app plus email and Web Push
-// (notifySiteWeather), plus an `equipment_weather_warning` event -- the
-// proof, later, that the warning went out (flagUsedDespiteWarning).
 // A level that stays up does not re-notify every poll.
 export async function warnOnEquipmentEscalation(
   ex: Executor,
@@ -214,9 +192,6 @@ export async function warnOnEquipmentEscalation(
   return risen.length;
 }
 
-// The site's recorded readings on one Manila day, as minutes since Manila
-// midnight (weather_alerts keeps one row per 30-minute poll). Null when the
-// rental has no site.
 export async function siteReadingsOn(
   ex: Executor,
   tenantId: string,
@@ -247,12 +222,7 @@ export async function siteReadingsOn(
   return { siteId: rental.siteId, readings };
 }
 
-// EDTR v2 verification: the timekeeper's weather and idle reason against
-// the site's recorded readings (compareReportedWeather, rules D1/D2). Each
-// discrepancy goes to the S14 incident log with the half-hour rain readings
-// the reviewer needs (did it rain, how hard, did it keep on). Evidence only:
-// this never touches money or the EDTR's status (RFC-2) -- the caller
-// decides whether to hold the day. Logged once per EDTR, rule and half.
+// Evidence only: never touches money or the EDTR's status (RFC-2); the caller decides whether to hold the day.
 export async function logWeatherDiscrepancies(
   ex: Executor,
   tenantId: string,
@@ -291,8 +261,6 @@ export async function logWeatherDiscrepancies(
         rule: flag.rule,
         reported: flag.reported,
         system: flag.system,
-        // The recorded rain through the day, so the reviewer sees whether it
-        // kept raining and how hard, next to what the sheet says.
         readings: site.readings
           .map((r) => ({ minute: r.minute, precip_mm: r.observed.precipMm, wind_kph: r.observed.windKph, code: r.observed.code }))
           .sort((a, b) => a.minute - b.minute),

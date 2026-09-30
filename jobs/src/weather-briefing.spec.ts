@@ -17,9 +17,6 @@ import type { HourlyForecast, HourlyForecastPort } from '@arkilaunch/shared';
 import { hourlyWatch, manilaNow, runWeatherBriefing, type DeployedSite } from './weather-briefing.js';
 import { makeJobDb } from './db-client.js';
 
-// docs/cr-arkilaunch-weather-monitoring.md: the pre-workday briefing and
-// the hourly watch. A dedicated site with a crane (stopped by gusts), its
-// timekeeper and the renting customer, so every recipient can be checked.
 const CALM = { tempC: 29, windKph: 8, gustKph: 12, precipMm: 0, code: 1, humidityPct: 60 };
 const GUSTY = { ...CALM, windKph: 30, gustKph: 70, code: 3 };
 

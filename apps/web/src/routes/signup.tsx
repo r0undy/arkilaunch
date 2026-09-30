@@ -9,7 +9,7 @@ import { captchaError, Turnstile, TURNSTILE_SITE_KEY } from '../components/turns
 import { onlyOn, redirectIfSignedIn } from '../lib/guards.js';
 import { platformOrigin } from '../lib/host.js';
 
-export const MIN_PASSWORD = 10;
+const MIN_PASSWORD = 12;
 
 export function signupError(code: string): string {
   const captcha = captchaError(code);
@@ -19,10 +19,6 @@ export function signupError(code: string): string {
   return 'We could not create your account. Check the details and try again.';
 }
 
-// Customer self-signup (customer prerequisites CR). A customer is someone
-// renting equipment from the yard; the rental business registration flow
-// stays at /register. Company details come next, on their own screen,
-// because one login may register several companies.
 function SignupPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
