@@ -8,6 +8,12 @@ on:
   pull_request:
     paths: ['infra/terraform/**']
 
+# One Terraform run at a time against the shared dev state: back-to-back merges queue
+# instead of racing for the state lock. Never cancel in progress, a killed apply is worse.
+concurrency:
+  group: terraform-dev-state
+  cancel-in-progress: false
+
 permissions:
   id-token: write # OIDC federated credential -- see infra/terraform/bootstrap/README.md §3
   contents: read
