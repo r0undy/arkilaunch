@@ -1,6 +1,6 @@
 import { boolean, date, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uuid, check, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { RouteCity, TruckBanRuleInput, TruckExtra, TruckPrice } from '@arkilaunch/shared';
+import type { RouteCity, TruckBanRuleInput, TruckCostPolicy, TruckExtra, TruckInternal, TruckPrice } from '@arkilaunch/shared';
 import { tenantIsolationPolicy } from '../rls.js';
 import { tenants, users } from './tenancy.js';
 
@@ -18,6 +18,12 @@ export const truckSettings = pgTable(
     formula: text('formula'),
     rangePct: numeric('range_pct', { precision: 5, scale: 2 }).notNull().default('10'),
     region: text('region').notNull().default('NCR'),
+    // 0072: formula multipliers, the negotiation floor and the internal
+    // cost policy (staff-only).
+    roundTripMultiplier: numeric('round_trip_multiplier', { precision: 6, scale: 3 }).notNull().default('1'),
+    quoteMultiplier: numeric('quote_multiplier', { precision: 8, scale: 3 }).notNull().default('1'),
+    maxDiscountPct: numeric('max_discount_pct', { precision: 5, scale: 2 }),
+    costPolicy: jsonb('cost_policy').$type<Partial<TruckCostPolicy>>().notNull().default({}),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   () => [tenantIsolationPolicy()],
@@ -49,6 +55,10 @@ export const truckRequests = pgTable(
     status: text('status').notNull().default('estimated'),
     agreedPricePhp: numeric('agreed_price_php', { precision: 14, scale: 2 }),
     price: jsonb('price').$type<TruckPrice>().notNull(),
+    // 0072: cost and negotiation floor saved when priced; staff-only.
+    internal: jsonb('internal').$type<TruckInternal>(),
+    // 0037: exact map pins (null = routed from the typed place names), the
+    // cap locked at request time, and the callback before payment.
     pickupLat: numeric('pickup_lat', { precision: 9, scale: 6 }),
     pickupLng: numeric('pickup_lng', { precision: 9, scale: 6 }),
     dropoffLat: numeric('dropoff_lat', { precision: 9, scale: 6 }),
