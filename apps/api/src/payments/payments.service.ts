@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, like, ne } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, ne } from 'drizzle-orm';
 import {
   type Tx,
   auditLogs,
@@ -45,8 +45,10 @@ const CHECKOUT_RATE_LIMIT = 20;
 // Webhook ctx only carries the resolved tenant into the RLS GUCs; the webhook never writes audit_logs (no real actor).
 const WEBHOOK_SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
 
-// A coupon lowers only the rent line, never the consumable deposit.
-const RENT_LINE_PREFIX = 'Equipment rental';
+// Upfront on an accepted quote: the consumable deposit (the admin's % of the
+// rented hours) plus mob/demob. Hours past the deposit accrue to the weekly
+// invoices. A coupon lowers what is paid, never the credited deposit.
+const DEPOSIT_LINE_PREFIX = 'Consumable deposit';
 
 // Weekly and deposit_deduction invoices are ledger-derived and never hand-priced.
 const ADJUSTABLE_INVOICE_TYPES = new Set(['booking', 'deposit', 'truck']);
@@ -102,8 +104,8 @@ export class PaymentsService {
         );
       }
 
-      const { quotation, rentAmount, depositAmount, invoiceType } = await this.bookingCharge(tx, ctx, bookingId);
-      const amount = rentAmount + depositAmount;
+      const { quotation, mobAmount, demobAmount, depositAmount, invoiceType } = await this.bookingCharge(tx, ctx, bookingId);
+      const amount = round2HalfUp(mobAmount + demobAmount + depositAmount);
 
       const [alreadyPaid] = await tx
         .select()
@@ -130,22 +132,22 @@ export class PaymentsService {
           })
           .returning();
         if (invoice && quotation) {
-          const lines = [
-            {
+          const invoiceId = invoice.id;
+          const lines = (
+            [
+              [`${DEPOSIT_LINE_PREFIX} (prepaid hours, quote revision ${quotation.revision})`, depositAmount],
+              ['Mobilization', mobAmount],
+              ['Demobilization', demobAmount],
+            ] as const
+          )
+            .filter(([, value]) => value > 0)
+            .map(([description, value]) => ({
               tenantId: ctx.tenantId,
-              invoiceId: invoice.id,
-              description: `${RENT_LINE_PREFIX} (quote revision ${quotation.revision})`,
-              unitPrice: String(rentAmount),
-              amount: String(rentAmount),
-            },
-            {
-              tenantId: ctx.tenantId,
-              invoiceId: invoice.id,
-              description: 'Consumable deposit (prepaid hours)',
-              unitPrice: String(depositAmount),
-              amount: String(depositAmount),
-            },
-          ].filter((line) => Number(line.amount) > 0);
+              invoiceId,
+              description,
+              unitPrice: String(value),
+              amount: String(value),
+            }));
           if (lines.length > 0) await tx.insert(invoiceLineItems).values(lines);
         }
       }
@@ -153,7 +155,7 @@ export class PaymentsService {
       // A coupon is the one thing that re-prices an issued invoice, and only once.
       if (body.couponCode) {
         if (!quotation) throw new ConflictException({ error: 'coupon_invalid' });
-        invoice = await this.applyCoupon(tx, ctx, invoice, rental.customerId, body.couponCode, rentAmount);
+        invoice = await this.applyCoupon(tx, ctx, invoice, rental.customerId, body.couponCode);
       }
       // Charge the invoice's amount: a reused issued invoice is never re-priced underneath the customer.
       const chargeAmount = Number(invoice.amount);
@@ -163,14 +165,14 @@ export class PaymentsService {
       return this.startOnline(tx, ctx, {
         invoiceId: invoice.id,
         amount: chargeAmount,
-        label: quotation ? 'Equipment rental and deposit' : 'Rental deposit',
+        label: quotation ? 'Equipment deposit and mobilization' : 'Rental deposit',
         method: body.method,
         origin,
       });
     });
   }
 
-  // Accepted quote: rent + deposit on one 'booking' invoice at the stored quote total. No quote: deposit only.
+  // Accepted quote: consumable deposit + mob/demob on one 'booking' invoice. No quote: deposit only.
   // A quote that exists but isn't accepted blocks checkout (no paying before the price is agreed).
   private async bookingCharge(tx: Tx, ctx: RequestContext, bookingId: string) {
     const [quotation] = await tx
@@ -200,9 +202,10 @@ export class PaymentsService {
         .limit(1);
       if (paidDeposit) depositAmount = 0;
     }
-    const rentAmount = quotation ? Number(quotation.totalPhp ?? 0) : 0;
+    const mobAmount = quotation ? Number(quotation.mobilizationPhp ?? 0) : 0;
+    const demobAmount = quotation ? Number(quotation.demobilizationPhp ?? 0) : 0;
     const invoiceType = quotation ? 'booking' : 'deposit';
-    return { quotation, rentAmount, depositAmount, invoiceType };
+    return { quotation, mobAmount, demobAmount, depositAmount, invoiceType };
   }
 
   // Read-only preview; checkout re-checks and claims it.
@@ -212,8 +215,9 @@ export class PaymentsService {
       if (!rental || (ctx.role === 'customer' && !(await ownsCustomer(tx, ctx, rental.customerId)))) {
         throw new NotFoundException({ error: 'booking_not_found' });
       }
-      const { quotation, rentAmount, depositAmount } = await this.bookingCharge(tx, ctx, bookingId);
+      const { quotation, mobAmount, demobAmount, depositAmount } = await this.bookingCharge(tx, ctx, bookingId);
       if (!quotation) throw new ConflictException({ error: 'coupon_invalid' });
+      const upfront = round2HalfUp(mobAmount + demobAmount + depositAmount);
 
       const [applied] = await tx
         .select({ code: coupons.code, discountPhp: couponRedemptions.discountPhp })
@@ -225,13 +229,13 @@ export class PaymentsService {
       if (applied && applied.code !== code) throw new ConflictException({ error: 'coupon_already_applied' });
       const discountPhp = applied
         ? Number(applied.discountPhp)
-        : (await previewCoupon(tx, code, rental.customerId, rentAmount)).discountPhp;
+        : (await previewCoupon(tx, code, rental.customerId, upfront)).discountPhp;
       return {
         code,
         discountPhp,
-        rentPhp: round2HalfUp(rentAmount - discountPhp),
+        mobilizationPhp: round2HalfUp(mobAmount + demobAmount),
         depositPhp: depositAmount,
-        totalPhp: round2HalfUp(rentAmount - discountPhp + depositAmount),
+        totalPhp: round2HalfUp(upfront - discountPhp),
       };
     });
   }
@@ -243,7 +247,6 @@ export class PaymentsService {
     invoice: typeof invoices.$inferSelect,
     customerId: string,
     code: string,
-    rentAmount: number,
   ) {
     const [applied] = await tx
       .select({ code: coupons.code })
@@ -258,22 +261,26 @@ export class PaymentsService {
 
     await this.closePendingPayments(tx, invoice.id);
 
-    const { coupon, discountPhp } = await claimCoupon(tx, code, customerId, rentAmount);
-    const [rentLine] = await tx
-      .select()
-      .from(invoiceLineItems)
-      .where(and(eq(invoiceLineItems.invoiceId, invoice.id), like(invoiceLineItems.description, `${RENT_LINE_PREFIX}%`)))
-      .limit(1);
-    if (!rentLine) throw new ConflictException({ error: 'coupon_invalid' });
-    const rentAfter = round2HalfUp(Number(rentLine.amount) - discountPhp);
-    await tx
-      .update(invoiceLineItems)
-      .set({
-        unitPrice: String(rentAfter),
-        amount: String(rentAfter),
-        description: `${rentLine.description}, coupon ${coupon.code} -PHP ${discountPhp.toFixed(2)}`,
-      })
-      .where(eq(invoiceLineItems.id, rentLine.id));
+    const { coupon, discountPhp } = await claimCoupon(tx, code, customerId, Number(invoice.amount));
+    // Lines can't go negative, so the discount comes off each line in turn, the deposit (or trip) line first.
+    const lines = await tx.select().from(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, invoice.id));
+    const depositFirst = (d: string) => (d.startsWith(DEPOSIT_LINE_PREFIX) ? 0 : 1);
+    lines.sort((a, b) => depositFirst(a.description) - depositFirst(b.description));
+    let left = discountPhp;
+    for (const line of lines) {
+      const cut = round2HalfUp(Math.min(left, Number(line.amount)));
+      if (cut <= 0) continue;
+      left = round2HalfUp(left - cut);
+      const after = round2HalfUp(Number(line.amount) - cut);
+      await tx
+        .update(invoiceLineItems)
+        .set({
+          unitPrice: String(after),
+          amount: String(after),
+          description: `${line.description}, coupon ${coupon.code} -PHP ${cut.toFixed(2)}`,
+        })
+        .where(eq(invoiceLineItems.id, line.id));
+    }
     const [repriced] = await tx
       .update(invoices)
       .set({ amount: String(round2HalfUp(Number(invoice.amount) - discountPhp)) })
@@ -473,6 +480,45 @@ export class PaymentsService {
     }
   }
 
+  // Once-per-customer counts against the trip's company, else the requester's approved one.
+  private truckCouponCustomer(
+    request: typeof truckRequests.$inferSelect,
+    companies: (typeof customers.$inferSelect)[],
+  ): string {
+    const id = request.customerId ?? companies.find((c) => c.kycStatus === 'approved')?.id;
+    if (!id) throw new ConflictException({ error: 'coupon_invalid' });
+    return id;
+  }
+
+  // Read-only preview of a coupon on the agreed trip price; checkout re-checks and claims it.
+  async previewTruckCoupon(ctx: RequestContext, truckRequestId: string, code: string) {
+    return withTenantTx(ctx, async (tx) => {
+      const [request] = await tx
+        .select()
+        .from(truckRequests)
+        .where(and(eq(truckRequests.id, truckRequestId), eq(truckRequests.requestedBy, ctx.userId)))
+        .limit(1);
+      if (!request) throw new NotFoundException({ error: 'truck_request_not_found' });
+      if (request.agreedPricePhp === null) throw new ConflictException({ error: 'price_not_agreed', status: request.status });
+      const companies = await tx
+        .select()
+        .from(customers)
+        .where(request.customerId ? eq(customers.id, request.customerId) : eq(customers.userId, request.requestedBy));
+      const customerId = this.truckCouponCustomer(request, companies);
+      const pricePhp = Number(request.agreedPricePhp);
+      const [applied] = await tx
+        .select({ code: coupons.code, discountPhp: couponRedemptions.discountPhp })
+        .from(couponRedemptions)
+        .innerJoin(coupons, eq(coupons.id, couponRedemptions.couponId))
+        .innerJoin(invoices, eq(invoices.id, couponRedemptions.invoiceId))
+        .where(and(eq(invoices.truckRequestId, truckRequestId), eq(invoices.status, 'issued')))
+        .limit(1);
+      if (applied && applied.code !== code) throw new ConflictException({ error: 'coupon_already_applied' });
+      const discountPhp = applied ? Number(applied.discountPhp) : (await previewCoupon(tx, code, customerId, pricePhp)).discountPhp;
+      return { code, discountPhp, mobilizationPhp: 0, depositPhp: 0, totalPhp: round2HalfUp(pricePhp - discountPhp) };
+    });
+  }
+
   // Same money rules as a rental: the stored staff-accepted price, never a client number.
   async checkoutTruck(ctx: RequestContext, truckRequestId: string, body: CheckoutRequest = {}, origin?: string) {
     return withTenantTx(ctx, async (tx) => {
@@ -526,6 +572,9 @@ export class PaymentsService {
           unitPrice: request.agreedPricePhp,
           amount: request.agreedPricePhp,
         });
+      }
+      if (body.couponCode) {
+        invoice = await this.applyCoupon(tx, ctx, invoice, this.truckCouponCustomer(request, companies), body.couponCode);
       }
       const chargeAmount = Number(invoice.amount);
       if (body.cash) return this.issueCash(tx, ctx, invoice.id, chargeAmount);

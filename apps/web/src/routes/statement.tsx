@@ -85,9 +85,14 @@ function EmailSoaButton({ rentalId, statement }: { rentalId: string; statement: 
 const range = (from: string, to: string) => `${formatDate(from)} – ${formatDate(to)}`;
 
 function WeeksTable({ statement }: { statement: StatementOfAccount }) {
+  const sum = (k: 'customerPays' | 'paid' | 'outstanding') => statement.weeks.reduce((t, w) => t + w[k], 0);
   return (
+    <div className="flex flex-col gap-2">
+    <p className="text-xs text-text-muted">
+      Hours are taken from the deposit first. Hours beyond the deposit are billed weekly and payable by the customer.
+    </p>
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[520px] border-collapse text-sm">
+      <table className="w-full min-w-[760px] border-collapse text-sm">
         <thead>
           <tr className="border-b border-border text-left text-text-muted">
             <th className="py-2 pr-3 font-medium">Week</th>
@@ -95,7 +100,10 @@ function WeeksTable({ statement }: { statement: StatementOfAccount }) {
             <th className="py-2 pr-3 text-right font-medium">From deposit</th>
             <th className="py-2 pr-3 text-right font-medium">Invoiced</th>
             <th className="py-2 pr-3 text-right font-medium">Not yet invoiced</th>
-            <th className="py-2 text-right font-medium">Week total</th>
+            <th className="py-2 pr-3 text-right font-medium">Week total</th>
+            <th className="py-2 pr-3 text-right font-medium">Customer pays</th>
+            <th className="py-2 pr-3 text-right font-medium">Paid</th>
+            <th className="py-2 text-right font-medium">Outstanding</th>
           </tr>
         </thead>
         <tbody>
@@ -106,11 +114,25 @@ function WeeksTable({ statement }: { statement: StatementOfAccount }) {
               <td className="py-2 pr-3 text-right font-mono tabular-nums">{formatPeso(w.fromDeposit)}</td>
               <td className="py-2 pr-3 text-right font-mono tabular-nums">{formatPeso(w.invoiced)}</td>
               <td className="py-2 pr-3 text-right font-mono tabular-nums">{formatPeso(w.unbilled)}</td>
-              <td className="py-2 text-right font-mono font-semibold tabular-nums">{formatPeso(w.amount)}</td>
+              <td className="py-2 pr-3 text-right font-mono tabular-nums">{formatPeso(w.amount)}</td>
+              <td className="py-2 pr-3 text-right font-mono font-semibold tabular-nums">{formatPeso(w.customerPays)}</td>
+              <td className="py-2 pr-3 text-right font-mono tabular-nums">{formatPeso(w.paid)}</td>
+              <td className="py-2 text-right font-mono font-semibold tabular-nums">{formatPeso(w.outstanding)}</td>
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr className="border-t border-border font-semibold">
+            <td className="py-2 pr-3 text-text" colSpan={6}>
+              Weekly billings payable by customer
+            </td>
+            <td className="py-2 pr-3 text-right font-mono tabular-nums">{formatPeso(sum('customerPays'))}</td>
+            <td className="py-2 pr-3 text-right font-mono tabular-nums">{formatPeso(sum('paid'))}</td>
+            <td className="py-2 text-right font-mono tabular-nums">{formatPeso(sum('outstanding'))}</td>
+          </tr>
+        </tfoot>
       </table>
+    </div>
     </div>
   );
 }

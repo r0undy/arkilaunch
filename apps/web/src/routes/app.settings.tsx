@@ -407,7 +407,7 @@ function BillingSettingsForm() {
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Hours in a rental day" type="number" min="1" max="24" step="0.5" numeric value={String(current.dailyHours)} onChange={(e) => form.edit({ dailyHours: Number(e.target.value) })} />
           <Input label="Minimum deposit (PHP)" type="number" min="0" step="0.01" numeric value={String(current.minDepositPhp)} onChange={(e) => form.edit({ minDepositPhp: Number(e.target.value) })} />
-          <Input label="Deposit (% of rented hours)" type="number" min="0" max="100" step="0.5" numeric hint="Prepaid and consumed by EDTR hours, not refunded. 50 on a 50-hour rental prepays 25 hours. 0 uses the minimum deposit only." value={String(current.depositPct)} onChange={(e) => form.edit({ depositPct: Number(e.target.value) })} />
+          <Input label="Deposit (% of rented hours)" type="number" min="0" max="100" step="0.5" numeric hint="The consumable deposit the customer pays upfront (with mob/demob), used up by EDTR hours; hours past it are billed weekly. 50 on a 100-hour rental prepays 50 hours. 0 uses the minimum deposit." value={String(current.depositPct)} onChange={(e) => form.edit({ depositPct: Number(e.target.value) })} />
           <Input label="Low-balance warning (%)" type="number" min="0" max="100" step="1" numeric hint="Warns you and the customer when this much deposit is left." value={String(current.lowBalancePct)} onChange={(e) => form.edit({ lowBalancePct: Number(e.target.value) })} />
           <Input label="Minimum rental hours" type="number" min="0" step="1" numeric hint={current.minHours > 0 ? `Customers book at least ${minRentalDays(current.dailyHours || 8, current.minHours)} days (this many hours at ${current.dailyHours} hours a day). 0 means any length.` : '0 means any length; each day booked still counts a full working day.'} value={String(current.minHours)} onChange={(e) => form.edit({ minHours: Number(e.target.value) })} />
           <Input label="Hold unpaid requests for (hours)" type="number" min="1" max="720" step="1" numeric hint="A request keeps its dates this long, restarting when you send the quote. Unpaid after that, the dates free up for other customers." value={String(current.holdHours)} onChange={(e) => form.edit({ holdHours: Number(e.target.value) })} />
@@ -651,7 +651,7 @@ export function RateCardsPanel() {
         title="Rate cards"
         options={rateCardsListQuery(PAGE_SIZE, offset)}
         emptyTitle="No rate cards yet"
-        emptyDescription="Add a rate card to make an equipment type quotable."
+        emptyDescription="Add a rate card to make an equipment type quotable."
         emptyAction={addButton}
         isEmpty={(data) => data.total === 0}
         render={(data) => (

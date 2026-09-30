@@ -76,14 +76,14 @@ const accepted = {
 
 // Must match the server's rule, above all never showing the deposit twice.
 describe('amountDue', () => {
-  it('is the accepted quote plus the contract deposit', () => {
+  it('charges the consumable deposit plus mob/demob upfront, not the rent', () => {
     const due = amountDue(
       booking({
         quotation: accepted,
         deposit: { required: 5000, totalDeducted: 0, deductions: [] },
       }),
     );
-    expect(due).toEqual({ rent: 30000, deposit: 5000, total: 35000 });
+    expect(due).toEqual({ rent: 30000, deposit: 5000, mobilization: 0, total: 5000 });
   });
 
   it('leaves out a deposit already paid on the reservation', () => {
@@ -101,7 +101,7 @@ describe('amountDue', () => {
         ],
       }),
     );
-    expect(due.total).toBe(30000);
+    expect(due.total).toBe(0);
   });
 
   it('shows an issued booking invoice as it stands, coupon discount included', () => {
@@ -261,5 +261,17 @@ describe('customer cost breakdown', () => {
     await renderRoute('/account/bookings/' + b.id);
     expect(await screen.findByText(/Your equipment costs will appear here/)).toBeVisible();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/quotes/'))).toBe(false);
+  });
+});
+
+describe('amountDue mobilization', () => {
+  it('adds mob and demob to the deposit', () => {
+    const due = amountDue(
+      booking({
+        quotation: { ...accepted, mobilizationPhp: 15000, demobilizationPhp: 12000 },
+        deposit: { required: 5000, totalDeducted: 0, deductions: [] },
+      }),
+    );
+    expect(due).toEqual({ rent: 30000, deposit: 5000, mobilization: 27000, total: 32000 });
   });
 });

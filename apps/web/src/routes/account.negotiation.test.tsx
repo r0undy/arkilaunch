@@ -40,7 +40,10 @@ describe('Negotiation finalised', () => {
     );
     await renderRoute(`/account/negotiation/${BOOKING_ID}/final`);
 
-    expect((await screen.findAllByText('₱100,000.00')).length).toBeGreaterThan(0);
+    // Upfront is deposit + mob/demob; the deposit is paid and there is no mob, so nothing is due now.
+    // The hours themselves bill weekly, never the full quote upfront.
+    expect((await screen.findAllByText('₱0.00')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('₱100,000.00')).not.toBeInTheDocument();
     expect(screen.queryByText('₱120,000.00')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Proceed to payment' })).toBeInTheDocument();
     expect(document.querySelector('a button')).toBeNull();

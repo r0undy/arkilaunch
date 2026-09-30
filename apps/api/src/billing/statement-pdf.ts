@@ -101,18 +101,29 @@ export async function renderStatementPdf(soa: StatementOfAccount, brand: Stateme
     y -= 10;
   };
 
+  const weekSum = (k: 'amount' | 'fromDeposit' | 'customerPays' | 'paid' | 'outstanding') =>
+    soa.weeks.reduce((t, w) => t + w[k], 0);
+  need(40);
+  write(M, 'Hours beyond the deposit are billed weekly and payable by the customer.', 8, font, MUTED);
+  y -= 14;
   table(
     'Hours by week',
-    ['Week', 'Hours', 'Amount', 'From deposit', 'Invoiced', 'Unbilled'],
-    [M, 250, 330, 410, 480, W - M],
-    soa.weeks.map((w) => [
-      `${day(w.weekStart)} - ${day(w.weekEnd)}`,
-      w.hours.toFixed(2),
-      php(w.amount),
-      php(w.fromDeposit),
-      php(w.invoiced),
-      php(w.unbilled),
-    ]),
+    ['Week', 'Hours', 'Amount', 'From deposit', 'Customer pays', 'Paid', 'Outstanding'],
+    [M, 200, 262, 330, 400, 466, W - M],
+    [
+      ...soa.weeks.map((w) => [
+        `${day(w.weekStart)} - ${day(w.weekEnd)}`,
+        w.hours.toFixed(2),
+        php(w.amount),
+        php(w.fromDeposit),
+        php(w.customerPays),
+        php(w.paid),
+        php(w.outstanding),
+      ]),
+      ...(soa.weeks.length
+        ? [['TOTAL', '', php(weekSum('amount')), php(weekSum('fromDeposit')), php(weekSum('customerPays')), php(weekSum('paid')), php(weekSum('outstanding'))]]
+        : []),
+    ],
   );
   table(
     'Invoices',
@@ -136,6 +147,7 @@ export async function renderStatementPdf(soa: StatementOfAccount, brand: Stateme
     ['Deposit remaining', soa.deposit.remaining],
     ['Total charged', soa.totals.charged],
     ['Total paid', soa.totals.paid],
+    ['Weekly billings outstanding', weekSum('outstanding')],
     ['Unbilled hours to date', soa.totals.unbilled],
     ['BALANCE DUE', soa.totals.balanceDue, true],
   ];

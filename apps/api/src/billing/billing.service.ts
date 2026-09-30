@@ -263,7 +263,7 @@ export class BillingService {
         const w = isoWeek(day);
         let row = weeks.get(w.weekStart);
         if (!row) {
-          row = { ...w, hours: 0, amount: 0, fromDeposit: 0, invoiced: 0, unbilled: 0 };
+          row = { ...w, hours: 0, amount: 0, fromDeposit: 0, invoiced: 0, unbilled: 0, customerPays: 0, paid: 0, outstanding: 0 };
           weeks.set(w.weekStart, row);
         }
         return row;
@@ -274,12 +274,27 @@ export class BillingService {
         row.amount = round2HalfUp(row.amount + Number(d.amount));
         row.fromDeposit = round2HalfUp(row.fromDeposit + Number(d.amount));
       }
+      // Each weekly invoice's paid share, spread over the hours it billed.
+      const paidByInvoice = new Map<string, number>();
+      for (const p of paymentRows) {
+        if (p.status === 'paid') paidByInvoice.set(p.invoiceId, (paidByInvoice.get(p.invoiceId) ?? 0) + Number(p.amount));
+      }
+      const paidFraction = (invoiceId: string) => {
+        const amount = Number(invoiceRows.find((i) => i.id === invoiceId)?.amount ?? 0);
+        return amount > 0 ? Math.min(1, (paidByInvoice.get(invoiceId) ?? 0) / amount) : 0;
+      };
       for (const a of accrued) {
         const row = week(a.day);
+        if (a.invoiceId) row.paid = round2HalfUp(row.paid + Number(a.amount) * paidFraction(a.invoiceId));
         row.hours = round2HalfUp(row.hours + Number(a.hours));
         row.amount = round2HalfUp(row.amount + Number(a.amount));
         if (a.invoiceId) row.invoiced = round2HalfUp(row.invoiced + Number(a.amount));
         else row.unbilled = round2HalfUp(row.unbilled + Number(a.amount));
+      }
+
+      for (const row of weeks.values()) {
+        row.customerPays = round2HalfUp(row.invoiced + row.unbilled);
+        row.outstanding = round2HalfUp(Math.max(0, row.customerPays - row.paid));
       }
 
       const ledger = await resolveDepositLedger(tx, rentalId, ctx.tenantId);

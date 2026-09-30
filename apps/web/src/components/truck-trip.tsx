@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
-import type { TruckPrice, TruckRequestResponse } from '@arkilaunch/shared';
+import type { CouponPreviewResponse, TruckPrice, TruckRequestResponse } from '@arkilaunch/shared';
 import { apiErrorText, apiPost } from '../lib/api-client.js';
 import { formatPeso } from '../lib/format.js';
 import { MY_TRUCK_REQUESTS, trucksQueries } from '../lib/queries.js';
 import { BookingCode } from './booking-code.js';
 import { Button } from './button.js';
+import { CouponField } from './coupon-field.js';
 import { Modal } from './modal.js';
 import { RouteMap } from './route-map.js';
 import { StatusBadge } from './status-badge.js';
@@ -33,7 +34,16 @@ export function EstimateRange({ price, capPhp }: { price: TruckPrice; capPhp?: n
   );
 }
 
-export function PriceBreakdown({ price }: { price: TruckPrice }) {
+// totalPhp overrides the route total, e.g. the agreed price the lines were rescaled to.
+export function PriceBreakdown({
+  price,
+  totalPhp,
+  coupon,
+}: {
+  price: TruckPrice;
+  totalPhp?: number | undefined;
+  coupon?: CouponPreviewResponse | null;
+}) {
   return (
     <dl className="flex flex-col gap-1 text-sm">
       {price.lines.map((l) => (
@@ -42,9 +52,17 @@ export function PriceBreakdown({ price }: { price: TruckPrice }) {
           <dd className="shrink-0 font-mono tabular-nums text-text">{formatPeso(l.amountPhp)}</dd>
         </div>
       ))}
+      {coupon && (
+        <div className="flex justify-between gap-4">
+          <dt className="min-w-0 text-text-muted">Coupon {coupon.code}</dt>
+          <dd className="shrink-0 font-mono tabular-nums text-success">-{formatPeso(coupon.discountPhp)}</dd>
+        </div>
+      )}
       <div className="mt-1 flex justify-between gap-4 border-t border-border pt-2 font-semibold">
-        <dt className="text-text">Total</dt>
-        <dd className="font-mono tabular-nums text-text">{formatPeso(price.totalPhp)}</dd>
+        <dt className="text-text">{coupon ? 'You pay' : 'Total'}</dt>
+        <dd className="font-mono tabular-nums text-text">
+          {formatPeso(coupon ? coupon.totalPhp : (totalPhp ?? price.totalPhp))}
+        </dd>
       </div>
     </dl>
   );
@@ -193,6 +211,7 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
   const queryClient = useQueryClient();
   const tenant = useTenant();
   const [cancelling, setCancelling] = useState(false);
+  const [coupon, setCoupon] = useState<CouponPreviewResponse | null>(null);
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: MY_TRUCK_REQUESTS });
     void queryClient.invalidateQueries({ queryKey: ['thread', `/me/truck-requests/${r.id}`] });
@@ -212,7 +231,10 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
   });
   const pay = useMutation({
     mutationFn: (cash: boolean) =>
-      apiPost<{ checkoutUrl: string | null; invoiceId: string }>(`/me/truck-requests/${r.id}/checkout`, cash ? { cash: true } : {}),
+      apiPost<{ checkoutUrl: string | null; invoiceId: string }>(`/me/truck-requests/${r.id}/checkout`, {
+        ...(cash ? { cash: true } : {}),
+        ...(coupon ? { couponCode: coupon.code } : {}),
+      }),
     onSuccess: (data) => {
       if (data.checkoutUrl && /^https?:\/\//i.test(data.checkoutUrl)) {
         window.location.assign(data.checkoutUrl);
@@ -276,6 +298,12 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
           {price.note && <span className="font-sans text-sm font-normal text-text-muted"> {price.note}</span>}
         </p>
         {r.agreedPricePhp === null && <EstimateRange price={r.price} capPhp={r.capPhp} />}
+        <details className="text-sm">
+          <summary className="cursor-pointer text-text-muted">Price breakdown</summary>
+          <div className="mt-2">
+            <PriceBreakdown price={r.price} totalPhp={r.agreedPricePhp ?? undefined} coupon={coupon} />
+          </div>
+        </details>
         {needsAccept && (
           <p className="text-sm text-text">
             The rental team set the price at <strong>{formatPeso(r.agreedPricePhp!)}</strong>. Accept it to pay. If it
@@ -312,6 +340,9 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
           )}
           {accepted && r.callConfirmedAt && (
             <>
+              <div className="w-full">
+                <CouponField previewPath={`/me/truck-requests/${r.id}/coupon`} applied={coupon} onApplied={setCoupon} />
+              </div>
               <Button loading={pay.isPending && pay.variables === false} onClick={() => pay.mutate(false)}>
                 Pay online
               </Button>
