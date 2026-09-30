@@ -1,7 +1,6 @@
 import QRCode from 'qrcode';
 import { PDFDocument } from 'pdf-lib';
 import { WEATHER_CODES, manilaDate, type EdtrSheetContext } from '@arkilaunch/shared';
-import { weekStart as mondayOf } from './format.js';
 
 // The layout is the OCR contract (parseEdtrSheet in packages/shared): keep the header labels, only a date in DATE
 // cells, no totals row in the table, open comb underlines (DI reads closed boxes as ticks), black-ink grid.
@@ -48,10 +47,10 @@ const COLUMNS: { key: string; w: number; label?: string }[] = [
   { key: 'breakdown', w: 15, label: 'BREAKDOWN HRS' },
   { key: 'weatherHrs', w: 13, label: 'WEATHER HRS' },
   { key: 'other', w: 12, label: 'OTHER HRS' },
-  { key: 'meterStart', w: 19, label: 'METER START' },
-  { key: 'meterEnd', w: 19, label: 'METER END' },
-  { key: 'weatherAm', w: 30 },
-  { key: 'weatherPm', w: 30 },
+  { key: 'meterStart', w: 22, label: 'METER START' },
+  { key: 'meterEnd', w: 22, label: 'METER END' },
+  { key: 'weatherAm', w: 27 },
+  { key: 'weatherPm', w: 27 },
   { key: 'initial', w: 11, label: 'INITIAL' },
 ];
 
@@ -128,16 +127,6 @@ export function edtrSheetQrPayload(rentalId: string, equipmentId: string, weekSt
   return `ARKI-EDTR3:${rentalId}:${equipmentId}:${weekStart}`;
 }
 
-export function sheetIndex(spanStart: string, spanEnd: string | null, weekStart: string): { index: number; count: number | null } {
-  const monday = (iso: string) => new Date(mondayOf(iso)).getTime();
-  const WEEK = 7 * 86_400_000;
-  const first = monday(spanStart);
-  return {
-    index: Math.round((monday(weekStart) - first) / WEEK) + 1,
-    count: spanEnd ? Math.round((monday(spanEnd) - first) / WEEK) + 1 : null,
-  };
-}
-
 export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   const { context, equipmentId, weekStart } = input;
   const page = PAGE[input.page ?? 'legal'];
@@ -165,18 +154,7 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   if (context?.tenant?.address) out.push(text(lx, 17.5, fit(context.tenant.address, 70), 2.5, { fill: MUTED }));
   if (context?.tenant?.contact) out.push(text(lx, 21.5, fit(context.tenant.contact, 70), 2.5, { fill: MUTED }));
   if (input.tin) out.push(text(lx, 25.5, `TIN ${fit(input.tin, 30)}`, 2.5, { fill: MUTED }));
-  out.push(text(W / 2, 14, 'EQUIPMENT DAILY TIME REPORT', 5.2, { bold: true, anchor: 'middle' }));
-  const sheetNo =
-    context && spanStartIso && weekStart ? sheetIndex(manilaDate(spanStartIso), spanTo, weekStart) : null;
-  out.push(
-    text(
-      W / 2,
-      20,
-      `Form EDTR v3${sheetNo ? ` · Sheet ${sheetNo.index} of ${sheetNo.count ?? '?'} for this rental unit` : ''}`,
-      2.6,
-      { anchor: 'middle', fill: MUTED },
-    ),
-  );
+  out.push(text(W / 2, 17, 'EQUIPMENT DAILY TIME REPORT', 5.2, { bold: true, anchor: 'middle' }));
   const qx = W - M - 24;
   if (context && machine && weekStart) {
     out.push(qrPath(edtrSheetQrPayload(context.rentalId, machine.id, weekStart), qx, 5, 24));
@@ -222,7 +200,7 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   const ty = 61;
   const r0 = 8;
   const r1 = 6;
-  const rowH = 11;
+  const rowH = 10;
   const scale = (W - 2 * M) / COLUMNS.reduce((s, c) => s + c.w, 0);
   const cols = COLUMNS.map((c) => ({ ...c, w: c.w * scale }));
   const xs: number[] = [];
@@ -269,10 +247,13 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   }
 
   const rowsTop = ty + r0 + r1;
+  const labels: string[] = [];
   for (let r = 0; r < 7; r++) {
     const y = rowsTop + r * rowH;
     const base = y + rowH - 2.8;
     const iso = dates[r];
+    // Alternate-row tint keeps handwriting on its line; pale enough not to read as ink.
+    if (r % 2 === 1 && !(iso && outside(iso))) out.push(`<rect x="${tx}" y="${y}" width="${tableW}" height="${rowH}" fill="#f3f3f3"/>`);
     if (iso) {
       out.push(text(center('date'), base - 0.6, fmt(iso), 3.3, { anchor: 'middle', bold: true }));
       if (outside(iso)) {
@@ -288,7 +269,11 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
           hatch += line(x1, y + rowH - (x1 - x), x2, y + rowH - (x2 - x), 0.15, '#cccccc');
         }
         out.push(hatch);
-        out.push(text(hx + hw / 2, y + rowH / 2 + 1.2, 'OUTSIDE RENTAL — DO NOT FILL', 3, { anchor: 'middle', fill: '#999999' }));
+        // Drawn after the grid lines so no column rule strikes through it.
+        labels.push(
+          `<rect x="${hx + hw / 2 - 24}" y="${y + rowH / 2 - 2.4}" width="48" height="4.8" fill="#ffffff"/>` +
+            text(hx + hw / 2, y + rowH / 2 + 1.1, 'OUTSIDE RENTAL — DO NOT FILL', 3, { anchor: 'middle', fill: '#999999' }),
+        );
         if (r > 0) out.push(line(tx, y, tx + tableW, y));
         continue;
       }
@@ -312,6 +297,7 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
     out.push(line(xs[i]!, inner ? ty + r0 : ty, xs[i]!, ty + tableH));
   });
   out.push(rect(tx, ty, tableW, tableH, 0.6));
+  out.push(...labels);
   out.push(
     text(
       M,
@@ -321,10 +307,15 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
     ),
   );
 
-  // Summary stays outside the table: the parser fails on a totals row.
-  const by = ty + tableH + 7;
+  // Remarks and summary stay outside the table: the parser fails on a totals row.
+  const ry = ty + tableH + 6;
+  out.push(rect(M, ry, tableW, 10, 0.3));
+  out.push(text(M + 1.5, ry + 3.4, 'REMARKS / DOWNTIME NOTES (e.g. Breakdown 13:00–15:00 · reason for OTHER HRS)', 2.2, { bold: true }));
+  out.push(line(M + 1.5, ry + 8.6, M + tableW - 1.5, ry + 8.6, 0.2, MUTED));
+  const by = ry + 12;
   const bw = (W - 2 * M - 4) / 2;
-  out.push(rect(M, by, bw, 19, 0.3));
+  const bh = 21;
+  out.push(rect(M, by, bw, bh, 0.3));
   out.push(text(M + 1.5, by + 4, 'WEEK SUMMARY (cross-check; the system recomputes)', 2.4, { bold: true }));
   const sum = (y: number, label: string) =>
     text(M + 1.5, y, label, 2.4) + line(M + bw - 30, y + 0.6, M + bw - 3, y + 0.6, 0.3);
@@ -332,25 +323,27 @@ export function buildEdtrSheetSvg(input: EdtrSheetInput): string {
   out.push(sum(by + 13.5, 'Breakdown + Weather + Other = NOT BILLED'));
   out.push(sum(by + 18, 'Hour meter end − start = METER HOURS'));
   const fx = M + bw + 4;
-  out.push(rect(fx, by, bw, 19, 0.3));
+  out.push(rect(fx, by, bw, bh, 0.3));
   out.push(text(fx + 1.5, by + 4, 'WHAT YOU ARE BILLED FOR', 2.4, { bold: true }));
-  out.push(text(fx + 1.5, by + 8.5, 'Billed: RUNNING + IDLE (machine ready on site, not used by your choice).', 2.3));
-  out.push(text(fx + 1.5, by + 12, 'Not billed: BREAKDOWN, WEATHER stoppage, OTHER (e.g. no operator from us).', 2.3));
-  out.push(text(fx + 1.5, by + 15.5, 'Downtime days may extend your rental period on request.', 2.3));
-  out.push(text(fx + 1.5, by + 18.2, 'Hour meter readings are used for maintenance.', 2.3, { fill: MUTED }));
+  out.push(text(fx + 1.5, by + 8.3, 'Billed: RUNNING + IDLE (machine ready on site, not used by your choice).', 2.3));
+  out.push(text(fx + 1.5, by + 11.8, 'Not billed: BREAKDOWN, WEATHER stoppage, OTHER (e.g. no operator from us).', 2.3));
+  out.push(text(fx + 1.5, by + 15.3, 'Downtime days may extend your rental period on request.', 2.3));
+  out.push(text(fx + 1.5, by + 18.8, 'Hour meter readings are used for maintenance.', 2.3, { fill: MUTED }));
 
-  const sy = by + 21;
+  const sy = by + bh + 2;
   const sw = (W - 2 * M - 9) / 4;
+  // [title, subtitle, hint]: the subtitle gets its own line so the title is never shrunk or cut.
   const blocks = [
-    ['OPERATOR', 'Printed name and signature'],
-    [`TIMEKEEPER · ${tenantName.toUpperCase()} (attests hours and weather)`, 'Printed name and signature'],
-    ['CERTIFIED CORRECT · CLIENT SITE REP', 'Name, signature and date'],
-    ['OFFICE · VERIFIED / APPROVED BY', 'Name, signature and date'],
+    ['OPERATOR', '', 'Printed name and signature'],
+    [`TIMEKEEPER · ${tenantName.toUpperCase()}`, 'Attests hours and weather', 'Printed name and signature'],
+    ['CERTIFIED CORRECT · CLIENT SITE REP', '', 'Name, signature and date'],
+    ['OFFICE · VERIFIED / APPROVED BY', '', 'Name, signature and date'],
   ];
-  blocks.forEach(([title, hint], i) => {
+  blocks.forEach(([title, sub, hint], i) => {
     const x = M + i * (sw + 3);
     out.push(rect(x, sy, sw, H - sy - 8, 0.3));
-    out.push(text(x + 1.5, sy + 3.6, fit(title!, Math.floor(sw / 1.2)), Math.min(2.2, (sw - 3) / (title!.length * 0.62)), { bold: true }));
+    out.push(text(x + 1.5, sy + 3.6, fit(title!, Math.floor(sw / 1.45)), 2.2, { bold: true }));
+    if (sub) out.push(text(x + 1.5, sy + 6.6, sub, 1.9, { fill: MUTED }));
     out.push(line(x + 1.5, H - 13.5, x + sw - 1.5, H - 13.5, 0.25, MUTED));
     out.push(text(x + 1.5, H - 11, hint!, 1.9, { fill: MUTED }));
   });

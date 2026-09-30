@@ -250,6 +250,9 @@ export function priceTruckTrip({ km, settings, perKmPhp, fuelLPerKm, dieselPhp, 
   return { km, lines, totalPhp };
 }
 
+// Self-loading trucks are booked per trip in the truck flow, never rented from the equipment catalog.
+export const isSelfLoadingTruckType = (typeName: string) => typeName.toLowerCase().replace(/[\s-]+/g, '') === 'selfloadingtruck';
+
 export const TRUCK_REQUEST_STATUSES = ['estimated', 'km_confirmed', 'agreed', 'paid', 'dispatched', 'cancelled'] as const;
 export type TruckRequestStatus = (typeof TRUCK_REQUEST_STATUSES)[number];
 export const CLOSED_TRUCK_STATUSES: readonly TruckRequestStatus[] = ['paid', 'dispatched', 'cancelled'];
