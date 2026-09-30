@@ -15,7 +15,7 @@ import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { Modal } from '../components/modal.js';
 import { Tabs } from '../components/tabs.js';
-import { Receipt } from 'lucide-react';
+
 import { Input } from '../components/input.js';
 import { Select } from '../components/select.js';
 import { StatusBadge } from '../components/status-badge.js';
@@ -315,8 +315,7 @@ function PaymentsPage() {
         title="Invoices"
         options={invoicesQueries.list(PAGE_SIZE, offset, filter === 'all' ? undefined : filter)}
         emptyTitle={filter === 'all' ? 'No invoices yet' : `No ${filter === 'issued' ? 'unpaid' : 'paid'} invoices`}
-        emptyDescription="Invoices appear once a booking is confirmed or a reconciliation is approved and a deduction is posted."
-        emptyIcon={Receipt}
+        emptyDescription="Invoices appear once a booking is confirmed or a reconciliation is approved and a deduction is posted."
         isEmpty={(data) => data.total === 0}
         render={(data) => (
           <Table

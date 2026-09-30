@@ -119,8 +119,7 @@ function IncidentsPage() {
         title="Incidents"
         options={incidentsQueries.list(PAGE_SIZE, offset, kind === 'all' ? undefined : kind)}
         emptyTitle="No incidents logged"
-        emptyDescription="Weather and liability incidents will appear here as they are auto-logged or recorded."
-        emptyIcon={TriangleAlert}
+        emptyDescription="Weather and liability incidents will appear here as they are auto-logged or recorded."
         isEmpty={(data) => data.total === 0}
         render={(data) => {
           // ponytail: resolves from the loaded page only; a link to an incident on another page shows nothing.

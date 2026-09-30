@@ -10,7 +10,7 @@ import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { StatusPill } from '../components/status-pill.js';
 import { StatTile } from '../components/stat-tile.js';
 import { formatHours, formatInvoiceType, formatPeso } from '../lib/format.js';
-import { Check, TrendingUp, Wrench } from 'lucide-react';
+import { Check, Wrench } from 'lucide-react';
 
 const UTILIZATION_COLUMNS: TableColumn<ReportsSnapshot['utilization']['fleet'][number]>[] = [
   { header: 'Machine', kind: 'text', cell: (row) => <MachineName equipmentId={row.equipmentId} /> },
@@ -39,8 +39,7 @@ function InsightsPage() {
         title="Reports"
         options={reportQueries.snapshot()}
         emptyTitle="No insights yet"
-        emptyDescription="Utilization and financial reports appear once the fleet has activity."
-        emptyIcon={TrendingUp}
+        emptyDescription="Utilization and financial reports appear once the fleet has activity."
         isEmpty={() => false}
         render={(data) => (
           <div className="flex flex-col gap-5">
