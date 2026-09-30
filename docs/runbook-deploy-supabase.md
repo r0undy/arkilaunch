@@ -126,3 +126,37 @@ read it from `.env`.**
   four anchor users and not `platform@admin.com`.
 - Observed, not fixed: the dev database carries ~25 accumulated `*@test-tenant-a.test`
   timekeeper rows in `invited` status from repeated `db:seed:test` runs (see §4).
+
+
+## 6. Remove test equipment categories
+
+Use this separately from migrate and seed. It is never run automatically on deploy.
+
+- Preview: `pnpm --filter @arkilaunch/db cleanup:equipment-types`.
+- Apply the reviewed preview: `pnpm --filter @arkilaunch/db cleanup:equipment-types --apply`.
+- PowerShell: use `pnpm.cmd` if its execution policy blocks the pnpm PowerShell wrapper.
+
+The command reads `DATABASE_URL_DIRECT` from the root environment and requires an
+administrative connection with visibility across every tenant. The preview prints
+only the target host and category names/counts, never credentials or customer data.
+It recognizes only the three exact fixture patterns created by the money-path,
+rate-card and billing-engine API tests, including the observed legacy fixed
+`Money Path Cap Fixture` name. Unknown and legitimate empty categories remain.
+
+Applying locks equipment types, equipment, rate cards and quotation items in one
+transaction, then saves and verifies a compressed row backup under
+`.git/codex-backups/equipment-categories-*.json.gz`. It moves affected equipment to
+the existing `Others` category without changing unit IDs, tenant IDs, photos,
+options, notes, runtime or status. It deletes the fixture types and their rate cards
+only when no historical quotation item cites either. Missing/duplicate `Others`,
+unexpected cascading foreign keys, backup failure or verification failure aborts
+the operation. It never deletes equipment, accounts or unrelated rate cards.
+
+The backup contains the original rows for all four tables. For recovery, restore
+the deleted type and rate rows by their original IDs, then restore the affected
+units' original `equipment_type_id` in an administrative transaction. Review for
+new records or edits first; do not replace whole tables over newer data. The local
+backup stays outside Git tracking and must not be attached to a PR.
+
+Live integration tests can recreate these categories. Run those tests against the
+throwaway CI database when preparing a clean demo dataset.

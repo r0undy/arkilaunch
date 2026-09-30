@@ -13,7 +13,8 @@
     "seed:anchor": "tsx src/seed/anchor.ts",
     "seed:test-two-tenant": "tsx src/seed/test-two-tenant.ts",
     "drizzle:generate": "drizzle-kit generate",
-    "drizzle:push": "drizzle-kit push"
+    "drizzle:push": "drizzle-kit push",
+    "cleanup:equipment-types": "tsx src/maintenance/clean-equipment-types.ts"
   },
   "dependencies": {
     "@arkilaunch/shared": "workspace:*",
