@@ -13,6 +13,7 @@ import { ApiError, apiErrorText } from '../lib/api-client.js';
 import { formatDateTime } from '../lib/format.js';
 import { Surface } from './surface.js';
 import { OPEN_METEO_URL } from './weather-banner.js';
+import { CircleCheck, CloudRain, ShieldAlert, TriangleAlert } from 'lucide-react';
 
 const CHIP: Record<WeatherLevel, string> = {
   normal: 'border-success text-text',
@@ -23,8 +24,10 @@ const CHIP: Record<WeatherLevel, string> = {
 
 export function LevelChip({ level }: { level: WeatherLevel }) {
   const info = WEATHER_LEVEL_INFO[level];
+  const Icon = level === 'normal' ? CircleCheck : level === 'advisory' ? CloudRain : level === 'caution' ? TriangleAlert : ShieldAlert;
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${CHIP[level]}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-xs border px-2 py-1 text-xs font-medium ${CHIP[level]}`}>
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
       {info.label}
     </span>
   );

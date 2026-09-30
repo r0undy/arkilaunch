@@ -1,4 +1,5 @@
-import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useId, type ChangeEvent, type InputHTMLAttributes, type ReactNode } from 'react';
+import { DatePicker } from './date-picker.js';
 
 export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label: string;
@@ -9,13 +10,17 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, error, numeric = false, size = 'default', hint, id, className = '', required, inputMode, ...rest },
+  { label, error, numeric = false, size = 'default', hint, id, className = '', required, inputMode, type, value, onChange, disabled, min, max, ...rest },
   ref,
 ) {
   const autoId = useId();
   const inputId = id ?? autoId;
   const errorId = error ? `${inputId}-error` : undefined;
   const hintId = hint && !error ? `${inputId}-hint` : undefined;
+
+  if (type === 'date' || type === 'datetime-local') {
+    return <DatePicker id={inputId} label={label} kind={type as 'date' | 'datetime-local'} value={String(value ?? '')} min={min} max={max} required={required} disabled={disabled} error={error} hint={hint} size={size} className={className} onChange={(next) => onChange?.({ target: { value: next }, currentTarget: { value: next } } as ChangeEvent<HTMLInputElement>)} />;
+  }
 
   return (
     <div className="flex flex-col gap-1">
@@ -26,6 +31,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       <input
         ref={ref}
         id={inputId}
+        type={type}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        min={min}
+        max={max}
         required={required}
         aria-invalid={error ? true : undefined}
         aria-describedby={errorId ?? hintId}

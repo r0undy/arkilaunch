@@ -1,7 +1,7 @@
 import { createRoute, redirect } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, suggestTolls, TruckBanRuleSchema, type TruckBanRule, type TruckBanRuleInput, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
+import { DEFAULT_TRUCK_COST_POLICY, DEFAULT_TRUCK_FORMULA, PH_TOLLS_AS_OF, type TruckCostPolicy, suggestTolls, TruckBanRuleSchema, type TruckBanRule, type TruckBanRuleInput, type TollRateResponse, type TruckExtra, type TruckRequestResponse, type TruckSettings } from '@arkilaunch/shared';
 import { appLayoutRoute } from './_app.js';
 import { apiDelete, apiErrorText, apiGet, apiPatch, apiPost, apiPut } from '../lib/api-client.js';
 import { formatDate, formatDateTime, formatPeso, WEEKDAYS } from '../lib/format.js';
@@ -30,14 +30,67 @@ const tollsQuery = {
 // Every truck-request query key starts here (trucksQueries in queries.ts).
 const TRUCK_REQUESTS = ['truck-requests'] as const;
 
-export function SettingsEditor({ initial }: { initial: TruckSettings }) {
+// PUT /truck-settings replaces the whole row, so each card sends the saved
+// settings with only its own fields changed.
+function useSaveSettings(initial: TruckSettings, onSaved: () => void) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: Partial<TruckSettings>) =>
+      apiPut('/truck-settings', {
+        baseFeePhp: initial.baseFeePhp,
+        driverFeePhp: initial.driverFeePhp,
+        extras: initial.extras,
+        formula: initial.formula ?? null,
+        rangePct: initial.rangePct,
+        roundTripMultiplier: initial.roundTripMultiplier ?? 1,
+        quoteMultiplier: initial.quoteMultiplier ?? 1,
+        maxDiscountPct: initial.maxDiscountPct ?? null,
+        costPolicy: initial.costPolicy ?? DEFAULT_TRUCK_COST_POLICY,
+        ...patch,
+      }),
+    onSuccess: () => {
+      onSaved();
+      void queryClient.invalidateQueries({ queryKey: settingsQuery.queryKey });
+      toast.success('Truck pricing saved');
+    },
+    onError: (e) => toast.error('Not saved', apiErrorText(e)),
+  });
+}
+
+function SaveFooter({ pending, onCancel, onSave, label }: { pending: boolean; onCancel: () => void; onSave: () => void; label: string }) {
+  return (
+    <>
+      <Button variant="ghost" onClick={onCancel}>
+        Cancel
+      </Button>
+      <Button loading={pending} onClick={onSave}>
+        {label}
+      </Button>
+    </>
+  );
+}
+
+// Truck pricing is three cards: what the customer is quoted, how far the
+// admin may negotiate down, and the internal trip cost (staff only).
+export function SettingsEditor({ initial }: { initial: TruckSettings }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <QuotationCard initial={initial} />
+      <NegotiationCard initial={initial} />
+      <CostCard initial={initial} />
+    </div>
+  );
+}
+
+function QuotationCard({ initial }: { initial: TruckSettings }) {
   const [base, setBase] = useState(String(initial.baseFeePhp));
   const [driver, setDriver] = useState(String(initial.driverFeePhp));
   const [extras, setExtras] = useState<TruckExtra[]>(initial.extras);
   const [formula, setFormula] = useState(initial.formula || DEFAULT_TRUCK_FORMULA);
   const [rangePct, setRangePct] = useState(String(initial.rangePct));
+  const [roundTrip, setRoundTrip] = useState(String(initial.roundTripMultiplier ?? 1));
+  const [quoteMultiplier, setQuoteMultiplier] = useState(String(initial.quoteMultiplier ?? 1));
   const [editing, setEditing] = useState(false);
   const open = () => {
     setBase(String(initial.baseFeePhp));
@@ -45,6 +98,8 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
     setExtras(initial.extras);
     setFormula(initial.formula || DEFAULT_TRUCK_FORMULA);
     setRangePct(String(initial.rangePct));
+    setRoundTrip(String(initial.roundTripMultiplier ?? 1));
+    setQuoteMultiplier(String(initial.quoteMultiplier ?? 1));
     setEditing(true);
   };
   const params = useQuery(pricingQueries.parameters());
@@ -54,37 +109,22 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
     fuelLPerKm: Number(params.data?.fuelLPerKm ?? 0),
     dieselPhp: Number(diesel.data?.pricePhp ?? 0),
   };
-
-  const save = useMutation({
-    mutationFn: () =>
-      apiPut('/truck-settings', {
-        baseFeePhp: Number(base),
-        driverFeePhp: Number(driver),
-        extras,
-        formula: formula.trim() === '' || formula.trim() === DEFAULT_TRUCK_FORMULA ? null : formula.trim(),
-        rangePct: Number(rangePct),
-      }),
-    onSuccess: () => {
-      setEditing(false);
-      void queryClient.invalidateQueries({ queryKey: settingsQuery.queryKey });
-      toast.success('Truck pricing saved');
-    },
-    onError: (e) => toast.error('Not saved', apiErrorText(e)),
-  });
-
+  const save = useSaveSettings(initial, () => setEditing(false));
   const setExtra = (i: number, patch: Partial<TruckExtra>) =>
     setExtras((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
   return (
     <>
       <SummaryCard
-        title="Truck pricing"
-        description="Per-km rate and fuel use come from your operating costs; diesel is the national GasWatch average (or your own diesel price). The truck's own fees and extra charges are set here."
+        title="Customer quotation"
+        description="What the customer is quoted. Per-km rate and fuel use come from your operating costs; diesel is the national GasWatch average (or your own diesel price)."
         items={[
+          { label: 'Formula', value: initial.formula ? 'Custom' : 'Standard' },
+          { label: 'Round-trip multiplier', value: `× ${initial.roundTripMultiplier ?? 1}` },
+          { label: 'Quotation multiplier', value: `× ${initial.quoteMultiplier ?? 1}` },
           { label: 'Base fee (per trip)', value: formatPeso(initial.baseFeePhp) },
           { label: "Driver's fee (per trip)", value: formatPeso(initial.driverFeePhp) },
           { label: 'Estimate range', value: `± ${initial.rangePct}%` },
-          { label: 'Formula', value: initial.formula ? 'Custom' : 'Standard' },
           {
             label: 'Extra charges',
             value: initial.extras.length
@@ -92,35 +132,37 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
               : 'None',
           },
         ]}
-        action={<EditButton what="truck pricing" onClick={open} />}
+        action={<EditButton what="customer quotation" onClick={open} />}
       />
       <Modal
         open={editing}
         onClose={() => setEditing(false)}
-        title="Truck pricing"
+        title="Customer quotation"
         description="The high end of the estimate range is the most a customer can be charged without approving."
         size="xl"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setEditing(false)}>
-              Cancel
-            </Button>
-            <Button loading={save.isPending} onClick={() => save.mutate()}>
-              Save truck pricing
-            </Button>
-          </>
-        }
+        footer={<SaveFooter pending={save.isPending} onCancel={() => setEditing(false)} label="Save quotation" onSave={() => save.mutate({
+          baseFeePhp: Number(base),
+          driverFeePhp: Number(driver),
+          extras,
+          formula: formula.trim() === '' || formula.trim() === DEFAULT_TRUCK_FORMULA ? null : formula.trim(),
+          rangePct: Number(rangePct),
+          roundTripMultiplier: Number(roundTrip),
+          quoteMultiplier: Number(quoteMultiplier),
+        })} />}
       >
         <div className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-3">
+            <Input label="Round-trip multiplier" type="number" min={0} step="any" numeric value={roundTrip} onChange={(e) => setRoundTrip(e.target.value)} />
+            <Input label="Quotation multiplier" type="number" min={0} step="any" numeric value={quoteMultiplier} onChange={(e) => setQuoteMultiplier(e.target.value)} />
+            <Input label="Estimate range (± %)" type="number" min={0} max={100} numeric value={rangePct} onChange={(e) => setRangePct(e.target.value)} />
             <Input label="Base fee (₱ per trip)" type="number" min={0} numeric value={base} onChange={(e) => setBase(e.target.value)} />
             <Input label="Driver's fee (₱ per trip)" type="number" min={0} numeric value={driver} onChange={(e) => setDriver(e.target.value)} />
-            <Input label="Estimate range (± %)" type="number" min={0} max={100} numeric value={rangePct} onChange={(e) => setRangePct(e.target.value)} />
           </div>
+          <p className="text-xs text-text-muted">The multipliers only count where the formula uses them, e.g. Distance × Round-trip multiplier × Diesel × Quotation multiplier.</p>
           <FormulaBuilder
             value={formula}
             onChange={setFormula}
-            settings={{ baseFeePhp: Number(base), driverFeePhp: Number(driver), extras }}
+            settings={{ baseFeePhp: Number(base), driverFeePhp: Number(driver), extras, roundTripMultiplier: Number(roundTrip) || 1, quoteMultiplier: Number(quoteMultiplier) || 1 }}
             sample={sample}
           />
           <fieldset className="flex flex-col gap-3">
@@ -153,6 +195,105 @@ export function SettingsEditor({ initial }: { initial: TruckSettings }) {
   );
 }
 
+function NegotiationCard({ initial }: { initial: TruckSettings }) {
+  const saved = initial.maxDiscountPct == null ? '' : String(initial.maxDiscountPct);
+  const [maxDiscount, setMaxDiscount] = useState(saved);
+  const [editing, setEditing] = useState(false);
+  const save = useSaveSettings(initial, () => setEditing(false));
+  return (
+    <>
+      <SummaryCard
+        title="Negotiation"
+        description="How far below the quoted price the admin may agree. Below the floor the admin is warned, never blocked."
+        items={[{ label: 'Max discount', value: initial.maxDiscountPct == null ? 'No floor' : `${initial.maxDiscountPct}%` }]}
+        action={<EditButton what="negotiation" onClick={() => { setMaxDiscount(saved); setEditing(true); }} />}
+      />
+      <Modal
+        open={editing}
+        onClose={() => setEditing(false)}
+        title="Negotiation"
+        description="Floor = quoted price × (1 − max discount). E.g. ₱78,000 at 35% is a ₱50,700 floor. Leave blank for no floor."
+        footer={<SaveFooter pending={save.isPending} onCancel={() => setEditing(false)} label="Save negotiation" onSave={() => save.mutate({
+          maxDiscountPct: maxDiscount.trim() === '' ? null : Number(maxDiscount),
+        })} />}
+      >
+        <div className="w-60">
+          <Input label="Max discount (%)" type="number" min={0} max={100} numeric value={maxDiscount} placeholder="No floor" onChange={(e) => setMaxDiscount(e.target.value)} />
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+const HELPER_KINDS: Record<TruckCostPolicy['helper']['kind'], string> = { none: 'None', fixed: '₱ per trip', per_km: '₱ per km', pct_driver: '% of driver' };
+const MAINTENANCE_KINDS: Record<TruckCostPolicy['maintenance']['kind'], string> = { none: 'None', fixed: '₱ per trip', per_km: '₱ per km', pct_fuel: '% of fuel' };
+const policyText = (kinds: Record<string, string>, p: { kind: string; value: number }) =>
+  p.kind === 'none' ? 'None' : `${p.value} ${kinds[p.kind]}`;
+
+function CostCard({ initial }: { initial: TruckSettings }) {
+  const saved = initial.costPolicy ?? DEFAULT_TRUCK_COST_POLICY;
+  const [fuelFactor, setFuelFactor] = useState('');
+  const [misc, setMisc] = useState('');
+  const [helper, setHelper] = useState(saved.helper);
+  const [maintenance, setMaintenance] = useState(saved.maintenance);
+  const [editing, setEditing] = useState(false);
+  const open = () => {
+    setFuelFactor(saved.fuelFactor == null ? '' : String(saved.fuelFactor));
+    setMisc(String(saved.miscAllowancePhp));
+    setHelper(saved.helper);
+    setMaintenance(saved.maintenance);
+    setEditing(true);
+  };
+  const save = useSaveSettings(initial, () => setEditing(false));
+  return (
+    <>
+      <SummaryCard
+        title="Internal trip cost"
+        description="Staff only, never shown to customers. Used for each trip's expected cost and profit."
+        items={[
+          { label: 'Fuel factor', value: saved.fuelFactor == null ? 'Fuel L/km (operating costs)' : String(saved.fuelFactor) },
+          { label: 'Miscellaneous allowance', value: formatPeso(saved.miscAllowancePhp) },
+          { label: 'Helper', value: policyText(HELPER_KINDS, saved.helper) },
+          { label: 'Maintenance', value: policyText(MAINTENANCE_KINDS, saved.maintenance) },
+        ]}
+        action={<EditButton what="internal trip cost" onClick={open} />}
+      />
+      <Modal
+        open={editing}
+        onClose={() => setEditing(false)}
+        title="Internal trip cost"
+        description="Fuel = km × fuel factor × diesel × round-trip multiplier. The driver is the driver's fee; tolls and extra charges count as cost."
+        size="lg"
+        footer={<SaveFooter pending={save.isPending} onCancel={() => setEditing(false)} label="Save trip cost" onSave={() => save.mutate({
+          costPolicy: {
+            fuelFactor: fuelFactor.trim() === '' ? null : Number(fuelFactor),
+            miscAllowancePhp: Number(misc),
+            helper,
+            maintenance,
+          },
+        })} />}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input label="Fuel factor" type="number" min={0} step="any" numeric value={fuelFactor} placeholder="Blank = fuel L/km" onChange={(e) => setFuelFactor(e.target.value)} />
+            <Input label="Miscellaneous allowance (₱ per trip)" type="number" min={0} numeric value={misc} onChange={(e) => setMisc(e.target.value)} />
+            <Select label="Helper" value={helper.kind} onChange={(e) => setHelper({ ...helper, kind: e.target.value as TruckCostPolicy['helper']['kind'] })}>
+              {Object.entries(HELPER_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+            <Input label="Helper value" type="number" min={0} numeric disabled={helper.kind === 'none'} value={String(helper.value)} onChange={(e) => setHelper({ ...helper, value: Number(e.target.value) })} />
+            <Select label="Maintenance" value={maintenance.kind} onChange={(e) => setMaintenance({ ...maintenance, kind: e.target.value as TruckCostPolicy['maintenance']['kind'] })}>
+              {Object.entries(MAINTENANCE_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+            <Input label="Maintenance value" type="number" min={0} numeric disabled={maintenance.kind === 'none'} value={String(maintenance.value)} onChange={(e) => setMaintenance({ ...maintenance, value: Number(e.target.value) })} />
+          </div>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+// One toll fee, edited in place (a TRB change): saved when the field loses
+// focus with a changed value.
 function TollFeeInput({ toll }: { toll: TollRateResponse }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -564,6 +705,9 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
   });
   const open = r.status !== 'cancelled' && r.status !== 'paid' && r.status !== 'dispatched';
   const overCap = r.capPhp !== null && Number(price) > r.capPhp;
+  // The tenant's max discount warns, never blocks: going lower is the admin's call.
+  const floor = r.internal?.floorPhp ?? null;
+  const belowFloor = floor !== null && Number(price) < floor;
   // Typo guard: a price far from the route's own figure is called out.
   const offBy = r.price.totalPhp > 0 ? Math.abs(Number(price) - r.price.totalPhp) / r.price.totalPhp : 0;
   const section = 'flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0';
@@ -673,7 +817,25 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
         </h3>
         <PriceBreakdown price={r.price} />
         {r.capPhp !== null && <p className="text-xs text-text-muted">Top of the customer's estimate {formatPeso(r.capPhp)}</p>}
+        {floor !== null && (
+          <p className="text-xs text-text-muted">
+            Negotiation floor {formatPeso(floor)} ({r.internal!.maxDiscountPct}% max discount)
+          </p>
+        )}
       </section>
+      {r.internal && (
+        <section className={section}>
+          <h3 className={heading}>
+            Internal cost · <span className="font-mono">{formatPeso(r.internal.cost.totalPhp)}</span>
+          </h3>
+          <PriceBreakdown price={{ km: r.price.km, ...r.internal.cost }} />
+          <p className="text-sm text-text">
+            Expected profit <span className="font-mono tabular-nums">{formatPeso(r.internal.profitPhp)}</span>
+            {r.internal.marginPct !== null && <span className="text-text-muted"> · {r.internal.marginPct}% margin</span>}
+            <span className="text-text-muted"> on the {r.agreedPricePhp !== null ? 'agreed' : 'route'} price</span>
+          </p>
+        </section>
+      )}
       {open && (
         <section className={section}>
           <h3 className={heading}>Agreed price</h3>
@@ -726,6 +888,11 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
               <Alert type="warning" header="Double-check the figure">
                 That is {Math.round(offBy * 100)}% away from the route price of {formatPeso(r.price.totalPhp)}
                 {overCap ? `, and above the ${formatPeso(r.capPhp!)} top of the customer's estimate` : ''}.
+              </Alert>
+            )}
+            {belowFloor && (
+              <Alert type="warning" header="Below the negotiation floor">
+                That is under your {formatPeso(floor!)} floor ({r.internal!.maxDiscountPct}% max discount). You can still set it; the audit log will note it.
               </Alert>
             )}
           </div>

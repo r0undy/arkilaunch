@@ -16,6 +16,7 @@ import { CaptureModal } from '../components/capture-modal.js';
 import { ConfirmDialog } from '../components/confirm-dialog.js';
 import { PageHeader } from '../components/page-header.js';
 import { StatusPill, type StatusTone } from '../components/status-pill.js';
+import { StatusBadge } from '../components/status-badge.js';
 import { EmptyState } from '../components/empty-state.js';
 import { Check, CircleX, ClipboardList, Clock, TriangleAlert } from 'lucide-react';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
@@ -84,6 +85,7 @@ function EdtrPage() {
   const {
     equipmentList,
     rentals,
+    customers,
     rentalLabel,
     sites,
     error: refError,
@@ -151,7 +153,12 @@ function EdtrPage() {
 
   function rentalName(rentalId: string): string {
     const rental = rentalById.get(rentalId);
-    return rental ? `${rental.code} · ${rentalLabel(rental)}` : 'Rental not in your list';
+    return rental?.code ?? 'Rental not in your list';
+  }
+
+  function customerName(rentalId: string): string {
+    const rental = rentalById.get(rentalId);
+    return customers.find((customer) => customer.id === rental?.customerId)?.companyName ?? 'Unnamed customer';
   }
 
   function siteLabel(siteId: string | undefined): string {
@@ -163,44 +170,34 @@ function EdtrPage() {
     {
       header: 'Machine',
       kind: 'text',
-      width: '28%',
       cell: (row) => (
         <div className="flex min-w-0 flex-col">
           <button
             type="button"
             onClick={() => setViewing(row)}
-            className="truncate text-left font-medium text-accent hover:underline"
+            className="line-clamp-2 break-words text-left font-medium text-accent hover:underline"
           >
             {machineName(row.equipmentId)}
           </button>
-          <span className="font-mono text-xs text-text-muted">{shortCode('log', row.id)}</span>
         </div>
       ),
     },
-    { header: 'Day worked', kind: 'date', width: '13%', cell: (row) => formatDate(row.reportDate) },
-    { header: 'Recorded', kind: 'text', width: '13%', cell: (row) => formatLogSource(row.source) },
+    { header: 'Day worked', kind: 'date', cell: (row) => formatDate(row.reportDate) },
     {
       header: 'Status',
       kind: 'status',
-      width: '14%',
-      cell: (row) => {
-        const pill = statusPill(row.status);
-        return <StatusPill tone={pill.tone} icon={pill.icon} label={formatStatus(row.status)} />;
-      },
+      cell: (row) => <StatusBadge status={row.status} />,
     },
-    { header: 'Match', kind: 'text', width: '18%', cell: (row) => <MatchText row={row} /> },
+    { header: 'Match', kind: 'text', cell: (row) => <MatchText row={row} /> },
     {
       header: 'Actions',
       kind: 'action',
-      width: '14%',
       cell: (row) =>
         row.reconciliation && APPROVABLE.has(row.reconciliation.status) ? (
           <Button variant="approve" size="field" onClick={() => setApproving(row)}>
             Review and bill
           </Button>
-        ) : (
-          <span className="text-text-muted">--</span>
-        ),
+        ) : null,
     },
   ];
 
@@ -316,6 +313,8 @@ function EdtrPage() {
                 key={rentalId}
                 rentalId={rentalId}
                 label={rentalName(rentalId)}
+                customer={customerName(rentalId)}
+                site={siteLabel(siteOf(rentalId))}
                 siteId={siteOf(rentalId)}
                 rows={rows}
                 columns={columns}
@@ -394,6 +393,8 @@ interface DepositSummary {
 function RentalGroup({
   rentalId,
   label,
+  customer,
+  site,
   siteId,
   rows,
   columns,
@@ -401,6 +402,8 @@ function RentalGroup({
 }: {
   rentalId: string;
   label: string;
+  customer: string;
+  site: string;
   siteId: string | undefined;
   rows: EdtrListItem[];
   columns: TableColumn<EdtrListItem>[];
@@ -412,10 +415,10 @@ function RentalGroup({
   });
   const d = ledger.data;
   return (
-    <details open className="rounded-md border border-border" data-testid="rental-group">
-      <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3">
-        <span className="flex flex-wrap items-center gap-3">
-          <span className="font-semibold text-text">{label}</span>
+    <details open className="min-w-0 overflow-hidden rounded-md border border-border" data-testid="rental-group">
+      <summary className="flex min-w-0 cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="min-w-0 break-words font-medium text-text">{label} <span className="font-normal text-text-muted">· {site}</span></span>
           {siteId && (
             <Link
               to="/app/deployment/$siteId"
@@ -427,25 +430,20 @@ function RentalGroup({
             </Link>
           )}
         </span>
-        <span className="flex flex-wrap gap-4 text-sm text-text-muted">
+        <span className="flex shrink-0 flex-wrap gap-2 text-sm text-text-muted">
           <span>
             {rows.length} log{rows.length === 1 ? '' : 's'}
           </span>
-          {d && (
-            <>
-              <span data-testid="rental-hours">
-                {formatHours(d.hoursUsed)} used
-                {d.hoursOrdered != null ? ` of ${formatHours(d.hoursOrdered)} ordered` : ''}
-              </span>
-              <span data-testid="rental-deposit">Deposit left {formatPeso(d.balanceRemaining)}</span>
-              {d.unbilledAccrued > 0 && (
-                <span className="text-error">{formatPeso(d.unbilledAccrued)} on the next weekly invoice</span>
-              )}
-            </>
-          )}
         </span>
       </summary>
+      <p className="border-t border-border px-4 py-2 text-xs text-text-muted">Customer: {customer}</p>
+      {d && <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border px-4 py-2 text-xs text-text-muted">
+        <span data-testid="rental-hours">{formatHours(d.hoursUsed)} used{d.hoursOrdered != null ? ` / ${formatHours(d.hoursOrdered)} ordered` : ''}</span>
+        <span data-testid="rental-deposit">Deposit left {formatPeso(d.balanceRemaining)}</span>
+        {d.unbilledAccrued > 0 && <span className="text-error">{formatPeso(d.unbilledAccrued)} on next invoice</span>}
+      </div>}
       <Table
+        cardUntil={1279}
         rows={rows}
         rowKey={(row) => row.id}
         columns={columns}

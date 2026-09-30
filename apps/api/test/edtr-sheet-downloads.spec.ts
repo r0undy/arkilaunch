@@ -19,7 +19,7 @@ import { PaymentsService } from '../src/payments/payments.service.js';
 import { QuotesService } from '../src/quotes/quotes.service.js';
 import { PricingEngineService } from '../src/quotes/pricing-engine.service.js';
 
-// Needs migration 0073 and the two-tenant fixture (test-tenant-a / -b).
+// Needs migration 0074 and the two-tenant fixture (test-tenant-a / -b).
 describe('Timekeeper EDTR sheet downloads', () => {
   const events = new EventsService();
   const sheets = new FieldSheetsService(events);

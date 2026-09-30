@@ -32,8 +32,20 @@ describe('MaintenanceModal', () => {
     );
 
     await userEvent.click(await screen.findByRole('tab', { name: /blocked dates/i }));
-    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-10-01T08:00' } });
-    fireEvent.change(screen.getByLabelText('Until'), { target: { value: '2026-10-02T08:00' } });
+    await userEvent.click(screen.getByRole('button', { name: /^from/i }));
+    const fromCalendar = screen.getByRole('dialog', { name: 'Choose from' });
+    const [fromMonth, fromYear] = fromCalendar.querySelectorAll('select[aria-hidden]');
+    fireEvent.change(fromYear!, { target: { value: '2026' } });
+    fireEvent.change(fromMonth!, { target: { value: '10' } });
+    await userEvent.click(screen.getByRole('button', { name: /october 1, 2026/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Select date' }));
+    await userEvent.click(screen.getByRole('button', { name: /^until/i }));
+    const untilCalendar = screen.getByRole('dialog', { name: 'Choose until' });
+    const [untilMonth, untilYear] = untilCalendar.querySelectorAll('select[aria-hidden]');
+    fireEvent.change(untilYear!, { target: { value: '2026' } });
+    fireEvent.change(untilMonth!, { target: { value: '10' } });
+    await userEvent.click(screen.getByRole('button', { name: /october 2, 2026/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Select date' }));
     await userEvent.click(screen.getByRole('button', { name: 'Block dates' }));
 
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['maintenance-windows', 'ending-soon'] }));

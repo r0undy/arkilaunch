@@ -10,6 +10,8 @@ const LABELS: Record<string, string> = {
   per_km: 'Rate per km',
   diesel: 'Diesel ₱/L',
   fuel_l_per_km: 'Fuel L/km',
+  round_trip: 'Round-trip multiplier',
+  quote_multiplier: 'Quotation multiplier',
   driver_fee: "Driver's fee",
   tolls: 'Tolls',
   extras: 'All extra charges',
@@ -43,7 +45,7 @@ export function FormulaBuilder({
 }: {
   value: string;
   onChange: (next: string) => void;
-  settings: Pick<TruckSettings, 'baseFeePhp' | 'driverFeePhp' | 'extras'>;
+  settings: Pick<TruckSettings, 'baseFeePhp' | 'driverFeePhp' | 'extras' | 'roundTripMultiplier' | 'quoteMultiplier'>;
   sample: SampleInputs;
 }) {
   const [number, setNumber] = useState('');
