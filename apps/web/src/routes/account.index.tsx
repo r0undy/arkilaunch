@@ -5,6 +5,7 @@ import { accountLayoutRoute } from './_account.js';
 import { Button, buttonClass } from '../components/button.js';
 import { PageHeader } from '../components/page-header.js';
 import { Modal } from '../components/modal.js';
+import { Skeleton } from '../components/skeleton.js';
 import { hasRequiredCompanyDocuments } from '@arkilaunch/shared';
 import { bookingsQueries, companiesQueries, customerSitesQueries } from '../lib/queries.js';
 import { Check } from 'lucide-react';
@@ -52,6 +53,7 @@ function SetupChecklist() {
     }
     setOpen(false);
   };
+  if (companies.isPending || sites.isPending) return <Skeleton label="Loading your setup steps" rows={1} />;
   if (!companies.data || !sites.data) return null;
   const steps = setupSteps(companies.data, sites.data.length);
   const todo = steps.filter((step) => !step.done);

@@ -140,8 +140,10 @@ function CompanyForm({ company }: { company: CompanyResponse }) {
   const queryClient = useQueryClient();
   const verified = company.kycStatus === 'approved';
   const waiting = isWaitingForReview(company);
+  // The server copies the number off a scanned SEC certificate and refuses a retyped one.
+  const secScanned = company.documents.some((d) => d.documentType === 'sec_certificate');
   const editable = (field: string) =>
-    !waiting && (field === 'billingAddress' || !verified);
+    !waiting && (field === 'billingAddress' || (!verified && !(field === 'secNumber' && secScanned)));
   const [tin, setTin] = useState(company.tin ?? '');
   const [secNumber, setSecNumber] = useState(company.secNumber ?? '');
   const [billingAddress, setBillingAddress] = useState(company.billingAddress ?? '');
@@ -186,6 +188,7 @@ function CompanyForm({ company }: { company: CompanyResponse }) {
         value={secNumber}
         disabled={!editable('secNumber')}
         onChange={(e) => setSecNumber(e.target.value)}
+        {...(secScanned && !verified ? { hint: 'Read from your SEC certificate.' } : {})}
       />
       <div className="sm:col-span-2">
         <Input

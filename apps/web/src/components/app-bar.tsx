@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { describeNotification, feedAreaOf, NotificationIcon } from './notification-feed.js';
+import { describeNotification, feedAreaOf, NotificationKindLabel, notificationRowClass, UnreadBadge } from './notification-feed.js';
 import { apiPatch } from '../lib/api-client.js';
 import { formatStatus } from '../lib/format.js';
 import { Bell, LogOut, Menu, ShoppingCart, TriangleAlert } from 'lucide-react';
@@ -60,20 +60,26 @@ function NotificationBell({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : 'Notifications'}
-        className={`flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm ${TILE}`}
+        className={`flex min-h-11 min-w-11 items-center justify-center rounded-sm ${TILE}`}
       >
-        <Bell aria-hidden="true" className="h-5 w-5" />
-        {unreadCount !== null && unreadCount > 0 && (
-          <span className="rounded-full bg-primary px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-on-primary">
-            {unreadCount}
-          </span>
-        )}
+        {/* AWS console style: the count sits on the bell's shoulder, not beside it. */}
+        <span className="relative">
+          <Bell aria-hidden="true" className="h-5 w-5" />
+          {unreadCount !== null && unreadCount > 0 && (
+            <span
+              aria-hidden="true"
+              className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none tabular-nums text-on-primary"
+            >
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </span>
       </button>
       {open && (
         <div
           role="region"
           aria-label="Latest notifications"
-          className="fixed inset-x-3 top-14 z-50 overflow-hidden rounded-md border border-border bg-surface shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80"
+          className="fixed inset-x-3 top-14 z-50 flex max-h-[min(32rem,calc(100dvh-5rem))] flex-col overflow-hidden rounded-md border border-border bg-surface shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80"
         >
           {latest.isPending && <p className="px-4 py-3 text-sm text-text-muted">Loading…</p>}
           {latest.isError && (
@@ -82,30 +88,26 @@ function NotificationBell({
           {latest.data?.items.length === 0 && (
             <p className="px-4 py-3 text-sm text-text-muted">Nothing needs you right now.</p>
           )}
-          <ul>
+          <ul className="scroll-thin min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {latest.data?.items.map((n) => {
               const described = describeNotification(n.notificationType, n.payload, area);
               const body = (
-                <div className="flex items-start gap-3">
-                  <NotificationIcon type={n.notificationType} unread={n.status === 'unread'} className="h-8 w-8" />
-                  <div className="min-w-0">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-text">
-                    {n.status === 'unread' && (
-                      <>
-                        <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-primary" />
-                        <span className="sr-only">Unread: </span>
-                      </>
-                    )}
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <p className="flex items-center gap-2">
+                    <NotificationKindLabel type={n.notificationType} />
+                    {n.status === 'unread' && <UnreadBadge />}
+                  </p>
+                  <p className={`text-sm text-text ${n.status === 'unread' ? 'font-bold' : ''}`}>
+                    {n.status === 'unread' && <span className="sr-only">Unread: </span>}
                     {described?.title ?? formatStatus(n.notificationType)}
                   </p>
                   {described && (
                     <p className="line-clamp-2 text-xs text-text-muted">{described.body}</p>
                   )}
-                  </div>
                 </div>
               );
               return (
-                <li key={n.id} className="border-b border-border last:border-b-0">
+                <li key={n.id} className={`border-b border-border last:border-b-0 ${notificationRowClass(n.status === 'unread')}`}>
                   {described?.action ? (
                     <Link
                       to={described.action.to}
@@ -129,7 +131,7 @@ function NotificationBell({
           <Link
             to={seeMorePath}
             onClick={closePanel}
-            className="block border-t border-border px-4 py-3 text-center text-sm font-medium text-text hover:bg-surface-sunk"
+            className="block shrink-0 border-t border-border bg-surface px-4 py-3 text-center text-sm font-medium text-accent hover:bg-surface-sunk"
           >
             See more
           </Link>

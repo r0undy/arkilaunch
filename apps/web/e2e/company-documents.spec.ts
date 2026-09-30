@@ -16,7 +16,20 @@ test.describe('company documents', () => {
     const png = await page.screenshot({ clip: { x: 0, y: 0, width: 64, height: 64 } });
     const file = (name: string) => ({ name, mimeType: 'image/png', buffer: png });
 
+    // A scan that ran and read nothing stops the step; with OCR down the user types it instead.
+    let ocrDown = false;
+    await page.route('**/me/kyc/scan', (route) =>
+      route.fulfill({
+        json: { suggestions: {}, confidence: null, extractionAvailable: !ocrDown, layoutRecognized: null },
+      }),
+    );
+
     // Step 1: the applicant's ID.
+    await page.getByTestId('doc-government_id-file').setInputFiles(file('id.png'));
+    await page.getByRole('button', { name: 'Skip cropping' }).click();
+    await page.getByRole('button', { name: 'Next: check your ID details' }).click();
+    await expect(page.getByText('Document not accepted')).toBeVisible();
+    ocrDown = true;
     await page.getByTestId('doc-government_id-file').setInputFiles(file('id.png'));
     await page.getByRole('button', { name: 'Skip cropping' }).click();
     await page.getByRole('button', { name: 'Next: check your ID details' }).click();

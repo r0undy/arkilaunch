@@ -5,7 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
 setWorkerUrl(workerUrl);
-import type { RouteMapCanvasProps } from './route-map.js';
+import { MapSkeleton, type RouteMapCanvasProps } from './route-map.js';
 
 // Loaded on demand so MapLibre never reaches the main bundle.
 // ponytail: OpenFreeMap's public instance; self-host tiles or move to a paid provider at real volume.
@@ -198,6 +198,7 @@ export default function RouteMapCanvas({
   return (
     <div className="relative h-full w-full">
       <div ref={el} role="application" aria-label={label} className="h-full w-full" />
+      {!ready && <MapSkeleton className="absolute inset-0" />}
       {hint && (
         <p
           aria-live="polite"

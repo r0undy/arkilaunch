@@ -886,6 +886,22 @@ describe('Customer onboarding', () => {
       expect(doc.status).toBe('needs_review');
     });
 
+    it('takes the SEC number off the scanned certificate and refuses a typed change after', async () => {
+      const service = reviewer({ sec_number: { value: 'CS202312345', confidence: 0.95 } });
+      const company = await service.createCompany(reviewCtx, {
+        companyName: `Secnum Corp ${randomUUID().slice(0, 6)}`,
+        secNumber: 'CS201900001',
+        billingAddress: '12 Yard Road, Cebu City',
+        contactMobile: '0917 000 0000',
+      });
+      await service.addDocument(reviewCtx, company.id, 'sec_certificate', `storage://fixtures/${randomUUID()}.jpg`, bytes);
+      const [after] = (await service.listCompanies(reviewCtx)).filter((c) => c.id === company.id);
+      expect(after?.secNumber).toBe('CS202312345');
+      await expect(service.updateCompany(reviewCtx, company.id, { secNumber: 'CS201900001' })).rejects.toMatchObject({
+        response: { error: 'sec_number_from_document' },
+      });
+    });
+
     it('locks a submitted company; a rejection opens the cure, and reapplying sends it back', async () => {
       const service = reviewer({ tin: { value: '111-222-333', confidence: 0.95 } });
       const company = await service.createCompany(reviewCtx, {

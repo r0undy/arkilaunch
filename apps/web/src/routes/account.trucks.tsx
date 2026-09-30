@@ -5,7 +5,8 @@ import { LocateFixed, X } from 'lucide-react';
 import type { CustomerSiteResponse, TruckEstimateResponse, TruckRequestResponse } from '@arkilaunch/shared';
 import { PinMap, type LatLng } from '../components/pin-map.js';
 import { PageHeader } from '../components/page-header.js';
-import { formatDrive, hasWebGL, pinned, TripCanvas, type Which } from '../components/route-map.js';
+import { formatDrive, hasWebGL, MapSkeleton, pinned, TripCanvas, type Which } from '../components/route-map.js';
+import { Skeleton } from '../components/skeleton.js';
 import { cancelReverseGeocode, matchPhLocation, reverseGeocode, type PhLocation } from '../lib/reverse-geocode.js';
 import { accountLayoutRoute } from './_account.js';
 import { apiErrorText, apiPost } from '../lib/api-client.js';
@@ -201,7 +202,7 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
     <div className="relative flex flex-col lg:block">
       <div className="relative h-[60dvh] min-h-[420px] overflow-hidden rounded-md border border-border bg-surface-sunk lg:h-[calc(100dvh-14rem)] lg:min-h-[600px]">
         {gl ? (
-          <Suspense fallback={<p className="p-4 text-sm text-text-muted">Loading the map...</p>}>
+          <Suspense fallback={<MapSkeleton />}>
             <TripCanvas
               mode="edit"
               pickup={a}
@@ -362,7 +363,7 @@ function BookTrip({ onCreated }: { onCreated: (r: TruckRequestResponse) => void 
             value={siteId}
             onChange={(e) => chooseSite(companySites.find((site) => site.id === e.target.value))}
           >
-            <option value="">{companySites.length === 0 ? 'No saved sites; tap the map instead' : 'Choose a site...'}</option>
+            <option value="">{sites.isPending ? 'Loading your sites…' : companySites.length === 0 ? 'No saved sites; tap the map instead' : 'Choose a site...'}</option>
             {companySites.map((site) => (
               <option key={site.id} value={site.id}>
                 {[site.line1, site.city].filter(Boolean).join(', ')}
@@ -442,7 +443,7 @@ function YourRequests({ openId, openCode }: { openId: string | null; openCode: s
           </button>
         ))}
       </div>
-      {list.isPending && <p className="text-sm text-text-muted">Loading your trips...</p>}
+      {list.isPending && <Skeleton label="Loading your trips" rows={3} className="xl:grid xl:grid-cols-2" />}
       {list.isError && (
         <p role="alert" className="text-sm text-error">
           {apiErrorText(list.error)}

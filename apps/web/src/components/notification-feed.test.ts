@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeNotification, feedAreaOf, notificationIcon, type FeedArea } from './notification-feed.js';
+import { describeNotification, feedAreaOf, notificationKind, type FeedArea } from './notification-feed.js';
 import { routeTree } from '../router.js';
 
 // Every notification type the backend writes, by recipient; each must resolve to a real destination.
@@ -148,15 +148,15 @@ describe('describeNotification: every written type has a destination', () => {
   });
 });
 
-describe('notificationIcon', () => {
+describe('notificationKind', () => {
   it('names the kind of event and how it went', () => {
-    expect(notificationIcon('payment_received').tone).toBe('success');
-    expect(notificationIcon('payment_failed').tone).toBe('danger');
-    expect(notificationIcon('payment_amount_mismatch').tone).toBe('danger');
-    expect(notificationIcon('weekly_invoice').Icon).toBe(notificationIcon('payment_paid').Icon);
-    expect(notificationIcon('equipment_weather_alert').tone).toBe('warning');
-    expect(notificationIcon('company_verified').tone).toBe('success');
-    expect(notificationIcon('truck_requested').Icon).not.toBe(notificationIcon('something_new').Icon);
-    expect(notificationIcon('something_new').tone).toBe('neutral');
+    expect(notificationKind('payment_received').tone).toBe('success');
+    expect(notificationKind('payment_failed').tone).toBe('danger');
+    expect(notificationKind('payment_amount_mismatch').tone).toBe('danger');
+    expect(notificationKind('weekly_invoice').label).toBe(notificationKind('payment_paid').label);
+    expect(notificationKind('equipment_weather_alert')).toEqual({ label: 'Weather', tone: 'warning' });
+    expect(notificationKind('company_verified')).toEqual({ label: 'Verification', tone: 'success' });
+    expect(notificationKind('truck_requested').label).toBe('Truck');
+    expect(notificationKind('something_new')).toEqual({ label: 'Update', tone: 'neutral' });
   });
 });

@@ -233,7 +233,8 @@ function BookingsPage() {
             rowKey={(b) => b.id}
             onRowClick={(b) => openDrawer(b.code)}
             rowLabel={(b) => `Open booking ${b.code}`}
-            empty={rentals.isPending ? 'Loading bookings...' : rentalQuery ? `No rental matches ${rentalQuery}.` : status || from || to ? 'No bookings match these filters.' : 'Bookings customers request from the storefront appear here.'}
+            loading={rentals.isPending}
+            empty={rentalQuery ? `No rental matches ${rentalQuery}.` : status || from || to ? 'No bookings match these filters.' : 'Bookings customers request from the storefront appear here.'}
             header={{ title: 'Bookings', filter: finder, count: rentals.data?.total ?? 0, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={rentals.data?.total ?? 0} onOffsetChange={setOffset} noun="bookings" busy={rentals.isFetching} /> }}
           />
         ) : (
@@ -243,7 +244,8 @@ function BookingsPage() {
             rowKey={(t) => t.id}
             onRowClick={(t) => openDrawer(t.code)}
             rowLabel={(t) => `Open truck request ${t.code}`}
-            empty={trucks.isPending ? 'Loading truck requests...' : codePrefix ? `No truck request matches ${codePrefix}.` : 'No truck service requests yet.'}
+            loading={trucks.isPending}
+            empty={codePrefix ? `No truck request matches ${codePrefix}.` : 'No truck service requests yet.'}
             header={{ title: 'Truck requests', filter: finder, count: trucks.data?.total ?? 0, pagination: <Pagination offset={offset} limit={PAGE_SIZE} total={trucks.data?.total ?? 0} onOffsetChange={setOffset} noun="truck requests" busy={trucks.isFetching} /> }}
           />
         )}

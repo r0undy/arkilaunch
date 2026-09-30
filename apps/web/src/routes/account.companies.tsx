@@ -272,11 +272,19 @@ async function scanForSuggestions(
   }
 }
 
+// Null (OCR down) lets the user type it by hand; a read that found nothing, or the wrong paper, does not.
+function registrationUnreadable(scan: Awaited<ReturnType<typeof scanForSuggestions>>): boolean {
+  const s = scan?.suggestions;
+  return scan !== null && (scan.layoutRecognized === false || !(s?.companyName || s?.tin || s?.secNumber));
+}
+
 // Typing hint only: every ID still gets staff review; the RFC-2 0.90 gate is separate.
 const LEGIBLE_CONFIDENCE = 0.85;
 
 interface IdScan {
   details: IdDetails;
+  /** False when OCR was down: the user types the card by hand instead. */
+  available: boolean;
   read: boolean;
   unclear: boolean;
 }
@@ -296,6 +304,7 @@ async function scanId(file: File, idType: PhIdTypeCode): Promise<IdScan> {
   };
   return {
     details,
+    available: scan !== null,
     read: Object.entries(details).some(([key, v]) => key !== 'idType' && Boolean(v)),
     unclear: scan?.confidence != null && scan.confidence < LEGIBLE_CONFIDENCE,
   };
@@ -420,18 +429,31 @@ function useDocumentCapture() {
   const [dti, setDti] = useState<File | null>(null);
   const [selfie, setSelfie] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
+  // A paper the scan could not read stops the wizard on its step until it is retaken.
+  const [scanRejected, setScanRejected] = useState<string | null>(null);
   async function scanGovernmentId(): Promise<boolean> {
     if (!governmentId) return false;
     setScanning(true);
+    setScanRejected(null);
     const scan = await scanId(governmentId, idDetails.idType);
+    setScanning(false);
+    if (scan.available && !scan.read) {
+      setGovernmentId(null);
+      setScanRejected(`We could not read this ${PH_ID_TYPES[idDetails.idType].label}. Take a clear photo of the whole card.`);
+      return false;
+    }
     setIdScan(scan);
     setIdDetails(scan.details);
-    setScanning(false);
     return true;
+  }
+  function rejectRegistration() {
+    setRegistration(null);
+    setScanRejected(`This doesn't look like a ${DOC_LABELS[registrationType]}. Upload a clear photo of the whole page.`);
   }
   return {
     governmentId, setGovernmentId, idDetails, setIdDetails, idScan, registration, setRegistration,
     registrationType, setRegistrationType, dti, setDti, selfie, setSelfie, scanning, setScanning, scanGovernmentId,
+    scanRejected, setScanRejected, rejectRegistration,
   };
 }
 
@@ -448,6 +470,7 @@ function NewCompanyPage() {
   const {
     governmentId, setGovernmentId, idDetails, setIdDetails, idScan, registration, setRegistration,
     registrationType, setRegistrationType, dti, setDti, selfie, setSelfie, scanning, setScanning, scanGovernmentId,
+    scanRejected, setScanRejected, rejectRegistration,
   } = useDocumentCapture();
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -472,7 +495,7 @@ function NewCompanyPage() {
   const idOnFile = mine.some((c) => c.documents.some((d) => d.documentType === 'government_id'));
   const stage = idOnFile && (chosenStage === 'government_id' || chosenStage === 'id_details') ? 'company_registration' : chosenStage;
   const [scanned, setScanned] = useState<boolean | null>(null);
-  const [wrongPaper, setWrongPaper] = useState(false);
+  const [secFromScan, setSecFromScan] = useState(false);
 
   const showTin = registrationType === 'bir_cor';
   const showSec = registrationType === 'sec_certificate';
@@ -492,17 +515,23 @@ function NewCompanyPage() {
       registration ? scanForSuggestions(registration, registrationType) : null,
       dti ? scanForSuggestions(dti, 'dti_certificate') : null,
     ]);
+    if (registrationUnreadable(primary)) {
+      rejectRegistration();
+      setScanning(false);
+      return;
+    }
+    setScanRejected(null);
     const p = primary?.suggestions;
     const d = secondary?.suggestions;
     const name = p?.companyName ?? d?.companyName;
     if (name) setCompanyName(name);
     if (p?.tin) setTin(p.tin);
     if (p?.secNumber) setSecNumber(p.secNumber);
+    setSecFromScan(Boolean(p?.secNumber));
     if (d?.dtiNumber) setDtiNumber(d.dtiNumber);
     const address = p?.address ?? d?.address;
     if (address && !billingAddress) setBillingAddress(address);
     setScanned(Boolean(name || p?.tin || p?.secNumber || d?.dtiNumber));
-    setWrongPaper(primary?.layoutRecognized === false);
     setScanning(false);
     setStage('details');
   }
@@ -589,6 +618,11 @@ function NewCompanyPage() {
             idType={idDetails.idType}
             onIdTypeChange={(idType) => setIdDetails({ ...idDetails, idType })}
           />
+          {scanRejected && (
+            <Alert type="error" header="Document not accepted">
+              {scanRejected}
+            </Alert>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button
               variant="primary"
@@ -629,17 +663,6 @@ function NewCompanyPage() {
                 : 'We could not read your registration documents, so please fill this in yourself.'}
             </p>
           )}
-          {wrongPaper && (
-            <div role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-warning px-3 py-2 text-sm text-text">
-              <span>
-                We couldn't recognise this as a {DOC_LABELS[registrationType]}. Check it's the right paper and the
-                whole page is in the photo.
-              </span>
-              <Button type="button" variant="ghost" onClick={() => setStage('company_registration')}>
-                Retake
-              </Button>
-            </div>
-          )}
           {existing && (
             <Alert type="warning" header={`You already applied for ${existing.companyName}`}>
               It is {companyStatusLabel(existing) || 'verified'}.{' '}
@@ -678,7 +701,12 @@ function NewCompanyPage() {
               placeholder="CS201912345"
               pattern="([A-Za-z]{1,3}\d{3}-?\d{4,9}|\d{10,13}(-\d{2})?)"
               title="As printed on the SEC certificate, e.g. CS201912345 or 2021060012345-00"
-              hint="From your SEC certificate (Company Reg. No.)."
+              hint={
+                secFromScan
+                  ? 'Read from your SEC certificate. Retake the photo to change it.'
+                  : 'From your SEC certificate (Company Reg. No.).'
+              }
+              readOnly={secFromScan}
               value={secNumber}
               onChange={(e) => setSecNumber(e.target.value)}
               onBlur={(e) => setSecNumber(normalizeSecNumber(e.target.value))}
@@ -769,7 +797,8 @@ function CompanyDocumentsPage() {
   const queryClient = useQueryClient();
   const {
     governmentId, setGovernmentId, idDetails, setIdDetails, idScan, registration, setRegistration,
-    registrationType, setRegistrationType, dti, setDti, selfie, setSelfie, scanning, scanGovernmentId,
+    registrationType, setRegistrationType, dti, setDti, selfie, setSelfie, scanning, setScanning, scanGovernmentId,
+    scanRejected, rejectRegistration,
   } = useDocumentCapture();
   const [busy, setBusy] = useState(false);
   const [chosenStage, setStage] = useState<DocStep | 'id_details'>('government_id');
@@ -796,6 +825,13 @@ function CompanyDocumentsPage() {
     // Both steps share this form: a stray submit before the registration step must not upload a partial set.
     if (stage !== 'company_registration') return;
     if (Date.now() - stageChangedAt.current < advanceGraceMs) return;
+    // Same bytes as the upload: the server's OCR cache makes the upload reuse this read.
+    if (registration) {
+      setScanning(true);
+      const unreadable = registrationUnreadable(await scanForSuggestions(registration, registrationType));
+      setScanning(false);
+      if (unreadable) return rejectRegistration();
+    }
     setBusy(true);
     try {
       await uploadDocuments(companyId, {
@@ -855,6 +891,11 @@ function CompanyDocumentsPage() {
                 showDti={dtiOpen}
               />
             )}
+            {scanRejected && (
+              <Alert type="error" header="Document not accepted">
+                {scanRejected}
+              </Alert>
+            )}
             <div className="flex flex-wrap gap-2">
               {stage === 'government_id' ? (
                 <Button
@@ -871,7 +912,7 @@ function CompanyDocumentsPage() {
                   <Button
                     type="submit"
                     variant="primary"
-                    loading={busy}
+                    loading={busy || scanning}
                     disabled={!governmentId && !registration && !dti}
                   >
                     Upload

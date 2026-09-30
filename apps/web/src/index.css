@@ -231,6 +231,24 @@
   }
 }
 
+/* Thin, quiet scrollbar for panels that scroll inside the page (notification dropdown). */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--yb-color-border-strong) transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--yb-color-border-strong);
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: content-box;
+}
+
 @media print {
   header,
   nav,
