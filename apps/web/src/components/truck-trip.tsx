@@ -16,6 +16,7 @@ import { NegotiationThread } from './negotiation-thread.js';
 import { NegotiateChoice } from './negotiate-choice.js';
 import { ConfirmDialog } from './confirm-dialog.js';
 import { useTenant } from '../lib/tenant.js';
+import { MessengerLinks, phoneHref } from './messenger-links.js';
 
 // low-high band and the cap note shown with every estimate.
 export function EstimateRange({ price, capPhp }: { price: TruckPrice; capPhp?: number | null }) {
@@ -325,9 +326,10 @@ function TripDetail({ request: r }: { request: TruckRequestResponse }) {
             {tenant?.phone && !r.callConfirmedAt && (
               <p>
                 Rental team:{' '}
-                <a className="font-medium text-text underline" href={`tel:${tenant.phone.replace(/[^\d+]/g, '')}`}>
+                <a className="font-medium text-text underline" href={phoneHref(tenant.phone)}>
                   {tenant.phone}
                 </a>
+                <MessengerLinks phone={tenant.phone} className="font-medium text-text underline" />
               </p>
             )}
           </div>

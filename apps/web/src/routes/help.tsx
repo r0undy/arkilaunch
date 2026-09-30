@@ -1,16 +1,20 @@
 import { createRoute, Link } from '@tanstack/react-router';
-import { Mail, Phone } from 'lucide-react';
+import { Mail, MessageCircle, Phone, Send } from 'lucide-react';
 import { publicLayoutRoute } from './_public.js';
 import { useTenant } from '../lib/tenant.js';
 import { Surface } from '../components/surface.js';
 import { EmptyState } from '../components/empty-state.js';
+import { messengerHrefs } from '../components/messenger-links.js';
 
 function HelpPage() {
   const tenant = useTenant();
   const tenantName = tenant?.name ?? '';
+  const hrefs = messengerHrefs(tenant?.phone);
   const channels = [
     tenant?.contactEmail && { label: 'Email', detail: tenant.contactEmail, href: `mailto:${tenant.contactEmail}`, Icon: Mail },
     tenant?.phone && { label: 'Phone', detail: tenant.phone, href: `tel:${tenant.phone}`, Icon: Phone },
+    hrefs && { label: 'Viber', detail: tenant!.phone!, href: hrefs.viber, Icon: MessageCircle },
+    hrefs && { label: 'Telegram', detail: tenant!.phone!, href: hrefs.telegram, Icon: Send },
   ].filter((c) => !!c);
   return (
     <div className="flex flex-col gap-6 px-6 py-10 sm:px-10">

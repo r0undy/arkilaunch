@@ -34,6 +34,8 @@ async function main() {
       primaryColor: sql`coalesce(${schema.tenants.primaryColor}, '#5ec2c2')`,
       headerColor: sql`coalesce(${schema.tenants.headerColor}, '#a23e01')`,
       font: sql`coalesce(${schema.tenants.font}, 'inter')`,
+      // Viber/Telegram line for Negotiate by phone.
+      phone: sql`coalesce(${schema.tenants.phone}, '09693630615')`,
       tagline: sql`coalesce(${schema.tenants.tagline}, ${'Precision industrial equipment for every project. High-fidelity logistics and heavy machinery for world-class construction and manufacturing sites.'})`,
     })
     .where(eq(schema.tenants.id, tenant.id));

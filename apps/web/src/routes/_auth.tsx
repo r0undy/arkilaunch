@@ -4,6 +4,7 @@ import { currentHost } from '../lib/host.js';
 import { useTenant } from '../lib/tenant.js';
 import { SkipLink } from '../components/skip-link.js';
 import { rootRoute } from './__root.js';
+import { MessengerLinks, phoneHref } from '../components/messenger-links.js';
 
 function BrandPanel() {
   const tenant = useTenant();
@@ -80,9 +81,14 @@ function HelpFooter() {
     <footer className="flex flex-wrap justify-center gap-x-6 gap-y-1 border-t border-border px-6 py-5 text-sm text-text-muted">
       <span>Need help signing in?</span>
       {tenant.phone && (
-        <a href={`tel:${tenant.phone}`} className="font-semibold text-text hover:underline">
+        <a href={phoneHref(tenant.phone)} className="font-semibold text-text hover:underline">
           {tenant.phone}
         </a>
+      )}
+      {tenant.phone && (
+        <span>
+          <MessengerLinks phone={tenant.phone} className="font-semibold text-text hover:underline" />
+        </span>
       )}
       {tenant.contactEmail && (
         <a href={`mailto:${tenant.contactEmail}`} className="font-semibold text-text hover:underline">

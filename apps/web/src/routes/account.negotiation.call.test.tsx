@@ -25,7 +25,7 @@ async function renderCall(phone: string | null) {
 describe('Negotiate by phone', () => {
   it('deep-links the tenant mobile into Viber and Telegram', async () => {
     await renderCall('0917 123 4567');
-    expect(await screen.findByRole('link', { name: 'Call on Viber' })).toHaveAttribute('href', 'viber://call?number=%2B639171234567');
+    expect(await screen.findByRole('link', { name: 'Call on Viber' })).toHaveAttribute('href', 'viber://chat?number=%2B639171234567');
     expect(screen.getByRole('link', { name: 'Message on Telegram' })).toHaveAttribute('href', 'https://t.me/+639171234567');
   });
 

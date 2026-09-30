@@ -19,6 +19,7 @@ import { EditButton, SummaryCard } from '../components/summary-card.js';
 import { Select } from '../components/select.js';
 import { SearchField } from '../components/search-field.js';
 import { Alert } from '../components/alert.js';
+import { MessengerLinks, phoneHref } from '../components/messenger-links.js';
 
 export const settingsQuery = {
   queryKey: ['truck-settings'] as const,
@@ -802,9 +803,12 @@ export function RequestRow({ r }: { r: TruckRequestResponse }) {
           <dt className="text-text-muted">Mobile</dt>
           <dd className="text-text">
             {r.requesterPhone ? (
-              <a className="font-medium underline" href={`tel:${r.requesterPhone.replace(/[^\d+]/g, '')}`}>
-                {r.requesterPhone}
-              </a>
+              <>
+                <a className="font-medium underline" href={phoneHref(r.requesterPhone)}>
+                  {r.requesterPhone}
+                </a>
+                <MessengerLinks phone={r.requesterPhone} className="font-medium underline" />
+              </>
             ) : (
               'Not on file; reply in the Negotiation tab'
             )}
