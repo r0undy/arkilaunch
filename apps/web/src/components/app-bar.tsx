@@ -98,6 +98,7 @@ function NotificationBell({
                     {n.status === 'unread' && <UnreadBadge />}
                   </p>
                   <p className={`text-sm text-text ${n.status === 'unread' ? 'font-bold' : ''}`}>
+                    {n.status === 'unread' && <span className="sr-only">Unread: </span>}
                     {described?.title ?? formatStatus(n.notificationType)}
                   </p>
                   {described && (

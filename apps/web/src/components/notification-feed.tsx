@@ -501,7 +501,7 @@ export function NotificationKindLabel({ type }: { type: string }) {
 
 export function UnreadBadge() {
   return (
-    <span className="rounded-full bg-primary px-2 py-px text-xs font-bold leading-4 text-on-primary">New</span>
+    <span aria-hidden="true" className="rounded-full bg-primary px-2 py-px text-xs font-bold leading-4 text-on-primary">New</span>
   );
 }
 
@@ -545,6 +545,7 @@ function NotificationRow({ notification, area }: { notification: NotificationRes
         {isUnread && <UnreadBadge />}
       </p>
       <p className={`text-sm text-text ${isUnread ? 'font-bold' : ''}`}>
+        {isUnread && <span className="sr-only">Unread: </span>}
         {described?.title ?? formatStatus(notification.notificationType)}
       </p>
       {described ? (
