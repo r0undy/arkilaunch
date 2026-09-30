@@ -13,6 +13,14 @@ export const truckSettings = pgTable(
       .references(() => tenants.id, { onDelete: 'restrict' }),
     baseFeePhp: numeric('base_fee_php', { precision: 12, scale: 2 }).notNull().default('0'),
     driverFeePhp: numeric('driver_fee_php', { precision: 12, scale: 2 }).notNull().default('0'),
+    // 0075: driver pay per trip km; the fixed fee above is legacy.
+    driverRatePhpPerKm: numeric('driver_rate_php_per_km', { precision: 10, scale: 2 }).notNull().default('0'),
+    // 0076: the customer's line breakdown ('formula' | 'cost_items').
+    quoteBreakdown: text('quote_breakdown').$type<'formula' | 'cost_items'>().notNull().default('formula'),
+    remainderLabel: text('remainder_label').notNull().default('Truck trip cost'),
+    // 0077: flat fee at or under min_fee_max_km instead of the formula; null = off.
+    minFeeMaxKm: numeric('min_fee_max_km', { precision: 8, scale: 2 }),
+    minFeePhp: numeric('min_fee_php', { precision: 12, scale: 2 }).notNull().default('0'),
     extras: jsonb('extras').$type<TruckExtra[]>().notNull().default([]),
     // null formula = the built-in default (DEFAULT_TRUCK_FORMULA).
     formula: text('formula'),

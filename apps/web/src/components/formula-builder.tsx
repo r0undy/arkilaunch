@@ -45,7 +45,7 @@ export function FormulaBuilder({
 }: {
   value: string;
   onChange: (next: string) => void;
-  settings: Pick<TruckSettings, 'baseFeePhp' | 'driverFeePhp' | 'extras' | 'roundTripMultiplier' | 'quoteMultiplier'>;
+  settings: Pick<TruckSettings, 'baseFeePhp' | 'driverFeePhp' | 'driverRatePhpPerKm' | 'extras' | 'roundTripMultiplier' | 'quoteMultiplier'>;
   sample: SampleInputs;
 }) {
   const [number, setNumber] = useState('');
