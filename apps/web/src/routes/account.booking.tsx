@@ -1,10 +1,11 @@
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BookingDetailResponse } from '@arkilaunch/shared';
+import { bookingDays, type BookingDetailResponse } from '@arkilaunch/shared';
 import { WeeklyBillingCard } from './statement.js';
 import { accountLayoutRoute } from './_account.js';
-import { bookingsQueries } from '../lib/queries.js';
+import { bookingsQueries, quotesQueries } from '../lib/queries.js';
+import { QuoteLines } from '../components/quote-lines.js';
 import { DataPanel } from '../components/data-panel.js';
 import { PageHeader } from '../components/page-header.js';
 import { Surface } from '../components/surface.js';
@@ -46,14 +47,49 @@ export function leaseProgress(
 
 type BookingItem = BookingDetailResponse['items'][number];
 
+export function rentalDuration(start: Date | string, end: Date | string | null): number | null {
+  const from = new Date(start).getTime();
+  const to = end ? new Date(end).getTime() : NaN;
+  if (!end || !Number.isFinite(from) || !Number.isFinite(to) || to <= from) return null;
+  return bookingDays(start, end);
+}
+
+function CostBreakdown({ booking }: { booking: BookingDetailResponse }) {
+  return (
+    <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-4 border border-primary p-5">
+      <h2 className="text-heading-md font-semibold text-text">Equipment cost breakdown</h2>
+      <p className="text-sm text-text-muted">Equipment costs follow your saved quote and may be grouped by equipment category. Each machine's rental dates and days are shown below.</p>
+      {booking.quotation && booking.quotation.totalPhp !== null ? (
+        <DataPanel
+          title="Cost breakdown"
+          options={quotesQueries.detail(booking.quotation.id)}
+          emptyTitle="No itemized costs yet"
+          emptyDescription="The rental team has not added equipment costs to this quote yet."
+          isEmpty={(quote) => quote.lineItems.length === 0}
+          render={(quote) => (
+            <>
+              <p className="text-sm text-text-muted">Quote revision {quote.revision} &middot; {formatStatus(quote.status)}</p>
+              <QuoteLines quote={quote} detailed />
+              <p className="text-sm text-text-muted">Quoted line totals include any agreed price adjustments and line-level charges. Delivery, collection and booking discounts are shown separately. Rental days describe the booked period; pricing follows the units and rates shown above. Deposits, payments and actual usage invoices are separate from this quoted cost.</p>
+            </>
+          )}
+        />
+      ) : (
+        <p className="text-sm text-text-muted">Your equipment costs will appear here once the rental team prepares your quote.</p>
+      )}
+    </Surface>
+  );
+}
+
 function MachineCard({ item, onSite }: { item: BookingItem; onSite: boolean }) {
   const { equipmentId } = item;
+  const days = rentalDuration(item.start, item.end);
   const progress = onSite && item.status === 'active' ? leaseProgress(item.start, item.end) : null;
 
   return (
     <Surface radius="md" elevation="sm" className="flex min-w-0 flex-col gap-3 p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-medium text-text-muted">Machine on hire</h2>
+        <h2 className="text-base font-semibold text-text">{item.equipmentName ?? shortCode('equipment', equipmentId)}</h2>
         <span className="text-sm text-text-muted">{formatStatus(item.status)}</span>
       </div>
       <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -66,6 +102,9 @@ function MachineCard({ item, onSite }: { item: BookingItem; onSite: boolean }) {
           <dd className="text-text">{item.end ? formatDate(item.end) : 'Open ended'}</dd>
         </div>
       </dl>
+      <p className="text-base font-semibold text-text">
+        {days === null ? 'Rental duration not yet confirmed' : `${days} rental day${days === 1 ? '' : 's'}`}
+      </p>
       {progress && (
         <div className="flex flex-col gap-1">
           <div
@@ -83,7 +122,6 @@ function MachineCard({ item, onSite }: { item: BookingItem; onSite: boolean }) {
           </p>
         </div>
       )}
-      <p className="text-sm text-text-muted">{item.equipmentName ?? shortCode('equipment', equipmentId)}</p>
     </Surface>
   );
 }
@@ -245,6 +283,7 @@ function BookingDetail({ booking }: { booking: BookingDetailResponse }) {
           <Timeline booking={booking} />
           <NextStep booking={booking} />
         </Surface>
+        <CostBreakdown booking={booking} />
         {booking.items.map((item) => (
           <MachineCard key={item.id} item={item} onSite={onSite} />
         ))}

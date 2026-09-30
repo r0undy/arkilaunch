@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { renderRoute } from '../test/render-route.js';
 import { makeToken, makeValidClaims } from '../test/make-token.js';
 import { setAccessToken } from '../lib/auth-client.js';
 import type { BookingDetailResponse } from '@arkilaunch/shared';
-import { bookingStage, bookingTimeline, leaseProgress } from './account.booking.js';
+import { bookingStage, bookingTimeline, leaseProgress, rentalDuration } from './account.booking.js';
 import { amountDue } from './account.checkout.js';
 import { describeNotification } from '../components/notification-feed.js';
 
@@ -210,5 +210,56 @@ describe('customer booking page', () => {
 
     expect(await screen.findByText('CAT 320D')).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/equipment?'))).toBe(false);
+  });
+});
+
+
+describe('rentalDuration', () => {
+  it('uses the same rounded-up rental days as booking pricing', () => {
+    expect(rentalDuration('2026-10-01T08:00:00Z', '2026-10-05T17:00:00Z')).toBe(5);
+    expect(rentalDuration('2026-10-01T08:00:00Z', '2026-10-01T17:00:00Z')).toBe(1);
+  });
+  it('does not invent days for unknown or invalid dates', () => {
+    expect(rentalDuration('2026-10-01', null)).toBeNull();
+    expect(rentalDuration('bad', '2026-10-02')).toBeNull();
+    expect(rentalDuration('2026-10-02', '2026-10-01')).toBeNull();
+  });
+});
+
+describe('customer cost breakdown', () => {
+  afterEach(() => { vi.unstubAllGlobals(); setAccessToken(null); });
+  it('shows saved line costs, hours and adjustments alongside each machine rental duration', async () => {
+    setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
+    const b = booking({ quotation: accepted });
+    const quote = {
+      ...accepted, lineItems: [
+        { kind: 'equipment', equipmentTypeId: 'excavator', equipmentTypeName: 'Excavator', quantity: 1, estimatedHours: 40, rentParts: [], rent: 24000, hourlyRate: 600, operatingCost: 24000, buffer: 0, subtotal: 24000 },
+        { kind: 'equipment', equipmentTypeId: 'loader', equipmentTypeName: 'Loader', quantity: 2, estimatedHours: 8, rentParts: [], rent: 3000, hourlyRate: 375, operatingCost: 6000, buffer: 0, subtotal: 6000 },
+      ], mobilization: 2000, demobilization: 1000, subtotal: 33000, discount: 3000, total: 30000,
+    };
+    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(
+      String(url).includes('/quotes/') ? quote : String(url).includes('/bookings/') ? b : []
+    ), { status: 200 }))));
+    await renderRoute('/account/bookings/' + b.id);
+    expect(await screen.findByRole('heading', { name: 'Equipment cost breakdown' })).toBeVisible();
+    const lines = await screen.findByRole('list', { name: 'Quote line items' });
+    expect(within(lines).getByText('40 quoted billable hours per unit')).toBeVisible();
+    expect(within(lines).getByText('8 quoted billable hours per unit')).toBeVisible();
+    expect(within(lines).getByText(/per unit before booking-level/)).toHaveTextContent('3,000');
+    expect(screen.getByText('Mobilization')).toBeVisible();
+    expect(screen.getByText('Demobilization')).toBeVisible();
+    expect(screen.getByText('Discount')).toBeVisible();
+    expect(screen.getByText('Quoted rental total').parentElement).toHaveTextContent('30,000');
+    expect(within(lines).getAllByText('Quoted line total')[0]).toBeDefined();
+    expect(screen.getByText('5 rental days')).toBeVisible();
+  });
+  it.each([null, { ...accepted, totalPhp: null }])('shows a preparing message when the quote has no price: %j', async (quotation) => {
+    setAccessToken(makeToken(makeValidClaims({ role: 'customer' })));
+    const b = booking({ quotation });
+    const fetchMock = vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(String(url).includes('/bookings/') ? b : []), { status: 200 })));
+    vi.stubGlobal('fetch', fetchMock);
+    await renderRoute('/account/bookings/' + b.id);
+    expect(await screen.findByText(/Your equipment costs will appear here/)).toBeVisible();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/quotes/'))).toBe(false);
   });
 });
