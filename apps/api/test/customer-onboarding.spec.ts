@@ -211,7 +211,7 @@ describe('Customer onboarding', () => {
       }),
     ).rejects.toMatchObject({ response: { error: 'company_not_verified' } });
     const queue = (await companies.listForReview(adminCtx, 'pending')).items;
-    expect(queue.find((c) => c.id === acme.id)?.documents).toHaveLength(3);
+    expect(queue.find((c) => c.id === acme.id)?.documents).toHaveLength(2);
     await companies.decide(adminCtx, acme.id, { decision: 'approved', identity: IDENTITY, registryChecked: [acmeSec.id], cureDocuments: [] });
 
     // Verified, but the site has not shown it is real: no job on it yet.
@@ -677,17 +677,35 @@ describe('Customer onboarding', () => {
     }
 
     // A submitted company: National ID (with the name the customer
-    // confirmed) and an SEC certificate.
+    // confirmed) and an SEC certificate. The ID goes first: this login
+    // already has one on file, copied onto the new company, and the
+    // registration completes (and locks) the application.
     async function completeCompany(name: string) {
-      const { companyId, documentId } = await companyWithRegistration(name);
-      await companies.addDocument(reviewCtx, companyId, 'government_id', `storage://fixtures/${randomUUID()}.jpg`, bytes, {
+      const company = await companies.createCompany(reviewCtx, {
+        companyName: name,
+        tin: randomTin(),
+        billingAddress: '12 Yard Road, Cebu City',
+        contactMobile: '0917 000 0000',
+      });
+      await companies.addDocument(reviewCtx, company.id, 'government_id', `storage://fixtures/${randomUUID()}.jpg`, bytes, {
         firstName: 'Maria',
         middleName: 'Reyes',
         lastName: 'Santos',
         idNumber: '1234-5678-9012-3456',
       });
-      return { companyId, secId: documentId };
+      const sec = await companies.addDocument(reviewCtx, company.id, 'sec_certificate', `storage://fixtures/${randomUUID()}.jpg`, bytes);
+      return { companyId: company.id, secId: sec.id };
     }
+
+    const newLogin = async () =>
+      decodeCtx(
+        (
+          await auth.registerCustomer(
+            { email: `one-id-${randomUUID().slice(0, 8)}@onboarding.test`, password: 'correct horse battery', acceptedTerms: true },
+            'test-tenant-a',
+          )
+        ).accessToken,
+      );
 
     it('reads the document onto the row without deciding anything', async () => {
       const { companyId, documentId } = await companyWithRegistration('Reviewme Corp', 'company_registration');
@@ -762,23 +780,23 @@ describe('Customer onboarding', () => {
     });
 
     it('refuses approval without the ID and a registration', async () => {
-      const { companyId, documentId } = await companyWithRegistration('Half Done Corp');
+      // A fresh login: no ID on file to copy onto the company.
+      const ctx = await newLogin();
+      const company = await companies.createCompany(ctx, {
+        companyName: 'Half Done Corp',
+        tin: randomTin(),
+        billingAddress: '12 Yard Road, Cebu City',
+        contactMobile: '0917 000 0000',
+      });
+      const { id: documentId } = await companies.addDocument(ctx, company.id, 'sec_certificate', `storage://fixtures/${randomUUID()}.jpg`, bytes);
+      const companyId = company.id;
       await expect(
         companies.decide(adminCtx, companyId, { decision: 'approved', identity: IDENTITY, registryChecked: [documentId], cureDocuments: [] }),
       ).rejects.toMatchObject({ response: { error: 'documents_incomplete' } });
     });
 
     it("scores a login's second company on the ID it already gave, not as a duplicate of itself", async () => {
-      const login = async () =>
-        decodeCtx(
-          (
-            await auth.registerCustomer(
-              { email: `one-id-${randomUUID().slice(0, 8)}@onboarding.test`, password: 'correct horse battery', acceptedTerms: true },
-              'test-tenant-a',
-            )
-          ).accessToken,
-        );
-      const owner = await login();
+      const owner = await newLogin();
       const mobile = `0917 ${String(Math.floor(Math.random() * 1e7)).padStart(7, '0')}`;
       const apply = async (ctx: RequestContext, name: string) => {
         const company = await companies.createCompany(ctx, { companyName: name, tin: randomTin(), billingAddress: '12 Yard Road, Cebu City', contactMobile: mobile });
@@ -791,14 +809,17 @@ describe('Customer onboarding', () => {
       });
       // The ID step is skipped: createCompany copies the login's ID on file.
       const second = await apply(owner, `Second ${randomUUID().slice(0, 6)} Corp`);
-      const stranger = await apply(await login(), `Stranger ${randomUUID().slice(0, 6)} Corp`);
+      const check = async (id: string, check: string) =>
+        (await companies.listForReview(adminCtx, 'pending')).items
+          .find((c) => c.id === id)
+          ?.score?.checks.find((c) => c.id === check)?.status;
+      expect(await check(second, 'duplicates')).toBe('pass');
+      expect(await check(second, 'doc_quality')).not.toBe('fail');
 
-      const queue = (await companies.listForReview(adminCtx, 'pending')).items;
-      const check = (id: string, check: string) => queue.find((c) => c.id === id)?.score?.checks.find((c) => c.id === check)?.status;
-      expect(check(second, 'duplicates')).toBe('pass');
-      expect(check(second, 'doc_quality')).not.toBe('fail');
-      // Another login with the same mobile is still flagged.
-      expect(check(stranger, 'duplicates')).toBe('fail');
+      // Another login with the same mobile is flagged, and so is the owner's company it collides with.
+      const stranger = await apply(await newLogin(), `Stranger ${randomUUID().slice(0, 6)} Corp`);
+      expect(await check(stranger, 'duplicates')).toBe('fail');
+      expect(await check(second, 'duplicates')).toBe('fail');
     });
 
     it('refuses approval until every SEC/BIR/DTI paper is ticked as checked on its registry', async () => {
