@@ -12,7 +12,7 @@ export interface ContainerHeaderProps {
 
 export function ContainerHeader({ title, count, description, actions, filter, pagination }: ContainerHeaderProps) {
   return (
-    <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
+    <div className="flex flex-col gap-2 border-b border-border px-5 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-heading-lg text-text">

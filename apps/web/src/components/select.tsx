@@ -14,9 +14,10 @@ import {
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 
-export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
   label: string;
   labelHidden?: boolean;
+  size?: 'default' | 'compact';
   error?: string;
   hint?: ReactNode;
 }
@@ -30,7 +31,7 @@ interface Opt {
 // The hidden native <select> stays the source of truth (options, ref, value, onChange);
 // picking fires a real change event on it.
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { label, labelHidden, error, hint, id, className = '', required, disabled, children, 'aria-label': ariaLabel, ...rest },
+  { label, labelHidden, size = 'default', error, hint, id, className = '', required, disabled, children, 'aria-label': ariaLabel, ...rest },
   ref,
 ) {
   const autoId = useId();
@@ -215,7 +216,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
         onKeyDown={onKeyDown}
         onBlur={() => setOpen(false)}
         className={[
-          'flex min-h-11 w-full items-center justify-between gap-3 rounded-input border bg-surface px-4 py-2.5 text-left text-base',
+          'flex w-full items-center justify-between rounded-input border bg-surface text-left',
+          size === 'compact' ? 'min-h-9 gap-2 px-3 py-1.5 text-sm' : 'min-h-11 gap-3 px-4 py-2.5 text-base',
           error ? 'border-error' : open ? 'border-accent' : 'border-border hover:border-border-strong',
           'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
           'disabled:cursor-not-allowed disabled:bg-surface-sunk disabled:text-text-muted',

@@ -31,8 +31,9 @@ export function Tabs<T extends string>({ label, items, value, onChange }: TabsPr
     onChange(items[next]!.id);
   }
 
+  // The baseline is an inset shadow, not a border the tabs overlap: nothing spills, so no stray scrollbar.
   return (
-    <div role="tablist" aria-label={label} className="flex gap-1 overflow-x-auto border-b border-border">
+    <div role="tablist" aria-label={label} className="flex gap-1 overflow-x-auto shadow-[inset_0_-1px_0_var(--color-border)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {items.map((item, index) => {
         const selected = item.id === value;
         return (
@@ -49,17 +50,14 @@ export function Tabs<T extends string>({ label, items, value, onChange }: TabsPr
             onClick={() => onChange(item.id)}
             onKeyDown={(event) => onKeyDown(event, index)}
             className={[
-'-mb-px inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium',
+'inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium',
               'focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
               selected ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text',
             ].join(' ')}
           >
             {item.label}
-            {item.badge ? (
-              <span className="rounded-xs bg-surface-sunk px-1.5 py-0.5 font-mono text-xs tabular-nums text-text">
-                {item.badge}
-              </span>
-            ) : null}
+            {/* Cloudscape counter: a plain "(13)", not a chip. */}
+            {item.badge ? <span className="font-normal tabular-nums text-text-muted">({item.badge})</span> : null}
           </button>
         );
       })}

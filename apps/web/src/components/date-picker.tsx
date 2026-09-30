@@ -17,7 +17,8 @@ interface DatePickerProps {
   disabled?: boolean | undefined;
   error?: string | undefined;
   hint?: ReactNode | undefined;
-  size?: 'default' | 'field';
+  size?: 'default' | 'field' | 'compact';
+  labelHidden?: boolean | undefined;
   className?: string;
   onChange: (value: string) => void;
 }
@@ -44,7 +45,7 @@ const shortDate = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateStrin
   month: 'short', day: 'numeric', year: 'numeric',
 });
 
-export function DatePicker({ id, label, kind, value, min, max, required, disabled, error, hint, size = 'default', className = '', onChange }: DatePickerProps) {
+export function DatePicker({ id, label, kind, value, min, max, required, disabled, error, hint, size = 'default', labelHidden, className = '', onChange }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [month, setMonth] = useState('');
@@ -92,13 +93,13 @@ export function DatePicker({ id, label, kind, value, min, max, required, disable
   const focusDay = chosenDay.slice(0, 7) === month ? chosenDay : days.find((day) => day.slice(0, 7) === month && (!minDay || day >= minDay) && (!maxDay || day <= maxDay));
   const firstYear = minDay ? Number(minDay.slice(0, 4)) : 1900;
   const lastYear = maxDay ? Number(maxDay.slice(0, 4)) : 2100;
-  const shown = value ? `${shortDate(value.slice(0, 10))}${kind === 'datetime-local' ? `, ${value.slice(11, 16)}` : ''}` : 'Choose date';
+  const shown = value ? `${shortDate(value.slice(0, 10))}${kind === 'datetime-local' ? `, ${value.slice(11, 16)}` : ''}` : labelHidden ? label : 'Choose date';
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
 
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <span id={`${id}-label`} className="text-sm font-medium text-text">{label}{required && <span aria-hidden="true"> *</span>}</span>
+      <span id={`${id}-label`} className={labelHidden ? 'sr-only' : 'text-sm font-medium text-text'}>{label}{required && <span aria-hidden="true"> *</span>}</span>
       <button
         id={id}
         type="button"
@@ -108,10 +109,10 @@ export function DatePicker({ id, label, kind, value, min, max, required, disable
         aria-required={required || undefined}
         aria-describedby={error ? errorId : hint ? hintId : undefined}
         onClick={show}
-        className={`flex w-full min-w-0 items-center justify-between gap-3 border bg-surface px-4 py-2.5 text-left text-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:opacity-40 ${size === 'field' ? 'min-h-12' : 'min-h-11'} ${error ? 'border-error' : 'border-border hover:border-border-strong'} ${className}`}
+        className={`flex w-full min-w-0 items-center justify-between border bg-surface text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:opacity-40 ${size === 'compact' ? 'min-h-9 gap-2 px-3 py-1.5 text-sm' : `gap-3 px-4 py-2.5 text-base ${size === 'field' ? 'min-h-12' : 'min-h-11'}`} ${error ? 'border-error' : 'border-border hover:border-border-strong'} ${className}`}
       >
         <span className={`truncate ${value ? 'text-text' : 'text-text-muted'}`}>{shown}</span>
-        <CalendarDays className="h-5 w-5 shrink-0 text-text-muted" aria-hidden="true" />
+        <CalendarDays className={`${size === 'compact' ? 'h-4 w-4' : 'h-5 w-5'} shrink-0 text-text-muted`} aria-hidden="true" />
       </button>
       {error && <p id={errorId} role="alert" className="flex items-center gap-1 text-sm text-error"><TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />{error}</p>}
       {!error && hint && <p id={hintId} className="text-sm text-text-muted">{hint}</p>}

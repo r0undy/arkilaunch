@@ -6,7 +6,8 @@ import { appLayoutRoute } from './_app.js';
 import { bookingsQueries, trucksQueries } from '../lib/queries.js';
 import { apiErrorText } from '../lib/api-client.js';
 import { PageHeader } from '../components/page-header.js';
-import { Button, buttonClass, chipClass } from '../components/button.js';
+import { buttonClass } from '../components/button.js';
+import { Search } from 'lucide-react';
 import { Table, type TableColumn } from '../components/table.js';
 import { PAGE_SIZE, Pagination } from '../components/pagination.js';
 import { WeeklyBillingCard } from './statement.js';
@@ -153,8 +154,12 @@ function BookingsPage() {
     (openCode.service === 'truck' ? openTruck.isSuccess && !target : openRental.isSuccess && !target);
 
   const list = service === 'rental' ? rentals : trucks;
+  // Cloudscape table-header filter bar: one wrapping row of compact controls.
   const finder = (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-60 max-w-md flex-1">
+          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <input
             type="search"
             value={search}
@@ -164,46 +169,70 @@ function BookingsPage() {
             }}
             placeholder={service === 'truck' ? 'Find a truck code (TRK-2026-0001)' : 'Find a booking code or company'}
             aria-label={service === 'truck' ? 'Find a truck request by code' : 'Find a booking by code or company'}
-            className="min-h-11 w-full max-w-md rounded-input border border-border bg-surface px-4 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+            className="min-h-9 w-full rounded-input border border-border bg-surface py-1.5 pl-9 pr-3 text-sm text-text hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
           />
-          {service === 'truck' && search.trim() !== '' && !codePrefix && (
-            <p className="text-xs text-text-muted">Truck codes start with TRK-.</p>
-          )}
-          {service === 'rental' && (
-            <div className="flex flex-col gap-3 pt-2">
-              <div role="group" aria-label="Show bookings" className="flex flex-wrap gap-2">
-                {STATUS_CHIPS.map((c) => {
-                  const counts = rentals.data?.statusCounts;
-                  const n = counts ? (c.id ? (counts[c.id] ?? 0) : Object.values(counts).reduce((a, b) => a + b, 0)) : null;
-                  return (
-                    <button key={c.label} type="button" aria-pressed={status === c.id} className={chipClass(status === c.id)} onClick={() => setFilters({ status: c.id })}>
-                      {c.label}
-                      {n !== null && <span className="ml-1.5 tabular-nums opacity-80">{n}</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex flex-wrap items-end gap-3">
-                <Input label="Rental dates from" type="date" value={from ?? ''} onChange={(e) => setFilters({ from: e.target.value || undefined })} />
-                <Input label="to" type="date" value={to ?? ''} min={from} onChange={(e) => setFilters({ to: e.target.value || undefined })} />
-                <Select label="Sort" value={sort ?? 'newest'} onChange={(e) => setFilters({ sort: e.target.value === 'start' ? 'start' : undefined })}>
-                  <option value="newest">Newest request first</option>
-                  <option value="start">Soonest start first</option>
-                </Select>
-                {(status || from || to || sort) && (
-                  <Button variant="ghost" onClick={() => setFilters({ status: undefined, from: undefined, to: undefined, sort: undefined })}>
-                    Clear filters
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
-          {notFound && (
-            <p role="alert" className="text-sm text-error">
-              No booking {open} was found.
-            </p>
-          )}
         </div>
+        {service === 'rental' && (
+          <>
+            <div className="w-40">
+              <Input size="compact" labelHidden label="Rental from" type="date" value={from ?? ''} onChange={(e) => setFilters({ from: e.target.value || undefined })} />
+            </div>
+            <div className="w-40">
+              <Input size="compact" labelHidden label="Rental to" type="date" value={to ?? ''} min={from} onChange={(e) => setFilters({ to: e.target.value || undefined })} />
+            </div>
+            <div className="w-52">
+              <Select size="compact" labelHidden label="Sort" value={sort ?? 'newest'} onChange={(e) => setFilters({ sort: e.target.value === 'start' ? 'start' : undefined })}>
+                <option value="newest">Newest request first</option>
+                <option value="start">Soonest start first</option>
+              </Select>
+            </div>
+            {(status || from || to || sort) && (
+              <button
+                type="button"
+                onClick={() => setFilters({ status: undefined, from: undefined, to: undefined, sort: undefined })}
+                className="min-h-9 px-1 text-sm font-medium text-accent hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring"
+              >
+                Clear filters
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      {service === 'truck' && search.trim() !== '' && !codePrefix && (
+        <p className="text-xs text-text-muted">Truck codes start with TRK-.</p>
+      )}
+      {service === 'rental' && (
+        // Cloudscape segmented control: joined square segments, the chosen one filled.
+        <div role="group" aria-label="Show bookings" className="flex flex-wrap">
+          {STATUS_CHIPS.map((c) => {
+            const counts = rentals.data?.statusCounts;
+            const n = counts ? (c.id ? (counts[c.id] ?? 0) : Object.values(counts).reduce((a, b) => a + b, 0)) : null;
+            const on = status === c.id;
+            return (
+              <button
+                key={c.label}
+                type="button"
+                aria-pressed={on}
+                onClick={() => setFilters({ status: c.id })}
+                className={[
+                  '-ml-px min-h-9 border px-3 text-sm first:ml-0 first:rounded-l-sm last:rounded-r-sm',
+                  'focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus-ring',
+                  on ? 'relative z-[1] border-accent bg-accent font-semibold text-white' : 'border-border-strong bg-surface text-text hover:bg-surface-sunk',
+                ].join(' ')}
+              >
+                {c.label}
+                {n !== null && <span className={`ml-1.5 tabular-nums ${on ? '' : 'text-text-muted'}`}>({n})</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {notFound && (
+        <p role="alert" className="text-sm text-error">
+          No booking {open} was found.
+        </p>
+      )}
+    </div>
   );
 
   return (
