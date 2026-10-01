@@ -533,7 +533,7 @@ export function CaptureField({
             <div
               ref={cameraPanelRef}
               {...(scanner ? { role: 'dialog' as const, 'aria-modal': true, 'aria-label': `Scan ${label}`, onKeyDown: onCameraKeyDown } : {})}
-              className={scanner ? 'fixed inset-0 z-[60] overflow-hidden bg-black' : 'relative overflow-hidden rounded-md bg-black'}
+              className={scanner ? 'relative mx-auto w-full max-w-xl overflow-hidden rounded-md bg-black' : 'relative overflow-hidden rounded-md bg-black'}
             >
               <video
                 ref={videoRef}
@@ -541,7 +541,7 @@ export function CaptureField({
                 autoPlay
                 playsInline
                 muted
-                className={scanner ? 'h-dvh w-full object-contain' : 'aspect-[3/4] w-full object-contain sm:aspect-[4/3]'}
+                className={scanner ? 'aspect-[4/3] w-full object-contain' : 'aspect-[3/4] w-full object-contain sm:aspect-[4/3]'}
               />
               {scanner && (
                 <div className="absolute inset-x-4 top-4 flex items-start justify-between gap-4 pt-[env(safe-area-inset-top)] text-white">
@@ -576,16 +576,14 @@ export function CaptureField({
                     {torchOn ? 'Light off' : 'Light on'}
                   </Button>
                 )}
-                {!scanner && (
-                  <button
-                    type="button"
-                    data-testid={`${id}-shutter`}
-                    onClick={shoot}
-                    disabled={busy || !live || takingRef.current}
-                    aria-label="Take the photo"
-                    className="h-16 w-16 rounded-full border-4 border-accent bg-white disabled:opacity-50"
-                  />
-                )}
+                <button
+                  type="button"
+                  data-testid={`${id}-shutter`}
+                  onClick={shoot}
+                  disabled={busy || !live || takingRef.current}
+                  aria-label="Take the photo"
+                  className="h-16 w-16 rounded-full border-4 border-accent bg-white disabled:opacity-50"
+                />
                 <Button
                   variant="ghost"
                   size="field"

@@ -698,7 +698,7 @@ function NewCompanyPage() {
         open
         onClose={close}
         closeDisabled={busy}
-        size={documentStage || stage === 'dti_certificate' ? 'full' : 'xl'}
+        size="xl"
         title="Add a company"
         description={prompts[stage]}
         footer={
