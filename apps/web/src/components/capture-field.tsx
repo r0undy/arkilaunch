@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { Button } from './button.js';
 import { describeUploadProblem, prepareUpload, type PrepareUploadOptions } from '../lib/image-compression.js';
 import { analyzeDocument, loadDocumentScanner, steadyHold, straightenDocument, type ScanCorners } from '../lib/document-scanner.js';
@@ -50,6 +50,9 @@ export function CaptureField({
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraPanelRef = useRef<HTMLDivElement>(null);
+  const cameraBackRef = useRef<HTMLButtonElement>(null);
+  const cameraRetryRef = useRef<HTMLButtonElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const captureRef = useRef<(corners?: ScanCorners) => void>(() => {});
   const takingRef = useRef(false);
@@ -75,6 +78,12 @@ export function CaptureField({
   const [adjusting, setAdjusting] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [reviewPreview, setReviewPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!scanner || value || pending) return;
+    if (cameraError) cameraRetryRef.current?.focus();
+    else cameraBackRef.current?.focus();
+  }, [scanner, value, pending, cameraError]);
 
   useEffect(() => {
     if (!pending || pending.type === 'application/pdf') { setReviewPreview(null); return; }
@@ -190,7 +199,10 @@ export function CaptureField({
         };
         tick();
       } catch {
-        if (!cancelled) setScanStatus('Automatic alignment is unavailable. Use the shutter or choose a file.');
+        if (!cancelled) {
+          setCameraError('Automatic alignment is unavailable. Choose a clear document photo or PDF.');
+          stopCamera();
+        }
       }
     }
     void run();
@@ -315,7 +327,12 @@ export function CaptureField({
     canvas.getContext('2d')?.drawImage(video, 0, 0);
     stopCamera();
     void new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.95)).then((blob) => {
-      if (blob) void beginReview(new File([blob], `document-${Date.now()}.jpg`, { type: 'image/jpeg' }), canvas, detected, true);
+      if (!blob) {
+        takingRef.current = false;
+        setCameraError('The automatic photo could not be saved. Try the camera again or choose a file.');
+        return;
+      }
+      void beginReview(new File([blob], `document-${Date.now()}.jpg`, { type: 'image/jpeg' }), canvas, detected, true);
     });
   };
 
@@ -360,6 +377,29 @@ export function CaptureField({
   function clear() {
     setProblem(null);
     onChange(null);
+  }
+
+  function leaveCamera() {
+    setCameraError('Camera closed. Choose a file or try the camera again.');
+    stopCamera();
+  }
+
+  function onCameraKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      leaveCamera();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const controls = Array.from(cameraPanelRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+    if (event.shiftKey && document.activeElement === controls[0]) {
+      event.preventDefault();
+      controls.at(-1)?.focus();
+    } else if (!event.shiftKey && document.activeElement === controls.at(-1)) {
+      event.preventDefault();
+      controls[0]?.focus();
+    }
   }
 
   const busy = preparing || reviewing || disabled;
@@ -470,14 +510,15 @@ export function CaptureField({
             <div className="flex flex-col gap-2">
               <p className="text-sm text-text-muted">{cameraError}</p>
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="secondary"
-                  size={size}
-                  disabled={busy}
-                  onClick={() => cameraRef.current?.click()}
-                >
-                  Take photo
-                </Button>
+                {scanner ? (
+                  <Button ref={cameraRetryRef} variant="secondary" size={size} disabled={busy} onClick={() => setCameraError(null)}>
+                    Try camera again
+                  </Button>
+                ) : (
+                  <Button variant="secondary" size={size} disabled={busy} onClick={() => cameraRef.current?.click()}>
+                    Take photo
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   size={size}
@@ -489,15 +530,25 @@ export function CaptureField({
               </div>
             </div>
           ) : (
-            <div className="relative overflow-hidden rounded-md bg-black">
+            <div
+              ref={cameraPanelRef}
+              {...(scanner ? { role: 'dialog' as const, 'aria-modal': true, 'aria-label': `Scan ${label}`, onKeyDown: onCameraKeyDown } : {})}
+              className={scanner ? 'fixed inset-0 z-[60] overflow-hidden bg-black' : 'relative overflow-hidden rounded-md bg-black'}
+            >
               <video
                 ref={videoRef}
                 data-testid={`${id}-viewfinder`}
                 autoPlay
                 playsInline
                 muted
-                className="aspect-[3/4] w-full object-contain sm:aspect-[4/3]"
+                className={scanner ? 'h-dvh w-full object-contain' : 'aspect-[3/4] w-full object-contain sm:aspect-[4/3]'}
               />
+              {scanner && (
+                <div className="absolute inset-x-4 top-4 flex items-start justify-between gap-4 pt-[env(safe-area-inset-top)] text-white">
+                  <Button ref={cameraBackRef} variant="ghost" size="field" onClick={leaveCamera} className="bg-black/60 text-white">Back</Button>
+                  <p className="rounded-sm bg-black/60 px-3 py-2 text-right text-sm">Scan {label}</p>
+                </div>
+              )}
               {scanner && outline && (
                 <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${videoSize.width} ${videoSize.height}`} preserveAspectRatio="xMidYMid meet">
                   <polygon points={outline.map(({ x, y }) => `${x},${y}`).join(' ')} fill="none" stroke={holdProgress > 0 ? '#42d39a' : '#fbbf24'} strokeWidth={Math.max(3, videoSize.width / 180)} />
@@ -513,7 +564,7 @@ export function CaptureField({
                 {scanner ? scanStatus : 'Align the sheet inside the frame'}
               </p>
               {scanner && <div role="progressbar" aria-label="Steady hold" aria-valuenow={Math.round(holdProgress * 100)} aria-valuemin={0} aria-valuemax={100} className="absolute inset-x-6 bottom-16 h-1 rounded-pill bg-white/40"><div className="h-full bg-accent" style={{ width: `${holdProgress * 100}%` }} /></div>}
-              <div className="absolute inset-x-0 bottom-4 flex items-center justify-center gap-6">
+              <div className="absolute inset-x-0 bottom-4 flex items-center justify-center gap-6 pb-[env(safe-area-inset-bottom)]">
                 {torchAvailable && (
                   <Button
                     variant="ghost"
@@ -525,14 +576,16 @@ export function CaptureField({
                     {torchOn ? 'Light off' : 'Light on'}
                   </Button>
                 )}
-                <button
-                  type="button"
-                  data-testid={`${id}-shutter`}
-                  onClick={shoot}
-                  disabled={busy || !live || takingRef.current}
-                  aria-label="Take the photo"
-                  className="h-16 w-16 rounded-full border-4 border-accent bg-white disabled:opacity-50"
-                />
+                {!scanner && (
+                  <button
+                    type="button"
+                    data-testid={`${id}-shutter`}
+                    onClick={shoot}
+                    disabled={busy || !live || takingRef.current}
+                    aria-label="Take the photo"
+                    className="h-16 w-16 rounded-full border-4 border-accent bg-white disabled:opacity-50"
+                  />
+                )}
                 <Button
                   variant="ghost"
                   size="field"

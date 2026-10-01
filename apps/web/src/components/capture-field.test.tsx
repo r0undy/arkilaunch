@@ -150,6 +150,28 @@ describe('CaptureField', () => {
     expect(track.stop).toHaveBeenCalled();
   });
 
+  it('gives KYC a full-screen automatic camera without a shutter', async () => {
+    scanner.load.mockReturnValue(new Promise(() => undefined));
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D);
+    const track = { stop: vi.fn(), getCapabilities: () => ({}) };
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track], getVideoTracks: () => [track] }) },
+    });
+    renderField({ scanner: true });
+
+    const camera = await screen.findByTestId('scanFile-viewfinder');
+    expect(camera).toHaveClass('h-dvh');
+    expect(screen.getByRole('dialog', { name: 'Scan Photo of the sheet' })).toBeInTheDocument();
+    expect(screen.queryByTestId('scanFile-shutter')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose a file' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Back' })).toHaveFocus());
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(track.stop).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Try camera again' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Take photo' })).not.toBeInTheDocument();
+  });
+
   it('reads a selected KYC PDF automatically', async () => {
     const prepared = new File(['pdf'], 'accepted.pdf', { type: 'application/pdf' });
     prepareUpload.mockResolvedValue(prepared);
