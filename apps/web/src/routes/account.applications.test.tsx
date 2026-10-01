@@ -82,6 +82,7 @@ describe('Company Applications', () => {
     const { unmount } = await renderApplications('/account/companies/new', []);
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const dialog = screen.getByRole('dialog', { name: 'Add a company' });
+    expect(dialog).not.toHaveClass('h-dvh');
     await userEvent.click(within(dialog).getByRole('combobox', { name: 'ID type' }));
     await userEvent.click(screen.getByRole('option', { name: /Philippine National ID/ }));
     await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
@@ -99,9 +100,10 @@ describe('Company Applications', () => {
     await userEvent.click(within(dialog).getByRole('combobox', { name: 'ID type' }));
     await userEvent.click(screen.getByRole('option', { name: /Philippine National ID/ }));
     await userEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
+    expect(dialog).toHaveClass('h-dvh');
     await userEvent.upload(within(dialog).getByTestId('doc-government_id-file'), new File(['%PDF'], 'id.pdf', { type: 'application/pdf' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Use file' }));
     await waitFor(() => expect(within(dialog).getByRole('textbox', { name: /First name/ })).toBeInTheDocument());
+    expect(dialog).not.toHaveClass('h-dvh');
     await userEvent.type(within(dialog).getByRole('textbox', { name: /First name/ }), 'Juan');
     await userEvent.type(within(dialog).getByRole('textbox', { name: /Last name/ }), 'Dela Cruz');
     await userEvent.type(within(dialog).getByRole('textbox', { name: /PCN/ }), '1234-5678-9012-3456');
@@ -111,10 +113,12 @@ describe('Company Applications', () => {
     await userEvent.click(within(dialog).getByRole('combobox', { name: 'Registration type' }));
     await userEvent.click(screen.getByRole('option', { name: 'SEC Certificate of Incorporation' }));
     await userEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
+    expect(dialog).toHaveClass('h-dvh');
     await userEvent.upload(within(dialog).getByTestId('doc-company_registration-file'), new File(['%PDF'], 'sec.pdf', { type: 'application/pdf' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Use file' }));
     await waitFor(() => expect(within(dialog).getByText('Step 6 of 7')).toBeInTheDocument());
+    expect(dialog).toHaveClass('h-dvh');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Skip for now' }));
+    expect(dialog).not.toHaveClass('h-dvh');
     expect(within(dialog).getByText('Step 7 of 7')).toBeInTheDocument();
     expect(within(dialog).getByRole('textbox', { name: /Company name/ })).toBeInTheDocument();
     expect(within(dialog).queryByRole('textbox', { name: 'TIN' })).not.toBeInTheDocument();
@@ -136,10 +140,8 @@ describe('Company Applications', () => {
     await userEvent.click(screen.getByRole('option', { name: 'BIR Certificate of Registration (Form 2303)' }));
     await userEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
     await userEvent.upload(within(dialog).getByTestId('doc-company_registration-file'), new File(['%PDF'], 'bir.pdf', { type: 'application/pdf' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Use file' }));
     await waitFor(() => expect(within(dialog).getByTestId('doc-dti_certificate-file')).toBeInTheDocument());
     await userEvent.upload(within(dialog).getByTestId('doc-dti_certificate-file'), new File(['%PDF'], 'dti.pdf', { type: 'application/pdf' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Use file' }));
     expect(within(dialog).getByRole('textbox', { name: /DTI business name number/ })).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Back' }));
     await userEvent.click(within(dialog).getByRole('button', { name: 'Back' }));
@@ -158,6 +160,8 @@ describe('Company Applications', () => {
     await userEvent.click(screen.getByRole('option', { name: /Philippine National ID/ }));
     await userEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
     await userEvent.upload(within(dialog).getByTestId('doc-government_id-file'), new File(['%PDF'], 'id.pdf', { type: 'application/pdf' }));
+    await waitFor(() => expect(within(dialog).getByText('Check the details on your ID.')).toBeInTheDocument());
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Back' }));
     await userEvent.click(within(dialog).getByRole('button', { name: 'Back' }));
     await userEvent.click(within(dialog).getByRole('combobox', { name: 'ID type' }));
     await userEvent.click(screen.getByRole('option', { name: 'Philippine passport' }));

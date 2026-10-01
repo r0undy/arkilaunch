@@ -5,10 +5,16 @@ import { CaptureField } from './capture-field.js';
 import { UploadPrepareError } from '../lib/image-compression.js';
 
 const prepareUpload = vi.hoisted(() => vi.fn());
+const scanner = vi.hoisted(() => ({ load: vi.fn(), analyze: vi.fn(), straighten: vi.fn() }));
 
 vi.mock('../lib/image-compression.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/image-compression.js')>();
   return { ...actual, prepareUpload };
+});
+
+vi.mock('../lib/document-scanner.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/document-scanner.js')>();
+  return { ...actual, loadDocumentScanner: scanner.load, analyzeDocument: scanner.analyze, straightenDocument: scanner.straighten };
 });
 
 function photo(name = 'photo.jpg', type = 'image/jpeg'): File {
@@ -31,6 +37,8 @@ function renderField(overrides: Partial<React.ComponentProps<typeof CaptureField
 
 beforeEach(() => {
   prepareUpload.mockReset();
+  scanner.load.mockReset(); scanner.analyze.mockReset(); scanner.straighten.mockReset();
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: undefined });
   // jsdom defines neither of these, so they are added to the real URL object
   // rather than swapped in as a whole new global, which would lose the rest of
   // URL during React's unmount cleanup.
@@ -40,6 +48,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('CaptureField', () => {
@@ -141,18 +150,35 @@ describe('CaptureField', () => {
     expect(track.stop).toHaveBeenCalled();
   });
 
-  it('holds a KYC PDF for review and reads it only after acceptance', async () => {
+  it('reads a selected KYC PDF automatically', async () => {
     const prepared = new File(['pdf'], 'accepted.pdf', { type: 'application/pdf' });
     prepareUpload.mockResolvedValue(prepared);
     const onAccepted = vi.fn();
     const { onChange } = renderField({ scanner: true, onAccepted, accept: 'image/*,application/pdf' });
     await userEvent.upload(screen.getByTestId('scanFile-file'), new File(['pdf'], 'registration.pdf', { type: 'application/pdf' }));
-    expect(onChange).not.toHaveBeenCalled();
-    expect(onAccepted).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: 'Use file' }));
     await waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(1));
     expect(onAccepted).toHaveBeenCalledWith(prepared);
     expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(prepared);
+  });
+
+  it('straightens and reads a clear selected KYC photo without a Use scan click', async () => {
+    const corrected = photo('straightened.jpg');
+    const prepared = photo('prepared.jpg');
+    prepareUpload.mockResolvedValue(prepared);
+    scanner.load.mockResolvedValue({});
+    scanner.analyze.mockReturnValue({ quality: 'ready', corners: [{ x: 10, y: 10 }, { x: 90, y: 10 }, { x: 90, y: 90 }, { x: 10, y: 90 }] });
+    scanner.straighten.mockResolvedValue(corrected);
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 100, height: 100, close: vi.fn() }));
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn(), getImageData: vi.fn().mockReturnValue({}) } as unknown as CanvasRenderingContext2D);
+    const onAccepted = vi.fn();
+    const { onChange } = renderField({ scanner: true, onAccepted });
+
+    await userEvent.upload(screen.getByTestId('scanFile-file'), photo());
+
+    await waitFor(() => expect(onAccepted).toHaveBeenCalledWith(prepared));
+    expect(scanner.straighten).toHaveBeenCalled();
+    expect(prepareUpload).toHaveBeenCalledWith(corrected, undefined);
     expect(onChange).toHaveBeenCalledWith(prepared);
   });
 });
