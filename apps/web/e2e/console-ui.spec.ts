@@ -8,7 +8,7 @@ test.describe('console design pass', () => {
     await signIn(page);
 
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
-    await expect(page.getByText('Deposit deducted')).toBeVisible();
+    await expect(page.getByText('Invoiced', { exact: true })).toBeVisible();
 
     // One secondary queue is visible; switching tabs swaps it.
     const payments = page.getByRole('tab', { name: 'Payments' });

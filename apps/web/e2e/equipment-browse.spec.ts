@@ -4,11 +4,8 @@ import { openSidebar, sidebarLink } from './sidebar.js';
 
 // Needs the seeded anchor tenant (`pnpm db:seed`) and the API running.
 
-// The rail appears at xl (1280); the sidebar collapses into a drawer below lg
-// (1024). Two different thresholds, so the specs name them separately rather
-// than sharing one "is this a phone" flag.
+// The sidebar collapses into a drawer below lg (1024).
 const isNarrow = (page: Page) => (page.viewportSize()?.width ?? 1440) < 1024;
-const hasRail = (page: Page) => (page.viewportSize()?.width ?? 1440) >= 1280;
 
 async function addFirstMachine(page: Page) {
   await page.goto('/equipment');
@@ -54,28 +51,16 @@ test.describe('equipment browsing', () => {
     await expect(page.getByRole('link', { name: /^Cart, \d+ items$/ })).toBeVisible();
   });
 
-  test('weather sits beside the catalog when there is room, and under it when there is not', async ({
+  test('weather insights open from the catalog on desktop and mobile', async ({
     page,
   }) => {
     await signInAsCustomer(page);
     await page.goto('/equipment');
 
-    // Present either way -- the point of stacking rather than hiding is that
-    // a narrow screen still gets the forecast.
-    const panel = page.getByRole('complementary', { name: 'Weather insights' });
-    await expect(panel).toBeVisible();
-
-    const heading = page.getByRole('heading', { name: 'Browse equipment', level: 1 });
-    // Visible above, so both boxes exist.
-    const panelBox = (await panel.boundingBox())!;
-    const headingBox = (await heading.boundingBox())!;
-    if (hasRail(page)) {
-      // Top right: to the right of the heading and level with it, not below.
-      expect(panelBox.x).toBeGreaterThan(headingBox.x);
-      expect(panelBox.y).toBeLessThan(headingBox.y + 120);
-    } else {
-      expect(panelBox.y).toBeGreaterThan(headingBox.y);
-    }
+    const weather = page.getByRole('button', { name: /Weather insights/ });
+    await expect(weather).toBeVisible();
+    await weather.click();
+    await expect(page.getByRole('dialog', { name: 'Weather insights' })).toBeVisible();
   });
 
   test('the skip link is the first tab stop and becomes visible when focused', async ({ page }) => {
