@@ -15,7 +15,6 @@ import {
 } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
 import { ApplicationsPage } from './account.applications.js';
-import { prepareUpload } from '../lib/image-compression.js';
 import { companyStatusLabel } from '../lib/cart-validation.js';
 import { apiErrorText, apiPost, apiPostForm } from '../lib/api-client.js';
 import { companiesQueries } from '../lib/queries.js';

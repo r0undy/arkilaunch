@@ -47,6 +47,7 @@ test.describe('company documents', () => {
     const type = page.getByLabel('Registration type');
     await type.click();
     await expect(page.getByRole('option')).toHaveText([
+      'Choose a registration document',
       'BIR Certificate of Registration (Form 2303)',
       'SEC Certificate of Incorporation',
     ]);

@@ -279,10 +279,10 @@ describe('Customer onboarding', () => {
       companies.createSite(seededCustomerCtx, {
         customerId: mine.id,
         line1: 'x st',
-        city: 'Cebu',
-        province: 'Cebu',
-        latitude: 10.3,
-        longitude: 123.9,
+        city: 'Pasig',
+        province: 'Metro Manila',
+        latitude: 14.57,
+        longitude: 121.08,
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect((await companies.listCompanies(seededCustomerCtx)).map((c) => c.id)).not.toContain(
