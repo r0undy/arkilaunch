@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
 import { signIn, TENANT_HEADERS } from './sign-in.js';
 import { choose } from './select.js';
 
@@ -81,10 +81,25 @@ async function logInCustomer(page: Page) {
   await page.waitForLoadState('networkidle');
 }
 
+async function finishScan(page: Page, next: Locator, adjustCorners = false) {
+  const use = page.getByRole('button', { name: /Use scan|Use original photo/ });
+  const reviewReady = async () => (await use.isVisible()) && (await use.isEnabled());
+  await expect.poll(async () => (await next.isVisible()) || (await reviewReady()), { timeout: 60_000 }).toBe(true);
+  if (await reviewReady()) {
+    if (adjustCorners) {
+      await page.getByRole('button', { name: 'Adjust corners' }).click();
+      await expect(page.getByRole('button', { name: 'Document corner 1' })).toBeVisible();
+      await page.getByRole('button', { name: 'Apply corners' }).click();
+    }
+    await use.click();
+  }
+  await expect(next).toBeVisible({ timeout: 60_000 });
+}
+
 test.describe.serial('KYC review: crop, ID check, per-document fields, registry-gated verify', () => {
   test.setTimeout(180_000);
 
-  test('customer crops the ID, checks its details, and sees only the fields their papers carry', async ({
+  test('customer scans the ID, checks its details, and sees only the fields their papers carry', async ({
     page,
     browser,
   }) => {
@@ -118,15 +133,11 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     await choose(page.getByLabel('ID type'), 'philsys');
     await page.getByRole('button', { name: 'Continue' }).click();
 
-    // The scanner lets the customer review and adjust the detected edges.
+    // A clear image reads automatically; uncertain edges keep corner adjustment available.
     await page.getByTestId('doc-government_id-file').setInputFiles(file('id.png', idPng));
-    await page.getByRole('button', { name: 'Adjust corners' }).click();
-    await expect(page.getByRole('button', { name: 'Document corner 1' })).toBeVisible();
-    await page.getByRole('button', { name: 'Apply corners' }).click();
+    await finishScan(page, page.getByText('Step 3 of 7'), true);
 
     // Step 2: the customer checks the ID details before going on.
-    await page.getByRole('button', { name: /Use scan|Use original photo/ }).click();
-    await expect(page.getByText('Step 3 of 7')).toBeVisible({ timeout: 60_000 });
     const pcn = page.getByLabel(/PCN/);
     const first = page.getByLabel('First name');
     const last = page.getByLabel('Last name');
@@ -155,11 +166,11 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     await expect(page.getByText('Step 4 of 7')).toBeVisible();
     await choose(page.getByLabel('Registration type'), 'sec_certificate');
     await page.getByRole('button', { name: 'Continue' }).click();
-    // Company papers use the same review before OCR starts.
+    // Company papers also advance automatically when the scan is clear.
     await page.getByTestId('doc-company_registration-file').setInputFiles(file('sec.png', secPng));
-    await page.getByRole('button', { name: /Use scan|Use original photo/ }).click();
+    await finishScan(page, page.getByText('Step 6 of 7'));
     await page.getByTestId('doc-dti_certificate-file').setInputFiles(file('dti.png', dtiPng));
-    await page.getByRole('button', { name: /Use scan|Use original photo/ }).click();
+    await finishScan(page, page.getByLabel('Company name'));
 
     // Only the numbers these papers print: no TIN without a 2303.
     await expect(page.getByLabel('Company name')).toBeVisible({ timeout: 60_000 });
