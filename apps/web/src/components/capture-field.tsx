@@ -398,7 +398,7 @@ export function CaptureField({
               {pending.type === 'application/pdf' ? (
                 <p className="text-sm text-text-muted">{pending.name} ready to read.</p>
               ) : (
-                <div className="relative mx-auto w-full max-w-xl overflow-hidden rounded-md bg-black" style={{ aspectRatio: sourceRef.current ? `${sourceRef.current.width} / ${sourceRef.current.height}` : undefined }}>
+                <div className="relative mx-auto w-full max-w-4xl overflow-hidden rounded-md bg-black" style={{ aspectRatio: sourceRef.current ? `${sourceRef.current.width} / ${sourceRef.current.height}` : undefined }}>
                   {reviewPreview && <img src={reviewPreview} alt={adjusting ? 'Adjust the document corners' : 'Document scan to review'} className="h-full w-full object-contain" />}
                   {adjusting && corners && sourceRef.current && corners.map((corner, index) => (
                     <button

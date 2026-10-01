@@ -34,6 +34,11 @@ describe('Modal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('fills the viewport for document capture', () => {
+    render(<Modal open size="full" onClose={() => undefined} title="Scan your ID"><p>Camera</p></Modal>);
+    expect(screen.getByRole('dialog', { name: 'Scan your ID' })).toHaveClass('h-dvh', 'max-w-none');
+  });
+
   it('keeps a busy dialog open', async () => {
     const onClose = vi.fn();
     render(

@@ -698,7 +698,7 @@ function NewCompanyPage() {
         open
         onClose={close}
         closeDisabled={busy}
-        size="xl"
+        size={documentStage || stage === 'dti_certificate' ? 'full' : 'xl'}
         title="Add a company"
         description={prompts[stage]}
         footer={
@@ -745,7 +745,7 @@ function NewCompanyPage() {
           </>
         }
       >
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+        <div className={`mx-auto flex w-full flex-col gap-5 ${documentStage || stage === 'dti_certificate' ? 'max-w-6xl' : 'max-w-3xl'}`}>
         <div role="progressbar" aria-label="Company setup progress" aria-valuenow={stepNumber} aria-valuemin={1} aria-valuemax={activeSteps.length} className="h-1 overflow-hidden rounded-pill bg-surface-sunk">
           <div className="h-full bg-accent transition-[width] duration-[180ms]" style={{ width: `${stepNumber / activeSteps.length * 100}%` }} />
         </div>

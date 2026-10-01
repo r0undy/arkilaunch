@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
-export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
+export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
 
 export interface ModalProps {
   open: boolean;
@@ -22,6 +22,7 @@ const SIZE_CLASSES: Record<ModalSize, string> = {
   md: 'max-w-xl',
   lg: 'max-w-3xl',
   xl: 'max-w-5xl',
+  full: 'max-w-none',
 };
 
 const FOCUSABLE =
@@ -48,6 +49,7 @@ export function Modal({
   placement = 'center',
   role = 'dialog',
 }: ModalProps) {
+  const fullScreen = size === 'full' && placement === 'center';
   const panel = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const foot = useRef<HTMLDivElement>(null);
@@ -114,6 +116,8 @@ export function Modal({
       className={
  placement ==='right'
           ? 'fixed inset-0 z-40 flex justify-end'
+          : fullScreen
+            ? 'fixed inset-0 z-40 flex p-0'
           : 'fixed inset-0 z-40 flex items-end justify-center p-0 sm:items-center sm:p-4'
       }
     >
@@ -132,6 +136,8 @@ export function Modal({
         className={[
  placement ==='right'
             ? 'relative flex h-dvh w-full flex-col border-l border-border bg-surface shadow-lg'
+            : fullScreen
+              ? 'relative flex h-dvh w-full flex-col bg-surface shadow-lg'
             : 'relative flex max-h-[90dvh] w-full flex-col rounded-t-md border border-border bg-surface shadow-lg sm:rounded-md',
           SIZE_CLASSES[size],
         ].join(' ')}
