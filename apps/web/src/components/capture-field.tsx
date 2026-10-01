@@ -197,7 +197,7 @@ export function CaptureField({
     return () => { cancelled = true; if (timer) clearTimeout(timer); holdStartRef.current = null; lastCornersRef.current = null; };
   }, [scanner, live, value, pending]);
 
-  async function beginReview(file: File, source?: HTMLCanvasElement, detected?: ScanCorners) {
+  async function beginReview(file: File, source?: HTMLCanvasElement, detected?: ScanCorners, autoAccept = false) {
     const reviewId = ++reviewIdRef.current;
     sourceRef.current = source ?? null;
     setCorners(detected ?? (source ? [
@@ -209,13 +209,20 @@ export function CaptureField({
     setPending(file);
     setCorrected(null);
     setAdjusting(false);
-    setReviewing(false);
+    setReviewing(autoAccept);
     if (source && detected) {
       try {
         const straightened = await straightenDocument(source, detected);
-        if (reviewId === reviewIdRef.current) setCorrected(straightened);
+        if (reviewId !== reviewIdRef.current) return;
+        setCorrected(straightened);
+        if (autoAccept) await acceptReview(straightened);
       }
-      catch { setScanStatus('Could not straighten this photo. Adjust it or use the original.'); }
+      catch {
+        if (reviewId === reviewIdRef.current) {
+          setReviewing(false);
+          setScanStatus('Could not straighten this photo. Adjust it or use the original.');
+        }
+      }
     }
   }
 
@@ -223,7 +230,7 @@ export function CaptureField({
     setProblem(null);
     if (scanner) {
       setPreparing(true);
-      if (picked.type === 'application/pdf') { await beginReview(picked); setPreparing(false); return; }
+      if (picked.type === 'application/pdf') { await acceptReview(picked); setPreparing(false); return; }
       try {
         const bitmap = await createImageBitmap(picked, { imageOrientation: 'from-image' });
         try {
@@ -235,6 +242,7 @@ export function CaptureField({
           if (!context) throw new Error('Canvas unavailable');
           context.drawImage(bitmap, 0, 0, source.width, source.height);
           let detected: ScanCorners | undefined;
+          let clear = false;
           try {
             const cv = await loadDocumentScanner();
             const sample = document.createElement('canvas');
@@ -244,9 +252,12 @@ export function CaptureField({
             const sampleContext = sample.getContext('2d', { willReadFrequently: true });
             sampleContext?.drawImage(source, 0, 0, sample.width, sample.height);
             const found = sampleContext && analyzeDocument(cv, sampleContext.getImageData(0, 0, sample.width, sample.height));
-            if (found) detected = found.corners.map(({ x, y }) => ({ x: x / sampleScale, y: y / sampleScale })) as ScanCorners;
+            if (found) {
+              detected = found.corners.map(({ x, y }) => ({ x: x / sampleScale, y: y / sampleScale })) as ScanCorners;
+              clear = found.quality === 'ready';
+            }
           } catch { /* Manual correction stays available when vision fails. */ }
-          await beginReview(picked, source, detected);
+          await beginReview(picked, source, detected, clear);
         } finally { bitmap.close?.(); }
       } catch (error) {
         setProblem(describeUploadProblem(error));
@@ -294,8 +305,7 @@ export function CaptureField({
     }
     stopCamera();
     const file = new File([blob], `document-${Date.now()}.jpg`, { type: 'image/jpeg' });
-    if (scanner) await beginReview(file, canvas);
-    else await hand(file);
+    await hand(file);
   }
   captureRef.current = (detected) => {
     const video = videoRef.current;
@@ -305,7 +315,7 @@ export function CaptureField({
     canvas.getContext('2d')?.drawImage(video, 0, 0);
     stopCamera();
     void new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.95)).then((blob) => {
-      if (blob) void beginReview(new File([blob], `document-${Date.now()}.jpg`, { type: 'image/jpeg' }), canvas, detected);
+      if (blob) void beginReview(new File([blob], `document-${Date.now()}.jpg`, { type: 'image/jpeg' }), canvas, detected, true);
     });
   };
 
@@ -417,7 +427,7 @@ export function CaptureField({
                   ))}
                 </div>
               )}
-              <p role="status" className="text-sm text-text-muted">{adjusting ? 'Drag the four corners to the edges of the document, then apply them.' : corrected ? 'Check that the whole document is visible and the text is clear.' : 'No clear document edges were found. Adjust the corners or use the original photo.'}</p>
+              <p role="status" className="text-sm text-text-muted">{reviewing ? 'Preparing the scan automatically…' : adjusting ? 'Drag the four corners to the edges of the document, then apply them.' : corrected ? 'Check that the whole document is visible and the text is clear.' : 'No clear document edges were found. Adjust the corners or use the original photo.'}</p>
               <div className="flex flex-wrap gap-2">
                 {adjusting ? (
                   <Button variant="primary" disabled={busy} onClick={() => void applyCorners()}>Apply corners</Button>

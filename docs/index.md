@@ -90,6 +90,7 @@ Every material change to a Locked document is recorded as a Change Record. Newes
 
 | CR ID | Date | Summary | Trigger doc | Docs touched | File |
 |-------|------|---------|-------------|--------------|------|
+| cr-arkilaunch-kyc-auto-read | 2026-10-01 | Clear KYC captures and selected files proceed to OCR automatically; uncertain images keep manual review | Owner scan automation request | DSD §4 | [cr-arkilaunch-kyc-auto-read.md](cr-arkilaunch-kyc-auto-read.md) |
 | cr-arkilaunch-kyc-auto-document-scan | 2026-10-01 | KYC camera detects and straightens documents after a steady hold; selected images get correction and review before OCR | Owner KYC capture request | DSD §4; DESIGN.md | [cr-arkilaunch-kyc-auto-document-scan.md](cr-arkilaunch-kyc-auto-document-scan.md) |
 | cr-arkilaunch-customer-company-wizard | 2026-10-01 | Customer Add company modal becomes a guided wizard with explicit document choices and a separate optional DTI step | Owner onboarding request | DSD §4; DESIGN.md | [cr-arkilaunch-customer-company-wizard.md](cr-arkilaunch-customer-company-wizard.md) |
 | cr-arkilaunch-truck-panel-reveal | 2026-09-30 | Truck map starts at the saved project site and displays its uploaded photo, or starts at current location; trip details opens as a closable dialog after both pins, and map scrolling no longer shows the Ctrl prompt | Owner truck map interaction request | SDD §4; DSD §4; DESIGN.md | [cr-arkilaunch-truck-panel-reveal.md](cr-arkilaunch-truck-panel-reveal.md) |
