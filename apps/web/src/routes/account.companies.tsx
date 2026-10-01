@@ -14,7 +14,7 @@ import {
   type PrimaryRegistrationType,
 } from '@arkilaunch/shared';
 import { accountLayoutRoute } from './_account.js';
-import { prepareUpload } from '../lib/image-compression.js';
+import { ApplicationsPage } from './account.applications.js';
 import { companyStatusLabel } from '../lib/cart-validation.js';
 import { apiErrorText, apiPost, apiPostForm } from '../lib/api-client.js';
 import { companiesQueries } from '../lib/queries.js';
@@ -31,6 +31,7 @@ import { IdCropDialog } from '../components/id-crop-dialog.js';
 import { Skeleton } from '../components/skeleton.js';
 import { useToast } from '../components/toast.js';
 import { Select } from '../components/select.js';
+import { Modal } from '../components/modal.js';
 
 export interface IdDetails {
   idType: PhIdTypeCode;
@@ -89,8 +90,11 @@ async function uploadDocuments(
 }
 
 export type DocStep = 'government_id' | 'company_registration';
-type WizardStep = DocStep | 'id_details' | 'details';
-const WIZARD_STEPS: readonly WizardStep[] = ['government_id', 'id_details', 'company_registration', 'details'];
+type WizardStep = DocStep | 'id_type' | 'id_details' | 'registration_type' | 'dti_certificate' | 'details';
+const WIZARD_STEPS: readonly WizardStep[] = [
+  'id_type', 'government_id', 'id_details', 'registration_type',
+  'company_registration', 'dti_certificate', 'details',
+];
 
 export const DOC_STEPS: { type: DocStep; label: string; hint: string }[] = [
   {
@@ -115,16 +119,21 @@ function CroppableCapture({
   label,
   value,
   onChange,
+  smartScan = false,
+  onAccepted,
 }: {
   id: string;
   label: string;
   value: File | null;
   onChange: (file: File | null) => void;
+  smartScan?: boolean;
+  onAccepted?: ((file: File) => void) | undefined;
 }) {
   const [original, setOriginal] = useState<File | null>(null);
   const [cropping, setCropping] = useState(false);
 
   function onPick(file: File | null) {
+    if (smartScan) { onChange(file); return; }
     const image = file?.type.startsWith('image/') ? file : null;
     setOriginal(image);
     onChange(file);
@@ -133,15 +142,15 @@ function CroppableCapture({
 
   return (
     <>
-      <CaptureField id={id} label={label} accept="image/*,application/pdf" value={value} onChange={onPick} />
-      {original && value && (
+      <CaptureField id={id} label={label} accept="image/*,application/pdf" value={value} onChange={onPick} scanner={smartScan} onAccepted={onAccepted} />
+      {!smartScan && original && value && (
         <div>
           <Button type="button" variant="secondary" onClick={() => setCropping(true)}>
             Crop again
           </Button>
         </div>
       )}
-      {cropping && original && (
+      {!smartScan && cropping && original && (
         <IdCropDialog
           file={original}
           onCancel={() => setCropping(false)}
@@ -165,6 +174,11 @@ function DocumentStep({
   onDtiChange,
   showPrimary = true,
   showDti = true,
+  showTypeChoice = true,
+  showHint = true,
+  smartScan = false,
+  onAccepted,
+  onDtiAccepted,
   idType,
   onIdTypeChange,
 }: {
@@ -177,6 +191,11 @@ function DocumentStep({
   onDtiChange: (file: File | null) => void;
   showPrimary?: boolean;
   showDti?: boolean;
+  showTypeChoice?: boolean;
+  showHint?: boolean;
+  smartScan?: boolean;
+  onAccepted?: ((file: File) => void) | undefined;
+  onDtiAccepted?: ((file: File) => void) | undefined;
   idType?: PhIdTypeCode;
   onIdTypeChange?: (type: PhIdTypeCode) => void;
 }) {
@@ -185,8 +204,8 @@ function DocumentStep({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm text-text-muted">{step.hint}</p>
-      {isRegistration && showPrimary && (
+      {showHint && <p className="text-sm text-text-muted">{step.hint}</p>}
+      {isRegistration && showPrimary && showTypeChoice && (
         <Select
           label="Document type"
           id="registration-type"
@@ -215,6 +234,8 @@ function DocumentStep({
           label={isRegistration ? DOC_LABELS[registrationType]! : idLabel}
           value={value}
           onChange={onChange}
+          smartScan={smartScan}
+          onAccepted={onAccepted}
         />
       )}
       {isRegistration && showDti && (
@@ -223,6 +244,8 @@ function DocumentStep({
           label="DTI Business Name certificate (secondary, optional)"
           value={dti}
           onChange={onDtiChange}
+          smartScan={smartScan}
+          onAccepted={onDtiAccepted}
         />
       )}
     </div>
@@ -287,17 +310,22 @@ function IdReviewStep({
   onChange,
   onBack,
   onConfirm,
+  footerActions = false,
+  showStepHint = true,
 }: {
   scan: IdScan;
   value: IdDetails;
   onChange: (value: IdDetails) => void;
   onBack: () => void;
   onConfirm: () => void;
+  footerActions?: boolean;
+  showStepHint?: boolean;
 }) {
   const set = (patch: Partial<IdDetails>) => onChange({ ...value, ...patch });
   const card = PH_ID_TYPES[value.idType];
   return (
     <form
+      id={footerActions ? 'company-id-review' : undefined}
       className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
@@ -305,8 +333,7 @@ function IdReviewStep({
       }}
     >
       <p className="text-sm text-text-muted">
-        Step 2 of 3. Check your {card.label} details. The rental team compares them with the card
-        before verifying.
+        {showStepHint ? 'Step 2 of 3. ' : ''}Check your {card.label} details. The rental team compares them with the card before verifying.
       </p>
       <p role="status" className="text-sm text-text-muted">
         {scan.read
@@ -379,14 +406,14 @@ function IdReviewStep({
         value={value.address}
         onChange={(e) => set({ address: e.target.value })}
       />
-      <div className="flex flex-wrap gap-2">
+      {!footerActions && <div className="flex flex-wrap gap-2">
         <Button type="submit" variant="primary">
           Next: company registration
         </Button>
         <Button type="button" variant="ghost" onClick={onBack}>
           Retake ID
         </Button>
-      </div>
+      </div>}
     </form>
   );
 }
@@ -401,11 +428,11 @@ function useDocumentCapture() {
   const [scanning, setScanning] = useState(false);
   // A paper the scan could not read stops the wizard on its step until it is retaken.
   const [scanRejected, setScanRejected] = useState<string | null>(null);
-  async function scanGovernmentId(): Promise<boolean> {
-    if (!governmentId) return false;
+  async function scanGovernmentId(file = governmentId): Promise<boolean> {
+    if (!file) return false;
     setScanning(true);
     setScanRejected(null);
-    const scan = await scanId(governmentId, idDetails.idType);
+    const scan = await scanId(file, idDetails.idType);
     setScanning(false);
     if (scan.available && !scan.read) {
       setGovernmentId(null);
@@ -421,7 +448,7 @@ function useDocumentCapture() {
     setScanRejected(`This doesn't look like a ${DOC_LABELS[registrationType]}. Upload a clear photo of the whole page.`);
   }
   return {
-    governmentId, setGovernmentId, idDetails, setIdDetails, idScan, registration, setRegistration,
+    governmentId, setGovernmentId, idDetails, setIdDetails, idScan, setIdScan, registration, setRegistration,
     registrationType, setRegistrationType, dti, setDti, scanning, setScanning, scanGovernmentId,
     scanRejected, setScanRejected, rejectRegistration,
   };
@@ -438,32 +465,57 @@ function NewCompanyPage() {
   const [billingAddress, setBillingAddress] = useState('');
   const [contactMobile, setContactMobile] = useState('');
   const {
-    governmentId, setGovernmentId, idDetails, setIdDetails, idScan, registration, setRegistration,
+    governmentId, setGovernmentId, idDetails, setIdDetails, idScan, setIdScan, registration, setRegistration,
     registrationType, setRegistrationType, dti, setDti, scanning, setScanning, scanGovernmentId,
     scanRejected, setScanRejected, rejectRegistration,
   } = useDocumentCapture();
+  const [selectedIdType, setSelectedIdType] = useState<PhIdTypeCode | ''>('');
+  const [selectedRegistrationType, setSelectedRegistrationType] = useState<PrimaryRegistrationType | ''>('');
+  const [idTypeConfirmed, setIdTypeConfirmed] = useState(false);
+  const [registrationTypeConfirmed, setRegistrationTypeConfirmed] = useState(false);
+  const [idConfirmed, setIdConfirmed] = useState(false);
+  const [primaryScanned, setPrimaryScanned] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Step lives in the URL so Back/Forward move between steps; the page stays mounted so captures survive.
   const { step: urlStep } = accountCompanyNewRoute.useSearch();
   const setStage = (step: WizardStep) => void navigate({ to: '/account/companies/new', search: { step } });
-  // A reload loses the ID photo and its scan, so the ID step starts over.
-  const chosenStage: WizardStep = urlStep === 'id_details' && !idScan ? 'government_id' : (urlStep ?? 'government_id');
   const submitted = useRef(false);
-  const dirty = Boolean(governmentId || registration || dti || companyName || billingAddress);
+  const exiting = useRef(false);
+  const dirty = Boolean(selectedIdType || selectedRegistrationType || governmentId || registration || dti || companyName || billingAddress || contactMobile || tin || secNumber || dtiNumber);
   useBlocker({
     shouldBlockFn: ({ current, next }) =>
-      !submitted.current &&
+      !submitted.current && !exiting.current &&
       dirty &&
       next.pathname !== current.pathname &&
-      !window.confirm('Leave this application? The documents you captured will be lost.'),
+      !window.confirm('Leave this application? Your progress and captured documents will be lost.'),
     enableBeforeUnload: () => dirty && !submitted.current,
   });
   // The ID is captured once per login: with one on file the ID steps are skipped and the server reuses it.
-  const mine = useQuery(companiesQueries.mine()).data ?? [];
+  const mineQuery = useQuery(companiesQueries.mine());
+  const mine = mineQuery.data ?? [];
   const idOnFile = mine.some((c) => c.documents.some((d) => d.documentType === 'government_id'));
-  const stage = idOnFile && (chosenStage === 'government_id' || chosenStage === 'id_details') ? 'company_registration' : chosenStage;
+  // URL navigation cannot bypass a missing choice, capture, or scan after a reload.
+  const requestedStage = urlStep ?? (idOnFile ? 'registration_type' : 'id_type');
+  const requestedIndex = WIZARD_STEPS.indexOf(requestedStage);
+  const stage: WizardStep = idOnFile && requestedIndex < WIZARD_STEPS.indexOf('registration_type')
+    ? 'registration_type'
+    : !idOnFile && requestedIndex > 0 && !idTypeConfirmed
+      ? 'id_type'
+    : !idOnFile && requestedIndex > 1 && !governmentId
+        ? 'government_id'
+        : !idOnFile && requestedIndex >= 2 && !idScan
+          ? 'government_id'
+        : !idOnFile && requestedIndex > 2 && !idConfirmed
+          ? 'id_details'
+          : requestedIndex > 3 && !registrationTypeConfirmed
+            ? 'registration_type'
+            : requestedIndex > 4 && !registration
+              ? 'company_registration'
+              : requestedIndex > 4 && !primaryScanned
+                ? 'company_registration'
+                : requestedStage;
   const [scanned, setScanned] = useState<boolean | null>(null);
   const [secFromScan, setSecFromScan] = useState(false);
 
@@ -475,16 +527,55 @@ function NewCompanyPage() {
     mine,
   );
 
-  async function checkId() {
-    if (await scanGovernmentId()) setStage('id_details');
+  async function close() {
+    if (busy) return;
+    if (dirty && !window.confirm('Leave this application? Your progress and captured documents will be lost.')) return;
+    exiting.current = true;
+    try {
+      await navigate({ to: '/account/applications', replace: true });
+      document.getElementById('add-company-action')?.focus();
+    } finally {
+      exiting.current = false;
+    }
   }
 
-  async function scanThenEdit() {
+  async function checkId(file?: File) {
+    if (await scanGovernmentId(file)) setStage('id_details');
+  }
+
+  function continueIdType() {
+    if (!selectedIdType) return;
+    if (selectedIdType !== idDetails.idType) {
+      setGovernmentId(null);
+      setIdScan(null);
+      setIdConfirmed(false);
+      setIdDetails({ ...EMPTY_ID, idType: selectedIdType });
+    }
+    setIdTypeConfirmed(true);
+    setStage('government_id');
+  }
+
+  function continueRegistrationType() {
+    if (!selectedRegistrationType) return;
+    if (selectedRegistrationType !== registrationType) {
+      setRegistration(null);
+      setPrimaryScanned(false);
+      setTin('');
+      setSecNumber('');
+      setCompanyName('');
+      setBillingAddress('');
+      setScanned(null);
+      setSecFromScan(false);
+    }
+    setRegistrationType(selectedRegistrationType);
+    setRegistrationTypeConfirmed(true);
+    setStage('company_registration');
+  }
+
+  async function scanRegistration(file = registration) {
+    if (!file) return;
     setScanning(true);
-    const [primary, secondary] = await Promise.all([
-      registration ? scanForSuggestions(registration, registrationType) : null,
-      dti ? scanForSuggestions(dti, 'dti_certificate') : null,
-    ]);
+    const primary = await scanForSuggestions(file, registrationType);
     if (registrationUnreadable(primary)) {
       rejectRegistration();
       setScanning(false);
@@ -492,17 +583,28 @@ function NewCompanyPage() {
     }
     setScanRejected(null);
     const p = primary?.suggestions;
-    const d = secondary?.suggestions;
-    const name = p?.companyName ?? d?.companyName;
-    if (name) setCompanyName(name);
+    if (p?.companyName) setCompanyName(p.companyName);
     if (p?.tin) setTin(p.tin);
     if (p?.secNumber) setSecNumber(p.secNumber);
     setSecFromScan(Boolean(p?.secNumber));
-    if (d?.dtiNumber) setDtiNumber(d.dtiNumber);
-    const address = p?.address ?? d?.address;
-    if (address && !billingAddress) setBillingAddress(address);
-    setScanned(Boolean(name || p?.tin || p?.secNumber || d?.dtiNumber));
+    if (p?.address && !billingAddress) setBillingAddress(p.address);
+    setScanned(Boolean(p?.companyName || p?.tin || p?.secNumber));
+    setPrimaryScanned(true);
     setScanning(false);
+    setStage('dti_certificate');
+  }
+
+  async function finishDti(file = dti) {
+    if (file) {
+      setScanning(true);
+      const secondary = await scanForSuggestions(file, 'dti_certificate');
+      const d = secondary?.suggestions;
+      if (d?.companyName && !companyName) setCompanyName(d.companyName);
+      if (d?.dtiNumber) setDtiNumber(d.dtiNumber);
+      if (d?.address && !billingAddress) setBillingAddress(d.address);
+      if (d?.companyName || d?.dtiNumber) setScanned(true);
+      setScanning(false);
+    }
     setStage('details');
   }
 
@@ -546,83 +648,190 @@ function NewCompanyPage() {
     }
   }
 
-  if (stage === 'id_details' && idScan) {
+  if (!mineQuery.isSuccess) {
     return (
-      <div className="flex flex-col gap-5">
-        <PageHeader title="Add a company" description="Check your ID details." />
-        <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
+      <>
+        <ApplicationsPage />
+        <Modal open onClose={close} size="xl" title="Add a company" description="Checking your company documents.">
+          {mineQuery.isPending ? (
+            <Skeleton label="Loading your company documents" rows={2} />
+          ) : (
+            <Alert type="error" header="Could not load your companies">
+              Check your connection and <Button variant="secondary" onClick={() => void mineQuery.refetch()}>try again</Button>.
+            </Alert>
+          )}
+        </Modal>
+      </>
+    );
+  }
+
+  const reviewingId = stage === 'id_details' && Boolean(idScan);
+  const documentStage = stage === 'government_id' || stage === 'company_registration';
+  const step = documentStage ? DOC_STEPS.find((item) => item.type === stage)! : null;
+  const file = stage === 'government_id' ? governmentId : registration;
+  const setFile = stage === 'government_id' ? setGovernmentId : setRegistration;
+  const prompts: Record<WizardStep, string> = {
+    id_type: 'Which government ID will you use?',
+    government_id: `Photograph your ${PH_ID_TYPES[idDetails.idType].label}.`,
+    id_details: 'Check the details on your ID.',
+    registration_type: 'Which company registration do you have?',
+    company_registration: `Photograph your ${DOC_LABELS[registrationType]}.`,
+    dti_certificate: 'Do you also have a DTI business name certificate?',
+    details: 'Review your company details.',
+  };
+  const activeSteps = idOnFile ? WIZARD_STEPS.slice(3) : WIZARD_STEPS;
+  const stepNumber = activeSteps.indexOf(stage) + 1;
+  const progress = `Step ${stepNumber} of ${activeSteps.length}`;
+  const previous: Partial<Record<WizardStep, WizardStep>> = {
+    government_id: 'id_type',
+    id_details: 'government_id',
+    ...(idOnFile ? {} : { registration_type: 'id_details' as const }),
+    company_registration: 'registration_type',
+    dti_certificate: 'company_registration',
+    details: 'dti_certificate',
+  };
+
+  return (
+    <>
+      <ApplicationsPage />
+      <Modal
+        open
+        onClose={close}
+        closeDisabled={busy}
+        size="xl"
+        title="Add a company"
+        description={prompts[stage]}
+        footer={
+          <>
+            <span className="mr-auto text-sm text-text-muted">{progress}</span>
+            <Button variant="ghost" disabled={busy || scanning} onClick={previous[stage] ? () => setStage(previous[stage]!) : close}>
+              {previous[stage] ? 'Back' : 'Cancel'}
+            </Button>
+            {stage === 'id_type' && (
+              <Button variant="primary" disabled={!selectedIdType} onClick={continueIdType}>Continue</Button>
+            )}
+            {stage === 'government_id' && (
+              <Button
+                variant="primary"
+                disabled={!governmentId || scanning}
+                loading={scanning}
+                onClick={() => void checkId()}
+              >
+                Next: check your ID details
+              </Button>
+            )}
+            {reviewingId && (
+              <Button type="submit" form="company-id-review" variant="primary">Next: registration type</Button>
+            )}
+            {stage === 'registration_type' && (
+              <Button variant="primary" disabled={!selectedRegistrationType} onClick={continueRegistrationType}>Continue</Button>
+            )}
+            {stage === 'company_registration' && (
+              <Button variant="primary" disabled={!registration || scanning} loading={scanning} onClick={() => void scanRegistration()}>
+                Next: optional DTI certificate
+              </Button>
+            )}
+            {stage === 'dti_certificate' && (
+              <>
+                {!dti && <Button variant="primary" onClick={() => setStage('details')}>Skip for now</Button>}
+                {dti && <Button variant="primary" loading={scanning} onClick={() => void finishDti()}>Next: review details</Button>}
+              </>
+            )}
+            {stage === 'details' && (
+              <Button type="submit" form="company-details" variant="primary" loading={busy} disabled={!accepted || Boolean(existing)}>
+                Submit
+              </Button>
+            )}
+          </>
+        }
+      >
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+        <div role="progressbar" aria-label="Company setup progress" aria-valuenow={stepNumber} aria-valuemin={1} aria-valuemax={activeSteps.length} className="h-1 overflow-hidden rounded-pill bg-surface-sunk">
+          <div className="h-full bg-accent transition-[width] duration-[180ms]" style={{ width: `${stepNumber / activeSteps.length * 100}%` }} />
+        </div>
+        {stage === 'id_type' && (
+          <div className="flex max-w-xl flex-col gap-4 py-4">
+          <p className="text-sm text-text-muted">Choose a valid ID with a clear photo and the whole card or page visible.</p>
+          <Select label="ID type" value={selectedIdType} onChange={(event) => {
+            const chosen = event.target.value as PhIdTypeCode;
+            if (chosen !== selectedIdType) setIdTypeConfirmed(false);
+            setSelectedIdType(chosen);
+          }}>
+            <option value="" disabled>Choose an ID type</option>
+            {PH_ID_TYPE_CODES.map((code) => <option key={code} value={code}>{PH_ID_TYPES[code].label}</option>)}
+          </Select>
+          </div>
+        )}
+        {reviewingId && idScan && (
           <IdReviewStep
             scan={idScan}
             value={idDetails}
             onChange={setIdDetails}
             onBack={() => setStage('government_id')}
-            onConfirm={() => setStage('company_registration')}
+            onConfirm={() => { setIdConfirmed(true); setStage('registration_type'); }}
+            footerActions
+            showStepHint={false}
           />
-        </Surface>
-      </div>
-    );
-  }
-
-  if (stage !== 'details') {
-    const step = DOC_STEPS.find((s) => s.type === stage)!;
-    const file = stage === 'government_id' ? governmentId : registration;
-    const setFile = stage === 'government_id' ? setGovernmentId : setRegistration;
-    return (
-      <div className="flex flex-col gap-5">
-        <PageHeader
-          title="Add a company"
-          description="Scan the documents first; you will check the details at the end."
-        />
-        <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
-          <DocumentStep
-            step={step}
-            value={file}
-            onChange={setFile}
-            registrationType={registrationType}
-            onRegistrationTypeChange={setRegistrationType}
-            dti={dti}
-            onDtiChange={setDti}
-            idType={idDetails.idType}
-            onIdTypeChange={(idType) => setIdDetails({ ...idDetails, idType })}
-          />
-          {scanRejected && (
-            <Alert type="error" header="Document not accepted">
-              {scanRejected}
-            </Alert>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="primary"
-              disabled={!file || scanning}
-              loading={scanning}
-              onClick={() => (stage === 'government_id' ? checkId() : scanThenEdit())}
-            >
-              {stage === 'government_id' ? 'Next: check your ID details' : 'Next: check the details'}
-            </Button>
-            {stage === 'company_registration' && !idOnFile ? (
-              <Button variant="ghost" onClick={() => setStage('id_details')}>
-                Back
-              </Button>
-            ) : (
-              <Link to="/account/applications" className={buttonClass('ghost')}>Cancel</Link>
-            )}
+        )}
+        {stage === 'registration_type' && (
+          <div className="flex max-w-xl flex-col gap-4 py-4">
+          <p className="text-sm text-text-muted">Use the company document you can photograph clearly. DTI is offered separately after this.</p>
+          <Select label="Registration type" value={selectedRegistrationType} onChange={(event) => {
+            const chosen = event.target.value as PrimaryRegistrationType;
+            if (chosen !== selectedRegistrationType) setRegistrationTypeConfirmed(false);
+            setSelectedRegistrationType(chosen);
+          }}>
+            <option value="" disabled>Choose a registration document</option>
+            {REGISTRATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </Select>
           </div>
-          <p className="text-xs text-text-muted">
-            Both documents are needed before the rental team can verify this company.
-          </p>
-        </Surface>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        title="Add a company"
-        description="Check what we read from your documents, and fix anything that is wrong."
-      />
-      <Surface radius="md" elevation="sm" className="flex max-w-2xl flex-col gap-4 p-6">
-        <form onSubmit={submit} className="flex flex-col gap-4">
+        )}
+        {documentStage && step && (
+          <div className="flex flex-col gap-4">
+            <DocumentStep
+              step={step}
+              value={file}
+              onChange={(picked) => {
+                setFile(picked);
+                if (stage === 'government_id') {
+                  setIdScan(null);
+                  setIdConfirmed(false);
+                  setScanRejected(null);
+                } else {
+                  setPrimaryScanned(false);
+                  setScanRejected(null);
+                  if (registration) {
+                    setTin('');
+                    setSecNumber('');
+                    setCompanyName('');
+                    setBillingAddress('');
+                    setScanned(null);
+                    setSecFromScan(false);
+                  }
+                }
+              }}
+              registrationType={registrationType}
+              onRegistrationTypeChange={setRegistrationType}
+              dti={dti}
+              onDtiChange={setDti}
+              idType={idDetails.idType}
+              showDti={false}
+              showTypeChoice={false}
+              showHint={false}
+              smartScan
+              onAccepted={stage === 'government_id' ? (accepted) => void checkId(accepted) : (accepted) => void scanRegistration(accepted)}
+            />
+            {scanRejected && <Alert type="error" header="Document not accepted">{scanRejected}</Alert>}
+            <p className="text-xs text-text-muted">Both documents are needed before the rental team can verify this company.</p>
+          </div>
+        )}
+        {stage === 'dti_certificate' && (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-text-muted">This is optional. You can continue without it.</p>
+            <CroppableCapture id="doc-dti_certificate" label="DTI Business Name certificate" value={dti} onChange={(file) => { setDti(file); setDtiNumber(''); }} smartScan onAccepted={(accepted) => void finishDti(accepted)} />
+          </div>
+        )}
+        {stage === 'details' && <form id="company-details" onSubmit={submit} className="flex flex-col gap-4">
           {scanned !== null && (
             <p role="status" className="text-sm text-text-muted">
               {scanned
@@ -700,14 +909,11 @@ function NewCompanyPage() {
             onChange={(e) => setBillingAddress(e.target.value)}
           />
           <MobileInput label="Contact mobile" required value={contactMobile} onChange={setContactMobile} />
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-muted">
+          <div className="rounded-md border border-border px-3 py-2 text-sm text-text-muted">
             <span>
               Scanned: {idOnFile ? 'ID on file' : governmentId ? PH_ID_TYPES[idDetails.idType].label : 'no ID'}, {DOC_LABELS[registrationType]}
               {dti ? ' and DTI certificate' : ''}.
             </span>
-            <Button type="button" variant="ghost" onClick={() => setStage(idOnFile ? 'company_registration' : 'government_id')}>
-              Rescan
-            </Button>
           </div>
           <label className="flex items-start gap-2 text-sm text-text">
             <input
@@ -731,20 +937,13 @@ function NewCompanyPage() {
               {error}
             </p>
           )}
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" variant="primary" loading={busy} disabled={!accepted || Boolean(existing)}>
-              Submit
-            </Button>
-            <Link to="/account/applications" className={buttonClass('ghost')}>
-              Cancel
-            </Link>
-          </div>
           <p className="text-xs text-text-muted">
             You can upload the documents later, but payment opens only once the company is verified.
           </p>
-        </form>
-      </Surface>
-    </div>
+        </form>}
+        </div>
+      </Modal>
+    </>
   );
 }
 
@@ -768,6 +967,7 @@ function CompanyDocumentsPage() {
     scanRejected, rejectRegistration,
   } = useDocumentCapture();
   const [busy, setBusy] = useState(false);
+  const [registrationChecked, setRegistrationChecked] = useState(false);
   const [chosenStage, setStage] = useState<DocStep | 'id_details'>('government_id');
   const stage = !idOpen && chosenStage !== 'company_registration' ? 'company_registration' : chosenStage;
   // A double-tap on "Next" would land on "Upload" in the same spot; ignore submits within advanceGraceMs of the flip.
@@ -778,13 +978,21 @@ function CompanyDocumentsPage() {
   const file = stage === 'government_id' ? governmentId : registration;
   const setFile = stage === 'government_id' ? setGovernmentId : setRegistration;
 
-  async function checkId() {
-    if (await scanGovernmentId()) setStage('id_details');
+  async function checkId(file?: File) {
+    if (await scanGovernmentId(file)) setStage('id_details');
   }
 
   function advanceToRegistration() {
     stageChangedAt.current = Date.now();
     setStage('company_registration');
+  }
+
+  async function checkRegistration(file: File) {
+    setScanning(true);
+    const unreadable = registrationUnreadable(await scanForSuggestions(file, registrationType));
+    setScanning(false);
+    if (unreadable) { setRegistrationChecked(false); rejectRegistration(); return; }
+    setRegistrationChecked(true);
   }
 
   async function submit(event: FormEvent) {
@@ -793,7 +1001,7 @@ function CompanyDocumentsPage() {
     if (stage !== 'company_registration') return;
     if (Date.now() - stageChangedAt.current < advanceGraceMs) return;
     // Same bytes as the upload: the server's OCR cache makes the upload reuse this read.
-    if (registration) {
+    if (registration && !registrationChecked) {
       setScanning(true);
       const unreadable = registrationUnreadable(await scanForSuggestions(registration, registrationType));
       setScanning(false);
@@ -844,15 +1052,18 @@ function CompanyDocumentsPage() {
               <DocumentStep
                 step={step}
                 value={file}
-                onChange={setFile}
+                onChange={(picked) => { setFile(picked); if (stage === 'company_registration') setRegistrationChecked(false); }}
                 registrationType={registrationType}
-                onRegistrationTypeChange={setRegistrationType}
+                onRegistrationTypeChange={(type) => { setRegistrationType(type); setRegistrationChecked(false); }}
                 dti={dti}
                 onDtiChange={setDti}
                 idType={idDetails.idType}
                 onIdTypeChange={(idType) => setIdDetails({ ...idDetails, idType })}
                 showPrimary={primaryOpen}
                 showDti={dtiOpen}
+                smartScan
+                onAccepted={stage === 'government_id' ? (accepted) => void checkId(accepted) : (accepted) => void checkRegistration(accepted)}
+                onDtiAccepted={(accepted) => { void scanForSuggestions(accepted, 'dti_certificate'); }}
               />
             )}
             {scanRejected && (
@@ -867,7 +1078,7 @@ function CompanyDocumentsPage() {
                   variant="primary"
                   disabled={!governmentId || scanning}
                   loading={scanning}
-                  onClick={checkId}
+                  onClick={() => void checkId()}
                 >
                   Next: check your ID details
                 </Button>

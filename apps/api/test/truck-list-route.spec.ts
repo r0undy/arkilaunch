@@ -122,7 +122,7 @@ describe('Truck request list and route', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ code: 'Ok', routes: [{ distance: 1000, duration: 120,
         geometry: { coordinates: [[121, 14], [122, 15]] } }] }) } as Response);
     try {
-      expect(await roadRoute('Pasig', 'Makati', { a: { lon: 121, lat: 14 }, b: { lon: 122, lat: 15 } })).toMatchObject({ truckSafe: false });
+      expect(await roadRoute('Pasig', 'Makati', { a: { lon: 121.08, lat: 14.57 }, b: { lon: 121.02, lat: 14.55 } })).toMatchObject({ truckSafe: false });
     } finally { fetcher.mockRestore(); vi.unstubAllEnvs(); }
   });
 

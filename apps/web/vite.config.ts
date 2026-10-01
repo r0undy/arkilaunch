@@ -24,6 +24,8 @@ export default defineConfig({
     port: 5173,
     // Vite rejects unknown Host headers once host: true; `{tenant}.localhost` picks a tenant in dev.
     allowedHosts: ['.localhost'],
+    // The large, immutable scanner build can make Windows file watching fail with EBUSY.
+    watch: { ignored: ['**/public/vendor/**'] },
     ...(https ? { https } : {}),
     proxy: { '/api': { target: `http://localhost:${process.env.API_PORT ?? 3000}` } },
   },

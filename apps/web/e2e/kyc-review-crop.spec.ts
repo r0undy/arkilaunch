@@ -113,37 +113,20 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
 
     await signUpCustomer(page);
     await page.goto('/account/companies/new');
-    await expect(page.getByText(/Step 1 of 3/)).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Add a company' })).toBeVisible();
+    await expect(page.getByText('Step 1 of 7')).toBeVisible();
+    await choose(page.getByLabel('ID type'), 'philsys');
+    await page.getByRole('button', { name: 'Continue' }).click();
 
-    // Step 1: the photo opens the cropper, free size first, then the card
-    // shape and square on toggle.
+    // The scanner lets the customer review and adjust the detected edges.
     await page.getByTestId('doc-government_id-file').setInputFiles(file('id.png', idPng));
-    const dialog = page.getByRole('dialog', { name: 'Crop your document' });
-    await expect(dialog).toBeVisible();
-    const shape = dialog.getByRole('radiogroup', { name: 'Crop shape' });
-    await expect(shape.getByRole('radio', { name: 'Free' })).toHaveAttribute('aria-checked', 'true');
-    const cropArea = dialog.locator('[data-testid="cropper"]');
-    const ratio = async () => {
-      const box = (await cropArea.boundingBox())!;
-      return box.width / box.height;
-    };
-    // Free starts on the whole photo (1400 x 900) and resizes each side.
-    await expect.poll(ratio).toBeCloseTo(1400 / 900, 1);
-    await dialog.getByLabel('Height').fill('0.5');
-    await expect.poll(ratio).toBeCloseTo(1400 / 450, 1);
-    await shape.getByRole('radio', { name: 'ID card' }).click();
-    await expect.poll(ratio).toBeCloseTo(85.6 / 54, 1);
-    await shape.getByRole('radio', { name: 'Square' }).click();
-    await expect.poll(ratio).toBeCloseTo(1, 1);
-    await shape.getByRole('radio', { name: 'ID card' }).click();
-    await expect.poll(ratio).toBeCloseTo(85.6 / 54, 1);
-    await dialog.getByRole('button', { name: 'Use this crop' }).click();
-    await expect(dialog).toBeHidden();
-    await expect(page.getByRole('button', { name: 'Crop again' })).toBeVisible();
+    await page.getByRole('button', { name: 'Adjust corners' }).click();
+    await expect(page.getByRole('button', { name: 'Document corner 1' })).toBeVisible();
+    await page.getByRole('button', { name: 'Apply corners' }).click();
 
     // Step 2: the customer checks the ID details before going on.
-    await page.getByRole('button', { name: 'Next: check your ID details' }).click();
-    await expect(page.getByText(/Step 2 of 3/)).toBeVisible({ timeout: 60_000 });
+    await page.getByRole('button', { name: /Use scan|Use original photo/ }).click();
+    await expect(page.getByText('Step 3 of 7')).toBeVisible({ timeout: 60_000 });
     const pcn = page.getByLabel(/PCN/);
     const first = page.getByLabel('First name');
     const last = page.getByLabel('Last name');
@@ -158,26 +141,25 @@ test.describe.serial('KYC review: crop, ID check, per-document fields, registry-
     await last.fill('Dela Cruz');
     // A malformed PCN never gets past this step.
     await pcn.fill('1234');
-    await page.getByRole('button', { name: 'Next: company registration' }).click();
-    await expect(page.getByText(/Step 2 of 3/)).toBeVisible();
+    await page.getByRole('button', { name: 'Next: registration type' }).click();
+    await expect(page.getByText('Step 3 of 7')).toBeVisible();
     expect(await pcn.evaluate((el: HTMLInputElement) => el.validity.valid)).toBe(false);
     // Spaces are re-dashed on blur. One digit off the card, so the admin
     // card shows a customer edit when OCR is on.
     await pcn.fill('1234 5678 9012 3457');
     await pcn.blur();
     await expect(pcn).toHaveValue('1234-5678-9012-3457');
-    await page.getByRole('button', { name: 'Next: company registration' }).click();
+    await page.getByRole('button', { name: 'Next: registration type' }).click();
 
-    // Step 3: SEC as the primary paper, DTI as the secondary.
-    await expect(page.getByText(/Step 3 of 3/)).toBeVisible();
-    await choose(page.getByLabel('Document type'), 'sec_certificate');
-    // Every photo opens the cropper, certificates included.
+    // SEC is the primary paper; DTI is offered on the following screen.
+    await expect(page.getByText('Step 4 of 7')).toBeVisible();
+    await choose(page.getByLabel('Registration type'), 'sec_certificate');
+    await page.getByRole('button', { name: 'Continue' }).click();
+    // Company papers use the same review before OCR starts.
     await page.getByTestId('doc-company_registration-file').setInputFiles(file('sec.png', secPng));
-    await page.getByRole('dialog', { name: 'Crop your document' }).getByRole('button', { name: 'Use this crop' }).click();
+    await page.getByRole('button', { name: /Use scan|Use original photo/ }).click();
     await page.getByTestId('doc-dti_certificate-file').setInputFiles(file('dti.png', dtiPng));
-    await page.getByRole('dialog', { name: 'Crop your document' }).getByRole('button', { name: 'Use this crop' }).click();
-    await expect(page.getByRole('button', { name: 'Crop again' })).toHaveCount(2);
-    await page.getByRole('button', { name: 'Next: check the details' }).click();
+    await page.getByRole('button', { name: /Use scan|Use original photo/ }).click();
 
     // Only the numbers these papers print: no TIN without a 2303.
     await expect(page.getByLabel('Company name')).toBeVisible({ timeout: 60_000 });

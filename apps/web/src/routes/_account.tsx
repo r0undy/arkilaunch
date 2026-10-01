@@ -32,8 +32,9 @@ function CreateCompanyBanner() {
 
 function AccountLayout() {
   const { data: me } = useQuery(usersQueries.me());
+  const { pathname } = useLocation();
   return (
-    <SidebarShell navGroups={ACCOUNT_NAV} navTitle="My account" tenantLabel={me?.tenantName ?? 'Loading...'}>
+    <SidebarShell navGroups={ACCOUNT_NAV} navTitle="My account" tenantLabel={me?.tenantName ?? 'Loading...'} hideNav={pathname.startsWith('/account/companies/new')}>
       <CreateCompanyBanner />
       <Outlet />
     </SidebarShell>

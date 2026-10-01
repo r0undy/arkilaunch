@@ -115,7 +115,7 @@ function ApplicationCard({ company }: { company: CompanyResponse }) {
   );
 }
 
-function ApplicationsPage() {
+export function ApplicationsPage() {
   const companies = useQuery(companiesQueries.mine());
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -145,7 +145,7 @@ function ApplicationsPage() {
         title="Applications"
         description="The companies you rent under, and where each verification stands."
         actions={
-          <Link to="/account/companies/new" className={buttonClass('primary')}>Add company</Link>
+          <Link id="add-company-action" to="/account/companies/new" className={buttonClass('primary')}>Add company</Link>
         }
       />
 
