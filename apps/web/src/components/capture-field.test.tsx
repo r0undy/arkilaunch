@@ -150,7 +150,7 @@ describe('CaptureField', () => {
     expect(track.stop).toHaveBeenCalled();
   });
 
-  it('gives KYC a full-screen automatic camera without a shutter', async () => {
+  it('gives KYC a compact automatic camera with a manual shutter', async () => {
     scanner.load.mockReturnValue(new Promise(() => undefined));
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D);
     const track = { stop: vi.fn(), getCapabilities: () => ({}) };
@@ -161,9 +161,9 @@ describe('CaptureField', () => {
     renderField({ scanner: true });
 
     const camera = await screen.findByTestId('scanFile-viewfinder');
-    expect(camera).toHaveClass('h-dvh');
+    expect(camera).toHaveClass('aspect-[4/3]');
     expect(screen.getByRole('dialog', { name: 'Scan Photo of the sheet' })).toBeInTheDocument();
-    expect(screen.queryByTestId('scanFile-shutter')).not.toBeInTheDocument();
+    expect(screen.getByTestId('scanFile-shutter')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Choose a file' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Back' })).toHaveFocus());
     await userEvent.click(screen.getByRole('button', { name: 'Back' }));
